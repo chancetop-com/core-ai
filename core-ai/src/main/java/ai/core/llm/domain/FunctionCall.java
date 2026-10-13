@@ -3,6 +3,8 @@ package ai.core.llm.domain;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
+import java.util.Map;
+
 /**
  * @author stephen
  */
@@ -25,6 +27,12 @@ public class FunctionCall {
     public Function function;
     @Property(name = "index")
     public Integer index;
+    // provider-specific metadata attached to a tool call, echoed back verbatim in subsequent requests.
+    // Google's OpenAI-compatible endpoints require the thought_signature of a functionCall part
+    // (extra_content.google.thought_signature) to be returned exactly as received, or Gemini 3
+    // models reject the request with 400 "Function call is missing a thought_signature".
+    @Property(name = "extra_content")
+    public Map<String, Object> extraContent;
 
     public static class Function {
         @Property(name = "name")

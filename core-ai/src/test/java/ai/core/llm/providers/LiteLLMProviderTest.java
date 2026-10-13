@@ -8,7 +8,10 @@ import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.document.Embedding;
+import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
+import ai.core.llm.LLMProviderConfig;
 import ai.core.utils.JsonUtil;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -24,12 +27,14 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author stephen
  */
 class LiteLLMProviderTest {
+    private final LiteLLMProvider provider = new LiteLLMProvider(new LLMProviderConfig("test-model", 0.7, null), "http://localhost", "test");
 
     @Test
     void applyGatewayHeadersPutsSessionAndAgentHeaders() {
@@ -143,7 +148,7 @@ class LiteLLMProviderTest {
     void repairsInvalidJsonEscapesInsideStringValues() {
         String invalidJson = "{\"choices\":[{\"delta\":{\"content\":\"path \\{value\\} and \\q\"}}]}";
 
-        String repaired = LiteLLMProvider.repairInvalidJsonEscapes(invalidJson);
+        String repaired = LiteLLMCompletionChunkParser.repairInvalidJsonEscapes(invalidJson);
 
         var response = JsonUtil.fromJson(CompletionResponse.class, repaired);
         assertEquals("path \\{value\\} and \\q", response.choices.getFirst().delta.content);
@@ -153,7 +158,7 @@ class LiteLLMProviderTest {
     void preservesValidJsonEscapes() {
         String json = "{\"content\":\"line\\nquote: \\\"\\\"\"}";
 
-        String repaired = LiteLLMProvider.repairInvalidJsonEscapes(json);
+        String repaired = LiteLLMCompletionChunkParser.repairInvalidJsonEscapes(json);
 
         assertEquals(json, repaired);
     }
@@ -240,22 +245,22 @@ class LiteLLMProviderTest {
 
         // Chunk 1: tool_call[0] starts with id, type, name
         var chunk1 = createChunkChoice(0, "call_abc", "function", "get_weather", "");
-        copyToolCallsToFinalChoice(finalChoice, chunk1);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2: tool_call[0] arguments fragment
         var chunk2 = createChunkChoice(0, null, null, null, "{\"city\":");
-        copyToolCallsToFinalChoice(finalChoice, chunk2);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk2);
 
         // Chunk 3: tool_call[0] arguments fragment + tool_call[1] starts
         var chunk3 = createChunkChoiceMultiple(
                 new ToolCallDelta(0, null, null, null, "\"Beijing\"}"),
                 new ToolCallDelta(1, "call_def", "function", "get_time", "")
         );
-        copyToolCallsToFinalChoice(finalChoice, chunk3);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk3);
 
         // Chunk 4: tool_call[1] arguments
-        var chunk4 = createChunkChoice(1, null, null, null, "{\"tz\":\"UTC\"}");
-        copyToolCallsToFinalChoice(finalChoice, chunk4);
+        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(1, null, null, null, "{\"tz\":\"UTC\"}"));
+        finalChoice.message.finalizeStreamingFields();
 
         // Verify results
         var toolCalls = finalChoice.message.toolCalls;
@@ -283,12 +288,13 @@ class LiteLLMProviderTest {
 
         // Chunk 1: tool call starts
         var chunk1 = createChunkChoice(0, "call_123", "function", "search", "");
-        copyToolCallsToFinalChoice(finalChoice, chunk1);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2-4: arguments fragments
-        copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"q\":"));
-        copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "\"hello"));
-        copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, " world\"}"));
+        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"q\":"));
+        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "\"hello"));
+        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, " world\"}"));
+        finalChoice.message.finalizeStreamingFields();
 
         var toolCalls = finalChoice.message.toolCalls;
         assertEquals(1, toolCalls.size());
@@ -313,7 +319,7 @@ class LiteLLMProviderTest {
         tc.id = "call_xyz";
         chunk.delta.toolCalls.add(tc);
 
-        copyToolCallsToFinalChoice(finalChoice, chunk);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk);
 
         // Should remain empty
         assertEquals(0, finalChoice.message.toolCalls.size());
@@ -325,17 +331,96 @@ class LiteLLMProviderTest {
 
         // Chunk 1: only index and partial data
         var chunk1 = createChunkChoice(0, null, null, "my_func", "");
-        copyToolCallsToFinalChoice(finalChoice, chunk1);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2: id and type come later (unusual but should work)
         var chunk2 = createChunkChoice(0, "call_late", "function", null, "{\"a\":1}");
-        copyToolCallsToFinalChoice(finalChoice, chunk2);
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk2);
+        finalChoice.message.finalizeStreamingFields();
 
         var tc = finalChoice.message.toolCalls.get(0);
         assertEquals("call_late", tc.id);
         assertEquals("function", tc.type);
         assertEquals("my_func", tc.function.name);
         assertEquals("{\"a\":1}", tc.function.arguments);
+    }
+
+    @Test
+    void capturesThoughtSignatureFromStreamingToolCallDelta() {
+        // shape emitted by Google's OpenAI-compatible endpoints: extra_content rides on the tool call
+        String json = "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"tool_calls\":"
+                + "[{\"index\":0,\"id\":\"call_1\",\"type\":\"function\","
+                + "\"extra_content\":{\"google\":{\"thought_signature\":\"sig-1\"}},"
+                + "\"function\":{\"name\":\"run_bash_command\",\"arguments\":\"{}\"}}]}}]}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        var toolCall = chunk.choices.getFirst().delta.toolCalls.get(0);
+        var google = (Map<?, ?>) toolCall.extraContent.get("google");
+        assertEquals("sig-1", google.get("thought_signature"));
+    }
+
+    @Test
+    void keepsThoughtSignatureAcrossToolCallChunks() {
+        var finalChoice = createFinalChoice();
+
+        var chunk1 = createChunkChoice(0, "call_1", "function", "run_bash_command", "");
+        chunk1.delta.toolCalls.get(0).extraContent = Map.of("google", Map.of("thought_signature", "sig-1"));
+        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
+
+        // later argument fragments carry no extra_content and must not clear the captured signature
+        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"a\":1}"));
+        finalChoice.message.finalizeStreamingFields();
+
+        var toolCall = finalChoice.message.toolCalls.get(0);
+        var google = (Map<?, ?>) toolCall.extraContent.get("google");
+        assertEquals("sig-1", google.get("thought_signature"));
+        assertEquals("{\"a\":1}", toolCall.function.arguments);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void serializesExtraContentBackIntoRequest() {
+        var toolCall = FunctionCall.of("call_1", "function", "run_bash_command", "{}");
+        toolCall.extraContent = Map.of("google", Map.of("thought_signature", "sig-1"));
+        var assistant = Message.of(RoleType.ASSISTANT, "", null, null, List.of(toolCall));
+
+        var request = CompletionRequest.of(List.of(assistant), List.of(), null, "gemini-3.6-flash", "test");
+        var body = (Map<String, Object>) JsonUtil.toMap(request);
+
+        var messages = (List<Map<String, Object>>) body.get("messages");
+        var toolCalls = (List<Map<String, Object>>) messages.get(0).get("tool_calls");
+        var extraContent = (Map<String, Object>) toolCalls.get(0).get("extra_content");
+        var google = (Map<String, Object>) extraContent.get("google");
+        assertEquals("sig-1", google.get("thought_signature"));
+
+        // the server-side CLI proxy parses the request back into the domain model before forwarding;
+        // the signature must survive that round trip
+        var reparsed = JsonUtil.fromJson(CompletionRequest.class, JsonUtil.toJson(body));
+        var reparsedGoogle = (Map<?, ?>) reparsed.messages.get(0).toolCalls.get(0).extraContent.get("google");
+        assertEquals("sig-1", reparsedGoogle.get("thought_signature"));
+    }
+
+    @Test
+    void throwsOnInStreamErrorEvent() {
+        // OpenAI-style error event forwarded by the server-side CLI proxy
+        var openAiStyle = assertThrows(LLMStreamException.class, () -> LiteLLMCompletionChunkParser.parse(
+                "{\"error\":{\"type\":\"invalid_request_error\",\"message\":\"Function call is missing a thought_signature\"}}"));
+        assertEquals("Function call is missing a thought_signature", openAiStyle.getMessage());
+
+        // core-ng sse handler error event
+        var sseHandlerStyle = assertThrows(LLMStreamException.class, () -> LiteLLMCompletionChunkParser.parse(
+                "{\"type\":\"error\",\"id\":\"A1\",\"errorCode\":\"HTTP_REQUEST_FAILED\",\"message\":\"invalid api key\"}"));
+        assertEquals("invalid api key", sseHandlerStyle.getMessage());
+    }
+
+    @Test
+    void ignoresNullErrorKeyOnNormalChunks() {
+        String json = "{\"choices\":[{\"delta\":{\"content\":\"hi\"}}],\"error\":null}";
+
+        var chunk = LiteLLMCompletionChunkParser.parse(json);
+
+        assertEquals("hi", chunk.choices.getFirst().delta.content);
     }
 
     private Choice createFinalChoice() {
@@ -383,45 +468,6 @@ class LiteLLMProviderTest {
         }
 
         return choice;
-    }
-
-    private void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {
-        if (finalChoice.message.toolCalls == null) {
-            finalChoice.message.toolCalls = new ArrayList<>();
-        }
-
-        for (var deltaToolCall : chunkChoice.delta.toolCalls) {
-            if (deltaToolCall.index == null) {
-                continue;
-            }
-
-            while (finalChoice.message.toolCalls.size() <= deltaToolCall.index) {
-                finalChoice.message.toolCalls.add(null);
-            }
-
-            var existingToolCall = finalChoice.message.toolCalls.get(deltaToolCall.index);
-            if (existingToolCall == null) {
-                existingToolCall = new FunctionCall();
-                existingToolCall.function = new FunctionCall.Function();
-                existingToolCall.function.arguments = "";
-                finalChoice.message.toolCalls.set(deltaToolCall.index, existingToolCall);
-            }
-
-            if (deltaToolCall.id != null) {
-                existingToolCall.id = deltaToolCall.id;
-            }
-            if (deltaToolCall.type != null) {
-                existingToolCall.type = deltaToolCall.type;
-            }
-            if (deltaToolCall.function != null) {
-                if (deltaToolCall.function.name != null) {
-                    existingToolCall.function.name = deltaToolCall.function.name;
-                }
-                if (deltaToolCall.function.arguments != null) {
-                    existingToolCall.function.arguments += deltaToolCall.function.arguments;
-                }
-            }
-        }
     }
 
     private record ToolCallDelta(int index, String id, String type, String name, String arguments) {

@@ -50,38 +50,6 @@ public class LiteLLMProvider extends LLMProvider {
         return LiteLLMResponsesBridge.isResponsesModel(model);
     }
 
-    static String repairInvalidJsonEscapes(String json) {
-        var repaired = new StringBuilder(json.length());
-        boolean inString = false;
-        boolean escaped = false;
-        for (int i = 0; i < json.length(); i++) {
-            char current = json.charAt(i);
-            if (!inString) {
-                if (current == '"') inString = true;
-                repaired.append(current);
-                continue;
-            }
-            if (escaped) {
-                if (current != '"' && current != '\\' && current != '/' && current != 'b' && current != 'f'
-                        && current != 'n' && current != 'r' && current != 't' && current != 'u') {
-                    repaired.append('\\');
-                }
-                repaired.append(current);
-                escaped = false;
-                continue;
-            }
-            if (current == '\\') {
-                repaired.append(current);
-                escaped = true;
-            } else {
-                if (current == '"') inString = false;
-                repaired.append(current);
-            }
-        }
-        if (escaped) repaired.append('\\');
-        return repaired.toString();
-    }
-
     private volatile String url;
     private volatile String token;
     private volatile String authHeaderName = "Authorization";
@@ -233,6 +201,9 @@ public class LiteLLMProvider extends LLMProvider {
             try {
                 response = consumeSSEStream(req, callback);
                 break;
+            } catch (LLMStreamException e) {
+                // an in-stream error event is a definitive upstream rejection; retrying cannot help
+                throw e;
             } catch (Exception e) {
                 if (callback.isCancelled()) break;
                 lastError = e;
@@ -407,7 +378,8 @@ public class LiteLLMProvider extends LLMProvider {
         return url.replaceAll("/+$", "");
     }
 
-    private void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {
+    // package-private so tests can exercise the merge directly
+    void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {
         if (finalChoice.message.toolCalls == null) {
             finalChoice.message.toolCalls = new ArrayList<>();
         }
@@ -433,6 +405,9 @@ public class LiteLLMProvider extends LLMProvider {
             }
             if (deltaToolCall.type != null) {
                 existingToolCall.type = deltaToolCall.type;
+            }
+            if (deltaToolCall.extraContent != null) {
+                existingToolCall.extraContent = deltaToolCall.extraContent;
             }
             if (deltaToolCall.function != null) {
                 if (deltaToolCall.function.name != null) {
