@@ -1,6 +1,7 @@
 package ai.core.sse.internal;
 
 import ai.core.sse.RawSseChannel;
+import ai.core.sse.SseQueueLimits;
 import core.framework.internal.web.request.RequestImpl;
 import core.framework.log.ActionLogContext;
 import core.framework.util.Sets;
@@ -24,6 +25,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantLock;
 
 class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<T>, Channel.Context {
@@ -57,6 +60,9 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
 
     final WriteListener writeListener = new WriteListener();
     final Deque<byte[]> queue = new ConcurrentLinkedDeque<>();
+    // what the queue currently holds: a client that stopped reading must not grow it without bound
+    private final AtomicInteger queuedEvents = new AtomicInteger();
+    private final AtomicLong queuedBytes = new AtomicLong();
 
     private final PatchedServerSentEventContextImpl<T> serverSentEventContext;
     private final PatchedServerSentEventWriter<T> builder;
@@ -99,7 +105,16 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
 
         var watch = new StopWatch();
         try {
+            if (overCapacity()) {
+                // the client is not consuming: drop the backlog and close instead of buffering for it
+                LOGGER.warn("sse channel queue over capacity, closing, channel={}, queued={}, queuedBytes={}",
+                        id, queuedEvents.get(), queuedBytes.get());
+                shutdown();
+                return false;
+            }
             queue.add(event);
+            queuedEvents.incrementAndGet();
+            queuedBytes.addAndGet(event.length);
             sink.getIoThread().execute(() -> writeListener.handleEvent(sink));
 
             lastSentTime = System.nanoTime();
@@ -169,6 +184,8 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
 
             LOGGER.debug("shutdown sse connection, channel={}", id);
             queue.clear();
+            queuedEvents.set(0);
+            queuedBytes.set(0);
             exchange.endExchange();
         } finally {
             lock.unlock();
@@ -202,6 +219,10 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
         serverSentEventContext.leave(this, group);
     }
 
+    private boolean overCapacity() {
+        return queuedEvents.get() >= SseQueueLimits.maxQueueDepth() || queuedBytes.get() >= SseQueueLimits.maxQueueBytes();
+    }
+
     ByteBuffer poll() {
         List<byte[]> bytes = new ArrayList<>(queue.size());
 
@@ -209,6 +230,8 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
             var data = queue.poll();
             if (data == null) break;
             bytes.add(data);
+            queuedEvents.decrementAndGet();
+            queuedBytes.addAndGet(-data.length);
         }
 
         if (bytes.size() == 1)

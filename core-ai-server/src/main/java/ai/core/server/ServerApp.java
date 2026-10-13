@@ -174,6 +174,8 @@ public class ServerApp extends App {
         load(new CostAlertModule());
         load(new ForYouModule());
         load(new AgentRunnerModule());
+        // runtime governance reads counters owned by the messaging, session, run and sandbox modules
+        load(new RuntimeGovernanceModule());
         // Agent Hub needs ServerA2AService (A2AModule) and AgentRunService (AgentRunnerModule): core-ng
         // resolves @Inject while binding, so it must load after both.
         load(new AgentHubModule());

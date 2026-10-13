@@ -1815,6 +1815,42 @@ export interface ImportGatewayModelsRequest {
   }>;
 }
 
+export interface RuntimeLimits {
+  admission_enabled?: boolean;
+  heap_watermark_percent?: number;
+  max_in_flight_turns_per_pod?: number;
+  max_in_flight_turns_global?: number;
+  max_sessions_per_pod?: number;
+  max_sessions_per_user?: number;
+  max_concurrent_turns_per_user?: number;
+  max_queued_messages_per_session?: number;
+  turn_timeout_seconds?: number;
+  sse_max_queue_depth?: number;
+  sse_max_queue_bytes?: number;
+  run_queue_capacity?: number;
+  max_sandboxes_per_pod?: number;
+  max_sandboxes_per_user?: number;
+  max_sandbox_memory_mb_per_user?: number;
+  max_sandboxes_per_agent?: number;
+  span_ingest_queue_capacity?: number;
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+export type RuntimeLimitsRequest = Omit<RuntimeLimits, 'updated_by' | 'updated_at'>;
+
+export interface RuntimeStats {
+  pod?: string;
+  uptime_seconds?: number;
+  memory?: { heap_used?: number; heap_max?: number; heap_used_percent?: number };
+  sessions?: { active?: number; max?: number };
+  turns?: { in_flight?: number; max?: number; rejected_total?: number; saturated_total?: number };
+  runs?: { active?: number; queued?: number; max_queue?: number; rejected_total?: number };
+  sandbox?: { live?: number; max?: number; rejected_total?: number };
+  sandbox_fleet?: { live_by_kind?: Record<string, number>; live_by_user?: Record<string, number> };
+  span_ingest?: { queue_depth?: number; capacity?: number; dropped_total?: number };
+}
+
 export interface SystemSettings {
   memory_extraction_model?: string | null;
   default_memory_extraction_model?: string;
@@ -1994,6 +2030,14 @@ export const api = {
       request<SystemSettings>('/api/admin/system-settings'),
     update: (data: SystemSettingsRequest) =>
       request<SystemSettings>('/api/admin/system-settings', { method: 'PUT', body: JSON.stringify(data) }),
+  },
+  runtime: {
+    limits: () =>
+      request<RuntimeLimits>('/api/admin/runtime/limits'),
+    updateLimits: (data: RuntimeLimitsRequest) =>
+      request<RuntimeLimits>('/api/admin/runtime/limits', { method: 'PUT', body: JSON.stringify(data) }),
+    stats: () =>
+      request<RuntimeStats>('/api/admin/runtime/stats'),
   },
   gateway: {
     listProviders: () =>

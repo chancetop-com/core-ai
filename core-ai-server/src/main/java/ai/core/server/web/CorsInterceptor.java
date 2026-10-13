@@ -1,5 +1,6 @@
 package ai.core.server.web;
 
+import ai.core.server.runtime.CapacityExceededException;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.ResponseStatus;
 import core.framework.http.ContentType;
@@ -57,10 +58,15 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
             String errorCode = e instanceof ErrorCode code ? code.errorCode() : "INTERNAL_ERROR";
             String message = e.getMessage() == null ? "" : e.getMessage();
             var json = "{\"errorCode\":\"" + escape(errorCode) + "\",\"message\":\"" + escape(message) + "\"}";
-            return Optional.of(Response.text(json)
+            var response = Response.text(json)
                     .status(httpStatus(e))
                     .contentType(ContentType.APPLICATION_JSON)
-                    .header("Access-Control-Allow-Origin", "*"));
+                    .header("Access-Control-Allow-Origin", "*");
+            // capacity rejections are retryable, so the client gets a concrete back-off hint
+            if (e instanceof CapacityExceededException capacity) {
+                response.header("Retry-After", String.valueOf(capacity.retryAfterSeconds()));
+            }
+            return Optional.of(response);
         }
         return Optional.empty();
     }

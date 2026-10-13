@@ -5,7 +5,6 @@ import ai.core.agent.CancelReason;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.channel.ChannelConfigStore;
-import ai.core.server.channel.ChannelMessage;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.api.server.run.LLMCallRequest;
@@ -16,6 +15,7 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.runtime.CapacityExceededException;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.StagedFile;
 import ai.core.server.sandboxhub.RunAgentRegistry;
@@ -27,21 +27,21 @@ import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.PrintWriter;
-import java.io.StringWriter;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -52,15 +52,23 @@ public class AgentRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentRunner.class);
     private static final int MAX_CONCURRENT_RUNS = 10;
     private static final int DEFAULT_TIMEOUT_SECONDS = 600;
-    private static final int SANDBOX_RELEASE_DELAY_SECONDS = 60;
-    private static final int WORKFLOW_SANDBOX_RELEASE_DELAY_SECONDS = 10;
+    // backstop for the pool queue: the live bound (runtime.runQueueCapacity) is enforced at admission,
+    // this only stops a burst from growing the queue between checks
+    private static final int RUN_QUEUE_BACKSTOP = 500;
+    private static final int RETRY_AFTER_SECONDS = 30;
     private static final int STALE_RUN_THRESHOLD_SECONDS = 1800;
     // ownership leases last a minute; a run outlives that, so it renews at half the lease
     private static final int OWNERSHIP_RENEW_SECONDS = 30;
 
-    private final ExecutorService executorService = Executors.newFixedThreadPool(MAX_CONCURRENT_RUNS);
+    private final ThreadPoolExecutor executorService = new ThreadPoolExecutor(MAX_CONCURRENT_RUNS, MAX_CONCURRENT_RUNS,
+            0, TimeUnit.MILLISECONDS, new ArrayBlockingQueue<>(RUN_QUEUE_BACKSTOP),
+            Executors.defaultThreadFactory(), new ThreadPoolExecutor.AbortPolicy());
     private final ScheduledExecutorService timeoutScheduler = Executors.newScheduledThreadPool(1);
     private final Map<String, Future<?>> runningFutures = new ConcurrentHashMap<>();
+    /** Queue depth and refusals of this pod's pool; the live capacity comes from system settings. */
+    public final RunQueueAdmission admission = new RunQueueAdmission(() -> executorService.getQueue().size());
+    private RunChannelDelivery channelDelivery;
+    private RunSandboxReleaseScheduler sandboxReleases;
 
     @Inject
     SandboxService sandboxService;
@@ -134,6 +142,7 @@ public class AgentRunner {
         var runEntity = createRunRecord(
             params.definition, params.input, params.trigger, params.scheduleId, params.callerUserId);
         agentRunCollection.insert(runEntity);
+        rejectWhenRunQueueFull(runEntity);
         artifactBinder.bindRun(runEntity);   // schedule → subject binding, deterministic (no-op without a bound schedule)
 
         var runId = runEntity.id;
@@ -159,6 +168,10 @@ public class AgentRunner {
                 runningFutures.remove(runId);
                 if (error != null) markRunFailedIfUnfinished(runEntity, error);
             });
+        } catch (RejectedExecutionException e) {
+            // the queue backstop tripped between the admission check and the submission: still a refusal
+            rejectRun(runEntity, "run_queue");
+            throw new CapacityExceededException("run_queue", RETRY_AFTER_SECONDS, "run queue is full, retry later", e);
         } catch (Exception e) {
             markRunFailedIfUnfinished(runEntity, e);
             throw e;
@@ -184,16 +197,17 @@ public class AgentRunner {
     }
 
     private void executeAsync(ExecuteAsyncParams params) {
+        markRunning(params.runEntity);
         try {
             if (params.staged && params.sandbox != null) {
                 sandboxService.ensurePendingFilesUploaded(params.runEntity.id);
             }
             execute(params.runEntity, params.definition, params.sandbox, params.resolvedVariables, params.traceContext, params.attachments);
             if (params.channel != null) {
-                sendToChannelIfConfigured(params.runEntity, params.channel);
+                channelDelivery().send(params.runEntity, params.channel);
             }
         } finally {
-            scheduleSandboxRelease(params.runEntity.id, params.runEntity.triggeredBy != null ? params.runEntity.triggeredBy : TriggerType.MANUAL);
+            sandboxReleases().schedule(params.runEntity.id, params.runEntity.triggeredBy != null ? params.runEntity.triggeredBy : TriggerType.MANUAL);
         }
     }
 
@@ -228,7 +242,7 @@ public class AgentRunner {
             }
             if (completed.compareAndSet(false, true)) {
                 LOGGER.error("agent run failed, runId={}", runEntity.id, e);
-                builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), stackTrace(e), agent);
+                builder.updateRunStatus(runEntity, RunStatus.FAILED, null, AgentRunErrors.message(e), AgentRunErrors.stackTrace(e), agent);
             }
         } finally {
             if (ownershipLease != null) ownershipLease.cancel(false);
@@ -282,7 +296,7 @@ public class AgentRunner {
             builder.extractDatasetRecords(result.output(), definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
         } catch (Exception e) {
             LOGGER.error("llm run failed, runId={}", runEntity.id, e);
-            builder.updateRunStatus(runEntity, RunStatus.FAILED, null, errorMessage(e), stackTrace(e), null);
+            builder.updateRunStatus(runEntity, RunStatus.FAILED, null, AgentRunErrors.message(e), AgentRunErrors.stackTrace(e), null);
         }
     }
 
@@ -291,54 +305,16 @@ public class AgentRunner {
         var latest = agentRunCollection.get(runEntity.id).orElse(runEntity);
         if (latest.status != RunStatus.RUNNING && latest.status != RunStatus.PENDING) return;
         LOGGER.error("agent run failed asynchronously, runId={}", latest.id, cause);
-        builder.updateRunStatus(latest, RunStatus.FAILED, null, errorMessage(cause), stackTrace(cause), null);
+        builder.updateRunStatus(latest, RunStatus.FAILED, null, AgentRunErrors.message(cause), AgentRunErrors.stackTrace(cause), null);
     }
 
-    private String errorMessage(Throwable error) {
-        return error.getMessage() != null ? error.getMessage() : error.toString();
-    }
-
-    private String stackTrace(Throwable error) {
-        var writer = new StringWriter();
-        error.printStackTrace(new PrintWriter(writer));
-        String trace = writer.toString();
-        int maximumLength = 65536;
-        return trace.length() <= maximumLength ? trace : trace.substring(0, maximumLength) + "\n... stack trace truncated";
-    }
-
-    private void scheduleSandboxRelease(String runId, TriggerType trigger) {
-        var delaySeconds = trigger == TriggerType.WORKFLOW ? WORKFLOW_SANDBOX_RELEASE_DELAY_SECONDS : SANDBOX_RELEASE_DELAY_SECONDS;
-        timeoutScheduler.schedule(() -> {
-            try {
-                sandboxService.releaseSandbox(runId);
-            } catch (Exception e) {
-                LOGGER.debug("error releasing sandbox for run {}, ignored", runId, e);
-            }
-        }, delaySeconds, TimeUnit.SECONDS);
-    }
-
+    /**
+     * The pool and the timeout scheduler must be drained in order: in-flight runs keep submitting
+     * timeout and sandbox-release tasks, and a terminated scheduler would reject them and mark
+     * otherwise-fine runs FAILED.
+     */
     public void shutdown() {
-        executorService.shutdown();
-        try {
-            if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
-                executorService.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executorService.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-        // Only stop the scheduler after in-flight runs finished: they still submit
-        // timeout and sandbox-release tasks, and a terminated scheduler would reject
-        // them (RejectedExecutionException) and mark otherwise-fine runs FAILED.
-        timeoutScheduler.shutdown();
-        try {
-            if (!timeoutScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                timeoutScheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            timeoutScheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+        RunPools.awaitShutdown(executorService, timeoutScheduler);
     }
 
     public void cancel(String runId) {
@@ -361,10 +337,62 @@ public class AgentRunner {
                 Filters.and(
                         Filters.eq("agent_id", agentId),
                         Filters.eq("schedule_id", scheduleId),
-                        Filters.eq("status", RunStatus.RUNNING),
+                        Filters.in("status", List.of(RunStatus.RUNNING, RunStatus.PENDING)),
                         Filters.gte("started_at", threshold)
                 )
         ).isPresent();
+    }
+
+    /** Runs executing on this pod right now (observation only — the pool bound itself is not yet enforced). */
+    public int activeRunCount() {
+        return runningFutures.size();
+    }
+
+    /** Runs accepted but still waiting for a pool thread. */
+    public int queuedRunCount() {
+        return admission.queued();
+    }
+
+    public long rejectedRunTotal() {
+        return admission.rejectedTotal();
+    }
+
+    /**
+     * Rejects before any sandbox or pool slot is taken. The run record is kept (status REJECTED) so the
+     * caller and the run list both see why, and the caller gets a retryable 429 instead of a silent queue.
+     */
+    private void rejectWhenRunQueueFull(AgentRun runEntity) {
+        if (!admission.queueFull()) return;
+        var queued = admission.queued();
+        rejectRun(runEntity, "run_queue");
+        throw new CapacityExceededException("run_queue", RETRY_AFTER_SECONDS,
+                "run queue is full (" + queued + " waiting), retry later");
+    }
+
+    private void rejectRun(AgentRun runEntity, String scope) {
+        admission.recordRejection();
+        runEntity.status = RunStatus.REJECTED;
+        runEntity.completedAt = ZonedDateTime.now();
+        runEntity.error = "rejected by runtime admission: " + scope;
+        agentRunCollection.replace(runEntity);
+        LOGGER.warn("run rejected by runtime admission, runId={}, scope={}, queued={}", runEntity.id, scope, admission.queued());
+    }
+
+    /** The queue wait ends here: the run is executing, so started_at stops meaning "accepted". */
+    private void markRunning(AgentRun runEntity) {
+        runEntity.status = RunStatus.RUNNING;
+        runEntity.startedAt = ZonedDateTime.now();
+        agentRunCollection.replace(runEntity);
+    }
+
+    private RunChannelDelivery channelDelivery() {
+        if (channelDelivery == null) channelDelivery = new RunChannelDelivery(channelConfigStore, channelRegistry);
+        return channelDelivery;
+    }
+
+    private RunSandboxReleaseScheduler sandboxReleases() {
+        if (sandboxReleases == null) sandboxReleases = new RunSandboxReleaseScheduler(sandboxService, timeoutScheduler);
+        return sandboxReleases;
     }
 
     private ScheduledFuture<?> scheduleTimeout(AgentRun runEntity, Agent agent, int timeoutSeconds, AtomicBoolean completed) {
@@ -382,34 +410,17 @@ public class AgentRunner {
         entity.agentId = definition.id;
         entity.userId = callerUserId != null && !callerUserId.isBlank() ? callerUserId : definition.userId;
         entity.triggeredBy = trigger;
-        entity.status = RunStatus.RUNNING;
+        entity.status = RunStatus.PENDING;
         entity.input = input;
         entity.scheduleId = scheduleId;
         entity.startedAt = ZonedDateTime.now();
+        entity.queuedAt = entity.startedAt;
         return entity;
     }
 
     private Throwable unwrapCause(Throwable e) {
         Throwable cause = e.getCause();
         return cause != null ? cause : e;
-    }
-
-    private void sendToChannelIfConfigured(AgentRun runEntity, ChannelTarget channel) {
-        var channelId = channel.id();
-        var channelRecipientId = channel.recipientId();
-        if (channelId == null || channelId.isBlank()) return;
-        if (channelRecipientId == null || channelRecipientId.isBlank()) return;
-
-        var channelConfig = channelConfigStore.load(channelId);
-        if (channelConfig == null) return;
-
-        try {
-            var outbound = channelRegistry.outbound(channelConfig.channelType);
-            var message = ChannelMessage.text(runEntity.output);
-            outbound.sendMessage(message, channelId, channelRecipientId, channelRecipientId, null, channelConfig.config);
-        } catch (Exception e) {
-            LOGGER.debug("channel delivery failed for run {}, ignored", runEntity.id, e);
-        }
     }
 
     record RunParams(AgentDefinition definition, String input, TriggerType trigger, String callerUserId,

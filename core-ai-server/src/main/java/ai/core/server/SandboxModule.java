@@ -5,6 +5,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.domain.SessionAttachmentRefRepository;
+import ai.core.server.sandbox.SandboxManager;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.SandboxServiceDependencies;
 import ai.core.server.sandbox.TokenResolver;
@@ -12,6 +13,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProviderConfig;
+import ai.core.server.sandbox.agentsandbox.SandboxPodPlacement;
 import ai.core.server.sandbox.docker.DockerSandboxProvider;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
@@ -51,6 +53,7 @@ class SandboxModule extends Module {
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                     bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
+            bindSandboxManager(sandboxService);
             sandboxService.sessionTokens(sessionTokenService);
             return;
         }
@@ -75,6 +78,7 @@ class SandboxModule extends Module {
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
                     bean(SessionAttachmentRefRepository.class));
             bind(sandboxService);
+            bindSandboxManager(sandboxService);
             sandboxService.sessionTokens(sessionTokenService);
             return;
         }
@@ -84,9 +88,20 @@ class SandboxModule extends Module {
                         bean(SessionAttachmentRefRepository.class)));
         sandboxService.attachmentMaxBytes = attachmentMaxBytes();
         bind(sandboxService);
+        bindSandboxManager(sandboxService);
         sandboxService.sessionTokens(sessionTokenService);
 
         onShutdown(sandboxService::shutdown);
+    }
+
+    /**
+     * The manager is bound on its own so the runtime stats endpoint and the quota wiring can reach it;
+     * a deployment without a sandbox provider gets an empty manager, which keeps those dependencies
+     * satisfiable and reports zero sandboxes (which is the truth there).
+     */
+    private void bindSandboxManager(SandboxService service) {
+        var manager = service.sandboxManager();
+        bind(manager != null ? manager : new SandboxManager(null));
     }
 
     // Both sides read the SAME property value as raw UTF-8 bytes -- the Go runtime's hub proxy
@@ -190,6 +205,9 @@ class SandboxModule extends Module {
         config.useHostPort = useHostPort;
         config.templateName = templateName;
         config.warmPoolName = warmPoolName;
+        // direct-CR sandboxes only; the warm-pool template carries its own pod spec (env project)
+        config.podPlacement = new SandboxPodPlacement(property("sys.sandbox.priorityClass").orElse(null),
+                SandboxPodPlacement.parseNodeSelector(property("sys.sandbox.nodeSelector").orElse(null)));
         return new AgentSandboxProvider(config);
     }
 }

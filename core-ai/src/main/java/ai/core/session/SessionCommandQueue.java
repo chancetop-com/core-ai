@@ -29,19 +29,36 @@ public class SessionCommandQueue {
         enqueueUserInput(value, variables, null);
     }
 
-    public void enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
-        enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents)));
+    /**
+     * @return false when the queue is already at its limit — the caller (the server) turns that into a
+     *         visible error and idle status instead of silently growing an unbounded queue.
+     */
+    public boolean enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+        return enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents)));
     }
 
-    public void enqueueTaskNotification(String value) {
-        enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null)));
+    public boolean enqueueTaskNotification(String value) {
+        return enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null)));
     }
 
-    private void enqueue(QueuedCommand command) {
+    private boolean enqueue(QueuedCommand command) {
         lock.lock();
         try {
+            var max = SessionRuntimeLimits.current().maxQueuedMessages;
+            if (max > 0 && queue.size() >= max) return false;
             queue.add(command);
             notEmpty.signalAll();
+            return true;
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    /** Commands waiting to be executed (queue cap signal for observation). */
+    public int size() {
+        lock.lock();
+        try {
+            return queue.size();
         } finally {
             lock.unlock();
         }

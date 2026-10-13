@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
+import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Gauge, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
+import RuntimePanel from './RuntimePanel';
 
-type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'integrations';
+type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'runtime' | 'integrations';
 
 const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'llm', label: 'LLM Models', icon: <Cpu size={14} /> },
@@ -10,6 +11,7 @@ const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'storage', label: 'Storage', icon: <Database size={14} /> },
   { key: 'sandbox', label: 'Sandbox', icon: <Box size={14} /> },
   { key: 'skills', label: 'Skills', icon: <Sparkles size={14} /> },
+  { key: 'runtime', label: 'Runtime', icon: <Gauge size={14} /> },
   { key: 'integrations', label: 'Integrations', icon: <PlugZap size={14} /> },
 ];
 
@@ -613,6 +615,10 @@ export default function SystemSettings() {
             </div>
           </section>
         </>
+      )}
+
+      {activeTab === 'runtime' && (
+        <RuntimePanel />
       )}
 
       {activeTab === 'integrations' && (

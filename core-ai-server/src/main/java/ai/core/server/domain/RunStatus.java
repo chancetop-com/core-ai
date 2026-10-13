@@ -25,5 +25,9 @@ public enum RunStatus {
     // schedule occurrence consumed without execution (SKIP concurrency policy, or agent missing/unpublished);
     // written by AgentScheduler only, never by workflow child runs
     @MongoEnumValue("SKIPPED")
-    SKIPPED
+    SKIPPED,
+    // refused by entry admission (run queue or per-agent concurrency full) — kept apart from FAILED so
+    // capacity rejections do not pollute failure rates
+    @MongoEnumValue("REJECTED")
+    REJECTED
 }

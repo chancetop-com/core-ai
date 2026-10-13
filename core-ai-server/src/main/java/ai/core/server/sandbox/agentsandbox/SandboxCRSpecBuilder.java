@@ -25,13 +25,15 @@ public class SandboxCRSpecBuilder {
     private final String userId;
     private final int lifetimeSeconds;
     private final String sandboxName;
+    private final SandboxPodPlacement placement;
 
     @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
-    public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId, int lifetimeSeconds) {
+    public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId, int lifetimeSeconds, SandboxPodPlacement placement) {
         this.config = config;
         this.sessionId = sessionId;
         this.userId = userId;
         this.lifetimeSeconds = lifetimeSeconds;
+        this.placement = placement == null ? SandboxPodPlacement.NONE : placement;
         var suffix = UUID.randomUUID().toString().substring(0, 8);
         this.sandboxName = "core-ai-sandbox-" + suffix;
     }
@@ -85,6 +87,13 @@ public class SandboxCRSpecBuilder {
         var podSpec = new LinkedHashMap<String, Object>();
         podSpec.put("containers", List.of(buildContainer()));
         podSpec.put("volumes", buildVolumes());
+        // only the direct-CR path can carry these: a warm-pool claim takes its pod spec from the template
+        if (placement.priorityClassName != null && !placement.priorityClassName.isBlank()) {
+            podSpec.put("priorityClassName", placement.priorityClassName);
+        }
+        if (placement.nodeSelector != null) {
+            podSpec.put("nodeSelector", placement.nodeSelector);
+        }
         return podSpec;
     }
 

@@ -92,6 +92,57 @@ public class SystemSettings {
     @Field(name = "rbac_roles")
     public String rbacRoles;
 
+    @Field(name = "runtime_admission_enabled")
+    public Boolean runtimeAdmissionEnabled;
+
+    @Field(name = "runtime_heap_watermark_percent")
+    public Integer runtimeHeapWatermarkPercent;
+
+    @Field(name = "runtime_max_in_flight_turns_per_pod")
+    public Integer runtimeMaxInFlightTurnsPerPod;
+
+    @Field(name = "runtime_max_in_flight_turns_global")
+    public Integer runtimeMaxInFlightTurnsGlobal;
+
+    @Field(name = "runtime_max_sessions_per_pod")
+    public Integer runtimeMaxSessionsPerPod;
+
+    @Field(name = "runtime_max_sessions_per_user")
+    public Integer runtimeMaxSessionsPerUser;
+
+    @Field(name = "runtime_max_concurrent_turns_per_user")
+    public Integer runtimeMaxConcurrentTurnsPerUser;
+
+    @Field(name = "runtime_max_queued_messages_per_session")
+    public Integer runtimeMaxQueuedMessagesPerSession;
+
+    @Field(name = "runtime_turn_timeout_seconds")
+    public Integer runtimeTurnTimeoutSeconds;
+
+    @Field(name = "runtime_sse_max_queue_depth")
+    public Integer runtimeSseMaxQueueDepth;
+
+    @Field(name = "runtime_sse_max_queue_bytes")
+    public Long runtimeSseMaxQueueBytes;
+
+    @Field(name = "runtime_run_queue_capacity")
+    public Integer runtimeRunQueueCapacity;
+
+    @Field(name = "runtime_max_sandboxes_per_pod")
+    public Integer runtimeMaxSandboxesPerPod;
+
+    @Field(name = "runtime_max_sandboxes_per_user")
+    public Integer runtimeMaxSandboxesPerUser;
+
+    @Field(name = "runtime_max_sandbox_memory_mb_per_user")
+    public Integer runtimeMaxSandboxMemoryMbPerUser;
+
+    @Field(name = "runtime_max_sandboxes_per_agent")
+    public Integer runtimeMaxSandboxesPerAgent;
+
+    @Field(name = "runtime_span_ingest_queue_capacity")
+    public Integer runtimeSpanIngestQueueCapacity;
+
     @Field(name = "created_by")
     public String createdBy;
 

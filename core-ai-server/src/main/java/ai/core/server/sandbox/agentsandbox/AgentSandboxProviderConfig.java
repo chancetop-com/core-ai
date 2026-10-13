@@ -14,4 +14,6 @@ public class AgentSandboxProviderConfig {
     public boolean useHostPort;
     public String templateName;
     public String warmPoolName;
+    /** Placement of directly created sandbox pods; claims inherit the pool template's. */
+    public SandboxPodPlacement podPlacement = SandboxPodPlacement.NONE;
 }

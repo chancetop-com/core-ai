@@ -29,13 +29,16 @@ import java.util.function.BooleanSupplier;
 public class TurnStateRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger(TurnStateRegistry.class);
     private static final String TURN_KEY_PREFIX = "session:turn:";
+    private static final String USER_TURN_KEY_PREFIX = "coreai:rturn:";
     private static final Duration TURN_TTL = Duration.ofSeconds(90);
+    private static final Duration USER_TURN_TTL = Duration.ofMinutes(30);
     private static final Duration RENEW_INTERVAL = Duration.ofSeconds(30);
 
     private final JedisPool jedisPool;
-    // sessionId -> "is that turn still executing here". The heartbeat consults the supplier before
-    // renewing, so a turn whose thread died takes the TTL path instead of being renewed forever.
-    private final Map<String, BooleanSupplier> runningTurns = new ConcurrentHashMap<>();
+    // sessionId -> which user owns that turn and "is that turn still executing here". The heartbeat
+    // consults the supplier before renewing, so a turn whose thread died takes the TTL path instead of
+    // being renewed forever.
+    private final Map<String, TurnEntry> runningTurns = new ConcurrentHashMap<>();
     private volatile boolean heartbeatActive = true;
     private Thread heartbeatThread;
 
@@ -44,26 +47,54 @@ public class TurnStateRegistry {
     }
 
     public void markRunning(String sessionId) {
-        markRunning(sessionId, null);
+        markRunning(sessionId, null, null);
+    }
+
+    /** A turn whose owner is unknown: status is tracked, per-user accounting is skipped. */
+    public void markRunning(String sessionId, BooleanSupplier turnLiveness) {
+        markRunning(sessionId, null, turnLiveness);
     }
 
     /**
-     * @param turnLiveness answers "is this turn still executing on this pod"; the heartbeat stops
-     *                     renewing (and clears) as soon as it says no. Null means always alive,
-     *                     which only leaves the TTL as protection — pass a real check where possible.
+     * @param userId        owner of the turn, so the per-user in-flight count can be kept (null = uncounted)
+     * @param turnLiveness  answers "is this turn still executing on this pod"; the heartbeat stops
+     *                      renewing (and clears) as soon as it says no. Null means always alive,
+     *                      which only leaves the TTL as protection — pass a real check where possible.
      */
-    public void markRunning(String sessionId, BooleanSupplier turnLiveness) {
-        runningTurns.put(sessionId, turnLiveness != null ? turnLiveness : () -> true);
+    public void markRunning(String sessionId, String userId, BooleanSupplier turnLiveness) {
+        runningTurns.put(sessionId, new TurnEntry(userId, turnLiveness != null ? turnLiveness : () -> true));
         writeKey(sessionId);
+        incrementUserTurns(userId);
     }
 
     public void clear(String sessionId) {
-        runningTurns.remove(sessionId);
+        var entry = runningTurns.remove(sessionId);
         try (var jedis = jedisPool.getResource()) {
             jedis.del(turnKey(sessionId));
         } catch (Exception e) {
             LOGGER.warn("failed to clear turn state (Redis unavailable), sessionId={}", sessionId, e);
         }
+        decrementUserTurns(entry);
+    }
+
+    /**
+     * Turns this user currently has executing across the fleet. Used for the per-user concurrency limit:
+     * the caller is refused a new message rather than having its running turns interrupted.
+     */
+    public int inFlightTurns(String userId) {
+        if (userId == null) return 0;
+        try (var jedis = jedisPool.getResource()) {
+            var value = jedis.get(userTurnKey(userId));
+            return value == null ? 0 : Integer.parseInt(value);
+        } catch (Exception e) {
+            LOGGER.warn("failed to read in-flight turns (Redis unavailable), userId={}", userId, e);
+            return 0;
+        }
+    }
+
+    /** Turns executing on this pod right now — the pod-local signal used by entry admission. */
+    public int runningCount() {
+        return runningTurns.size();
     }
 
     public TurnLiveness liveness(String sessionId) {
@@ -81,15 +112,15 @@ public class TurnStateRegistry {
      * other pods.
      */
     public AgentEventListener listener(String sessionId) {
-        return listener(sessionId, null);
+        return listener(sessionId, null, null);
     }
 
-    public AgentEventListener listener(String sessionId, BooleanSupplier turnLiveness) {
+    public AgentEventListener listener(String sessionId, String userId, BooleanSupplier turnLiveness) {
         return new AgentEventListener() {
             @Override
             public void onStatusChange(StatusChangeEvent event) {
                 if (event.status == SessionStatus.RUNNING) {
-                    markRunning(sessionId, turnLiveness);
+                    markRunning(sessionId, userId, turnLiveness);
                 } else {
                     clear(sessionId);
                 }
@@ -105,7 +136,7 @@ public class TurnStateRegistry {
     void renewAll() {
         for (var entry : runningTurns.entrySet()) {
             var sessionId = entry.getKey();
-            if (!entry.getValue().getAsBoolean()) {
+            if (!entry.getValue().liveness().getAsBoolean()) {
                 // The turn behind this key is gone but nothing cleared it — renewing would pin the
                 // session to "running" for the lifetime of the pod. Clear it so status flips to idle
                 // and the frontend re-syncs from history.
@@ -114,6 +145,7 @@ public class TurnStateRegistry {
                 continue;
             }
             writeKey(sessionId);
+            renewUserTurns(entry.getValue().userId());
         }
     }
 
@@ -158,6 +190,41 @@ public class TurnStateRegistry {
     private String turnKey(String sessionId) {
         return TURN_KEY_PREFIX + sessionId;
     }
+
+    private void incrementUserTurns(String userId) {
+        if (userId == null) return;
+        try (var jedis = jedisPool.getResource()) {
+            jedis.incr(userTurnKey(userId));
+            jedis.expire(userTurnKey(userId), (int) USER_TURN_TTL.toSeconds());
+        } catch (Exception e) {
+            LOGGER.warn("failed to count in-flight turns (Redis unavailable), userId={}", userId, e);
+        }
+    }
+
+    private void decrementUserTurns(TurnEntry entry) {
+        if (entry == null || entry.userId() == null) return;
+        try (var jedis = jedisPool.getResource()) {
+            if (jedis.decr(userTurnKey(entry.userId())) < 0) jedis.del(userTurnKey(entry.userId()));
+        } catch (Exception e) {
+            LOGGER.warn("failed to release in-flight turn count (Redis unavailable), userId={}", entry.userId(), e);
+        }
+    }
+
+    private void renewUserTurns(String userId) {
+        if (userId == null) return;
+        try (var jedis = jedisPool.getResource()) {
+            jedis.expire(userTurnKey(userId), (int) USER_TURN_TTL.toSeconds());
+        } catch (Exception e) {
+            LOGGER.warn("failed to renew in-flight turn count (Redis unavailable), userId={}", userId, e);
+        }
+    }
+
+    private String userTurnKey(String userId) {
+        return USER_TURN_KEY_PREFIX + userId;
+    }
+
+    /** One executing turn: who owns it, and how to tell whether its thread is still alive. */
+    private record TurnEntry(String userId, BooleanSupplier liveness) { }
 
     public enum TurnLiveness {
         RUNNING, NOT_RUNNING, UNKNOWN

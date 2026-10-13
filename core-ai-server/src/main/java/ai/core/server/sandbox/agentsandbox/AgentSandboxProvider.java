@@ -5,6 +5,8 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
+import ai.core.server.sandbox.SandboxFleet;
+import ai.core.server.sandbox.SandboxFleetAware;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import core.framework.json.JSON;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -19,7 +21,7 @@ import java.util.UUID;
 /**
  * @author stephen
  */
-public class AgentSandboxProvider implements SandboxProvider {
+public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSandboxProvider.class);
     private static final int DEFAULT_LIFETIME_SECONDS = 3600;
 
@@ -41,6 +43,8 @@ public class AgentSandboxProvider implements SandboxProvider {
     private final boolean useHostPort;
     private final String templateName;
     private final String warmPoolName;
+    private final SandboxPodPlacement podPlacement;
+    private final AgentSandboxFleetReader fleetReader;
     private final AgentSandboxCleanupService cleanupService;
 
     public AgentSandboxProvider(AgentSandboxProviderConfig config) {
@@ -51,11 +55,23 @@ public class AgentSandboxProvider implements SandboxProvider {
         this.useHostPort = config.useHostPort;
         this.templateName = config.templateName;
         this.warmPoolName = config.warmPoolName != null ? config.warmPoolName : "default";
+        this.podPlacement = config.podPlacement != null ? config.podPlacement : SandboxPodPlacement.NONE;
+        this.fleetReader = new AgentSandboxFleetReader(client, extensionsClient);
         this.cleanupService = new AgentSandboxCleanupService(client, extensionsClient, kubernetesClient);
     }
 
     private boolean warmPoolConfigured() {
         return extensionsClient != null && templateName != null && !templateName.isBlank();
+    }
+
+    /**
+     * Live fleet counts from Kubernetes. Read failures are logged and reported as zero rather than
+     * failing the stats call: this is an observation path, and an unreadable cluster is itself visible
+     * from the missing numbers.
+     */
+    @Override
+    public SandboxFleet providerFleet() {
+        return fleetReader.read();
     }
 
     // A SandboxClaim only carries template + warm pool + lifecycle, so config that changes how the
@@ -156,7 +172,7 @@ public class AgentSandboxProvider implements SandboxProvider {
         effectiveConfig.validate();
         var lifetime = lifetimeSeconds(effectiveConfig);
 
-        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId, lifetime);
+        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId, lifetime, podPlacement);
         var crName = specBuilder.sandboxName();
 
         LOGGER.info("creating agent sandbox CR: name={}, sessionId={}", crName, sessionId);

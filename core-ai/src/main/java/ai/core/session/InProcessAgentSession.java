@@ -118,7 +118,12 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
-        commandQueue.enqueueUserInput(message, variables, attachedContents);
+        if (commandQueue.enqueueUserInput(message, variables, attachedContents)) return;
+        // the queue budget is a protection, not a silent drop: say so, and leave the session idle
+        logger.warn("message refused, session queue is full, sessionId={}", sessionId);
+        dispatchEvent(ErrorEvent.of(sessionId,
+                "too many messages are queued for this session, wait for the running turn to finish", "QUEUE_FULL"));
+        dispatchEvent(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
@@ -128,6 +133,7 @@ public class InProcessAgentSession implements AgentSession {
         var threadUnbind = turnToken.bindThread(executingThread);
         turnActive.set(true);
         turnStartedAtMs = System.currentTimeMillis();
+        var turnDeadline = SessionTurnWatchdog.schedule(turnToken, sessionId, turnActive::get);
         customEventEmitter.resetTurn();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
@@ -160,31 +166,18 @@ public class InProcessAgentSession implements AgentSession {
             persistOnFailure();
             dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), ""), SessionStatus.ERROR);
         } finally {
+            turnDeadline.cancel(false);
             threadUnbind.run();
             turnToken.disconnect();
         }
     }
 
     private void persistOnFailure() {
-        if (!agent.hasPersistenceProvider()) return;
-        if (!agent.hasUserMessage()) return;
-        try {
-            agent.save(sessionId);
-        } catch (RuntimeException e) {
-            logger.warn("failed to persist session after run failure, sessionId={}", sessionId, e);
-        }
+        TurnPersistence.save(agent, sessionId, logger, "run failure");
     }
 
     private void persistCancelledTurn() {
-        // runTurnsLoop may have added partial assistant messages (incl. reasoning) before
-        // unwinding — persist them so the cancelled turn is not lost.
-        if (!agent.hasPersistenceProvider()) return;
-        if (!agent.hasUserMessage()) return;
-        try {
-            agent.save(sessionId);
-        } catch (RuntimeException e) {
-            logger.warn("failed to persist session after cancelled turn, sessionId={}", sessionId, e);
-        }
+        TurnPersistence.save(agent, sessionId, logger, "cancelled turn");
     }
 
     private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {

@@ -219,14 +219,14 @@ public class SandboxService {
     public boolean workspaceWritable() {
         return sandboxManager == null || sandboxManager.workspaceWritable();
     }
-
     public Sandbox getSandbox(String sessionId) {
         return sessionSandboxes.get(sessionId);
     }
     Sandbox sessionSandbox(String sessionId) {
         return sessionSandboxes.get(sessionId);
     }
-    SandboxManager sandboxManager() {
+    /** Bound as a bean of its own so stats and the quota wiring reach it without a forwarder per counter. */
+    public SandboxManager sandboxManager() {
         return sandboxManager;
     }
     public String serverUrlFromSandbox() {

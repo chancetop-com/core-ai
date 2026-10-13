@@ -63,6 +63,11 @@ public class AgentRun {
     @Field(name = "started_at")
     public ZonedDateTime startedAt;
 
+    // time the run was accepted; started_at is when a pool thread actually picked it up, so the
+    // difference is the queue wait the admission limits are tuned against
+    @Field(name = "queued_at")
+    public ZonedDateTime queuedAt;
+
     @Field(name = "completed_at")
     public ZonedDateTime completedAt;
 }

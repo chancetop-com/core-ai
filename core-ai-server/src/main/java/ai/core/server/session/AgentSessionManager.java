@@ -34,7 +34,6 @@ import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.server.memory.MemoryCapability;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
-import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
@@ -120,7 +119,8 @@ public class AgentSessionManager {
     private SessionSubAgentManager subAgentManager;
     private SessionRebuildManager rebuildManager;
     private SessionDatasetHelper datasetHelper;
-
+    // per-user live-session budget (Redis, cross-replica): assigned by RuntimeGovernanceModule
+    public UserSessionBudget userSessionBudget;
     private SessionSkillManager skillManager() {
         if (skillManager == null) skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
         return skillManager;
@@ -145,20 +145,6 @@ public class AgentSessionManager {
         if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
         return datasetHelper;
     }
-    private void attachSessionListeners(InProcessAgentSession session, String sessionId) {
-        // Turn-state listener goes first so the Redis turn key is written before the
-        // RUNNING event is published to other pods. The liveness probe lets the registry's
-        // heartbeat drop the key once the turn stops executing, even if no terminal event arrived.
-        if (turnStateRegistry != null) {
-            session.onEvent(turnStateRegistry.listener(sessionId, session::isTurnRunning));
-        }
-        session.onEvent(chatMessageService.listener(sessionId));
-        // Long-running turns may be walked away from: notify the owner on their own channel when one ends.
-        if (sessionCompletionNotifier != null) {
-            session.onEvent(sessionCompletionNotifier.listener(sessionId));
-        }
-        session.onEvent(new SseEventBridge(sessionId, eventPublisher));
-    }
     public void touchActivity(String sessionId) {
         sessionLastActivity.put(sessionId, System.currentTimeMillis());
         sandboxService.renewSandbox(sessionId);
@@ -167,6 +153,7 @@ public class AgentSessionManager {
         return createSession(config, userId, source, null);
     }
     public String createSession(SessionConfig config, String userId, String source, String apiKeyId) {
+        if (userSessionBudget != null) userSessionBudget.acquire(userId);
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
         var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
@@ -181,7 +168,7 @@ public class AgentSessionManager {
                 null, SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
-        attachSessionListeners(session, sessionId);
+        SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
         var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
         if (sandbox != null) context.sandbox(sandbox);
         initializeSession(session, new SessionRegistry.SessionRegistration(
@@ -195,6 +182,7 @@ public class AgentSessionManager {
         return createSessionFromAgent(definition, overrides, userId, source, null);
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId, String source, String apiKeyId) {
+        if (userSessionBudget != null) userSessionBudget.acquire(userId);
         var ownedEditable = AgentDependencyAccessPolicy.isOwnedEditable(definition, userId);
         var executableDefinition = AgentDependencyAccessPolicy.executableSessionAgent(definition, userId);
         var resolvedDefinitionSkills = skillManager().resolveDefinitionSkills(executableDefinition, userId, ownedEditable);
@@ -215,7 +203,7 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
-        attachSessionListeners(session, sessionId);
+        SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
         initializeSession(session, new SessionRegistry.SessionRegistration(
                 sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig));
         var executableConfig = executableDefinition.publishedConfig;
@@ -359,6 +347,10 @@ public class AgentSessionManager {
     public String sessionAgentId(String sessionId) {
         return sessionRegistry.requireAgentId(sessionId);
     }
+    /** Sessions held in memory on this pod — each one owns its turn driver and sandbox. */
+    public int activeSessionCount() {
+        return sessions.size();
+    }
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
@@ -372,6 +364,7 @@ public class AgentSessionManager {
 
     private void cleanupRuntime(String sessionId) {
         var session = sessions.remove(sessionId);
+        if (userSessionBudget != null && session != null) userSessionBudget.release(session.agent().getExecutionContext().getUserId());
         // close() aborts an in-flight turn and lets its terminal event flush first, so the listeners
         // below still see the reply and the turn state before their buffers are discarded.
         if (session != null) session.close();

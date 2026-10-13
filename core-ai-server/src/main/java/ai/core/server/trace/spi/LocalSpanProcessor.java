@@ -25,24 +25,77 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * @author stephen
  */
 public class LocalSpanProcessor implements SpanProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalSpanProcessor.class);
-    private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor(r -> {
-        var t = new Thread(r, "local-span-processor");
-        t.setDaemon(true);
-        return t;
-    });
+    // Bounded on purpose: span ingest is a public endpoint, and an unbounded queue lets a burst (or a
+    // client bug) grow the heap of the pod that is also serving traffic. Dropped spans are counted so
+    // the loss is visible instead of silent. Capacity is fixed at class load — changing it needs a restart.
+    private static final int INGEST_QUEUE_CAPACITY = 10000;
+    private static final AtomicLong DROPPED_SPANS = new AtomicLong();
+    private static final ThreadPoolExecutor EXECUTOR = createExecutor();
+    // configured limit, applied once at startup: the pool queue is already built by then
+    private static volatile int configuredCapacity;
     private static final Set<String> IDENTITY_ATTRIBUTES = Set.of(
         "user.id", "session.id", "gen_ai.agent.id", "gen_ai.agent.name");
+
+    /** Applied at startup; the queue that backs the executor cannot be resized afterwards. */
+    public static void configureCapacity(int capacity) {
+        if (capacity > 0) configuredCapacity = Math.min(capacity, INGEST_QUEUE_CAPACITY);
+    }
+
+    private static boolean accepts() {
+        return EXECUTOR.getQueue().size() < effectiveCapacity();
+    }
+
+    private static int effectiveCapacity() {
+        return configuredCapacity > 0 ? configuredCapacity : INGEST_QUEUE_CAPACITY;
+    }
+
+    private static void dropSpan(String stage, String spanName) {
+        var dropped = DROPPED_SPANS.incrementAndGet();
+        if ((dropped & 0x3F) == 1) {
+            LOGGER.warn("span ingest queue is full, dropping span, stage={}, span={}, droppedTotal={}", stage, spanName, dropped);
+        }
+    }
+
+    private static ThreadPoolExecutor createExecutor() {
+        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(INGEST_QUEUE_CAPACITY),
+            r -> {
+                var t = new Thread(r, "local-span-processor");
+                t.setDaemon(true);
+                return t;
+            },
+            (task, executor) -> {
+                var dropped = DROPPED_SPANS.incrementAndGet();
+                if ((dropped & 0x3F) == 1) {
+                    LOGGER.warn("span ingest queue is full, dropping spans, droppedTotal={}, capacity={}", dropped, INGEST_QUEUE_CAPACITY);
+                }
+            });
+    }
+
+    public static long droppedSpans() {
+        return DROPPED_SPANS.get();
+    }
+
+    public static int ingestQueueDepth() {
+        return EXECUTOR.getQueue().size();
+    }
+
+    /** Effective queue bound (the configured one, capped by what the pool was built with). */
+    public static int ingestQueueCapacity() {
+        return effectiveCapacity();
+    }
 
     private static boolean hasIdentity(Attributes attributes) {
         for (var key : IDENTITY_ATTRIBUTES) {
@@ -88,6 +141,10 @@ public class LocalSpanProcessor implements SpanProcessor {
 
         var traceId = span.getSpanContext().getTraceId();
         var spanName = span.getName();
+        if (!accepts()) {
+            dropSpan("traceStarted", spanName);
+            return;
+        }
         var startEpochMs = TimeUnit.NANOSECONDS.toMillis(span.toSpanData().getStartEpochNanos());
         var attrs = toAttributeMap(attributes);
         var resourceAttrs = resourceAttributes();
@@ -111,6 +168,10 @@ public class LocalSpanProcessor implements SpanProcessor {
         }
 
         var spanName = span.getName();
+        if (!accepts()) {
+            dropSpan("spanEnded", spanName);
+            return;
+        }
         CompletableFuture.runAsync(() -> {
             try {
                 long startTime = System.nanoTime();

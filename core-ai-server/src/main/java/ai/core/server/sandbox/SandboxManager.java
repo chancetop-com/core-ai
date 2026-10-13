@@ -5,6 +5,7 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
+import ai.core.server.runtime.RuntimeLimits;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +17,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 /**
  * @author stephen
@@ -28,9 +31,33 @@ public class SandboxManager {
     private final AtomicInteger acquireCount = new AtomicInteger(0);
     private final AtomicInteger releaseCount = new AtomicInteger(0);
     private final AtomicInteger untrackedReleaseCount = new AtomicInteger(0);
+    private final AtomicInteger rejectedAcquireCount = new AtomicInteger(0);
+    private final AtomicLong createsTotal = new AtomicLong();
+    private final AtomicLong createsFailedTotal = new AtomicLong();
+    private volatile long lastCreateMs;
+    // set by RuntimeGovernanceModule: quotas are read live from system settings
+    public Supplier<RuntimeLimits> limitsSupplier;
 
     public SandboxManager(SandboxProvider provider) {
         this.provider = provider;
+    }
+
+    /** Sandboxes this pod is holding plus the cluster-wide counts the provider can report. */
+    public SandboxFleet fleet() {
+        var fleet = provider instanceof SandboxFleetAware aware ? aware.providerFleet() : new SandboxFleet();
+        fleet.createsTotal = createsTotal.get();
+        fleet.createsFailedTotal = createsFailedTotal.get();
+        fleet.lastCreateMs = lastCreateMs == 0 ? null : lastCreateMs;
+        return fleet;
+    }
+
+    /** Sandbox creations refused by the pod-level sandbox quota. */
+    public long rejectedTotal() {
+        return rejectedAcquireCount.get();
+    }
+
+    public void recordRejection() {
+        rejectedAcquireCount.incrementAndGet();
     }
 
     /** See {@link SandboxProvider#workspaceWritable()}. */
@@ -39,7 +66,17 @@ public class SandboxManager {
     }
 
     public Sandbox acquire(SandboxConfig config, String sessionId, String userId) {
-        var sandbox = provider.acquire(config, sessionId, userId);
+        enforceQuota(userId, config);
+        var startedAt = System.currentTimeMillis();
+        Sandbox sandbox;
+        try {
+            sandbox = provider.acquire(config, sessionId, userId);
+        } catch (RuntimeException e) {
+            createsFailedTotal.incrementAndGet();
+            throw e;
+        }
+        createsTotal.incrementAndGet();
+        lastCreateMs = System.currentTimeMillis() - startedAt;
         var entry = new SandboxEntry(sandbox, sessionId, userId, config, Instant.now());
 
         activeSandboxes.put(sandbox.getId(), entry);
@@ -48,6 +85,55 @@ public class SandboxManager {
         LOGGER.debug("sandbox acquired: id={}, sessionId={}, activeCount={}", sandbox.getId(), sessionId, activeSandboxes.size());
 
         return sandbox;
+    }
+
+    /**
+     * Pod and per-user budgets, checked before anything is provisioned: a sandbox that cannot be
+     * counted must not be created, otherwise the failure shows up as a node outage instead of a
+     * clear tool error. Attach paths are deliberately exempt — they adopt a sandbox that already exists.
+     */
+    private void enforceQuota(String userId, SandboxConfig config) {
+        var limits = currentLimits();
+        if (limits.maxSandboxesPerPod > 0 && activeSandboxes.size() >= limits.maxSandboxesPerPod) {
+            recordRejection();
+            throw new SandboxQuotaExceededException("sandbox capacity reached on this pod ("
+                    + activeSandboxes.size() + "/" + limits.maxSandboxesPerPod + "), retry later");
+        }
+        if (userId == null) return;
+
+        int count = 0;
+        int memoryMb = 0;
+        for (var entry : activeSandboxes.values()) {
+            if (!userId.equals(entry.userId)) continue;
+            count++;
+            memoryMb += memoryOf(entry.config);
+        }
+        if (limits.maxSandboxesPerUser > 0 && count >= limits.maxSandboxesPerUser) {
+            recordRejection();
+            throw new SandboxQuotaExceededException("sandbox limit reached for this user ("
+                    + count + "/" + limits.maxSandboxesPerUser + "), release a session first");
+        }
+        int projected = memoryMb + memoryOf(config);
+        if (limits.maxSandboxMemoryMbPerUser > 0 && projected > limits.maxSandboxMemoryMbPerUser) {
+            recordRejection();
+            throw new SandboxQuotaExceededException("sandbox memory budget reached for this user ("
+                    + projected + "Mi > " + limits.maxSandboxMemoryMbPerUser + "Mi)");
+        }
+    }
+
+    private int memoryOf(SandboxConfig config) {
+        if (config == null || config.memoryLimitMb == null) return SandboxConstants.DEFAULT_MEMORY_LIMIT_MB;
+        return config.memoryLimitMb;
+    }
+
+    private RuntimeLimits currentLimits() {
+        if (limitsSupplier == null) return new RuntimeLimits();
+        try {
+            return limitsSupplier.get();
+        } catch (Exception e) {
+            LOGGER.warn("failed to read runtime limits for sandbox quota, allowing the sandbox", e);
+            return new RuntimeLimits();
+        }
     }
 
     public Optional<Sandbox> attach(String sandboxId, SandboxConfig config, String sessionId, String userId) {
