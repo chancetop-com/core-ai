@@ -471,6 +471,10 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .chat { display: flex; flex-direction: row; min-width: 0; min-height: 0; flex: 1; }
 .chat-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; flex: 1; }
 
+/* One session window at a time; working sessions keep their DOM (and scroll position) off-screen. */
+.session-stack { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.session-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+
 /* ---------- embedded browser panel ---------- */
 
 .browser-panel { position: relative; display: flex; flex-direction: column; width: 50vw; min-width: 360px; border-left: 1px solid var(--border); min-height: 0; background: var(--bg); }

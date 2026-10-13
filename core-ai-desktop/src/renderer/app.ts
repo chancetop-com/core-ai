@@ -221,8 +221,6 @@ const state: {
   sessionsCollapsed: boolean;
   sessionId: string | null;
   sessionTitle: string;
-  toolMap: Map<string, UiTool>;
-  pendingApproval: { callId: string; toolName: string } | null;
   status: string;
   models: Array<{ model: string; provider?: string; displayName?: string; reasoningEfforts?: string[] }>;
   modelSource: string | null;
@@ -251,8 +249,6 @@ const state: {
   sessionsCollapsed: localStorage.getItem(COLLAPSE_KEY) === '1',
   sessionId: null,
   sessionTitle: '',
-  toolMap: new Map(),
-  pendingApproval: null,
   status: 'idle',
   models: [],
   modelSource: null,
@@ -270,7 +266,7 @@ const state: {
 
 let chatView: HTMLElement | null = null;
 let sessionItemsEl: HTMLElement | null = null;
-let transcriptEl: HTMLElement | null = null;
+let sessionStackEl: HTMLElement | null = null;
 let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
 let composerAttachEl: HTMLElement | null = null;
@@ -296,7 +292,6 @@ let browserBoundsValue: string | null = null;
 let browserResizeObserver: ResizeObserver | null = null;
 let sidebarToggleEl: HTMLButtonElement | null = null;
 let browserPanelWasOpen = false;
-let approvalBar: HTMLElement | null = null;
 interface AssistToggle {
   chip: HTMLButtonElement;
   panel: HTMLElement;
@@ -322,9 +317,9 @@ interface MemoryUi {
 
 /** Memory chips live per message: extraction completes long after the turn that triggered it ended. */
 const memoryUi = new WeakMap<HTMLElement, MemoryUi>();
-let pendingMemoryRun: { wrapper: HTMLElement; ui: MemoryUi; run: MemoryRun } | null = null;
 
-let streaming: {
+interface StreamingState {
+  view: SessionView;
   text: string;
   bubble: HTMLElement;
   body: HTMLElement;
@@ -340,10 +335,131 @@ let streaming: {
   skillsToggle: AssistToggle | null;
   skillsPanel: HTMLElement | null;
   skillUses: Map<string, { node: HTMLElement; count: number }> | null;
-} | null = null;
+}
+
+/**
+ * One session window: its own transcript DOM plus every piece of live turn state (streaming
+ * bubble, turn clock, tool map, approval bar). Views stay alive off-screen so a session that is
+ * still working keeps updating while the user looks at another one — switching only mounts and
+ * unmounts the DOM, it never rebuilds turn state.
+ */
+interface SessionView {
+  sessionId: string | null;
+  root: HTMLElement;
+  transcript: HTMLElement;
+  stick: boolean;
+  savedScrollTop: number | null;
+  streaming: StreamingState | null;
+  turnClock: TurnClock | null;
+  toolMap: Map<string, UiTool>;
+  approvalBar: HTMLElement | null;
+  pendingApproval: { callId: string; toolName: string } | null;
+  planBlock: HTMLElement | null;
+  pendingMemoryRun: { wrapper: HTMLElement; ui: MemoryUi; run: MemoryRun } | null;
+  status: string;
+  historyLoaded: boolean;
+  historyLoading: boolean;
+  pendingEvents: any[];
+}
+
+/** The +New conversation has no engine session yet; its blank window is still a view. */
+const DRAFT_VIEW_KEY = '';
+const views = new Map<string, SessionView>();
+let mountedView: SessionView | null = null;
+
+function viewKey(sessionId: string | null): string {
+  return sessionId ?? DRAFT_VIEW_KEY;
+}
+
+function findSessionView(sessionId: string | null): SessionView | null {
+  return views.get(viewKey(sessionId)) ?? null;
+}
+
+function activeSessionView(): SessionView | null {
+  return findSessionView(state.sessionId);
+}
+
+function createSessionView(sessionId: string | null): SessionView {
+  const root = el('div', 'session-view');
+  const transcript = el('div', 'transcript');
+  root.append(transcript);
+  const view: SessionView = {
+    sessionId,
+    root,
+    transcript,
+    stick: true,
+    savedScrollTop: null,
+    streaming: null,
+    turnClock: null,
+    toolMap: new Map(),
+    approvalBar: null,
+    pendingApproval: null,
+    planBlock: null,
+    pendingMemoryRun: null,
+    status: 'idle',
+    // A draft window has nothing on disk; a real session loads its history before events apply.
+    historyLoaded: sessionId == null,
+    historyLoading: false,
+    pendingEvents: [],
+  };
+  transcript.addEventListener('scroll', () => {
+    const distance = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+    view.stick = distance < 60;
+  });
+  transcript.addEventListener('click', (event) => {
+    const anchor = (event.target as HTMLElement).closest('a');
+    if (!anchor) return;
+    event.preventDefault();
+    void window.coreai.openExternal(anchor.href);
+  });
+  views.set(viewKey(sessionId), view);
+  return view;
+}
+
+function ensureSessionView(sessionId: string | null): SessionView {
+  return findSessionView(sessionId) ?? createSessionView(sessionId);
+}
+
+/** Mounts a view (unmounting the previous one) and freezes idle off-screen views. */
+function showSessionView(view: SessionView): void {
+  if (mountedView !== view) {
+    if (mountedView) {
+      mountedView.savedScrollTop = mountedView.transcript.scrollTop;
+      mountedView.root.remove();
+    }
+    mountedView = view;
+  }
+  if (sessionStackEl && view.root.parentElement !== sessionStackEl) sessionStackEl.append(view.root);
+  applyComposerStatus(view.status);
+  if (view.stick) view.transcript.scrollTop = view.transcript.scrollHeight;
+  else if (view.savedScrollTop != null) view.transcript.scrollTop = view.savedScrollTop;
+  sweepIdleViews(view);
+}
+
+function disposeSessionView(view: SessionView): void {
+  if (view.streaming) stopReasoningTick(view.streaming);
+  stopTurnClock(view);
+  view.root.remove();
+  if (views.get(viewKey(view.sessionId)) === view) views.delete(viewKey(view.sessionId));
+  if (mountedView === view) mountedView = null;
+}
+
+/** Workspace switches drop every window: the engine behind them is gone with the workspace. */
+function disposeAllSessionViews(): void {
+  for (const view of [...views.values()]) disposeSessionView(view);
+  mountedView = null;
+}
+
+/** Sessions without a turn in flight rebuild from history on reopen — only working ones are kept. */
+function sweepIdleViews(keep: SessionView): void {
+  for (const view of [...views.values()]) {
+    if (view === keep || view === mountedView) continue;
+    if (view.turnClock == null && view.status !== 'running' && !view.historyLoading) disposeSessionView(view);
+  }
+}
 
 /** Live-only ticking while the model reasons; the final label is frozen from the engine duration. */
-function startReasoningTick(current: NonNullable<typeof streaming>): void {
+function startReasoningTick(current: StreamingState): void {
   if (current.reasoningTick != null) return;
   current.reasoningToggle?.chip.classList.add('busy');
   current.reasoningTick = setInterval(() => {
@@ -354,7 +470,7 @@ function startReasoningTick(current: NonNullable<typeof streaming>): void {
   }, 1000);
 }
 
-function stopReasoningTick(current: NonNullable<typeof streaming>): void {
+function stopReasoningTick(current: StreamingState): void {
   if (current.reasoningTick != null) {
     clearInterval(current.reasoningTick);
     current.reasoningTick = null;
@@ -363,29 +479,30 @@ function stopReasoningTick(current: NonNullable<typeof streaming>): void {
   current.reasoningLiveStart = null;
 }
 
-function resetStreaming(): void {
-  if (streaming) stopReasoningTick(streaming);
-  stopTurnClock();
-  streaming = null;
-  planBlockEl = null;
+function resetStreaming(view: SessionView): void {
+  if (view.streaming) stopReasoningTick(view.streaming);
+  view.streaming = null;
+  view.planBlock = null;
 }
 
 /**
- * True once the turn bubble holds engine output: any chip beyond the turn status, a tool row, or
- * rendered text. The bubble itself is opened at send time, so "has anything arrived" is a UI question.
+ * True once the turn holds engine output: any chip beyond the turn status, a tool row, or text.
+ * Text may still be queued in the streaming buffers — it reaches the DOM on the next animation
+ * frame, which can lag behind a turn that ends within the same frame as its last chunk.
  */
-function hasAssistantContent(wrapper: HTMLElement | null): boolean {
+function hasAssistantContent(wrapper: HTMLElement | null, current: StreamingState | null): boolean {
   if (!wrapper) return false;
   if (wrapper.querySelector('.assist-chips .assist-chip:not(.turn-status)')) return true;
   if (wrapper.querySelector('.tool-entry')) return true;
+  if (current && (current.text.trim() || current.reasoning.trim())) return true;
   const body = wrapper.querySelector('.md-body');
   return Boolean(body && (body.textContent ?? '').trim());
 }
 
 /** Drops a turn bubble that never received anything (send rejected / turn that ended empty). */
-function discardEmptyTurnBubble(): void {
-  const wrapper = streaming?.bubble.parentElement ?? null;
-  if (wrapper && !hasAssistantContent(wrapper)) wrapper.remove();
+function discardEmptyTurnBubble(view: SessionView): void {
+  const wrapper = view.streaming?.bubble.parentElement ?? null;
+  if (wrapper && !hasAssistantContent(wrapper, view.streaming)) wrapper.remove();
 }
 
 interface TurnClock {
@@ -394,15 +511,9 @@ interface TurnClock {
   chip: HTMLElement | null;
 }
 
-/** One clock per turn: started when the message is sent, so waits before the first event count too. */
-let turnClock: TurnClock | null = null;
-
-/** One plan card per turn: the engine re-emits the whole list on every write_todos, so it is rewritten in place. */
-let planBlockEl: HTMLElement | null = null;
-
-function activeTurnClock(): TurnClock {
-  if (!turnClock) turnClock = { startedAt: Date.now(), tick: null, chip: null };
-  return turnClock;
+function activeTurnClock(view: SessionView): TurnClock {
+  if (!view.turnClock) view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
+  return view.turnClock;
 }
 
 function startTurnTick(chip: HTMLElement, clock: TurnClock): void {
@@ -415,9 +526,9 @@ function startTurnTick(chip: HTMLElement, clock: TurnClock): void {
 }
 
 /** Freezes the chip on the same total the turn summary reports. */
-function finishTurnStatus(event: any): void {
-  const clock = turnClock;
-  stopTurnClock();
+function finishTurnStatus(view: SessionView, event: any): void {
+  const clock = view.turnClock;
+  stopTurnClock(view);
   if (!clock?.chip) return;
   const elapsed = typeof event?.duration_ms === 'number' ? event.duration_ms : Date.now() - clock.startedAt;
   const cancelled = Boolean(event?.cancelled);
@@ -427,18 +538,43 @@ function finishTurnStatus(event: any): void {
 }
 
 /** The engine reports a failed turn as an error event instead of a turn_complete (no duration payload). */
-function failTurnStatus(): void {
-  const clock = turnClock;
-  stopTurnClock();
+function failTurnStatus(view: SessionView): void {
+  const clock = view.turnClock;
+  stopTurnClock(view);
   if (!clock?.chip) return;
   clock.chip.textContent = `Failed · ${formatElapsed(Date.now() - clock.startedAt)}`;
   clock.chip.classList.remove('busy');
   clock.chip.classList.add('failed');
 }
 
-function stopTurnClock(): void {
-  if (turnClock?.tick != null) clearInterval(turnClock.tick);
-  turnClock = null;
+function stopTurnClock(view: SessionView): void {
+  if (view.turnClock?.tick != null) clearInterval(view.turnClock.tick);
+  view.turnClock = null;
+}
+
+/**
+ * The engine no longer runs this view's turn (engine restart/crash): freeze the UI where it was
+ * instead of leaving a chip that ticks forever and tools stuck "running".
+ */
+function finalizeInterruptedTurn(view: SessionView): void {
+  const clock = view.turnClock;
+  resolveStaleToolStatuses(view.streaming?.bubble.parentElement ?? null);
+  stopTurnClock(view);
+  if (clock?.chip) {
+    clock.chip.textContent = `Interrupted · ${formatElapsed(Date.now() - clock.startedAt)}`;
+    clock.chip.classList.remove('busy');
+    clock.chip.classList.add('failed');
+  }
+  resetStreaming(view);
+  removeApprovalBar(view);
+  setViewStatus(view, 'idle');
+}
+
+/** A fresh engine process serves no live turns: every previously running one died with the old one. */
+function finalizeTurnsForEngineRestart(): void {
+  for (const view of [...views.values()]) {
+    if (view.turnClock || view.streaming || view.status === 'running') finalizeInterruptedTurn(view);
+  }
 }
 
 // ---------- small helpers ----------
@@ -807,7 +943,8 @@ async function switchEnvironment(serverUrl: string): Promise<void> {
     const sessionId = state.sessionId;
     if (sessionId && state.workspace) {
       const resumed = await call('session/resume', { sessionId });
-      if (resumed) setStatus(String(resumed.status ?? 'idle'));
+      const view = findSessionView(sessionId);
+      if (resumed && view) applyResumeStatus(view, resumed);
     }
     void refreshModelState();
   } catch (error) {
@@ -981,7 +1118,8 @@ async function restartWorkspaceEngine(): Promise<void> {
   await window.coreai.restartEngine(workspace);
   if (sessionId && sessionId === state.sessionId) {
     const resumed = await call('session/resume', { sessionId });
-    if (resumed) setStatus(String(resumed.status ?? 'idle'));
+    const view = findSessionView(sessionId);
+    if (resumed && view) applyResumeStatus(view, resumed);
   }
 }
 
@@ -990,7 +1128,23 @@ async function resumeOpenSession(): Promise<void> {
   const sessionId = state.sessionId;
   if (!sessionId || !state.workspace) return;
   const resumed = await call('session/resume', { sessionId });
-  if (resumed && sessionId === state.sessionId) setStatus(String(resumed.status ?? 'idle'));
+  const view = findSessionView(sessionId);
+  if (resumed && view && sessionId === state.sessionId) applyResumeStatus(view, resumed);
+}
+
+/**
+ * Applies a resume result to its view. A session the engine reports as not-running while the view
+ * still shows a live turn was lost outside this client (engine restart/crash): the stale turn is
+ * finalized instead of ticking forever. The grace period keeps a just-sent message — whose driver
+ * thread may not have started yet — from being mistaken for one.
+ */
+function applyResumeStatus(view: SessionView, resumed: any): void {
+  const status = String(resumed?.status ?? 'idle').toLowerCase();
+  const clock = view.turnClock;
+  if (status !== 'running' && clock && Date.now() - clock.startedAt > 5_000) {
+    finalizeInterruptedTurn(view);
+  }
+  setViewStatus(view, status);
 }
 
 function withCount(label: string, workspace: string | null): string {
@@ -1297,14 +1451,12 @@ async function connect(workspace: string): Promise<void> {
   state.sessions = [];
   state.sessionCursor = null;
   state.hasMoreSessions = false;
-  state.toolMap.clear();
   clearPendingAttachments();
-  resetStreaming();
+  disposeAllSessionViews();
   chatView = null;
-  transcriptEl = null;
+  sessionStackEl = null;
   chatTitleEl = null;
-  removeApprovalBar();
-  setStatus('idle');
+  applyComposerStatus('idle');
   if (!state.workspaces.includes(workspace)) {
     state.workspaces = [workspace, ...state.workspaces].slice(0, 8);
   }
@@ -1325,14 +1477,12 @@ async function enterDefaultMode(): Promise<void> {
   state.sessions = [];
   state.sessionCursor = null;
   state.hasMoreSessions = false;
-  state.toolMap.clear();
   clearPendingAttachments();
-  resetStreaming();
+  disposeAllSessionViews();
   chatView = null;
-  transcriptEl = null;
+  sessionStackEl = null;
   chatTitleEl = null;
-  removeApprovalBar();
-  setStatus('idle');
+  applyComposerStatus('idle');
   renderSidebar();
   renderComposerControls();
   await renderContent();
@@ -1374,18 +1524,15 @@ async function refreshSessionList(): Promise<void> {
 async function startNewConversation(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
-  state.toolMap.clear();
   clearPendingAttachments();
-  resetStreaming();
-  removeApprovalBar();
-  setStatus('idle');
+  const previousDraft = findSessionView(null);
+  if (previousDraft) disposeSessionView(previousDraft);
   renderSessionItems();
   updateChatHeader();
   await showConversationView();
-  if (transcriptEl) {
-    transcriptEl.replaceChildren();
-    showBlankHint();
-  }
+  const view = ensureSessionView(null);
+  showSessionView(view);
+  showBlankHint();
   composerInput?.focus();
 }
 
@@ -1406,12 +1553,11 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   }
   state.sessionId = createdId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === createdId)?.title ?? firstMessage;
-  state.toolMap.clear();
-  resetStreaming();
-  removeApprovalBar();
+  const view = ensureSessionView(createdId);
+  view.historyLoaded = true;
   renderSessionItems();
   updateChatHeader();
-  if (transcriptEl) transcriptEl.replaceChildren();
+  showSessionView(view);
   return true;
 }
 
@@ -1423,26 +1569,40 @@ async function showConversationView(): Promise<void> {
   await renderContent();
 }
 
+/**
+ * Switching sessions only swaps which window is on screen. The outgoing view keeps its DOM,
+ * streaming bubble, turn clock and tool map alive (swept later if it has nothing in flight), so a
+ * session that is still working shows everything exactly where it was when the user comes back.
+ */
 async function openSession(sessionId: string): Promise<void> {
+  const target = sessionId;
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
-  state.toolMap.clear();
   clearPendingAttachments();
-  resetStreaming();
-  removeApprovalBar();
+  const view = ensureSessionView(target);
   renderSessionItems();
   updateChatHeader();
   await showConversationView();
-  if (!transcriptEl) return;
-  transcriptEl.replaceChildren();
+  if (state.sessionId !== target) return;
+  showSessionView(view);
 
-  const resumed = await call('session/resume', { sessionId });
-  setStatus(String(resumed?.status ?? 'idle'));
-  const history = await call('session/history', { sessionId, limit: 300 });
-  if (history?.messages) {
-    renderHistoryMessages(history.messages);
+  const resumed = await call('session/resume', { sessionId: target });
+  if (state.sessionId !== target) return;
+  if (resumed) applyResumeStatus(view, resumed);
+
+  if (!view.historyLoaded && !view.historyLoading) {
+    view.historyLoading = true;
+    const history = await call('session/history', { sessionId: target, limit: 300 });
+    view.historyLoading = false;
+    if (findSessionView(target) !== view) return;
+    view.historyLoaded = true;
+    if (history?.messages) {
+      renderHistoryMessages(view, history.messages);
+    }
+    // Events that arrived during the load apply after the history they belong behind.
+    for (const buffered of view.pendingEvents.splice(0)) applySessionEvent(view, buffered);
+    if (view === mountedView) scrollTranscript(view, true);
   }
-  scrollTranscript(true);
   void refreshModelState();
 }
 
@@ -1455,15 +1615,17 @@ function showBlankHint(): void {
     showDefaultHint();
     return;
   }
-  if (!transcriptEl || state.sessionId || transcriptEl.childElementCount > 0) return;
+  const view = activeSessionView();
+  if (!view || state.sessionId || view.transcript.childElementCount > 0) return;
   const hint = el('div', 'default-hint');
   hint.append(el('div', 'big', 'new session'));
   hint.append(el('div', undefined, 'Created with your first message; it then shows up in the session list.'));
-  transcriptEl.append(hint);
+  view.transcript.append(hint);
 }
 
 function showDefaultHint(): void {
-  if (!transcriptEl || state.sessionId || transcriptEl.childElementCount > 0) return;
+  const view = activeSessionView();
+  if (!view || state.sessionId || view.transcript.childElementCount > 0) return;
   const hint = el('div', 'default-hint');
   hint.append(el('div', 'big', 'default workspace'));
   hint.append(el('div', undefined, 'No workspace folder yet. It is created with your first message:'));
@@ -1475,7 +1637,7 @@ function showDefaultHint(): void {
   } else {
     hint.append(el('div', undefined, 'Or pick an existing folder from the Workspace menu below the composer.'));
   }
-  transcriptEl.append(hint);
+  view.transcript.append(hint);
 }
 
 function virtualDefaultPanel(): HTMLElement {
@@ -1499,21 +1661,12 @@ function buildChatView(): void {
   browserToggleEl = buildBrowserToggle();
   header.append(chatTitleEl, browserToggleEl);
 
-  const transcript = el('div', 'transcript');
-  transcriptEl = transcript;
-  transcriptStick = true;
-  transcript.addEventListener('scroll', () => {
-    const distance = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
-    transcriptStick = distance < 60;
-  });
-  transcript.addEventListener('click', (event) => {
-    const anchor = (event.target as HTMLElement).closest('a');
-    if (!anchor) return;
-    event.preventDefault();
-    void window.coreai.openExternal(anchor.href);
-  });
+  // One session window is mounted at a time; the others keep their DOM (and scroll position) in
+  // memory while their session works, and are dropped once idle.
+  sessionStackEl = el('div', 'session-stack');
+  mountedView = null;
   const chatMain = el('div', 'chat-main');
-  chatMain.append(header, transcript, buildComposer());
+  chatMain.append(header, sessionStackEl, buildComposer());
   chatView.append(chatMain, buildBrowserPanel());
 }
 
@@ -1999,17 +2152,17 @@ function systemReminderText(text: string): string | null {
  * bubble. Reload folds consecutive assistant messages back into that same grouping, keeping each
  * round's text its own paragraph — the same shape the live transcript streams into.
  */
-function renderHistoryMessages(messages: Array<{ role?: string; text?: string }>): void {
+function renderHistoryMessages(view: SessionView, messages: Array<{ role?: string; text?: string }>): void {
   let segments: string[] = [];
   const flushAssistant = (): void => {
     if (!segments.length) return;
-    addMessageBubble('assistant', segments.join('\n\n'));
+    addMessageBubble(view, 'assistant', segments.join('\n\n'));
     segments = [];
   };
   for (const message of messages) {
     if (message.role === 'user') {
       flushAssistant();
-      addMessageBubble('user', message.text ?? '');
+      addMessageBubble(view, 'user', message.text ?? '');
     } else {
       segments.push(message.text ?? '');
     }
@@ -2017,12 +2170,12 @@ function renderHistoryMessages(messages: Array<{ role?: string; text?: string }>
   flushAssistant();
 }
 
-function addMessageBubble(role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
+function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
     const reminder = systemReminderText(text);
     if (reminder !== null) {
       const note = el('div', 'system-note', reminder);
-      transcriptEl?.append(note);
+      view.transcript.append(note);
       return note;
     }
   }
@@ -2043,27 +2196,25 @@ function addMessageBubble(role: 'user' | 'assistant', text: string, attachments:
     }
   }
   wrapper.append(bubble);
-  transcriptEl?.append(wrapper);
+  view.transcript.append(wrapper);
   return wrapper;
 }
-
-let transcriptStick = true;
 
 /**
  * Pins the transcript to the bottom while content streams in. Stops following when the user
  * scrolls up to read (stick turns off), resumes when they return to the bottom; `force` is for
- * explicit user actions like sending a message.
+ * explicit user actions like sending a message. Off-screen views have no layout to scroll.
  */
-function scrollTranscript(force = false): void {
-  if (!transcriptEl) return;
-  if (force) transcriptStick = true;
-  if (!transcriptStick) return;
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+function scrollTranscript(view: SessionView, force = false): void {
+  if (force) view.stick = true;
+  if (!view.stick) return;
+  if (view !== mountedView || !view.transcript.isConnected) return;
+  view.transcript.scrollTop = view.transcript.scrollHeight;
 }
 
-function appendNotice(text: string, kind = '', parent?: HTMLElement): void {
+function appendNotice(text: string, kind = '', parent?: HTMLElement | null): void {
   const notice = el('div', `notice ${kind}`, text);
-  (parent ?? transcriptEl)?.append(notice);
+  (parent ?? activeSessionView()?.transcript)?.append(notice);
 }
 
 type PlanState = 'done' | 'active' | 'pending';
@@ -2081,14 +2232,14 @@ function planState(status: unknown): PlanState {
  * Sized and aligned like the assistant messages: write_todos re-emits the whole list, so the
  * turn's card is rewritten in place instead of stacking a new box per update.
  */
-function renderPlanUpdate(event: any): void {
+function renderPlanUpdate(view: SessionView, event: any): void {
   const todos: any[] = Array.isArray(event.todos) ? event.todos : [];
   if (!todos.length) return;
-  let block = planBlockEl;
+  let block = view.planBlock;
   if (!block || !block.isConnected) {
     block = el('div', 'plan-block');
-    transcriptEl?.append(block);
-    planBlockEl = block;
+    view.transcript.append(block);
+    view.planBlock = block;
   }
   const head = el('div', 'plan-head');
   head.append(el('span', 'plan-title', 'plan'));
@@ -2102,7 +2253,7 @@ function renderPlanUpdate(event: any): void {
     item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(content)));
     block.append(item);
   }
-  scrollTranscript();
+  scrollTranscript(view);
 }
 
 async function sendCurrent(): Promise<void> {
@@ -2110,22 +2261,25 @@ async function sendCurrent(): Promise<void> {
   const attachments = [...pendingAttachments];
   if (!text.trim() && attachments.length === 0) return;
   if (!state.sessionId && !(await startNewSession(text.trim() || baseNameOf(attachments[0]?.path ?? '')))) return;
+  const view = ensureSessionView(state.sessionId);
   composerInput!.value = '';
   composerAutoGrow?.();
-  addMessageBubble('user', text.trim(), attachments);
-  scrollTranscript(true);
-  resetStreaming();
-  turnClock = { startedAt: Date.now(), tick: null, chip: null };
+  addMessageBubble(view, 'user', text.trim(), attachments);
+  scrollTranscript(view, true);
+  resetStreaming(view);
+  stopTurnClock(view);
+  view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
   // Open the turn bubble right away: the first engine event can be a full model round trip away, and
   // until then the ticking "Running · Ns" chip is the only sign of life (the CLI spinner works the same way).
-  ensureStreaming();
+  ensureStreaming(view);
   const parts: Array<{ type: string; text?: string; path?: string }> = [];
   if (text.trim()) parts.push({ type: 'text', text: text.trim() });
   for (const attachment of attachments) parts.push({ type: attachment.kind, path: attachment.path });
   const sent = await call('session/send', { sessionId: state.sessionId, parts });
   if (!sent) {
-    discardEmptyTurnBubble();
-    resetStreaming();
+    discardEmptyTurnBubble(view);
+    resetStreaming(view);
+    stopTurnClock(view);
     return;
   }
   clearPendingAttachments();
@@ -2133,32 +2287,32 @@ async function sendCurrent(): Promise<void> {
 
 // ---------- live events ----------
 
-function ensureStreaming(): NonNullable<typeof streaming> {
-  if (!streaming || !transcriptEl) {
+function ensureStreaming(view: SessionView): StreamingState {
+  if (!view.streaming) {
     const wrapper = el('div', 'msg assistant');
     wrapper.append(el('div', 'role', 'assistant'));
     const bubble = el('div', 'bubble md');
     const body = el('div', 'md-body');
     bubble.append(body);
     wrapper.append(bubble);
-    transcriptEl?.append(wrapper);
-    streaming = { text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, skillsToggle: null, skillsPanel: null, skillUses: null };
-    ensureAssistBlock(streaming);
-    scrollTranscript();
+    view.transcript.append(wrapper);
+    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, skillsToggle: null, skillsPanel: null, skillUses: null };
+    ensureAssistBlock(view.streaming);
+    scrollTranscript(view);
   }
-  return streaming;
+  return view.streaming;
 }
 
 let streamingRenderQueued = false;
 
 /** Re-render the markdown body at most once per frame while text streams in. */
-function renderStreamingMarkdown(current: NonNullable<typeof streaming>): void {
+function renderStreamingMarkdown(current: StreamingState): void {
   if (streamingRenderQueued) return;
   streamingRenderQueued = true;
   requestAnimationFrame(() => {
     streamingRenderQueued = false;
     renderMarkdownInto(current.body, current.text);
-    scrollTranscript();
+    scrollTranscript(current.view);
   });
 }
 
@@ -2184,7 +2338,7 @@ function resolveStaleToolStatuses(wrapper: HTMLElement | null): void {
 }
 
 /** The chips row stays pinned at the top of the bubble; expanded content renders below it. */
-function ensureAssistBlock(current: NonNullable<typeof streaming>): { chips: HTMLElement; panels: HTMLElement } {
+function ensureAssistBlock(current: StreamingState): { chips: HTMLElement; panels: HTMLElement } {
   if (!current.chips || !current.panels) {
     const bubble = current.bubble;
     current.chips = el('div', 'assist-chips');
@@ -2197,8 +2351,8 @@ function ensureAssistBlock(current: NonNullable<typeof streaming>): { chips: HTM
 }
 
 /** The turn status chip sits first in the row: spins while the whole turn runs, freezes with the total. */
-function ensureTurnStatusChip(current: NonNullable<typeof streaming>): void {
-  const clock = activeTurnClock();
+function ensureTurnStatusChip(current: StreamingState): void {
+  const clock = activeTurnClock(current.view);
   if (clock.chip) return;
   const chip = el('span', 'assist-chip turn-status busy');
   clock.chip = chip;
@@ -2236,7 +2390,7 @@ function formatSeconds(ms: number): string {
  * Desktop stays shallow: tool calls accumulate behind one "Tool use (n)" chip next to the
  * thinking chip instead of one transcript row per call; each tool is a single expandable line.
  */
-function ensureToolPanel(current: NonNullable<typeof streaming>): HTMLElement {
+function ensureToolPanel(current: StreamingState): HTMLElement {
   if (!current.toolsPanel) {
     const { chips, panels } = ensureAssistBlock(current);
     const toggle = createAssistToggle('Tool use');
@@ -2272,8 +2426,8 @@ function toolSummary(argumentsText: unknown): string {
   return '';
 }
 
-function appendToolStart(event: any): void {
-  const current = ensureStreaming();
+function appendToolStart(view: SessionView, event: any): void {
+  const current = ensureStreaming(view);
   const panel = ensureToolPanel(current);
   const tool: UiTool = { callId: event.callId, name: event.toolName ?? 'tool', status: 'running' };
   const entry = el('div', 'tool-entry');
@@ -2301,8 +2455,8 @@ function appendToolStart(event: any): void {
   if (tool.name === 'use_skill') {
     recordSkillUse(current, event.arguments);
   }
-  state.toolMap.set(tool.callId, tool);
-  scrollTranscript();
+  view.toolMap.set(tool.callId, tool);
+  scrollTranscript(view);
 }
 
 function skillNameFrom(argumentsText: unknown): string | null {
@@ -2319,7 +2473,7 @@ function skillNameFrom(argumentsText: unknown): string | null {
 }
 
 /** "Skill use (n)" chip next to thinking / tool use; expanding lists which skills were loaded. */
-function recordSkillUse(current: NonNullable<typeof streaming>, argumentsText: unknown): void {
+function recordSkillUse(current: StreamingState, argumentsText: unknown): void {
   const skill = skillNameFrom(argumentsText);
   if (!skill) return;
   if (!current.skillsPanel) {
@@ -2345,11 +2499,11 @@ function recordSkillUse(current: NonNullable<typeof streaming>, argumentsText: u
   current.skillsToggle?.setLabel(`Skill use (${uses.size})`);
 }
 
-/** Where a memory report lands: the live message, else the newest assistant message on screen. */
-function memoryWrapper(): HTMLElement | null {
-  if (streaming) return streaming.bubble.parentElement;
-  const messages = transcriptEl?.querySelectorAll('.msg.assistant');
-  return messages && messages.length ? (messages[messages.length - 1] as HTMLElement) : null;
+/** Where a memory report lands: the view's live message, else its newest assistant message. */
+function memoryWrapper(view: SessionView): HTMLElement | null {
+  if (view.streaming) return view.streaming.bubble.parentElement;
+  const messages = view.transcript.querySelectorAll('.msg.assistant');
+  return messages.length ? (messages[messages.length - 1] as HTMLElement) : null;
 }
 
 /** Creates the chips row and panel for a message that has none yet (history-loaded messages). */
@@ -2427,7 +2581,7 @@ function memoryPathList(value: unknown): string[] {
  * Engine event for a memory extraction run: the chip appears when the run starts and is filled
  * with the kept knowledge files when it completes.
  */
-function handleMemoryEvent(event: any): void {
+function handleMemoryEvent(view: SessionView, event: any): void {
   let data: any;
   try {
     data = JSON.parse(event.data ?? '{}');
@@ -2438,7 +2592,7 @@ function handleMemoryEvent(event: any): void {
   const phase = String(data.phase ?? '').toUpperCase();
   const trigger = String(data.trigger ?? '').toUpperCase();
   if (phase === 'STARTED') {
-    const wrapper = memoryWrapper();
+    const wrapper = memoryWrapper(view);
     if (!wrapper) return;
     const ui = ensureMemoryUi(wrapper);
     const run: MemoryRun = {
@@ -2452,17 +2606,17 @@ function handleMemoryEvent(event: any): void {
       note: null,
     };
     ui.runs.push(run);
-    pendingMemoryRun = { wrapper, ui, run };
+    view.pendingMemoryRun = { wrapper, ui, run };
     renderMemoryRuns(ui);
-    scrollTranscript();
+    scrollTranscript(view);
     return;
   }
   if (phase !== 'COMPLETED') return;
-  let entry = pendingMemoryRun && pendingMemoryRun.run.runId === runId ? pendingMemoryRun : null;
+  let entry = view.pendingMemoryRun && view.pendingMemoryRun.run.runId === runId ? view.pendingMemoryRun : null;
   // the message the run started on is gone (session reopened): attach to the current last message
-  if (entry && !entry.wrapper.isConnected) entry = null;
+  if (entry && !view.transcript.contains(entry.wrapper)) entry = null;
   if (!entry) {
-    const wrapper = memoryWrapper();
+    const wrapper = memoryWrapper(view);
     if (!wrapper) return;
     const ui = ensureMemoryUi(wrapper);
     const run: MemoryRun = {
@@ -2486,13 +2640,13 @@ function handleMemoryEvent(event: any): void {
   run.added = memoryPathList(data.added);
   run.updated = memoryPathList(data.updated);
   run.note = typeof data.note === 'string' && data.note ? data.note : null;
-  if (pendingMemoryRun === entry) pendingMemoryRun = null;
+  if (view.pendingMemoryRun === entry) view.pendingMemoryRun = null;
   renderMemoryRuns(entry.ui);
-  scrollTranscript();
+  scrollTranscript(view);
 }
 
-function updateToolResult(event: any): void {
-  const tool = state.toolMap.get(event.callId);
+function updateToolResult(view: SessionView, event: any): void {
+  const tool = view.toolMap.get(event.callId);
   if (!tool) return;
   tool.status = event.status ?? 'done';
   if (tool.durationNode && typeof event.durationMs === 'number') {
@@ -2507,16 +2661,16 @@ function updateToolResult(event: any): void {
     tool.resultNode.textContent = prettyJson(event.result);
     tool.resultNode.style.display = 'block';
   }
-  if (state.pendingApproval?.callId === event.callId) removeApprovalBar();
-  scrollTranscript();
+  if (view.pendingApproval?.callId === event.callId) removeApprovalBar(view);
+  scrollTranscript(view);
 }
 
-function showApprovalBar(event: any): void {
-  removeApprovalBar();
-  state.pendingApproval = { callId: event.callId, toolName: event.toolName };
-  approvalBar = el('div', 'approval-bar');
-  approvalBar.append(el('div', 'approval-title', `⚠ ${event.toolName} needs approval${event.suggestedPattern ? ` · suggested rule ${event.suggestedPattern}` : ''}`));
-  approvalBar.append(el('pre', undefined, prettyJson(event.arguments)));
+function showApprovalBar(view: SessionView, event: any): void {
+  removeApprovalBar(view);
+  view.pendingApproval = { callId: event.callId, toolName: event.toolName };
+  const bar = el('div', 'approval-bar');
+  bar.append(el('div', 'approval-title', `⚠ ${event.toolName} needs approval${event.suggestedPattern ? ` · suggested rule ${event.suggestedPattern}` : ''}`));
+  bar.append(el('pre', undefined, prettyJson(event.arguments)));
   const actions = el('div', 'approval-actions');
   const buttons: Array<[string, string]> = [
     ['Allow once', 'APPROVE'],
@@ -2529,23 +2683,23 @@ function showApprovalBar(event: any): void {
     const button = el('button', `btn small${decision.startsWith('DENY') ? ' danger' : ''}`, label);
     button.onclick = async () => {
       for (const sibling of actions.querySelectorAll('button')) (sibling as HTMLButtonElement).disabled = true;
-      await call('session/approve', { sessionId: state.sessionId, callId: event.callId, decision });
-      removeApprovalBar();
+      await call('session/approve', { sessionId: view.sessionId, callId: event.callId, decision });
+      removeApprovalBar(view);
     };
     actions.append(button);
   }
-  approvalBar.append(actions);
-  const chat = transcriptEl?.parentElement;
-  chat?.insertBefore(approvalBar, chat.querySelector('.composer'));
+  bar.append(actions);
+  view.approvalBar = bar;
+  view.root.append(bar);
 }
 
-function removeApprovalBar(): void {
-  approvalBar?.remove();
-  approvalBar = null;
-  state.pendingApproval = null;
+function removeApprovalBar(view: SessionView): void {
+  view.approvalBar?.remove();
+  view.approvalBar = null;
+  view.pendingApproval = null;
 }
 
-function setStatus(status: string): void {
+function applyComposerStatus(status: string): void {
   state.status = status.toLowerCase();
   if (statusChip) {
     statusChip.textContent = state.status;
@@ -2554,6 +2708,12 @@ function setStatus(status: string): void {
   if (stopButton) {
     stopButton.disabled = state.status !== 'running';
   }
+}
+
+/** The composer mirrors whichever session window is on screen. */
+function setViewStatus(view: SessionView, status: string): void {
+  view.status = status.toLowerCase();
+  if (view === mountedView) applyComposerStatus(view.status);
 }
 
 /** Updates the sidebar row of whichever session the event belongs to; the viewed one drives the chip. */
@@ -2567,9 +2727,8 @@ function handleStatusEvent(event: any): void {
       rowChanged = true;
     }
   }
-  if (event.sessionId === state.sessionId) {
-    setStatus(status);
-  }
+  const view = findSessionView(typeof event.sessionId === 'string' ? event.sessionId : state.sessionId);
+  if (view) setViewStatus(view, status);
   if (rowChanged) {
     renderSessionItems();
   }
@@ -2595,16 +2754,28 @@ function handleSessionEvent(event: any): void {
     handleStatusEvent(event);
     return;
   }
-  if (event.sessionId && event.sessionId !== state.sessionId) return;
+  // Events route to the session's own view — a background session keeps streaming, counting its
+  // tools and ticking its clock while the user is looking somewhere else.
+  const view = findSessionView(typeof event.sessionId === 'string' ? event.sessionId : state.sessionId);
+  if (!view) return;
+  if (!view.historyLoaded) {
+    // the view is still loading its back-history; replay in order once it is rendered
+    view.pendingEvents.push(event);
+    return;
+  }
+  applySessionEvent(view, event);
+}
+
+function applySessionEvent(view: SessionView, event: any): void {
   switch (event.type) {
     case 'text_chunk': {
-      const current = ensureStreaming();
+      const current = ensureStreaming(view);
       current.text += event.chunk ?? '';
       renderStreamingMarkdown(current);
       break;
     }
     case 'reasoning_chunk': {
-      const current = ensureStreaming();
+      const current = ensureStreaming(view);
       current.reasoning += event.chunk ?? '';
       if (current.reasoningLiveStart === null) current.reasoningLiveStart = Date.now();
       if (!current.reasoningPre) {
@@ -2621,11 +2792,11 @@ function handleSessionEvent(event: any): void {
       }
       startReasoningTick(current);
       current.reasoningPre.textContent = current.reasoning;
-      scrollTranscript();
+      scrollTranscript(view);
       break;
     }
     case 'reasoning_complete': {
-      const current = streaming;
+      const current = view.streaming;
       if (!current) break;
       stopReasoningTick(current);
       if (typeof event.durationMs === 'number') {
@@ -2638,26 +2809,27 @@ function handleSessionEvent(event: any): void {
       break;
     }
     case 'tool_start':
-      if (state.pendingApproval) removeApprovalBar();
+      if (view.pendingApproval) removeApprovalBar(view);
       maybeAutoStartBrowser(event);
-      appendToolStart(event);
+      appendToolStart(view, event);
       break;
     case 'tool_result':
-      updateToolResult(event);
+      updateToolResult(view, event);
       break;
     case 'tool_approval_request':
-      showApprovalBar(event);
+      showApprovalBar(view, event);
       break;
     case 'turn_complete': {
-      const assistantWrapper = streaming?.bubble.parentElement ?? null;
+      const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
       resolveStaleToolStatuses(assistantWrapper);
-      finishTurnStatus(event);
-      resetStreaming();
-      removeApprovalBar();
+      const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
+      finishTurnStatus(view, event);
+      resetStreaming(view);
+      removeApprovalBar(view);
       // A turn that produced nothing leaves no bubble behind — the send-time placeholder goes away
       // and its summary (if any) falls back to a transcript line.
-      const keptWrapper = assistantWrapper && hasAssistantContent(assistantWrapper) ? assistantWrapper : null;
-      if (assistantWrapper && !keptWrapper) assistantWrapper.remove();
+      if (assistantWrapper && !hasContent) assistantWrapper.remove();
+      const keptWrapper = hasContent ? assistantWrapper : null;
       const parts: string[] = [];
       if (event.cancelled) parts.push('turn cancelled');
       if (event.max_turns_reached) parts.push('max turns reached');
@@ -2673,34 +2845,31 @@ function handleSessionEvent(event: any): void {
       if (bits.length) parts.push(`✦ ${bits.join(' | ')}`);
       if (parts.length) {
         const summary = el('div', 'turn-summary', parts.join(' · '));
-        (keptWrapper ?? transcriptEl)?.append(summary);
-        scrollTranscript();
+        (keptWrapper ?? view.transcript).append(summary);
+        scrollTranscript(view);
       }
       void refreshSessionList();
       void loadSummaries();
-      if (state.pendingEngineRestart) {
-        state.pendingEngineRestart = false;
-        void restartWorkspaceEngine();
-      }
+      maybeApplyPendingEngineRestart(view);
       break;
     }
     case 'compression':
       if (event.completed !== false) {
-        appendNotice(`✦ Context compressed ${event.before_count} → ${event.after_count} · ${event.context_tokens ?? '?'} / ${event.max_context_tokens ?? '?'} tokens`, 'compression');
+        appendNotice(`✦ Context compressed ${event.before_count} → ${event.after_count} · ${event.context_tokens ?? '?'} / ${event.max_context_tokens ?? '?'} tokens`, 'compression', view.transcript);
       }
       break;
     case 'plan_update': {
-      renderPlanUpdate(event);
+      renderPlanUpdate(view, event);
       break;
     }
     case 'custom':
-      handleCustomEvent(event);
+      handleCustomEvent(view, event);
       break;
     case 'task_status':
-      appendNotice(`task ${event.toolName ?? ''}: ${event.status ?? ''}`);
+      appendNotice(`task ${event.toolName ?? ''}: ${event.status ?? ''}`, '', view.transcript);
       break;
     case 'environment_output_chunk': {
-      const tool = state.toolMap.get(event.callId);
+      const tool = view.toolMap.get(event.callId);
       if (tool?.resultNode) {
         tool.resultNode.style.display = 'block';
         tool.resultNode.textContent += event.chunk ?? '';
@@ -2710,19 +2879,17 @@ function handleSessionEvent(event: any): void {
     case 'error': {
       // A failed turn ends with an error event instead of a turn_complete: end its UI state here,
       // or the turn chip keeps spinning and its tools stay "running" for a turn that never resumes.
-      const assistantWrapper = streaming?.bubble.parentElement ?? null;
+      const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
       resolveStaleToolStatuses(assistantWrapper);
-      failTurnStatus();
-      resetStreaming();
-      removeApprovalBar();
-      if (assistantWrapper && !hasAssistantContent(assistantWrapper)) assistantWrapper.remove();
-      appendNotice(`✗ ${event.message ?? 'error'}`, 'error');
+      const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
+      failTurnStatus(view);
+      resetStreaming(view);
+      removeApprovalBar(view);
+      if (assistantWrapper && !hasContent) assistantWrapper.remove();
+      appendNotice(`✗ ${event.message ?? 'error'}`, 'error', view.transcript);
       void refreshSessionList();
       void loadSummaries();
-      if (state.pendingEngineRestart) {
-        state.pendingEngineRestart = false;
-        void restartWorkspaceEngine();
-      }
+      maybeApplyPendingEngineRestart(view);
       break;
     }
     default:
@@ -2730,9 +2897,20 @@ function handleSessionEvent(event: any): void {
   }
 }
 
-function handleCustomEvent(event: any): void {
+/**
+ * A deferred engine reload (reasoning effort changed mid-turn) waits for the viewed turn to end;
+ * reloading while a background turn runs would kill it.
+ */
+function maybeApplyPendingEngineRestart(view: SessionView): void {
+  if (!state.pendingEngineRestart) return;
+  if (view !== mountedView) return;
+  state.pendingEngineRestart = false;
+  void restartWorkspaceEngine();
+}
+
+function handleCustomEvent(view: SessionView, event: any): void {
   if (event.name === 'memory') {
-    handleMemoryEvent(event);
+    handleMemoryEvent(view, event);
     return;
   }
   if (event.name !== 'quick_replies') return;
@@ -2758,7 +2936,7 @@ function handleCustomEvent(event: any): void {
     };
     row.append(button);
   }
-  transcriptEl?.append(row);
+  view.transcript.append(row);
 }
 
 // ---------- panels ----------
@@ -3495,6 +3673,7 @@ async function renderContent(): Promise<void> {
       if (!chatView) buildChatView();
       content.replaceChildren(chatView as HTMLElement);
       updateChatHeader();
+      showSessionView(ensureSessionView(state.sessionId));
       showBlankHint();
       return;
     }
@@ -3506,8 +3685,8 @@ async function renderContent(): Promise<void> {
     if (!chatView) buildChatView();
     content.replaceChildren(chatView as HTMLElement);
     updateChatHeader();
+    showSessionView(ensureSessionView(state.sessionId));
     showBlankHint();
-    scrollTranscript();
     return;
   }
   let panel: HTMLElement;
@@ -3556,7 +3735,8 @@ async function bootstrap(): Promise<void> {
     if (payload.method === 'session/event') {
       handleSessionEvent(payload.params?.event);
     } else if (payload.method === 'engine/ready') {
-      setStatus('idle');
+      // A fresh engine process serves no live turns — every turn the old one was running died.
+      finalizeTurnsForEngineRestart();
     }
   });
 
