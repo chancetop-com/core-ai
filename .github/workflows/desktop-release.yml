@@ -3,7 +3,8 @@ name: Release Desktop
 # Mirrors cli-release.yml: bump core-ai-desktop/VERSION to release. The desktop app ships the pinned
 # engine (package.json coreAi.pinnedEngine) downloaded from the matching CLI release, so the engine
 # version must be published first. Windows = NSIS x64, macOS = dmg/zip arm64 (the CLI's darwin engine
-# is arm64 only); Linux is P2 (design §4.7). Builds are unsigned until signing/notarization lands.
+# is arm64 only); Linux is P2 (design §4.7). Mac previews use ad-hoc signing until Developer ID
+# signing and notarization are configured; Windows previews remain unsigned.
 
 on:
   push:
@@ -84,6 +85,11 @@ jobs:
       - name: Package
         working-directory: core-ai-desktop
         run: npm run dist
+
+      - name: Verify macOS package
+        if: matrix.target == 'mac'
+        working-directory: core-ai-desktop
+        run: npm run verify:mac
 
       - name: Upload packages
         uses: actions/upload-artifact@v4

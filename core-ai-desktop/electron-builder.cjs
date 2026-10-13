@@ -43,6 +43,9 @@ module.exports = {
     allowToChangeInstallationDirectory: true,
   },
   mac: {
+    identity: process.env.CSC_NAME || (process.env.CSC_LINK ? undefined : '-'),
+    forceCodeSigning: true,
+    hardenedRuntime: true,
     // The CLI ships a single darwin (arm64) engine today, so the mac package is arm64 only.
     target: [
       { target: 'dmg', arch: ['arm64'] },

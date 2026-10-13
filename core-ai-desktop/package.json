@@ -14,6 +14,7 @@
     "test": "npm run build && node --test \"test/**/*.test.mjs\"",
     "check": "tsc --noEmit",
     "stage:engine": "node scripts/stage-engine.mjs",
+    "verify:mac": "node scripts/verify-mac-package.mjs",
     "dist": "npm run build && electron-builder --publish never",
     "dist:dir": "npm run build && electron-builder --dir --publish never"
   },
