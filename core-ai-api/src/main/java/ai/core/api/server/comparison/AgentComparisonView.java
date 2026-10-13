@@ -39,6 +39,13 @@ public class AgentComparisonView {
     @Property(name = "variant_b")
     public ComparisonVariantView variantB;
 
+    /** Source saved versions of each side; null = the agent's current published config (variant A) respectively a copy of it. */
+    @Property(name = "version_a_id")
+    public String versionAId;
+
+    @Property(name = "version_b_id")
+    public String versionBId;
+
     @Property(name = "pairs")
     public List<ComparisonSessionPairView> pairs;
 

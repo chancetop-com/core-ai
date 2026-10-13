@@ -67,6 +67,17 @@ public final class ComparisonToolFreeze {
         return result;
     }
 
+    /** Guards the start of a comparison: tools confirmed against an earlier config must not silently survive a source change. */
+    public static void requireSubset(List<ToolRef> tools, List<ToolRef> configured) {
+        if (tools == null) return;
+        var normalizedConfigured = normalizeAll(configured);
+        for (var ref : normalizeAll(tools)) {
+            if (!contains(normalizedConfigured, ref)) {
+                throw new BadRequestException("confirmed tools no longer match the variant config; confirm the tool set again");
+            }
+        }
+    }
+
     public static ToolRefView toView(ToolRef ref) {
         var view = new ToolRefView();
         view.id = ref.id;

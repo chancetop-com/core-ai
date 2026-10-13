@@ -92,6 +92,9 @@ export interface AgentComparison {
   blind?: boolean;
   variant_a?: ComparisonVariant;
   variant_b?: ComparisonVariant;
+  /** source saved versions of each side; null = current published (A) resp. a copy of A (B) */
+  version_a_id?: string;
+  version_b_id?: string;
   pairs?: ComparisonSessionPair[];
   votes?: ComparisonVote[];
   counts?: ComparisonCounts;
@@ -100,6 +103,19 @@ export interface AgentComparison {
   started_at?: string;
   ended_at?: string;
   adopted_variant?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** A saved agent configuration ("version") — the selectable side of an experiment. */
+export interface AgentVersion {
+  id: string;
+  agent_id: string;
+  agent_name?: string;
+  label?: string;
+  model?: string;
+  config?: ComparisonVariantConfig;
+  created_by?: string;
   created_at?: string;
   updated_at?: string;
 }
@@ -128,6 +144,9 @@ export interface CreateComparisonSessionsResponse {
 
 export interface UpdateAgentComparisonRequest {
   variant_b?: ComparisonVariantConfig;
+  /** switches the source version; '' clears it (A: current published, B: a copy of A) */
+  version_a_id?: string;
+  version_b_id?: string;
   participant_user_ids?: string[];
   budget_usd?: number;
   effective_tools_a?: ToolRef[];
@@ -141,10 +160,14 @@ export interface ComparisonStats {
 }
 
 export const comparisonApi = {
-  create: (agentId: string) =>
+  create: (agentId: string, options?: { versionAId?: string | null; versionBId?: string | null }) =>
     request<AgentComparison>('/api/agent-comparisons', {
       method: 'POST',
-      body: JSON.stringify({ agent_id: agentId }),
+      body: JSON.stringify({
+        agent_id: agentId,
+        version_a_id: options?.versionAId ?? null,
+        version_b_id: options?.versionBId ?? null,
+      }),
     }),
 
   list: (agentId: string) =>
@@ -189,4 +212,23 @@ export const comparisonApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+};
+
+export const agentVersionApi = {
+  list: (agentId: string) =>
+    request<{ versions: AgentVersion[] }>(`/api/agent-versions?agent_id=${encodeURIComponent(agentId)}`),
+
+  get: (id: string) => request<AgentVersion>(`/api/agent-versions/${encodeURIComponent(id)}`),
+
+  create: (body: { agent_id: string; label?: string; copy_from_version_id?: string }) =>
+    request<AgentVersion>('/api/agent-versions', { method: 'POST', body: JSON.stringify(body) }),
+
+  update: (id: string, body: { label?: string; config?: ComparisonVariantConfig }) =>
+    request<AgentVersion>(`/api/agent-versions/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  remove: (id: string) =>
+    request<void>(`/api/agent-versions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };

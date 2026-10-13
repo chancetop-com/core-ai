@@ -43,6 +43,14 @@ public class AgentComparison {
     @Field(name = "variant_b")
     public ComparisonVariant variantB;
 
+    /** Saved version feeding variant A; null = the agent's current published config (resolved at start). */
+    @Field(name = "version_a_id")
+    public String versionAId;
+
+    /** Saved version feeding variant B; null = a copy of variant A's source. */
+    @Field(name = "version_b_id")
+    public String versionBId;
+
     @Field(name = "participant_user_ids")
     public List<String> participantUserIds;
 

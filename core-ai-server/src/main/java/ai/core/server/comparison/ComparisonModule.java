@@ -1,6 +1,7 @@
 package ai.core.server.comparison;
 
 import ai.core.api.server.comparison.AgentComparisonWebService;
+import ai.core.api.server.comparison.AgentVersionWebService;
 import core.framework.module.Module;
 
 /**
@@ -13,8 +14,10 @@ public class ComparisonModule extends Module {
     @Override
     protected void initialize() {
         bind(ComparisonViewAssembler.class);
+        bind(AgentVersionService.class);
         bind(AgentComparisonService.class);
         bind(ComparisonSessionService.class);
         api().service(AgentComparisonWebService.class, bind(AgentComparisonWebServiceImpl.class));
+        api().service(AgentVersionWebService.class, bind(AgentVersionWebServiceImpl.class));
     }
 }

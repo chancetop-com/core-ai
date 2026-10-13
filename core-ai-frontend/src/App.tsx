@@ -66,6 +66,8 @@ const MemoryExperimentRunDetail = lazy(() => import('./pages/experiments/MemoryE
 const MemoryExperimentConfigDetail = lazy(() => import('./pages/experiments/MemoryExperimentConfigDetail'));
 const ReplayExperimentList = lazy(() => import('./pages/experiments/ReplayExperimentList'));
 const ReplayWorkbench = lazy(() => import('./pages/experiments/ReplayWorkbench'));
+const AgentComparison = lazy(() => import('./pages/experiments/AgentComparison'));
+const AgentVersionEditor = lazy(() => import('./pages/experiments/AgentVersionEditor'));
 
 function PageFallback() {
   return (
@@ -182,6 +184,8 @@ export default function App() {
                     <Route path="/experiments/memory" element={<RequirePermission permission="experiment.view"><MemoryExperiment /></RequirePermission>} />
                     <Route path="/experiments/memory/runs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentRunDetail /></RequirePermission>} />
                     <Route path="/experiments/memory/configs/:id" element={<RequirePermission permission="experiment.view"><MemoryExperimentConfigDetail /></RequirePermission>} />
+                    <Route path="/experiments/agent-comparison" element={<RequirePermission permission="experiment.view"><AgentComparison /></RequirePermission>} />
+                    <Route path="/experiments/agent-comparison/versions/:versionId" element={<RequirePermission permission="experiment.view"><AgentVersionEditor /></RequirePermission>} />
                     <Route path="/workflows/explore" element={<RequirePermission permission="workflow.view"><WorkflowExplore /></RequirePermission>} />
                     <Route path="/workflows" element={<RequirePermission permission="workflow.view"><WorkflowList /></RequirePermission>} />
                     <Route path="/workflows/:id/runs" element={<RequirePermission permission="workflow.view"><WorkflowRuns /></RequirePermission>} />

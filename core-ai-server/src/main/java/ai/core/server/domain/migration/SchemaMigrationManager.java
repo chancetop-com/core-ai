@@ -157,7 +157,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVDefaultAssistantPersonality(),
             new SchemaMigrationVOcgConfigChannelIdIndex(),
             new SchemaMigrationVSessionNoticeIndex(),
-            new SchemaMigrationVAgentComparisonIndexes()
+            new SchemaMigrationVAgentComparisonIndexes(),
+            new SchemaMigrationVAgentVersionIndexes()
         );
     }
 }

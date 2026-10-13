@@ -12,6 +12,7 @@ import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentExecutableConfigFactory;
 import ai.core.server.comparison.domain.AgentComparison;
+import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.comparison.domain.ComparisonVariant;
 import ai.core.server.domain.AgentDefinition;
@@ -25,6 +26,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -46,10 +48,16 @@ public class AgentComparisonService {
     private static final String LABEL_A = "版本 A（当前线上）";
     private static final String LABEL_B = "版本 B（候选）";
 
+    private static String normalizeRef(String versionId) {
+        return Strings.isBlank(versionId) ? null : versionId;
+    }
+
     @Inject
     MongoCollection<AgentComparison> comparisonCollection;
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
+    @Inject
+    MongoCollection<AgentVersion> versionCollection;
     @Inject
     MongoCollection<User> userCollection;
     @Inject
@@ -80,8 +88,16 @@ public class AgentComparisonService {
         comparison.agentName = agent.name;
         comparison.agentForkedFrom = agent.forkedFrom;
         comparison.status = ComparisonStatus.DRAFT;
-        comparison.variantA = newVariant(LABEL_A, AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig));
-        comparison.variantB = newVariant(LABEL_B, AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig));
+        comparison.versionAId = normalizeRef(request.versionAId);
+        comparison.versionBId = normalizeRef(request.versionBId);
+        var sourceA = comparison.versionAId != null
+            ? requireVersionConfig(agent.id, comparison.versionAId)
+            : AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig);
+        var sourceB = comparison.versionBId != null
+            ? requireVersionConfig(agent.id, comparison.versionBId)
+            : AgentExecutableConfigFactory.fromPublishedConfig(sourceA);
+        comparison.variantA = newVariant(LABEL_A, sourceA);
+        comparison.variantB = newVariant(LABEL_B, sourceB);
         comparison.participantUserIds = ComparisonAccess.cleanParticipants(null, userId);
         comparison.createdBy = userId;
         comparison.createdAt = ZonedDateTime.now();
@@ -148,11 +164,13 @@ public class AgentComparisonService {
 
     private void applyUpdate(AgentComparison comparison, UpdateAgentComparisonRequest request) {
         if (comparison.status == ComparisonStatus.RUNNING) {
-            if (request.variantB != null || request.effectiveToolsA != null || request.effectiveToolsB != null) {
+            if (request.variantB != null || request.effectiveToolsA != null || request.effectiveToolsB != null
+                || request.versionAId != null || request.versionBId != null) {
                 throw new BadRequestException("variants and the effective tool set are frozen once the comparison is running");
             }
         } else {
             if (request.variantB != null) ComparisonViews.applyConfigPatch(comparison.variantB.config, request.variantB);
+            if (request.versionAId != null || request.versionBId != null) switchSources(comparison, request);
             if (request.effectiveToolsA != null) freezeToolList(comparison.variantA, request.effectiveToolsA);
             if (request.effectiveToolsB != null) freezeToolList(comparison.variantB, request.effectiveToolsB);
         }
@@ -160,6 +178,22 @@ public class AgentComparisonService {
             comparison.participantUserIds = ComparisonAccess.cleanParticipants(request.participantUserIds, comparison.createdBy);
         }
         if (request.budgetUsd != null) comparison.budgetUsd = request.budgetUsd;
+    }
+
+    /** A source switch re-snapshots both sides and suggests a fresh tool set. */
+    private void switchSources(AgentComparison comparison, UpdateAgentComparisonRequest request) {
+        if (request.versionAId != null) comparison.versionAId = normalizeRef(request.versionAId);
+        if (request.versionBId != null) comparison.versionBId = normalizeRef(request.versionBId);
+        var agent = agentDefinitionCollection.get(comparison.agentId)
+            .orElseThrow(() -> new BadRequestException("agent is unavailable"));
+        var sourceA = comparison.versionAId != null
+            ? requireVersionConfig(comparison.agentId, comparison.versionAId)
+            : AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig);
+        var sourceB = comparison.versionBId != null
+            ? requireVersionConfig(comparison.agentId, comparison.versionBId)
+            : AgentExecutableConfigFactory.fromPublishedConfig(sourceA);
+        comparison.variantA = newVariant(LABEL_A, sourceA);
+        comparison.variantB = newVariant(LABEL_B, sourceB);
     }
 
     public AgentComparisonView start(String id, StartAgentComparisonRequest request, String userId) {
@@ -176,6 +210,7 @@ public class AgentComparisonService {
         }
         var agent = agentDefinitionCollection.get(comparison.agentId)
             .orElseThrow(() -> new BadRequestException("agent is unavailable"));
+        refreshForStart(comparison, agent);
         freezeVariant(comparison.variantA, request != null ? request.effectiveToolsA : null, userId);
         freezeVariant(comparison.variantB, request != null ? request.effectiveToolsB : null, userId);
         comparison.agentName = agent.name;
@@ -267,12 +302,38 @@ public class AgentComparisonService {
 
     private void freezeVariant(ComparisonVariant variant, List<ToolRefView> requestedTools, String userId) {
         freezeToolList(variant, requestedTools);
+        // the config may have been re-snapshotted from a version: tools confirmed against the previous
+        // content must not silently survive a source change
+        ComparisonToolFreeze.requireSubset(variant.effectiveTools, variant.config.tools);
         var skillIds = IdLists.clean(variant.config.skillIds);
         if (!skillIds.isEmpty()) {
             // publish parity: a variant must resolve its skills for every tester, not only for its author
             skillService.resolveAccessibleSkills(skillIds, userId);
         }
         validateExecutableDependencies(variant);
+    }
+
+    /**
+     * Re-snapshots each side from its source right before freezing: variant A follows the live published
+     * config when it has no version; variant B follows its version when one is set. A ref-less variant B
+     * keeps the draft's own config (the direct edit flow). Confirmed tool sets are preserved here and
+     * validated by the freeze step.
+     */
+    private void refreshForStart(AgentComparison comparison, AgentDefinition agent) {
+        var sourceA = comparison.versionAId != null
+            ? requireVersionConfig(comparison.agentId, comparison.versionAId)
+            : AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig);
+        comparison.variantA.config = sourceA;
+        if (comparison.versionBId != null) {
+            comparison.variantB.config = requireVersionConfig(comparison.agentId, comparison.versionBId);
+        }
+    }
+
+    private AgentPublishedConfig requireVersionConfig(String agentId, String versionId) {
+        var version = versionCollection.get(versionId)
+            .orElseThrow(() -> new BadRequestException("version is unavailable, id=" + versionId));
+        if (!agentId.equals(version.agentId)) throw new BadRequestException("version does not belong to the agent");
+        return AgentExecutableConfigFactory.fromPublishedConfig(version.config);
     }
 
     private void validateExecutableDependencies(ComparisonVariant variant) {

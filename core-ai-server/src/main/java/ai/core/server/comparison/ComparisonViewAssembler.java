@@ -6,6 +6,7 @@ import ai.core.api.server.comparison.ComparisonSessionPairView;
 import ai.core.api.server.comparison.ComparisonVariantView;
 import ai.core.api.server.comparison.ComparisonVoteView;
 import ai.core.server.comparison.domain.AgentComparison;
+import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.comparison.domain.ComparisonVariant;
 import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.comparison.domain.ComparisonVoteChoice;
@@ -147,6 +148,8 @@ public class ComparisonViewAssembler {
             return view;
         }
         view.blind = Boolean.TRUE;
+        view.versionAId = null;
+        view.versionBId = null;
         view.variantA = variantView(comparison.variantA, "a", BLIND_LABEL_A, false, null);
         view.variantB = variantView(comparison.variantB, "b", BLIND_LABEL_B, false, null);
         view.counts = countsOf(List.of(), votesOf(comparison.id));
@@ -184,6 +187,8 @@ public class ComparisonViewAssembler {
         view.createdBy = comparison.createdBy;
         view.participantUserIds = comparison.participantUserIds;
         view.blind = Boolean.FALSE;
+        view.versionAId = comparison.versionAId;
+        view.versionBId = comparison.versionBId;
         view.budgetUsd = comparison.budgetUsd;
         view.startedAt = comparison.startedAt;
         view.endedAt = comparison.endedAt;
@@ -235,6 +240,8 @@ public class ComparisonViewAssembler {
     }
 
     private boolean agentChanged(AgentComparison comparison) {
+        // the fingerprint only exists once the test started; a draft has nothing to drift from
+        if (comparison.status == null || comparison.status == ComparisonStatus.DRAFT) return false;
         var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
         return agent == null || !Objects.equals(agent.publishedAt, comparison.agentPublishedAt);
     }

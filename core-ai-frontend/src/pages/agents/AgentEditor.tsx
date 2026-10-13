@@ -8,7 +8,6 @@ import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
-import AgentComparisonPanel from './AgentComparisonPanel';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
@@ -2099,11 +2098,6 @@ The system prompt should define how this agent behaves, its capabilities, and it
           {/* API Usage - collapsible */}
           {agent.status === 'PUBLISHED' && (
             <CollapsibleApiUsage agentId={agent.id} agentType={agent.type} />
-          )}
-
-          {/* Agent version comparison test (online A/B) */}
-          {agent.status === 'PUBLISHED' && agent.id && (
-            <AgentComparisonPanel agentId={agent.id} />
           )}
 
           {/* Recent Runs - inline expandable */}

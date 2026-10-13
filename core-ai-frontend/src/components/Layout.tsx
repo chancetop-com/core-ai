@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -52,6 +52,7 @@ export default function Layout() {
       '/triggers/openclaw': 'OpenClaw',
       '/triggers/schedule': 'Scheduler',
       '/experiments/memory': 'Agent Memory',
+      '/experiments/agent-comparison': 'Agent Comparison',
     };
     const path = location.pathname;
     const title = titles[path]
@@ -119,11 +120,12 @@ export default function Layout() {
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
     { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view' },
-    { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
-      { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
-      { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
-      { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
-    ]},
+      { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
+        { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
+        { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
+        { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
+        { to: '/experiments/agent-comparison', icon: GitCompare, label: 'Agent Comparison', show: true, permission: 'experiment.view' },
+      ]},
   ].filter(item => item.show && (!item.permission || hasPermission(user?.permissions, item.permission)));
 
   return (

@@ -296,6 +296,8 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
   const [votes, setVotes] = useState<Record<number, ComparisonVote>>({});
   const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({});
   const controllers = useRef<Record<ArmKey, AbortController | null>>({ a: null, b: null });
+  const reconnects = useRef<Record<ArmKey, number>>({ a: 0, b: 0 });
+  const sendingRef = useRef(false);
   const armsRef = useRef<{ a: ArmState; b: ArmState } | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -346,6 +348,7 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
       return;
     }
     if (type === 'turn_complete') {
+      reconnects.current[armKey] = 0;
       updateArm(armKey, arm => ({
         ...arm, status: 'idle', isThinking: false,
         messages: applySseToMessages(arm.messages, event),
@@ -375,9 +378,39 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
     updateArm(armKey, arm => ({ ...arm, messages: applySseToMessages(arm.messages, event) }));
   }, [updateArm]);
 
+  /**
+   * A stream ended while the arm still shows running (no terminal event reached us): ask the backend
+   * what actually happened. Finished turns are restored from history, still-running turns re-attach
+   * the event stream so the spinner cannot outlive the turn.
+   */
+  const reconcileArm = useCallback(async (armKey: ArmKey) => {
+    const state = armsRef.current?.[armKey];
+    if (!state || state.status !== 'running') return;
+    try {
+      const status = await sessionApi.status(state.sessionId);
+      if (status.status === 'running') {
+        if (reconnects.current[armKey] >= 2) return; // give up; the tester can skip this arm
+        reconnects.current[armKey] += 1;
+        controllers.current[armKey]?.abort();
+        controllers.current[armKey] = sessionApi.connectSSE(
+          state.sessionId,
+          event => handleArmEvent(armKey, event),
+          () => undefined,
+          () => { void reconcileArm(armKey); },
+        );
+        return;
+      }
+      const history = await sessionApi.history(state.sessionId);
+      updateArm(armKey, arm => ({ ...arm, status: 'idle', isThinking: false, messages: historyToChatMessages(history.messages) }));
+    } catch {
+      // the backend did not answer; keep the arm as-is, the next close or user action retries
+    }
+  }, [handleArmEvent, updateArm]);
+
   const startStream = useCallback((armKey: ArmKey, text: string, outgoing: ComposerAttachment[]) => {
     const state = armsRef.current?.[armKey];
     if (!state) return;
+    reconnects.current[armKey] = 0;
     updateArm(armKey, arm => ({ ...arm, status: 'running', isThinking: true }));
     const controller = sessionApi.sendMessageStream(
       state.sessionId, text, undefined,
@@ -389,10 +422,13 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
         const message = err instanceof Error ? err.message : String(err);
         updateArm(armKey, arm => ({ ...arm, status: 'idle', isThinking: false, messages: appendTextChunk(appendAgentBubble(arm.messages), `Error: ${message}`) }));
       },
+      // the stream can end without a terminal event (aborted/replaced connection): reconcile the arm
+      // against the backend so a stuck "running" arm does not keep its spinner and skip button forever
+      () => { void reconcileArm(armKey); },
     );
     controllers.current[armKey]?.abort();
     controllers.current[armKey] = controller;
-  }, [handleArmEvent, updateArm]);
+  }, [handleArmEvent, reconcileArm, updateArm]);
 
   const anyRunning = arms != null && (arms.a.status === 'running' || arms.b.status === 'running');
 
@@ -400,7 +436,12 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
     const trimmed = text.trim();
     const ready = attachments.filter(a => !a.uploading);
     if ((!trimmed && ready.length === 0) || !armsRef.current) return;
+    // a second dispatch in the same beat (Enter + click) would double-send the turn: state has not
+    // re-rendered yet, so the running guard alone cannot see the first send
+    if (sendingRef.current) return;
     if (armsRef.current.a.status === 'running' || armsRef.current.b.status === 'running') return;
+    sendingRef.current = true;
+    window.setTimeout(() => { sendingRef.current = false; }, 1500);
     const userMessage: ChatMessage = {
       role: 'user',
       segments: trimmed ? [{ type: 'text', content: trimmed }] : [],
@@ -452,13 +493,14 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
         session_a: primarySessionId,
         turn,
         chosen,
-        comment: commentDrafts[turn]?.trim() || undefined,
+        // fall back to the already stored comment so a re-vote does not silently clear it
+        comment: (commentDrafts[turn] ?? votes[turn]?.comment)?.trim() || undefined,
       });
       setVotes(prev => ({ ...prev, [turn]: vote }));
     } catch (err) {
       setActionError(err instanceof Error ? err.message : String(err));
     }
-  }, [commentDrafts, comparisonId, primarySessionId]);
+  }, [commentDrafts, comparisonId, primarySessionId, votes]);
 
   const uploadFile = useCallback(async (file: File) => {
     const contentType = file.type || 'application/octet-stream';
@@ -669,39 +711,39 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
             <div className="py-12 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>Loading comparison sessions…</div>
           )}
           {turns.map(turn => (
-            <div key={turn.index} className="rounded-2xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
+            <div key={turn.index} className="flex flex-col gap-3">
               {turn.user && (
-                <div className="mb-4">
-                  <ChatMessageRow
-                    msg={turn.user}
-                    msgIndex={0}
-                    messagesLength={1}
-                    isStreamingLast={false}
-                    isThinking={false}
-                    planTodos={null}
-                    sessionArtifacts={[]}
-                    agentMarkdownComponents={markdownComponents}
-                    onOpenArtifact={() => {}}
-                    terminalEnabled={false}
-                    onOpenSandboxTerminal={() => {}}
-                    onApproval={() => {}}
-                    showFeedback={false}
-                    onQuickReply={value => sendTurn(value)}
-                    interactiveDisabled={anyRunning}
-                  />
-                </div>
+                <ChatMessageRow
+                  msg={turn.user}
+                  msgIndex={0}
+                  messagesLength={1}
+                  isStreamingLast={false}
+                  isThinking={false}
+                  planTodos={null}
+                  sessionArtifacts={[]}
+                  agentMarkdownComponents={markdownComponents}
+                  onOpenArtifact={() => {}}
+                  terminalEnabled={false}
+                  onOpenSandboxTerminal={() => {}}
+                  onApproval={() => {}}
+                  showFeedback={false}
+                  onQuickReply={value => sendTurn(value)}
+                  interactiveDisabled={anyRunning}
+                />
               )}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="min-w-0">
-                  <div className="mb-2 text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>版本 1</div>
-                  {renderArm(turn, 'a')}
+              <div className="rounded-2xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="min-w-0">
+                    <div className="mb-2 text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>版本 1</div>
+                    {renderArm(turn, 'a')}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="mb-2 text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>版本 2</div>
+                    {renderArm(turn, 'b')}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <div className="mb-2 text-xs font-semibold" style={{ color: 'var(--color-text-secondary)' }}>版本 2</div>
-                  {renderArm(turn, 'b')}
-                </div>
+                {renderVoteBar(turn)}
               </div>
-              {renderVoteBar(turn)}
             </div>
           ))}
         </div>

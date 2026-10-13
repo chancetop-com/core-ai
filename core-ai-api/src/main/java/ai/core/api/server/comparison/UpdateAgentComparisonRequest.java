@@ -15,6 +15,13 @@ public class UpdateAgentComparisonRequest {
     @Property(name = "variant_b")
     public ComparisonVariantConfigView variantB;
 
+    /** Switches the variant's source version; an empty string clears it (variant A: current live config). */
+    @Property(name = "version_a_id")
+    public String versionAId;
+
+    @Property(name = "version_b_id")
+    public String versionBId;
+
     @Property(name = "participant_user_ids")
     public List<String> participantUserIds;
 

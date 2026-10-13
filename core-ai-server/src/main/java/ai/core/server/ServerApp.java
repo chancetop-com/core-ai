@@ -13,6 +13,7 @@ import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.openclaw.OcgConfigView;
 import ai.core.server.comparison.ComparisonModule;
 import ai.core.server.comparison.domain.AgentComparison;
+import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.costalert.CostAlertEvent;
 import ai.core.server.costalert.CostAlertModule;
@@ -242,6 +243,7 @@ public class ServerApp extends App {
 
         mongo.collection(AgentComparison.class);
         mongo.collection(ComparisonVote.class);
+        mongo.collection(AgentVersion.class);
 
         mongo.collection(AgentMemoryExperimentConfig.class);
         mongo.collection(AgentMemoryExperimentRun.class);
