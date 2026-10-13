@@ -8,6 +8,8 @@ import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
+import { agentVersionApi } from '../../api/comparison';
+import type { AgentVersion, ComparisonVariantConfig } from '../../api/comparison';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
@@ -41,9 +43,70 @@ const normalizeBuiltinToolRefs = (tools: ToolRef[] | undefined, registry: ToolRe
 const needsBuiltinToolRefNormalization = (tools: ToolRef[] | undefined, registry: ToolRegistryView[]): boolean =>
   !!tools && tools.some(t => t.type === 'BUILTIN' && t.id && !t.id.startsWith('builtin:') && registry.some(r => r.id === `builtin:${t.id}`));
 
-export default function AgentEditor() {
+// Version mode renders this exact editor against a saved agent version: the version's label becomes
+// the Name field and its executable config fills every other editable field
+function versionToEditable(version: AgentVersion): AgentDefinition {
+  const config = version.config || {};
+  return {
+    ...NEW_AGENT_SKELETON,
+    id: version.id,
+    name: version.label || '',
+    description: version.agent_name ? `Version of ${version.agent_name}` : '',
+    system_prompt: config.system_prompt || '',
+    system_prompt_id: config.system_prompt_id || '',
+    model: config.model || '',
+    multi_modal_model: config.multi_modal_model || '',
+    prefer_caption_path: config.prefer_caption_path ?? false,
+    temperature: config.temperature ?? 0.7,
+    thinking_effort: (config.thinking_effort as AgentDefinition['thinking_effort']) ?? null,
+    max_turns: config.max_turns ?? 100,
+    timeout_seconds: config.timeout_seconds ?? 600,
+    tools: config.tools || [],
+    skill_ids: config.skill_ids || [],
+    subagent_ids: config.subagent_ids || [],
+    input_template: config.input_template || '',
+    variables: config.variables || {},
+    response_schema: config.response_schema ?? null,
+    enable_memory: config.enable_memory === true,
+    sandbox_config: config.sandbox_config as unknown as AgentDefinition['sandbox_config'],
+    dataset_config: (config.dataset_config as unknown as AgentDefinition['dataset_config']) || [],
+    status: 'DRAFT',
+    created_by: version.created_by || '',
+    created_at: version.created_at || '',
+    updated_at: version.updated_at || '',
+    published_at: '',
+    updated_by: '',
+    system_default: false,
+  };
+}
+
+function editableToVersionConfig(agent: AgentDefinition): ComparisonVariantConfig {
+  return {
+    system_prompt: agent.system_prompt || '',
+    system_prompt_id: agent.system_prompt_id || undefined,
+    model: agent.model || '',
+    multi_modal_model: agent.multi_modal_model || '',
+    prefer_caption_path: agent.prefer_caption_path ?? false,
+    temperature: agent.temperature ?? undefined,
+    thinking_effort: agent.thinking_effort ?? undefined,
+    max_turns: agent.max_turns ?? undefined,
+    timeout_seconds: agent.timeout_seconds ?? undefined,
+    tools: agent.tools || [],
+    skill_ids: agent.skill_ids || [],
+    subagent_ids: agent.subagent_ids || [],
+    input_template: agent.input_template || '',
+    variables: agent.variables || {},
+    response_schema: (agent.response_schema as string | null) ?? undefined,
+    enable_memory: agent.enable_memory === true,
+    sandbox_config: agent.sandbox_config as unknown as Record<string, unknown> | undefined,
+    dataset_config: agent.dataset_config as unknown as Record<string, unknown>[] | undefined,
+  };
+}
+
+export default function AgentEditor({ versionId }: { versionId?: string } = {}) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const isVersionMode = !!versionId;
   const isNew = id === 'new';
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -140,7 +203,7 @@ export default function AgentEditor() {
   const [modalRunDetail, setModalRunDetail] = useState<AgentRunDetail | null>(null);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id && !isVersionMode) return;
 
     // Load auxiliary data in both create and edit modes
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
@@ -157,15 +220,24 @@ export default function AgentEditor() {
     api.skills.list().then(res => setAllSkills(res.skills || [])).catch(console.error);
     api.gateway.listAvailableModels().then(res => setGatewayModels(res.models || [])).catch(console.error);
 
+    if (isVersionMode) {
+      agentVersionApi.get(versionId!)
+        .then(version => setAgent(versionToEditable(version)))
+        .catch(err => setSaveError(err instanceof Error ? err.message : 'Failed to load version'))
+        .finally(() => setLoading(false));
+      return;
+    }
+
     if (isNew) {
       setLoading(false);
       return;
     }
+    if (!id) return;
 
     api.agents.get(id).then(data => setAgent(data)).catch(console.error).finally(() => setLoading(false));
     setRunsLoading(true);
     api.agents.runs(id).then(res => setRuns(res.runs || [])).catch(console.error).finally(() => setRunsLoading(false));
-  }, [id, isNew]);
+  }, [id, isNew, isVersionMode, versionId]);
 
   // legacy builtin refs (e.g. "builtin-all" without the prefix) exist in stored agents; normalize
   // them to canonical registry ids whenever both the agent and the registry list are available
@@ -507,12 +579,24 @@ The system prompt should define how this agent behaves, its capabilities, and it
   };
 
   const handleSave = async () => {
-    if (!id) return;
+    if (!id && !isVersionMode) return;
+    if (!agent) return;
     setSaving(true);
     setSaveSuccess(false);
     setSaveError('');
 
     try {
+      if (isVersionMode) {
+        await agentVersionApi.update(versionId!, {
+          label: agent.name || undefined,
+          config: editableToVersionConfig(agent),
+        });
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        return;
+      }
+      if (!id) return;
+
       if (isNew) {
         const created = await api.agents.create({
           name: agent.name || `New Agent ${new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`,
@@ -835,22 +919,33 @@ The system prompt should define how this agent behaves, its capabilities, and it
 
   return (
     <div className="p-6">
-      <button onClick={() => navigate('/agents')}
+      <button onClick={() => navigate(isVersionMode ? '/experiments/agent-comparison' : '/agents')}
         className="flex items-center gap-1 text-sm mb-4 cursor-pointer"
         style={{ color: 'var(--color-primary)' }}>
-        <ArrowLeft size={16} /> Back to Agents
+        <ArrowLeft size={16} /> {isVersionMode ? 'Back to Comparison' : 'Back to Agents'}
       </button>
 
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-semibold">{agent.name}</h1>
-          <StatusBadge status={agent.status} />
-          <span className="px-2 py-0.5 rounded text-xs"
-            style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-            {agent.type}
-          </span>
+          {isVersionMode ? (
+            <span className="px-2 py-0.5 rounded text-xs"
+              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+              Version
+            </span>
+          ) : (
+            <>
+              <StatusBadge status={agent.status} />
+              <span className="px-2 py-0.5 rounded text-xs"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                {agent.type}
+              </span>
+            </>
+          )}
         </div>
         <div className="flex gap-2">
+          {!isVersionMode && (
+            <>
           {!isNew && (
             <button onClick={() => navigate(`/agents/${agent.id}/memories`)}
               className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
@@ -882,6 +977,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
             }}>
             {publishSuccess ? <><Check size={14} /> Published!</> : <><Upload size={14} /> {publishing ? 'Publishing...' : 'Publish'}</>}
           </button>
+            </>
+          )}
           <button onClick={handleSave} disabled={saving || saveSuccess}
             className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium cursor-pointer"
             style={{
@@ -930,16 +1027,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className={isVersionMode ? 'grid grid-cols-1 gap-6' : 'grid grid-cols-3 gap-6'}>
         {/* Left: config */}
-        <div className="col-span-2 space-y-4">
+        <div className={isVersionMode ? 'space-y-4' : 'col-span-2 space-y-4'}>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
+              <label className="block text-sm font-medium mb-1">{isVersionMode ? 'Version name' : 'Name'}</label>
               <input value={agent.name || ''} onChange={e => update('name', e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
                 style={inputStyle} />
             </div>
+            {!isVersionMode && (
             <div>
               <label className="block text-sm font-medium mb-1">Type</label>
               <select value={agent.type || 'AGENT'} onChange={e => update('type', e.target.value)}
@@ -949,14 +1047,17 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 <option value="LLM_CALL">LLM_CALL</option>
               </select>
             </div>
+            )}
           </div>
 
+          {!isVersionMode && (
           <div>
             <label className="block text-sm font-medium mb-1">Description <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></label>
             <input value={agent.description || ''} onChange={e => update('description', e.target.value)}
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
               style={inputStyle} />
           </div>
+          )}
 
           {/* System Prompt Selection */}
           <div className="rounded-xl border p-4"
@@ -1203,7 +1304,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   </p>
                 </div>
 
-                {isAdmin && (
+                {isAdmin && !isVersionMode && (
                 <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--color-border)' }}>
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox"
@@ -1936,6 +2037,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
         </div>
 
         {/* Right: info + test + runs */}
+        {!isVersionMode && (
         <div className="space-y-4">
           {/* Info */}
           <div className="rounded-xl border p-4"
@@ -2141,6 +2243,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* Run Detail Modal */}
