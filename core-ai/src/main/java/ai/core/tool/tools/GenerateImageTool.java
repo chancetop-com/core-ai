@@ -12,12 +12,14 @@ import ai.core.media.reference.SandboxMediaReferences;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.ImageDimensions;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +95,29 @@ public final class GenerateImageTool extends ToolCall {
         return matcher.find() ? matcher.group(1) : "(the one the model rejected)";
     }
 
+    /**
+     * Upstream refuses a mask whose pixel size differs from an input image ("mask size does not match image
+     * size") without naming any size, which sends the agent into one blind probe per attempt. The hint lists
+     * the sizes actually sent and states the contract: the mask and every reference share one pixel size.
+     */
+    private static String maskSizeHint(String message, ImageGenerationRequest request) {
+        if (message == null || request == null || !message.contains("mask size does not match")) return "";
+        var sizes = new ArrayList<String>();
+        var mask = request.mask();
+        if (mask != null) {
+            var size = ImageDimensions.ofBase64(mask.b64Json());
+            if (size != null) sizes.add("mask is " + size.describe());
+        }
+        var images = request.inputImages() == null ? List.<MediaReference>of() : request.inputImages();
+        for (var i = 0; i < images.size(); i++) {
+            var size = ImageDimensions.ofBase64(images.get(i).b64Json());
+            if (size != null) sizes.add("input_images[" + i + "] is " + size.describe());
+        }
+        return "\n\nMasked edit refused: the mask must have exactly the same pixel size as every input image"
+                + (sizes.isEmpty() ? "" : " (" + String.join(", ", sizes) + ")")
+                + " — rebuild the mask at that size and keep every reference on a canvas of the same size.";
+    }
+
     private final GenerateVideoTool.ReferenceImageLoader referenceImageLoader;
 
     private GenerateImageTool(GenerateVideoTool.ReferenceImageLoader referenceImageLoader) {
@@ -109,12 +134,13 @@ public final class GenerateImageTool extends ToolCall {
         var startTime = System.currentTimeMillis();
         var provider = context.getImageMediaProvider();
         if (provider == null) return ToolCallResult.failed("no media provider configured");
+        ImageGenerationRequest request = null;
         try {
             var args = parseArguments(arguments);
             var prompt = getStringValue(args, "prompt");
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
 
-            var request = new ImageGenerationRequest(
+            request = new ImageGenerationRequest(
                     getStringValue(args, "model") != null ? getStringValue(args, "model") : defaultModel(context),
                     prompt,
                     parseInteger(args, "n"),
@@ -151,7 +177,8 @@ public final class GenerateImageTool extends ToolCall {
             appendNotes(sb, response.notes());
             return ToolCallResult.completed(sb.toString()).withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
-            return ToolCallResult.failed("Image generation failed: " + e.getMessage() + unreadableImageHint(e.getMessage()), e)
+            return ToolCallResult.failed("Image generation failed: " + e.getMessage()
+                            + unreadableImageHint(e.getMessage()) + maskSizeHint(e.getMessage(), request), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
@@ -348,7 +375,7 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "background", "Set to 'transparent' for transparent PNG backgrounds (requires output_format png)"),
                     ToolCallParameters.ParamSpec.of(String.class, "input_images", "Input images for image-to-image editing. Either the bare string \"attached\" — EVERY image attached to this message, use only when all of them are the subject — or a JSON ARRAY literal (square brackets required, e.g. [{\"media_id\":\"gateway-media-v1.img.abc\"}], [\"last\"], [{\"sandbox_path\":\"/workspace/attachments/a.jpg\"}] to name ONE attachment or a file you fixed locally, [{\"url\":\"https://...\"}] / [{\"b64Json\":\"data:...\"}] for external content); [] = no reference at all, omit for text-to-image. Send only the references that must be copied: an extra one changes the result and prompt wording cannot cancel it"),
                     ToolCallParameters.ParamSpec.of(String.class, "previous_interaction_id", "Gemini Interactions API ID to continue a multi-turn image edit"),
-                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for region editing: the model repaints the transparent part of the mask and keeps the rest, so pass it when only a region may change. A single reference object (NOT an array), same item shape as input_images, e.g. {\"sandbox_path\":\"/tmp/mask.png\"} or \"data:image/png;base64,...\""),
+                    ToolCallParameters.ParamSpec.of(String.class, "mask", "Mask image for region editing: the model repaints the transparent part of the mask and keeps the rest, so pass it when only a region may change. A single reference object (NOT an array), same item shape as input_images, e.g. {\"sandbox_path\":\"/tmp/mask.png\"} or \"data:image/png;base64,...\". Must have exactly the same pixel dimensions as every input image (keep all references on canvases of one size)."),
                     ToolCallParameters.ParamSpec.of(String.class, "provider_extra", "Provider-specific JSON parameters")
             ));
             var tool = new GenerateImageTool(referenceImageLoader);

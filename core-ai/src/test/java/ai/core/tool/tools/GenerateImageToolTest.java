@@ -32,6 +32,22 @@ import static org.mockito.Mockito.when;
  * @author stephen
  */
 class GenerateImageToolTest {
+    /** A png payload carrying nothing but a detectable magic and the declared dimensions. */
+    private static String pngDataUri(int width, int height) {
+        var bytes = new byte[24];
+        byte[] magic = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+        System.arraycopy(magic, 0, bytes, 0, magic.length);
+        bytes[16] = (byte) (width >> 24);
+        bytes[17] = (byte) (width >> 16);
+        bytes[18] = (byte) (width >> 8);
+        bytes[19] = (byte) width;
+        bytes[20] = (byte) (height >> 24);
+        bytes[21] = (byte) (height >> 16);
+        bytes[22] = (byte) (height >> 8);
+        bytes[23] = (byte) height;
+        return "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes);
+    }
+
     @Test
     void buildDescriptionKeepsToolDocumentationAndAppendsConfiguredModels() {
         var description = GenerateImageTool.buildDescription(
@@ -42,6 +58,8 @@ class GenerateImageToolTest {
         assertTrue(description.contains("guesses wrong silently.\n\nFor gpt-image-2"),
                 "the guidance and the parameter docs must stay separated by a blank line");
         assertTrue(description.contains("prompt (required)"), "parameter documentation must be kept");
+        assertTrue(description.contains("same pixel size as every"),
+                "the mask size contract must be stated where the mask parameter is documented");
         assertTrue(description.contains("Configured image models"));
         assertTrue(description.contains("seedream-5-pro (KIE)"));
         assertTrue(description.contains("aspect_ratio"), "model-specific hint must be appended");
@@ -295,6 +313,26 @@ class GenerateImageToolTest {
         assertTrue(result.getResult().contains("image 2"), result.getResult());
         assertTrue(result.getResult().contains("not a standard PNG/JPEG/WEBP"), result.getResult());
         assertTrue(result.getResult().contains("sandbox_path"), "the way back must be spelled out");
+    }
+
+    @Test
+    void explainsTheMaskSizeContractWhenTheMaskDoesNotMatchAnInputImage() {
+        var provider = new TestMediaProvider();
+        provider.failure = new RuntimeException("OpenAI image request failed: HTTP 400: {\"error\": {\"message\": "
+                + "\"Invalid mask image format - mask size does not match image size\", \"code\": \"invalid_mask_image_format\"}}");
+        var context = context(provider);
+        var tool = GenerateImageTool.builder().build();
+
+        var result = tool.execute(JSON.toJSON(Map.of(
+                "prompt", "repaint the sky",
+                "input_images", "[{\"b64Json\":\"" + pngDataUri(1024, 1280) + "\"}]",
+                "mask", pngDataUri(512, 512))), context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("mask is 512x512"), result.getResult());
+        assertTrue(result.getResult().contains("input_images[0] is 1024x1280"), result.getResult());
+        assertTrue(result.getResult().contains("same pixel size as every input image"),
+                "the way back must be spelled out");
     }
 
     @Test

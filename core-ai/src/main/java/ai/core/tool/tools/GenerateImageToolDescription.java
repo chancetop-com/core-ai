@@ -103,7 +103,10 @@ final class GenerateImageToolDescription {
                   Omit input_images entirely for plain text-to-image — several models reject references.
                 - mask: Mask image for inpainting — the model repaints the transparent part of it and keeps
                   the rest; use it when only a region may change. Same shape as ONE input_images item (a
-                  single object, not an array).
+                  single object, not an array). The mask must have exactly the same pixel size as every
+                  input image — put every reference on a canvas of one size and build the mask at that
+                  size; a reference or mask of any other size fails the whole call with "mask size does
+                  not match image size".
                 - previous_interaction_id: Gemini Interactions API ID to continue a multi-turn image edit
                 - provider_extra: JSON string with provider-specific parameters forwarded as-is
 

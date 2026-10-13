@@ -41,69 +41,21 @@ public class FfmpegImageShrinker implements ImageDownscaler.Shrinker {
      *         {@link ImageDownscaler#MAX_EDGE} and {@link ImageDownscaler#MAX_BYTES}, or when its
      *         dimensions cannot be read
      */
-    static Size targetSize(byte[] source, String format) {
-        var dimensions = dimensions(source, format);
+    static ImageDimensions.Size targetSize(byte[] source, String format) {
+        var dimensions = ImageDimensions.of(source, format);
         if (dimensions == null) return null;
         var longestEdge = Math.max(dimensions.width(), dimensions.height());
         if (source.length <= ImageDownscaler.MAX_BYTES && longestEdge <= ImageDownscaler.MAX_EDGE) return null;
         return downscaled(dimensions);
     }
 
-    static Size dimensions(byte[] bytes, String format) {
-        if (bytes == null || format == null) return null;
-        return switch (format) {
-            case "png" -> pngDimensions(bytes);
-            case "jpeg" -> jpegDimensions(bytes);
-            case "gif" -> gifDimensions(bytes);
-            default -> null;
-        };
-    }
-
-    private static Size pngDimensions(byte[] bytes) {
-        if (bytes.length < 24) return null;
-        return new Size(readIntBigEndian(bytes, 16), readIntBigEndian(bytes, 20));
-    }
-
-    private static Size gifDimensions(byte[] bytes) {
-        if (bytes.length < 10) return null;
-        return new Size(readShortLittleEndian(bytes, 6), readShortLittleEndian(bytes, 8));
-    }
-
-    private static Size jpegDimensions(byte[] bytes) {
-        var index = 2;
-        while (index + 3 < bytes.length) {
-            if ((bytes[index] & 0xFF) != 0xFF) {
-                index++;
-                continue;
-            }
-            var marker = bytes[index + 1] & 0xFF;
-            if (marker == 0xFF || marker == 0x00 || marker == 0x01 || marker >= 0xD0 && marker <= 0xD9) {
-                index += 2;
-                continue;
-            }
-            if (isStartOfFrame(marker)) {
-                if (index + 8 >= bytes.length) return null;
-                return new Size(readShortBigEndian(bytes, index + 7), readShortBigEndian(bytes, index + 5));
-            }
-            // every other segment carries its payload length, walk to the next marker
-            var length = readShortBigEndian(bytes, index + 2);
-            if (length < 2) return null;
-            index += 2 + length;
-        }
-        return null;
-    }
-
-    private static boolean isStartOfFrame(int marker) {
-        return marker >= 0xC0 && marker <= 0xCF && marker != 0xC4 && marker != 0xC8 && marker != 0xCC;
-    }
-
-    private static Size downscaled(Size dimensions) {
+    private static ImageDimensions.Size downscaled(ImageDimensions.Size dimensions) {
         var longestEdge = Math.max(dimensions.width(), dimensions.height());
         if (longestEdge <= ImageDownscaler.MAX_EDGE) {
-            return new Size(even(dimensions.width()), even(dimensions.height()));
+            return new ImageDimensions.Size(even(dimensions.width()), even(dimensions.height()));
         }
         var scale = (double) ImageDownscaler.MAX_EDGE / longestEdge;
-        return new Size(even((int) Math.round(dimensions.width() * scale)), even((int) Math.round(dimensions.height() * scale)));
+        return new ImageDimensions.Size(even((int) Math.round(dimensions.width() * scale)), even((int) Math.round(dimensions.height() * scale)));
     }
 
     // yuv420p encoders need even dimensions
@@ -125,7 +77,7 @@ public class FfmpegImageShrinker implements ImageDownscaler.Shrinker {
         return VendorManagement.getInstance().getExecutablePath(FfmpegVendor.class);
     }
 
-    private static Process start(Path ffmpeg, Path input, Path output, Size target) throws IOException {
+    private static Process start(Path ffmpeg, Path input, Path output, ImageDimensions.Size target) throws IOException {
         var filter = String.format("color=c=white:s=%dx%d[bg];[0:v]scale=%d:%d:flags=bicubic[fg];[bg][fg]overlay[v]",
                 target.width(), target.height(), target.width(), target.height());
         return new ProcessBuilder(ffmpeg.toString(), "-hide_banner", "-loglevel", "error", "-y",
@@ -154,19 +106,6 @@ public class FfmpegImageShrinker implements ImageDownscaler.Shrinker {
         } catch (IOException e) {
             LOGGER.debug("failed to delete temp directory {}, error={}", directory, e.getMessage());
         }
-    }
-
-    private static int readShortBigEndian(byte[] bytes, int offset) {
-        return ((bytes[offset] & 0xFF) << 8) | (bytes[offset + 1] & 0xFF);
-    }
-
-    private static int readShortLittleEndian(byte[] bytes, int offset) {
-        return (bytes[offset] & 0xFF) | ((bytes[offset + 1] & 0xFF) << 8);
-    }
-
-    private static int readIntBigEndian(byte[] bytes, int offset) {
-        return ((bytes[offset] & 0xFF) << 24) | ((bytes[offset + 1] & 0xFF) << 16)
-                | ((bytes[offset + 2] & 0xFF) << 8) | (bytes[offset + 3] & 0xFF);
     }
 
     private final Supplier<Path> executable;
@@ -214,7 +153,7 @@ public class FfmpegImageShrinker implements ImageDownscaler.Shrinker {
         }
     }
 
-    private byte[] transcode(Path ffmpeg, byte[] source, String format, Size target) {
+    private byte[] transcode(Path ffmpeg, byte[] source, String format, ImageDimensions.Size target) {
         Path directory = null;
         try {
             directory = Files.createTempDirectory("core-ai-image-");
@@ -243,8 +182,5 @@ public class FfmpegImageShrinker implements ImageDownscaler.Shrinker {
         } finally {
             deleteQuietly(directory);
         }
-    }
-
-    record Size(int width, int height) {
     }
 }

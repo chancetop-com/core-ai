@@ -3,7 +3,6 @@ package ai.core.utils;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -71,65 +70,6 @@ class FfmpegImageShrinkerTest {
         bytes[22] = (byte) (height >> 8);
         bytes[23] = (byte) height;
         return bytes;
-    }
-
-    private static byte[] jpegHeader(int width, int height) {
-        var out = new ByteArrayOutputStream();
-        out.writeBytes(new byte[]{(byte) 0xFF, (byte) 0xD8});
-        out.writeBytes(new byte[]{(byte) 0xFF, (byte) 0xE0, 0x00, 0x10});
-        out.writeBytes(new byte[14]);
-        out.writeBytes(new byte[]{(byte) 0xFF, (byte) 0xC0, 0x00, 0x11, 0x08});
-        out.writeBytes(new byte[]{(byte) (height >> 8), (byte) height, (byte) (width >> 8), (byte) width});
-        return out.toByteArray();
-    }
-
-    private static byte[] gifHeader(int width, int height) {
-        var bytes = new byte[10];
-        bytes[0] = 'G';
-        bytes[1] = 'I';
-        bytes[2] = 'F';
-        bytes[3] = '8';
-        bytes[4] = '9';
-        bytes[5] = 'a';
-        bytes[6] = (byte) width;
-        bytes[7] = (byte) (width >> 8);
-        bytes[8] = (byte) height;
-        bytes[9] = (byte) (height >> 8);
-        return bytes;
-    }
-
-    @Test
-    void readsPngDimensions() {
-        var dimensions = FfmpegImageShrinker.dimensions(pngHeader(2048, 1024), "png");
-
-        assertNotNull(dimensions);
-        assertEquals(2048, dimensions.width());
-        assertEquals(1024, dimensions.height());
-    }
-
-    @Test
-    void readsJpegDimensions() {
-        var dimensions = FfmpegImageShrinker.dimensions(jpegHeader(3024, 1964), "jpeg");
-
-        assertNotNull(dimensions);
-        assertEquals(3024, dimensions.width());
-        assertEquals(1964, dimensions.height());
-    }
-
-    @Test
-    void readsGifDimensions() {
-        var dimensions = FfmpegImageShrinker.dimensions(gifHeader(640, 480), "gif");
-
-        assertNotNull(dimensions);
-        assertEquals(640, dimensions.width());
-        assertEquals(480, dimensions.height());
-    }
-
-    @Test
-    void ignoresFormatsWithoutHeaderParsing() {
-        assertNull(FfmpegImageShrinker.dimensions(new byte[24], "webp"));
-        assertNull(FfmpegImageShrinker.dimensions(null, "png"));
-        assertNull(FfmpegImageShrinker.dimensions(new byte[10], "png"));
     }
 
     @Test
