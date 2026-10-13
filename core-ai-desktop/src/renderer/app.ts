@@ -229,6 +229,7 @@ const state: {
   pendingEngineRestart: boolean;
   browserStatus: BrowserStatus | null;
   browserPanelOpen: boolean;
+  browserFullscreen: boolean;
   browserStarting: boolean;
   sidebarCollapsed: boolean;
   sidebarAutoCollapsed: boolean;
@@ -257,6 +258,7 @@ const state: {
   pendingEngineRestart: false,
   browserStatus: null,
   browserPanelOpen: false,
+  browserFullscreen: false,
   browserStarting: false,
   sidebarCollapsed: false,
   sidebarAutoCollapsed: false,
@@ -286,6 +288,7 @@ let browserBackEl: HTMLButtonElement | null = null;
 let browserForwardEl: HTMLButtonElement | null = null;
 let browserReloadEl: HTMLButtonElement | null = null;
 let browserOpenExternalEl: HTMLButtonElement | null = null;
+let browserFullscreenEl: HTMLButtonElement | null = null;
 let browserToggleEl: HTMLButtonElement | null = null;
 let browserBoundsTimer: number | null = null;
 let browserBoundsValue: string | null = null;
@@ -604,6 +607,8 @@ const ICONS = {
   'arrow-right': '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
   refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
   'arrow-up-right': '<line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>',
+  maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
+  minimize: '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>',
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
@@ -1870,11 +1875,12 @@ function buildBrowserPanel(): HTMLElement {
     const url = state.browserStatus?.url;
     if (url && /^https?:/i.test(url)) void window.coreai.openExternal(url);
   });
+  browserFullscreenEl = browserToolButton('maximize', 'Full screen', () => toggleBrowserFullscreen());
   browserDotEl = el('span', 'browser-dot');
   const stop = el('button', 'btn small', 'Stop');
   stop.title = 'Stop the embedded browser (closes every tab)';
   stop.onclick = () => void stopBrowser();
-  toolbar.append(browserBackEl, browserForwardEl, browserReloadEl, browserAddressEl, browserOpenExternalEl, browserDotEl, stop);
+  toolbar.append(browserBackEl, browserForwardEl, browserReloadEl, browserAddressEl, browserOpenExternalEl, browserFullscreenEl, browserDotEl, stop);
 
   browserTabsEl = el('div', 'browser-tabs');
 
@@ -1961,9 +1967,11 @@ function renderBrowserPanel(): void {
   const status = state.browserStatus;
   const running = Boolean(status?.running);
   browserPanelEl.hidden = !state.browserPanelOpen;
+  if (!state.browserPanelOpen) setBrowserFullscreen(false);
   syncSidebarWithBrowserPanel();
   if (browserDotEl) browserDotEl.className = running ? 'browser-dot on' : 'browser-dot';
   renderBrowserToggle(running);
+  renderBrowserFullscreenButton();
   if (browserBackEl) browserBackEl.disabled = !running || !status?.canGoBack;
   if (browserForwardEl) browserForwardEl.disabled = !running || !status?.canGoForward;
   if (browserReloadEl) browserReloadEl.title = status?.loading ? 'Stop loading' : 'Reload';
@@ -2027,6 +2035,32 @@ function renderBrowserToggle(running: boolean): void {
     el('span', 'browser-dot on'),
     icon(open ? 'chevron-right' : 'chevron-left'),
   );
+}
+
+/**
+ * Full screen hides the chat column and the sidebar so the pane owns the window (for sites that read
+ * poorly in the half-width split); the browser and its tabs are untouched. The button lives in the
+ * browser toolbar, so it stays reachable once the chat header is gone.
+ */
+function setBrowserFullscreen(fullscreen: boolean): void {
+  if (state.browserFullscreen === fullscreen) return;
+  state.browserFullscreen = fullscreen;
+  document.getElementById('app')?.classList.toggle('browser-fullscreen', fullscreen);
+  renderBrowserFullscreenButton();
+  scheduleBrowserBounds();
+}
+
+function toggleBrowserFullscreen(): void {
+  setBrowserFullscreen(!state.browserFullscreen);
+}
+
+function renderBrowserFullscreenButton(): void {
+  if (!browserFullscreenEl) return;
+  const on = state.browserFullscreen;
+  browserFullscreenEl.title = on
+    ? 'Exit full screen — bring the chat back'
+    : 'Full screen — hide the chat and use the whole window';
+  browserFullscreenEl.replaceChildren(icon(on ? 'minimize' : 'maximize'));
 }
 
 /** Opening the panel narrows the chat column, so the sidebar yields automatically. */
@@ -2136,15 +2170,73 @@ function maybeAutoStartBrowser(event: Record<string, unknown>): void {
   void startBrowser();
 }
 
-/** Engine-injected `<system-reminder>` messages render as a centered gray note, not a user bubble. */
+/**
+ * Engine-injected `<system-reminder>` messages are plumbing, not user input: they render as a small
+ * centered gray note. Only a message made up entirely of such blocks qualifies; anything the user
+ * actually typed keeps its bubble.
+ */
 function systemReminderText(text: string): string | null {
-  const trimmed = text.trim();
-  if (!trimmed.startsWith('<system-reminder>')) return null;
-  const matches = [...trimmed.matchAll(/<system-reminder>([\s\S]*?)<\/system-reminder>/g)];
-  if (!matches.length) return null;
-  const leftover = trimmed.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim();
-  if (leftover) return null;
-  return matches.map((match) => match[1].trim()).filter(Boolean).join('\n');
+  const blocks = [...text.matchAll(/<system-reminder>([\s\S]*?)<\/system-reminder>/g)];
+  if (!blocks.length) return null;
+  if (text.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '').trim()) return null;
+  return blocks.map((block) => block[1].trim()).filter(Boolean).join('\n');
+}
+
+interface TaskNotification {
+  status: string;
+  label: string | null;
+  detail: string;
+}
+
+const TASK_STATUS_CLASS: Record<string, string> = {
+  completed: 'done',
+  done: 'done',
+  success: 'done',
+  failed: 'failed',
+  error: 'failed',
+  timeout: 'failed',
+  cancelled: 'failed',
+};
+
+/** Engine-injected `<task-notification>` messages collapse to one small row; the payload stays hidden. */
+function parseTaskNotifications(text: string): TaskNotification[] | null {
+  const blocks = [...text.matchAll(/<task-notification>([\s\S]*?)<\/task-notification>/g)];
+  if (!blocks.length) return null;
+  if (text.replace(/<task-notification>[\s\S]*?<\/task-notification>/g, '').trim()) return null;
+  return blocks.map((block) => taskNotificationOf(block[1]));
+}
+
+function taskNotificationOf(body: string): TaskNotification {
+  return {
+    status: xmlTag(body, 'status') ?? 'done',
+    label: xmlTag(body, 'tool') ?? xmlTag(body, 'task-type'),
+    detail: xmlTag(body, 'result') ?? xmlTag(body, 'error') ?? body.trim(),
+  };
+}
+
+function xmlTag(xml: string, tag: string): string | null {
+  const match = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`).exec(xml);
+  const value = match?.[1].trim();
+  return value ? value : null;
+}
+
+function taskNoteElement(notification: TaskNotification): HTMLElement {
+  const note = el('div', 'task-note');
+  const head = el('button', 'task-note-head') as HTMLButtonElement;
+  const chevron = el('span', 'task-note-chevron', '▸');
+  const state = TASK_STATUS_CLASS[notification.status];
+  const title = el('span', state ? `task-note-title ${state}` : 'task-note-title', `Task ${notification.status}`);
+  head.append(chevron, title);
+  if (notification.label) head.append(el('span', 'task-note-label', notification.label));
+  const body = el('div', 'task-note-body');
+  body.hidden = true;
+  body.append(el('pre', undefined, notification.detail));
+  head.onclick = () => {
+    body.hidden = !body.hidden;
+    chevron.textContent = body.hidden ? '▸' : '▾';
+  };
+  note.append(head, body);
+  return note;
 }
 
 /**
@@ -2172,6 +2264,12 @@ function renderHistoryMessages(view: SessionView, messages: Array<{ role?: strin
 
 function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
+    const notifications = parseTaskNotifications(text);
+    if (notifications) {
+      const notes = notifications.map((notification) => taskNoteElement(notification));
+      for (const note of notes) view.transcript.append(note);
+      return notes[notes.length - 1];
+    }
     const reminder = systemReminderText(text);
     if (reminder !== null) {
       const note = el('div', 'system-note', reminder);
