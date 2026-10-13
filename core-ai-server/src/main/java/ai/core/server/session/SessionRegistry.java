@@ -70,6 +70,28 @@ public class SessionRegistry {
         return chatSessionCollection.get(sessionId).orElse(null);
     }
 
+    /** Both rows of one comparison session pair (variant "a" and "b"), keyed by their shared pair id. */
+    public List<ChatSession> findByComparisonPairId(String pairId) {
+        if (pairId == null) return List.of();
+        var query = new Query();
+        query.filter = Filters.eq("comparison_pair_id", pairId);
+        return chatSessionCollection.find(query);
+    }
+
+    /**
+     * Stamps a freshly created session as a member of a comparison pair. Called before the session ids
+     * are returned to the client, so nothing else can reach the session and rebuild it from the live
+     * agent definition in between; a crash in this window falls back to the normal rebuild path.
+     */
+    public void recordComparison(String sessionId, String comparisonId, String comparisonVariant, String comparisonPairId) {
+        requireUpdated(sessionId, chatSessionCollection.update(
+                Filters.eq("_id", sessionId),
+                Updates.combine(
+                        Updates.set("comparison_id", comparisonId),
+                        Updates.set("comparison_variant", comparisonVariant),
+                        Updates.set("comparison_pair_id", comparisonPairId))));
+    }
+
     public String requireUserId(String sessionId) {
         return requireActive(sessionId).userId;
     }
@@ -236,6 +258,9 @@ public class SessionRegistry {
             }
         }
         if (agentIds != null && !agentIds.isEmpty()) filters.add(Filters.in("agent_id", agentIds));
+        // a comparison session pair reads as one conversation: the secondary ("b") session stays hidden
+        // from the list (residual on the user_id anchor) while remaining reachable through its pair
+        filters.add(Filters.ne("comparison_variant", "b"));
         return Filters.and(filters);
     }
 

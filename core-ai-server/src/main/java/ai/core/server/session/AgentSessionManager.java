@@ -133,7 +133,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService));
+                    ownershipRegistry, systemSettingsService, userCollection, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonCollection));
         }
         return rebuildManager;
     }

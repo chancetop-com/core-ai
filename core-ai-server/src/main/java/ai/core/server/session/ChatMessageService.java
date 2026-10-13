@@ -23,7 +23,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -113,24 +115,47 @@ public class ChatMessageService {
 
     // soft-delete: mark session as deleted, but keep chat_messages rows for audit/trace.
     // returns true if hidden; false if not found or not owned by user.
+    // A comparison session drags its pair sibling along: the pair reads as one conversation.
     public boolean softDeleteSession(String userId, String sessionId) {
-        var deleted = sessionRegistry.softDelete(userId, sessionId);
-        if (deleted) onSessionClosed(sessionId);
-        return deleted;
+        var deletedIds = softDeleteWithPair(userId, List.of(sessionId));
+        return !deletedIds.isEmpty();
     }
 
     // batch soft-delete: returns the ids actually deleted (non-existent or non-owned ids are skipped),
-    // so callers can safely run follow-up cleanup only on sessions the user truly owns.
+    // so callers can safely run follow-up cleanup only on sessions the user truly owns. Comparison
+    // pairs are expanded first so deleting the visible primary also hides the secondary.
     public List<String> batchSoftDelete(String userId, List<String> sessionIds) {
-        var deletedIds = sessionRegistry.batchSoftDelete(userId, sessionIds);
+        return softDeleteWithPair(userId, sessionIds);
+    }
+
+    private List<String> softDeleteWithPair(String userId, List<String> sessionIds) {
+        var targets = new LinkedHashSet<String>();
+        for (var sessionId : sessionIds) {
+            var session = sessionRegistry.get(sessionId);
+            if (session != null && (userId == null || userId.equals(session.userId))) {
+                targets.add(sessionId);
+                for (var sibling : sessionRegistry.findByComparisonPairId(session.comparisonPairId)) {
+                    targets.add(sibling.id);
+                }
+            }
+        }
+        var deletedIds = sessionRegistry.batchSoftDelete(userId, new ArrayList<>(targets));
         deletedIds.forEach(this::onSessionClosed);
         return deletedIds;
     }
 
-    // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership.
-    // returns true if updated; false if not found, not owned, or blank after trimming.
+    // user-initiated rename: trims/collapses whitespace, caps length, enforces ownership; a comparison
+    // pair shares one title on both rows. returns true if updated; false if not found/owned/blank.
     public boolean updateSessionTitle(String userId, String sessionId, String title) {
-        return sessionRegistry.updateTitle(userId, sessionId, title);
+        var updated = sessionRegistry.updateTitle(userId, sessionId, title);
+        if (!updated) return false;
+        var session = sessionRegistry.get(sessionId);
+        if (session != null) {
+            for (var sibling : sessionRegistry.findByComparisonPairId(session.comparisonPairId)) {
+                if (!sibling.id.equals(sessionId)) sessionRegistry.updateTitle(userId, sibling.id, title);
+            }
+        }
+        return true;
     }
 
     // per-chat switch for the session-completion notification

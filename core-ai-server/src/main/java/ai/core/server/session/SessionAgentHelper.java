@@ -3,11 +3,13 @@ package ai.core.server.session;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.media.MediaProvider;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
 
 import java.util.List;
 
@@ -21,6 +23,9 @@ public class SessionAgentHelper {
     MediaProvider mediaProvider;
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
+    /** Read by SessionRebuildManager (through AgentSessionManager.Deps) to resolve comparison variants. */
+    @Inject
+    MongoCollection<AgentComparison> agentComparisonCollection;
 
     List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition, SessionConfig config, SessionConfig overrides) {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);

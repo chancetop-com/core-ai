@@ -51,6 +51,7 @@ import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 
@@ -291,6 +292,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireNotComparisonSession(sessionId);
 
         if (isLocalOwner(sessionId)) {
             List<IdName> loadedTools = loadToolsForLocalOwner(sessionId, request, userId);
@@ -333,6 +335,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireNotComparisonSession(sessionId);
 
         var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
@@ -359,6 +362,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireNotComparisonSession(sessionId);
 
         var cleanSkillIds = IdLists.clean(request.skillIds);
         if (isLocalOwner(sessionId)) {
@@ -378,6 +382,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
+        requireNotComparisonSession(sessionId);
 
         var cleanAgentIds = IdLists.clean(request.agentIds);
         if (isLocalOwner(sessionId)) {
@@ -409,6 +414,17 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
         var command = SessionCommand.closeSession(sessionId, userId);
         commandPublisher.publish(command);
+    }
+
+    /**
+     * Comparison sessions run a frozen tool set: loading extra tools/skills/sub-agents at runtime would
+     * go around the confirmed whitelist, so the attach endpoints are refused for them.
+     */
+    private void requireNotComparisonSession(String sessionId) {
+        var meta = chatMessageService.getSessionMeta(sessionId);
+        if (meta != null && meta.comparisonId != null) {
+            throw new BadRequestException("comparison sessions do not support runtime tool or skill loading");
+        }
     }
 
     private SessionState resolveSessionState(String sessionId) {

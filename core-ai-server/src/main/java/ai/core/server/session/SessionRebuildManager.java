@@ -13,8 +13,11 @@ import ai.core.server.dataset.DatasetService;
 import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.UserIdentityPrompt;
+import ai.core.server.comparison.ComparisonVariantDefinitionFactory;
+import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.User;
@@ -78,6 +81,7 @@ public class SessionRebuildManager {
     private final AgentMemoryService agentMemoryService;
     private final SessionSearchService sessionSearchService;
     private final SessionReadService sessionReadService;
+    private final MongoCollection<AgentComparison> comparisonCollection;
     private final SessionRestoreHelper restoreHelper;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
@@ -105,6 +109,7 @@ public class SessionRebuildManager {
         this.agentMemoryService = deps.agentMemoryService;
         this.sessionSearchService = deps.sessionSearchService;
         this.sessionReadService = deps.sessionReadService;
+        this.comparisonCollection = deps.comparisonCollection;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
@@ -130,6 +135,21 @@ public class SessionRebuildManager {
             populateDynamicLoads(state, meta);
             return state;
         }
+        if (meta.comparisonId != null) {
+            var variantDefinition = comparisonVariantDefinition(meta);
+            if (variantDefinition != null) {
+                // a comparison session keeps running its frozen variant: the live agent may have been
+                // edited or republished mid-test and variant B is by design not the live config at all
+                state.fromAgent = true;
+                state.agentConfig = SessionAgentSnapshotSecurity.buildSnapshot(variantDefinition);
+                state.subAgentIds = IdLists.clean(variantDefinition.publishedConfig != null
+                        ? variantDefinition.publishedConfig.subAgentIds : variantDefinition.subAgentIds);
+                populateDynamicLoads(state, meta);
+                return state;
+            }
+            logger.warn("comparison variant unavailable, rebuilding from the live agent definition, sessionId={}, comparisonId={}",
+                    meta.id, meta.comparisonId);
+        }
         var definition = agentDefinitionCollection.get(meta.agentId).orElse(null);
         if (definition == null) {
             throw new IllegalArgumentException("agent is unavailable");
@@ -145,7 +165,23 @@ public class SessionRebuildManager {
         populateDynamicLoads(state, meta);
         return state;
     }
-    private void populateDynamicLoads(SessionState state, ai.core.server.domain.ChatSession meta) {
+
+    /**
+     * Builds the executable definition of a comparison session's frozen variant; null (with the caller
+     * logging a warning) when the comparison record is gone, so the session still rebuilds from the live
+     * agent instead of going dark.
+     */
+    private AgentDefinition comparisonVariantDefinition(ChatSession meta) {
+        if (comparisonCollection == null) return null;
+        var comparison = comparisonCollection.get(meta.comparisonId).orElse(null);
+        var variant = comparison != null
+                ? ComparisonVariantDefinitionFactory.variantOf(comparison, meta.comparisonVariant)
+                : null;
+        if (comparison == null || variant == null) return null;
+        return ComparisonVariantDefinitionFactory.build(comparison, variant, meta.userId, systemPromptService);
+    }
+
+    private void populateDynamicLoads(SessionState state, ChatSession meta) {
         if (meta.loadedTools != null && !meta.loadedTools.isEmpty()) {
             state.tools = meta.loadedTools;
             logger.info("loaded {} tool ref(s) from DB for session {}, refs={}", meta.loadedTools.size(), meta.id, meta.loadedTools);
@@ -401,6 +437,7 @@ public class SessionRebuildManager {
                         TurnStateRegistry turnStateRegistry,
                         ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
                         SessionCompletionNotifier sessionCompletionNotifier,
-                                  SessionReadService sessionReadService) {
+                                  SessionReadService sessionReadService,
+                        MongoCollection<AgentComparison> comparisonCollection) {
     }
 }

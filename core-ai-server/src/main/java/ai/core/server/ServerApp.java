@@ -11,6 +11,9 @@ import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apitoolhub.ApiToolHubModule;
 import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.openclaw.OcgConfigView;
+import ai.core.server.comparison.ComparisonModule;
+import ai.core.server.comparison.domain.AgentComparison;
+import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.costalert.CostAlertEvent;
 import ai.core.server.costalert.CostAlertModule;
 import ai.core.server.costalert.CostAlertRule;
@@ -158,6 +161,9 @@ public class ServerApp extends App {
         // Hub dataset access for local scripts needs SessionRegistry (SessionModule) and DatasetRecordService
         // (DatasetModule), so it follows both.
         load(new HubDatasetModule());
+        // Agent version comparison: needs AgentSessionManager (SessionModule), AgentDefinitionService
+        // (AgentDefinitionModule) and SessionRegistry, so it loads after all three.
+        load(new ComparisonModule());
         load(new BuilderToolsModule());
         load(new OpenClawModule());
         load(new PlatformApiModule());
@@ -233,6 +239,9 @@ public class ServerApp extends App {
 
         mongo.collection(AgentMemory.class);
         mongo.collection(AgentMemoryExtractionCursor.class);
+
+        mongo.collection(AgentComparison.class);
+        mongo.collection(ComparisonVote.class);
 
         mongo.collection(AgentMemoryExperimentConfig.class);
         mongo.collection(AgentMemoryExperimentRun.class);

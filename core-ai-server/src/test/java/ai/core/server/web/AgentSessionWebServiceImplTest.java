@@ -126,6 +126,8 @@ class AgentSessionWebServiceImplTest {
         var service = new AgentSessionWebServiceImpl();
         service.webContext = mock(WebContext.class);
         service.sessionManager = mock(AgentSessionManager.class);
+        // the comparison-session guard reads the session meta before touching the runtime
+        service.chatMessageService = mock(ChatMessageService.class);
         when(service.webContext.get(AuthContext.USER_ID_KEY)).thenReturn("caller-1");
         when(service.sessionManager.loadSkills("s-1", List.of("skill-1"), "caller-1"))
                 .thenReturn(List.of("Admin/skill-1"));

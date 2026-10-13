@@ -156,7 +156,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSystemAgentMemoryOff(),
             new SchemaMigrationVDefaultAssistantPersonality(),
             new SchemaMigrationVOcgConfigChannelIdIndex(),
-            new SchemaMigrationVSessionNoticeIndex()
+            new SchemaMigrationVSessionNoticeIndex(),
+            new SchemaMigrationVAgentComparisonIndexes()
         );
     }
 }

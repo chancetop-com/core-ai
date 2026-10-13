@@ -143,7 +143,7 @@ interface ChatMessageRowProps {
   interactiveDisabled: boolean;
 }
 
-const ChatMessageRow = memo(function ChatMessageRow({
+export const ChatMessageRow = memo(function ChatMessageRow({
   msg,
   msgIndex,
   messagesLength,

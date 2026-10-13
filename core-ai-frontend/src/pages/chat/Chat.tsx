@@ -1,6 +1,8 @@
 import { lazy, Suspense, useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { sessionApi } from '../../api/session';
+import { comparisonApi } from '../../api/comparison';
+import type { ComparisonSessionContext } from '../../api/comparison';
 import { useCapabilities } from '../../api/capabilities';
 import { useAuth } from '../../api/auth';
 import type { SseEvent, SseTextChunkEvent, SseReasoningChunkEvent, SseToolStartEvent, SseToolResultEvent, SseToolApprovalRequestEvent, SseTurnCompleteEvent, SsePlanUpdateEvent, SseEnvironmentOutputChunkEvent, SseCompressionEvent, SseErrorEvent, SseStatusChangeEvent, SseSandboxEvent, SseTaskStatusEvent, SseCustomEvent, ChatSessionSummary, SessionArtifact, SessionFeedback } from '../../api/session';
@@ -10,6 +12,7 @@ import type { IdName } from '../../api/session';
 import ResourcePicker from './ResourcePicker';
 import ChatConfigModal, { type DatasetConfigDraft } from './ChatConfigModal';
 import ChatSessionsSidebar from './ChatSessionsSidebar';
+import ComparisonChat from './ComparisonChat';
 import type { ArtifactSpec } from './components/artifactTypes';
 import ChatMessagesPanel, { INITIAL_VISIBLE_MESSAGES, MESSAGE_RENDER_BATCH } from './components/ChatMessagesPanel';
 import ChatComposer from './components/ChatComposer';
@@ -131,6 +134,11 @@ export default function Chat() {
   const [favoriteAgents, setFavoriteAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState<string>(() => (cachedChatUsable ? sessionStorage.getItem(chatCacheKeys.agentId) : null) || '');
   const [sessionId, setSessionId] = useState<string | null>(() => cachedChatUsable ? sessionStorage.getItem(chatCacheKeys.sessionId) : null);
+  // Agent version comparison: when the open session belongs to a comparison pair, the merged
+  // two-column view replaces the normal single-session chat; the banner probe surfaces a running
+  // test the current user can join on the selected agent.
+  const [comparisonContext, setComparisonContext] = useState<ComparisonSessionContext | null>(null);
+  const [runningComparison, setRunningComparison] = useState<{ id: string; agentName?: string } | null>(null);
   const [variableValues, setVariableValues] = useState<Record<string, string>>({});
 
   // Loaded tools/skills (confirmed on server)
@@ -609,6 +617,20 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abortSSE, agents]);
 
+  // Enter the merged comparison view: create a session pair for the running test and open the
+  // primary session, which the by-session probe below resolves into comparison mode.
+  const handleStartComparisonSession = useCallback(async () => {
+    if (!runningComparison?.id) return;
+    try {
+      const pair = await comparisonApi.createSessions(runningComparison.id);
+      const summary = await sessionApi.getSession(pair.primary_session_id);
+      await hydrateSession(summary);
+      setSidebarRefreshKey(k => k + 1);
+    } catch (err) {
+      showToast(`Failed to start comparison session: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }, [hydrateSession, runningComparison, showToast]);
+
   // Hydrate from URL ?sessionId=... — user returning from Sessions page
   useEffect(() => {
     const urlSessionId = searchParams.get('sessionId');
@@ -623,6 +645,32 @@ export default function Chat() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Comparison mode probe for the open session; a regular session clears it.
+  useEffect(() => {
+    if (!sessionId || sessionId === DRAFT_CHAT_SESSION_ID) {
+      setComparisonContext(null);
+      return;
+    }
+    let alive = true;
+    comparisonApi.bySession(sessionId)
+      .then(ctx => { if (alive) setComparisonContext(ctx.comparison_id ? ctx : null); })
+      .catch(() => { if (alive) setComparisonContext(null); });
+    return () => { alive = false; };
+  }, [sessionId]);
+
+  // Banner probe: is the selected agent under a running comparison the current user can join?
+  useEffect(() => {
+    if (!selectedAgentId) {
+      setRunningComparison(null);
+      return;
+    }
+    let alive = true;
+    comparisonApi.running(selectedAgentId)
+      .then(view => { if (alive) setRunningComparison(view?.id ? { id: view.id, agentName: view.agent_name } : null); })
+      .catch(() => { if (alive) setRunningComparison(null); });
+    return () => { alive = false; };
+  }, [selectedAgentId]);
 
   // Load my agents for agent selector
   useEffect(() => {
@@ -2035,6 +2083,28 @@ export default function Chat() {
         onToggleFavorite={handleToggleFavorite}
       />
 
+      {runningComparison && !comparisonContext && (
+        <div className="mx-6 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm"
+          style={{ borderColor: 'var(--color-primary)', background: 'var(--color-bg-secondary)' }}>
+          <span style={{ color: 'var(--color-text)' }}>
+            该 agent 正在进行版本对比测试{runningComparison.agentName ? `（${runningComparison.agentName}）` : ''}：每轮同时运行两个版本，你可以对比后投票。
+          </span>
+          <button type="button" onClick={() => void handleStartComparisonSession()}
+            className="ml-auto shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium cursor-pointer"
+            style={{ background: 'var(--color-primary)', color: 'white' }}>
+            开始对比会话
+          </button>
+        </div>
+      )}
+
+      {comparisonContext ? (
+        <ComparisonChat
+          context={comparisonContext}
+          agentName={selectedAgent?.name}
+          onExit={() => setComparisonContext(null)}
+        />
+      ) : (
+        <>
       {/* Chat messages */}
       <ChatMessagesPanel
         messages={messages}
@@ -2097,6 +2167,8 @@ export default function Chat() {
         onCancel={handleCancel}
         onToast={showToast}
       />
+        </>
+      )}
 
       {/* Toast notification */}
       {toast && (

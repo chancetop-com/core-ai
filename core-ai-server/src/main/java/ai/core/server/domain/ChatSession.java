@@ -68,6 +68,18 @@ public class ChatSession {
     @Field(name = "notify_on_complete")
     public Boolean notifyOnComplete;
 
+    // set when the session belongs to an agent version comparison test; secondary ("b") sessions are
+    // hidden from the session list and only reachable through the merged comparison view
+    @Field(name = "comparison_id")
+    public String comparisonId;
+
+    @Field(name = "comparison_variant")
+    public String comparisonVariant;
+
+    /** both sessions of one tester's comparison pair share this id */
+    @Field(name = "comparison_pair_id")
+    public String comparisonPairId;
+
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;
 }
