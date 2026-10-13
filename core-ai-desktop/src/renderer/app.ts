@@ -3905,6 +3905,16 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
   return root;
 }
 
+/** Memory files are markdown; render them with the assistant palette, plain text stays verbatim. */
+function memoryPreview(content: string, path: string): HTMLElement {
+  if (!/\.(md|markdown)$/i.test(path)) return el('pre', undefined, content);
+  const wrap = el('div', 'bubble md');
+  const body = el('div', 'md-body');
+  wrap.append(body);
+  renderMarkdownInto(body, content);
+  return wrap;
+}
+
 async function renderMemoryPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Memory', 'Knowledge wiki / episodes / daily-logs ({workspace}/.core-ai)');
   const listed = await call('memory/list', { limit: 300 });
@@ -3921,7 +3931,7 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
     item.onclick = async () => {
       const read = await call('memory/read', { path: file.path });
       if (!read) return;
-      preview.replaceChildren(el('pre', undefined, read.content ?? ''));
+      preview.replaceChildren(memoryPreview(read.content ?? '', file.path));
     };
     items.append(item);
   }
