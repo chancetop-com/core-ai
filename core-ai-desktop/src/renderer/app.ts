@@ -404,6 +404,16 @@ function finishTurnStatus(event: any): void {
   clock.chip.classList.add(cancelled ? 'cancelled' : 'done');
 }
 
+/** The engine reports a failed turn as an error event instead of a turn_complete (no duration payload). */
+function failTurnStatus(): void {
+  const clock = turnClock;
+  stopTurnClock();
+  if (!clock?.chip) return;
+  clock.chip.textContent = `Failed · ${formatElapsed(Date.now() - clock.startedAt)}`;
+  clock.chip.classList.remove('busy');
+  clock.chip.classList.add('failed');
+}
+
 function stopTurnClock(): void {
   if (turnClock?.tick != null) clearInterval(turnClock.tick);
   turnClock = null;
@@ -2634,9 +2644,23 @@ function handleSessionEvent(event: any): void {
       }
       break;
     }
-    case 'error':
+    case 'error': {
+      // A failed turn ends with an error event instead of a turn_complete: end its UI state here,
+      // or the turn chip keeps spinning and its tools stay "running" for a turn that never resumes.
+      const assistantWrapper = streaming?.bubble.parentElement ?? null;
+      resolveStaleToolStatuses(assistantWrapper);
+      failTurnStatus();
+      resetStreaming();
+      removeApprovalBar();
       appendNotice(`✗ ${event.message ?? 'error'}`, 'error');
+      void refreshSessionList();
+      void loadSummaries();
+      if (state.pendingEngineRestart) {
+        state.pendingEngineRestart = false;
+        void restartWorkspaceEngine();
+      }
       break;
+    }
     default:
       break;
   }

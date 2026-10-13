@@ -574,6 +574,7 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .assist-chip.turn-status { cursor: default; }
 .assist-chip.turn-status:hover { color: var(--muted); }
 .assist-chip.turn-status.done, .assist-chip.turn-status.cancelled { border-style: solid; }
+.assist-chip.turn-status.failed { border-style: solid; color: var(--red); }
 
 @keyframes spin-ring { to { transform: rotate(360deg); } }
 
