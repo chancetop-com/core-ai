@@ -36,7 +36,9 @@ public class AgentSandboxFleetReader {
     private void readClaims(SandboxFleet fleet) {
         if (extensionsClient == null) return;
         try {
-            var claims = extensionsClient.listClaims(null);
+            // empty (not null) selector: Kubernetes reads a literal "null" as "label null", which
+            // matches nothing — the namespace only holds our claims anyway
+            var claims = extensionsClient.listClaims("");
             fleet.claims = claims.size();
             fleet.oldestClaimAgeSeconds = oldestAgeSeconds(claims.stream()
                     .map(claim -> claim.metadata == null ? null : claim.metadata.creationTimestamp).toList());
