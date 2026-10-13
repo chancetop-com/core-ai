@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { removeStaged, stageAttachments, sweepStaging, type StagedAttachment } from './attachments/AttachmentStager';
+import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
 import { BrowserManager } from './browser/BrowserManager';
 import { CuaManager } from './computer/CuaManager';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -108,6 +109,9 @@ let quitting = false;
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
+
+// The artifact scheme must be declared privileged before app ready.
+registerArtifactScheme();
 
 const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
@@ -575,6 +579,9 @@ function createWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Enables Chromium's built-in PDF viewer (the only "plugin" modern Chromium has) so the
+      // artifact pane can preview PDFs inline; without it PDF iframes stay blank in Electron.
+      plugins: true,
     },
   });
   mainWindow.removeMenu();
@@ -836,6 +843,8 @@ function registerIpc(): void {
     }
   });
 
+  ipcMain.handle('artifacts:base', (_event, workspace: string) => artifactBase(String(workspace ?? '')));
+
   ipcMain.handle('shell:openPath', async (_event, workspace: string, relativePath: string) => {
     const absolute = resolveInsideWorkspace(workspace, relativePath);
     if (!absolute) return 'path escapes the workspace';
@@ -921,6 +930,7 @@ if (!gotLock) {
       },
     });
     registerIpc();
+    registerArtifactProtocol();
     // Attachment staging is only read at send time, so a stale session directory is disposable.
     void sweepStaging(stagingRoot(), 7 * 24 * 60 * 60 * 1000)
       .then((removed) => {

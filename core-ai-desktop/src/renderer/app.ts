@@ -24,6 +24,7 @@ function renderMarkdownInto(body: HTMLElement, text: string): void {
       hljs.highlightElement(block as HTMLElement);
     }
   }
+  rewriteLocalImageSources(body);
 }
 
 interface Envelope {
@@ -127,6 +128,51 @@ interface StagedAttachmentResult {
   skipped: Array<{ name: string; reason: string }>;
 }
 
+/** One local artifact in the right dock: generated media (event live) or a scanned workspace file (baseline). */
+interface ArtifactEntry {
+  path: string;
+  name: string;
+  kind: string;
+  size: number;
+  contentType: string | null;
+  createdAt: string | null;
+  tool: string | null;
+}
+
+const ARTIFACT_CONTENT_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.pdf': 'application/pdf',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.md': 'text/markdown',
+  '.json': 'application/json',
+  '.txt': 'text/plain',
+  '.log': 'text/plain',
+  '.csv': 'text/csv',
+  '.xml': 'application/xml',
+};
+
+function artifactContentType(entry: ArtifactEntry): string {
+  if (entry.contentType) return entry.contentType;
+  const dot = entry.name.lastIndexOf('.');
+  const extension = dot >= 0 ? entry.name.slice(dot).toLowerCase() : '';
+  return ARTIFACT_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+}
+
+function baseName(path: string): string {
+  const slash = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'));
+  return slash >= 0 ? path.slice(slash + 1) : path;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -142,6 +188,7 @@ interface CoreAiBridge {
   pickAttachments(): Promise<{ paths: string[] }>;
   stageAttachments(sessionId: string, paths: string[]): Promise<StagedAttachmentResult>;
   removeAttachment(stagedPath: string): Promise<void>;
+  artifactBase(workspace: string): Promise<{ baseUrl: string }>;
   browserStart(): Promise<BrowserStatus | null>;
   browserStop(): Promise<BrowserStatus | null>;
   browserStatus(): Promise<BrowserStatus | null>;
@@ -228,9 +275,15 @@ const state: {
   thinkingLevel: string;
   pendingEngineRestart: boolean;
   browserStatus: BrowserStatus | null;
-  browserPanelOpen: boolean;
-  browserFullscreen: boolean;
+  rightDock: 'none' | 'browser' | 'artifacts';
+  dockFullscreen: boolean;
   browserStarting: boolean;
+  artifactBase: string | null;
+  artifacts: ArtifactEntry[];
+  activeArtifactPath: string | null;
+  artifactSource: boolean;
+  artifactUnread: boolean;
+  artifactDismissedForTurn: boolean;
   sidebarCollapsed: boolean;
   sidebarAutoCollapsed: boolean;
   colorScheme: string;
@@ -257,9 +310,15 @@ const state: {
   thinkingLevel: 'off',
   pendingEngineRestart: false,
   browserStatus: null,
-  browserPanelOpen: false,
-  browserFullscreen: false,
+  rightDock: 'none',
+  dockFullscreen: false,
   browserStarting: false,
+  artifactBase: null,
+  artifacts: [],
+  activeArtifactPath: null,
+  artifactSource: false,
+  artifactUnread: false,
+  artifactDismissedForTurn: false,
   sidebarCollapsed: false,
   sidebarAutoCollapsed: false,
   colorScheme: 'system',
@@ -289,12 +348,23 @@ let browserForwardEl: HTMLButtonElement | null = null;
 let browserReloadEl: HTMLButtonElement | null = null;
 let browserOpenExternalEl: HTMLButtonElement | null = null;
 let browserFullscreenEl: HTMLButtonElement | null = null;
+let artifactFullscreenEl: HTMLButtonElement | null = null;
 let browserToggleEl: HTMLButtonElement | null = null;
 let browserBoundsTimer: number | null = null;
 let browserBoundsValue: string | null = null;
 let browserResizeObserver: ResizeObserver | null = null;
 let sidebarToggleEl: HTMLButtonElement | null = null;
-let browserPanelWasOpen = false;
+let rightDockEl: HTMLElement | null = null;
+let rightDockWasOpen = false;
+let browserTabEl: HTMLButtonElement | null = null;
+let artifactsTabEl: HTMLButtonElement | null = null;
+let artifactsToggleEl: HTMLButtonElement | null = null;
+let artifactPaneEl: HTMLElement | null = null;
+let artifactGalleryEl: HTMLElement | null = null;
+let artifactHeadEl: HTMLElement | null = null;
+let artifactBodyEl: HTMLElement | null = null;
+/** Artifacts produced by a tool call, keyed by callId, so the tool card can show a thumbnail. */
+const artifactByCallId = new Map<string, ArtifactEntry>();
 interface AssistToggle {
   chip: HTMLButtonElement;
   panel: HTMLElement;
@@ -1472,6 +1542,12 @@ async function connect(workspace: string): Promise<void> {
   await loadSummaries();
   await loadSessions(true);
   await refreshModelState();
+  state.artifacts = [];
+  state.activeArtifactPath = null;
+  state.artifactUnread = false;
+  state.artifactDismissedForTurn = false;
+  await refreshArtifactBase();
+  void refreshArtifactBaseline();
   renderContent();
 }
 
@@ -1488,6 +1564,11 @@ async function enterDefaultMode(): Promise<void> {
   sessionStackEl = null;
   chatTitleEl = null;
   applyComposerStatus('idle');
+  state.artifacts = [];
+  state.activeArtifactPath = null;
+  state.artifactBase = null;
+  state.artifactUnread = false;
+  state.artifactDismissedForTurn = false;
   renderSidebar();
   renderComposerControls();
   await renderContent();
@@ -1663,8 +1744,7 @@ function buildChatView(): void {
 
   const header = el('div', 'chat-header');
   chatTitleEl = el('span', 'chat-title', 'no session selected');
-  browserToggleEl = buildBrowserToggle();
-  header.append(chatTitleEl, browserToggleEl);
+  header.append(chatTitleEl, buildDockToggles());
 
   // One session window is mounted at a time; the others keep their DOM (and scroll position) in
   // memory while their session works, and are dropped once idle.
@@ -1672,7 +1752,7 @@ function buildChatView(): void {
   mountedView = null;
   const chatMain = el('div', 'chat-main');
   chatMain.append(header, sessionStackEl, buildComposer());
-  chatView.append(chatMain, buildBrowserPanel());
+  chatView.append(chatMain, buildRightDock());
 }
 
 function buildComposer(): HTMLElement {
@@ -1875,7 +1955,7 @@ function buildBrowserPanel(): HTMLElement {
     const url = state.browserStatus?.url;
     if (url && /^https?:/i.test(url)) void window.coreai.openExternal(url);
   });
-  browserFullscreenEl = browserToolButton('maximize', 'Full screen', () => toggleBrowserFullscreen());
+  browserFullscreenEl = browserToolButton('maximize', 'Full screen', () => toggleDockFullscreen());
   browserDotEl = el('span', 'browser-dot');
   const stop = el('button', 'btn small', 'Stop');
   stop.title = 'Stop the embedded browser (closes every tab)';
@@ -1903,13 +1983,392 @@ function buildBrowserPanel(): HTMLElement {
   return panel;
 }
 
-/** The single browser button: parked at the right of the chat header bar, hiding the pane never stops the browser. */
-function buildBrowserToggle(): HTMLButtonElement {
-  const button = el('button', 'browser-toggle') as HTMLButtonElement;
-  browserToggleEl = button;
-  button.onclick = () => void toggleBrowser();
+/** Chat header right side: one toggle per dock tab (Browser / Artifacts); the dock itself carries the tabs. */
+function buildDockToggles(): HTMLElement {
+  const group = el('div', 'dock-toggles');
+  browserToggleEl = el('button', 'browser-toggle') as HTMLButtonElement;
+  browserToggleEl.onclick = () => void toggleBrowser();
+  artifactsToggleEl = el('button', 'browser-toggle') as HTMLButtonElement;
+  artifactsToggleEl.onclick = () => toggleArtifactsDock();
+  group.append(browserToggleEl, artifactsToggleEl);
   renderBrowserToggle(Boolean(state.browserStatus?.running));
-  return button;
+  renderArtifactsToggle();
+  return group;
+}
+
+/** The right dock: a tab strip over the embedded browser pane and the (pure DOM) artifact pane. */
+function buildRightDock(): HTMLElement {
+  const dock = el('div', 'right-dock');
+  rightDockEl = dock;
+  const tabs = el('div', 'right-dock-tabs');
+  browserTabEl = el('button', 'right-dock-tab', 'Browser') as HTMLButtonElement;
+  browserTabEl.onclick = () => setRightDock(state.rightDock === 'browser' ? 'none' : 'browser');
+  artifactsTabEl = el('button', 'right-dock-tab', 'Artifacts') as HTMLButtonElement;
+  artifactsTabEl.onclick = () => toggleArtifactsDock();
+  tabs.append(browserTabEl, artifactsTabEl);
+  dock.append(tabs, buildBrowserPanel(), buildArtifactPane());
+  renderDock();
+  return dock;
+}
+
+function setRightDock(dock: 'none' | 'browser' | 'artifacts'): void {
+  if (state.rightDock === dock) return;
+  state.rightDock = dock;
+  if (dock === 'none') setDockFullscreen(false);
+  renderDock();
+}
+
+function renderDock(): void {
+  const open = state.rightDock !== 'none';
+  if (rightDockEl) rightDockEl.hidden = !open;
+  if (browserPanelEl) browserPanelEl.hidden = state.rightDock !== 'browser';
+  if (artifactPaneEl) artifactPaneEl.hidden = state.rightDock !== 'artifacts';
+  renderDockTabs();
+  renderBrowserToggle(Boolean(state.browserStatus?.running));
+  renderArtifactsToggle();
+  renderArtifactFullscreenButton();
+  syncSidebarWithRightDock();
+  scheduleBrowserBounds();
+}
+
+function renderDockTabs(): void {
+  browserTabEl?.classList.toggle('active', state.rightDock === 'browser');
+  artifactsTabEl?.classList.toggle('active', state.rightDock === 'artifacts');
+  artifactsTabEl?.classList.toggle('unread', state.artifactUnread && state.rightDock !== 'artifacts');
+}
+
+function toggleArtifactsDock(): void {
+  if (state.rightDock === 'artifacts') {
+    state.artifactDismissedForTurn = true;
+    setRightDock('none');
+    return;
+  }
+  state.artifactUnread = false;
+  setRightDock('artifacts');
+  void refreshArtifactBaseline();
+}
+
+function renderArtifactsToggle(): void {
+  if (!artifactsToggleEl) return;
+  const open = state.rightDock === 'artifacts';
+  artifactsToggleEl.title = open
+    ? 'Collapse the artifacts pane'
+    : 'Local artifacts — generated images/videos and workspace output';
+  artifactsToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Artifacts'));
+  if (!open && state.artifactUnread) artifactsToggleEl.append(el('span', 'browser-dot on'));
+  artifactsToggleEl.append(icon(open ? 'chevron-right' : 'chevron-left'));
+}
+
+// --- artifacts pane (gallery + preview/source) ------------------------------------------------
+
+function buildArtifactPane(): HTMLElement {
+  const pane = el('div', 'artifact-panel');
+  artifactPaneEl = pane;
+  artifactHeadEl = el('div', 'artifact-head');
+  artifactGalleryEl = el('div', 'artifact-gallery');
+  artifactBodyEl = el('div', 'artifact-preview');
+  pane.append(artifactHeadEl, artifactGalleryEl, artifactBodyEl);
+  renderArtifactPanel();
+  return pane;
+}
+
+function activeArtifact(): ArtifactEntry | null {
+  if (!state.activeArtifactPath) return state.artifacts[0] ?? null;
+  return state.artifacts.find((entry) => entry.path === state.activeArtifactPath) ?? state.artifacts[0] ?? null;
+}
+
+function artifactUrl(relativePath: string): string {
+  const encoded = relativePath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
+  return `${state.artifactBase ?? ''}/${encoded}`;
+}
+
+function renderArtifactPanel(): void {
+  if (!artifactPaneEl) return;
+  renderArtifactHead();
+  renderArtifactGallery();
+  renderArtifactBody();
+}
+
+function renderArtifactHead(): void {
+  if (!artifactHeadEl) return;
+  artifactHeadEl.replaceChildren();
+  const entry = activeArtifact();
+  if (!entry) {
+    artifactHeadEl.append(el('span', 'artifact-title', state.artifacts.length ? 'Artifacts' : 'No artifacts yet'));
+    return;
+  }
+  const title = el('span', 'artifact-title', entry.name);
+  title.title = entry.path;
+  artifactHeadEl.append(title);
+  artifactHeadEl.append(el('span', 'artifact-meta', `${entry.kind} · ${artifactContentType(entry)} · ${fmtBytes(entry.size)}`));
+  const actions = el('div', 'artifact-actions');
+  if (artifactSupportsSource(entry)) {
+    const toggle = el('button', 'btn small', state.artifactSource ? 'Preview' : 'Source');
+    toggle.onclick = () => { state.artifactSource = !state.artifactSource; renderArtifactPanel(); };
+    actions.append(toggle);
+  }
+  const reveal = el('button', 'btn small', 'Reveal');
+  reveal.onclick = () => window.coreai.revealPath(state.workspace as string, entry.path);
+  const maximize = el('button', 'artifact-icon-btn') as HTMLButtonElement;
+  artifactFullscreenEl = maximize;
+  maximize.onclick = () => toggleDockFullscreen();
+  renderArtifactFullscreenButton();
+  const close = el('button', 'btn small', 'Close');
+  close.onclick = () => { state.artifactDismissedForTurn = true; setRightDock('none'); };
+  actions.append(reveal, maximize, close);
+  artifactHeadEl.append(actions);
+}
+
+function renderArtifactGallery(): void {
+  if (!artifactGalleryEl) return;
+  artifactGalleryEl.replaceChildren();
+  if (!state.artifacts.length) {
+    artifactGalleryEl.hidden = true;
+    return;
+  }
+  artifactGalleryEl.hidden = false;
+  const current = activeArtifact();
+  for (const entry of state.artifacts) {
+    const item = el('button', `artifact-thumb${current?.path === entry.path ? ' active' : ''}`) as HTMLButtonElement;
+    item.title = entry.name;
+    if (artifactIsImage(entry)) {
+      const img = el('img') as HTMLImageElement;
+      img.src = artifactUrl(entry.path);
+      img.alt = entry.name;
+      img.loading = 'lazy';
+      item.append(img);
+    } else {
+      item.append(el('span', 'artifact-thumb-icon', entry.kind === 'video' ? '▶' : '▤'));
+    }
+    item.onclick = () => {
+      state.activeArtifactPath = entry.path;
+      state.artifactSource = false;
+      renderArtifactPanel();
+    };
+    artifactGalleryEl.append(item);
+  }
+}
+
+function renderArtifactBody(): void {
+  if (!artifactBodyEl) return;
+  artifactBodyEl.replaceChildren();
+  const entry = activeArtifact();
+  if (!entry) {
+    artifactBodyEl.append(el('div', 'notice', 'Generated images and videos appear here as they are created.'));
+    return;
+  }
+  const url = artifactUrl(entry.path);
+  if (state.artifactSource) {
+    if (!artifactSupportsSource(entry)) {
+      artifactBodyEl.append(el('div', 'notice', 'Source not available for this file type.'));
+      return;
+    }
+    void renderArtifactSourceText(url, artifactIsJson(entry) ? 'json' : 'text');
+    return;
+  }
+  // Format dispatch mirrors the server ArtifactDrawer: json / image / video / html / markdown / pdf.
+  if (artifactIsJson(entry)) { void renderArtifactSourceText(url, 'json'); return; }
+  if (artifactIsImage(entry)) {
+    const img = el('img', 'artifact-image') as HTMLImageElement;
+    img.src = url;
+    img.alt = entry.name;
+    artifactBodyEl.append(img);
+    return;
+  }
+  if (artifactIsVideo(entry)) {
+    const video = el('video', 'artifact-video') as HTMLVideoElement;
+    video.src = url;
+    video.controls = true;
+    video.preload = 'metadata';
+    artifactBodyEl.append(video);
+    return;
+  }
+  if (artifactIsHtml(entry)) { artifactBodyEl.append(artifactFrame(url, 'allow-scripts')); return; }
+  if (artifactIsMarkdown(entry)) { void renderArtifactMarkdown(url); return; }
+  if (artifactIsPdf(entry)) { artifactBodyEl.append(artifactFrame(url, null)); return; }
+  artifactBodyEl.append(el('div', 'notice', 'Preview not available for this file type.'));
+}
+
+/** A sandbox value of null omits the attribute (the PDF viewer refuses to run inside a sandbox). */
+function artifactFrame(url: string, sandbox: string | null): HTMLIFrameElement {
+  const frame = el('iframe', 'artifact-frame') as HTMLIFrameElement;
+  if (sandbox !== null) frame.setAttribute('sandbox', sandbox);
+  frame.src = url;
+  return frame;
+}
+
+async function renderArtifactSourceText(url: string, mode: 'json' | 'text'): Promise<void> {
+  const target = artifactBodyEl;
+  if (!target) return;
+  target.replaceChildren(el('div', 'notice', 'Loading…'));
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+    if (target !== artifactBodyEl) return;
+    let body = text;
+    if (mode === 'json') {
+      try { body = JSON.stringify(JSON.parse(text), null, 2); } catch { body = text; }
+    }
+    target.replaceChildren(el('pre', 'artifact-source', body));
+  } catch (error) {
+    target.replaceChildren(el('div', 'notice error', `Unable to read artifact: ${(error as Error).message}`));
+  }
+}
+
+async function renderArtifactMarkdown(url: string): Promise<void> {
+  const target = artifactBodyEl;
+  if (!target) return;
+  try {
+    const response = await fetch(url);
+    const text = await response.text();
+    if (target !== artifactBodyEl) return;
+    const container = el('div', 'artifact-markdown');
+    target.replaceChildren(container);
+    renderMarkdownInto(container, text);
+  } catch (error) {
+    target.replaceChildren(el('div', 'notice error', `Unable to read artifact: ${(error as Error).message}`));
+  }
+}
+
+const ARTIFACT_TEXT_EXT = /\.(html?|css|js|jsx|ts|tsx|mjs|json|md|markdown|txt|xml|svg|py|java|kt|go|rb|rs|sh|bash|yaml|yml|toml|csv|tsv|sql|conf|ini|log)$/i;
+
+function artifactExtension(name: string): string {
+  const dot = name.lastIndexOf('.');
+  return dot >= 0 ? name.slice(dot).toLowerCase() : '';
+}
+
+function artifactIsImage(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry).startsWith('image/') || /^\.(png|jpe?g|gif|webp|svg|bmp|ico)$/.test(artifactExtension(entry.name));
+}
+
+function artifactIsVideo(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry).startsWith('video/') || /^\.(mp4|webm|ogv|mov|m4v)$/.test(artifactExtension(entry.name));
+}
+
+function artifactIsHtml(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry) === 'text/html' || /^\.html?$/.test(artifactExtension(entry.name));
+}
+
+function artifactIsMarkdown(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry) === 'text/markdown' || /^\.(md|markdown)$/.test(artifactExtension(entry.name));
+}
+
+function artifactIsPdf(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry) === 'application/pdf' || artifactExtension(entry.name) === '.pdf';
+}
+
+function artifactIsJson(entry: ArtifactEntry): boolean {
+  return artifactContentType(entry).includes('json') || artifactExtension(entry.name) === '.json';
+}
+
+/** A file whose bytes are readable text — the only files with a Source view (mirrors ArtifactDrawer). */
+function artifactSupportsSource(entry: ArtifactEntry): boolean {
+  const type = artifactContentType(entry);
+  if (type.startsWith('text/')) return true;
+  if (type.includes('json') || type.includes('xml') || type.includes('javascript') || type.includes('yaml')) return true;
+  return ARTIFACT_TEXT_EXT.test(entry.name);
+}
+
+function artifactEntryFromPath(path: string): ArtifactEntry {
+  const name = baseName(path);
+  const lower = name.toLowerCase();
+  const kind = /\.(png|jpe?g|gif|webp|bmp|svg)$/.test(lower) ? 'image'
+    : /\.(mp4|webm|mov)$/.test(lower) ? 'video' : 'file';
+  return { path, name, kind, size: 0, contentType: null, createdAt: null, tool: null };
+}
+
+/** Opens the artifacts dock on one entry, adding it to the gallery when it is not there yet. */
+function openArtifactInDock(entry: ArtifactEntry): void {
+  if (!state.artifacts.some((item) => item.path === entry.path)) {
+    state.artifacts = [entry, ...state.artifacts];
+  }
+  state.activeArtifactPath = entry.path;
+  state.artifactSource = false;
+  setRightDock('artifacts');
+  renderArtifactPanel();
+}
+
+/** A generated-media `artifact` custom event: newest first, auto-expanded only when the dock is idle (D9). */
+function applyArtifactEvent(view: SessionView, event: any): void {
+  let payload: any;
+  try { payload = JSON.parse(event.data ?? '{}'); } catch { return; }
+  if (!payload || typeof payload.path !== 'string' || !payload.path) return;
+  const entry: ArtifactEntry = {
+    path: payload.path,
+    name: typeof payload.name === 'string' && payload.name ? payload.name : baseName(payload.path),
+    kind: typeof payload.kind === 'string' ? payload.kind : 'file',
+    size: Number(payload.size ?? 0),
+    contentType: typeof payload.contentType === 'string' ? payload.contentType : null,
+    createdAt: typeof payload.createdAt === 'string' ? payload.createdAt : null,
+    tool: typeof payload.tool === 'string' ? payload.tool : null,
+  };
+  state.artifacts = [entry, ...state.artifacts.filter((item) => item.path !== entry.path)];
+  state.activeArtifactPath = entry.path;
+  state.artifactSource = false;
+  if (typeof event.callId === 'string' && event.callId) artifactByCallId.set(event.callId, entry);
+  renderArtifactPanel();
+  const isCurrent = view === mountedView;
+  if (isCurrent && state.rightDock === 'none' && !state.artifactDismissedForTurn) {
+    setRightDock('artifacts');
+  } else if (isCurrent && state.rightDock !== 'artifacts') {
+    state.artifactUnread = true;
+    renderArtifactsToggle();
+    renderDockTabs();
+  }
+}
+
+async function refreshArtifactBase(): Promise<void> {
+  if (!state.workspace) { state.artifactBase = null; return; }
+  try {
+    const result = await window.coreai.artifactBase(state.workspace);
+    state.artifactBase = result?.baseUrl ?? null;
+  } catch {
+    state.artifactBase = null;
+  }
+}
+
+/** Baseline for the panel: realtime events are live-only, so a reopened panel re-reads the scan. */
+async function refreshArtifactBaseline(): Promise<void> {
+  if (!state.workspace) { state.artifacts = []; renderArtifactPanel(); return; }
+  const listed = await call('artifacts/list', { limit: 200 });
+  if (!listed) return;
+  const files: any[] = listed.files ?? [];
+  const baseline: ArtifactEntry[] = files.map((file) => ({
+    path: String(file.path ?? ''),
+    name: String(file.name ?? baseName(String(file.path ?? ''))),
+    kind: typeof file.kind === 'string' ? file.kind : 'file',
+    size: Number(file.size ?? 0),
+    contentType: null,
+    createdAt: typeof file.createdAt === 'string' ? file.createdAt : null,
+    tool: null,
+  })).filter((entry) => entry.path);
+  const known = new Set(baseline.map((entry) => entry.path));
+  const live = state.artifacts.filter((entry) => !known.has(entry.path));
+  state.artifacts = [...live, ...baseline];
+  if (!state.activeArtifactPath && state.artifacts.length) state.activeArtifactPath = state.artifacts[0].path;
+  renderArtifactPanel();
+}
+
+/** Maps an absolute local path (as it appears in generated-image markdown) to a workspace-relative one. */
+function workspaceRelativePath(value: string | null): string | null {
+  if (!value || !state.workspace) return null;
+  const normalized = value.replace(/\\/g, '/');
+  const root = state.workspace.replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!normalized.toLowerCase().startsWith(`${root.toLowerCase()}/`)) return null;
+  return normalized.slice(root.length + 1);
+}
+
+/** Rewrites `<img>` links that point at workspace files to the in-app protocol so generated images render. */
+function rewriteLocalImageSources(root: HTMLElement): void {
+  if (!state.workspace || !state.artifactBase) return;
+  for (const img of Array.from(root.querySelectorAll('img'))) {
+    const relative = workspaceRelativePath(img.getAttribute('src'));
+    if (!relative) continue;
+    img.src = artifactUrl(relative);
+    img.loading = 'lazy';
+    img.classList.add('artifact-inline-image');
+    img.onclick = () => openArtifactInDock(artifactEntryFromPath(relative));
+  }
 }
 
 function browserToolButton(iconName: keyof typeof ICONS, title: string, action: () => void): HTMLButtonElement {
@@ -1940,7 +2399,7 @@ function scheduleBrowserBounds(): void {
     browserBoundsTimer = null;
     const frame = browserBodyEl;
     const running = Boolean(state.browserStatus?.running);
-    if (!browserPanelEl || browserPanelEl.hidden || !running || !frame) {
+    if (state.rightDock !== 'browser' || !running || !frame) {
       if (browserBoundsValue !== null) {
         browserBoundsValue = null;
         void window.coreai.browserSetBounds(null).catch(() => undefined);
@@ -1966,9 +2425,6 @@ function renderBrowserPanel(): void {
   if (!browserPanelEl) return;
   const status = state.browserStatus;
   const running = Boolean(status?.running);
-  browserPanelEl.hidden = !state.browserPanelOpen;
-  if (!state.browserPanelOpen) setBrowserFullscreen(false);
-  syncSidebarWithBrowserPanel();
   if (browserDotEl) browserDotEl.className = running ? 'browser-dot on' : 'browser-dot';
   renderBrowserToggle(running);
   renderBrowserFullscreenButton();
@@ -2026,7 +2482,7 @@ function renderBrowserToggle(running: boolean): void {
     browserToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Browser'));
     return;
   }
-  const open = state.browserPanelOpen;
+  const open = state.rightDock === 'browser';
   browserToggleEl.title = open
     ? 'Collapse the browser pane — the browser keeps running'
     : 'Expand the browser pane — the browser keeps running';
@@ -2038,36 +2494,44 @@ function renderBrowserToggle(running: boolean): void {
 }
 
 /**
- * Full screen hides the chat column and the sidebar so the pane owns the window (for sites that read
- * poorly in the half-width split); the browser and its tabs are untouched. The button lives in the
- * browser toolbar, so it stays reachable once the chat header is gone.
+ * Full screen hides the chat column and the sidebar so the dock owns the window (for pages that read
+ * poorly in the half-width split, or to inspect an artifact up close). It applies to whichever tab is
+ * active; the browser and its tabs are untouched, and each tab carries its own maximize button.
  */
-function setBrowserFullscreen(fullscreen: boolean): void {
-  if (state.browserFullscreen === fullscreen) return;
-  state.browserFullscreen = fullscreen;
-  document.getElementById('app')?.classList.toggle('browser-fullscreen', fullscreen);
+function setDockFullscreen(fullscreen: boolean): void {
+  if (state.dockFullscreen === fullscreen) return;
+  state.dockFullscreen = fullscreen;
+  document.getElementById('app')?.classList.toggle('dock-fullscreen', fullscreen);
   renderBrowserFullscreenButton();
+  renderArtifactFullscreenButton();
   scheduleBrowserBounds();
 }
 
-function toggleBrowserFullscreen(): void {
-  setBrowserFullscreen(!state.browserFullscreen);
+function toggleDockFullscreen(): void {
+  setDockFullscreen(!state.dockFullscreen);
 }
 
 function renderBrowserFullscreenButton(): void {
   if (!browserFullscreenEl) return;
-  const on = state.browserFullscreen;
+  const on = state.dockFullscreen;
   browserFullscreenEl.title = on
     ? 'Exit full screen — bring the chat back'
     : 'Full screen — hide the chat and use the whole window';
   browserFullscreenEl.replaceChildren(icon(on ? 'minimize' : 'maximize'));
 }
 
-/** Opening the panel narrows the chat column, so the sidebar yields automatically. */
-function syncSidebarWithBrowserPanel(): void {
-  const open = state.browserPanelOpen;
-  if (open === browserPanelWasOpen) return;
-  browserPanelWasOpen = open;
+function renderArtifactFullscreenButton(): void {
+  if (!artifactFullscreenEl) return;
+  const on = state.dockFullscreen;
+  artifactFullscreenEl.title = on ? 'Restore — bring the chat back' : 'Maximize — use the whole window';
+  artifactFullscreenEl.replaceChildren(icon(on ? 'minimize' : 'maximize'));
+}
+
+/** Opening either dock tab narrows the chat column, so the sidebar yields automatically. */
+function syncSidebarWithRightDock(): void {
+  const open = state.rightDock !== 'none';
+  if (open === rightDockWasOpen) return;
+  rightDockWasOpen = open;
   if (open) {
     if (!state.sidebarCollapsed) {
       state.sidebarAutoCollapsed = true;
@@ -2111,17 +2575,10 @@ function applyBrowserStatus(status: BrowserStatus | null): void {
 
 async function toggleBrowser(): Promise<void> {
   if (state.browserStatus?.running) {
-    setBrowserPanelOpen(!state.browserPanelOpen);
+    setRightDock(state.rightDock === 'browser' ? 'none' : 'browser');
     return;
   }
   await startBrowser();
-}
-
-/** Hiding the pane is not stopping the browser: the tabs stay alive for the user and the agent. */
-function setBrowserPanelOpen(open: boolean): void {
-  if (state.browserPanelOpen === open) return;
-  state.browserPanelOpen = open;
-  renderBrowserPanel();
 }
 
 async function startBrowser(): Promise<void> {
@@ -2130,8 +2587,8 @@ async function startBrowser(): Promise<void> {
   toast('Starting the embedded browser…');
   try {
     applyBrowserStatus(await window.coreai.browserStart());
-    state.browserPanelOpen = true;
-    renderBrowserPanel();
+    state.rightDock = 'browser';
+    renderDock();
     toast('Browser ready — the agent attaches to this pane');
   } catch (error) {
     toast(`Browser start failed: ${cleanIpcError(error)}`);
@@ -2143,8 +2600,8 @@ async function startBrowser(): Promise<void> {
 async function stopBrowser(): Promise<void> {
   try {
     applyBrowserStatus(await window.coreai.browserStop());
-    state.browserPanelOpen = false;
-    renderBrowserPanel();
+    if (state.rightDock === 'browser') state.rightDock = 'none';
+    renderDock();
     toast('Browser stopped');
   } catch (error) {
     toast(`Browser stop failed: ${cleanIpcError(error)}`);
@@ -2160,10 +2617,7 @@ function maybeAutoStartBrowser(event: Record<string, unknown>): void {
   const args = typeof event.arguments === 'string' ? event.arguments : '';
   if (!args.includes('browser-use')) return;
   if (state.browserStatus?.running) {
-    if (!state.browserPanelOpen) {
-      state.browserPanelOpen = true;
-      renderBrowserPanel();
-    }
+    if (state.rightDock !== 'browser') setRightDock('browser');
     return;
   }
   if (state.browserStarting) return;
@@ -2759,8 +3213,29 @@ function updateToolResult(view: SessionView, event: any): void {
     tool.resultNode.textContent = prettyJson(event.result);
     tool.resultNode.style.display = 'block';
   }
+  const artifact = artifactByCallId.get(event.callId);
+  if (artifact) appendToolThumbnail(tool, artifact);
   if (view.pendingApproval?.callId === event.callId) removeApprovalBar(view);
   scrollTranscript(view);
+}
+
+/** A generated image/video preview inside its tool card, once the artifact event has named it. */
+function appendToolThumbnail(tool: UiTool, entry: ArtifactEntry): void {
+  const body = tool.resultNode?.parentElement;
+  if (!body || body.querySelector('.tool-artifact-thumb')) return;
+  const thumb = el('div', 'tool-artifact-thumb');
+  const type = artifactContentType(entry);
+  if (type.startsWith('image/') && type !== 'image/svg+xml') {
+    const img = el('img') as HTMLImageElement;
+    img.src = artifactUrl(entry.path);
+    img.alt = entry.name;
+    img.loading = 'lazy';
+    thumb.append(img);
+  } else {
+    thumb.append(el('span', 'tool-artifact-icon', entry.kind === 'video' ? '▶' : '▤'), el('span', undefined, entry.name));
+  }
+  thumb.onclick = () => openArtifactInDock(entry);
+  body.append(thumb);
 }
 
 function showApprovalBar(view: SessionView, event: any): void {
@@ -2827,6 +3302,8 @@ function handleStatusEvent(event: any): void {
   }
   const view = findSessionView(typeof event.sessionId === 'string' ? event.sessionId : state.sessionId);
   if (view) setViewStatus(view, status);
+  // A fresh turn re-arms the artifact dock's auto-expand, even if the user collapsed it last turn.
+  if (status === 'running' && view === mountedView) state.artifactDismissedForTurn = false;
   if (rowChanged) {
     renderSessionItems();
   }
@@ -3007,6 +3484,10 @@ function maybeApplyPendingEngineRestart(view: SessionView): void {
 }
 
 function handleCustomEvent(view: SessionView, event: any): void {
+  if (event.name === 'artifact') {
+    applyArtifactEvent(view, event);
+    return;
+  }
   if (event.name === 'memory') {
     handleMemoryEvent(view, event);
     return;
@@ -3370,7 +3851,21 @@ async function renderArtifactsPanel(): Promise<HTMLElement> {
     row.append(el('td', undefined, fmtBytes(file.size)));
     row.append(el('td', undefined, fmtTime(file.createdAt)));
     const actions = el('td');
+    const preview = el('button', 'btn small', 'Preview');
+    preview.onclick = async () => {
+      await showConversationView();
+      openArtifactInDock({
+        path: String(file.path),
+        name: String(file.name ?? baseName(String(file.path))),
+        kind: typeof file.kind === 'string' ? file.kind : 'file',
+        size: Number(file.size ?? 0),
+        contentType: null,
+        createdAt: typeof file.createdAt === 'string' ? file.createdAt : null,
+        tool: null,
+      });
+    };
     const open = el('button', 'btn small', 'Open');
+    open.style.marginLeft = '6px';
     open.onclick = async () => {
       const error = await window.coreai.openPath(state.workspace as string, file.path);
       if (error) toast(error, 'error');
@@ -3378,7 +3873,7 @@ async function renderArtifactsPanel(): Promise<HTMLElement> {
     const reveal = el('button', 'btn small', 'Reveal');
     reveal.style.marginLeft = '6px';
     reveal.onclick = () => window.coreai.revealPath(state.workspace as string, file.path);
-    actions.append(open, reveal);
+    actions.append(preview, open, reveal);
     row.append(actions);
     table.append(row);
   }
@@ -3835,6 +4330,11 @@ async function bootstrap(): Promise<void> {
     } else if (payload.method === 'engine/ready') {
       // A fresh engine process serves no live turns — every turn the old one was running died.
       finalizeTurnsForEngineRestart();
+      // Artifact events are live-only: reload the baseline against the restarted engine.
+      state.artifacts = [];
+      state.activeArtifactPath = null;
+      void refreshArtifactBase();
+      void refreshArtifactBaseline();
     }
   });
 
@@ -3847,17 +4347,15 @@ async function bootstrap(): Promise<void> {
     applyBrowserStatus(status);
     // Covers a browser the main process started on its own (autostart): when it becomes
     // running, open the pane so the view gets laid out (bounds) and the user can watch.
-    if (status?.running && !wasRunning && !state.browserPanelOpen) {
-      state.browserPanelOpen = true;
-      renderBrowserPanel();
+    if (status?.running && !wasRunning && state.rightDock === 'none') {
+      setRightDock('browser');
     }
   });
   window.coreai.onBrowserNeedPanel(() => {
     // The agent attached to a tab the view tree cannot lay out while the panel is hidden.
     if (!state.browserStatus?.running) return;
-    if (!state.browserPanelOpen) {
-      state.browserPanelOpen = true;
-      renderBrowserPanel();
+    if (state.rightDock !== 'browser') {
+      setRightDock('browser');
     } else {
       scheduleBrowserBounds();
     }
@@ -3865,9 +4363,8 @@ async function bootstrap(): Promise<void> {
   void window.coreai.browserStatus().then((status) => {
     applyBrowserStatus(status);
     // A browser that was already running when the window loaded (e.g. autostart) opens the pane.
-    if (status?.running && !state.browserPanelOpen) {
-      state.browserPanelOpen = true;
-      renderBrowserPanel();
+    if (status?.running && state.rightDock === 'none') {
+      setRightDock('browser');
     }
   }).catch(() => undefined);
 

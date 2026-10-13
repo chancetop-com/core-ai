@@ -475,11 +475,20 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .session-stack { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .session-view { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
-/* ---------- embedded browser panel ---------- */
+/* ---------- right dock (embedded browser / artifacts) ---------- */
 
-.browser-panel { position: relative; display: flex; flex-direction: column; width: 50vw; min-width: 360px; border-left: 1px solid var(--border); min-height: 0; background: var(--bg); }
+.right-dock { position: relative; display: flex; flex-direction: column; width: 50vw; min-width: 360px; border-left: 1px solid var(--border); min-height: 0; background: var(--bg); }
+.right-dock[hidden] { display: none; }
+.right-dock-tabs { display: flex; align-items: flex-end; gap: 4px; height: 40px; box-sizing: border-box; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+.right-dock-tab { position: relative; display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border: 1px solid transparent; border-bottom: none; border-radius: 7px 7px 0 0; background: transparent; color: var(--muted); font-size: 12px; cursor: default; }
+.right-dock-tab:hover { background: var(--bg-elev); color: var(--text); }
+.right-dock-tab.active { background: var(--bg-elev); border-color: var(--border); border-bottom: 1px solid var(--bg-elev); color: var(--text); margin-bottom: -1px; }
+.right-dock-tab.unread::after { content: ""; position: absolute; top: 4px; right: 5px; width: 6px; height: 6px; border-radius: 50%; background: var(--green, #4caf7d); }
+
+.browser-panel { position: relative; display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; background: var(--bg); }
 .browser-panel[hidden] { display: none; }
-.browser-toggle { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; height: 22px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: default; flex: 0 0 auto; }
+.dock-toggles { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.browser-toggle { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border: 1px solid var(--border); border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; cursor: default; flex: 0 0 auto; }
 .browser-toggle[hidden] { display: none; }
 .browser-toggle:hover { background: var(--bg-elev); color: var(--text); }
 .browser-toggle .ic { width: 13px; height: 13px; }
@@ -511,11 +520,39 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .browser-hint { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--faint); font-size: 12px; }
 .browser-hint[hidden] { display: none; }
 
-/* Full screen: the pane owns the window — the chat column and the sidebar step aside. */
-#app.browser-fullscreen { grid-template-columns: 1fr; }
-#app.browser-fullscreen #sidebar { display: none; }
-#app.browser-fullscreen .chat-main { display: none; }
-#app.browser-fullscreen .browser-panel { width: 100%; min-width: 0; border-left: 0; }
+/* Full screen: the dock owns the window — the chat column and the sidebar step aside. */
+#app.dock-fullscreen { grid-template-columns: 1fr; }
+#app.dock-fullscreen #sidebar { display: none; }
+#app.dock-fullscreen .chat-main { display: none; }
+#app.dock-fullscreen .right-dock { width: 100%; min-width: 0; border-left: 0; }
+
+/* ---------- artifacts pane ---------- */
+
+.artifact-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.artifact-panel[hidden] { display: none; }
+.artifact-head { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 40px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
+.artifact-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact-meta { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.artifact-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; padding: 0; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); cursor: default; flex: 0 0 auto; }
+.artifact-icon-btn:hover { background: var(--bg-elev); color: var(--text); }
+.artifact-icon-btn .ic { width: 14px; height: 14px; }
+.artifact-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.artifact-gallery { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); }
+.artifact-gallery[hidden] { display: none; }
+.artifact-thumb { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-elev); color: var(--muted); overflow: hidden; cursor: default; flex: 0 0 auto; }
+.artifact-thumb.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.artifact-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.artifact-thumb-icon { font-size: 18px; }
+.artifact-preview { flex: 1; min-height: 0; overflow: auto; padding: 12px; display: flex; flex-direction: column; }
+.artifact-preview .artifact-image, .artifact-preview .artifact-video { max-width: 100%; max-height: 100%; margin: auto; border-radius: 4px; }
+.artifact-preview .artifact-frame { flex: 1; width: 100%; min-height: 320px; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.artifact-preview .artifact-source { margin: 0; font-family: var(--mono); font-size: 11.5px; white-space: pre-wrap; word-break: break-word; }
+.artifact-preview .artifact-markdown { line-height: 1.5; }
+.artifact-preview .artifact-markdown img { max-width: 100%; }
+img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; }
+.tool-artifact-thumb { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; max-width: 220px; }
+.tool-artifact-thumb img { max-width: 200px; max-height: 140px; border-radius: 4px; display: block; }
+.tool-artifact-icon { font-size: 16px; }
 
 .transcript { flex: 1; overflow-y: auto; padding: 18px 22px; }
 
@@ -780,12 +817,12 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .composer-menu-item:hover { background: var(--bg-elev); }
 .composer-menu-item.active { color: var(--accent); }
 
-/* Browser panel open = narrow chat column: labels and selects collapse to icon buttons. */
-.chat:has(.browser-panel:not([hidden])) .composer-controls { gap: 6px; row-gap: 4px; }
-.chat:has(.browser-panel:not([hidden])) .composer-controls .control-pair { gap: 6px; }
-.chat:has(.browser-panel:not([hidden])) .composer-controls .composer-label { display: none; }
-.chat:has(.browser-panel:not([hidden])) .composer-controls .control-pair select { display: none; }
-.chat:has(.browser-panel:not([hidden])) .composer-controls .composer-icon-btn { display: inline-flex; }
+/* Right dock open (browser or artifacts) = narrow chat column: labels and selects collapse to icon buttons. */
+.chat:has(.right-dock:not([hidden])) .composer-controls { gap: 6px; row-gap: 4px; }
+.chat:has(.right-dock:not([hidden])) .composer-controls .control-pair { gap: 6px; }
+.chat:has(.right-dock:not([hidden])) .composer-controls .composer-label { display: none; }
+.chat:has(.right-dock:not([hidden])) .composer-controls .control-pair select { display: none; }
+.chat:has(.right-dock:not([hidden])) .composer-controls .composer-icon-btn { display: inline-flex; }
 .composer-controls select { padding: 3px 8px; font-size: 12.5px; text-overflow: ellipsis; flex: 0 0 auto; }
 .composer-controls .workspace-select { width: 85px; }
 .composer-controls .model-select { width: 75px; }

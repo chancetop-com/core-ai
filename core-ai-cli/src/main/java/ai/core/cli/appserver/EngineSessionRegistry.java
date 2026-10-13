@@ -14,6 +14,8 @@ import ai.core.llm.LLMProviderType;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
+import ai.core.tool.tools.GenerateImageTool;
+import ai.core.tool.tools.GetVideoStatusTool;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -325,6 +327,10 @@ public class EngineSessionRegistry {
         var inProcess = new InProcessAgentSession(sessionId, agent, "full".equals(approvalPolicy), permissionStore());
         var sink = sinkSupplier.get();
         inProcess.onEvent(new EventBridge(sessionId, sink != null ? sink : NOOP_SINK));
+        var context = agent.getExecutionContext();
+        var artifactSink = new LocalArtifactSink(bootstrap.workspace, context);
+        context.getCustomVariables().put(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, artifactSink);
+        context.getCustomVariables().put(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY, artifactSink);
         return new EngineSession(sessionId, agent, inProcess, memoryProvider);
     }
 

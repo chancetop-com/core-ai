@@ -50,7 +50,7 @@ public final class LocalArtifacts {
         var entries = new ArrayList<Entry>();
         collectRoot(workspace, ".core-ai/media/images", "image", entries);
         collectRoot(workspace, ".core-ai/media/videos", "video", entries);
-        collectRoot(workspace, ".core-ai/tasks", "other", entries);
+        collectRoot(workspace, ".core-ai/tasks", "file", entries);
         entries.sort(Comparator.comparing(Entry::modified).reversed());
         return entries;
     }
