@@ -31,8 +31,28 @@ if (existsSync(binaryPath) && stagedVersion() === version) {
 
 const url = `https://github.com/chancetop-com/core-ai/releases/download/v${version}/${assetName}`;
 console.log(`downloading ${url}`);
-const response = await fetch(url);
-if (!response.ok) throw new Error(`engine download failed: HTTP ${response.status} (${url})`);
+// A brand-new CLI release can blip: the desktop 0.1.4 release passed the workflow's availability
+// check and then hit a 404 on this very GET one second later (asset still propagating). Retry
+// transient statuses and network errors instead of failing the whole release.
+const attempts = 10;
+const retryDelayMs = 15_000;
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let response;
+for (let attempt = 1; ; attempt++) {
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    if (attempt >= attempts) throw error;
+    console.log(`attempt ${attempt}: ${error.message} — retrying in ${retryDelayMs / 1000}s`);
+    await sleep(retryDelayMs);
+    continue;
+  }
+  if (response.ok) break;
+  const transient = response.status === 404 || response.status >= 500;
+  if (!transient || attempt >= attempts) throw new Error(`engine download failed: HTTP ${response.status} (${url})`);
+  console.log(`attempt ${attempt}: HTTP ${response.status} — the release may still be propagating, retrying in ${retryDelayMs / 1000}s`);
+  await sleep(retryDelayMs);
+}
 const bytes = Buffer.from(await response.arrayBuffer());
 const sha256 = createHash('sha256').update(bytes).digest('hex');
 
