@@ -18,7 +18,7 @@ public final class SpaRoutes {
         "/projects", "/notifications",
         "/experiments", "/experiments/playground", "/experiments/replay", "/experiments/replay/:id",
         "/experiments/memory", "/experiments/memory/runs/:id", "/experiments/memory/configs/:id",
-        "/experiments/agent-comparison", "/experiments/agent-comparison/versions/:versionId",
+        "/experiments/agent-comparison", "/experiments/agent-comparison/:id", "/experiments/agent-comparison/versions/:versionId",
         "/agents/:id", "/agents/:id/memories",
         "/workflows/:id", "/workflows/:id/runs",
         "/runs/:id",

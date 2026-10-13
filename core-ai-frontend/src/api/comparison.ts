@@ -170,8 +170,11 @@ export const comparisonApi = {
       }),
     }),
 
-  list: (agentId: string) =>
-    request<{ comparisons: AgentComparison[] }>(`/api/agent-comparisons?agent_id=${encodeURIComponent(agentId)}`),
+  /** Without agentId: every comparison the caller created or takes part in (admins see all). */
+  list: (agentId?: string) =>
+    request<{ comparisons: AgentComparison[] }>(
+      agentId ? `/api/agent-comparisons?agent_id=${encodeURIComponent(agentId)}` : '/api/agent-comparisons',
+    ),
 
   running: (agentId: string) =>
     request<AgentComparison>(`/api/agent-comparisons/agent/${encodeURIComponent(agentId)}/running`),

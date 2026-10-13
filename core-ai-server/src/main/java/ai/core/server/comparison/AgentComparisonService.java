@@ -30,8 +30,11 @@ import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
+import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -107,18 +110,42 @@ public class AgentComparisonService {
     }
 
     public ListAgentComparisonsResponse list(ListAgentComparisonsRequest request, String userId) {
-        if (request == null || request.agentId == null || request.agentId.isBlank()) {
-            throw new BadRequestException("agent_id required");
-        }
-        var agent = agentDefinitionService.getEntity(request.agentId);
-        requireAgentOwnerOrAdmin(agent, userId);
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agent.id);
-        query.sort = Sorts.descending("created_at");
-        query.limit = 100;
         var response = new ListAgentComparisonsResponse();
-        response.comparisons = comparisonCollection.find(query).stream().map(assembler::toListView).toList();
+        response.comparisons = listVisible(request, userId).stream().map(assembler::toListView).toList();
         return response;
+    }
+
+    /**
+     * agent_id scopes the list to one agent (owner/admin only); without it the caller sees every comparison
+     * they created or take part in (admins see everything).
+     */
+    private List<AgentComparison> listVisible(ListAgentComparisonsRequest request, String userId) {
+        if (request != null && request.agentId != null && !request.agentId.isBlank()) {
+            var agent = agentDefinitionService.getEntity(request.agentId);
+            requireAgentOwnerOrAdmin(agent, userId);
+            return findComparisons(Filters.eq("agent_id", agent.id), 100);
+        }
+        if (ComparisonAccess.isAdmin(userCollection, userId)) {
+            var query = new Query();
+            query.sort = Sorts.descending("created_at");
+            query.limit = 200;
+            return comparisonCollection.find(query);
+        }
+        var merged = new LinkedHashMap<String, AgentComparison>();
+        for (var comparison : findComparisons(Filters.eq("created_by", userId), 100)) merged.put(comparison.id, comparison);
+        for (var comparison : findComparisons(Filters.eq("participant_user_ids", userId), 100)) merged.put(comparison.id, comparison);
+        return merged.values().stream()
+            .sorted(Comparator.comparing((AgentComparison comparison) -> comparison.createdAt, Comparator.nullsLast(Comparator.reverseOrder())))
+            .limit(200)
+            .toList();
+    }
+
+    private List<AgentComparison> findComparisons(Bson filter, int limit) {
+        var query = new Query();
+        query.filter = filter;
+        query.sort = Sorts.descending("created_at");
+        query.limit = limit;
+        return comparisonCollection.find(query);
     }
 
     /**
