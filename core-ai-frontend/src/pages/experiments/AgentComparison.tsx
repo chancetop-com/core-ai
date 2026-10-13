@@ -139,6 +139,21 @@ export default function AgentComparison() {
     setSelectedId(created.id);
   }), [agentId, run, versions]);
 
+  const handleDeleteExperiment = useCallback(async (item: AgentComparison) => {
+    if (!window.confirm('删除这个草稿实验？')) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await comparisonApi.remove(item.id);
+      if (selectedId === item.id) setSelectedId(null);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh, selectedId]);
+
   const detailDraft = detail?.status === 'DRAFT';
   const detailRunning = detail?.status === 'RUNNING';
 
@@ -305,26 +320,36 @@ export default function AgentComparison() {
           )}
           <div className="flex flex-col gap-2">
             {comparisons.map(item => (
-              <button key={item.id} type="button" onClick={() => setSelectedId(selectedId === item.id ? null : item.id)}
-                className="flex w-full items-center gap-3 rounded-lg border px-3 py-2 text-left cursor-pointer"
+              <div key={item.id} className="flex items-center gap-2 rounded-lg border px-3 py-2"
                 style={{
                   borderColor: selectedId === item.id ? 'var(--color-primary)' : 'var(--color-border)',
                   background: selectedId === item.id ? 'var(--color-bg-tertiary)' : 'transparent',
                 }}>
-                {selectedId === item.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                <span className="rounded-full px-2 py-0.5 text-[11px]"
-                  style={{
-                    background: item.status === 'RUNNING' ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-                    color: item.status === 'RUNNING' ? 'white' : 'var(--color-text-secondary)',
-                  }}>
-                  {STATUS_LABEL[item.status] || item.status}
-                </span>
-                <span className="min-w-0 flex-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-                  {item.variant_a?.model || '?'} vs {item.variant_b?.model || '?'} · {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
-                  {item.adopted_variant ? ` · 已采用 ${item.adopted_variant.toUpperCase()}` : ''}
-                </span>
-                <GitCompare size={13} style={{ color: 'var(--color-text-muted)' }} />
-              </button>
+                <button type="button" onClick={() => setSelectedId(selectedId === item.id ? null : item.id)}
+                  className="flex min-w-0 flex-1 items-center gap-3 text-left cursor-pointer">
+                  {selectedId === item.id ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span className="rounded-full px-2 py-0.5 text-[11px]"
+                    style={{
+                      background: item.status === 'RUNNING' ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+                      color: item.status === 'RUNNING' ? 'white' : 'var(--color-text-secondary)',
+                    }}>
+                    {STATUS_LABEL[item.status] || item.status}
+                  </span>
+                  <span className="min-w-0 flex-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    {item.variant_a?.model || '?'} vs {item.variant_b?.model || '?'} · {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                    {item.adopted_variant ? ` · 已采用 ${item.adopted_variant.toUpperCase()}` : ''}
+                  </span>
+                  <GitCompare size={13} style={{ color: 'var(--color-text-muted)' }} />
+                </button>
+                {item.status === 'DRAFT' && (
+                  <button type="button" title="删除草稿实验" disabled={busy}
+                    onClick={() => void handleDeleteExperiment(item)}
+                    className="rounded-lg border px-2 py-1 text-xs cursor-pointer disabled:opacity-40"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
             ))}
           </div>
         </section>

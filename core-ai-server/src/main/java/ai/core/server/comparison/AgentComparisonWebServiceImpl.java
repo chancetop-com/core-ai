@@ -93,6 +93,12 @@ public class AgentComparisonWebServiceImpl implements AgentComparisonWebService 
         return comparisonService.end(id, request, userId);
     }
 
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_COMPARE)
+    public void delete(String id) {
+        comparisonService.delete(id, userId());
+    }
+
     private String userId() {
         var userId = AuthContext.userId(webContext);
         if (userId == null) throw new UnauthorizedException("unauthorized");

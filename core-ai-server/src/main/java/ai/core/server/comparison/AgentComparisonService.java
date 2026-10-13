@@ -247,6 +247,15 @@ public class AgentComparisonService {
         return assembler.toDetailView(comparison, true);
     }
 
+    public void delete(String id, String userId) {
+        var comparison = requireComparison(id);
+        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        if (comparison.status != ComparisonStatus.DRAFT) {
+            throw new BadRequestException("only a draft comparison can be deleted; end a running test instead");
+        }
+        comparisonCollection.delete(id);
+    }
+
     private void adoptVariant(AgentComparison comparison, String adopt, boolean force, String userId) {
         var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
         if (agent == null) throw new BadRequestException("agent is unavailable");

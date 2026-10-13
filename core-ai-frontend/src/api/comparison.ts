@@ -212,6 +212,9 @@ export const comparisonApi = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  remove: (id: string) =>
+    request<void>(`/api/agent-comparisons/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 export const agentVersionApi = {

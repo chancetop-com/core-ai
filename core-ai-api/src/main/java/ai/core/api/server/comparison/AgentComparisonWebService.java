@@ -1,5 +1,6 @@
 package ai.core.api.server.comparison;
 
+import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
 import core.framework.api.web.service.PUT;
@@ -52,4 +53,8 @@ public interface AgentComparisonWebService {
     @POST
     @Path("/api/agent-comparisons/:id/end")
     AgentComparisonView end(@PathParam("id") String id, EndAgentComparisonRequest request);
+
+    @DELETE
+    @Path("/api/agent-comparisons/:id")
+    void delete(@PathParam("id") String id);
 }

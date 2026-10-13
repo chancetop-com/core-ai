@@ -188,6 +188,9 @@ export default function AgentVersionEditor() {
   }, [versionId]);
 
   const toolRegistry = useMemo(() => new Map(tools.map(tool => [tool.id, tool])), [tools]);
+  // only conversational models make sense for an agent's main model
+  const chatModels = useMemo(() => models.filter(m => !m.endpointTypes
+    || m.endpointTypes.some(t => t === 'chat.completions' || t === 'responses')), [models]);
 
   const handleSave = useCallback(async () => {
     if (!versionId || !form) return;
@@ -262,10 +265,10 @@ export default function AgentVersionEditor() {
             <select value={form.model} onChange={e => setForm(f => f && ({ ...f, model: e.target.value }))}
               className="rounded-md border px-2 py-1 text-xs outline-none" style={inputStyle}>
               <option value="">default</option>
-              {models.map(m => (
+              {chatModels.map(m => (
                 <option key={m.modelId} value={m.modelId}>{m.modelId}{m.providerName ? ` · ${m.providerName}` : ''}</option>
               ))}
-              {form.model && !models.some(m => m.modelId === form.model) && (
+              {form.model && !chatModels.some(m => m.modelId === form.model) && (
                 <option value={form.model}>{form.model}（未在目录中）</option>
               )}
             </select>
