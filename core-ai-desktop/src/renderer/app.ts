@@ -367,6 +367,25 @@ function resetStreaming(): void {
   if (streaming) stopReasoningTick(streaming);
   stopTurnClock();
   streaming = null;
+  planBlockEl = null;
+}
+
+/**
+ * True once the turn bubble holds engine output: any chip beyond the turn status, a tool row, or
+ * rendered text. The bubble itself is opened at send time, so "has anything arrived" is a UI question.
+ */
+function hasAssistantContent(wrapper: HTMLElement | null): boolean {
+  if (!wrapper) return false;
+  if (wrapper.querySelector('.assist-chips .assist-chip:not(.turn-status)')) return true;
+  if (wrapper.querySelector('.tool-entry')) return true;
+  const body = wrapper.querySelector('.md-body');
+  return Boolean(body && (body.textContent ?? '').trim());
+}
+
+/** Drops a turn bubble that never received anything (send rejected / turn that ended empty). */
+function discardEmptyTurnBubble(): void {
+  const wrapper = streaming?.bubble.parentElement ?? null;
+  if (wrapper && !hasAssistantContent(wrapper)) wrapper.remove();
 }
 
 interface TurnClock {
@@ -377,6 +396,9 @@ interface TurnClock {
 
 /** One clock per turn: started when the message is sent, so waits before the first event count too. */
 let turnClock: TurnClock | null = null;
+
+/** One plan card per turn: the engine re-emits the whole list on every write_todos, so it is rewritten in place. */
+let planBlockEl: HTMLElement | null = null;
 
 function activeTurnClock(): TurnClock {
   if (!turnClock) turnClock = { startedAt: Date.now(), tick: null, chip: null };
@@ -2044,6 +2066,45 @@ function appendNotice(text: string, kind = '', parent?: HTMLElement): void {
   (parent ?? transcriptEl)?.append(notice);
 }
 
+type PlanState = 'done' | 'active' | 'pending';
+
+const PLAN_MARKS: Record<PlanState, string> = { done: '✓', active: '▶', pending: '○' };
+
+function planState(status: unknown): PlanState {
+  const value = String(status ?? '').toLowerCase();
+  if (value === 'completed' || value === 'done') return 'done';
+  if (value === 'in_progress' || value === 'in-progress' || value === 'active') return 'active';
+  return 'pending';
+}
+
+/**
+ * Sized and aligned like the assistant messages: write_todos re-emits the whole list, so the
+ * turn's card is rewritten in place instead of stacking a new box per update.
+ */
+function renderPlanUpdate(event: any): void {
+  const todos: any[] = Array.isArray(event.todos) ? event.todos : [];
+  if (!todos.length) return;
+  let block = planBlockEl;
+  if (!block || !block.isConnected) {
+    block = el('div', 'plan-block');
+    transcriptEl?.append(block);
+    planBlockEl = block;
+  }
+  const head = el('div', 'plan-head');
+  head.append(el('span', 'plan-title', 'plan'));
+  const done = todos.filter((todo) => planState(todo?.status) === 'done').length;
+  head.append(el('span', 'plan-count', `${done}/${todos.length}`));
+  block.replaceChildren(head);
+  for (const todo of todos) {
+    const state = planState(todo?.status);
+    const item = el('div', `plan-item ${state}`);
+    const content = todo?.content ?? todo?.text ?? JSON.stringify(todo);
+    item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(content)));
+    block.append(item);
+  }
+  scrollTranscript();
+}
+
 async function sendCurrent(): Promise<void> {
   const text = composerInput?.value ?? '';
   const attachments = [...pendingAttachments];
@@ -2055,12 +2116,16 @@ async function sendCurrent(): Promise<void> {
   scrollTranscript(true);
   resetStreaming();
   turnClock = { startedAt: Date.now(), tick: null, chip: null };
+  // Open the turn bubble right away: the first engine event can be a full model round trip away, and
+  // until then the ticking "Running · Ns" chip is the only sign of life (the CLI spinner works the same way).
+  ensureStreaming();
   const parts: Array<{ type: string; text?: string; path?: string }> = [];
   if (text.trim()) parts.push({ type: 'text', text: text.trim() });
   for (const attachment of attachments) parts.push({ type: attachment.kind, path: attachment.path });
   const sent = await call('session/send', { sessionId: state.sessionId, parts });
   if (!sent) {
-    stopTurnClock();
+    discardEmptyTurnBubble();
+    resetStreaming();
     return;
   }
   clearPendingAttachments();
@@ -2589,6 +2654,10 @@ function handleSessionEvent(event: any): void {
       finishTurnStatus(event);
       resetStreaming();
       removeApprovalBar();
+      // A turn that produced nothing leaves no bubble behind — the send-time placeholder goes away
+      // and its summary (if any) falls back to a transcript line.
+      const keptWrapper = assistantWrapper && hasAssistantContent(assistantWrapper) ? assistantWrapper : null;
+      if (assistantWrapper && !keptWrapper) assistantWrapper.remove();
       const parts: string[] = [];
       if (event.cancelled) parts.push('turn cancelled');
       if (event.max_turns_reached) parts.push('max turns reached');
@@ -2604,7 +2673,7 @@ function handleSessionEvent(event: any): void {
       if (bits.length) parts.push(`✦ ${bits.join(' | ')}`);
       if (parts.length) {
         const summary = el('div', 'turn-summary', parts.join(' · '));
-        (assistantWrapper ?? transcriptEl)?.append(summary);
+        (keptWrapper ?? transcriptEl)?.append(summary);
         scrollTranscript();
       }
       void refreshSessionList();
@@ -2621,13 +2690,7 @@ function handleSessionEvent(event: any): void {
       }
       break;
     case 'plan_update': {
-      const block = el('div', 'plan-block');
-      block.append(el('div', 'plan-title', 'plan'));
-      for (const todo of event.todos ?? []) {
-        block.append(el('div', 'plan-item', `• ${todo.content ?? todo.text ?? JSON.stringify(todo)} ${todo.status ? `(${todo.status})` : ''}`));
-      }
-      transcriptEl?.append(block);
-      scrollTranscript();
+      renderPlanUpdate(event);
       break;
     }
     case 'custom':
@@ -2652,6 +2715,7 @@ function handleSessionEvent(event: any): void {
       failTurnStatus();
       resetStreaming();
       removeApprovalBar();
+      if (assistantWrapper && !hasAssistantContent(assistantWrapper)) assistantWrapper.remove();
       appendNotice(`✗ ${event.message ?? 'error'}`, 'error');
       void refreshSessionList();
       void loadSummaries();

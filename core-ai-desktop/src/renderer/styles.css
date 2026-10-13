@@ -659,9 +659,18 @@ select:hover, .btn:hover { border-color: var(--accent); }
   word-break: break-word;
 }
 
-.plan-block { border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 6px; padding: 8px 12px; margin: 8px 0; color: var(--muted); }
-.plan-block .plan-title { color: var(--text); font-size: 12px; margin-bottom: 4px; }
-.plan-block .plan-item { font-size: 12.5px; }
+/* Plan card: same column, surface and radius as the assistant messages it sits between. */
+.plan-block { max-width: 900px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-panel); padding: 9px 12px 10px; margin: 0 0 14px; color: var(--muted); }
+.plan-block .plan-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 3px; }
+.plan-block .plan-title { color: var(--faint); font-size: 11px; letter-spacing: 0.6px; text-transform: uppercase; }
+.plan-block .plan-count { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; }
+.plan-block .plan-item { display: flex; align-items: baseline; gap: 7px; font-size: 12.5px; line-height: 1.6; }
+.plan-block .plan-mark { flex: 0 0 auto; width: 12px; text-align: center; color: var(--faint); font-size: 10.5px; }
+.plan-block .plan-text { min-width: 0; word-break: break-word; }
+.plan-block .plan-item.active { color: var(--text); }
+.plan-block .plan-item.active .plan-mark { color: var(--accent); }
+.plan-block .plan-item.done .plan-mark { color: var(--green); }
+.plan-block .plan-item.done .plan-text { color: var(--faint); }
 
 .quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 
