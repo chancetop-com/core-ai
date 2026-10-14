@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>Intended usage:
  * <pre>{@code
- *   var service = new MemoryTriggerService(llmProvider, model, workspace);
- *   builder.addAgentLifecycle(new CliMemoryLifecycle(service));
+ *   var service = MemoryTriggerService.getInstance(workspace);
+ *   builder.addAgentLifecycle(new CliMemoryLifecycle(service, dailyLogsEnabled));
  *   // afterAgentBuild calls service.init(agent) and registers memory tools
  * }</pre>
  */

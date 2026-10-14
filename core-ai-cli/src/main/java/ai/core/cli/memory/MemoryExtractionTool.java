@@ -43,7 +43,8 @@ public final class MemoryExtractionTool extends ToolCall {
                     Returns the full memory extraction specification: 4-layer hierarchy,
                     file formats, knowledge types, extraction procedures, and rules.
                     Call this tool when you need to extract knowledge from conversations
-                    into the memory system (daily-logs, episodes, knowledge wiki pages).""");
+                    into the memory system (daily-logs, episodes, knowledge wiki pages),
+                    or into the global cross-project user memory.""");
             var tool = new MemoryExtractionTool();
             build(tool);
             return tool;

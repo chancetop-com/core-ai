@@ -77,7 +77,7 @@ public class AgentSessionRunner {
         ModelRegistry modelRegistry = config.modelRegistry;
         this.workspace = Path.of((String) agent.getExecutionContext().getCustomVariables().get("workspace"));
         this.memoryCommand = config.memoryEnabled
-                ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance())
+                ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance(workspace))
                 : null;
         this.memoryEnabled = config.memoryEnabled;
         this.dailyLogsEnabled = config.dailyLogsEnabled;
@@ -96,14 +96,14 @@ public class AgentSessionRunner {
         if (agent.hasPersistenceProvider()) {
             agent.load(sessionId);
             if (memoryEnabled && !agent.getHistory().isEmpty()) {
-                MemoryTriggerService.getInstance().resetCursorToEnd();
+                MemoryTriggerService.getInstance(workspace).resetCursorToEnd();
             }
         }
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
         var listener = new CliEventListener(ui, session, agent);
         session.onEvent(listener);
         setupCompressionListener(listener);
-        commands = new ReplCommandHandler(ui);
+        commands = new ReplCommandHandler(ui, workspace);
         BlockingQueue<String> messageQueue = new LinkedBlockingQueue<>();
         Semaphore readyForInput = new Semaphore(1);
         printBanner();
@@ -142,7 +142,7 @@ public class AgentSessionRunner {
             sendPrompt(listener, session, prompt);
         }
         if (memoryEnabled && promptExtractionEnabled) {
-            MemoryTriggerService.getInstance().runIncrementalExtractionAndWait();
+            MemoryTriggerService.getInstance(workspace).runIncrementalExtractionAndWait();
         }
         listener.getPanel().stopSpinnerIfActive();
         saveSessionIfPersistable();

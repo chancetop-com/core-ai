@@ -124,4 +124,18 @@ class MemoryExtractionObserverTest {
         assertEquals(".core-ai/knowledge/MEMORY.md", MemoryExtractionObserver.memoryRelativePath(
                 "C:/Users/u/.core-ai/workspaces/2026-10-10/.core-ai/knowledge/MEMORY.md"));
     }
+
+    @Test
+    void recordsGlobalUserMemoryWrites() {
+        var observer = new MemoryExtractionObserver();
+
+        FunctionCall created = call("c1", "save_user_memory", Map.of("content", "Always answer in Chinese."));
+        observer.afterTool(created, null, ToolCallResult.completed("ok").withStats("created", Boolean.TRUE));
+
+        FunctionCall appended = call("c2", "save_user_memory", Map.of("content", "Another preference."));
+        observer.afterTool(appended, null, ToolCallResult.completed("ok").withStats("created", Boolean.FALSE));
+
+        assertEquals(List.of("global/MEMORY.md"), observer.added());
+        assertTrue(observer.updated().isEmpty());
+    }
 }

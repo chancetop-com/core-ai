@@ -13,9 +13,11 @@ import java.nio.file.Path;
  */
 public class ReplCommandHandler {
     private final TerminalUI ui;
+    private final Path workspace;
 
-    public ReplCommandHandler(TerminalUI ui) {
+    public ReplCommandHandler(TerminalUI ui, Path workspace) {
         this.ui = ui;
+        this.workspace = workspace;
     }
 
     public void handle(String input) {
@@ -85,7 +87,7 @@ public class ReplCommandHandler {
         try {
             Files.createDirectories(dir);
             Files.writeString(file, template);
-            MemoryTriggerService.getInstance().ensureDirectories();
+            MemoryTriggerService.getInstance(workspace).ensureDirectories();
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
                     + " Created .core-ai/AGENTS.md — edit it to customize agent behavior.\n\n");
         } catch (IOException e) {

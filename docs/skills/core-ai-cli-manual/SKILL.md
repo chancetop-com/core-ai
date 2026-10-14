@@ -61,6 +61,7 @@ Hub subcommands are what other agents (Claude Code, Codex, CI) call. The three-s
 | `agent.properties` | `~/.core-ai/agent.properties` | Main configuration (global) |
 | `agent.properties` | `<workspace>/.core-ai/agent.properties` | Per-project overrides (merges over global) |
 | `auth.json` | `~/.core-ai/auth.json` | Server logins (list, one active); written by `--login` / `/login` |
+| Memory | `~/.core-ai/MEMORY.md` (global), `<workspace>/.core-ai/knowledge/` (per project) | Global user preferences vs project knowledge, injected into the system prompt (see [references/memory.md](references/memory.md)) |
 | `AGENTS.md` | `<workspace>/.core-ai/AGENTS.md` (or `<workspace>/AGENTS.md`) | Project instructions injected into the system prompt; preferred over legacy `instructions.md` / `CLAUDE.md` (`/init` creates the `.core-ai/` file) |
 | `MCP.json` | `<workspace>/.core-ai/MCP.json` | Per-project local MCP servers |
 | `hooks.json` | `<workspace>/.core-ai/hooks.json` | Per-project hook scripts |

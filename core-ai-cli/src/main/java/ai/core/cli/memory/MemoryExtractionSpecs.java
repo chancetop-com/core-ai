@@ -112,6 +112,20 @@ final class MemoryExtractionSpecs {
             (preference → user, correction → feedback, project constraint/pattern → project, external
             fact → reference) and extract immediately. If the extraction prompt names an explicit
             request, store that content FIRST, then continue with the rest of the messages.
+            When that content is a cross-project preference, use `save_user_memory` (see below).
+
+            ### Global user memory (cross-project)
+            Most knowledge is project-scoped and belongs in this workspace's wiki. Use the
+            `save_user_memory` tool for durable knowledge that must apply to EVERY project — it
+            appends one line to `~/.core-ai/MEMORY.md`, which is loaded for every workspace.
+            Use it for:
+            - Language, formatting and communication preferences ("always answer in Chinese")
+            - Workflow and tooling habits ("prefer ripgrep", "use the local wrapper, not the system one")
+            - Corrections that are not tied to this codebase
+            Do NOT use it for project facts (architecture, file locations, project constraints),
+            session-local choices, or anything transient — those stay in the workspace wiki.
+            Keep each entry to one concise sentence, in the user's own wording, and do not
+            duplicate an entry that already exists.
 
             ### Process vs. Outcome
             **Extract process, not just results.** The most valuable knowledge is how a problem
@@ -225,6 +239,8 @@ final class MemoryExtractionSpecs {
             - When updating a wiki page, use edit_file; only use write_file for new pages.
             - If new information semantically overlaps with an existing page, merge — never create duplicates.
             - File names use kebab-case (e.g., `build-system`, `session-management`).
+            - Cross-project preferences (not tied to this project) go to the global user memory via
+              `save_user_memory`, never to a workspace wiki page.
 
             ## Extraction Procedure
 

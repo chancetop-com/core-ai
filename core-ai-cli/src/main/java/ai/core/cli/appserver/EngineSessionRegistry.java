@@ -73,7 +73,7 @@ public class EngineSessionRegistry {
         this.titles = new SessionTitleStore(Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
         if (bootstrap.memoryEnabled) {
-            MemoryTriggerService.getInstance().addActivityListener(this::publishMemoryActivity);
+            MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(this::publishMemoryActivity);
         }
     }
 

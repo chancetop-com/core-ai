@@ -54,11 +54,15 @@ public final class MemoryTriggerService {
         return timezone;
     }
 
-    public static MemoryTriggerService getInstance() {
+    /**
+     * @param workspace the workspace the memory store belongs to; only the first caller wins, because
+     *                  one process serves exactly one workspace
+     */
+    public static MemoryTriggerService getInstance(Path workspace) {
         if (instance == null) {
             synchronized (MemoryTriggerService.class) {
                 if (instance == null) {
-                    instance = new MemoryTriggerService();
+                    instance = new MemoryTriggerService(workspace);
                 }
             }
         }
@@ -83,10 +87,10 @@ public final class MemoryTriggerService {
     private volatile Agent mainAgent;
     private volatile boolean dailyLogsEnabled = false;
 
-    private MemoryTriggerService() {
-        this.workspace = Path.of("");
-        this.dailyLogsDir = workspace.resolve(".core-ai/daily-logs");
-        this.memoryProvider = new MdMemoryProvider(workspace);
+    private MemoryTriggerService(Path workspace) {
+        this.workspace = workspace.toAbsolutePath();
+        this.dailyLogsDir = this.workspace.resolve(".core-ai/daily-logs");
+        this.memoryProvider = new MdMemoryProvider(this.workspace);
     }
 
     public void setDailyLogsEnabled(boolean enabled) {
@@ -279,6 +283,7 @@ public final class MemoryTriggerService {
     public List<ToolCall> buildMemoryTools(Agent agent) {
         var tools = new ArrayList<ToolCall>();
         tools.add(MemoryExtractionTool.builder().build());
+        tools.add(SaveUserMemoryTool.builder().globalMemory(memoryProvider.getGlobalMemory()).build());
         tools.add(KnowledgeLogTool.addBuilder().workspace(workspace).build());
         tools.add(ExtractionCursorTool.readBuilder()
                 .cursorReader(extractionCursor::get)
@@ -351,6 +356,7 @@ public final class MemoryTriggerService {
             var tools = new ArrayList<>(BuiltinTools.FILE_OPERATIONS);
             tools.add(ShellCommandTool.builder().build());
             tools.add(MemoryExtractionTool.builder().build());
+            tools.add(SaveUserMemoryTool.builder().globalMemory(memoryProvider.getGlobalMemory()).build());
             tools.add(KnowledgeLogTool.addBuilder().workspace(workspace).build());
             var agent = AgentFork.forkConfigOnly(mainAgent, new AgentFork.ForkConfig("lock", LOCK_PROCESSING_MAX_TURNS,
                     (double) EXTRACTION_TEMPERATURE, false, null, tools));

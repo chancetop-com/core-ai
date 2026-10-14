@@ -146,6 +146,7 @@ public class MemoryCommandHandler {
     private void clearMemory() {
         ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "This will delete all knowledge wiki pages and MEMORY.md."
                 + "\n  daily-logs, episodes, and log.md are preserved."
+                + "\n  Global user memory (~/.core-ai/MEMORY.md) is kept."
                 + "\n  Continue? (y/N) " + AnsiTheme.RESET);
         String confirm = ui.readRawLine("");
         if (!"y".equalsIgnoreCase(confirm != null ? confirm.trim() : "")) {
@@ -220,7 +221,8 @@ public class MemoryCommandHandler {
                         + "  /memory edit                  Select a memory file to edit%n"
                         + "  /memory search [keyword]      Search memories by keyword%n"
                         + "  /memory open                  Open memory folder in file manager%n"
-                        + "  /memory clear                 Delete knowledge wiki pages, recreate structure%n%n",
+                        + "  /memory clear                 Delete knowledge wiki pages, recreate structure%n"
+                        + "  Global user preferences live in ~/.core-ai/MEMORY.md (listed as global/MEMORY.md)%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET, statusIcon, statusText));
     }
 }

@@ -10,11 +10,27 @@ Session → daily-logs → episodes → knowledge wiki pages
 
 | Layer | Location | Content |
 |-------|----------|---------|
-| daily-logs | `.core-ai/daily-logs/{date}/{task}.md` | Per-task summaries (Context, Actions, Obstacles, etc.) |
-| episodes | `.core-ai/episodes/{date}.md` | Daily index mapping tasks to daily-logs |
-| knowledge | `.core-ai/knowledge/MEMORY.md` | Master index (always loaded) |
-| knowledge | `.core-ai/knowledge/{type}/{name}.md` | Wiki-style pages (project/user/feedback/reference) |
-| knowledge | `.core-ai/knowledge/log.md` | Change log (auto-pruned to 30 days) |
+| daily-logs | `<workspace>/.core-ai/daily-logs/{date}/{task}.md` | Per-task summaries (Context, Actions, Obstacles, etc.) |
+| episodes | `<workspace>/.core-ai/episodes/{date}.md` | Daily index mapping tasks to daily-logs |
+| knowledge | `<workspace>/.core-ai/knowledge/MEMORY.md` | Master index (always loaded) |
+| knowledge | `<workspace>/.core-ai/knowledge/{type}/{name}.md` | Wiki-style pages (project/user/feedback/reference) |
+| knowledge | `<workspace>/.core-ai/knowledge/log.md` | Change log (auto-pruned to 30 days) |
+
+Everything above is **workspace-scoped** — a different project has its own store.
+
+## Global user memory (cross-project)
+
+Durable preferences that must apply to **every** workspace live in a single file:
+
+| Layer | Location | Content |
+|-------|----------|---------|
+| global | `~/.core-ai/MEMORY.md` | One markdown bullet per preference (≤ 8KB) |
+
+It is injected into the system prompt for every workspace, ahead of the workspace wiki, under a
+`--- Global User Memory (all workspaces) ---` heading. Agents append to it with the
+`save_user_memory` tool (used during extraction, or on an explicit "记住…"); project facts must
+stay in the workspace wiki instead. Edit it by hand any time, or via `/memory edit`
+(it is listed as `global/MEMORY.md`). `/memory clear` does not touch it.
 
 ## Configuration
 

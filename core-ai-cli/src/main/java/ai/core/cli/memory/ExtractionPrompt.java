@@ -14,6 +14,7 @@ final class ExtractionPrompt {
             + "Only use these tools — all others are forbidden for extraction:%n"
             + "- File: read_file, write_file, edit_file, glob_file, grep_file%n"
             + "- Knowledge log: add_knowledge_log%n"
+            + "- Global user memory: save_user_memory%n"
             + "- Cursor: read_extraction_cursor, advance_extraction_cursor%n%n"
             + "When calling advance_extraction_cursor, pass the `cursor` parameter:%n"
             + "set it to the index you want the next extraction to start from%n"
@@ -26,7 +27,8 @@ final class ExtractionPrompt {
 
     private static final String EXPLICIT_REQUEST_TEMPLATE = "%n## Explicit Memory Request%n"
             + "The user explicitly asked to remember the following. Store it in the knowledge wiki%n"
-            + "even if the durability/self-check filters below would normally skip it — this explicit%n"
+            + "— or, when it is a cross-project preference, call `save_user_memory` — even if the%n"
+            + "durability/self-check filters below would normally skip it — this explicit%n"
             + "request overrides them. Prioritize it over other candidates:%n"
             + "> %s%n%n"
             + "Extract it first, then continue the normal procedure for any remaining unprocessed messages.%n";

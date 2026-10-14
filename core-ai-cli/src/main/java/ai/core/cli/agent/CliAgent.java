@@ -115,7 +115,7 @@ public class CliAgent {
     private static void configureLifecycles(AgentBuilder builder, Config config, ScriptHookLifecycle hookLifecycle) {
         if (hookLifecycle != null) builder.addAgentLifecycle(hookLifecycle);
         if (config.memoryEnabled) {
-            builder.addAgentLifecycle(new CliMemoryLifecycle(MemoryTriggerService.getInstance(), config.dailyLogsEnabled));
+            builder.addAgentLifecycle(new CliMemoryLifecycle(MemoryTriggerService.getInstance(config.workspace), config.dailyLogsEnabled));
         }
     }
 

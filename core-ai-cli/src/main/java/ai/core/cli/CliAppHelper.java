@@ -24,7 +24,6 @@ import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
-import ai.core.tool.tools.MemoryTool;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
@@ -249,7 +248,6 @@ public class CliAppHelper {
         permissionStore.allow(WebFetchTool.TOOL_NAME);
         permissionStore.allow(WebSearchTool.TOOL_NAME);
         permissionStore.allow(AskUserTool.TOOL_NAME);
-        permissionStore.allow(MemoryTool.TOOL_NAME);
         permissionStore.allow(ReadFileTool.TOOL_NAME);
         permissionStore.allow(GlobFileTool.TOOL_NAME);
         permissionStore.allow(GrepFileTool.TOOL_NAME);

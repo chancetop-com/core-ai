@@ -156,7 +156,7 @@ class AcpSlashCommandHandler {
                     ## Conventions
                     <!-- Add project-specific conventions -->
                     """);
-            MemoryTriggerService.getInstance().ensureDirectories();
+            MemoryTriggerService.getInstance(workspace).ensureDirectories();
             return "\u2713 Created .core-ai/AGENTS.md \u2014 edit it to customize agent behavior.";
         } catch (IOException e) {
             return "Failed to create: " + e.getMessage();
@@ -281,7 +281,7 @@ class AcpSlashCommandHandler {
         if ("disable".equals(args)) return updateMemoryEnabledConfig(false);
         if (args.startsWith("search ")) return memorySearch(args.substring(7).trim());
         if ("clear".equals(args)) {
-            MemoryTriggerService.getInstance().clearKnowledge();
+            MemoryTriggerService.getInstance(workspace).clearKnowledge();
             return "Knowledge cleared and directory structure recreated.";
         }
         return """

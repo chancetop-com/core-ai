@@ -69,7 +69,7 @@ public class SessionCloseExtractor {
             return;
         }
 
-        var triggerService = MemoryTriggerService.getInstance();
+        var triggerService = MemoryTriggerService.getInstance(workspace);
         // set 0 to test
         if (triggerService.getTurnCount() < 2) {
             return;
@@ -85,7 +85,7 @@ public class SessionCloseExtractor {
     }
 
     private static void doCloseExtraction(Agent mainAgent, Path workspace) {
-        var triggerService = MemoryTriggerService.getInstance();
+        var triggerService = MemoryTriggerService.getInstance(workspace);
         try {
             int totalMessages = mainAgent.getHistory().size();
             var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("session-close", MAX_TURNS, TEMPERATURE, false, null));

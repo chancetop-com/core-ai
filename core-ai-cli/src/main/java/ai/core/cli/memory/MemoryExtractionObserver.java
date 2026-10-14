@@ -108,6 +108,8 @@ final class MemoryExtractionObserver extends AbstractLifecycle {
             recordWrite(functionCall);
         } else if (KnowledgeLogTool.ADD_TOOL_NAME.equals(name)) {
             recordNote(stringArgument(functionCall, "log_info"));
+        } else if (SaveUserMemoryTool.TOOL_NAME.equals(name)) {
+            recordUserMemory(result);
         } else if (ExtractionCursorTool.ADVANCE_TOOL_NAME.equals(name)) {
             recordCursor(result);
         }
@@ -160,6 +162,14 @@ final class MemoryExtractionObserver extends AbstractLifecycle {
         String text = logInfo.strip();
         int room = Math.max(0, MAX_NOTE_CHARS - note.length());
         note.append(text.length() <= room ? text : text.substring(0, room));
+    }
+
+    private void recordUserMemory(ToolCallResult result) {
+        Map<String, Object> stats = result.getStats();
+        Object created = stats == null ? null : stats.get("created");
+        written.merge("global/" + GlobalUserMemory.FILE_NAME,
+                Boolean.TRUE.equals(created) ? "added" : "updated",
+                (first, second) -> "added".equals(first) ? first : second);
     }
 
     private void recordCursor(ToolCallResult result) {

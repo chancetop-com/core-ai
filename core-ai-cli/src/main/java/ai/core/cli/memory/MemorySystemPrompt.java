@@ -13,6 +13,8 @@ public final class MemorySystemPrompt implements PromptInject {
     private static final String MEMORY_PROMPT_TEMPLATE = "%n## Existing Knowledge%n%n<memories>%n%s%n</memories>%n%n"
             + "The content above inside <memories> is the current knowledge wiki — treat it as the project's%n"
             + "collective memory. Use it to quickly orient yourself and locate relevant files before starting a task.%n"
+            + "The block labeled \"Global User Memory\" carries the user's standing preferences and applies to%n"
+            + "every workspace; the rest is specific to this project.%n"
             + "However, project knowledge may be stale (files move, architecture evolves) — always verify%n"
             + "by reading actual project files before making decisions. The code itself is the source of truth.%n%n"
             + "Exception: if you discover that a knowledge wiki page records a fact that is no longer%n"

@@ -35,19 +35,31 @@ public class MdMemoryProvider {
     private final Path memoryDir;
     private final Path indexPath;
     private final Path episodesDir;
+    private final GlobalUserMemory globalMemory;
 
     public MdMemoryProvider(Path workspace) {
+        this(workspace, new GlobalUserMemory());
+    }
+
+    MdMemoryProvider(Path workspace, GlobalUserMemory globalMemory) {
         this.memoryDir = workspace.resolve(".core-ai/knowledge");
         this.indexPath = workspace.resolve(".core-ai/knowledge/MEMORY.md");
         this.episodesDir = workspace.resolve(".core-ai/episodes");
+        this.globalMemory = globalMemory;
     }
 
     /**
      * Load initial memory context for injection into the system prompt.
-     * Includes: MEMORY.md index, user-type knowledge pages, and latest 2 episodes.
+     * Includes: global user memory (all workspaces), MEMORY.md index, user-type knowledge pages,
+     * and latest 2 episodes.
      */
     public String load() {
         var sb = new StringBuilder(1024);
+
+        String global = globalMemory.load();
+        if (!global.isBlank()) {
+            sb.append(GlobalUserMemory.HEADER).append('\n').append(global).append('\n');
+        }
 
         String index = readFileQuietly(indexPath);
         if (!index.isBlank()) {
@@ -60,12 +72,22 @@ public class MdMemoryProvider {
         return sb.toString();
     }
 
+    public GlobalUserMemory getGlobalMemory() {
+        return globalMemory;
+    }
+
     public Path getMemoryDir() {
         return memoryDir;
     }
 
     public List<MemoryEntry> listMemories() {
         List<MemoryEntry> entries = new ArrayList<>();
+        String globalBody = globalMemory.load();
+        if (!globalBody.isBlank()) {
+            entries.add(new MemoryEntry("global/" + GlobalUserMemory.FILE_NAME, "Global User Memory",
+                    "Cross-project user preferences", "global", globalBody,
+                    globalMemory.path().toAbsolutePath().toString()));
+        }
         // MEMORY.md is the index, at knowledge/ root — not in a type subdirectory
         if (Files.isRegularFile(indexPath)) {
             entries.add(new MemoryEntry("MEMORY.md", "Memory Index", "Main memory index file",
