@@ -26,6 +26,7 @@ import ai.core.server.web.ChatSessionWebServiceImpl;
 import ai.core.server.web.SessionCreateHelper;
 import ai.core.server.web.UserNotificationWebServiceImpl;
 import ai.core.server.web.auth.RequestAuthenticator;
+import ai.core.server.web.auth.SubUserDelegationResolver;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
@@ -106,7 +107,8 @@ public class SessionModule extends Module {
         var registry = bean(SseEndpointRegistry.class);
         registry.addInterceptor(new SseAuthInterceptor(bean(RequestAuthenticator.class),
                 bean(ai.core.server.web.session.SessionIdentity.class),
-                bean(ai.core.server.apiuser.PermissionService.class)));
+                bean(ai.core.server.apiuser.PermissionService.class),
+                bean(SubUserDelegationResolver.class)));
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
         var cliProxyListener = bind(CliProxyChannelListener.class);
         registry.register(HTTPMethod.POST, CliProxyChannelListener.PATH, Object.class, cliProxyListener, false);

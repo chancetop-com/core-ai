@@ -5,6 +5,7 @@ import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.PermissionInterceptor;
 import ai.core.server.web.auth.RequestAuthenticator;
+import ai.core.server.web.auth.SubUserDelegationResolver;
 import core.framework.module.Module;
 
 import java.time.Duration;
@@ -19,6 +20,8 @@ public class WebFoundationModule extends Module {
         onStartup(migrationManager::migrate);
 
         bind(RequestAuthenticator.class);
+        // bound before AuthInterceptor: core-ng bind() resolves @Inject eagerly
+        bind(SubUserDelegationResolver.class);
         http().intercept(bind(AuthInterceptor.class));
         var permissionInterceptor = bind(PermissionInterceptor.class);
         permissionInterceptor.authDisabled = "true".equals(property("sys.auth.disabled").orElse("false"));

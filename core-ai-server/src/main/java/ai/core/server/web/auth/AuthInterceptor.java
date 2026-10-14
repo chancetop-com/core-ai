@@ -65,6 +65,9 @@ public class AuthInterceptor implements Interceptor {
     @Inject
     SandboxService sandboxService;
 
+    @Inject
+    SubUserDelegationResolver delegationResolver;
+
     @Override
     public Response intercept(Invocation invocation) throws Exception {
         var request = invocation.context().request();
@@ -95,6 +98,7 @@ public class AuthInterceptor implements Interceptor {
         // 1. session identity first (browser web login, stored in Redis when configured)
         var identity = sessionIdentity.getUserIdentityOrNull();
         if (identity != null) {
+            SubUserDelegationResolver.rejectHeaderIfPresent(request);
             invocation.context().put(AuthContext.USER_ID_KEY, identity.userId);
             return invocation.proceed();
         }
@@ -102,9 +106,12 @@ public class AuthInterceptor implements Interceptor {
         // 2. bearer api key fallback (CLI / api users / non-cookie clients)
         var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
         if (apiKeyResult != null) {
-            invocation.context().put(AuthContext.USER_ID_KEY, apiKeyResult.userId());
-            invocation.context().put(AuthContext.KEY_ID_KEY, apiKeyResult.keyId());
+            // X-Subuser-Id switches the effective identity to the declared sub user: ownership,
+            // quota, permissions and traces all follow the sub user; without it the key owner is used
+            SubUserDelegationResolver.requireDelegableSurface(path, request);
+            SubUserDelegationResolver.apply(invocation.context(), delegationResolver.resolve(request, apiKeyResult));
         } else {
+            SubUserDelegationResolver.rejectHeaderIfPresent(request);
             var userId = requestAuthenticator.authenticate(request);
             invocation.context().put(AuthContext.USER_ID_KEY, userId);
             // 3. persist identity into session for internal users so subsequent requests skip key lookup
@@ -141,6 +148,7 @@ public class AuthInterceptor implements Interceptor {
         if (result == null || !"manage".equals(result.scope())) {
             throw new ForbiddenException("management key required");
         }
+        SubUserDelegationResolver.rejectHeaderOnManagementSurface(invocation.context().request());
         invocation.context().put(AuthContext.USER_ID_KEY, result.userId());
         invocation.context().put(AuthContext.KEY_ID_KEY, result.keyId());
         return invocation.proceed();

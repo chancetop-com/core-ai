@@ -4,6 +4,7 @@ import ai.core.server.apiuser.PermissionService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.web.auth.RequestAuthenticator;
+import ai.core.server.web.auth.SubUserDelegationResolver;
 import ai.core.server.web.session.SessionIdentity;
 import ai.core.sse.SseChannelInterceptor;
 import core.framework.web.Request;
@@ -15,7 +16,8 @@ import core.framework.web.exception.ForbiddenException;
  * <p>
  * Registered via {@code PatchedServerSentEventConfig.intercept()}, runs before every SSE channel listener's
  * {@code onConnect} within a WebContext scope, so {@link AuthContext#userId(WebContext)} works downstream.
- * Authentication prefers the session identity (web login); bearer keys fall back. RBAC: SSE channels
+ * Authentication prefers the session identity (web login); bearer keys fall back. {@code X-Subuser-Id}
+ * delegation follows the same {@link SubUserDelegationResolver} rules as HTTP. RBAC: SSE channels
  * do not go through {@code Invocation} (no method annotations), so the permission is resolved by path —
  * session channels require {@code chat.use}, notification channel requires {@code notification.view};
  * A2A stream is a protocol surface and stays open to authenticated users.
@@ -26,24 +28,29 @@ public class SseAuthInterceptor implements SseChannelInterceptor {
     private final RequestAuthenticator requestAuthenticator;
     private final SessionIdentity sessionIdentity;
     private final PermissionService permissionService;
+    private final SubUserDelegationResolver delegationResolver;
 
-    public SseAuthInterceptor(RequestAuthenticator requestAuthenticator, SessionIdentity sessionIdentity, PermissionService permissionService) {
+    public SseAuthInterceptor(RequestAuthenticator requestAuthenticator, SessionIdentity sessionIdentity,
+                              PermissionService permissionService, SubUserDelegationResolver delegationResolver) {
         this.requestAuthenticator = requestAuthenticator;
         this.sessionIdentity = sessionIdentity;
         this.permissionService = permissionService;
+        this.delegationResolver = delegationResolver;
     }
 
     @Override
     public void onConnect(Request request, WebContext webContext) {
         var identity = sessionIdentity.getUserIdentityOrNull();
         if (identity != null) {
+            SubUserDelegationResolver.rejectHeaderIfPresent(request);
             webContext.put(AuthContext.USER_ID_KEY, identity.userId);
         } else {
             var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
             if (apiKeyResult != null) {
-                webContext.put(AuthContext.USER_ID_KEY, apiKeyResult.userId());
-                webContext.put(AuthContext.KEY_ID_KEY, apiKeyResult.keyId());
+                SubUserDelegationResolver.requireDelegableSurface(request.path(), request);
+                SubUserDelegationResolver.apply(webContext, delegationResolver.resolve(request, apiKeyResult));
             } else {
+                SubUserDelegationResolver.rejectHeaderIfPresent(request);
                 var userId = requestAuthenticator.authenticate(request);
                 webContext.put(AuthContext.USER_ID_KEY, userId);
             }

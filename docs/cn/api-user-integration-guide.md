@@ -18,6 +18,7 @@
 | --- | --- | --- |
 | core-ai 管理员 | 创建业务系统主体（manager 用户）并签发 `cmk_` 管理密钥，**线下交付**给业务系统 | 既有账号（admin） |
 | 业务系统后端 | 管理本系统的终端用户、签发临时凭证（**无自助创建/获取管理密钥的接口**） | `cmk_` 管理密钥（长期，可轮换，由管理员交付） |
+| 业务系统后端（代持调用） | 不签发临时凭证，直接用 `cmk_` + `X-Subuser-Id` 声明"本次代表哪个终端用户"后调用 Agent（见 4.0） | `cmk_` + `X-Subuser-Id`（声明，非凭证） |
 | 终端用户客户端 | 实际调用 Agent（业务系统前端或后端代持） | `ctk_` 临时 key（短时效，可续期） |
 
 ### 1.2 核心概念
@@ -295,6 +296,32 @@ GET /api/api-users/:userId/usage?from=2026-08-01T00:00:00Z&to=2026-08-04T23:59:5
 > 认证：`Authorization: Bearer ctk_xxx`（临时 key）。
 > 仅能调用已被授权（permissions 白名单）的 Agent，否则返回 403。
 
+### 4.0 后端直调（`cmk_` + `X-Subuser-Id`）
+
+业务后端直接发起调用（没有前端参与、不想为每次调用签发/切换 `ctk_`）时，可继续用 `cmk_` 调 Agent，并通过请求头 `X-Subuser-Id` 声明**本次调用代表的终端用户**——值为 3.1 创建接口返回的 `user_id`（如 `api:0f8a...`）。服务端校验通过后，运行归属、token 消耗、配额、trace 全部记在该终端用户头上，权限与配额按该用户的白名单与额度执行。
+
+```
+POST /api/agents/:agentId/call HTTP/1.1
+Authorization: Bearer cmk_xxxxxxxx          ← 凭证（管理密钥）
+X-Subuser-Id: api:0f8a...                  ← 声明（本次代表谁），不是凭证
+Content-Type: application/json
+
+{ "input": "帮我查一下订单 SO-20260804-001 的状态" }
+```
+
+规则：
+
+| 规则 | 说明 |
+| --- | --- |
+| 适用面 | `/api/agents/*`、`/api/runs/*`、`/api/llm/*`、`/api/sessions/*`（HTTP 与 SSE 语义一致）；其他面携带该头返回 400 |
+| 头值 | 仅接受平台 `user_id`（`external_id` 不支持）；目标必须是**本业务系统名下的、状态为 active 的** API 用户，否则 403（不属于本系统）/ 401（已禁用） |
+| 临时 key 不能代持 | `ctk_` 携带该头返回 403（只有 `cmk_` 管理密钥可以声明代表他人） |
+| 读回也要带头 | 读 run / session 结果时携带同样的头（有效身份 = 该用户）；不带头会因 owner 不匹配返回 403 |
+| 不带头 = 现状 | `cmk_` 不携带该头时行为与现在一致（以业务系统主体自身身份调用，适合对接联调） |
+| 审计 | 委派请求在服务端 action log 中记录 `delegated_by`（业务系统主体）与实际 key id，可按此检索某业务系统代发的全部请求 |
+
+> `external_id → user_id` 映射建议在创建终端用户时持久化（3.1 的响应已返回 `user_id`）；每次调用前用映射把业务侧标识换成 `user_id` 再放入请求头。头值不合法（不存在 / 非本系统 / 非 API 用户）一律 403，且不会静默降级为"以业务系统主体身份调用"。
+
 ### 4.1 同步调用
 
 ```
@@ -430,13 +457,13 @@ data: {"id":"...","errorCode":"UNAUTHORIZED","message":"invalid api key"}
 
 | HTTP | 错误码 | 场景 | 处理建议 |
 | --- | --- | --- | --- |
-| 401 | `UNAUTHORIZED` | 未认证 / key 无效 / key 已过期 | 检查 `Authorization` 头；key 过期则重新签发 |
-| 403 | `FORBIDDEN` | key 无权限调用该 Agent / 资源不属于当前业务系统 | 检查权限白名单与归属 |
+| 401 | `UNAUTHORIZED` | 未认证 / key 无效 / key 已过期 / 被代表的 sub user 已禁用 | 检查 `Authorization` 头；key 过期则重新签发；sub user 禁用则同步用户状态 |
+| 403 | `FORBIDDEN` | key 无权限调用该 Agent / 资源不属于当前业务系统 / `ctk_` 携带 `X-Subuser-Id` / `X-Subuser-Id` 目标不存在或不属于本系统 | 检查权限白名单、归属与 sub user id 来源 |
 | 404 | `NOT_FOUND` | 用户 / key / Agent / run 不存在 | 检查 ID 是否正确 |
 | 409 | `CONFLICT` | 资源冲突（一般幂等场景不会出现） | 重查既有资源 |
 | 429 | `QUOTA_EXCEEDED` | **每日 token 配额已用尽**（UTC 日窗口，次日 0 点重置） | 提示用户「额度已用完，请明日再来」 |
 | 429 | `RATE_LIMITED` | 触发限流 | 退避重试 |
-| 400 | `BAD_REQUEST` | 参数缺失或非法 | 检查请求体字段 |
+| 400 | `BAD_REQUEST` | 参数缺失或非法 / `X-Subuser-Id` 用在不支持的路由 / 非 api key 凭证携带该头 | 检查请求体字段；去掉该头或改用支持的路由（见 4.0） |
 
 错误响应体（core-ng 标准格式，字段名为 `errorCode`）：
 
@@ -468,5 +495,6 @@ data: {"id":"...","errorCode":"UNAUTHORIZED","message":"invalid api key"}
 - [ ] 后端实现：创建 API 用户（幂等）→ 配置权限 → 配置额度 → 签发 key
 - [ ] 后端实现：key 续期/过期、用量查询
 - [ ] 客户端实现：`Bearer ctk_` 调用 Agent（同步 / 异步 / 会话）
+- [ ] （可选）后端直调模式：持久化 `external_id → user_id` 映射；调用与读回均携带 `X-Subuser-Id`（4.0）
 - [ ] 错误处理：401/403/429 的提示与重试
 - [ ] 联调环境验证：创建 → 授权 → 调用 → 查用量全链路

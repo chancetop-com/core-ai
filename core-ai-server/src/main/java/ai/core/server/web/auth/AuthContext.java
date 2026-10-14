@@ -8,6 +8,7 @@ import core.framework.web.WebContext;
 public final class AuthContext {
     public static final String USER_ID_KEY = "auth.userId";
     public static final String KEY_ID_KEY = "auth.keyId";
+    public static final String DELEGATOR_ID_KEY = "auth.delegatorId";
     public static final String SANDBOX_PRINCIPAL_KEY = "auth.sandboxPrincipal";
 
     public static String userId(WebContext context) {
@@ -16,6 +17,14 @@ public final class AuthContext {
 
     public static String keyId(WebContext context) {
         return (String) context.get(KEY_ID_KEY);
+    }
+
+    /**
+     * Present only on requests delegated to a sub user via {@code X-Subuser-Id}: the manager user
+     * whose management key declared to act for {@link #userId}. {@code null} everywhere else.
+     */
+    public static String delegatorUserId(WebContext context) {
+        return (String) context.get(DELEGATOR_ID_KEY);
     }
 
     /**
