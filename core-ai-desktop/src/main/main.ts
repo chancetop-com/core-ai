@@ -202,12 +202,15 @@ function loadSettings(): DesktopSettings {
   try {
     return normalizeSettings(JSON.parse(readFileSync(settingsFile(), 'utf8')) as DesktopSettings);
   } catch {
-    return { workspaces: [] };
+    return normalizeSettings({ workspaces: [] });
   }
 }
 
 function normalizeSettings(loaded: DesktopSettings): DesktopSettings {
   const settings = { ...loaded };
+  // Computer use is on unless the user turned it off. Host enablement still has to pass every
+  // ready check before engines are told the desktop is available (Settings -> Computer use).
+  if (settings.computerUse === undefined) settings.computerUse = true;
   const list = Array.isArray(settings.workspaces)
     ? settings.workspaces.filter((entry): entry is string => typeof entry === 'string')
     : [];
