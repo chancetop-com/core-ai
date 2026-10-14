@@ -1851,6 +1851,57 @@ export interface RuntimeStats {
   span_ingest?: { queue_depth?: number; capacity?: number; dropped_total?: number };
 }
 
+export interface RuntimePodWatermark {
+  pod?: string;
+  collected_at?: string;
+  age_seconds?: number;
+  heap_used_percent?: number;
+  heap_used?: number;
+  heap_max?: number;
+  sessions_active?: number;
+  in_flight_turns?: number;
+  turns_saturated_total?: number;
+  turns_rejected_total?: number;
+  runs_active?: number;
+  runs_queued?: number;
+  runs_rejected_total?: number;
+  sandboxes_live?: number;
+  sandboxes_rejected_total?: number;
+  span_ingest_depth?: number;
+  span_ingest_dropped_total?: number;
+  claims_live?: number;
+  direct_crs_live?: number;
+  creates_total?: number;
+  creates_failed_total?: number;
+}
+
+export interface RuntimePods {
+  limits?: RuntimeLimits;
+  pods?: RuntimePodWatermark[];
+}
+
+export interface RuntimeSeriesPoint {
+  bucket_start?: string;
+  pods_reporting?: number;
+  heap_peak_percent?: number;
+  heap_avg_percent?: number;
+  in_flight_turns_peak?: number;
+  sessions_peak?: number;
+  runs_queued_peak?: number;
+  sandboxes_peak?: number;
+  span_ingest_depth_peak?: number;
+  turns_saturated_delta?: number;
+  turns_rejected_delta?: number;
+  runs_rejected_delta?: number;
+  sandboxes_rejected_delta?: number;
+  span_ingest_dropped_delta?: number;
+}
+
+export interface RuntimeSeries {
+  bucket_minutes?: number;
+  points?: RuntimeSeriesPoint[];
+}
+
 export interface SystemSettings {
   memory_extraction_model?: string | null;
   default_memory_extraction_model?: string;
@@ -2038,6 +2089,10 @@ export const api = {
       request<RuntimeLimits>('/api/admin/runtime/limits', { method: 'PUT', body: JSON.stringify(data) }),
     stats: () =>
       request<RuntimeStats>('/api/admin/runtime/stats'),
+    pods: () =>
+      request<RuntimePods>('/api/admin/runtime/pods'),
+    series: (hours: number, bucketMinutes: number) =>
+      request<RuntimeSeries>(`/api/admin/runtime/series/${hours}/${bucketMinutes}`),
   },
   gateway: {
     listProviders: () =>

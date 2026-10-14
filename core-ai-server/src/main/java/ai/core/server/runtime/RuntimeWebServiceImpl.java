@@ -2,6 +2,8 @@ package ai.core.server.runtime;
 
 import ai.core.api.server.runtime.RuntimeLimitsRequest;
 import ai.core.api.server.runtime.RuntimeLimitsView;
+import ai.core.api.server.runtime.RuntimePodsView;
+import ai.core.api.server.runtime.RuntimeSeriesView;
 import ai.core.api.server.runtime.RuntimeStatsView;
 import ai.core.api.server.runtime.RuntimeWebService;
 import ai.core.server.rbac.PermissionCodes;
@@ -21,6 +23,8 @@ public class RuntimeWebServiceImpl implements RuntimeWebService {
     RuntimeSettingsService runtimeSettingsService;
     @Inject
     RuntimeStatsService runtimeStatsService;
+    @Inject
+    RuntimeSampleService runtimeSampleService;
 
     @Override
     public RuntimeLimitsView limits() {
@@ -35,6 +39,16 @@ public class RuntimeWebServiceImpl implements RuntimeWebService {
     @Override
     public RuntimeStatsView stats() {
         return runtimeStatsService.stats();
+    }
+
+    @Override
+    public RuntimePodsView pods() {
+        return runtimeSampleService.pods(userId());
+    }
+
+    @Override
+    public RuntimeSeriesView series(int hours, int bucketMinutes) {
+        return runtimeSampleService.series(hours, bucketMinutes, userId());
     }
 
     private String userId() {

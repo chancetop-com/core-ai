@@ -284,6 +284,7 @@ public class ServerApp extends App {
         mongo.collection(SkillDefinition.class);
         mongo.collection(MarketplaceRepo.class);
         mongo.collection(SchemaVersion.class);
+        mongo.collection(ai.core.server.runtime.RuntimeSample.class);
         mongo.collection(ai.core.server.replay.domain.ReplayExperiment.class);
         mongo.collection(ai.core.server.replay.domain.ReplayRun.class);
     }

@@ -137,6 +137,11 @@ public class RuntimeSettingsService {
         return systemSettingsCollection.get(SETTINGS_ID).orElse(null);
     }
 
+    /** Shared by the read-side services so every runtime endpoint keeps the same admin gate. */
+    public void requireAdminUser(String userId) {
+        requireAdmin(userId);
+    }
+
     private void requireAdmin(String userId) {
         if (userId == null) throw new ForbiddenException("admin required");
         var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));

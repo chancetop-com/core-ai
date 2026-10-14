@@ -6,6 +6,7 @@ import ai.core.server.run.AgentRunner;
 import ai.core.server.runtime.AdmissionInterceptor;
 import ai.core.server.runtime.RuntimeCapacityGuard;
 import ai.core.server.runtime.RuntimeLimitsProvider;
+import ai.core.server.runtime.RuntimeSampleService;
 import ai.core.server.runtime.RuntimeSettingsService;
 import ai.core.server.runtime.RuntimeStatsJob;
 import ai.core.server.runtime.RuntimeStatsService;
@@ -56,6 +57,7 @@ public class RuntimeGovernanceModule extends Module {
         onStartup(() -> LocalSpanProcessor.configureCapacity(limitsProvider.get().spanIngestQueueCapacity));
         bind(RuntimeSettingsService.class);
         bind(RuntimeStatsService.class);
+        bind(RuntimeSampleService.class);
         // gauges into the action log (Kibana), so watermarks and refusals are visible without the UI
         schedule().fixedRate("runtime-stats", bind(RuntimeStatsJob.class), Duration.ofMinutes(1));
         api().service(RuntimeWebService.class, bind(RuntimeWebServiceImpl.class));

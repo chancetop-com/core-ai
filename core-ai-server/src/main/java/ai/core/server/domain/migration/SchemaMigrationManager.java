@@ -159,7 +159,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVSessionNoticeIndex(),
             new SchemaMigrationVAgentComparisonIndexes(),
             new SchemaMigrationVAgentVersionIndexes(),
-            new SchemaMigrationVAgentComparisonListIndexes()
+            new SchemaMigrationVAgentComparisonListIndexes(),
+            new SchemaMigrationVRuntimeSampleIndexes()
         );
     }
 }

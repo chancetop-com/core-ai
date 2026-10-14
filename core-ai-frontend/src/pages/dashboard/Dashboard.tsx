@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import ModeTimeSelector from './components/ModeTimeSelector';
+import RuntimeWatermarks from './components/RuntimeWatermarks';
 import GlobalSummaryCards from './components/GlobalSummaryCards';
 import GlobalTrendChart from './components/GlobalTrendChart';
 import DimensionTabs from './components/DimensionTabs';
@@ -137,6 +138,43 @@ export default function Dashboard() {
     return filtered;
   }, [state.dimensionData, state.dimensionTrend]);
 
+  const [view, setView] = useState<'analytics' | 'runtime'>('analytics');
+
+  const viewSwitch = (
+    <div className="flex items-center gap-2">
+      {(['analytics', 'runtime'] as const).map(candidate => (
+        <button
+          key={candidate}
+          onClick={() => setView(candidate)}
+          className="px-3 py-1.5 rounded-lg text-sm capitalize"
+          style={{
+            background: view === candidate ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+            color: view === candidate ? '#fff' : 'var(--color-text)',
+          }}
+        >
+          {candidate}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (view === 'runtime') {
+    return (
+      <div className="p-6">
+        <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Runtime Watermarks</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Per-replica watermarks read from the persisted samples — every pod reports, and collection stays separate from display
+            </p>
+          </div>
+          {viewSwitch}
+        </div>
+        <RuntimeWatermarks />
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -150,7 +188,9 @@ export default function Dashboard() {
                 : `Last ${range === '1d' ? '1' : range === '7d' ? '7' : '30'} days · pre-aggregated stats`}
           </p>
         </div>
-        <ModeTimeSelector mode={mode} range={range} from={from} to={to}
+        <div className="flex items-center gap-3">
+          {viewSwitch}
+          <ModeTimeSelector mode={mode} range={range} from={from} to={to}
           onModeChange={m => { setMode(m); setSelectedKey(null); }}
           onRangeChange={r => {
             setRange(r as Range);
@@ -169,6 +209,7 @@ export default function Dashboard() {
             setTo(t);
             setSelectedKey(null);
           }} />
+        </div>
       </div>
 
       {state.error && (

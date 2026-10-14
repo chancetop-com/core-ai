@@ -1,10 +1,15 @@
 package ai.core.server.runtime;
 
+import ai.core.api.server.runtime.RuntimeStatsView;
 import ai.core.sse.SseQueueLimits;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import core.framework.mongo.MongoCollection;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
+
+import java.time.ZonedDateTime;
+import java.util.UUID;
 
 /**
  * Publishes the runtime gauges (heap watermark, in-flight work, refusals, queue depths) into the action
@@ -18,6 +23,8 @@ public class RuntimeStatsJob implements Job {
     RuntimeStatsService statsService;
     @Inject
     RuntimeCapacityGuard guard;
+    @Inject
+    MongoCollection<RuntimeSample> runtimeSampleCollection;
 
     @Override
     public void execute(JobContext context) {
@@ -45,5 +52,33 @@ public class RuntimeStatsJob implements Job {
         // context (not stats) so a Kibana query can group by pod when several replicas report
         ActionLogContext.put("runtime_pod", stats.pod);
         ActionLogContext.put("runtime_admission_enabled", limits.admissionEnabled);
+        recordSample(stats);
+    }
+
+    /** The long-term series: one document per pod per tick, read back by the runtime dashboard. */
+    private void recordSample(RuntimeStatsView stats) {
+        var sample = new RuntimeSample();
+        sample.id = UUID.randomUUID().toString();
+        sample.pod = stats.pod;
+        sample.collectedAt = ZonedDateTime.now();
+        sample.heapUsedPercent = stats.memory.heapUsedPercent;
+        sample.heapUsed = stats.memory.heapUsed;
+        sample.heapMax = stats.memory.heapMax;
+        sample.sessionsActive = stats.sessions.active;
+        sample.inFlightTurns = stats.turns.inFlight;
+        sample.turnsSaturated = stats.turns.saturatedTotal;
+        sample.turnsRejected = stats.turns.rejectedTotal;
+        sample.runsActive = stats.runs.active;
+        sample.runsQueued = stats.runs.queued;
+        sample.runsRejected = stats.runs.rejectedTotal;
+        sample.sandboxesLive = stats.sandbox.live;
+        sample.sandboxesRejected = stats.sandbox.rejectedTotal;
+        sample.spanIngestDepth = stats.spanIngest.queueDepth;
+        sample.spanIngestDropped = stats.spanIngest.droppedTotal;
+        sample.claimsLive = stats.sandboxFleet.claimsLive;
+        sample.directCrsLive = stats.sandboxFleet.directCrsLive;
+        sample.createsTotal = stats.sandboxFleet.createsTotal;
+        sample.createsFailedTotal = stats.sandboxFleet.createsFailedTotal;
+        runtimeSampleCollection.insert(sample);
     }
 }
