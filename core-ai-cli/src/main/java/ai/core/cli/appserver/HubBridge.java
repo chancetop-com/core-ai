@@ -8,6 +8,7 @@ import ai.core.cli.hub.skill.SkillHubMarker;
 import ai.core.cli.hub.skill.SkillInstallConflictException;
 import ai.core.cli.hub.skill.SkillInstaller;
 import ai.core.cli.hub.skill.SkillLocations;
+import ai.core.cli.hub.skill.SkillUpdater;
 import ai.core.cli.http.RemoteApiException;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
@@ -124,6 +125,12 @@ public class HubBridge {
         return new Credentials(auth.serverUrl(), auth.apiKey());
     }
 
+    /** Skill client for the current login, or null when not signed in (the skills panel shows local states then). */
+    SkillHubClient skillClientOrNull() {
+        var credentials = credentials();
+        return credentials == null ? null : new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+    }
+
     public ObjectNode catalog() {
         var node = Params.object();
         var credentials = credentials();
@@ -179,6 +186,44 @@ public class HubBridge {
         } catch (RuntimeException e) {
             LOGGER.warn("hub skill list failed: {}", e.getMessage());
             return notConnected(node, "unreachable").put("message", messageOf(e));
+        }
+    }
+
+    /**
+     * Updates hub-installed skills in the user skill root (the same managed copies a pull writes):
+     * one named skill, or every hub-marked skill when {@code name} is absent. Only outdated skills
+     * are replaced unless {@code force} — the same contract as {@code core-ai-cli skill update}.
+     */
+    public ObjectNode updateSkill(ObjectNode params) {
+        var credentials = credentials();
+        if (credentials == null) {
+            throw RpcException.business("NOT_LOGGED_IN", "sign in to core-ai-server to update skills from the hub");
+        }
+        var client = new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+        var force = params.path("force").asBoolean(false);
+        var name = Params.optionalText(params, "name");
+        try {
+            var updater = new SkillUpdater();
+            var outcomes = name == null || name.isBlank()
+                    ? updater.updateAll(client, SkillLocations.userSkillsDir(), force)
+                    : updater.update(client, SkillLocations.userSkillsDir(), name.trim(), force);
+            var node = Params.object();
+            node.put("connected", true);
+            var updated = node.putArray("updated");
+            var skipped = node.putArray("skipped");
+            for (var outcome : outcomes) {
+                if (outcome.updated()) {
+                    updated.add(outcome.qualifiedName());
+                } else {
+                    skipped.add(outcome.qualifiedName() + " " + outcome.reason());
+                }
+            }
+            return node;
+        } catch (RemoteApiException e) {
+            throw RpcException.business("SKILL_UPDATE_FAILED",
+                    "hub request failed (HTTP " + e.statusCode + "): " + e.getMessage(), e);
+        } catch (RuntimeException e) {
+            throw RpcException.business("SKILL_UPDATE_FAILED", messageOf(e), e);
         }
     }
 
