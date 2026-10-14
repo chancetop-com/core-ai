@@ -1,5 +1,5 @@
-// Local tests for the artifact protocol helpers: token/path decoding, the .core-ai whitelist and HTTP
-// range parsing. Run via `npm test` (builds dist/test/artifactPath.js).
+// Local tests for the artifact protocol helpers: token/path decoding, the .core-ai + registered-paths
+// whitelist and HTTP range parsing. Run via `npm test` (builds dist/test/artifactPath.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
@@ -7,7 +7,17 @@ import os from 'node:os';
 import path from 'node:path';
 import artifactPath from '../dist/test/artifactPath.js';
 
-const { tokenOf, decodeRelativePath, contentTypeFor, isInside, resolveInsideArtifacts, parseRange } = artifactPath;
+const {
+  tokenOf,
+  decodeRelativePath,
+  contentTypeFor,
+  isInside,
+  resolveInsideArtifacts,
+  resolveInsideWorkspace,
+  registeredArtifactPaths,
+  artifactManifestPath,
+  parseRange,
+} = artifactPath;
 
 function workspace() {
   const root = mkdtempSync(path.join(os.tmpdir(), 'coreai-artifact-'));
@@ -53,6 +63,43 @@ test('isInside is boundary aware', () => {
   assert.equal(isInside(parent, parent), false);
   assert.equal(isInside(parent, `${parent}-evil`), false);
   assert.equal(isInside(parent, path.resolve(parent, '..', 'other')), false);
+});
+
+test('registeredArtifactPaths reads the engine manifest and skips malformed lines', () => {
+  const root = workspace();
+  assert.deepEqual([...registeredArtifactPaths(root)], []);
+
+  const manifest = artifactManifestPath(root);
+  mkdirSync(path.dirname(manifest), { recursive: true });
+  writeFileSync(
+    manifest,
+    [
+      JSON.stringify({ path: 'reports/weekly.html', registeredAt: '2026-10-14T00:00:00Z' }),
+      'not json',
+      JSON.stringify({ path: '' }),
+      JSON.stringify({ other: 1 }),
+      JSON.stringify({ path: 'out/data.csv' }),
+      '',
+    ].join('\n'),
+  );
+  assert.deepEqual([...registeredArtifactPaths(root)].sort(), ['out/data.csv', 'reports/weekly.html']);
+});
+
+test('resolveInsideWorkspace serves registered files inside the workspace only', () => {
+  const root = workspace();
+  mkdirSync(path.join(root, 'reports'), { recursive: true });
+  writeFileSync(path.join(root, 'reports', 'weekly.html'), '<h1>w</h1>');
+  assert.ok(resolveInsideWorkspace(root, 'reports/weekly.html'));
+
+  assert.equal(resolveInsideWorkspace(root, 'reports/missing.html'), null);
+  assert.equal(resolveInsideWorkspace(root, '../outside.txt'), null);
+  assert.equal(resolveInsideWorkspace(root, '.core-ai/../outside.txt'), null);
+
+  // a sibling directory sharing the workspace name prefix must not pass the boundary check
+  const sibling = `${root}-evil`;
+  mkdirSync(sibling, { recursive: true });
+  writeFileSync(path.join(sibling, 'x.txt'), 'x');
+  assert.equal(resolveInsideWorkspace(root, '../' + path.basename(sibling) + '/x.txt'), null);
 });
 
 test('parseRange handles closed, open, suffix and invalid ranges', () => {

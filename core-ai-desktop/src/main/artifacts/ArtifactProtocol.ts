@@ -1,8 +1,9 @@
 // coreai-artifact:// — serves local artifacts to the renderer without base64 over IPC. The scheme is
 // registered as privileged before app ready (module top level); the handler is installed on ready. A
 // per-workspace token occupies the FIRST PATH segment, never the host: a `standard` scheme lowercases
-// and IDN-normalizes the host, so a token there would not round-trip. Only files under
-// {workspace}/.core-ai are served; `..`, absolute paths and symlink escapes are rejected.
+// and IDN-normalizes the host, so a token there would not round-trip. Files under {workspace}/.core-ai
+// and paths registered in {workspace}/.core-ai/artifacts/manifest.jsonl (the engine's submit_artifacts)
+// are served; `..`, absolute paths and symlink escapes are rejected.
 import { protocol } from 'electron';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
@@ -13,7 +14,9 @@ import {
   contentTypeFor,
   decodeRelativePath,
   parseRange,
+  registeredArtifactPaths,
   resolveInsideArtifacts,
+  resolveInsideWorkspace,
   tokenOf,
 } from './artifactPath.js';
 
@@ -67,7 +70,10 @@ async function serve(request: Request): Promise<Response> {
   const relativePath = decodeRelativePath(url.pathname);
   if (relativePath === null) return new Response('bad request', { status: 400, headers: CORS_HEADERS });
 
-  const target = resolveInsideArtifacts(workspace, relativePath);
+  let target = resolveInsideArtifacts(workspace, relativePath);
+  if (!target && registeredArtifactPaths(workspace).has(relativePath)) {
+    target = resolveInsideWorkspace(workspace, relativePath);
+  }
   if (!target) return new Response('forbidden', { status: 403, headers: CORS_HEADERS });
 
   let size: number;

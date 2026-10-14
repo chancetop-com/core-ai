@@ -1,6 +1,7 @@
-// Pure helpers for the coreai-artifact:// protocol: URL parsing, the .core-ai path whitelist and HTTP
-// range handling. Kept free of any Electron import so the node:test suite can exercise them directly.
-import { realpathSync } from 'node:fs';
+// Pure helpers for the coreai-artifact:// protocol: URL parsing, the .core-ai + registered-paths
+// whitelist and HTTP range handling. Kept free of any Electron import so the node:test suite can
+// exercise them directly.
+import { readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 
 export interface ByteRange {
@@ -64,6 +65,41 @@ export function resolveInsideArtifacts(workspace: string, relativePath: string):
   const target = realpathOrNull(path.resolve(workspace, relativePath));
   if (!target) return null;
   return isInside(root, target) ? target : null;
+}
+
+/** Like resolveInsideArtifacts, but for registered files anywhere inside {workspace} (no .core-ai root). */
+export function resolveInsideWorkspace(workspace: string, relativePath: string): string | null {
+  const root = realpathOrNull(path.resolve(workspace));
+  if (!root) return null;
+  const target = realpathOrNull(path.resolve(workspace, relativePath));
+  if (!target) return null;
+  return isInside(root, target) ? target : null;
+}
+
+/** Manifest written by the engine's submit_artifacts tool (LocalArtifactManifest on the Java side). */
+export function artifactManifestPath(workspace: string): string {
+  return path.join(workspace, '.core-ai', 'artifacts', 'manifest.jsonl');
+}
+
+/** Registered artifact paths, read per request (small file; a stale cache would outlive a register). */
+export function registeredArtifactPaths(workspace: string): Set<string> {
+  let text: string;
+  try {
+    text = readFileSync(artifactManifestPath(workspace), 'utf8');
+  } catch {
+    return new Set();
+  }
+  const paths = new Set<string>();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    try {
+      const entry = JSON.parse(line) as { path?: unknown };
+      if (typeof entry?.path === 'string' && entry.path) paths.add(entry.path);
+    } catch {
+      // a torn append at the tail must not break listing
+    }
+  }
+  return paths;
 }
 
 /** Boundary-aware containment: a bare `startsWith` would treat `<ws>/core-ai-evil` as inside `<ws>/core-ai`. */

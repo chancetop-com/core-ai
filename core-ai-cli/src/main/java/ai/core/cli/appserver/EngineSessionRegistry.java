@@ -11,6 +11,8 @@ import ai.core.cli.memory.MemoryExtractionReport;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProviderType;
+import ai.core.llm.domain.Content;
+import ai.core.llm.domain.RoleType;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
@@ -331,7 +333,36 @@ public class EngineSessionRegistry {
         var artifactSink = new LocalArtifactSink(bootstrap.workspace, context);
         context.getCustomVariables().put(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, artifactSink);
         context.getCustomVariables().put(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY, artifactSink);
+        installArtifactDelivery(agent);
         return new EngineSession(sessionId, agent, inProcess, memoryProvider);
+    }
+
+    /**
+     * Desktop deliverable flow: non-media files enter the artifact panel only when the agent registers
+     * them through submit_artifacts (media files are captured by the sink automatically). The
+     * instructions go into the prompt template and, for a resumed session, into the already-sent
+     * messages[0] — the copy the model actually reads (same reason as MemorySectionManager).
+     */
+    private void installArtifactDelivery(Agent agent) {
+        agent.addTools(List.of(LocalSubmitArtifactsTool.create(bootstrap.workspace)));
+        var prompt = agent.getSystemPrompt();
+        if (prompt == null || prompt.contains(LocalSubmitArtifactsTool.PROMPT_MARKER)) {
+            return;
+        }
+        agent.setSystemPrompt(LocalSubmitArtifactsTool.appendInstructions(prompt));
+        var messages = agent.getMessages();
+        if (messages.isEmpty()) {
+            return;
+        }
+        var first = messages.getFirst();
+        if (first.role != RoleType.SYSTEM || first.content == null || first.content.isEmpty()) {
+            return;
+        }
+        var text = first.content.getFirst().text;
+        if (text == null || text.contains(LocalSubmitArtifactsTool.PROMPT_MARKER)) {
+            return;
+        }
+        first.content = List.of(Content.of(LocalSubmitArtifactsTool.appendInstructions(text)));
     }
 
     private ToolPermissionStore permissionStore() {
