@@ -30,6 +30,12 @@ export interface BrowserHost {
   closeTarget(targetId: string): Promise<void>;
   sendCommand(targetId: string, method: string, params: Record<string, unknown>): Promise<unknown>;
   subscribe(targetId: string, listener: (method: string, params: unknown) => void): () => void;
+  /**
+   * The bridge registers here so a target lost outside CDP (a page closing its own tab, a renderer
+   * crash) is announced like an explicit close: sessions drop and clients get the target-gone
+   * events, instead of the next command failing with "No target with given id found".
+   */
+  setTargetGoneListener(listener: (targetId: string) => void): void;
 }
 
 export interface CdpBridgeOptions {
@@ -82,6 +88,7 @@ export class CdpBridge {
       server.listen(this.options.port, HOST, () => {
         server.off('error', onListenError);
         this.server = server;
+        this.options.host.setTargetGoneListener((targetId) => this.handleHostTargetGone(targetId));
         const address = server.address();
         this.port = typeof address === 'object' && address ? address.port : this.options.port;
         resolve();
@@ -260,7 +267,9 @@ export class CdpBridge {
           connection.replyError(id, -32602, 'No target with given id found');
           return;
         }
-        await this.closeTargetEverywhere(targetId);
+        // The host announces the loss through the target-gone callback — the same path a page-side
+        // close or a renderer crash takes — which drops the sessions and sends the CDP events.
+        await this.options.host.closeTarget(targetId);
         connection.reply(id, {});
         return;
       }
@@ -316,12 +325,13 @@ export class CdpBridge {
     return sessionId;
   }
 
-  private async closeTargetEverywhere(targetId: string): Promise<void> {
+  /**
+   * The host reported a target gone (explicit close, page-side close, renderer crash): drop the
+   * sessions bound to it and tell discovery clients, exactly like closeTargetEverywhere used to.
+   */
+  private handleHostTargetGone(targetId: string): void {
     for (const connection of [...this.connections]) {
       connection.dropSessionsForTarget(targetId);
-    }
-    await this.options.host.closeTarget(targetId);
-    for (const connection of [...this.connections]) {
       connection.notifyTargetGone(targetId);
     }
   }

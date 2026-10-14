@@ -63,6 +63,7 @@ export class BrowserManager implements BrowserHost {
   private panelVisible = false;
   private readonly attachedContents = new Set<number>();
   private readonly zeroSizeWarned = new Set<string>();
+  private targetGoneListener: ((targetId: string) => void) | null = null;
   private readonly token: string;
   private readonly userAgent: string;
   private sessionConfigured = false;
@@ -261,6 +262,10 @@ export class BrowserManager implements BrowserHost {
     this.destroyTab(tab, { allowAutoStop: true });
   }
 
+  setTargetGoneListener(listener: (targetId: string) => void): void {
+    this.targetGoneListener = listener;
+  }
+
   sendCommand(targetId: string, method: string, params: Record<string, unknown>): Promise<unknown> {
     const tab = this.requireTab(targetId);
     this.warnOnZeroSize(tab);
@@ -384,16 +389,20 @@ export class BrowserManager implements BrowserHost {
     });
     wc.on('render-process-gone', (_event, details) => {
       console.error(`[browser] tab ${tab.id} renderer gone: ${details.reason}`);
-      this.destroyTab(tab, { allowAutoStop: true });
+      // Not allowAutoStop: an involuntary loss must never stop the whole browser (the user sees a
+      // mystery "browser stopped"); the bridge stays up so the user/agent can open a new tab.
+      this.destroyTab(tab, { allowAutoStop: false });
     });
     wc.once('destroyed', () => {
       // A page can close its own tab (window.close()) and a crashed renderer drops the webContents
       // with it: `view.webContents` then reads undefined. Without this hook the tab would stay in
       // `tabs` as a zombie and every later title/stop/reload/status call would throw "Cannot read
       // properties of undefined" — bricking the pane and the agent's CDP bridge until a restart.
+      // Sites do this for real: BOSS直聘's security check closes the tab it dislikes. Clean the tab
+      // up like a close, but never auto-stop the browser (only explicit closeTab/closeTarget do).
       if (!this.tabs.includes(tab)) return;
       console.log(`[browser] tab ${tab.id} closed from the page or renderer side`);
-      this.destroyTab(tab, { allowAutoStop: true });
+      this.destroyTab(tab, { allowAutoStop: false });
     });
     wc.setWindowOpenHandler((details) => {
       if (isAllowedNavigation(details.url)) {
@@ -427,6 +436,9 @@ export class BrowserManager implements BrowserHost {
       this.activeId = this.tabs[0]?.id ?? null;
     }
     console.log(`[browser] tab closed id=${tab.id}`);
+    // Whatever the cause, CDP clients learn the target is gone instead of failing on their next
+    // command ("No target with given id found") — the bridge drops its sessions and notifies.
+    this.targetGoneListener?.(tab.id);
     this.applyViewBounds();
     this.emitState();
     if (options.allowAutoStop && this.tabs.length === 0 && this.bridge) {
@@ -434,6 +446,16 @@ export class BrowserManager implements BrowserHost {
       setImmediate(() => {
         if (this.tabs.length === 0 && this.bridge) void this.stop();
       });
+    }
+    if (!options.allowAutoStop && this.tabs.length === 0 && this.bridge) {
+      // A passively lost last tab (page-side window.close(), renderer crash) must not leave a
+      // running browser with no target — the pane would hide its tab strip and the address bar
+      // would refuse everything. A fresh blank tab keeps the pane and the bridge usable.
+      try {
+        this.createTab({ url: START_URL, activate: true });
+      } catch (error) {
+        console.error('[browser] failed to reopen a tab after the last one was lost', error);
+      }
     }
   }
 

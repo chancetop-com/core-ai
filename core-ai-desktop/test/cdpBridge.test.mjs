@@ -17,11 +17,18 @@ function createHost() {
   const listeners = new Map();
   const calls = [];
   let created = 0;
-  return {
+  let targetGoneListener = null;
+  const host = {
     calls,
     targets,
     emit(targetId, method, params) {
       for (const listener of listeners.get(targetId) ?? []) listener(method, params);
+    },
+    /** Simulates a target lost outside CDP: a page closing its own tab, or a renderer crash. */
+    lose(targetId) {
+      const index = targets.findIndex((target) => target.targetId === targetId);
+      if (index >= 0) targets.splice(index, 1);
+      targetGoneListener?.(targetId);
     },
     listTargets: () => targets.map((target) => ({ ...target })),
     activateTarget(targetId) {
@@ -35,8 +42,7 @@ function createHost() {
       return { ...target };
     },
     async closeTarget(targetId) {
-      const index = targets.findIndex((target) => target.targetId === targetId);
-      if (index >= 0) targets.splice(index, 1);
+      host.lose(targetId);
       calls.push(['close', targetId]);
     },
     async sendCommand(targetId, method, params) {
@@ -49,7 +55,11 @@ function createHost() {
       listeners.set(targetId, set);
       return () => set.delete(listener);
     },
+    setTargetGoneListener(listener) {
+      targetGoneListener = listener;
+    },
   };
+  return host;
 }
 
 async function startBridge(host) {
@@ -228,6 +238,34 @@ test('create/close target lifecycle drops the sessions bound to it', async () =>
 
     const targets = await conn.send('Target.getTargets');
     assert.equal(targets.result.targetInfos.some((target) => target.targetId === targetId), false);
+    conn.socket.close();
+  } finally {
+    await bridge.stop();
+  }
+});
+
+test('a host-side target loss drops its sessions and announces targetDestroyed', async () => {
+  const host = createHost();
+  const bridge = await startBridge(host);
+  try {
+    const version = await (await fetch(`${bridge.endpointUrl()}/json/version`)).json();
+    const conn = connectWs(version.webSocketDebuggerUrl);
+    await conn.ready;
+    await conn.send('Target.setDiscoverTargets', { discover: true });
+    const attach = await conn.send('Target.attachToTarget', { targetId: '1', flatten: true });
+    const sessionId = attach.result.sessionId;
+
+    // The page closes its own tab (or the renderer crashes) — no Target.closeTarget involved.
+    host.lose('1');
+
+    const detached = await conn.next((message) => message.method === 'Target.detachedFromTarget');
+    assert.equal(detached.params.targetId, '1');
+    assert.equal(detached.params.sessionId, sessionId);
+    const destroyed = await conn.next((message) => message.method === 'Target.targetDestroyed');
+    assert.equal(destroyed.params.targetId, '1');
+
+    const gone = await conn.send('Runtime.evaluate', {}, sessionId);
+    assert.match(gone.error.message, /Session with given id not found/);
     conn.socket.close();
   } finally {
     await bridge.stop();
