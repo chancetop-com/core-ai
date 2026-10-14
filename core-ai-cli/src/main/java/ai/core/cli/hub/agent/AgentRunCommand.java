@@ -44,6 +44,9 @@ class AgentRunCommand extends HubCommandBase {
     @Option(names = "--attach", description = "Attachment URL (repeatable); the agent fetches it itself")
     List<String> attachments;
 
+    @Option(names = "--attach-file", paramLabel = "path", description = "Local file to upload and attach (repeatable)")
+    List<Path> attachFiles;
+
     @Option(names = "--timeout", description = "Seconds to wait for the result (default 120, max 300)")
     Integer timeoutSeconds;
 
@@ -59,12 +62,12 @@ class AgentRunCommand extends HubCommandBase {
         var request = new AgentHubRunRequest();
         request.task = composeTask();
         request.contextId = contextId;
-        request.attachments = attachments();
         request.timeoutSeconds = timeoutSeconds;
         request.detach = detach ? Boolean.TRUE : null;
         request.maxOutputChars = outputLimit();
 
         var agentId = new AgentNameResolver(client).resolve(idOrName);
+        request.attachments = attachments();
         metadata("running " + agentId + " ...");
         var result = client.run(agentId, request);
         return new RunResultRenderer().render(result, outputLimit(), json());
@@ -92,13 +95,22 @@ class AgentRunCommand extends HubCommandBase {
     }
 
     private List<AgentHubAttachment> attachments() {
-        if (attachments == null || attachments.isEmpty()) return null;
         var result = new ArrayList<AgentHubAttachment>();
-        for (var url : attachments) {
-            if (url == null || url.isBlank()) continue;
-            var attachment = new AgentHubAttachment();
-            attachment.url = url;
-            result.add(attachment);
+        if (attachments != null) {
+            for (var url : attachments) {
+                if (url == null || url.isBlank()) continue;
+                var attachment = new AgentHubAttachment();
+                attachment.url = url;
+                result.add(attachment);
+            }
+        }
+        if (attachFiles != null) {
+            var uploader = new LocalAttachmentUploader(serverUrl(), credentials().apiKey(), insecure());
+            for (var file : attachFiles) {
+                if (file == null) continue;
+                metadata("uploading " + file.getFileName() + " ...");
+                result.add(uploader.upload(file));
+            }
         }
         return result.isEmpty() ? null : result;
     }

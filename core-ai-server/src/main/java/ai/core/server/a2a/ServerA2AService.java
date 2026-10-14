@@ -18,6 +18,7 @@ import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
+import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import core.framework.web.exception.BadRequestException;
@@ -106,6 +107,8 @@ public class ServerA2AService {
     RpcClient rpcClient;
     @Inject
     A2AEventRelay eventRelay;
+    @Inject
+    A2AMessageAttachments messageAttachments;
     private final ConcurrentMap<String, A2ATaskState> tasks = new ConcurrentHashMap<>();
 
     A2ARemoteTaskGateway remote() {
@@ -230,8 +233,9 @@ public class ServerA2AService {
 
         var userText = request.extractUserText();
         LOGGER.info("creating server A2A task, agentId={}, taskId={}, contextId={}", agentId, resolvedTaskId, session.id());
-        recordUserTurn(session.id(), userText);
-        session.sendMessage(userText);
+        var delivered = messageAttachments.deliver(session.id(), userId, request.message, userText);
+        recordUserTurn(session.id(), delivered.text());
+        session.sendMessage(delivered.text(), null, delivered.contents());
         return state;
     }
 
@@ -244,7 +248,7 @@ public class ServerA2AService {
         chatMessageService.writeUserMessage(sessionId, userText);
     }
 
-    private ai.core.api.server.session.AgentSession session(String contextId, String agentId, String userId, String source) {
+    private InProcessAgentSession session(String contextId, String agentId, String userId, String source) {
         if (contextId != null && !contextId.isBlank()) {
             return sessionManager.getSessionForAgentCaller(contextId, agentId, userId);
         }

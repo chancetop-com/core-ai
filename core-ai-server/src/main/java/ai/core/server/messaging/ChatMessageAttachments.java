@@ -20,11 +20,11 @@ import java.util.UUID;
 /**
  * The attachment side of an inbound chat message: the multimodal entries the web layer put into the command
  * payload become model attachments, a sandbox copy the agent can work on locally, and the hints that tell it
- * where both are.
+ * where both are. The A2A delivery reuses it so a hub run sees the same message a chat composer would produce.
  *
  * @author stephen
  */
-class ChatMessageAttachments {
+public class ChatMessageAttachments {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatMessageAttachments.class);
     private static final String SANDBOX_HINT = "\n\n[Attachments are also staged in the sandbox at ";
 
@@ -32,14 +32,14 @@ class ChatMessageAttachments {
     private final ObjectStorageServiceResolver objectStorageResolver;
     private final SessionAttachmentRefRepository attachmentRepository;
 
-    ChatMessageAttachments(SandboxService sandboxService, ObjectStorageServiceResolver objectStorageResolver,
-                           SessionAttachmentRefRepository attachmentRepository) {
+    public ChatMessageAttachments(SandboxService sandboxService, ObjectStorageServiceResolver objectStorageResolver,
+                                  SessionAttachmentRefRepository attachmentRepository) {
         this.sandboxService = sandboxService;
         this.objectStorageResolver = objectStorageResolver;
         this.attachmentRepository = attachmentRepository;
     }
 
-    List<AttachedContent> contents(Map<String, Object> payload, String sessionId, String userId) {
+    public List<AttachedContent> contents(Map<String, Object> payload, String sessionId, String userId) {
         var attachments = attachments(payload);
         if (attachments.isEmpty()) return null;
         var storageService = objectStorageResolver.resolve();
@@ -65,7 +65,7 @@ class ChatMessageAttachments {
      * @return one "label -> sandbox path" line per staged attachment, labelled the way the message labels it
      *         (Image 1, Image 2, …) so a request about one picture can name it instead of sending all of them
      */
-    List<String> stageInto(String sessionId, String userId, Map<String, Object> payload) {
+    public List<String> stageInto(String sessionId, String userId, Map<String, Object> payload) {
         if (sandboxService == null) return List.of();
         var attachments = attachments(payload);
         if (attachments.isEmpty()) return List.of();
@@ -112,7 +112,7 @@ class ChatMessageAttachments {
      * Tells the agent the staged copy exists, which picture each path is, and how to hand a locally fixed file
      * back to a media tool.
      */
-    String appendSandboxPaths(String message, List<String> stagedPaths) {
+    public String appendSandboxPaths(String message, List<String> stagedPaths) {
         if (stagedPaths == null || stagedPaths.isEmpty()) return message;
         var hint = SANDBOX_HINT + String.join(", ", stagedPaths)
                 + " — use a path to work on that file locally (a container a model refuses, a crop, a mask) and pass the"
@@ -121,7 +121,7 @@ class ChatMessageAttachments {
         return message == null || message.isBlank() ? hint.strip() : message + hint;
     }
 
-    String appendVideoHints(String message, List<AttachedContent> attachedContents) {
+    public String appendVideoHints(String message, List<AttachedContent> attachedContents) {
         if (attachedContents == null || attachedContents.isEmpty()) return message;
         var hints = new ArrayList<String>();
         for (var content : attachedContents) {

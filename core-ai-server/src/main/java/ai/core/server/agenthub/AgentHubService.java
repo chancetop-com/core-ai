@@ -234,6 +234,7 @@ public class AgentHubService {
             var converted = new LLMCallRequest.Attachment();
             converted.url = attachment.url;
             converted.type = attachmentType(attachment.type);
+            if (attachment.contentType != null && !attachment.contentType.isBlank()) converted.mediaType = attachment.contentType;
             result.add(converted);
         }
         return result;
@@ -278,7 +279,20 @@ public class AgentHubService {
         if (attachment == null || attachment.url == null || attachment.url.isBlank()) {
             throw new BadRequestException("attachment url required");
         }
-        return Part.file(null, mediaType(attachment.type), attachment.url);
+        var part = Part.file(attachment.fileName, mediaType(attachment), attachment.url);
+        if (attachment.container != null && attachment.blobName != null) {
+            Map<String, Object> metadata = new LinkedHashMap<>();
+            metadata.put("container", attachment.container);
+            metadata.put("blobName", attachment.blobName);
+            part.metadata = metadata;
+        }
+        return part;
+    }
+
+    /** The concrete content type wins; the agent side needs it to tell images, PDFs and videos apart. */
+    private String mediaType(AgentHubAttachment attachment) {
+        if (attachment.contentType != null && !attachment.contentType.isBlank()) return attachment.contentType;
+        return mediaType(attachment.type);
     }
 
     private String mediaType(String type) {

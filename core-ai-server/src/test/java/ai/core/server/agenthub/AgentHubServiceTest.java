@@ -215,6 +215,30 @@ class AgentHubServiceTest {
     }
 
     @Test
+    void storageCoordinatesAndContentTypeTravelWithTheFilePart() {
+        var agent = catalogAgent(DefinitionType.AGENT);
+        when(callerService.sendForCaller(eq(AGENT_ID), any(SendMessageRequest.class), eq(USER), any()))
+                .thenReturn(new A2ATaskView(task(TaskState.COMPLETED), CONTEXT_ID, 10L, 20L, null, null, null, null));
+        var attachment = attachment("image", "https://cdn/ai/uploads/a.png");
+        attachment.fileName = "a.png";
+        attachment.contentType = "image/png";
+        attachment.container = "static";
+        attachment.blobName = "ai/uploads/a.png";
+        var request = request("see the screenshot");
+        request.attachments = List.of(attachment);
+
+        hub.run(USER, agent, request);
+
+        var captor = ArgumentCaptor.forClass(SendMessageRequest.class);
+        verify(callerService).sendForCaller(eq(AGENT_ID), captor.capture(), eq(USER), any());
+        var part = captor.getValue().message.parts.get(1);
+        assertEquals("a.png", part.filename);
+        assertEquals("image/png", part.mediaType);
+        assertEquals("static", part.metadata.get("container"));
+        assertEquals("ai/uploads/a.png", part.metadata.get("blobName"));
+    }
+
+    @Test
     void aFreshRunHasNoContextSoTheSessionIsCreated() {
         var agent = catalogAgent(DefinitionType.AGENT);
         when(callerService.sendForCaller(eq(AGENT_ID), any(SendMessageRequest.class), eq(USER), any()))
@@ -248,7 +272,9 @@ class AgentHubServiceTest {
         when(agentRunService.llmCall(eq(AGENT_ID), any(LLMCallRequest.class), eq(USER))).thenReturn(response);
         var request = request("summarize this");
         request.contextId = "ctx-ignored";
-        request.attachments = List.of(attachment("pdf", "https://host/a.pdf"));
+        var attachment = attachment("pdf", "https://host/a.pdf");
+        attachment.contentType = "application/pdf";
+        request.attachments = List.of(attachment);
 
         var result = hub.run(USER, agent, request);
 
@@ -262,6 +288,7 @@ class AgentHubServiceTest {
         verify(agentRunService).llmCall(eq(AGENT_ID), captor.capture(), eq(USER));
         assertEquals("summarize this", captor.getValue().input);
         assertEquals(LLMCallRequest.AttachmentType.PDF, captor.getValue().attachments.get(0).type);
+        assertEquals("application/pdf", captor.getValue().attachments.get(0).mediaType);
         verify(auditService).finish(eq("audit-1"), anyLong(), eq("summary"), eq(true), isNull(), isNull());
     }
 

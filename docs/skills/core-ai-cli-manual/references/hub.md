@@ -164,7 +164,7 @@ Run published server-side agents as delegates, replacing the older `delegate_to_
 |---------|---------|
 | `agent search [query] [--type agent\|llm_call] [--source server\|external] [--limit N]` | Visible agents: id, name, type, description, skills, sub agents |
 | `agent show <id \| name>` | Capability summary (id, type, status, source, skills, sub agents, input hint) |
-| `agent run <id \| name> --task "…"` | Execute and wait. Options: `--task-file F\|-`, `--context-id ID`, `--attach URL` (repeatable), `--timeout SEC` (default 120, max 300), `--detach`, `--max-output N`, `--json` |
+| `agent run <id \| name> --task "…"` | Execute and wait. Options: `--task-file F\|-`, `--context-id ID`, `--attach URL` and `--attach-file PATH` (both repeatable), `--timeout SEC` (default 120, max 300), `--detach`, `--max-output N`, `--json` |
 | `agent status <task_id>` | Poll a run that returned `running` (cheap; no new turn) |
 | `agent reply <task_id> --approve \| --deny \| --message "…"` | Answer an `input_required` run (tool approval or missing information); resumes the same conversation |
 | `agent cancel <task_id>` | Cancel a run |
@@ -172,7 +172,7 @@ Run published server-side agents as delegates, replacing the older `delegate_to_
 
 Result shape (`--json`): `{task_id, context_id, status, output, input_request?, token_usage, duration_ms}`, status ∈ `completed | failed | cancelled | input_required | running`.
 
-Status and exit codes: `completed` → 0, `failed`/`cancelled` → 1, `running` (wait limit hit, task continues) → 6, **`input_required` → 7**. Exit 7 is not a failure: read `input_request`, then `agent reply`. Reuse `context_id` on a later `run` to continue the same conversation. Keep `--task` self-contained; the agent cannot see your local files (pass a URL with `--attach` instead). A bare name is accepted when unique among visible agents; otherwise the CLI exits 2 and lists candidate ids.
+Status and exit codes: `completed` → 0, `failed`/`cancelled` → 1, `running` (wait limit hit, task continues) → 6, **`input_required` → 7**. Exit 7 is not a failure: read `input_request`, then `agent reply`. Reuse `context_id` on a later `run` to continue the same conversation. Keep `--task` self-contained; the agent cannot see your local files: pass `--attach <URL>` for a URL it fetches itself, or `--attach-file <path>` to upload a local file first (images and PDFs then reach the agent like chat attachments). A bare name is accepted when unique among visible agents; otherwise the CLI exits 2 and lists candidate ids.
 
 ```bash
 core-ai-cli agent search "code review" --json

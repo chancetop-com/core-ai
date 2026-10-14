@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.a2a.A2AHttpPaths;
 import ai.core.api.a2a.StreamResponse;
 import ai.core.server.a2a.A2AAgentCardController;
+import ai.core.server.a2a.A2AMessageAttachments;
 import ai.core.server.a2a.A2AMessageController;
 import ai.core.server.a2a.A2AStreamChannelListener;
 import ai.core.server.a2a.A2ATaskController;
@@ -18,6 +19,7 @@ import core.framework.module.Module;
 public class A2AModule extends Module {
     @Override
     protected void initialize() {
+        bind(A2AMessageAttachments.class);
         bind(ServerA2AService.class);
         bind(ServerA2ACallerService.class);
 

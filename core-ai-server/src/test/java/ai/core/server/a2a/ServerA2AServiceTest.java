@@ -1,5 +1,6 @@
 package ai.core.server.a2a;
 
+import ai.core.agent.AttachedContent;
 import ai.core.api.a2a.Part;
 import ai.core.api.a2a.CancelTaskRequest;
 import ai.core.api.a2a.GetTaskRequest;
@@ -96,6 +97,25 @@ class ServerA2AServiceTest {
         service.stream("agent-1", request("review the diff"), "user-1", event -> { }, () -> { });
 
         verify(service.chatMessageService).writeUserMessage("context-1", "review the diff");
+    }
+
+    @Test
+    void filePartsAreDeliveredToTheSessionLikeAChatMessage() {
+        var service = service();
+        service.agentDefinitionService = new FakeAgentDefinitionService(definition());
+        var mockSession = mockSession(service);
+        var contents = List.of(AttachedContent.ofUrl("https://host/a.png", AttachedContent.AttachedContentType.IMAGE));
+        var deliveredText = "review the diff\n\nhttps://host/a.png";
+        service.messageAttachments = mock(A2AMessageAttachments.class);
+        when(service.messageAttachments.deliver(eq("context-1"), eq("user-1"), any(), eq("review the diff")))
+                .thenReturn(new A2AMessageAttachments.Delivered(deliveredText, contents));
+        var request = request("review the diff");
+        request.message.parts = List.of(Part.text("review the diff"), Part.file("a.png", "image/png", "https://host/a.png"));
+
+        service.stream("agent-1", request, "user-1", event -> { }, () -> { });
+
+        verify(mockSession.session()).sendMessage(eq(deliveredText), isNull(), same(contents));
+        verify(service.chatMessageService).writeUserMessage("context-1", deliveredText);
     }
 
     @Test
@@ -321,6 +341,7 @@ class ServerA2AServiceTest {
         service.accessPolicy = mock(AgentCallAccessPolicy.class);
         service.chatMessageService = mock(ChatMessageService.class);
         service.personalAssistantService = PersonalAssistantStubs.passThrough();
+        service.messageAttachments = new A2AMessageAttachments();
         return service;
     }
 
