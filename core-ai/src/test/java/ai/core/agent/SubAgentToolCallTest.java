@@ -25,10 +25,13 @@ import org.mockito.Mockito;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -42,6 +45,13 @@ import static org.mockito.Mockito.when;
 @SuppressFBWarnings("NM_CONFUSING")
 class SubAgentToolCallTest {
     private static final Logger LOGGER = LoggerFactory.getLogger(SubAgentToolCallTest.class);
+
+    private static List<String> requestTexts(CompletionRequest request) {
+        return request.messages.stream()
+                .map(Message::getTextContent)
+                .filter(Objects::nonNull)
+                .toList();
+    }
 
     LLMProvider llmProvider;
     LLMProvider subAgentLlmProvider;
@@ -450,6 +460,76 @@ class SubAgentToolCallTest {
         // parent messages should not contain sub-agent's ASSISTANT/TOOL messages
         int parentMessageCountAfter = parentAgent.getMessages().size();
         assertEquals(parentMessageCountBefore, parentMessageCountAfter);
+    }
+
+    @Test
+    void sessionPolicyKeepsContextAcrossCalls() {
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "result"))),
+                new Usage(10, 10, 20)
+        );
+        var requests = new ArrayList<CompletionRequest>();
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
+                .thenAnswer(invocation -> {
+                    requests.add(invocation.getArgument(0));
+                    return subAgentResponse;
+                });
+
+        var researcher = Agent.builder()
+                .name("researcher")
+                .description("Expert at researching topics")
+                .systemPrompt("You are a research specialist")
+                .llmProvider(subAgentLlmProvider)
+                .build();
+        var toolCall = SubAgentToolCall.builder().subAgent(researcher).build();
+        assertTrue(toolCall.getDescription().contains("keeps its conversation context"));
+
+        var context = ExecutionContext.empty();
+        var first = toolCall.execute("{\"query\": \"first question\"}", context);
+        var second = toolCall.execute("{\"query\": \"second question\"}", context);
+
+        assertTrue(first.isCompleted());
+        assertTrue(second.isCompleted());
+        assertEquals(2, requests.size());
+        var secondTexts = requestTexts(requests.get(1));
+        assertTrue(secondTexts.stream().anyMatch(text -> text.contains("first question")),
+                "a SESSION subagent must remember its earlier turns, actual: " + secondTexts);
+        assertTrue(secondTexts.stream().anyMatch(text -> text.contains("second question")));
+        var thread = context.getSubagentThreads().find("agent:researcher").orElseThrow();
+        assertNotNull(thread.agent());
+        assertEquals(2, thread.runCount());
+    }
+
+    @Test
+    void freshPolicyResetsContextBetweenCalls() {
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "result"))),
+                new Usage(10, 10, 20)
+        );
+        var requests = new ArrayList<CompletionRequest>();
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
+                .thenAnswer(invocation -> {
+                    requests.add(invocation.getArgument(0));
+                    return subAgentResponse;
+                });
+
+        var researcher = Agent.builder()
+                .name("researcher")
+                .description("Expert at researching topics")
+                .systemPrompt("You are a research specialist")
+                .llmProvider(subAgentLlmProvider)
+                .build();
+        var toolCall = SubAgentToolCall.builder().subAgent(researcher).contextPolicy(SubAgentToolCall.ContextPolicy.FRESH).build();
+        assertFalse(toolCall.getDescription().contains("keeps its conversation context"));
+
+        var context = ExecutionContext.empty();
+        toolCall.execute("{\"query\": \"first question\"}", context);
+        toolCall.execute("{\"query\": \"second question\"}", context);
+
+        var secondTexts = requestTexts(requests.get(1));
+        assertFalse(secondTexts.stream().anyMatch(text -> text.contains("first question")),
+                "a FRESH subagent must start empty on every call, actual: " + secondTexts);
+        assertTrue(secondTexts.stream().anyMatch(text -> text.contains("second question")));
     }
 
 }

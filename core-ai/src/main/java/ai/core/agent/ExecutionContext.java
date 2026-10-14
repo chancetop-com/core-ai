@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.subagent.SubagentThreadRegistry;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
@@ -64,6 +65,7 @@ public final class ExecutionContext {
     private Map<String, SubAgentConfig> subAgentConfigs;
     private ToolRegistry toolRegistry;
     private AgentProfileRegistry agentProfileRegistry;
+    private volatile SubagentThreadRegistry subagentThreads;
 
     private ExecutionContext(Builder builder) {
         this.sessionId = builder.sessionId;
@@ -312,6 +314,33 @@ public final class ExecutionContext {
 
     public void setAgentProfileRegistry(AgentProfileRegistry agentProfileRegistry) {
         this.agentProfileRegistry = agentProfileRegistry;
+    }
+
+    /**
+     * The session's subagent threads, created on first use. Subagent contexts share the registry of
+     * the context they were spawned from, so nested subagents register into the same session.
+     */
+    public SubagentThreadRegistry getSubagentThreads() {
+        var registry = subagentThreads;
+        if (registry == null) {
+            synchronized (this) {
+                registry = subagentThreads;
+                if (registry == null) {
+                    registry = new SubagentThreadRegistry(sessionId, persistenceProvider);
+                    subagentThreads = registry;
+                }
+            }
+        }
+        return registry;
+    }
+
+    public void setSubagentThreads(SubagentThreadRegistry registry) {
+        this.subagentThreads = registry;
+    }
+
+    /** True when this context already owns or shares a thread registry; lets a close skip untouched sessions. */
+    public boolean hasSubagentThreads() {
+        return subagentThreads != null;
     }
 
     public static class Builder {

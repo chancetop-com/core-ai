@@ -1,5 +1,6 @@
 package ai.core.session;
 
+import ai.core.agent.subagent.SubagentPersistenceKeys;
 import core.framework.util.Files;
 
 import java.io.File;
@@ -38,7 +39,21 @@ public class FileSessionPersistence implements SessionPersistence {
 
     @Override
     public void delete(List<String> ids) {
-        ids.forEach(v -> Files.delete(Paths.get(path(v))));
+        for (var id : ids) {
+            Files.delete(Paths.get(path(id)));
+            deleteSubagentFiles(id);
+        }
+    }
+
+    // Subagent thread files live next to their session and go when the session goes; only the
+    // session file itself may be absent (an id that never had a thread or a title-only entry).
+    private void deleteSubagentFiles(String id) {
+        var dir = new File(directory);
+        var threadFiles = dir.listFiles((d, name) -> name.startsWith(id + SubagentPersistenceKeys.THREAD_INFIX) && name.endsWith(".data"));
+        if (threadFiles == null) return;
+        for (var file : threadFiles) {
+            Files.delete(file.toPath());
+        }
     }
 
     @Override
@@ -53,7 +68,7 @@ public class FileSessionPersistence implements SessionPersistence {
     @Override
     public List<SessionInfo> listSessions() {
         var dir = new File(directory);
-        var files = dir.listFiles((d, name) -> name.endsWith(".data"));
+        var files = dir.listFiles((d, name) -> name.endsWith(".data") && !name.contains(SubagentPersistenceKeys.THREAD_INFIX));
         if (files == null || files.length == 0) return List.of();
         Arrays.sort(files, (a, b) -> Long.compare(b.lastModified(), a.lastModified()));
         return Arrays.stream(files)

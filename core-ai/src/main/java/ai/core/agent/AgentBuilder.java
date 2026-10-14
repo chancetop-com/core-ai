@@ -279,6 +279,9 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     }
 
     public AgentBuilder agentLifecycle(List<AbstractLifecycle> agentLifecycles) {
+        if (agentLifecycles == null) {
+            return this;
+        }
         this.agentLifecycles.addAll(agentLifecycles);
         return this;
     }

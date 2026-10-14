@@ -320,6 +320,9 @@ public class InProcessAgentSession implements AgentSession {
     public void close() {
         logger.debug("closing agent session, sessionId={}", sessionId);
         turnDriver.shutdown();
+        // subagent threads persist after every run; this covers a session closed before that
+        var context = agent.getExecutionContext();
+        if (context.hasSubagentThreads()) context.getSubagentThreads().persistAll();
         // A forced close (idle cleanup, explicit close, pod shutdown) interrupts the turn thread
         // mid-flight and it may never reach its own terminal dispatch. Emit one here so listeners —
         // turn-state registry, message persistence, SSE clients — never see a turn that runs forever.

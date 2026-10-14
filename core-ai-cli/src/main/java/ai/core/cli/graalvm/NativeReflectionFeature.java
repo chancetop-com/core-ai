@@ -50,6 +50,10 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.api.tool.function.CoreAiMethod",
         "ai.core.agent.AgentPersistence$AgentPersistenceDomain",
         "ai.core.agent.NodeStatus",
+        // Subagent thread index for file-backed JSON persistence
+        "ai.core.agent.subagent.SubagentThreadIndex",
+        "ai.core.agent.subagent.SubagentThreadIndex$ThreadRef",
+        "ai.core.agent.subagent.SubagentThreadKind",
         "ai.core.session.FileRuleBasedPermissionStore$PermissionsDomain",
         "ai.core.tool.tools.WriteTodosTool.Todo",
         "ai.core.tool.tools.WriteTodosTool.Status",
@@ -59,8 +63,9 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.tool.tools.WriteTodoTaskTool.TaskEntity",
         "ai.core.tool.tools.CaptionImageTool$CaptionImageToolParams",
         "ai.core.tool.tools.SummarizePdfTool$SummarizePdfToolParams",
-        // Scheduled task tool domain for file-backed JSON persistence
+        // Scheduled task domain for file-backed JSON persistence
         "ai.core.schedule.ScheduledTask",
+        "ai.core.schedule.ScheduledTaskRun",
         // Helper configuration for file-backed JSON persistence
         "ai.core.cli.helper.HelperConfig",
         "ai.core.cli.helper.HelperEntry",
