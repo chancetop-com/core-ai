@@ -1,9 +1,9 @@
 ---
 name: core-ai-cli-manual
-description: Operation manual for core-ai-cli, for both users and LLMs. Use when installing or upgrading core-ai-cli, configuring it (agent.properties, LLM providers, memory, hooks, local MCP servers, plugins, custom agents), when using its modes (interactive REPL, headless --prompt, ACP), when logging in to a core-ai-server, or when an agent needs to discover and use company resources through the CLI hub subcommands (mcp, skill, api-tool and agent — all four shipped), or when writing a skill script that reaches those resources with the core_ai_session Python SDK (one script that runs both inside a sandbox and, locally, through this CLI). Look up exact property names, flags, defaults, exit codes and JSON shapes here before acting.
+description: Operation manual for core-ai-cli, for both users and LLMs. Use when installing or upgrading core-ai-cli, configuring it (agent.properties, LLM providers, memory, hooks, local MCP servers, plugins, custom agents), when using its modes (interactive REPL, headless --prompt, ACP), when logging in to a core-ai-server, when delegating a task or a local file to an agent running on the server (`core-ai-cli agent run … --attach-file`; the attachment reaches the remote agent like a chat attachment), or when an agent needs to discover and use company resources through the CLI hub subcommands (mcp, skill, api-tool and agent — all four shipped), or when writing a skill script that reaches those resources with the core_ai_session Python SDK (one script that runs both inside a sandbox and, locally, through this CLI). Look up exact property names, flags, defaults, exit codes and JSON shapes here before acting.
 metadata:
   author: core-ai-team
-  version: "2.0"
+  version: "2.1"
 ---
 
 # core-ai-cli Operation Manual

@@ -50,6 +50,21 @@ When `agent.memory.enabled=true` and `agent.memory.daily.logs.enabled=false`:
 When `agent.memory.enabled=false`:
 - Memory system is completely off
 
+## Context Compression
+
+Compression summarizes older turns once the conversation approaches the model's context window. The window comes from the built-in model registry; unknown models (local or proxied) fall back to `128000` tokens, which is what `agent.compression.context.window` is for.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `agent.compression.enabled` | boolean | `true` | Master switch for automatic compression |
+| `agent.compression.threshold` | double | `0.8` | Fraction of the context window that triggers compression |
+| `agent.compression.keep.recent.turns` | int | `5` | Recent turns always kept |
+| `agent.compression.keep.tokens` | int | `15000` | Minimum tokens kept after compression |
+| `agent.compression.context.window` | int | model window | Override the context window used for trigger and tool-result budgeting |
+| `agent.compression.summary.model` | String | main model | Model used for the summarization call (a cheaper model lowers compression cost) |
+
+Summarization shares the main model by default, and its token usage is counted into the session (`/stats`) like any other call.
+
 ## LLM Provider Configuration
 
 Providers are auto-detected when their `<provider>.api.key` is set. For `litellm`, `openai`, and `azure`, `<provider>.api.base` is also required.
