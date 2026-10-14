@@ -241,6 +241,17 @@ interface UiTool {
   durationNode?: HTMLElement;
 }
 
+/**
+ * One row of the message's "Tasks" chip: a background task (launched through task / run_bash_command
+ * with run_in_background) whose status outlives the turn, or a scheduled-task creation (a static
+ * record — a schedule fires later or on another day, so it never "runs" in the conversation).
+ */
+interface UiTask {
+  status: string;
+  node: HTMLElement;
+  statusNode: HTMLElement;
+}
+
 const SECTION_PAGE_SIZE = 10;
 const COLLAPSE_KEY = 'coreai.sessionsCollapsed';
 
@@ -414,6 +425,7 @@ interface StreamingState {
   panels: HTMLElement | null;
   toolsPanel: HTMLElement | null;
   toolsToggle: AssistToggle | null;
+  taskToggle: AssistToggle | null;
   toolUses: Map<ToolUseKind, ToolUseChip> | null;
 }
 
@@ -432,6 +444,8 @@ interface SessionView {
   streaming: StreamingState | null;
   turnClock: TurnClock | null;
   toolMap: Map<string, UiTool>;
+  taskMap: Map<string, UiTask>;
+  pendingTaskStatus: Map<string, string>;
   approvalBar: HTMLElement | null;
   pendingApproval: { callId: string; toolName: string } | null;
   planBlock: HTMLElement | null;
@@ -472,6 +486,8 @@ function createSessionView(sessionId: string | null): SessionView {
     streaming: null,
     turnClock: null,
     toolMap: new Map(),
+    taskMap: new Map(),
+    pendingTaskStatus: new Map(),
     approvalBar: null,
     pendingApproval: null,
     planBlock: null,
@@ -639,6 +655,7 @@ function stopTurnClock(view: SessionView): void {
 function finalizeInterruptedTurn(view: SessionView): void {
   const clock = view.turnClock;
   resolveStaleToolStatuses(view.streaming?.bubble.parentElement ?? null);
+  resolveStaleTaskStatuses(view);
   stopTurnClock(view);
   if (clock?.chip) {
     clock.chip.textContent = `Interrupted · ${formatElapsed(Date.now() - clock.startedAt)}`;
@@ -653,6 +670,10 @@ function finalizeInterruptedTurn(view: SessionView): void {
 /** A fresh engine process serves no live turns: every previously running one died with the old one. */
 function finalizeTurnsForEngineRestart(): void {
   for (const view of [...views.values()]) {
+    // Background tasks die with the engine and they outlive their turn, so the view holding one is
+    // usually idle — sweep every view, not only the ones with a live turn (an idle view's Tasks
+    // chip would otherwise spin forever: the new engine will never send that task_status).
+    resolveStaleTaskStatuses(view);
     if (view.turnClock || view.streaming || view.status === 'running') finalizeInterruptedTurn(view);
   }
 }
@@ -2644,6 +2665,7 @@ function systemReminderText(text: string): string | null {
 }
 
 interface TaskNotification {
+  taskId: string | null;
   status: string;
   label: string | null;
   detail: string;
@@ -2669,6 +2691,7 @@ function parseTaskNotifications(text: string): TaskNotification[] | null {
 
 function taskNotificationOf(body: string): TaskNotification {
   return {
+    taskId: xmlTag(body, 'task-id'),
     status: xmlTag(body, 'status') ?? 'done',
     label: xmlTag(body, 'tool') ?? xmlTag(body, 'task-type'),
     detail: xmlTag(body, 'result') ?? xmlTag(body, 'error') ?? body.trim(),
@@ -2683,6 +2706,7 @@ function xmlTag(xml: string, tag: string): string | null {
 
 function taskNoteElement(notification: TaskNotification): HTMLElement {
   const note = el('div', 'task-note');
+  if (notification.taskId) note.dataset.taskId = notification.taskId;
   const head = el('button', 'task-note-head') as HTMLButtonElement;
   const chevron = el('span', 'task-note-chevron', '▸');
   const state = TASK_STATUS_CLASS[notification.status];
@@ -2855,7 +2879,7 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, toolUses: null };
+    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     scrollTranscript(view);
   }
@@ -3247,7 +3271,165 @@ function handleMemoryEvent(view: SessionView, event: any): void {
   scrollTranscript(view);
 }
 
+// ---------- tasks: background lifecycles and scheduled creations ----------
+// Recognized tool results become rows under the message's "Tasks" chip, the same shape as tool use:
+// a background task (task / run_bash_command with run_in_background) starts "running" and the chip
+// spins until its terminal task_status arrives — possibly turns later — then the row is resolved in
+// place. A scheduled-task creation is a static record ("scheduled" + next run), never a spinner:
+// the task fires later or on another day, so there is nothing running in this conversation.
+
+const TASK_ENTRY_STATUS_CLASS: Record<string, string> = {
+  running: 'running',
+  completed: 'success',
+  failed: 'failure',
+};
+
+function ensureTaskToggle(current: StreamingState): AssistToggle {
+  if (!current.taskToggle) {
+    const { chips, panels } = ensureAssistBlock(current);
+    const toggle = createAssistToggle('Tasks');
+    toggle.chip.classList.add('tasks-chip');
+    current.taskToggle = toggle;
+    chips.append(toggle.chip);
+    panels.append(toggle.panel);
+  }
+  return current.taskToggle;
+}
+
+function taskStatusClass(status: string): string {
+  return TASK_ENTRY_STATUS_CLASS[status] ?? '';
+}
+
+/** The chip spins while any row in this message is still running (same rule as the tools chip). */
+function refreshTasksBusy(sample: HTMLElement | null | undefined): void {
+  const msg = sample?.closest('.msg');
+  const chip = msg?.querySelector('.tasks-chip');
+  if (!chip) return;
+  chip.classList.toggle('busy', Boolean(msg?.querySelector('.task-entry .task-status.running')));
+}
+
+function applyTaskStatus(task: UiTask, status: string): void {
+  task.status = status;
+  task.statusNode.textContent = status;
+  task.statusNode.className = `task-status ${taskStatusClass(status)}`.trim();
+  refreshTasksBusy(task.node);
+}
+
+function appendTaskEntry(view: SessionView, name: string, desc: string, status: string, detail: string): UiTask {
+  const current = ensureStreaming(view);
+  const toggle = ensureTaskToggle(current);
+  const entry = el('div', 'task-entry');
+  const head = el('button', 'task-entry-head') as HTMLButtonElement;
+  const chevron = el('span', 'tool-chevron', '▸');
+  head.append(chevron, el('span', 'tool-name', name));
+  if (desc) head.append(el('span', 'tool-desc', desc));
+  const statusNode = el('span', `task-status ${taskStatusClass(status)}`.trim(), status);
+  head.append(statusNode);
+  const body = el('div', 'tool-entry-body');
+  body.hidden = true;
+  if (detail) body.append(el('pre', undefined, detail));
+  head.onclick = () => {
+    body.hidden = !body.hidden;
+    chevron.textContent = body.hidden ? '▸' : '▾';
+  };
+  entry.append(head, body);
+  toggle.panel.append(entry);
+  toggle.setLabel(`Tasks (${toggle.panel.childElementCount})`);
+  const task: UiTask = { status, node: entry, statusNode };
+  refreshTasksBusy(entry);
+  return task;
+}
+
+/** Resolves the async launch (status async_launched whose payload names the task and its output). */
+function recognizeAsyncLaunch(view: SessionView, result: string): void {
+  if (!result.includes('<task-notification>')) return;
+  const taskId = xmlTag(result, 'task-id');
+  if (!taskId || view.taskMap.has(taskId)) return;
+  const detail = [
+    `task id: ${taskId}`,
+    xmlTag(result, 'output-ref') ? `output: ${xmlTag(result, 'output-ref')}` : null,
+  ].filter(Boolean).join('\n');
+  const task = appendTaskEntry(view, xmlTag(result, 'task-type') ?? 'task', xmlTag(result, 'task-description') ?? '', 'running', detail);
+  view.taskMap.set(taskId, task);
+  downgradeDuplicateTaskNotes(view, taskId);
+  // the task can finish before its launch result arrives — apply the parked terminal status
+  const pending = view.pendingTaskStatus.get(taskId);
+  if (pending) {
+    view.pendingTaskStatus.delete(taskId);
+    applyTaskStatus(task, pending);
+  }
+}
+
+/** Parses the "key: value" lines of a tool result (continuation lines belong to the last key). */
+function textFields(text: string): Record<string, string> {
+  const fields: Record<string, string> = {};
+  let lastKey: string | null = null;
+  for (const line of text.split(/\r?\n/)) {
+    const match = /^([a-z_]+): ?(.*)$/.exec(line);
+    if (match && !(match[1] in fields)) {
+      fields[match[1]] = match[2];
+      lastKey = match[1];
+    } else if (lastKey && line.trim()) {
+      fields[lastKey] += `\n${line}`;
+    }
+  }
+  return fields;
+}
+
+/** Resolves a scheduled_task creation into a static record: name + cron, next run in the details. */
+function recognizeScheduledCreation(view: SessionView, result: string): void {
+  const fields = textFields(result);
+  const id = fields.id ?? '';
+  if (id && view.taskMap.has(`scheduled:${id}`)) return;
+  const detail = [
+    id ? `id: ${id}` : null,
+    fields.next_run_at ? `next run: ${fields.next_run_at}` : null,
+    fields.timezone ? `timezone: ${fields.timezone}` : null,
+    fields.input ? `input: ${fields.input}` : null,
+  ].filter(Boolean).join('\n');
+  const task = appendTaskEntry(view, fields.name ?? 'scheduled task', fields.cron_expression ?? '', 'scheduled', detail);
+  if (id) view.taskMap.set(`scheduled:${id}`, task);
+}
+
+/** Terminal task_status: resolve the row its launch created, or park it until that launch arrives. */
+function handleTaskStatusEvent(view: SessionView, event: any): void {
+  const taskId = typeof event.taskId === 'string' ? event.taskId : '';
+  const status = typeof event.status === 'string' ? event.status : '';
+  if (!taskId || !status) return;
+  const task = view.taskMap.get(taskId);
+  if (!task) {
+    view.pendingTaskStatus.set(taskId, status);
+    return;
+  }
+  applyTaskStatus(task, status);
+  downgradeDuplicateTaskNotes(view, taskId);
+}
+
+/** A dead engine took its background tasks down: no terminal status will ever arrive. */
+function resolveStaleTaskStatuses(view: SessionView): void {
+  for (const statusNode of view.root.querySelectorAll('.task-entry .task-status.running')) {
+    statusNode.textContent = 'cancelled';
+    statusNode.className = 'task-status';
+  }
+  for (const chip of view.root.querySelectorAll('.tasks-chip.busy')) chip.classList.remove('busy');
+}
+
+/**
+ * The terminal notification would show twice once this view holds the task's live row (history
+ * rendering and buffered event replay can overlap): keep the row, drop the duplicate note.
+ */
+function downgradeDuplicateTaskNotes(view: SessionView, taskId: string): void {
+  for (const note of view.transcript.querySelectorAll('.task-note')) {
+    if ((note as HTMLElement).dataset.taskId === taskId) note.remove();
+  }
+}
+
 function updateToolResult(view: SessionView, event: any): void {
+  if (event.status === 'async_launched' && typeof event.result === 'string') {
+    recognizeAsyncLaunch(view, event.result);
+  } else if (event.toolName === 'scheduled_task' && typeof event.result === 'string' && event.result.startsWith('Scheduled task created')) {
+    recognizeScheduledCreation(view, event.result);
+  }
   const tool = view.toolMap.get(event.callId);
   if (!tool) return;
   tool.status = event.status ?? 'done';
@@ -3491,7 +3673,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       handleCustomEvent(view, event);
       break;
     case 'task_status':
-      appendNotice(`task ${event.toolName ?? ''}: ${event.status ?? ''}`, '', view.transcript);
+      handleTaskStatusEvent(view, event);
       break;
     case 'environment_output_chunk': {
       const tool = view.toolMap.get(event.callId);
