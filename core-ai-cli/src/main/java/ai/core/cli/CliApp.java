@@ -13,6 +13,7 @@ import ai.core.cli.auth.AuthManager;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MdMemoryProvider;
@@ -130,6 +131,7 @@ public class CliApp {
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = CliAppHelper.whiteToolsPermissionStore(workspace);
         var subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
+        var helpers = HelperConfigStore.defaultStore().list();
         boolean a2aAutoDiscover = props.property("a2a.autoDiscover").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         var videoMediaProvider = CliAppHelper.videoMediaProvider(props);
@@ -137,7 +139,7 @@ public class CliApp {
         return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
                 remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs, a2aAutoDiscover,
                 mediaProvider, imageMediaProvider, videoMediaProvider,
-                props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null));
+                props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null), helpers);
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
@@ -205,7 +207,7 @@ public class CliApp {
         return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
                 bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds, bc.a2aAutoDiscover(),
-                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel());
+                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(), bc.helpers());
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -240,7 +242,7 @@ public class CliApp {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
                 ctx.mediaProvider(), ctx.imageMediaProvider(), ctx.videoMediaProvider(), ctx.defaultImageModel(), ctx.defaultVideoModel(), scheduledTaskStore,
-                CliAppHelper.compressionConfig(ctx.props()), "cli");
+                CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers());
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {

@@ -78,13 +78,14 @@ public class HubBridge {
         }
     }
 
-    private static void addTools(ObjectNode node, HubCatalogResponse response) {
+    static void addTools(ObjectNode node, HubCatalogResponse response) {
         var tools = node.putArray("tools");
         for (var tool : nullSafe(response.tools)) {
             var item = tools.addObject();
             item.put("kind", tool.kind);
             item.put("name", tool.name);
             item.put("path", tool.path);
+            if (tool.refId != null) item.put("refId", tool.refId);
             if (tool.group != null) item.put("group", tool.group);
             if (tool.description != null) item.put("description", tool.description);
             if (tool.stale != null) item.put("stale", tool.stale);

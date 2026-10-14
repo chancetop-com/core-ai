@@ -979,6 +979,11 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .hub-row-actions { display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .hub-installed { color: var(--green); font-size: 11.5px; border: 1px solid var(--green); border-radius: 999px; padding: 1px 8px; }
 .hub-row-desc { color: var(--faint); font-size: 12px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hub-helpers { margin-bottom: 12px; }
+.hub-helper-note { color: var(--faint); font-size: 11.5px; margin: 2px 0 8px; }
+.hub-helper-editor { display: flex; gap: 6px; margin-top: 6px; }
+.hub-helper-editor input { flex: 1; min-width: 0; background: var(--bg-input); color: var(--text); border: 1px solid var(--border-strong); border-radius: 7px; padding: 4px 8px; font: inherit; font-size: 12.5px; }
+.hub-helper-editor input:focus { outline: none; border-color: var(--accent); }
 
 .hub-footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
 .hub-link { color: var(--accent); text-decoration: none; }

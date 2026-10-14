@@ -321,7 +321,7 @@ public class EngineSessionRegistry {
                 sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
                 bootstrap.a2aAutoDiscover, bootstrap.mediaProvider, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
-                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType);
+                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, bootstrap.helpers);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
             agent.load(sessionId);

@@ -1,5 +1,7 @@
 package ai.core.cli.appserver;
 
+import ai.core.api.server.hubcatalog.HubCatalogResponse;
+import ai.core.api.server.hubcatalog.HubCatalogTool;
 import ai.core.cli.hub.skill.SkillDigest;
 import ai.core.cli.hub.skill.SkillHubClient;
 import ai.core.cli.hub.skill.SkillHubMarker;
@@ -11,6 +13,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -75,6 +78,26 @@ class HubBridgeTest {
         var forced = HubBridge.install(tempDir, "https://server", "stephen", "code-review", archive, true);
         assertEquals("installed", forced.path("status").asText());
         assertEquals(CONTENT, Files.readString(target.resolve("SKILL.md")));
+    }
+
+    @Test
+    void catalogForwardsAgentRefIdForTheDesktop() {
+        var response = new HubCatalogResponse();
+        response.tools = List.of(agentTool());
+        var node = Params.object();
+
+        HubBridge.addTools(node, response);
+
+        assertEquals("agent-123", node.path("tools").get(0).path("refId").asText());
+    }
+
+    private HubCatalogTool agentTool() {
+        var tool = new HubCatalogTool();
+        tool.kind = "agent";
+        tool.name = "hr-assistant";
+        tool.path = "hr-assistant";
+        tool.refId = "agent-123";
+        return tool;
     }
 
     private byte[] zip(String... nameContentPairs) throws IOException {

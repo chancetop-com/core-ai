@@ -82,6 +82,7 @@ public class AppServerEngine implements EngineApi {
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
     private final HubBridge hubBridge = new HubBridge();
+    private final HelperBridge helperBridge = new HelperBridge();
     private final Set<String> supportedMethods;
     private volatile NotificationSink sink = (method, params) -> { };
     private volatile List<GatewayAvailableModelView> cachedServerModels;
@@ -175,7 +176,11 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("tools/list", this::toolsList),
                 Map.entry("hub/catalog", ignored -> hubBridge.catalog()),
                 Map.entry("hub/skills", hubBridge::skills),
-                Map.entry("hub/skills/pull", hubBridge::pullSkill));
+                Map.entry("hub/skills/pull", hubBridge::pullSkill),
+                Map.entry("helpers/list", ignored -> helperBridge.list()),
+                Map.entry("helpers/add", helperBridge::add),
+                Map.entry("helpers/update", helperBridge::update),
+                Map.entry("helpers/remove", helperBridge::remove));
     }
 
     private ObjectNode modelList() {

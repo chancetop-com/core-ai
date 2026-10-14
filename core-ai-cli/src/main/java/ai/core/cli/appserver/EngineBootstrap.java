@@ -11,6 +11,8 @@ import ai.core.cli.a2a.A2ARemoteServerConfig;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.helper.HelperConfigStore;
+import ai.core.cli.helper.HelperEntry;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.schedule.FileScheduledTaskStore;
@@ -82,6 +84,7 @@ public class EngineBootstrap {
     public final SessionManager sessionManager;
     public final FileRuleBasedPermissionStore permissionStore;
     public final Map<String, SubAgentConfig> subAgentConfigs;
+    public final List<HelperEntry> helpers;
     public final MediaProvider mediaProvider;
     public final MediaProvider imageMediaProvider;
     public final MediaProvider videoMediaProvider;
@@ -117,6 +120,7 @@ public class EngineBootstrap {
         this.sessionManager = new SessionManager(sessionPersistence);
         this.permissionStore = CliAppHelper.whiteToolsPermissionStore(this.workspace);
         this.subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
+        this.helpers = HelperConfigStore.defaultStore().list();
         this.imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         this.videoMediaProvider = CliAppHelper.videoMediaProvider(props);
         this.mediaProvider = imageMediaProvider != null ? imageMediaProvider : videoMediaProvider;

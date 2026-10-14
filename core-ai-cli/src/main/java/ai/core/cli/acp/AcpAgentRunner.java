@@ -11,6 +11,7 @@ import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
+import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.SessionCloseExtractor;
@@ -209,7 +210,7 @@ public class AcpAgentRunner {
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                    ctx.compressionConfig(), "cli");
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -250,7 +251,7 @@ public class AcpAgentRunner {
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                 Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                ctx.compressionConfig(), "cli");
+                ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list());
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {

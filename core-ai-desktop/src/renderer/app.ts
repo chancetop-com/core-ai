@@ -3546,6 +3546,7 @@ interface HubRow {
   qualifiedName: string | null;
   resourceCount: number | null;
   stale: boolean;
+  refId: string | null;
 }
 
 const HUB_KIND_LABELS: Record<HubKind, string> = {
@@ -3604,6 +3605,7 @@ function hubRows(catalogData: any, skillsData: any): HubRow[] {
       qualifiedName: null,
       resourceCount: null,
       stale: Boolean(tool.stale),
+      refId: tool.refId ? String(tool.refId) : null,
     });
   }
   for (const skill of skillsData?.skills ?? []) {
@@ -3616,6 +3618,7 @@ function hubRows(catalogData: any, skillsData: any): HubRow[] {
       qualifiedName: skill.qualifiedName ? String(skill.qualifiedName) : null,
       resourceCount: typeof skill.resourceCount === 'number' ? skill.resourceCount : null,
       stale: false,
+      refId: null,
     });
   }
   return rows;
@@ -3635,25 +3638,36 @@ function hubInstalledSet(local: Envelope): Set<string> {
   return set;
 }
 
-function buildHubRow(row: HubRow, installed: Set<string>, onPulled: (row: HubRow, actions: HTMLElement) => void): HTMLElement {
+function buildHubRow(row: HubRow, installed: Set<string>, onPulled: (row: HubRow, actions: HTMLElement) => void,
+                     mount: HubHelperMount): HTMLElement {
   const item = el('div', 'hub-row');
   const head = el('div', 'hub-row-head');
   head.append(el('span', 'hub-row-name', row.name));
   let meta = HUB_KIND_LABELS[row.kind];
   if (row.group) meta += ` · ${row.group}`;
   if (row.kind === 'skill' && row.resourceCount != null) meta += ` · ${row.resourceCount} files`;
+  if (row.kind === 'agent' && row.refId && mount.loaded.has(row.refId)) meta += ' · helper';
   head.append(el('span', 'hub-row-meta', meta));
   if (row.stale) head.append(el('span', 'chip', 'stale'));
   head.append(el('span', 'spacer'));
+  const actions = el('span', 'hub-row-actions');
   if (row.kind === 'skill') {
-    const actions = el('span', 'hub-row-actions');
     if (installed.has(hubLocalKey(row))) actions.append(el('span', 'hub-installed', 'installed'));
     const pull = el('button', 'btn small', 'Pull');
     pull.title = `Pull ${row.qualifiedName ?? row.name} into ~/.core-ai/skills`;
     pull.onclick = () => void pullHubSkill(row, pull, actions, onPulled);
     actions.append(pull);
-    head.append(actions);
   }
+  if (row.kind === 'agent' && row.refId && !mount.loaded.has(row.refId)) {
+    const load = el('button', 'btn small', 'Load as helper');
+    load.title = mount.connected
+      ? `Mount ${row.name} as a delegation tool of your local agent (new sessions)`
+      : 'Sign in to core-ai-server to load helpers';
+    load.disabled = !mount.connected;
+    load.onclick = () => void loadHelper(row, load, mount);
+    actions.append(load);
+  }
+  if (actions.childElementCount) head.append(actions);
   item.append(head);
   if (row.description) {
     const desc = el('div', 'hub-row-desc', row.description);
@@ -3694,6 +3708,142 @@ async function pullHubSkill(
   button.disabled = false;
 }
 
+// ---------- helpers (server agents mounted as delegation tools of the local agent) ----------
+
+interface HubHelper {
+  agentId: string;
+  name: string | null;
+  description: string | null;
+  whenToUse: string | null;
+  enabled: boolean;
+  addedAt: string | null;
+}
+
+interface HubHelpersData {
+  helpers: HubHelper[];
+  max: number;
+  connected: boolean;
+}
+
+/** Shared state a hub row needs to render and drive the "Load as helper" action. */
+interface HubHelperMount {
+  loaded: Set<string>;
+  connected: boolean;
+  onLoaded: (agentId: string) => void;
+}
+
+function normalizeHelpers(data: any): HubHelpersData {
+  return {
+    helpers: Array.isArray(data?.helpers) ? (data.helpers as HubHelper[]) : [],
+    max: typeof data?.max === 'number' ? data.max : 5,
+    connected: Boolean(data?.connected),
+  };
+}
+
+async function loadHelper(row: HubRow, button: HTMLButtonElement, mount: HubHelperMount): Promise<void> {
+  if (!row.refId) return;
+  button.disabled = true;
+  button.textContent = 'Loading…';
+  const outcome = await callEnvelope('helpers/add', { agentId: row.refId });
+  if (outcome.ok) {
+    const name = String(outcome.result?.helper?.name ?? row.name);
+    toast(`Loaded ${name} as a helper — new sessions can delegate to it`);
+    mount.onLoaded(row.refId);
+    return;
+  }
+  toast(`✗ Load failed: ${outcome.error?.message ?? 'unknown error'}`, 'error');
+  button.textContent = 'Load as helper';
+  button.disabled = !mount.connected;
+}
+
+function renderHelpersSection(data: HubHelpersData, onChanged: () => void): HTMLElement {
+  const section = el('div', 'hub-helpers');
+  const header = el('div', 'hub-section');
+  header.append(el('span', 'hub-section-title', 'Helpers'));
+  header.append(el('span', 'hub-section-count', `${data.helpers.length}/${data.max}`));
+  section.append(header);
+  section.append(el('div', 'hub-helper-note', data.connected
+    ? 'Server agents your local agent can delegate to. Changes apply to new sessions.'
+    : 'Sign in to core-ai-server to add helpers; existing ones stay listed.'));
+  if (!data.helpers.length) {
+    section.append(el('div', 'notice', 'No helpers yet — use “Load as helper” on an agent below.'));
+    return section;
+  }
+  for (const helper of data.helpers) {
+    section.append(buildHelperRow(helper, onChanged));
+  }
+  return section;
+}
+
+function buildHelperRow(helper: HubHelper, onChanged: () => void): HTMLElement {
+  const row = el('div', 'hub-row hub-helper-row');
+  const head = el('div', 'hub-row-head');
+  head.append(el('span', 'hub-row-name', String(helper.name ?? helper.agentId)));
+  head.append(el('span', 'hub-row-meta', helper.enabled ? 'helper' : 'paused'));
+  head.append(el('span', 'spacer'));
+  const actions = el('span', 'hub-row-actions');
+
+  const edit = el('button', 'btn small', 'Edit hint');
+  edit.title = 'Tell the model when to delegate to this agent';
+  edit.onclick = () => {
+    const editor = el('div', 'hub-helper-editor');
+    const input = el('input');
+    input.value = helper.whenToUse ?? '';
+    input.placeholder = 'e.g. HR policy questions — ask it before answering';
+    const save = el('button', 'btn small', 'Save');
+    save.onclick = async () => {
+      save.disabled = true;
+      const outcome = await callEnvelope('helpers/update', { agentId: helper.agentId, whenToUse: input.value });
+      if (!outcome.ok) {
+        toast(`✗ ${outcome.error?.message ?? 'update failed'}`, 'error');
+        save.disabled = false;
+        return;
+      }
+      toast('Hint saved — new sessions use it');
+      onChanged();
+    };
+    const cancel = el('button', 'btn small', 'Cancel');
+    cancel.onclick = () => editor.remove();
+    editor.append(input, save, cancel);
+    row.append(editor);
+  };
+
+  const toggle = el('button', 'btn small', helper.enabled ? 'Pause' : 'Resume');
+  toggle.onclick = async () => {
+    toggle.disabled = true;
+    const outcome = await callEnvelope('helpers/update', { agentId: helper.agentId, enabled: !helper.enabled });
+    if (!outcome.ok) {
+      toast(`✗ ${outcome.error?.message ?? 'update failed'}`, 'error');
+      toggle.disabled = false;
+      return;
+    }
+    toast(helper.enabled ? 'Helper paused — new sessions skip it' : 'Helper resumed');
+    onChanged();
+  };
+
+  const remove = el('button', 'btn small', 'Remove');
+  remove.onclick = async () => {
+    if (!window.confirm(`Remove helper ${helper.name ?? helper.agentId}?`)) return;
+    remove.disabled = true;
+    const outcome = await callEnvelope('helpers/remove', { agentId: helper.agentId });
+    if (!outcome.ok) {
+      toast(`✗ ${outcome.error?.message ?? 'remove failed'}`, 'error');
+      remove.disabled = false;
+      return;
+    }
+    toast('Helper removed — new sessions skip it');
+    onChanged();
+  };
+
+  actions.append(edit, toggle, remove);
+  head.append(actions);
+  row.append(head);
+  row.append(el('div', 'hub-row-desc', helper.whenToUse
+    ? helper.whenToUse
+    : 'No “use it when” hint yet — the model routes on the agent description alone.'));
+  return row;
+}
+
 function renderHubFooter(footer: HTMLElement, counts: Record<HubKind, number>, sections: string[] | null, generatedAt: string | null): void {
   footer.replaceChildren();
   const totals = `${counts.mcp} MCP tools · ${counts.api} API operations · ${counts.agent} agents · ${counts.llm_call} LLM calls · ${counts.skill} skills`;
@@ -3720,26 +3870,36 @@ function renderHubFooter(footer: HTMLElement, counts: Record<HubKind, number>, s
 async function renderHubPanel(): Promise<HTMLElement> {
   const host = hostOf(state.auth?.serverUrl);
   const { root, body } = panel('Hub', host
-    ? `Server capabilities via the hub — signed in to ${host}. Read-only discovery: managing content stays in the web console.`
+    ? `Server capabilities via the hub — signed in to ${host}. Load agents as helpers; managing servers and skills stays in the web console.`
     : 'Server capabilities via the hub — MCP tools, API tools, agents and skills.');
 
   const view: { filter: HubFilter; query: string } = { filter: 'all', query: '' };
 
   const build = async (): Promise<void> => {
     if (!state.auth?.loggedIn) {
-      body.replaceChildren(hubSignInState(() => void build()));
+      const helperList = await callEnvelope('helpers/list');
+      const data = normalizeHelpers(helperList.ok ? helperList.result : null);
+      const wrap = el('div');
+      if (data.helpers.length) wrap.append(renderHelpersSection(data, () => void build()));
+      wrap.append(hubSignInState(() => void build()));
+      body.replaceChildren(wrap);
       return;
     }
     body.replaceChildren(el('div', 'notice', 'Loading the capability catalog…'));
-    const [catalog, skills, local] = await Promise.all([
+    const [catalog, skills, local, helperList] = await Promise.all([
       callEnvelope('hub/catalog'),
       callEnvelope('hub/skills', { limit: 200 }),
       callEnvelope('skills/list'),
+      callEnvelope('helpers/list'),
     ]);
     const catalogData = catalog.ok ? catalog.result ?? {} : null;
     const skillsData = skills.ok ? skills.result ?? {} : null;
+    const helpersData = normalizeHelpers(helperList.ok ? helperList.result : null);
     if (catalogData?.reason === 'not_logged_in' || skillsData?.reason === 'not_logged_in') {
-      body.replaceChildren(hubSignInState(() => void build()));
+      const wrap = el('div');
+      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
+      wrap.append(hubSignInState(() => void build()));
+      body.replaceChildren(wrap);
       return;
     }
     const catalogError = !catalog.ok
@@ -3749,7 +3909,10 @@ async function renderHubPanel(): Promise<HTMLElement> {
       ? skills.error?.message ?? 'request failed'
       : skillsData?.connected === false ? String(skillsData.message ?? skillsData.reason) : null;
     if (catalogError && skillsError) {
-      body.replaceChildren(hubUnreachableState(String(catalogError), build));
+      const wrap = el('div');
+      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
+      wrap.append(hubUnreachableState(String(catalogError), build));
+      body.replaceChildren(wrap);
       return;
     }
 
@@ -3757,6 +3920,27 @@ async function renderHubPanel(): Promise<HTMLElement> {
     const installed = hubInstalledSet(local);
     const counts: Record<HubKind, number> = { mcp: 0, api: 0, agent: 0, llm_call: 0, skill: 0 };
     for (const row of rows) counts[row.kind] += 1;
+
+    const loadedIds = new Set(helpersData.helpers.map((helper) => helper.agentId));
+    const mount: HubHelperMount = {
+      loaded: loadedIds,
+      connected: helpersData.connected,
+      onLoaded: (agentId: string) => {
+        loadedIds.add(agentId);
+        void refreshHelpers();
+      },
+    };
+    const helpersHost = el('div');
+    const refreshHelpers = async (): Promise<void> => {
+      const list = await callEnvelope('helpers/list');
+      const data = normalizeHelpers(list.ok ? list.result : null);
+      loadedIds.clear();
+      for (const helper of data.helpers) loadedIds.add(helper.agentId);
+      mount.connected = data.connected;
+      helpersHost.replaceChildren(renderHelpersSection(data, () => void refreshHelpers()));
+      render();
+    };
+    helpersHost.replaceChildren(renderHelpersSection(helpersData, () => void refreshHelpers()));
 
     const toolbar = el('div', 'hub-toolbar');
     const search = el('input', 'hub-search') as HTMLInputElement;
@@ -3808,7 +3992,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
         header.append(el('span', 'hub-section-count', String(sectionRows.length)));
         list.append(header);
         for (const row of sectionRows.slice(0, HUB_SECTION_CAP)) {
-          list.append(buildHubRow(row, installed, onPulled));
+          list.append(buildHubRow(row, installed, onPulled, mount));
         }
         if (sectionRows.length > HUB_SECTION_CAP) {
           list.append(el('div', 'notice', `showing first ${HUB_SECTION_CAP} of ${sectionRows.length} — refine the search to narrow`));
@@ -3822,7 +4006,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
       view.query = search.value;
       render();
     };
-    body.replaceChildren(toolbar, list, footer);
+    body.replaceChildren(helpersHost, toolbar, list, footer);
     render();
   };
 

@@ -61,6 +61,9 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.tool.tools.SummarizePdfTool$SummarizePdfToolParams",
         // Scheduled task tool domain for file-backed JSON persistence
         "ai.core.schedule.ScheduledTask",
+        // Helper configuration for file-backed JSON persistence
+        "ai.core.cli.helper.HelperConfig",
+        "ai.core.cli.helper.HelperEntry",
         // Vendor management classes for GraalVM reflection
         "ai.core.vender.Vendor",
         "ai.core.vender.VendorConfig",

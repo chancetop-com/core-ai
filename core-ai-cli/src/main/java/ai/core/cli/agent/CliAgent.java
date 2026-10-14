@@ -20,6 +20,9 @@ import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
 import ai.core.cli.a2a.RemoteAgentToolProvider;
+import ai.core.cli.helper.HelperAgentToolProvider;
+import ai.core.cli.helper.HelperEntry;
+import ai.core.cli.helper.HelperService;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.cli.trace.HttpTraceUploader;
@@ -34,6 +37,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolProvider;
 import ai.core.tool.registry.FactoryContext;
 import ai.core.tool.registry.ListToolProvider;
+import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
@@ -64,6 +68,10 @@ public class CliAgent {
             toolRegistry.registerProvider(ListToolProvider.of(mediaTools(config.imageMediaProvider, config.videoMediaProvider, config.mediaProvider)));
         }
         toolRegistry.registerProvider(buildRemoteAgentProvider(config));
+        var helperProvider = buildHelperProvider(config, toolRegistry);
+        if (helperProvider != null) {
+            toolRegistry.registerProvider(helperProvider);
+        }
 
         var hookConfig = HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig.isEmpty() ? null
@@ -167,6 +175,19 @@ public class CliAgent {
         return RemoteAgentToolProvider.discover(config.remoteAgents(), config.remoteServers(), config.a2aAutoDiscover());
     }
 
+    /**
+     * Mounts enabled helpers as delegation tools. The reserved-name snapshot is taken from the
+     * registry first, so a colliding helper is renamed instead of being silently shadowed.
+     */
+    private static HelperAgentToolProvider buildHelperProvider(Config config, ToolRegistry toolRegistry) {
+        var helpers = config.helpers();
+        if (helpers == null || helpers.isEmpty()) {
+            return null;
+        }
+        var reserved = toolRegistry.materialize().getDispatchMap().keySet();
+        return HelperAgentToolProvider.create(helpers, reserved, HelperService::clientOrNull);
+    }
+
     private static Path userSkillsDir() {
         return Path.of(System.getProperty("user.home"), ".core-ai", "skills");
     }
@@ -242,6 +263,7 @@ public class CliAgent {
                             String defaultVideoModel,
                             ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
                             ai.core.context.CompressionConfig compressionConfig,
-                            String clientType) {
+                             String clientType,
+                             List<HelperEntry> helpers) {
     }
 }
