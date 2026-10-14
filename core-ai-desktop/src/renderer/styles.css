@@ -940,6 +940,8 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .file-item { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); padding: 7px 10px; font: inherit; cursor: pointer; border-bottom: 1px solid var(--border); }
 .file-item:hover { background: var(--bg-elev); }
 .file-item .path { display: block; }
+.file-item.global { background: var(--bg-elev); }
+.file-item.global .path { color: var(--accent); }
 .file-item .meta { color: var(--faint); font-size: 12px; }
 .file-preview { border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-y: auto; max-height: 70vh; }
 .file-preview pre { margin: 0; font-family: var(--mono); font-size: 12.5px; white-space: pre-wrap; word-break: break-word; }

@@ -3916,7 +3916,7 @@ function memoryPreview(content: string, path: string): HTMLElement {
 }
 
 async function renderMemoryPanel(): Promise<HTMLElement> {
-  const { root, body } = panel('Memory', 'Knowledge wiki / episodes / daily-logs ({workspace}/.core-ai)');
+  const { root, body } = panel('Memory', 'Global preferences (~/.core-ai/MEMORY.md) + knowledge wiki / episodes / daily-logs ({workspace}/.core-ai)');
   const listed = await call('memory/list', { limit: 300 });
   if (!listed) return root;
   const files: any[] = listed.files ?? [];
@@ -3926,6 +3926,7 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
   preview.append(el('div', 'notice', 'Select a file on the left to preview'));
   for (const file of files) {
     const item = el('button', 'file-item');
+    if (String(file.path).startsWith('global/')) item.classList.add('global');
     item.append(el('span', 'path', file.path));
     item.append(el('span', 'meta', `${fmtBytes(file.size)} · ${fmtTime(file.modifiedAt)}`));
     item.onclick = async () => {
