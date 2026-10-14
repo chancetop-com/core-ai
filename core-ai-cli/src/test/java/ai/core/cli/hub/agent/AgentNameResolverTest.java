@@ -13,11 +13,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
- * The {@code <id | name>} contract of the agent subcommands: ids bypass the lookup, a name resolves
- * only when it is unambiguous, and a missing name is a not-found error rather than a usage error.
+ * The {@code <id | name>} contract of the agent subcommands: recognized id shapes bypass the lookup,
+ * a name resolves only when it is unambiguous, and a value without a name match falls through to the
+ * server, which resolves it as an id or reports the 404.
  *
  * @author stephen
  */
@@ -26,9 +28,17 @@ class AgentNameResolverTest {
     private final AgentNameResolver resolver = new AgentNameResolver(client);
 
     @Test
-    void idIsPassedThroughWithoutLookup() {
+    void uuidIdIsPassedThroughWithoutLookup() {
+        var id = "5a172258-fdd3-4357-8f3d-4fe2783a88df";
+        assertEquals(id, resolver.resolve(id));
+        verifyNoInteractions(client);
+    }
+
+    @Test
+    void legacyObjectIdIsPassedThroughWithoutLookup() {
         var id = "0123456789abcdef01234567";
         assertEquals(id, resolver.resolve(id));
+        verifyNoInteractions(client);
     }
 
     @Test
@@ -53,12 +63,24 @@ class AgentNameResolverTest {
     }
 
     @Test
-    void missingNameIsNotFound() {
+    void valueWithoutNameMatchFallsThroughForServerResolution() {
+        when(client.lookup("assistant:someone@example.com")).thenReturn(lookup());
+
+        assertEquals("assistant:someone@example.com", resolver.resolve("assistant:someone@example.com"));
+    }
+
+    @Test
+    void missingNameFallsThroughToTheServer404() {
         when(client.lookup("ghost")).thenReturn(lookup());
 
-        var error = assertThrows(HubCliError.class, () -> resolver.resolve("ghost"));
+        assertEquals("ghost", resolver.resolve("ghost"));
+    }
 
-        assertEquals(HubExitCodes.NOT_FOUND, error.exitCode);
+    @Test
+    void blankReferenceIsUsageError() {
+        var error = assertThrows(HubCliError.class, () -> resolver.resolve(" "));
+
+        assertEquals(HubExitCodes.USAGE, error.exitCode);
     }
 
     @Test
