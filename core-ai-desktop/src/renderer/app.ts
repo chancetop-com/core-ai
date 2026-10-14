@@ -4299,25 +4299,79 @@ async function renderArtifactsPanel(): Promise<HTMLElement> {
 
 async function renderSkillsPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Skills', 'Workspace and user-level skills (~/.core-ai/skills and {workspace}/.core-ai/skills)');
-  const listed = await call('skills/list', {});
-  if (!listed) return root;
-  const skills: any[] = listed.skills ?? [];
-  if (!skills.length) {
-    body.append(el('div', 'notice', 'No skills yet.'));
-    return root;
-  }
-  const table = el('table');
-  const headRow = el('tr');
-  for (const label of ['Name', 'Source', 'Path']) headRow.append(el('th', undefined, label));
-  table.append(headRow);
-  for (const skill of skills) {
-    const row = el('tr');
-    row.append(el('td', undefined, skill.name));
-    row.append(el('td', undefined, skill.source));
-    row.append(el('td', 'mono', skill.path));
-    table.append(row);
-  }
-  body.append(table);
+
+  const skillState = (skill: any, connected: boolean): { label: string; update: boolean; force: boolean } => {
+    switch (String(skill.state ?? '')) {
+      case 'outdated': return { label: 'Update available', update: true, force: false };
+      case 'modified': return { label: 'Modified locally', update: true, force: true };
+      case 'up-to-date': return { label: 'Up to date', update: false, force: false };
+      case 'unverified': return { label: 'Not verified', update: false, force: false };
+      case 'local': return { label: 'Local only', update: false, force: false };
+      default: return { label: connected ? 'Up to date' : 'Unchecked', update: false, force: false };
+    }
+  };
+
+  const runUpdate = async (qualifiedName: string | null, force: boolean): Promise<void> => {
+    if (force && !window.confirm(`Overwrite local changes in ${qualifiedName ?? 'every hub skill'}?`)) return;
+    const outcome = await callEnvelope('hub/skills/update', {
+      ...(qualifiedName ? { name: qualifiedName } : {}),
+      ...(force ? { force: true } : {}),
+    });
+    if (!outcome.ok) {
+      toast(`Skill update failed: ${outcome.error?.message ?? 'request failed'}`, 'error');
+      return;
+    }
+    const updated: string[] = outcome.result?.updated ?? [];
+    const skipped: string[] = outcome.result?.skipped ?? [];
+    toast(updated.length ? `Updated ${updated.join(', ')}`
+      : skipped.length ? `Nothing to update (${skipped.length} skipped)` : 'Nothing to update');
+    await refresh();
+  };
+
+  const refresh = async (): Promise<void> => {
+    body.replaceChildren();
+    const listed = await call('skills/list', {});
+    if (!listed) return;
+    const skills: any[] = listed.skills ?? [];
+    if (!skills.length) {
+      body.append(el('div', 'notice', 'No skills yet.'));
+      return;
+    }
+    if (!listed.connected) {
+      body.append(el('div', 'notice', 'Sign in to core-ai-server to check for skill updates.'));
+    }
+    if (skills.some((skill: any) => skill.state === 'outdated')) {
+      const bar = el('div');
+      bar.style.margin = '0 0 10px';
+      const all = el('button', 'btn small primary', 'Update all');
+      all.onclick = () => void runUpdate(null, false);
+      bar.append(all);
+      body.append(bar);
+    }
+    const table = el('table');
+    const headRow = el('tr');
+    for (const label of ['Name', 'Source', 'State', 'Path']) headRow.append(el('th', undefined, label));
+    table.append(headRow);
+    for (const skill of skills) {
+      const row = el('tr');
+      const info = skillState(skill, Boolean(listed.connected));
+      row.append(el('td', undefined, skill.name));
+      row.append(el('td', undefined, skill.source));
+      const stateCell = el('td', undefined, info.label);
+      if (info.update && skill.qualifiedName) {
+        const button = el('button', 'btn small primary', info.force ? 'Overwrite' : 'Update');
+        button.style.marginLeft = '8px';
+        button.onclick = () => void runUpdate(String(skill.qualifiedName), info.force);
+        stateCell.append(button);
+      }
+      row.append(stateCell);
+      row.append(el('td', 'mono', skill.path));
+      table.append(row);
+    }
+    body.append(table);
+  };
+
+  await refresh();
   return root;
 }
 
