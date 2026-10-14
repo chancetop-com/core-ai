@@ -6,6 +6,7 @@
 // listens while the browser is running, and the harness retries the endpoint for 30s while the
 // desktop auto-starts it.
 import { app, BrowserWindow, session, WebContentsView } from 'electron';
+import type { WebContents } from 'electron';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -138,6 +139,7 @@ export class BrowserManager implements BrowserHost {
 
   status(): BrowserStatus {
     const active = this.activeTab();
+    const wc = active ? this.webContentsOf(active) : null;
     return {
       running: this.running,
       port: CDP_PORT,
@@ -150,9 +152,9 @@ export class BrowserManager implements BrowserHost {
       activeId: this.activeId,
       url: active ? this.urlOf(active) : null,
       title: active ? this.titleOf(active) : null,
-      loading: active ? active.view.webContents.isLoading() : false,
-      canGoBack: active ? active.view.webContents.navigationHistory.canGoBack() : false,
-      canGoForward: active ? active.view.webContents.navigationHistory.canGoForward() : false,
+      loading: wc ? wc.isLoading() : false,
+      canGoBack: wc ? wc.navigationHistory.canGoBack() : false,
+      canGoForward: wc ? wc.navigationHistory.canGoForward() : false,
     };
   }
 
@@ -181,35 +183,38 @@ export class BrowserManager implements BrowserHost {
     const tab = this.requireActiveTab();
     const url = resolveNavigationInput(input ?? '');
     if (!url) throw new Error(`blocked URL (the embedded browser only visits http/https): ${input}`);
-    void tab.view.webContents.loadURL(url).catch(() => undefined);
+    const wc = this.webContentsOf(tab);
+    if (wc) void wc.loadURL(url).catch(() => undefined);
     return this.status();
   }
 
   goBack(): BrowserStatus {
     const tab = this.requireActiveTab();
-    if (tab.view.webContents.navigationHistory.canGoBack()) {
-      tab.view.webContents.navigationHistory.goBack();
+    const wc = this.webContentsOf(tab);
+    if (wc?.navigationHistory.canGoBack()) {
+      wc.navigationHistory.goBack();
     }
     return this.status();
   }
 
   goForward(): BrowserStatus {
     const tab = this.requireActiveTab();
-    if (tab.view.webContents.navigationHistory.canGoForward()) {
-      tab.view.webContents.navigationHistory.goForward();
+    const wc = this.webContentsOf(tab);
+    if (wc?.navigationHistory.canGoForward()) {
+      wc.navigationHistory.goForward();
     }
     return this.status();
   }
 
   reload(): BrowserStatus {
     const tab = this.requireActiveTab();
-    tab.view.webContents.reload();
+    this.webContentsOf(tab)?.reload();
     return this.status();
   }
 
   stopLoading(): BrowserStatus {
     const tab = this.requireActiveTab();
-    tab.view.webContents.stop();
+    this.webContentsOf(tab)?.stop();
     return this.status();
   }
 
@@ -281,7 +286,8 @@ export class BrowserManager implements BrowserHost {
     if (!tab) return () => undefined;
     this.warnOnZeroSize(tab);
     this.ensureDebugger(tab);
-    const wc = tab.view.webContents;
+    const wc = this.webContentsOf(tab);
+    if (!wc) return () => undefined;
     const dispatch = (_event: unknown, method: string, params: unknown): void => listener(method, params);
     wc.debugger.on('message', dispatch);
     return () => {
@@ -380,6 +386,15 @@ export class BrowserManager implements BrowserHost {
       console.error(`[browser] tab ${tab.id} renderer gone: ${details.reason}`);
       this.destroyTab(tab, { allowAutoStop: true });
     });
+    wc.once('destroyed', () => {
+      // A page can close its own tab (window.close()) and a crashed renderer drops the webContents
+      // with it: `view.webContents` then reads undefined. Without this hook the tab would stay in
+      // `tabs` as a zombie and every later title/stop/reload/status call would throw "Cannot read
+      // properties of undefined" — bricking the pane and the agent's CDP bridge until a restart.
+      if (!this.tabs.includes(tab)) return;
+      console.log(`[browser] tab ${tab.id} closed from the page or renderer side`);
+      this.destroyTab(tab, { allowAutoStop: true });
+    });
     wc.setWindowOpenHandler((details) => {
       if (isAllowedNavigation(details.url)) {
         const activate = details.disposition === 'foreground-tab' || details.disposition === 'new-window';
@@ -392,16 +407,21 @@ export class BrowserManager implements BrowserHost {
   private destroyTab(tab: Tab, options: { allowAutoStop: boolean }): void {
     if (!this.tabs.includes(tab)) return;
     this.tabs = this.tabs.filter((entry) => entry !== tab);
-    this.attachedContents.delete(tab.view.webContents.id);
+    // The webContents may already be gone (page-closed tab, crashed renderer) — touch it only when
+    // it still exists so the removeChildView/activeId/emit cleanup below always runs.
+    const wc = this.webContentsOf(tab);
+    if (wc) this.attachedContents.delete(wc.id);
     try {
       this.window?.contentView.removeChildView(tab.view);
     } catch {
       // the window may already be gone
     }
-    try {
-      tab.view.webContents.close();
-    } catch {
-      // already destroyed
+    if (wc) {
+      try {
+        wc.close();
+      } catch {
+        // already destroyed
+      }
     }
     if (this.activeId === tab.id) {
       this.activeId = this.tabs[0]?.id ?? null;
@@ -445,8 +465,8 @@ export class BrowserManager implements BrowserHost {
   }
 
   private ensureDebugger(tab: Tab): void {
-    const wc = tab.view.webContents;
-    if (wc.isDestroyed()) throw new Error('browser tab is closed');
+    const wc = this.webContentsOf(tab);
+    if (!wc || wc.isDestroyed()) throw new Error('browser tab is closed');
     if (this.attachedContents.has(wc.id)) return;
     try {
       wc.debugger.attach('1.3');
@@ -498,12 +518,25 @@ export class BrowserManager implements BrowserHost {
   }
 
   private titleOf(tab: Tab): string {
-    const title = tab.view.webContents.getTitle();
+    const wc = this.webContentsOf(tab);
+    if (!wc) return '';
+    const title = wc.getTitle();
     return title && title !== 'about:blank' ? title : '';
   }
 
   private urlOf(tab: Tab): string {
-    return tab.view.webContents.getURL() || 'about:blank';
+    const wc = this.webContentsOf(tab);
+    return (wc && wc.getURL()) || 'about:blank';
+  }
+
+  /**
+   * `view.webContents` reads `undefined` once the webContents is destroyed (a page can close its
+   * own tab via window.close()) — Electron's typings don't model that, but every wc-facing path
+   * must cope. The 'destroyed' listener in wireTab removes such tabs; this is the belt to it.
+   */
+  private webContentsOf(tab: Tab): WebContents | null {
+    const wc: WebContents | undefined = tab.view.webContents;
+    return wc ?? null;
   }
 
   private emitState(): void {
