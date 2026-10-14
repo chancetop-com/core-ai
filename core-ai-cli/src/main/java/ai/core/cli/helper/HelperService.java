@@ -3,6 +3,7 @@ package ai.core.cli.helper;
 import ai.core.api.server.agenthub.AgentHubDetail;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hub.agent.AgentHubClient;
+import ai.core.cli.hub.agent.LocalAttachmentUploader;
 import ai.core.cli.http.RemoteApiException;
 
 import java.time.Instant;
@@ -26,11 +27,22 @@ public class HelperService {
 
     /** Resolved per call so a login after engine start is picked up without a restart. */
     public static AgentHubClient clientOrNull() {
+        var auth = loginOrNull();
+        return auth == null ? null : new AgentHubClient(auth.serverUrl(), auth.apiKey(), false);
+    }
+
+    /** Same login as {@link #clientOrNull()}; used to deliver a delegation's message attachments. */
+    public static LocalAttachmentUploader uploaderOrNull() {
+        var auth = loginOrNull();
+        return auth == null ? null : new LocalAttachmentUploader(auth.serverUrl(), auth.apiKey(), false);
+    }
+
+    private static AuthConfig loginOrNull() {
         var auth = AuthConfig.load();
         if (auth == null || auth.apiKey() == null || auth.serverUrl() == null) {
             return null;
         }
-        return new AgentHubClient(auth.serverUrl(), auth.apiKey(), false);
+        return auth;
     }
 
     private final HelperConfigStore store;

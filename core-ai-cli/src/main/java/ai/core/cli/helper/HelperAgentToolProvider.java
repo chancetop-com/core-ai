@@ -1,6 +1,7 @@
 package ai.core.cli.helper;
 
 import ai.core.cli.hub.agent.AgentHubClient;
+import ai.core.cli.hub.agent.LocalAttachmentUploader;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolProvider;
 
@@ -25,7 +26,8 @@ public final class HelperAgentToolProvider implements ToolProvider {
     private static final int PRIORITY = 16;
 
     public static HelperAgentToolProvider create(List<HelperEntry> helpers, Set<String> reservedToolNames,
-                                                 Supplier<AgentHubClient> clientSupplier) {
+                                                 Supplier<AgentHubClient> clientSupplier,
+                                                 Supplier<LocalAttachmentUploader> uploaderSupplier) {
         var tools = new LinkedHashMap<String, ToolCall>();
         var names = new HashSet<String>();
         if (reservedToolNames != null) {
@@ -42,6 +44,7 @@ public final class HelperAgentToolProvider implements ToolProvider {
                         .helper(entry)
                         .name(uniqueName(entry, names))
                         .clientSupplier(clientSupplier)
+                        .uploaderSupplier(uploaderSupplier)
                         .build();
                 tools.put(tool.getName(), tool);
             }

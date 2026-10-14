@@ -185,7 +185,7 @@ public class CliAgent {
             return null;
         }
         var reserved = toolRegistry.materialize().getDispatchMap().keySet();
-        return HelperAgentToolProvider.create(helpers, reserved, HelperService::clientOrNull);
+        return HelperAgentToolProvider.create(helpers, reserved, HelperService::clientOrNull, HelperService::uploaderOrNull);
     }
 
     private static Path userSkillsDir() {

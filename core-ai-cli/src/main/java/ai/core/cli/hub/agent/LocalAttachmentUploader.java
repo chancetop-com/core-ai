@@ -7,6 +7,7 @@ import ai.core.cli.hub.HubCliError;
 import ai.core.cli.hub.HubExitCodes;
 import ai.core.utils.JsonUtil;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -27,7 +28,7 @@ import java.util.Map;
  *
  * @author stephen
  */
-class LocalAttachmentUploader {
+public class LocalAttachmentUploader {
     private static final Duration UPLOAD_TIMEOUT = Duration.ofMinutes(5);
     private static final String OCTET_STREAM = "application/octet-stream";
     private static final Map<String, String> CONTENT_TYPES = Map.ofEntries(
@@ -60,26 +61,49 @@ class LocalAttachmentUploader {
 
     private final RemoteApiClient apiClient;
 
-    LocalAttachmentUploader(String serverUrl, String apiKey, boolean insecure) {
+    public LocalAttachmentUploader(String serverUrl, String apiKey, boolean insecure) {
         this.apiClient = new RemoteApiClient(serverUrl, apiKey, UPLOAD_TIMEOUT, Map.of("X-Core-AI-Client", "cli"), insecure);
     }
 
-    AgentHubAttachment upload(Path file) {
+    public AgentHubAttachment upload(Path file) {
         if (file == null || !Files.isRegularFile(file)) {
             throw new HubCliError(HubExitCodes.USAGE, "attachment file not found: " + file);
         }
-        var contentType = contentType(file);
-        var category = isMultimodal(contentType) ? "multimodal" : "sandbox";
-        var credential = credential(contentType, category);
-        put(credential.uploadUrl, file, contentType);
+        var name = fileName(file);
+        HttpRequest.BodyPublisher body;
+        try {
+            body = HttpRequest.BodyPublishers.ofFile(file);
+        } catch (FileNotFoundException e) {
+            throw new HubCliError(HubExitCodes.TOOL_ERROR, "attachment upload failed: " + e.getMessage(), e);
+        }
+        return upload(body, name, contentType(name));
+    }
+
+    /**
+     * In-memory variant for callers that hold the bytes instead of a path, e.g. a tool forwarding a
+     * chat attachment that arrived base64-encoded.
+     */
+    public AgentHubAttachment upload(byte[] data, String fileName, String contentType) {
+        var name = fileName == null || fileName.isBlank() ? "attachment" : fileName;
+        var mediaType = contentType == null || contentType.isBlank() ? OCTET_STREAM : contentType;
+        return upload(HttpRequest.BodyPublishers.ofByteArray(data == null ? new byte[0] : data), name, mediaType);
+    }
+
+    private AgentHubAttachment upload(HttpRequest.BodyPublisher body, String fileName, String contentType) {
+        var credential = credential(contentType, category(contentType));
+        put(credential.uploadUrl, body, fileName, contentType);
         var attachment = new AgentHubAttachment();
         attachment.url = credential.blobUrl;
         attachment.type = type(contentType);
-        attachment.fileName = fileName(file);
+        attachment.fileName = fileName;
         attachment.contentType = contentType;
         attachment.container = credential.container;
         attachment.blobName = credential.blobName;
         return attachment;
+    }
+
+    private String category(String contentType) {
+        return isMultimodal(contentType) ? "multimodal" : "sandbox";
     }
 
     private BlobUploadCredentialView credential(String contentType, String category) {
@@ -87,18 +111,18 @@ class LocalAttachmentUploader {
         return JsonUtil.fromJson(BlobUploadCredentialView.class, apiClient.getRequired(path));
     }
 
-    private void put(String uploadUrl, Path file, String contentType) {
+    private void put(String uploadUrl, HttpRequest.BodyPublisher body, String fileName, String contentType) {
         try {
             var request = HttpRequest.newBuilder()
                     .uri(URI.create(uploadUrl))
                     .timeout(UPLOAD_TIMEOUT)
                     .header("x-ms-blob-type", "BlockBlob")
                     .header("x-ms-blob-content-type", contentType)
-                    .PUT(HttpRequest.BodyPublishers.ofFile(file))
+                    .PUT(body)
                     .build();
             var response = apiClient.httpClient().send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() >= 400) {
-                throw new HubCliError(HubExitCodes.TOOL_ERROR, "attachment upload failed: status=" + response.statusCode() + ", file=" + file);
+                throw new HubCliError(HubExitCodes.TOOL_ERROR, "attachment upload failed: status=" + response.statusCode() + ", file=" + fileName);
             }
         } catch (IOException e) {
             throw new HubCliError(HubExitCodes.TOOL_ERROR, "attachment upload failed: " + e.getMessage(), e);
@@ -108,8 +132,8 @@ class LocalAttachmentUploader {
         }
     }
 
-    private String contentType(Path file) {
-        var name = fileName(file).toLowerCase(Locale.ROOT);
+    private String contentType(String fileName) {
+        var name = fileName.toLowerCase(Locale.ROOT);
         var dot = name.lastIndexOf('.');
         if (dot < 0) return OCTET_STREAM;
         return CONTENT_TYPES.getOrDefault(name.substring(dot), OCTET_STREAM);

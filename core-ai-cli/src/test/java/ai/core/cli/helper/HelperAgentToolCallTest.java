@@ -1,16 +1,21 @@
 package ai.core.cli.helper;
 
+import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
+import ai.core.api.server.agenthub.AgentHubAttachment;
 import ai.core.api.server.agenthub.AgentHubInputRequest;
 import ai.core.api.server.agenthub.AgentHubReplyRequest;
 import ai.core.api.server.agenthub.AgentHubRunRequest;
 import ai.core.api.server.agenthub.AgentHubRunResult;
 import ai.core.cli.hub.agent.AgentHubClient;
+import ai.core.cli.hub.agent.LocalAttachmentUploader;
 import ai.core.cli.http.RemoteApiException;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Deque;
 import java.util.List;
 
@@ -134,7 +139,124 @@ class HelperAgentToolCallTest {
         assertEquals("agent", tool.getSourceType());
     }
 
+    @Test
+    void messageAttachmentsRideAlongWithTheTask() {
+        var client = new FakeHubClient();
+        client.runResults.add(result("completed", "t-1", "ctx-1", "evaluated"));
+        var uploader = new FakeUploader();
+        var tool = tool(client, uploader);
+
+        var first = tool.execute("{\"task\":\"evaluate this resume\"}", contextWithPdfAttachment());
+
+        assertEquals("evaluated", first.getResult());
+        assertEquals(1, client.runRequests.getFirst().attachments.size());
+        var attachment = client.runRequests.getFirst().attachments.getFirst();
+        assertEquals("resume.pdf", attachment.fileName);
+        assertEquals("application/pdf", attachment.contentType);
+        assertEquals("pdf", attachment.type);
+        assertEquals("https://cdn/ai/uploads/resume.pdf", attachment.url);
+        assertEquals(1, uploader.uploads);
+        assertEquals(1, first.getStats().get("helper_attachments"));
+    }
+
+    @Test
+    void attachmentIsDeliveredOnlyOnceOnTheThread() {
+        var client = new FakeHubClient();
+        client.runResults.add(result("completed", "t-1", "ctx-1", "first"));
+        client.runResults.add(result("completed", "t-2", "ctx-1", "second"));
+        var uploader = new FakeUploader();
+        var tool = tool(client, uploader);
+
+        tool.execute("{\"task\":\"evaluate this resume\"}", contextWithPdfAttachment());
+        var second = tool.execute("{\"task\":\"also check the dates\"}", contextWithPdfAttachment());
+
+        assertEquals("second", second.getResult());
+        assertNull(client.runRequests.get(1).attachments);
+        assertEquals(1, uploader.uploads);
+    }
+
+    @Test
+    void inputRequiredReplyDoesNotResendAttachments() {
+        var client = new FakeHubClient();
+        var waiting = result("input_required", "t-1", "ctx-1", null);
+        waiting.inputRequest = new AgentHubInputRequest();
+        waiting.inputRequest.tool = "shell.exec";
+        client.runResults.add(waiting);
+        client.replyResults.add(result("completed", "t-2", "ctx-1", "sent"));
+        var uploader = new FakeUploader();
+        var tool = tool(client, uploader);
+
+        tool.execute("{\"task\":\"send the offer letter\"}", contextWithPdfAttachment());
+        var done = tool.execute("{\"task\":\"approve\"}", contextWithPdfAttachment());
+
+        assertEquals("sent", done.getResult());
+        assertEquals(1, client.runRequests.size());
+        assertEquals(1, client.runRequests.getFirst().attachments.size());
+        assertEquals(1, uploader.uploads);
+    }
+
+    @Test
+    void uploadFailureFailsTheDelegationAndRetryDeliversIt() {
+        var client = new FakeHubClient();
+        var uploader = new FakeUploader();
+        uploader.error = new IllegalStateException("blob store is down");
+        var tool = tool(client, uploader);
+
+        var failed = tool.execute("{\"task\":\"evaluate this resume\"}", contextWithPdfAttachment());
+
+        assertTrue(failed.isFailed());
+        assertTrue(failed.getResult().contains("Failed to deliver message attachments"));
+        assertTrue(client.runRequests.isEmpty());
+
+        uploader.error = null;
+        client.runResults.add(result("completed", "t-1", "ctx-1", "ok"));
+        var retried = tool.execute("{\"task\":\"evaluate this resume\"}", contextWithPdfAttachment());
+
+        assertEquals("ok", retried.getResult());
+        assertEquals(1, client.runRequests.getFirst().attachments.size());
+    }
+
+    @Test
+    void urlAttachmentIsForwardedAsIsWithoutUploading() {
+        var client = new FakeHubClient();
+        client.runResults.add(result("completed", "t-1", "ctx-1", "seen"));
+        var uploader = new FakeUploader();
+        var tool = tool(client, uploader);
+        var context = ExecutionContext.builder().sessionId("s-1").build();
+        context.setAttachedContents(List.of(AttachedContent.ofUrl(
+                "https://cdn/photo.png", AttachedContent.AttachedContentType.IMAGE)));
+
+        tool.execute("{\"task\":\"look at this\"}", context);
+
+        assertEquals(0, uploader.uploads);
+        var attachment = client.runRequests.getFirst().attachments.getFirst();
+        assertEquals("https://cdn/photo.png", attachment.url);
+        assertEquals("image", attachment.type);
+    }
+
+    @Test
+    void aPlainMessageKeepsTheRunRequestLean() {
+        var client = new FakeHubClient();
+        client.runResults.add(result("completed", "t-1", "ctx-1", "ok"));
+        var tool = tool(client);
+
+        tool.execute("{\"task\":\"hello\"}", context());
+
+        assertNull(client.runRequests.getFirst().attachments);
+    }
+
+    @Test
+    void descriptionTellsTheModelFilesRideAlong() {
+        var tool = tool(new FakeHubClient());
+
+        assertTrue(tool.getDescription().contains("attached to the user's current message"));
+    }
+
     private HelperAgentToolCall tool(FakeHubClient client) {
+        return tool(client, new FakeUploader());
+    }
+
+    private HelperAgentToolCall tool(FakeHubClient client, FakeUploader uploader) {
         var entry = new HelperEntry();
         entry.agentId = "a1";
         entry.name = "HR 助手";
@@ -143,11 +265,20 @@ class HelperAgentToolCallTest {
                 .helper(entry)
                 .name("hr")
                 .clientSupplier(() -> client)
+                .uploaderSupplier(() -> uploader)
                 .build();
     }
 
     private ExecutionContext context() {
         return ExecutionContext.builder().sessionId("s-1").build();
+    }
+
+    private ExecutionContext contextWithPdfAttachment() {
+        var context = ExecutionContext.builder().sessionId("s-1").build();
+        context.setAttachedContents(List.of(AttachedContent.ofBase64(
+                Base64.getEncoder().encodeToString("%PDF-1.4 resume".getBytes(StandardCharsets.UTF_8)),
+                "application/pdf", AttachedContent.AttachedContentType.PDF, "resume.pdf")));
+        return context;
     }
 
     private AgentHubRunResult result(String status, String taskId, String contextId, String output) {
@@ -157,6 +288,31 @@ class HelperAgentToolCallTest {
         result.contextId = contextId;
         result.output = output;
         return result;
+    }
+
+    private static final class FakeUploader extends LocalAttachmentUploader {
+        private int uploads;
+        private RuntimeException error;
+
+        FakeUploader() {
+            super("https://server.example", "test-key", false);
+        }
+
+        @Override
+        public AgentHubAttachment upload(byte[] data, String fileName, String contentType) {
+            if (error != null) {
+                throw error;
+            }
+            uploads++;
+            var attachment = new AgentHubAttachment();
+            attachment.url = "https://cdn/ai/uploads/" + fileName;
+            attachment.type = "application/pdf".equals(contentType) ? "pdf" : "file";
+            attachment.fileName = fileName;
+            attachment.contentType = contentType;
+            attachment.container = "static";
+            attachment.blobName = "ai/uploads/" + fileName;
+            return attachment;
+        }
     }
 
     private static final class FakeHubClient extends AgentHubClient {

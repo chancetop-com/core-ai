@@ -56,14 +56,14 @@ class HelperAgentToolProviderTest {
         var disabled = entry("a1", "HR 助手");
         disabled.enabled = Boolean.FALSE;
 
-        var provider = HelperAgentToolProvider.create(List.of(disabled), Set.of(), () -> null);
+        var provider = HelperAgentToolProvider.create(List.of(disabled), Set.of(), () -> null, () -> null);
 
         assertTrue(provider.provide().isEmpty());
     }
 
     @Test
     void enabledHelpersBecomeToolsWithDescription() {
-        var provider = HelperAgentToolProvider.create(List.of(entry("abcdef1234567890", "HR 助手")), Set.of(), () -> null);
+        var provider = HelperAgentToolProvider.create(List.of(entry("abcdef1234567890", "HR 助手")), Set.of(), () -> null, () -> null);
 
         assertEquals(1, provider.provide().size());
         var tool = provider.provide().get("hr");

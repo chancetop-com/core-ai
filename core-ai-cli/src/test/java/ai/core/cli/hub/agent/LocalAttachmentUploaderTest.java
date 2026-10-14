@@ -94,6 +94,22 @@ class LocalAttachmentUploaderTest {
     }
 
     @Test
+    void uploadingBytesUsesTheSuppliedNameAndContentType() {
+        var attachment = uploader().upload(new byte[]{1, 2, 3}, "resume.pdf", "application/pdf");
+
+        assertEquals("PUT", uploadRequest.get().method());
+        assertTrue(credentialRequest.get().path().contains("content_type=application%2Fpdf"), credentialRequest.get().path());
+        assertTrue(credentialRequest.get().path().contains("category=multimodal"), credentialRequest.get().path());
+        assertArrayEquals(new byte[]{1, 2, 3}, uploadRequest.get().body());
+        assertEquals("https://cdn/ai/uploads/x.pdf", attachment.url);
+        assertEquals("pdf", attachment.type);
+        assertEquals("resume.pdf", attachment.fileName);
+        assertEquals("application/pdf", attachment.contentType);
+        assertEquals("static", attachment.container);
+        assertEquals("ai/uploads/x.pdf", attachment.blobName);
+    }
+
+    @Test
     void aMissingFileIsAUsageError() {
         var error = assertThrows(HubCliError.class, () -> uploader().upload(tempDir.resolve("no-such-file.bin")));
 
