@@ -306,6 +306,7 @@ public class TaskTool extends ToolCall {
                     + "\n- "
                     + String.join(":", DefaultGeneralAgent.AGENT_NAME, DefaultGeneralAgent.AGENT_DESCRIPTION);
             this.name(TOOL_NAME);
+            this.sourceType("subagent");
             this.description(TOOL_DESC.replace("%s", subagentType));
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "task_id", "A unique identifier for this task. If not provided, one will be auto-generated.")

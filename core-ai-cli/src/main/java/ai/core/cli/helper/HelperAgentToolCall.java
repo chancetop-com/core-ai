@@ -265,6 +265,7 @@ public class HelperAgentToolCall extends ToolCall {
             if (helper == null) throw new IllegalArgumentException("helper is required");
             if (clientSupplier == null) throw new IllegalArgumentException("clientSupplier is required");
             description(describe(helper));
+            sourceType("agent");
             timeoutMs(CALL_TIMEOUT_MS);
             parameters(List.of(ToolCallParameter.builder()
                     .name("task")

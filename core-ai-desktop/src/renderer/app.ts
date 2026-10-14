@@ -391,6 +391,15 @@ interface MemoryUi {
 /** Memory chips live per message: extraction completes long after the turn that triggered it ended. */
 const memoryUi = new WeakMap<HTMLElement, MemoryUi>();
 
+/** Tool calls with a known origin are listed under their own chip, mirroring "Skill use". */
+type ToolUseKind = 'skill' | 'subagent' | 'mcp' | 'api' | 'agent';
+
+interface ToolUseChip {
+  toggle: AssistToggle;
+  panel: HTMLElement;
+  rows: Map<string, { node: HTMLElement; count: number }>;
+}
+
 interface StreamingState {
   view: SessionView;
   text: string;
@@ -405,9 +414,7 @@ interface StreamingState {
   panels: HTMLElement | null;
   toolsPanel: HTMLElement | null;
   toolsToggle: AssistToggle | null;
-  skillsToggle: AssistToggle | null;
-  skillsPanel: HTMLElement | null;
-  skillUses: Map<string, { node: HTMLElement; count: number }> | null;
+  toolUses: Map<ToolUseKind, ToolUseChip> | null;
 }
 
 /**
@@ -2848,7 +2855,7 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, skillsToggle: null, skillsPanel: null, skillUses: null };
+    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     scrollTranscript(view);
   }
@@ -3004,8 +3011,10 @@ function appendToolStart(view: SessionView, event: any): void {
   panel.append(entry);
   refreshToolsBusy(entry);
   current.toolsToggle?.setLabel(`Tool use (${panel.childElementCount})`);
-  if (tool.name === 'use_skill') {
-    recordSkillUse(current, event.arguments);
+  const useKind = toolUseKind(tool.name, event.toolType);
+  if (useKind) {
+    const row = toolUseRowText(useKind, tool.name, event.arguments);
+    if (row) recordToolUse(current, useKind, row);
   }
   view.toolMap.set(tool.callId, tool);
   scrollTranscript(view);
@@ -3024,31 +3033,72 @@ function skillNameFrom(argumentsText: unknown): string | null {
   return null;
 }
 
-/** "Skill use (n)" chip next to thinking / tool use; expanding lists which skills were loaded. */
-function recordSkillUse(current: StreamingState, argumentsText: unknown): void {
-  const skill = skillNameFrom(argumentsText);
-  if (!skill) return;
-  if (!current.skillsPanel) {
+/** "explore-agent · find the login flow" — what a task call launches, from its arguments. */
+function subagentLabelFrom(argumentsText: unknown): string | null {
+  try {
+    const parsed = typeof argumentsText === 'string' ? JSON.parse(argumentsText) : argumentsText;
+    if (parsed && typeof parsed === 'object') {
+      const args = parsed as Record<string, unknown>;
+      const type = typeof args.subagent_type === 'string' && args.subagent_type.trim() ? args.subagent_type.trim() : null;
+      const description = typeof args.description === 'string' && args.description.trim() ? args.description.trim() : null;
+      if (type && description) return `${type} · ${description}`;
+      if (type) return type;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Which chip a tool call is listed under, or null for the generic tool list. The engine tags each
+ * tool with its origin (sourceType) as {@code toolType}; task is still recognizable by name on
+ * engines that predate the tag.
+ */
+function toolUseKind(toolName: string, toolType: unknown): ToolUseKind | null {
+  if (toolName === 'use_skill') return 'skill';
+  if (toolType === 'subagent' || toolType === 'mcp' || toolType === 'api' || toolType === 'agent') return toolType;
+  return toolName === 'task' ? 'subagent' : null;
+}
+
+function toolUseRowText(kind: ToolUseKind, toolName: string, argumentsText: unknown): string | null {
+  if (kind === 'skill') return skillNameFrom(argumentsText);
+  if (kind === 'subagent') return subagentLabelFrom(argumentsText) ?? toolName;
+  return toolName;
+}
+
+const TOOL_USE_CHIPS: Record<ToolUseKind, { label: string; chipClass: string }> = {
+  skill: { label: 'Skill use', chipClass: 'skills-chip' },
+  subagent: { label: 'Subagent', chipClass: 'subagent-chip' },
+  mcp: { label: 'MCP', chipClass: 'mcp-chip' },
+  api: { label: 'API tool', chipClass: 'api-chip' },
+  agent: { label: 'Agent', chipClass: 'agent-chip' },
+};
+
+/** One chip per tool origin next to thinking / tool use; expanding lists everything called this turn. */
+function recordToolUse(current: StreamingState, kind: ToolUseKind, text: string): void {
+  if (!current.toolUses) current.toolUses = new Map();
+  let chip = current.toolUses.get(kind);
+  if (!chip) {
+    const meta = TOOL_USE_CHIPS[kind];
     const { chips, panels } = ensureAssistBlock(current);
-    const toggle = createAssistToggle('Skill use');
-    toggle.chip.classList.add('skills-chip');
-    current.skillsToggle = toggle;
-    current.skillsPanel = toggle.panel;
+    const toggle = createAssistToggle(meta.label);
+    toggle.chip.classList.add(meta.chipClass);
+    chip = { toggle, panel: toggle.panel, rows: new Map() };
+    current.toolUses.set(kind, chip);
     chips.append(toggle.chip);
     panels.append(toggle.panel);
-    current.skillUses = new Map();
   }
-  const uses = current.skillUses as Map<string, { node: HTMLElement; count: number }>;
-  const existing = uses.get(skill);
+  const existing = chip.rows.get(text);
   if (existing) {
     existing.count += 1;
-    existing.node.textContent = `${skill} · ×${existing.count}`;
+    existing.node.textContent = `${text} · ×${existing.count}`;
   } else {
-    const node = el('div', 'skill-row', skill);
-    current.skillsPanel.append(node);
-    uses.set(skill, { node, count: 1 });
+    const node = el('div', 'tool-use-row', text);
+    chip.panel.append(node);
+    chip.rows.set(text, { node, count: 1 });
   }
-  current.skillsToggle?.setLabel(`Skill use (${uses.size})`);
+  chip.toggle.setLabel(`${TOOL_USE_CHIPS[kind].label} (${chip.rows.size})`);
 }
 
 /** Where a memory report lands: the view's live message, else its newest assistant message. */

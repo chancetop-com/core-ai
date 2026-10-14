@@ -42,6 +42,9 @@ public class ToolStartEvent implements AgentEvent {
     @Property(name = "model")
     public String model;
 
+    @Property(name = "toolType")
+    public String toolType;
+
     @Override
     public String sessionId() {
         return sessionId;

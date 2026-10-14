@@ -127,6 +127,13 @@ class HelperAgentToolCallTest {
         assertTrue(client.runRequests.isEmpty());
     }
 
+    @Test
+    void helperIsTaggedAsAgentForToolEvents() {
+        var tool = tool(new FakeHubClient());
+
+        assertEquals("agent", tool.getSourceType());
+    }
+
     private HelperAgentToolCall tool(FakeHubClient client) {
         var entry = new HelperEntry();
         entry.agentId = "a1";

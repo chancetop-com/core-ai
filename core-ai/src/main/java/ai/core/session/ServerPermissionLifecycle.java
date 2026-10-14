@@ -142,6 +142,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         }
         startEvent.taskId = (String) argMap.getOrDefault("task_id", context.getTaskId());
         startEvent.runInBackground = isBackground(argMap);
+        startEvent.toolType = toolTypeResolver != null ? toolTypeResolver.apply(toolName) : null;
         if (TaskTool.TOOL_NAME.equals(toolName)) {
             startEvent.model = resolveSubagentModel(argMap, context);
         }
