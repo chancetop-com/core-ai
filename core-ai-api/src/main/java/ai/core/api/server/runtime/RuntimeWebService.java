@@ -29,5 +29,5 @@ public interface RuntimeWebService {
 
     @GET
     @Path("/api/admin/runtime/series/:hours/:bucketMinutes")
-    RuntimeSeriesView series(@PathParam("hours") int hours, @PathParam("bucketMinutes") int bucketMinutes);
+    RuntimeSeriesView series(@PathParam("hours") Integer hours, @PathParam("bucketMinutes") Integer bucketMinutes);
 }

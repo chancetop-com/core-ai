@@ -47,7 +47,7 @@ public class RuntimeWebServiceImpl implements RuntimeWebService {
     }
 
     @Override
-    public RuntimeSeriesView series(int hours, int bucketMinutes) {
+    public RuntimeSeriesView series(Integer hours, Integer bucketMinutes) {
         return runtimeSampleService.series(hours, bucketMinutes, userId());
     }
 
