@@ -34,4 +34,14 @@ class CliAgentManagedBrowserPromptTest {
 
         assertTrue(prompt.contains("sign in inside the app's browser panel"), prompt);
     }
+
+    @Test
+    void treatsAntiBotBehaviorAsSiteBehavior() {
+        var prompt = new CliAgentManagedBrowserPrompt().inject();
+
+        assertTrue(prompt.contains("fight automation on purpose"), prompt);
+        assertTrue(prompt.contains("recreate the tab if it disappears"), prompt);
+        assertTrue(prompt.contains("silent mode"), prompt);
+        assertTrue(prompt.contains("never conclude the pane"), prompt);
+    }
 }

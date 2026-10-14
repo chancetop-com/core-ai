@@ -24,6 +24,10 @@ record CliAgentManagedBrowserPrompt() implements PromptInject {
                 Ignore the dedicated-browser setup from the browser-use skill: never start or attach to another browser
                 (Edge/Chrome), never probe CDP ports, and never touch ~/.core-ai/browser-profiles.
                 If a site needs a login, ask the user to sign in inside the app's browser panel, then continue.
+                Some sites fight automation on purpose (reload loops, challenge redirects, or the page closes its
+                own tab). That is the site's behavior, not a failure: recreate the tab if it disappears and drive
+                such pages in silent mode (see the browser-use skill's anti-bot section) - never conclude the pane
+                is broken.
                 """;
     }
 }
