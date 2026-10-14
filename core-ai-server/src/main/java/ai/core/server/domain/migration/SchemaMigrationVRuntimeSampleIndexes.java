@@ -12,7 +12,7 @@ import java.util.concurrent.TimeUnit;
 public class SchemaMigrationVRuntimeSampleIndexes implements SchemaMigration {
     @Override
     public String version() {
-        return "20261013001";
+        return "20261014001";
     }
 
     @Override
