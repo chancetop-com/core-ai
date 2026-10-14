@@ -6,6 +6,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryExtractionReport;
 import ai.core.cli.memory.MemoryTriggerService;
@@ -315,13 +316,16 @@ public class EngineSessionRegistry {
     }
 
     private EngineSession build(String sessionId, boolean load) {
+        // Helpers are re-read per session, not from the bootstrap snapshot: on a live engine a
+        // helper change in helpers.json must apply to the next session (design-agent-helpers §4.1).
+        var helpers = HelperConfigStore.defaultStore().list();
         var agentConfig = new CliAgent.Config(bootstrap.result.llmProviders, null, bootstrap.maxTurn,
                 bootstrap.sessionPersistence, bootstrap.workspace, NO_INTERACTIVE_USER,
                 bootstrap.memoryEnabled, bootstrap.dailyLogsEnabled, bootstrap.coding, bootstrap.todoV2Enabled,
                 sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
                 bootstrap.a2aAutoDiscover, bootstrap.mediaProvider, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
-                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, bootstrap.helpers);
+                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
             agent.load(sessionId);
