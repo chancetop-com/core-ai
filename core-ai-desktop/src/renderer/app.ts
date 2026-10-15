@@ -276,6 +276,8 @@ const state: {
   sessions: SessionRow[];
   sessionCursor: string | null;
   hasMoreSessions: boolean;
+  /** Sessions created here whose first turn has not saved yet — a listing must not drop them. */
+  pendingSessionIds: Set<string>;
   sessionsCollapsed: boolean;
   sessionId: string | null;
   sessionTitle: string;
@@ -311,6 +313,7 @@ const state: {
   sessions: [],
   sessionCursor: null,
   hasMoreSessions: false,
+  pendingSessionIds: new Set(),
   sessionsCollapsed: localStorage.getItem(COLLAPSE_KEY) === '1',
   sessionId: null,
   sessionTitle: '',
@@ -1552,6 +1555,7 @@ async function connect(workspace: string): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
+  state.pendingSessionIds.clear();
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -1584,6 +1588,7 @@ async function enterDefaultMode(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
+  state.pendingSessionIds.clear();
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -1617,10 +1622,40 @@ async function loadSessions(reset: boolean): Promise<void> {
   const listed = await call('session/list', params);
   if (!listed) return;
   const rows: SessionRow[] = listed.sessions ?? [];
-  state.sessions = reset ? rows : [...state.sessions, ...rows];
+  if (reset) {
+    state.sessions = [...(await pendingSessionRows(rows)), ...rows];
+  } else {
+    const known = new Set(state.sessions.map((session) => session.sessionId));
+    state.sessions = [...state.sessions, ...rows.filter((row) => !known.has(row.sessionId))];
+  }
   state.sessionCursor = listed.nextCursor ?? null;
   state.hasMoreSessions = Boolean(listed.nextCursor);
   renderSessionItems();
+}
+
+/**
+ * The engine persists a session only at its first save point, so `session/list` misses one whose
+ * first turn is still running. Local rows of such sessions survive the rebuild; a session the
+ * engine no longer knows — restarted or crashed before that first save — is dropped instead, and
+ * one the listing has caught up with retires its local row.
+ */
+async function pendingSessionRows(listed: SessionRow[]): Promise<SessionRow[]> {
+  const listedIds = new Set(listed.map((row) => row.sessionId));
+  const kept: SessionRow[] = [];
+  for (const session of state.sessions) {
+    if (!state.pendingSessionIds.has(session.sessionId)) continue;
+    if (listedIds.has(session.sessionId)) {
+      state.pendingSessionIds.delete(session.sessionId);
+      continue;
+    }
+    const envelope = await callEnvelope('session/resume', { sessionId: session.sessionId });
+    if (envelope.ok) {
+      kept.push(session);
+    } else {
+      state.pendingSessionIds.delete(session.sessionId);
+    }
+  }
+  return kept;
 }
 
 async function loadMoreSessions(): Promise<void> {
@@ -1659,9 +1694,11 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   const created = await call('session/create', {});
   if (!created) return false;
   const createdId = created.sessionId as string;
+  // Remember it until an engine listing carries it: refreshes triggered before its first save
+  // point (another session starting, any turn ending) rebuild the list from disk alone.
+  state.pendingSessionIds.add(createdId);
   await refreshSessionList();
-  // The engine persists a session only once it has content (empty sessions stay off disk),
-  // so keep the just-started conversation visible until its first turn is saved.
+  // A failed or stale listing leaves no engine row at all — show the fresh session locally.
   if (!state.sessions.some((session) => session.sessionId === createdId)) {
     state.sessions = [{ sessionId: createdId, title: firstMessage }, ...state.sessions];
   }
