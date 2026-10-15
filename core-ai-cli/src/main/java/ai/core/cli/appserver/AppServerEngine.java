@@ -167,6 +167,8 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("model/set", this::modelSet),
                 Map.entry("thinking/get", ignored -> thinkingGet()),
                 Map.entry("thinking/set", this::thinkingSet),
+                Map.entry("maxturn/get", ignored -> maxTurnGet()),
+                Map.entry("maxturn/set", this::maxTurnSet),
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),
@@ -326,6 +328,28 @@ public class AppServerEngine implements EngineApi {
         }
         var node = Params.object();
         node.put("level", effort == null ? "off" : effort.name().toLowerCase(Locale.ROOT));
+        node.put("restartRequired", true);
+        return node;
+    }
+
+    /** The effective limit comes from the engine's bootstrap (agent.max.turn, default 100). */
+    private ObjectNode maxTurnGet() {
+        var node = Params.object();
+        node.put("value", bootstrap.maxTurn);
+        return node;
+    }
+
+    private ObjectNode maxTurnSet(ObjectNode params) {
+        int value = Params.intParam(params, "value", 0);
+        if (value < 1) {
+            throw RpcException.invalidParams("value must be a positive integer");
+        }
+        var error = AgentSessionRunnerHelper.persistMaxTurn(value);
+        if (error != null) {
+            throw RpcException.business("CONFIG_WRITE_FAILED", error);
+        }
+        var node = Params.object();
+        node.put("value", value);
         node.put("restartRequired", true);
         return node;
     }

@@ -965,6 +965,9 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .settings-grid { display: grid; grid-template-columns: 200px 1fr; gap: 8px 16px; max-width: 820px; margin-bottom: 18px; }
 .settings-grid dt { color: var(--muted); }
 .settings-grid dd { margin: 0; word-break: break-all; }
+.settings-grid .hint { margin: 4px 0 0; }
+.settings-input { background: var(--bg-input); color: var(--text); border: 1px solid var(--border-strong); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; width: 120px; }
+.settings-input:focus { outline: none; border-color: var(--accent); }
 
 .update-actions { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .update-bar { height: 6px; max-width: 420px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; background: var(--bg-elev); margin: 6px 0 10px; }

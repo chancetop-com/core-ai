@@ -38,7 +38,7 @@ public class AgentSessionRunnerHelper {
             Path parent = CONFIG_FILE.getParent();
             if (parent == null) return "Invalid config file path";
             Files.createDirectories(parent);
-            writePropertyToFile(key, extraMap.isEmpty() ? null : JsonUtil.toJson(extraMap));
+            writePropertyToFile(CONFIG_FILE, key, extraMap.isEmpty() ? null : JsonUtil.toJson(extraMap));
             return null;
         } catch (IOException e) {
             LOGGER.warn("Failed to persist reasoning effort to extra_body", e);
@@ -46,11 +46,35 @@ public class AgentSessionRunnerHelper {
         }
     }
 
-    private static void writePropertyToFile(String key, String value) throws IOException {
+    /**
+     * Persists {@code agent.max.turn} (the max-turns-per-run limit shared with the CLI) and returns an
+     * error message, or null on success. The value is read at engine/CLI start, so a running engine
+     * applies it only after a reload.
+     */
+    public static String persistMaxTurn(int maxTurn) {
+        return persistMaxTurnAt(CONFIG_FILE, maxTurn);
+    }
+
+    /** Path-injected variant of {@link #persistMaxTurn(int)} for tests. */
+    static String persistMaxTurnAt(Path configFile, int maxTurn) {
+        try {
+            var parent = configFile.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            writePropertyToFile(configFile, "agent.max.turn", String.valueOf(maxTurn));
+            return null;
+        } catch (IOException e) {
+            LOGGER.warn("Failed to persist max turn to {}", configFile, e);
+            return "Failed to write config: " + e.getMessage();
+        }
+    }
+
+    private static void writePropertyToFile(Path configFile, String key, String value) throws IOException {
         var lines = new java.util.ArrayList<String>();
         boolean found = false;
-        if (Files.exists(CONFIG_FILE)) {
-            for (String line : Files.readAllLines(CONFIG_FILE)) {
+        if (Files.exists(configFile)) {
+            for (String line : Files.readAllLines(configFile)) {
                 String stripped = line.stripLeading();
                 if (tryReplaceIfProperty(lines, stripped, key, value, found)) {
                     found = true;
@@ -62,7 +86,7 @@ public class AgentSessionRunnerHelper {
         if (!found && value != null) {
             lines.add(key + "=" + value);
         }
-        Files.write(CONFIG_FILE, lines);
+        Files.write(configFile, lines);
     }
 
     private static boolean tryReplaceIfProperty(List<String> lines, String stripped,

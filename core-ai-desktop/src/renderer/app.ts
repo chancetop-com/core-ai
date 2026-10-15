@@ -4478,6 +4478,43 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   const policyCell = el('dd');
   policyCell.append(policy);
   grid.append(policyCell);
+
+  if (state.workspace) {
+    const maxTurn = await call('maxturn/get', {});
+    if (maxTurn) {
+      const fallback = String(maxTurn.value ?? 100);
+      grid.append(el('dt', undefined, 'Max turns'));
+      const turnsCell = el('dd');
+      const turnsInput = el('input', 'settings-input');
+      turnsInput.type = 'number';
+      turnsInput.min = '1';
+      turnsInput.step = '1';
+      turnsInput.value = fallback;
+      turnsInput.onchange = async () => {
+        const value = Number.parseInt(turnsInput.value, 10);
+        if (!Number.isInteger(value) || value < 1) {
+          turnsInput.value = fallback;
+          toast('Max turns must be a positive integer', 'error');
+          return;
+        }
+        const applied = await call('maxturn/set', { value });
+        if (!applied) {
+          turnsInput.value = fallback;
+          return;
+        }
+        if (state.status === 'running') {
+          state.pendingEngineRestart = true;
+          toast(`Max turns: ${value} — applies when this turn ends (engine reload)`);
+          return;
+        }
+        toast(`Max turns: ${value} — reloading engine…`);
+        await restartWorkspaceEngine();
+      };
+      turnsCell.append(turnsInput);
+      turnsCell.append(el('div', 'hint', 'Maximum model turns per message (agent.max.turn, default 100). Shared with the CLI; the engine reloads to apply it.'));
+      grid.append(turnsCell);
+    }
+  }
   body.append(grid);
 
   const permissions = state.workspace ? await call('permissions/get', {}) : null;

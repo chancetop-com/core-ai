@@ -193,15 +193,8 @@ public class InProcessAgentSession implements AgentSession {
         context.setAttachedContents(lastMessage.attachedContents());
         try {
             result = agent.run(combined, context);
-        } catch (MaxTurnsExceededException e) {
-            debug("agent exceeded max turns: " + e.maxTurns);
-            if (agent.hasPersistenceProvider()) {
-                agent.save(sessionId);
-            }
-            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
-            turnComplete.maxTurnsReached = Boolean.TRUE;
-            dispatchTerminal(turnComplete, SessionStatus.IDLE);
+        } catch (RuntimeException e) {
+            if (!dispatchMaxTurns(e, inputBefore, outputBefore, costBefore, cachedBefore)) throw e;
             return;
         } finally {
             context.setAttachedContents(null);
@@ -230,15 +223,8 @@ public class InProcessAgentSession implements AgentSession {
         try {
             agent.injectUserMessage(xml);
             result = agent.continueWithInjectedMessage();
-        } catch (MaxTurnsExceededException e) {
-            debug("agent exceeded max turns on notification: " + e.maxTurns);
-            if (agent.hasPersistenceProvider()) {
-                agent.save(sessionId);
-            }
-            var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-            populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
-            turnComplete.maxTurnsReached = Boolean.TRUE;
-            dispatchTerminal(turnComplete, SessionStatus.IDLE);
+        } catch (RuntimeException e) {
+            if (!dispatchMaxTurns(e, inputBefore, outputBefore, costBefore, cachedBefore)) throw e;
             return;
         }
         if (agent.isCancelled()) {
@@ -256,6 +242,23 @@ public class InProcessAgentSession implements AgentSession {
         var turnComplete = TurnCompleteEvent.of(sessionId, result);
         populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
+    }
+
+    /** Consumes a max-turns failure (Node.run wraps it one cause level down) and completes the turn; false = keep propagating. */
+    private boolean dispatchMaxTurns(RuntimeException failure, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
+        MaxTurnsExceededException maxTurns = null;
+        if (failure instanceof MaxTurnsExceededException direct) maxTurns = direct;
+        else if (failure.getCause() instanceof MaxTurnsExceededException cause) maxTurns = cause;
+        if (maxTurns == null) return false;
+        debug("agent exceeded max turns: " + maxTurns.maxTurns);
+        if (agent.hasPersistenceProvider()) {
+            agent.save(sessionId);
+        }
+        var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
+        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
+        turnComplete.maxTurnsReached = Boolean.TRUE;
+        dispatchTerminal(turnComplete, SessionStatus.IDLE);
+        return true;
     }
 
     private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
