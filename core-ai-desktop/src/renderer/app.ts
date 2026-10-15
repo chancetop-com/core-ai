@@ -829,7 +829,6 @@ function renderSidebar(): void {
   sessionItemsEl = null;
 
   for (const item of NAV) {
-    if (item.key === 'schedules' && !state.capabilities.includes('scheduled_tasks')) continue;
     if (item.key === 'sessions') {
       nav.append(buildSessionsNavRow());
       if (!state.sessionsCollapsed) {
@@ -3861,6 +3860,10 @@ let selectedScheduleId: string | null = null;
 
 async function renderSchedulesPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Scheduled tasks', 'Session-bound tasks from every workspace. They execute while core-ai-desktop is running.');
+  if (!state.workspace) {
+    body.append(el('div', 'empty-state', 'Connect a workspace to load scheduled tasks.'));
+    return root;
+  }
   const controls = el('div', 'schedule-controls');
   const workspaceFilter = el('select', 'input');
   for (const [value, label] of [['all', 'All workspaces'], ['current', 'This workspace']]) {
