@@ -285,6 +285,8 @@ const state: {
   models: Array<{ model: string; provider?: string; displayName?: string; reasoningEfforts?: string[] }>;
   modelSource: string | null;
   currentModel: string | null;
+  /** Model picked in a blank window (no session yet); applied to the session the first message creates. */
+  pendingModel: string | null;
   thinkingLevel: string;
   pendingEngineRestart: boolean;
   browserStatus: BrowserStatus | null;
@@ -321,6 +323,7 @@ const state: {
   models: [],
   modelSource: null,
   currentModel: null,
+  pendingModel: null,
   thinkingLevel: 'off',
   pendingEngineRestart: false,
   browserStatus: null,
@@ -1197,6 +1200,7 @@ function summaryCount(workspace: string): number {
 
 /** Model registry + current model / thinking level, straight from the engine. */
 async function refreshModelState(): Promise<void> {
+  const sessionId = state.sessionId;
   const listed = await call('model/list', {});
   if (listed?.models) {
     const seen = new Set<string>();
@@ -1209,8 +1213,10 @@ async function refreshModelState(): Promise<void> {
     state.models = models;
     state.modelSource = typeof listed.source === 'string' ? listed.source : null;
   }
-  const current = await call('model/get', state.sessionId ? { sessionId: state.sessionId } : {});
-  if (current?.model) state.currentModel = String(current.model);
+  const current = await call('model/get', sessionId ? { sessionId } : {});
+  // A reply that raced a session switch or a blank-window pick must not overwrite the newer state.
+  const stillCurrent = state.sessionId === sessionId && (sessionId !== null || state.pendingModel == null);
+  if (current?.model && stillCurrent) state.currentModel = String(current.model);
   const thinking = await call('thinking/get', {});
   if (thinking?.level) state.thinkingLevel = String(thinking.level);
   renderComposerControls();
@@ -1462,13 +1468,22 @@ function renderComposerControls(): void {
     : 'Models for this workspace (local registry)';
   modelSelect.onchange = async () => {
     const picked = modelSelect.value;
-    const applied = await call('model/set', { model: picked });
+    if (!state.sessionId) {
+      // No session yet: the pick lands on the session the first message creates.
+      state.pendingModel = picked;
+      state.currentModel = picked;
+      toast(`Model: ${picked} — applies to the new session`);
+      return;
+    }
+    const target = state.sessionId;
+    const applied = await call('model/set', { model: picked, sessionId: target });
+    if (state.sessionId !== target) return;
     if (!applied) {
       modelSelect.value = state.currentModel ?? '';
       return;
     }
     state.currentModel = String(applied.model ?? picked);
-    toast(`Model: ${state.currentModel}`);
+    toast(`Model: ${state.currentModel} — this session`);
   };
   modelPair.prepend(iconMenuButton('cpu', modelSelect, 'Model'));
   modelPair.append(modelSelect);
@@ -1556,6 +1571,7 @@ async function connect(workspace: string): Promise<void> {
   state.sessionTitle = '';
   state.sessions = [];
   state.pendingSessionIds.clear();
+  state.pendingModel = null;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -1589,6 +1605,7 @@ async function enterDefaultMode(): Promise<void> {
   state.sessionTitle = '';
   state.sessions = [];
   state.pendingSessionIds.clear();
+  state.pendingModel = null;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -1673,6 +1690,7 @@ async function refreshSessionList(): Promise<void> {
 async function startNewConversation(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
+  state.pendingModel = null;
   clearPendingAttachments();
   const previousDraft = findSessionView(null);
   if (previousDraft) disposeSessionView(previousDraft);
@@ -1682,6 +1700,9 @@ async function startNewConversation(): Promise<void> {
   const view = ensureSessionView(null);
   showSessionView(view);
   showBlankHint();
+  // A blank window starts from the engine default (model picks are per session); re-read it so the
+  // composer shows what the next session will actually use.
+  void refreshModelState();
   composerInput?.focus();
 }
 
@@ -1694,6 +1715,12 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   const created = await call('session/create', {});
   if (!created) return false;
   const createdId = created.sessionId as string;
+  // A model picked in the blank window becomes this session's model before its first turn runs.
+  if (state.pendingModel) {
+    const pending = state.pendingModel;
+    state.pendingModel = null;
+    await call('model/set', { sessionId: createdId, model: pending });
+  }
   // Remember it until an engine listing carries it: refreshes triggered before its first save
   // point (another session starting, any turn ending) rebuild the list from disk alone.
   state.pendingSessionIds.add(createdId);
@@ -1729,6 +1756,7 @@ async function openSession(sessionId: string): Promise<void> {
   const target = sessionId;
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
+  state.pendingModel = null;
   clearPendingAttachments();
   const view = ensureSessionView(target);
   renderSessionItems();
