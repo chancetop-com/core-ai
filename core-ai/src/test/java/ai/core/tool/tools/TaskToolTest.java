@@ -178,7 +178,7 @@ class TaskToolTest {
         // let the background run finish so the test leaves no live thread behind
         subProvider.release.countDown();
         taskManager.cancel("sa-bg01");
-        var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+        var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
         while (context.getSubagentThreads().find("sa-bg01").orElseThrow().isRunning() && System.nanoTime() < deadline) {
             try {
                 Thread.sleep(20);

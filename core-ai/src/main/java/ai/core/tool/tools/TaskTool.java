@@ -187,7 +187,8 @@ public class TaskTool extends ToolCall {
         var submitted = false;
         try {
             var handle = taskManager.submit(run.call().taskId(),
-                    () -> runInBackgroundAndCollect(run, agent), run.context().getCancellationToken());
+                    () -> runInBackgroundAndCollect(run, agent), run.context().getCancellationToken(),
+                    () -> run.registry().abort(run.thread()));
             submitted = true;
             taskManager.register(new Task(run.call().taskId(), run.call().description(), run.context().getTaskId(), handle.future(), run.subContext()));
             return ToolCallResult.asyncLaunched(run.call().taskId(), TaskToolPrompt.asyncLaunchedNotificationXml(

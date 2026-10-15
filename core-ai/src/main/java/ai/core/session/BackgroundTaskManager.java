@@ -61,25 +61,39 @@ public class BackgroundTaskManager {
     private final Consumer<AgentEvent> dispatcher;
 
     public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher) {
-        this.commandQueue = commandQueue;
-        this.sinkFactory = sinkFactory;
-        this.executor = AsyncToolTaskExecutor.getInstance().getExecutor();
-        this.sessionId = sessionId;
-        this.dispatcher = dispatcher;
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor());
     }
 
-    @SuppressWarnings("PMD.UseTryWithResources")
+    BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher, ExecutorService executor) {
+        this.commandQueue = commandQueue;
+        this.sinkFactory = sinkFactory;
+        this.sessionId = sessionId;
+        this.dispatcher = dispatcher;
+        this.executor = executor;
+    }
+
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token) {
+        return submit(taskId, agentRunner, token, null);
+    }
+
+    /**
+     * @param onNeverStarted invoked when the task is cancelled before its runnable has begun, so a
+     *                      caller that armed state for the run can release it — in that case the
+     *                      runnable (and with it any cleanup it owns) never executes
+     */
+    @SuppressWarnings("PMD.UseTryWithResources")
+    public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token, Runnable onNeverStarted) {
         LOGGER.debug("submitting background task, taskId={}", taskId);
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
         var notified = new AtomicBoolean(false);
         // Registered before the executor submit so notifyTerminal on the worker thread
         // always observes the entry (the reverse order could leave a stale entry behind).
-        var running = new RunningTask(null, notified, outputRef);
+        var running = new RunningTask(null, notified, outputRef, onNeverStarted);
         runningTasks.put(taskId, running);
         var otelContext = Context.current();
         var future = executor.submit(() -> {
+            running.started.set(true);
             var scope = otelContext.makeCurrent();
             try {
                 var runResult = runAgentWithSink(agentRunner, sink, taskId);
@@ -127,8 +141,22 @@ public class BackgroundTaskManager {
         if (!running.notified.compareAndSet(false, true)) return false;
         runningTasks.remove(taskId, running);
         running.future.cancel(true);
+        runNeverStarted(taskId, running);
         publishTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user");
         return true;
+    }
+
+    /**
+     * The cancelled future can no longer execute a runnable that had not begun, so the caller's
+     * cleanup would never run; hand it the release instead of leaving the armed state behind.
+     */
+    private void runNeverStarted(String taskId, RunningTask running) {
+        if (running.started.get() || running.onNeverStarted == null) return;
+        try {
+            running.onNeverStarted.run();
+        } catch (RuntimeException e) {
+            LOGGER.warn("background task never-started callback failed, taskId={}, error={}", taskId, e.getMessage());
+        }
     }
 
     private void notifyTerminal(String taskId, String status, String result, String error, RunningTask running) {
@@ -177,12 +205,15 @@ public class BackgroundTaskManager {
     private static final class RunningTask {
         volatile Future<?> future;
         final AtomicBoolean notified;
+        final AtomicBoolean started = new AtomicBoolean(false);
         final String outputRef;
+        final Runnable onNeverStarted;
 
-        private RunningTask(Future<?> future, AtomicBoolean notified, String outputRef) {
+        private RunningTask(Future<?> future, AtomicBoolean notified, String outputRef, Runnable onNeverStarted) {
             this.future = future;
             this.notified = notified;
             this.outputRef = outputRef;
+            this.onNeverStarted = onNeverStarted;
         }
     }
 

@@ -8,7 +8,11 @@ import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -29,6 +33,14 @@ class BackgroundTaskManagerTest {
         } finally {
             scope.close();
             parentSpan.end();
+        }
+    }
+
+    private static void awaitQuietly(CountDownLatch latch) {
+        try {
+            latch.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -76,6 +88,58 @@ class BackgroundTaskManagerTest {
 
         // The sink keeps the full output so the agent can read parts on demand via the output-ref file.
         assertEquals(big, sink.content);
+    }
+
+    @Test
+    void cancelBeforeStartRunsTheNeverStartedCallback() throws Exception {
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> new InMemorySink(taskId), "test-session", event -> { }, executor);
+            var blockerStarted = new CountDownLatch(1);
+            var blockerGate = new CountDownLatch(1);
+            manager.submit("blocker", () -> {
+                blockerStarted.countDown();
+                awaitQuietly(blockerGate);
+                return "blocked";
+            }, null);
+            assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
+
+            var ran = new AtomicBoolean(false);
+            var neverStarted = new AtomicInteger();
+            var queued = manager.submit("queued", () -> {
+                ran.set(true);
+                return "queued";
+            }, null, neverStarted::incrementAndGet);
+
+            assertTrue(manager.cancel("queued"));
+            assertEquals(1, neverStarted.get());
+            assertTrue(queued.future().isCancelled());
+            assertFalse(ran.get());
+            blockerGate.countDown();
+        }
+    }
+
+    @Test
+    void cancelAfterStartDoesNotRunTheNeverStartedCallback() throws Exception {
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> new InMemorySink(taskId), "test-session", event -> { }, executor);
+            var started = new CountDownLatch(1);
+            var gate = new CountDownLatch(1);
+            var finished = new CountDownLatch(1);
+            var neverStarted = new AtomicInteger();
+            var handle = manager.submit("running", () -> {
+                started.countDown();
+                awaitQuietly(gate);
+                finished.countDown();
+                return "done";
+            }, null, neverStarted::incrementAndGet);
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+
+            assertTrue(manager.cancel("running"));
+            assertEquals(0, neverStarted.get());
+            assertTrue(handle.future().isCancelled());
+            gate.countDown();
+            assertTrue(finished.await(5, TimeUnit.SECONDS));
+        }
     }
 
     private static final class InMemorySink implements SubagentOutputSink {
