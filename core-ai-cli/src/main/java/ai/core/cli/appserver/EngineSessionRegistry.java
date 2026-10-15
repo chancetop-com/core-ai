@@ -63,6 +63,7 @@ public class EngineSessionRegistry {
     private final EngineBootstrap bootstrap;
     private final Supplier<NotificationSink> sinkSupplier;
     private final SessionTitleStore titles;
+    private final EngineSessionModels models;
     private final MdMemoryProvider memoryProvider;
     private final Map<String, EngineSession> sessions = new ConcurrentHashMap<>();
     private final Map<String, CachedTitle> titleCache = new ConcurrentHashMap<>();
@@ -74,6 +75,7 @@ public class EngineSessionRegistry {
         this.bootstrap = bootstrap;
         this.sinkSupplier = sinkSupplier;
         this.titles = new SessionTitleStore(Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
+        this.models = new EngineSessionModels(bootstrap.result.llmProviders, Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
         if (bootstrap.memoryEnabled) {
             MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(this::publishMemoryActivity);
@@ -220,6 +222,7 @@ public class EngineSessionRegistry {
                 live.close();
             }
             titles.remove(id);
+            models.remove(id);
             titleCache.remove(id);
             if (sessionFileExists(id)) {
                 toDelete.add(id);
@@ -257,10 +260,6 @@ public class EngineSessionRegistry {
 
     /** Applies a model switch to one session (or all live sessions) and returns the affected ids. */
     public List<String> applyModel(String model, LLMProviderType type, String sessionId) {
-        var provider = bootstrap.result.llmProviders.getProvider(type);
-        if (provider == null) {
-            throw RpcException.business("MODEL_UNAVAILABLE", "provider is not configured: " + type.getName());
-        }
         List<EngineSession> targets;
         if (sessionId == null) {
             targets = List.copyOf(sessions.values());
@@ -271,16 +270,12 @@ public class EngineSessionRegistry {
             }
             targets = List.of(session);
         }
-        for (var session : targets) {
-            var agent = session.agent();
-            agent.setLlmProvider(provider);
-            agent.setModel(model);
-            var compression = agent.getCompression();
-            if (compression != null) {
-                compression.updateModel(agent.getLLMProvider(), model);
-            }
-        }
-        return targets.stream().map(EngineSession::id).toList();
+        return models.applyModel(targets, model, type, sessionId);
+    }
+
+    /** The per-session model sidecar entry, if the user picked a model for this session. */
+    public SessionModelStore.Entry storedModel(String sessionId) {
+        return models.stored(sessionId);
     }
 
     public void closeAll() {
@@ -330,6 +325,7 @@ public class EngineSessionRegistry {
         if (load && agent.hasPersistenceProvider()) {
             agent.load(sessionId);
         }
+        models.applyStored(sessionId, agent);
         var inProcess = new InProcessAgentSession(sessionId, agent, "full".equals(approvalPolicy), permissionStore());
         var sink = sinkSupplier.get();
         inProcess.onEvent(new EventBridge(sessionId, sink != null ? sink : NOOP_SINK));

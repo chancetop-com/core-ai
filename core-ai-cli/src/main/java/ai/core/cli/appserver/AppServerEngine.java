@@ -240,21 +240,18 @@ public class AppServerEngine implements EngineApi {
     }
 
     /**
-     * Current model: the live session's agent when one exists (optionally a specific session),
-     * otherwise what a fresh engine would resolve from agent.properties.
+     * Current model: the given session's model when a sessionId is passed (its live agent, else the
+     * per-session pick it would rebuild with, else the default), otherwise what a fresh engine would
+     * resolve from agent.properties.
      */
     private ObjectNode modelGet(ObjectNode params) {
         var node = Params.object();
         var sessionId = Params.optionalText(params, "sessionId");
-        var session = sessionId != null ? registry.find(sessionId) : registry.any();
-        if (session != null) {
-            var agent = session.agent();
-            node.put("model", agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel());
-            var type = bootstrap.result.llmProviders.getProviderType(agent.getLLMProvider());
-            if (type != null) {
-                node.put("provider", type.getName());
+        if (sessionId != null) {
+            var scoped = sessionModel(sessionId);
+            if (scoped != null) {
+                return scoped;
             }
-            return node;
         }
         try {
             var file = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
@@ -275,6 +272,31 @@ public class AppServerEngine implements EngineApi {
         return node;
     }
 
+    /** A session's model: its live agent, else the stored per-session pick, else null. */
+    private ObjectNode sessionModel(String sessionId) {
+        var session = registry.find(sessionId);
+        if (session != null) {
+            var node = Params.object();
+            var agent = session.agent();
+            node.put("model", agent.getModel() != null ? agent.getModel() : agent.getLLMProvider().config.getModel());
+            var type = bootstrap.result.llmProviders.getProviderType(agent.getLLMProvider());
+            if (type != null) {
+                node.put("provider", type.getName());
+            }
+            return node;
+        }
+        var stored = registry.storedModel(sessionId);
+        if (stored == null) {
+            return null;
+        }
+        var node = Params.object();
+        node.put("model", stored.model);
+        if (stored.provider != null) {
+            node.put("provider", stored.provider);
+        }
+        return node;
+    }
+
     private ObjectNode modelSet(ObjectNode params) {
         var model = Params.requiredText(params, "model");
         var type = bootstrap.modelRegistry.getProviderType(model);
@@ -285,8 +307,12 @@ public class AppServerEngine implements EngineApi {
         if (type == null) {
             throw RpcException.business("MODEL_UNKNOWN", "model is not in the registry: " + model);
         }
-        var applied = registry.applyModel(model, type, Params.optionalText(params, "sessionId"));
-        persistActiveModel(type, model);
+        var sessionId = Params.optionalText(params, "sessionId");
+        var applied = registry.applyModel(model, type, sessionId);
+        if (sessionId == null) {
+            // no session scope: the pick also becomes the default future sessions resolve
+            persistActiveModel(type, model);
+        }
         var node = Params.object();
         node.put("model", model);
         node.put("provider", type.getName());
