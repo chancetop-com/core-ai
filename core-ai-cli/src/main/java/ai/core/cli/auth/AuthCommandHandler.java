@@ -48,6 +48,10 @@ public class AuthCommandHandler {
     // ── /login ─────────────────────────────────────────────────────────
 
     private void handleLogin(String serverUrl) {
+        handleLogin(serverUrl, false);
+    }
+
+    private void handleLogin(String serverUrl, boolean insecure) {
         if (AuthManager.isLoggedIn()) {
             var status = AuthManager.status();
             ui.printStreamingChunk("\n" + AnsiTheme.MUTED + "  Already logged in as " + status + AnsiTheme.RESET + "\n");
@@ -56,27 +60,32 @@ public class AuthCommandHandler {
             var trimmed = input.trim();
             if (!"y".equalsIgnoreCase(trimmed) && !trimmed.isEmpty()) {
                 var url = trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
-                AuthManager.login(ui, url);
+                AuthManager.login(ui, url, insecure);
                 return;
             }
         }
 
         if (serverUrl != null) {
-            AuthManager.login(ui, serverUrl);
+            AuthManager.login(ui, serverUrl, insecure);
         } else if (defaultServerUrl != null) {
-            AuthManager.login(ui, defaultServerUrl);
+            AuthManager.login(ui, defaultServerUrl, insecure);
         } else {
-            AuthManager.loginInteractive(ui, null);
+            AuthManager.loginInteractive(ui, null, insecure);
         }
     }
 
-    private void handleLoginArgs(String args) {
+    private void handleLoginArgs(String rawArgs) {
+        // /login <url> --insecure: accept a self-signed certificate (stored in auth.json) for
+        // the same local servers `core-ai-cli --login <url> --insecure` covers.
+        var insecure = rawArgs.toLowerCase(java.util.Locale.ROOT).endsWith(" --insecure");
+        var args = insecure ? rawArgs.substring(0, rawArgs.length() - " --insecure".length()).trim() : rawArgs;
+
         var tokenIdx = args.indexOf(" --token ");
         if (tokenIdx > 0) {
             var url = args.substring(0, tokenIdx).trim();
             var token = args.substring(tokenIdx + 9).trim();
             if (url.endsWith("/")) url = url.substring(0, url.length() - 1);
-            var config = AuthManager.loginWithToken(url, token);
+            var config = AuthManager.loginWithToken(url, token, insecure);
             if (config != null) {
                 ui.printStreamingChunk(AnsiTheme.SUCCESS + "  Logged in with token @ " + url + AnsiTheme.RESET + "\n");
                 ui.printStreamingChunk(AnsiTheme.MUTED + "  Remote agents are discovered at startup. "
@@ -89,7 +98,7 @@ public class AuthCommandHandler {
 
         var url = args.trim();
         if (url.endsWith("/")) url = url.substring(0, url.length() - 1);
-        handleLogin(url);
+        handleLogin(url.isEmpty() ? null : url, insecure);
     }
 
     // ── /logout ────────────────────────────────────────────────────────

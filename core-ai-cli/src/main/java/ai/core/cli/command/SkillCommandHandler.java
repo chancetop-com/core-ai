@@ -273,6 +273,6 @@ public class SkillCommandHandler {
     private SkillHubClient authenticatedClient() {
         var auth = AuthConfig.load();
         if (auth == null || auth.serverUrl() == null || auth.apiKey() == null) return null;
-        return new SkillHubClient(auth.serverUrl(), auth.apiKey());
+        return new SkillHubClient(auth.serverUrl(), auth.apiKey(), auth.insecure());
     }
 }

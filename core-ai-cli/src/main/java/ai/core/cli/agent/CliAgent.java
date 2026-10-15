@@ -93,7 +93,8 @@ public class CliAgent {
         var auth = AuthConfig.load();
         // Login-gated, best-effort trace upload. Not logged in -> not attached -> zero overhead.
         if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
-            agent.addLifecycle(new TraceCollectorLifecycle(new HttpTraceUploader(auth.serverUrl(), auth.apiKey()), config.clientType));
+            agent.addLifecycle(new TraceCollectorLifecycle(
+                    new HttpTraceUploader(auth.serverUrl(), auth.apiKey(), auth.insecure()), config.clientType));
         }
         configureExecutionContext(agent, config, auth, hookOutput);
         return agent;

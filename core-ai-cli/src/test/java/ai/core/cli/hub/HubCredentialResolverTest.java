@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HubCredentialResolverTest {
     private final HubGlobalOptions options = new HubGlobalOptions();
@@ -44,12 +46,59 @@ class HubCredentialResolverTest {
     @Test
     void serverOnlyFlagCompletesKeyFromMatchingAuthRecord() {
         options.server = "https://server-a";
-        var auth = lookup(new AuthConfig("https://server-a", "a-key", null, null, null, null, true));
+        var auth = lookup(new AuthConfig("https://server-a", "a-key", null, null, null, null, true, false));
 
         var credentials = resolver().resolve(options, Map.of(), auth);
 
         assertEquals("https://server-a", credentials.serverUrl());
         assertEquals("a-key", credentials.apiKey());
+    }
+
+    @Test
+    void insecureFlagIsCarriedOnTheCredentials() {
+        options.server = "https://flag";
+        options.apiKey = "flag-key";
+        options.insecure = true;
+
+        var credentials = resolver().resolve(options, Map.of(), lookup());
+
+        assertTrue(credentials.insecure());
+    }
+
+    @Test
+    void storedInsecureLoginCarriesOverToHubCommands() {
+        var credentials = resolver().resolve(options, Map.of(), lookup(active("https://localhost:8443", "k", true)));
+
+        assertEquals("https://localhost:8443", credentials.serverUrl());
+        assertTrue(credentials.insecure());
+    }
+
+    @Test
+    void storedInsecureLoginAlsoCarriesOverWithAnExplicitServerFlag() {
+        options.server = "https://localhost:8443";
+        var auth = lookup(new AuthConfig("https://localhost:8443", "a-key", null, null, null, null, true, true));
+
+        var credentials = resolver().resolve(options, Map.of(), auth);
+
+        assertTrue(credentials.insecure());
+    }
+
+    @Test
+    void insecureLoginOfAnotherServerDoesNotLeakIntoAFlaggedServer() {
+        options.server = "https://server-a";
+        options.apiKey = "a-key";
+        var auth = lookup(active("https://localhost:8443", "local-key", true));
+
+        var credentials = resolver().resolve(options, Map.of(), auth);
+
+        assertEquals("https://server-a", credentials.serverUrl());
+        assertFalse(credentials.insecure());
+    }
+
+    @Test
+    void verifiedLoginStaysVerified() {
+        var credentials = resolver().resolve(options, Map.of(), lookup(active("https://auth", "auth-key", false)));
+        assertFalse(credentials.insecure());
     }
 
     @Test
@@ -97,6 +146,10 @@ class HubCredentialResolverTest {
     }
 
     private AuthConfig active(String serverUrl, String apiKey) {
-        return new AuthConfig(serverUrl, apiKey, null, null, null, null, true);
+        return active(serverUrl, apiKey, false);
+    }
+
+    private AuthConfig active(String serverUrl, String apiKey, boolean insecure) {
+        return new AuthConfig(serverUrl, apiKey, null, null, null, null, true, insecure);
     }
 }

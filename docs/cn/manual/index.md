@@ -325,6 +325,8 @@ core-ai-cli --login=https://core-ai.example.com
 
 按交互完成浏览器回调或粘贴自己的 API key。凭据记录在 `~/.core-ai/auth.json`；Windows 通常是 `%USERPROFILE%\.core-ai\auth.json`。不要提交或分享这个文件。没有显式 `litellm.api.base` 时，已登录身份会注入 `<server>/api/cli/v1` 为代理 base；可用模型由 Server 决定。
 
+本地部署（仍是 core-ng 自签名证书）在登录时显式接受证书：`core-ai-cli --login=<本地地址> --insecure`，REPL 内为 `/login <本地地址> --insecure`。该选择保存在 auth.json 对应条目上，之后的 hub 命令与桌面端（Engine 读同一份 auth.json）都沿用；重新执行不带 `--insecure` 的登录即可恢复校验。
+
 路线 B：不使用 Server 模型代理。在 `~/.core-ai/agent.properties` 配置自己的兼容端点：
 
 ```properties

@@ -1,5 +1,6 @@
 package ai.core.cli.auth;
 
+import ai.core.cli.http.TlsTrust;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
@@ -31,8 +32,13 @@ public final class AuthService {
      * Authenticate with email/password.  On success persists the credential
      * and returns the API key.
      */
-    @SuppressWarnings("unchecked")
     public static String login(String serverUrl, String email, String password) {
+        return login(serverUrl, email, password, false);
+    }
+
+    /** {@code insecure} skips TLS verification for a self-signed server and is stored with the credential. */
+    @SuppressWarnings("unchecked")
+    public static String login(String serverUrl, String email, String password, boolean insecure) {
         try {
             var body = JsonUtil.toJson(Map.of("email", email, "password", password));
             var uri = URI.create(serverUrl + "/api/auth/login");
@@ -41,7 +47,7 @@ public final class AuthService {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            var httpClient = HttpClient.newBuilder().build();
+            var httpClient = client(insecure);
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
@@ -53,7 +59,7 @@ public final class AuthService {
             var apiKey = (String) result.get("api_key");
             if (apiKey == null) return null;
 
-            AuthConfig.login(serverUrl, apiKey).save();
+            AuthConfig.login(serverUrl, apiKey, insecure).save();
             return apiKey;
         } catch (IOException | InterruptedException e) {
             LOGGER.warn("Login failed: {}", e.getMessage());
@@ -73,11 +79,19 @@ public final class AuthService {
      * @return API key string, or null if login failed or was cancelled
      */
     public static String loginOrBrowser(TerminalUI ui, String serverUrl) {
+        return loginOrBrowser(ui, serverUrl, false);
+    }
+
+    /**
+     * @param insecure skip TLS verification and remember it in {@code auth.json} — for a
+     *                 local server still serving core-ng's self-signed certificate
+     */
+    public static String loginOrBrowser(TerminalUI ui, String serverUrl, boolean insecure) {
         if (browserSupported()) {
-            return loginViaBrowser(ui, serverUrl);
+            return loginViaBrowser(ui, serverUrl, insecure);
         }
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Browser not available, using terminal login." + AnsiTheme.RESET + "\n");
-        return loginViaTerminal(ui, serverUrl);
+        return loginViaTerminal(ui, serverUrl, insecure);
     }
 
     private static boolean browserSupported() {
@@ -85,7 +99,7 @@ public final class AuthService {
         return os.contains("mac") || os.contains("win") || os.contains("nix") || os.contains("nux");
     }
 
-    private static String loginViaBrowser(TerminalUI ui, String serverUrl) {
+    private static String loginViaBrowser(TerminalUI ui, String serverUrl, boolean insecure) {
         try (LocalCallbackServer callback = new LocalCallbackServer()) {
             var authUrl = serverUrl + "/login?callback="
                     + URLEncoder.encode("http://127.0.0.1:" + callback.port() + "/callback", StandardCharsets.UTF_8);
@@ -108,13 +122,13 @@ public final class AuthService {
             var input = ui.readRawLine(
                     AnsiTheme.MUTED + "  or paste an API key and press Enter" + AnsiTheme.RESET + ": ");
             if (input != null && !input.isBlank()) {
-                return tryApiKey(ui, serverUrl, input.trim(), null);
+                return tryApiKey(ui, serverUrl, input.trim(), null, insecure);
             }
 
             var interrupted = Thread.interrupted();
             if (callbackReceived.get()) {
                 ui.printStreamingChunk(AnsiTheme.SUCCESS + "  ✓ Authorization received" + AnsiTheme.RESET + "\n");
-                AuthConfig.login(serverUrl, callbackKey[0]).save();
+                AuthConfig.login(serverUrl, callbackKey[0], insecure).save();
                 return callbackKey[0];
             }
             if (interrupted) {
@@ -129,7 +143,7 @@ public final class AuthService {
             LOGGER.warn("Browser login error: {}", e.getMessage());
             ui.printStreamingChunk(AnsiTheme.MUTED
                     + "  Browser login failed, switching to terminal login..." + AnsiTheme.RESET + "\n");
-            return loginViaTerminal(ui, serverUrl);
+            return loginViaTerminal(ui, serverUrl, insecure);
         }
     }
 
@@ -164,7 +178,7 @@ public final class AuthService {
         }
     }
 
-    private static String loginViaTerminal(TerminalUI ui, String serverUrl) {
+    private static String loginViaTerminal(TerminalUI ui, String serverUrl, boolean insecure) {
         var email = ui.readRawLine("  Email: ");
         if (email == null || email.isBlank()) return null;
 
@@ -172,7 +186,7 @@ public final class AuthService {
         if (password == null || password.isBlank()) return null;
 
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Logging in..." + AnsiTheme.RESET);
-        var apiKey = login(serverUrl, email.trim(), password.trim());
+        var apiKey = login(serverUrl, email.trim(), password.trim(), insecure);
 
         if (apiKey != null) {
             ui.printStreamingChunk("\r" + AnsiTheme.SUCCESS
@@ -216,12 +230,12 @@ public final class AuthService {
      * Falls back to terminal (email/password) login on failure.
      */
     private static String tryApiKey(TerminalUI ui, String serverUrl, String apiKey,
-                                     LocalCallbackServer callback) {
+                                     LocalCallbackServer callback, boolean insecure) {
         if (callback != null) closeQuietly(callback);
-        AuthConfig.login(serverUrl, apiKey).save();
+        AuthConfig.login(serverUrl, apiKey, insecure).save();
         var config = AuthConfig.load(serverUrl);
         if (config != null && config.apiKey() != null) {
-            var userMap = fetchApiJson(serverUrl, apiKey, "/api/user/me");
+            var userMap = fetchApiJson(serverUrl, apiKey, "/api/user/me", insecure);
             if (userMap != null) {
                 ui.printStreamingChunk("\r" + AnsiTheme.SUCCESS
                         + "  ✓ API key accepted" + AnsiTheme.RESET
@@ -232,11 +246,11 @@ public final class AuthService {
         AuthConfig.remove(serverUrl);
         ui.printStreamingChunk("\n" + AnsiTheme.ERROR
                 + "  ✗ Invalid API key, falling back to terminal login..." + AnsiTheme.RESET + "\n");
-        return loginViaTerminal(ui, serverUrl);
+        return loginViaTerminal(ui, serverUrl, insecure);
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> fetchApiJson(String serverUrl, String apiKey, String path) {
+    private static Map<String, Object> fetchApiJson(String serverUrl, String apiKey, String path, boolean insecure) {
         try {
             var uri = URI.create(serverUrl + path);
             var request = HttpRequest.newBuilder()
@@ -244,10 +258,7 @@ public final class AuthService {
                     .header("Authorization", "Bearer " + apiKey)
                     .GET()
                     .build();
-            var httpClient = HttpClient.newBuilder()
-                    .version(HttpClient.Version.HTTP_1_1)
-                    .build();
-            var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            var response = client(insecure).send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() == 200) {
                 return JsonUtil.fromJson(Map.class, response.body());
             }
@@ -255,6 +266,15 @@ public final class AuthService {
             LOGGER.debug("API key validation failed: {}", e.getMessage());
         }
         return null;
+    }
+
+    private static HttpClient client(boolean insecure) {
+        var builder = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1);
+        if (insecure) {
+            builder.sslContext(TlsTrust.trustAllContext());
+        }
+        return builder.build();
     }
 
     private static void closeQuietly(AutoCloseable closeable) {

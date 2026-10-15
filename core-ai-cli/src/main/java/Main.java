@@ -76,6 +76,9 @@ public class Main implements Callable<Integer> {
             description = "Login to a core-ai-server and exit (optionally pass the server URL; usable outside the REPL)")
     String loginServerUrl;
 
+    @Option(names = "--insecure", description = "Login: accept a self-signed certificate (local server) and remember it")
+    boolean loginInsecure;
+
     @Option(names = "--acp-agent", description = "Start in ACP (Agent Client Protocol) stdio mode for editor integration")
     boolean acpAgent;
 
@@ -95,7 +98,7 @@ public class Main implements Callable<Integer> {
             return 0;
         }
         if (loginServerUrl != null) {
-            return LoginCommand.run(loginServerUrl.isEmpty() ? null : loginServerUrl);
+            return LoginCommand.run(loginServerUrl.isEmpty() ? null : loginServerUrl, loginInsecure);
         }
         if (debug) {
             DebugLog.enable();

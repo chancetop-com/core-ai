@@ -28,13 +28,13 @@ public class HelperService {
     /** Resolved per call so a login after engine start is picked up without a restart. */
     public static AgentHubClient clientOrNull() {
         var auth = loginOrNull();
-        return auth == null ? null : new AgentHubClient(auth.serverUrl(), auth.apiKey(), false);
+        return auth == null ? null : new AgentHubClient(auth.serverUrl(), auth.apiKey(), auth.insecure());
     }
 
     /** Same login as {@link #clientOrNull()}; used to deliver a delegation's message attachments. */
     public static LocalAttachmentUploader uploaderOrNull() {
         var auth = loginOrNull();
-        return auth == null ? null : new LocalAttachmentUploader(auth.serverUrl(), auth.apiKey(), false);
+        return auth == null ? null : new LocalAttachmentUploader(auth.serverUrl(), auth.apiKey(), auth.insecure());
     }
 
     private static AuthConfig loginOrNull() {

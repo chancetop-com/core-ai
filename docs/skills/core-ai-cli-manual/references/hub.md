@@ -40,6 +40,8 @@ If only `--server` is given, the key for that URL is looked up in `auth.json`. H
 
 Not logged in: `core-ai-cli --login [server-url]` opens the browser flow (or accepts a pasted API key) and exits.
 
+Self-signed server (a local deployment serving core-ng's own certificate): log in with `core-ai-cli --login <url> --insecure` (or `/login <url> --insecure` in the REPL). The opt-in is stored on that server's `auth.json` entry, so later hub commands reach it without repeating the flag, and the desktop app reads the same entry. Log in again without `--insecure` to restore verification.
+
 ### Global options (every hub subcommand)
 
 | Option | Effect |
@@ -49,6 +51,7 @@ Not logged in: `core-ai-cli --login [server-url]` opens the browser flow (or acc
 | `--quiet` | Suppress progress and metadata on stderr |
 | `--server URL` | Override server |
 | `--api-key KEY` | Override key |
+| `--insecure` | Skip TLS certificate verification (self-signed local server); also implied by a login that recorded it |
 
 Human mode prints tables to stdout and metadata (duration, warnings, saved file paths) to stderr.
 

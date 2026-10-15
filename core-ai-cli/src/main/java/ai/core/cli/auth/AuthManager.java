@@ -1,5 +1,6 @@
 package ai.core.cli.auth;
 
+import ai.core.cli.http.TlsTrust;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.utils.JsonUtil;
@@ -33,6 +34,11 @@ public final class AuthManager {
      *        or null to use the built-in default
      */
     public static AuthConfig loginInteractive(TerminalUI ui, String defaultUrl) {
+        return loginInteractive(ui, defaultUrl, false);
+    }
+
+    /** Same login with the TLS opt-in applied to the URL typed at the prompt. */
+    public static AuthConfig loginInteractive(TerminalUI ui, String defaultUrl, boolean insecure) {
         ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "  Login" + AnsiTheme.RESET + "\n\n");
 
         var promptDefault = defaultUrl != null ? defaultUrl : "https://core-ai-server.connexup-uat.net";
@@ -42,17 +48,22 @@ public final class AuthManager {
         if (serverUrl.isEmpty()) serverUrl = promptDefault;
         if (serverUrl.endsWith("/")) serverUrl = serverUrl.substring(0, serverUrl.length() - 1);
 
-        return login(ui, serverUrl);
+        return login(ui, serverUrl, insecure);
     }
 
     /**
      * Login to a specific server URL (no interactive URL prompt).
      */
     public static AuthConfig login(TerminalUI ui, String serverUrl) {
-        var apiKey = AuthService.loginOrBrowser(ui, serverUrl);
+        return login(ui, serverUrl, false);
+    }
+
+    /** {@code insecure} skips TLS verification (self-signed local server) and is stored with the credential. */
+    public static AuthConfig login(TerminalUI ui, String serverUrl, boolean insecure) {
+        var apiKey = AuthService.loginOrBrowser(ui, serverUrl, insecure);
         if (apiKey == null) return null;
 
-        var config = enrich(serverUrl, apiKey, ui);
+        var config = enrich(serverUrl, apiKey, ui, insecure);
         if (config != null) {
             RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
         }
@@ -64,8 +75,12 @@ public final class AuthManager {
      * Validates the key by calling {@code GET /api/user/me}.
      */
     public static AuthConfig loginWithToken(String serverUrl, String apiKey) {
-        AuthConfig.login(serverUrl, apiKey).save();
-        var config = enrich(serverUrl, apiKey, null);
+        return loginWithToken(serverUrl, apiKey, false);
+    }
+
+    public static AuthConfig loginWithToken(String serverUrl, String apiKey, boolean insecure) {
+        AuthConfig.login(serverUrl, apiKey, insecure).save();
+        var config = enrich(serverUrl, apiKey, null, insecure);
         if (config != null) {
             RuntimeAuthConfig.instance().update(serverUrl + RuntimeAuthConfig.LLM_PROXY_PATH, apiKey);
         }
@@ -113,7 +128,7 @@ public final class AuthManager {
             return formatWhoami(config);
         }
 
-        var enriched = enrich(config.serverUrl(), config.apiKey(), null);
+        var enriched = enrich(config.serverUrl(), config.apiKey(), null, config.insecure());
         if (enriched == null || enriched.userId() == null) return null;
         return formatWhoami(enriched);
     }
@@ -143,9 +158,9 @@ public final class AuthManager {
 
     // ── Private helpers ────────────────────────────────────────────────
 
-    private static AuthConfig enrich(String serverUrl, String apiKey, TerminalUI ui) {
+    private static AuthConfig enrich(String serverUrl, String apiKey, TerminalUI ui, boolean insecure) {
         try {
-            var userMap = fetchJson(serverUrl, apiKey, "/api/user/me");
+            var userMap = fetchJson(serverUrl, apiKey, "/api/user/me", insecure);
             if (userMap == null) return AuthConfig.load(serverUrl);
 
             var userId = (String) userMap.get("id");
@@ -156,7 +171,7 @@ public final class AuthManager {
             var existing = AuthConfig.load(serverUrl);
             if (existing != null && existing.role() != null) role = existing.role();
 
-            var full = AuthConfig.full(serverUrl, apiKey, userId, name, role);
+            var full = AuthConfig.full(serverUrl, apiKey, userId, name, role, insecure);
             full.save();
 
             if (ui != null) {
@@ -174,7 +189,7 @@ public final class AuthManager {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Object> fetchJson(String serverUrl, String apiKey, String path) {
+    private static Map<String, Object> fetchJson(String serverUrl, String apiKey, String path, boolean insecure) {
         try {
             var uri = URI.create(serverUrl + path);
             var request = HttpRequest.newBuilder()
@@ -182,9 +197,10 @@ public final class AuthManager {
                     .header("Authorization", "Bearer " + apiKey)
                     .GET()
                     .build();
-            var httpClient = HttpClient.newBuilder()
-                    .version(HttpClient.Version.HTTP_1_1)
-                    .build();
+            var builder = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1);
+            if (insecure) builder.sslContext(TlsTrust.trustAllContext());
+            var httpClient = builder.build();
             var response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() == 200) {

@@ -1,6 +1,7 @@
 package ai.core.cli.trace;
 
 import ai.core.cli.DebugLog;
+import ai.core.cli.http.TlsTrust;
 import ai.core.utils.JsonUtil;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -32,7 +33,14 @@ public class HttpTraceUploader implements TraceUploader {
         t.setDaemon(true);
         return t;
     });
-    private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1).build();
+    private static final HttpClient HTTP_CLIENT = client(false);
+    private static final HttpClient INSECURE_HTTP_CLIENT = client(true);
+
+    private static HttpClient client(boolean insecure) {
+        var builder = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1);
+        if (insecure) builder.sslContext(TlsTrust.trustAllContext());
+        return builder.build();
+    }
 
     // Reflection-free conversion to the IngestRequest JSON shape (keys match server IngestSpanRequest fields).
     static Map<String, Object> toMap(CliTraceRequest request) {
@@ -82,10 +90,17 @@ public class HttpTraceUploader implements TraceUploader {
 
     private final String endpoint;
     private final String apiKey;
+    private final HttpClient httpClient;
 
     public HttpTraceUploader(String serverUrl, String apiKey) {
+        this(serverUrl, apiKey, false);
+    }
+
+    /** {@code insecure} matches the login's TLS opt-in, so traces also reach a self-signed server. */
+    public HttpTraceUploader(String serverUrl, String apiKey, boolean insecure) {
         this.endpoint = stripTrailingSlash(serverUrl) + PATH;
         this.apiKey = apiKey;
+        this.httpClient = insecure ? INSECURE_HTTP_CLIENT : HTTP_CLIENT;
     }
 
     @Override
@@ -107,7 +122,7 @@ public class HttpTraceUploader implements TraceUploader {
                     .header("Authorization", "Bearer " + apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            var response = HTTP_CLIENT.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            var response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 DebugLog.log("trace upload failed: status=" + response.statusCode() + " body=" + response.body());
             }

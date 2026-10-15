@@ -150,7 +150,7 @@ public class ManagedSkillProvisioner {
         var auth = AuthConfig.load();
         if (auth == null || auth.serverUrl() == null || auth.apiKey() == null || auth.apiKey().isBlank()) return false;
         try {
-            var client = new SkillHubClient(auth.serverUrl(), auth.apiKey(), TIMEOUT, ARCHIVE_TIMEOUT);
+            var client = new SkillHubClient(auth.serverUrl(), auth.apiKey(), TIMEOUT, ARCHIVE_TIMEOUT, auth.insecure());
             var qualified = lookupSingle(client, name);
             if (qualified == null) return false;
             var local = findLocal(name);

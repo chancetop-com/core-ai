@@ -11,6 +11,9 @@ import java.util.Map;
  * environment variables → {@code ~/.core-ai/auth.json}. Each side may be completed
  * from a lower source: when only {@code --server} is given the key is looked up in the
  * auth record for that exact URL, otherwise the active auth record is used.
+ * <p>
+ * The TLS opt-in follows the credentials: {@code --insecure} always wins, otherwise the
+ * flag the auth record was saved with (a self-signed local server) carries over.
  *
  * @author stephen
  */
@@ -35,11 +38,13 @@ public class HubCredentialResolver {
     public HubCredentials resolve(HubGlobalOptions options, Map<String, String> env, AuthLookup authLookup) {
         String serverUrl = normalizeServer(firstNonNull(options.server, env.get(ENV_SERVER)));
         String apiKey = options.apiKey != null ? options.apiKey : env.get(ENV_API_KEY);
+        boolean insecure = options.insecure;
         if (apiKey == null) {
             var resolved = lookupKeyAndServer(authLookup, serverUrl);
             if (resolved != null) {
                 serverUrl = resolved.serverUrl();
                 apiKey = resolved.apiKey();
+                insecure = insecure || resolved.insecure();
             }
         }
         if (serverUrl == null) {
@@ -51,20 +56,20 @@ public class HubCredentialResolver {
                     "not authenticated for " + serverUrl + ": pass --api-key, set CORE_AI_API_KEY, "
                             + "or run 'core-ai-cli --login'");
         }
-        return new HubCredentials(serverUrl, apiKey);
+        return new HubCredentials(serverUrl, apiKey, insecure);
     }
 
     private Resolved lookupKeyAndServer(AuthLookup authLookup, String serverUrl) {
         if (serverUrl == null) return resolveActiveRecord(authLookup);
         var matching = authLookup.byServerUrl(serverUrl);
-        return matching == null ? null : new Resolved(serverUrl, matching.apiKey());
+        return matching == null ? null : new Resolved(serverUrl, matching.apiKey(), matching.insecure());
     }
 
     private Resolved resolveActiveRecord(AuthLookup authLookup) {
         var active = authLookup.active();
         if (active == null) return null;
         if (active.serverUrl() == null) return null;
-        return new Resolved(normalizeServer(active.serverUrl()), active.apiKey());
+        return new Resolved(normalizeServer(active.serverUrl()), active.apiKey(), active.insecure());
     }
 
     private String firstNonNull(String first, String second) {
@@ -83,9 +88,9 @@ public class HubCredentialResolver {
         AuthConfig byServerUrl(String serverUrl);
     }
 
-    public record HubCredentials(String serverUrl, String apiKey) {
+    public record HubCredentials(String serverUrl, String apiKey, boolean insecure) {
     }
 
-    private record Resolved(String serverUrl, String apiKey) {
+    private record Resolved(String serverUrl, String apiKey, boolean insecure) {
     }
 }

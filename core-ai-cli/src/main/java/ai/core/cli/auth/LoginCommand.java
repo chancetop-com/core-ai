@@ -19,27 +19,36 @@ import java.util.Properties;
  */
 public final class LoginCommand {
     public static int run(String serverUrlArg) {
+        return run(serverUrlArg, false);
+    }
+
+    /** {@code insecure} accepts a self-signed certificate and remembers the choice in {@code auth.json}. */
+    public static int run(String serverUrlArg, boolean insecure) {
         var ui = new TerminalUI();
         try {
             AuthConfig config;
             if (serverUrlArg != null && !serverUrlArg.isBlank()) {
-                config = AuthManager.login(ui, normalize(serverUrlArg));
+                config = AuthManager.login(ui, normalize(serverUrlArg), insecure);
             } else {
-                config = AuthManager.loginInteractive(ui, configuredDefaultServerUrl());
+                config = AuthManager.loginInteractive(ui, configuredDefaultServerUrl(), insecure);
             }
             if (config == null) {
                 ui.printStreamingChunk("\n" + AnsiTheme.ERROR + "  Login failed or cancelled." + AnsiTheme.RESET + "\n");
                 return 1;
             }
-            printSuccess(ui, config.serverUrl());
+            printSuccess(ui, config.serverUrl(), config.insecure());
             return 0;
         } finally {
             closeQuietly(ui);
         }
     }
 
-    private static void printSuccess(TerminalUI ui, String serverUrl) {
+    private static void printSuccess(TerminalUI ui, String serverUrl, boolean insecure) {
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Authenticated as active server: " + serverUrl + AnsiTheme.RESET + "\n");
+        if (insecure) {
+            ui.printStreamingChunk(AnsiTheme.MUTED
+                    + "  TLS verification is skipped for this server (self-signed certificate)." + AnsiTheme.RESET + "\n");
+        }
         ui.printStreamingChunk(AnsiTheme.MUTED + "  Server tools: core-ai-cli mcp search \"<what you need>\""
                 + AnsiTheme.RESET + "\n");
     }

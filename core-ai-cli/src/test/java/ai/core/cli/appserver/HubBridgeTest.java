@@ -18,6 +18,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -89,6 +90,18 @@ class HubBridgeTest {
         HubBridge.addTools(node, response);
 
         assertEquals("agent-123", node.path("tools").get(0).path("refId").asText());
+    }
+
+    @Test
+    void certificateFailureIsReportedAsItsOwnReason() {
+        var node = Params.object();
+        var failure = new IllegalStateException("API request failed: (certificate_unknown) PKIX path building failed",
+                new javax.net.ssl.SSLHandshakeException("PKIX path building failed"));
+
+        var result = HubBridge.failure(node, "hub catalog fetch", failure);
+
+        assertFalse(result.path("connected").asBoolean());
+        assertEquals("untrusted_certificate", result.path("reason").asText());
     }
 
     private HubCatalogTool agentTool() {

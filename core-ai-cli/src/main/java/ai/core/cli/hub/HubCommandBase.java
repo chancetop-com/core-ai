@@ -52,32 +52,32 @@ public abstract class HubCommandBase implements Callable<Integer> {
 
     protected HubClient client() {
         var credentials = credentials();
-        return new HubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new HubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     protected SkillHubClient skillClient() {
         var credentials = credentials();
-        return new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     protected ai.core.cli.hub.catalog.CatalogHubClient catalogClient() {
         var credentials = credentials();
-        return new ai.core.cli.hub.catalog.CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new ai.core.cli.hub.catalog.CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     protected ApiToolHubClient apiToolClient() {
         var credentials = credentials();
-        return new ApiToolHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new ApiToolHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     protected ai.core.cli.hub.report.ReportHubClient reportClient() {
         var credentials = credentials();
-        return new ai.core.cli.hub.report.ReportHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new ai.core.cli.hub.report.ReportHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     protected ai.core.cli.hub.agent.AgentHubClient agentClient() {
         var credentials = credentials();
-        return new ai.core.cli.hub.agent.AgentHubClient(credentials.serverUrl(), credentials.apiKey(), options.insecure);
+        return new ai.core.cli.hub.agent.AgentHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     /** Resolved server URL, for callers that need to record where content came from. */
@@ -93,8 +93,9 @@ public abstract class HubCommandBase implements Callable<Integer> {
         return options.raw;
     }
 
+    /** Effective TLS opt-in: {@code --insecure} or the flag stored with the login. */
     protected boolean insecure() {
-        return options.insecure;
+        return credentials().insecure();
     }
 
     protected boolean quiet() {

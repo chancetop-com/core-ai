@@ -14,7 +14,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.net.ssl.SSLException;
 import java.nio.file.Path;
+import java.security.cert.CertificateException;
 import java.util.List;
 
 /**
@@ -108,6 +110,32 @@ public class HubBridge {
         return notConnected(node, "unreachable").put("message", "HTTP " + e.statusCode + ": " + e.getMessage());
     }
 
+    /**
+     * A TLS failure gets its own reason: the desktop turns it into the "trust this server's
+     * certificate" action instead of a generic unreachable server.
+     */
+    private static ObjectNode tlsFailure(ObjectNode node, RuntimeException e) {
+        LOGGER.warn("hub request failed: {}", e.getMessage());
+        return notConnected(node, "untrusted_certificate").put("message", messageOf(e));
+    }
+
+    static ObjectNode failure(ObjectNode node, String what, RuntimeException e) {
+        LOGGER.warn("{} failed: {}", what, e.getMessage());
+        if (isCertificateFailure(e)) {
+            return tlsFailure(node, e);
+        }
+        return notConnected(node, "unreachable").put("message", messageOf(e));
+    }
+
+    private static boolean isCertificateFailure(Throwable error) {
+        for (var cause = error; cause != null; cause = cause.getCause()) {
+            if (cause instanceof SSLException || cause instanceof CertificateException) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static String messageOf(RuntimeException e) {
         var message = e.getMessage();
         return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
@@ -122,13 +150,14 @@ public class HubBridge {
         if (auth == null || auth.apiKey() == null || auth.serverUrl() == null) {
             return null;
         }
-        return new Credentials(auth.serverUrl(), auth.apiKey());
+        return new Credentials(auth.serverUrl(), auth.apiKey(), auth.insecure());
     }
 
     /** Skill client for the current login, or null when not signed in (the skills panel shows local states then). */
     SkillHubClient skillClientOrNull() {
         var credentials = credentials();
-        return credentials == null ? null : new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+        return credentials == null ? null
+                : new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
     public ObjectNode catalog() {
@@ -138,7 +167,7 @@ public class HubBridge {
             return notConnected(node, "not_logged_in");
         }
         try {
-            var response = new CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), false).catalog();
+            var response = new CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure()).catalog();
             node.put("connected", true);
             node.put("serverUrl", credentials.serverUrl());
             if (response.generatedAt != null) {
@@ -151,8 +180,7 @@ public class HubBridge {
         } catch (RemoteApiException e) {
             return unreachable(node, e);
         } catch (RuntimeException e) {
-            LOGGER.warn("hub catalog fetch failed: {}", e.getMessage());
-            return notConnected(node, "unreachable").put("message", messageOf(e));
+            return failure(node, "hub catalog fetch", e);
         }
     }
 
@@ -165,7 +193,7 @@ public class HubBridge {
         try {
             var query = Params.optionalText(params, "query");
             int limit = Math.max(1, Math.min(Params.intParam(params, "limit", DEFAULT_SKILL_LIMIT), MAX_SKILL_LIMIT));
-            var response = new SkillHubClient(credentials.serverUrl(), credentials.apiKey())
+            var response = new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure())
                     .search(query, null, null, limit);
             node.put("connected", true);
             node.put("serverUrl", credentials.serverUrl());
@@ -184,8 +212,7 @@ public class HubBridge {
         } catch (RemoteApiException e) {
             return unreachable(node, e);
         } catch (RuntimeException e) {
-            LOGGER.warn("hub skill list failed: {}", e.getMessage());
-            return notConnected(node, "unreachable").put("message", messageOf(e));
+            return failure(node, "hub skill list", e);
         }
     }
 
@@ -199,7 +226,7 @@ public class HubBridge {
         if (credentials == null) {
             throw RpcException.business("NOT_LOGGED_IN", "sign in to core-ai-server to update skills from the hub");
         }
-        var client = new SkillHubClient(credentials.serverUrl(), credentials.apiKey());
+        var client = new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
         var force = params.path("force").asBoolean(false);
         var name = Params.optionalText(params, "name");
         try {
@@ -237,7 +264,7 @@ public class HubBridge {
         }
         SkillHubClient.ArchiveResult archive;
         try {
-            archive = new SkillHubClient(credentials.serverUrl(), credentials.apiKey()).archive(namespace, name);
+            archive = new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure()).archive(namespace, name);
         } catch (RemoteApiException e) {
             throw RpcException.business("SKILL_PULL_FAILED",
                     "hub request failed (HTTP " + e.statusCode + "): " + e.getMessage(), e);
@@ -247,6 +274,6 @@ public class HubBridge {
         return install(SkillLocations.userSkillsDir(), credentials.serverUrl(), namespace, name, archive, force);
     }
 
-    private record Credentials(String serverUrl, String apiKey) {
+    private record Credentials(String serverUrl, String apiKey, boolean insecure) {
     }
 }

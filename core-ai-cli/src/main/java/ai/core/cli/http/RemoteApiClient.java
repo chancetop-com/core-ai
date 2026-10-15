@@ -4,13 +4,8 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLEngine;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509ExtendedTrustManager;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
-import java.net.Socket;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -18,9 +13,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.security.GeneralSecurityException;
-import java.security.SecureRandom;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Locale;
@@ -34,16 +26,6 @@ import java.util.zip.GZIPInputStream;
 public class RemoteApiClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteApiClient.class);
     private static final String GZIP = "gzip";
-
-    private static SSLContext trustAllContext() {
-        try {
-            var context = SSLContext.getInstance("TLS");
-            context.init(null, new TrustManager[]{new TrustAllManager()}, new SecureRandom());
-            return context;
-        } catch (GeneralSecurityException e) {
-            throw new IllegalStateException("failed to create trust-all SSL context", e);
-        }
-    }
 
     private final String serverUrl;
     private final String apiKey;
@@ -232,7 +214,7 @@ public class RemoteApiClient {
         var builder = HttpClient.newBuilder()
                 .version(HttpClient.Version.HTTP_1_1);
         if (insecure) {
-            builder.sslContext(trustAllContext());
+            builder.sslContext(TlsTrust.trustAllContext());
         }
         if (timeout != null) builder.connectTimeout(timeout);
         return builder.build();
@@ -334,36 +316,6 @@ public class RemoteApiClient {
             case 404 -> "resource not found";
             default -> "server error (" + statusCode + ")";
         };
-    }
-
-    /**
-     * Trust-all manager, enabled only by an explicit {@code --insecure} opt-in. It must extend {@link X509ExtendedTrustManager}:
-     * a plain {@code X509TrustManager} gets wrapped by JSSE and would still trigger endpoint
-     * identification (hostname) checks.
-     */
-    private static final class TrustAllManager extends X509ExtendedTrustManager {
-        @Override
-        public X509Certificate[] getAcceptedIssuers() {
-            return new X509Certificate[0];
-        }
-
-        @Override
-        public void checkClientTrusted(X509Certificate[] chain, String authType) { }
-
-        @Override
-        public void checkClientTrusted(X509Certificate[] chain, String authType, Socket socket) { }
-
-        @Override
-        public void checkClientTrusted(X509Certificate[] chain, String authType, SSLEngine engine) { }
-
-        @Override
-        public void checkServerTrusted(X509Certificate[] chain, String authType) { }
-
-        @Override
-        public void checkServerTrusted(X509Certificate[] chain, String authType, Socket socket) { }
-
-        @Override
-        public void checkServerTrusted(X509Certificate[] chain, String authType, SSLEngine engine) { }
     }
 
     public record BinaryResponse(byte[] body, Map<String, String> headers) {

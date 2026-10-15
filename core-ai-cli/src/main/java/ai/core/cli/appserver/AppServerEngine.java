@@ -242,7 +242,7 @@ public class AppServerEngine implements EngineApi {
         try {
             var auth = AuthConfig.load();
             if (auth != null && auth.apiKey() != null && auth.serverUrl() != null) {
-                fetched = new ModelHubClient(auth.serverUrl(), auth.apiKey(), false).models().models;
+                fetched = new ModelHubClient(auth.serverUrl(), auth.apiKey(), auth.insecure()).models().models;
             }
         } catch (RuntimeException e) {
             LOGGER.warn("failed to fetch hub models: {}", e.getMessage());
