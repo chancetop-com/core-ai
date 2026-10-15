@@ -50,11 +50,15 @@ public class RpcException extends RuntimeException {
     }
 
     public static RpcException business(String businessCode, String message, String dataKey, String dataValue) {
+        return business(businessCode, message, dataKey, dataValue, null);
+    }
+
+    public static RpcException business(String businessCode, String message, String dataKey, String dataValue, Throwable cause) {
         var data = dataNode(businessCode);
         if (dataKey != null && dataValue != null) {
             data.put(dataKey, dataValue);
         }
-        return new RpcException(INTERNAL_ERROR, message, data, null);
+        return new RpcException(INTERNAL_ERROR, message, data, cause);
     }
 
     private static ObjectNode dataNode(String businessCode) {

@@ -125,7 +125,7 @@ public class EngineBootstrap {
         this.compressionConfig = CliAppHelper.compressionConfig(props);
         this.modelRegistry = new ModelRegistry(result.llmProviders, props);
         this.scheduledTaskStore = new FileScheduledTaskStore(
-                Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"));
+                Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
     }
 

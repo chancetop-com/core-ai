@@ -237,7 +237,7 @@ public class CliApp {
 
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
         var scheduledTaskStore = new ai.core.cli.schedule.FileScheduledTaskStore(
-                Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"));
+                Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), workspace);
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),

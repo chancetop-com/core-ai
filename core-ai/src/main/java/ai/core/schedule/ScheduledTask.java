@@ -21,4 +21,12 @@ public class ScheduledTask {
     public ZonedDateTime nextRunAt;
     public ZonedDateTime createdAt;
     public ZonedDateTime updatedAt;
+    /** Owning workspace (absolute path) for local engines; null for server-created tasks and legacy files. */
+    public String workspace;
+    public ZonedDateTime lastRunAt;
+    /** fired | queued | session_missing | failed. */
+    public String lastRunStatus;
+    public Integer runCount;
+    /** Set when the engine disabled the task automatically (e.g. session_missing); null for user disables. */
+    public String disabledReason;
 }

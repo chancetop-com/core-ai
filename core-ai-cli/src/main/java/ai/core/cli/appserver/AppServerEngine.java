@@ -81,6 +81,8 @@ public class AppServerEngine implements EngineApi {
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
+    private final EngineScheduler scheduler;
+    private final SchedulesApi schedulesApi;
     private final HubBridge hubBridge = new HubBridge();
     private final HelperBridge helperBridge = new HelperBridge();
     private final Set<String> supportedMethods;
@@ -91,6 +93,9 @@ public class AppServerEngine implements EngineApi {
     public AppServerEngine(Path workspace, Path configFile) {
         this.bootstrap = new EngineBootstrap(workspace, configFile);
         this.registry = new EngineSessionRegistry(bootstrap, () -> sink);
+        this.scheduler = new EngineScheduler(bootstrap, registry, () -> sink);
+        this.registry.setScheduler(scheduler);
+        this.schedulesApi = new SchedulesApi(bootstrap, registry, scheduler);
         this.handlers = buildHandlers();
         this.supportedMethods = Set.copyOf(handlers.keySet());
     }
@@ -128,7 +133,9 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("compression_event");
         capabilities.add("session_export");
         capabilities.add("custom_events");
+        capabilities.add("scheduled_tasks");
         node.put("workspace", bootstrap.workspace.toString());
+        scheduler.start();
         return node;
     }
 
@@ -143,6 +150,7 @@ public class AppServerEngine implements EngineApi {
 
     @Override
     public void shutdown() {
+        scheduler.close();
         registry.closeAll();
         CliAppHelper.closeShutdownResources(bootstrap.result);
     }
@@ -162,6 +170,11 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/rename", registry::rename),
                 Map.entry("session/export", registry::export),
                 Map.entry("session/stats", registry::stats),
+                Map.entry("schedules/list", schedulesApi::list),
+                Map.entry("schedules/get", schedulesApi::get),
+                Map.entry("schedules/update", schedulesApi::update),
+                Map.entry("schedules/delete", schedulesApi::delete),
+                Map.entry("schedules/trigger", schedulesApi::trigger),
                 Map.entry("model/list", ignored -> modelList()),
                 Map.entry("model/get", this::modelGet),
                 Map.entry("model/set", this::modelSet),

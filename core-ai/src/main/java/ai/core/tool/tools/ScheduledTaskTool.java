@@ -130,8 +130,10 @@ public final class ScheduledTaskTool extends ToolCall {
         var lines = new ArrayList<String>();
         lines.add("Scheduled tasks in this session (%d):".formatted(tasks.size()));
         for (var task : tasks) {
-            lines.add("- id: %s, name: %s, cron: %s (%s), next_run_at: %s, enabled: %s, input: %s"
-                    .formatted(task.id, task.name, task.cronExpression, task.timezone, task.nextRunAt, task.enabled, task.input));
+            lines.add("- id: %s, name: %s, cron: %s (%s), next_run_at: %s, enabled: %s%s, input: %s"
+                    .formatted(task.id, task.name, task.cronExpression, task.timezone, task.nextRunAt, task.enabled,
+                            Boolean.FALSE.equals(task.enabled) && task.disabledReason != null
+                                    ? ", disabled_reason: " + task.disabledReason : "", task.input));
         }
         return ToolCallResult.completed(String.join("\n", lines));
     }

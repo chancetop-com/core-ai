@@ -70,6 +70,7 @@ public class EngineSessionRegistry {
     private volatile String approvalPolicy = "ask";
     private volatile String clientType = "cli";
     private volatile WorkspaceAutoPermissionStore workspaceAutoStore;
+    private volatile EngineScheduler scheduler;
 
     public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier) {
         this.bootstrap = bootstrap;
@@ -89,6 +90,10 @@ public class EngineSessionRegistry {
     /** Trace origin declared by the connected client; sessions built afterwards upload under it. */
     public void setClientType(String clientType) {
         this.clientType = clientType;
+    }
+
+    void setScheduler(EngineScheduler scheduler) {
+        this.scheduler = scheduler;
     }
 
     public ObjectNode list(ObjectNode params) {
@@ -122,19 +127,22 @@ public class EngineSessionRegistry {
 
     public ObjectNode resume(ObjectNode params) {
         var id = Params.requiredText(params, "sessionId");
-        var session = sessions.get(id);
-        if (session == null) {
-            if (bootstrap.sessionPersistence.load(id).isEmpty()) {
-                throw sessionNotFound(id);
+        var session = sessions.computeIfAbsent(id, sessionId -> {
+            if (bootstrap.sessionPersistence.load(sessionId).isEmpty()) {
+                throw sessionNotFound(sessionId);
             }
-            session = build(id, true);
-            sessions.put(id, session);
-        }
+            return build(sessionId, true);
+        });
         var node = Params.object();
         node.put("sessionId", id);
         node.put("status", session.running() ? "running" : "idle");
         node.put("messageCount", session.agent().getHistory().size());
         return node;
+    }
+
+    /** Used by the scheduler: rebuild a persisted session quietly, never create a new one. */
+    EngineSession resumeQuietly(String sessionId) {
+        return sessionFileExists(sessionId) ? sessions.computeIfAbsent(sessionId, id -> build(id, true)) : null;
     }
 
     public ObjectNode history(ObjectNode params) {
@@ -224,6 +232,11 @@ public class EngineSessionRegistry {
             titles.remove(id);
             models.remove(id);
             titleCache.remove(id);
+            var removedTasks = bootstrap.scheduledTaskStore.list(id);
+            if (!removedTasks.isEmpty()) {
+                bootstrap.scheduledTaskStore.deleteBySession(id);
+                removedTasks.forEach(task -> EngineScheduler.sendChangedNotification(sinkSupplier.get(), task.id, "session_deleted"));
+            }
             if (sessionFileExists(id)) {
                 toDelete.add(id);
             }
@@ -231,6 +244,7 @@ public class EngineSessionRegistry {
         if (!toDelete.isEmpty()) {
             bootstrap.sessionPersistence.delete(toDelete);
         }
+        if (scheduler != null) scheduler.refreshSnapshot();
         return Params.object();
     }
 
@@ -394,6 +408,14 @@ public class EngineSessionRegistry {
         var live = sessions.get(info.id());
         node.put("status", live != null && live.running() ? "running" : "idle");
         return node;
+    }
+
+    /** Title for the schedules page: renamed sidecar first, then the first user message. */
+    String sessionTitle(String sessionId) {
+        var renamed = titles.title(sessionId);
+        if (renamed.isPresent()) return renamed.get();
+        var first = bootstrap.sessionManager.firstUserMessage(sessionId);
+        return first == null || first.isBlank() ? null : truncate(first.strip(), MAX_TITLE_CHARS);
     }
 
     private String title(SessionPersistence.SessionInfo info) {
