@@ -7,6 +7,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Content;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.LiteLLMProvider;
@@ -220,6 +221,33 @@ class GatewayLLMProviderTest {
         var realProvider = new GatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), null);
 
         assertThrows(BadRequestException.class, () -> realProvider.createUpstreamProvider(provider, "gemini-3.8-flash", "responses"));
+    }
+
+    @Test
+    void noneReasoningEffortIsNotSentEvenWhenGatewayDeclaresNone() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("gpt-6-luna", provider.id, "gpt-6-luna");
+        model.reasoningEfforts = List.of("none");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+
+        gateway.completion(request("gpt-6-luna"));
+
+        assertNull(gateway.upstream.capturedRequest.getReasoningEffortValue());
+        assertNull(gateway.upstream.capturedRequest.reasoningEffort);
+    }
+
+    @Test
+    void mapsRequestedReasoningEffortToSupportedLevelsIgnoringNone() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("reasoning-model", provider.id, "reasoning-model");
+        model.reasoningEfforts = List.of("none", "low", "high");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("reasoning-model");
+        request.reasoningEffort = ReasoningEffort.LOW;
+
+        gateway.completion(request);
+
+        assertEquals("low", gateway.upstream.capturedRequest.getReasoningEffortValue());
     }
 
     @Test
