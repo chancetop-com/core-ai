@@ -185,6 +185,7 @@ interface CoreAiBridge {
   authLoginWithKey(serverUrl: string, apiKey: string): Promise<AuthStatus>;
   authLogout(): Promise<AuthStatus>;
   restartEngine(workspace: string): Promise<void>;
+  engineCapabilities(workspace: string): Promise<string[]>;
   pickAttachments(): Promise<{ paths: string[] }>;
   stageAttachments(sessionId: string, paths: string[]): Promise<StagedAttachmentResult>;
   removeAttachment(stagedPath: string): Promise<void>;
@@ -228,7 +229,7 @@ declare global {
   }
 }
 
-type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'settings';
+type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'schedules' | 'settings';
 
 interface SessionRow { sessionId: string; title?: string; updatedAt?: string; status?: string }
 interface UiTool {
@@ -260,6 +261,7 @@ const NAV: Array<{ key: NavKey; label: string; icon: keyof typeof ICONS }> = [
   { key: 'artifacts', label: 'Artifacts', icon: 'artifacts' },
   { key: 'skills', label: 'Skills', icon: 'skills' },
   { key: 'memory', label: 'Memory', icon: 'memory' },
+  { key: 'schedules', label: 'Scheduled tasks', icon: 'refresh' },
   { key: 'hub', label: 'Hub', icon: 'hub' },
   { key: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -303,6 +305,7 @@ const state: {
   sidebarAutoCollapsed: boolean;
   colorScheme: string;
   update: UpdateState | null;
+  capabilities: string[];
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -340,6 +343,7 @@ const state: {
   sidebarAutoCollapsed: false,
   colorScheme: 'system',
   update: null,
+  capabilities: [],
 };
 
 let chatView: HTMLElement | null = null;
@@ -825,6 +829,7 @@ function renderSidebar(): void {
   sessionItemsEl = null;
 
   for (const item of NAV) {
+    if (item.key === 'schedules' && !state.capabilities.includes('scheduled_tasks')) continue;
     if (item.key === 'sessions') {
       nav.append(buildSessionsNavRow());
       if (!state.sessionsCollapsed) {
@@ -1566,6 +1571,8 @@ async function chooseWorkspace(): Promise<void> {
 
 async function connect(workspace: string): Promise<void> {
   state.workspace = workspace;
+  state.capabilities = await window.coreai.engineCapabilities(workspace).catch(() => []);
+  renderSidebar();
   if (workspace === state.info?.defaultWorkspacePath) state.defaultExists = true;
   state.sessionId = null;
   state.sessionTitle = '';
@@ -1584,6 +1591,7 @@ async function connect(workspace: string): Promise<void> {
     state.workspaces = [workspace, ...state.workspaces].slice(0, 8);
   }
   const settings = await window.coreai.getSettings();
+  state.info.backgroundScheduling = settings?.backgroundScheduling === true;
   state.workspaces = settings?.workspaces ?? state.workspaces;
   renderSidebar();
   renderComposerControls();
@@ -1601,6 +1609,7 @@ async function connect(workspace: string): Promise<void> {
 
 async function enterDefaultMode(): Promise<void> {
   state.workspace = null;
+  state.capabilities = [];
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
@@ -3826,6 +3835,183 @@ function panel(title: string, hint: string): { root: HTMLElement; body: HTMLElem
   return { root, body };
 }
 
+// ---------- scheduled tasks ----------
+
+interface ScheduledTaskView {
+  id: string;
+  sessionId: string;
+  sessionTitle?: string;
+  workspace?: string;
+  name?: string;
+  cronExpression?: string;
+  timezone?: string;
+  input?: string;
+  enabled?: boolean;
+  nextRunAt?: string;
+  lastRunAt?: string;
+  lastRunStatus?: string;
+  runCount?: number;
+  disabledReason?: string;
+  runs?: Array<Record<string, unknown>>;
+}
+
+let scheduleFilterWorkspace = 'all';
+let scheduleEnabledOnly = false;
+let selectedScheduleId: string | null = null;
+
+async function renderSchedulesPanel(): Promise<HTMLElement> {
+  const { root, body } = panel('Scheduled tasks', 'Session-bound tasks from every workspace. They execute while core-ai-desktop is running.');
+  const controls = el('div', 'schedule-controls');
+  const workspaceFilter = el('select', 'input');
+  for (const [value, label] of [['all', 'All workspaces'], ['current', 'This workspace']]) {
+    const option = el('option', undefined, label);
+    option.value = value;
+    workspaceFilter.append(option);
+  }
+  workspaceFilter.value = scheduleFilterWorkspace;
+  workspaceFilter.onchange = () => { scheduleFilterWorkspace = workspaceFilter.value; void renderContent(); };
+  controls.append(workspaceFilter);
+  const enabledLabel = el('label', 'schedule-filter');
+  const enabled = el('input') as HTMLInputElement;
+  enabled.type = 'checkbox';
+  enabled.checked = scheduleEnabledOnly;
+  enabled.onchange = () => { scheduleEnabledOnly = enabled.checked; void renderContent(); };
+  enabledLabel.append(enabled, document.createTextNode('Enabled only'));
+  controls.append(enabledLabel);
+  body.append(controls);
+  const backgroundSettings = await window.coreai.getSettings();
+  state.info.backgroundScheduling = backgroundSettings?.backgroundScheduling === true;
+  if (!state.info.backgroundScheduling) {
+    const notice = el('div', 'notice');
+    notice.append(document.createTextNode('Tasks stop when you close this window. '));
+    const settingsButton = el('button', 'btn small', 'Run in background');
+    settingsButton.onclick = () => { state.nav = 'settings'; renderSidebar(); void renderContent(); };
+    notice.append(settingsButton);
+    body.append(notice);
+  }
+  const response = await callEnvelope('schedules/list', { scope: 'all' });
+  if (!response.ok) {
+    body.append(el('div', 'notice error', response.error?.message ?? 'Could not load scheduled tasks'));
+    return root;
+  }
+  const raw = response.result as any;
+  let tasks: ScheduledTaskView[] = Array.isArray(raw) ? raw : (raw?.tasks ?? []);
+  if (scheduleFilterWorkspace === 'current') tasks = tasks.filter((task) => task.workspace === state.workspace);
+  if (scheduleEnabledOnly) tasks = tasks.filter((task) => task.enabled);
+  if (!tasks.length) {
+    body.append(el('div', 'empty-state', 'No scheduled tasks found. Create one in a conversation with the scheduled_task tool.'));
+    return root;
+  }
+  const table = el('table', 'schedule-table');
+  const head = el('thead');
+  const headerRow = el('tr');
+  for (const label of ['Status', 'Name', 'Next run', 'Last run', 'Session', 'Workspace']) {
+    headerRow.append(el('th', undefined, label));
+  }
+  head.append(headerRow);
+  table.append(head);
+  const rows = el('tbody');
+  for (const task of tasks) {
+    const row = el('tr', selectedScheduleId === task.id ? 'selected' : '');
+    const status = el('td');
+    status.append(el('span', task.enabled ? 'schedule-status enabled' : 'schedule-status disabled', task.enabled ? 'Enabled' : 'Disabled'));
+    if (task.disabledReason) status.title = task.disabledReason;
+    row.append(status);
+    const name = el('td');
+    name.append(el('strong', undefined, task.name ?? '(unnamed)'));
+    name.append(el('div', 'hint', `${task.cronExpression ?? ''} (${task.timezone ?? 'UTC'})`));
+    row.append(name);
+    const next = el('td', undefined, task.enabled ? fmtTime(task.nextRunAt) || '—' : '—');
+    if (task.nextRunAt) next.title = task.nextRunAt;
+    row.append(next);
+    const last = el('td', undefined, task.lastRunAt ? `${fmtTime(task.lastRunAt)} · ${task.lastRunStatus ?? ''}` : '—');
+    row.append(last);
+    row.append(el('td', undefined, task.sessionTitle ?? (task.sessionId ?? '').slice(0, 12)));
+    row.append(el('td', undefined, task.workspace ? baseName(task.workspace) : '(legacy)'));
+    row.onclick = () => { selectedScheduleId = task.id; void openScheduleDetail(task); };
+    rows.append(row);
+  }
+  table.append(rows);
+  body.append(table);
+  return root;
+}
+
+async function openScheduleDetail(task: ScheduledTaskView): Promise<void> {
+  const workspace = task.workspace ?? state.workspace;
+  if (!workspace) return;
+  const detail = await window.coreai.call(workspace, 'schedules/get', { id: task.id });
+  if (!detail.ok) {
+    toast(detail.error?.message ?? 'Could not load task detail', 'error');
+    return;
+  }
+  const value = (detail.result?.task ?? detail.result) as ScheduledTaskView;
+  if (!value.workspace) value.workspace = workspace;
+  const runs = (detail.result?.runs ?? value.runs ?? []) as Array<Record<string, unknown>>;
+  const drawer = el('div', 'schedule-drawer');
+  const header = el('div', 'schedule-drawer-header');
+  header.append(el('h2', undefined, value.name ?? '(unnamed)'));
+  const close = el('button', 'btn small', 'Close');
+  close.onclick = () => drawer.remove();
+  header.append(close);
+  drawer.append(header);
+  const actions = el('div', 'schedule-actions');
+  const toggle = el('button', 'btn small', value.enabled ? 'Disable' : 'Enable');
+  toggle.onclick = async () => {
+    const result = await window.coreai.call(workspace, 'schedules/update', { id: value.id, enabled: !value.enabled });
+    if (result.ok) {
+      toast(value.enabled ? 'Task disabled' : 'Task enabled');
+      drawer.remove();
+      void renderContent();
+    } else {
+      toast(result.error?.message ?? 'Update failed', 'error');
+    }
+  };
+  actions.append(toggle);
+  const runNow = el('button', 'btn small primary', 'Run now');
+  runNow.onclick = async () => {
+    const result = await window.coreai.call(workspace, 'schedules/trigger', { id: value.id });
+    if (result.ok) {
+      toast('Scheduled task triggered');
+      drawer.remove();
+      void renderContent();
+    } else {
+      toast(result.error?.message ?? 'Trigger failed', 'error');
+    }
+  };
+  actions.append(runNow);
+  const open = el('button', 'btn small', 'Open session');
+  open.onclick = async () => { drawer.remove(); if (state.workspace !== workspace) await connect(workspace); await openSession(value.sessionId); };
+  actions.append(open);
+  const remove = el('button', 'btn small danger', 'Delete');
+  remove.onclick = async () => {
+    if (!window.confirm(`Delete scheduled task “${value.name ?? value.id}”?`)) return;
+    const result = await window.coreai.call(workspace, 'schedules/delete', { id: value.id });
+    if (result.ok) { drawer.remove(); selectedScheduleId = null; toast('Task deleted'); void renderContent(); }
+    else toast(result.error?.message ?? 'Delete failed', 'error');
+  };
+  actions.append(remove);
+  drawer.append(actions);
+  const definition = el('dl', 'settings-grid');
+  for (const [label, text] of [['Cron', value.cronExpression], ['Timezone', value.timezone], ['Next run', value.nextRunAt], ['Last run', value.lastRunAt], ['Workspace', workspace], ['Session', value.sessionTitle ?? value.sessionId]]) {
+    definition.append(el('dt', undefined, label), el('dd', undefined, text ?? '—'));
+  }
+  drawer.append(definition);
+  drawer.append(el('h3', undefined, 'Input'));
+  const input = el('pre', 'schedule-input', value.input ?? '');
+  const copyInput = el('button', 'btn small', 'Copy input');
+  copyInput.onclick = async () => { await navigator.clipboard.writeText(value.input ?? ''); toast('Input copied'); };
+  drawer.append(copyInput, input);
+  drawer.append(el('h3', undefined, 'Recent runs'));
+  if (!runs.length) drawer.append(el('div', 'hint', 'No runs yet'));
+  else {
+    const list = el('div', 'schedule-runs');
+    for (const run of runs.slice(0, 20)) list.append(el('div', 'schedule-run', `${String(run.firedAt ?? '')} · ${String(run.status ?? '')}${run.error ? ` · ${String(run.error)}` : ''}`));
+    drawer.append(list);
+  }
+  for (const existing of document.querySelectorAll('.schedule-drawer')) existing.remove();
+  document.body.append(drawer);
+}
+
 // ---------- hub panel ----------
 // Server capability bridge: MCP tools / API operations / agents / LLM_CALL definitions come from
 // the one-shot hub catalog, skills from the skill hub (pull installs the same managed copy as
@@ -4477,7 +4663,7 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
 }
 
 async function renderSettingsPanel(): Promise<HTMLElement> {
-  const { root, body } = panel('Settings', 'Engine, approval policy and permission rules');
+  const { root, body } = panel('Settings', 'Engine, approval policy, scheduled tasks and permission rules');
   const info = state.info ?? (await window.coreai.info());
   state.info = info;
   const grid = el('dl', 'settings-grid');
@@ -4544,6 +4730,21 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
     }
   }
   body.append(grid);
+
+  body.append(el('h2', undefined, 'Scheduled tasks'));
+  body.append(el('div', 'hint', 'Keep the app in the system tray so local scheduled tasks can execute after the window is closed.'));
+  const backgroundLabel = el('label', 'schedule-filter');
+  const backgroundToggle = el('input') as HTMLInputElement;
+  backgroundToggle.type = 'checkbox';
+  const currentSettings = await window.coreai.getSettings();
+  backgroundToggle.checked = currentSettings?.backgroundScheduling === true;
+  backgroundToggle.onchange = async () => {
+    await window.coreai.setSettings({ backgroundScheduling: backgroundToggle.checked });
+    state.info.backgroundScheduling = backgroundToggle.checked;
+    toast(backgroundToggle.checked ? 'Background scheduling enabled' : 'Background scheduling disabled');
+  };
+  backgroundLabel.append(backgroundToggle, document.createTextNode('Run in background to execute scheduled tasks'));
+  body.append(backgroundLabel);
 
   const permissions = state.workspace ? await call('permissions/get', {}) : null;
   if (permissions) {
@@ -4845,6 +5046,11 @@ async function renderContent(): Promise<void> {
   }
 
   if (!state.workspace) {
+    if (state.nav === 'schedules') {
+      const panel = await renderSchedulesPanel();
+      if (token === contentRenderToken) content.replaceChildren(panel);
+      return;
+    }
     if (state.nav === 'sessions') {
       if (!chatView) buildChatView();
       content.replaceChildren(chatView as HTMLElement);
@@ -4866,7 +5072,9 @@ async function renderContent(): Promise<void> {
     return;
   }
   let panel: HTMLElement;
-  if (state.nav === 'hub') {
+  if (state.nav === 'schedules') {
+    panel = await renderSchedulesPanel();
+  } else if (state.nav === 'hub') {
     panel = await renderHubPanel();
   } else if (state.nav === 'artifacts') {
     panel = await renderArtifactsPanel();
@@ -4886,8 +5094,10 @@ async function renderContent(): Promise<void> {
 async function bootstrap(): Promise<void> {
   state.info = await window.coreai.info();
   const settings = await window.coreai.getSettings();
+  state.info.backgroundScheduling = settings?.backgroundScheduling === true;
   state.approvalPolicy = settings?.approvalPolicy ?? 'ask';
   state.workspaces = settings?.workspaces ?? [];
+  state.capabilities = state.workspace ? await window.coreai.engineCapabilities(state.workspace).catch(() => []) : [];
   state.colorScheme = normalizeColorScheme(settings?.colorScheme);
   try {
     state.auth = await window.coreai.authStatus();
@@ -4901,13 +5111,29 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('focus', () => {
     void refreshAuth();
   });
+  window.addEventListener('coreai-nav-go', (event) => {
+    const nav = (event as CustomEvent<string>).detail;
+    if (nav !== 'sessions' && nav !== 'schedules') return;
+    state.nav = nav;
+    renderSidebar();
+    void renderContent();
+  });
 
   window.addEventListener('resize', () => {
     scheduleBrowserBounds();
   });
 
   window.coreai.onEvent((payload: any) => {
-    if (!payload || payload.workspace !== state.workspace) return;
+    if (!payload) return;
+    if (payload.method === 'schedule/changed' || payload.method === 'schedule/fired') {
+      if (state.nav === 'schedules') void renderContent();
+      if (payload.method === 'schedule/fired') {
+        const taskName = String(payload.params?.name ?? 'Scheduled task');
+        toast(`${taskName} ${String(payload.params?.status ?? 'fired')}`);
+      }
+      return;
+    }
+    if (payload.workspace !== state.workspace) return;
     if (payload.method === 'session/event') {
       handleSessionEvent(payload.params?.event);
     } else if (payload.method === 'engine/ready') {

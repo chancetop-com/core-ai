@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('coreai', {
   authLoginWithKey: (serverUrl: string, apiKey: string) => ipcRenderer.invoke('auth:loginWithKey', serverUrl, apiKey),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
   restartEngine: (workspace: string) => ipcRenderer.invoke('engine:restart', workspace),
+  engineCapabilities: (workspace: string) => ipcRenderer.invoke('engine:capabilities', workspace),
   pickAttachments: () => ipcRenderer.invoke('attachments:pick'),
   stageAttachments: (sessionId: string, paths: string[]) => ipcRenderer.invoke('attachments:stage', sessionId, paths),
   removeAttachment: (stagedPath: string) => ipcRenderer.invoke('attachments:remove', stagedPath),

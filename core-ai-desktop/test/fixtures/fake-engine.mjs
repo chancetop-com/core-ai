@@ -15,7 +15,7 @@ rl.on('line', (line) => {
   const { id, method, params } = frame;
   switch (method) {
     case 'initialize':
-      send({ jsonrpc: '2.0', id, result: { protocolVersion: '1.0', engineVersion: 'fake' } });
+      send({ jsonrpc: '2.0', id, result: { protocolVersion: '1.0', engineVersion: 'fake', capabilities: ['scheduled_tasks'] } });
       send({ jsonrpc: '2.0', method: 'engine/ready', params: {} });
       return;
     case 'shutdown':
@@ -24,6 +24,9 @@ rl.on('line', (line) => {
       return;
     case 'echo':
       send({ jsonrpc: '2.0', id, result: params ?? {} });
+      return;
+    case 'exit':
+      process.exit(0);
       return;
     case 'fail':
       send({ jsonrpc: '2.0', id, error: { code: -32602, message: 'bad param', data: { code: 'INVALID_PARAMS' } } });
