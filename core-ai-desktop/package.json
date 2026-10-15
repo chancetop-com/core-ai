@@ -6,7 +6,7 @@
   "author": "Chancetop",
   "main": "dist/main.js",
   "coreAi": {
-    "pinnedEngine": "2.0.46"
+    "pinnedEngine": "2.0.47"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
