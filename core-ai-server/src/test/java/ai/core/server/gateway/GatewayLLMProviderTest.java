@@ -224,16 +224,46 @@ class GatewayLLMProviderTest {
     }
 
     @Test
-    void noneReasoningEffortIsNotSentEvenWhenGatewayDeclaresNone() {
+    void noneOnlyModelSendsExplicitNoneWhenRequestEffortIsAbsent() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
         var model = model("gpt-6-luna", provider.id, "gpt-6-luna");
         model.reasoningEfforts = List.of("none");
         var gateway = gateway(List.of(provider), List.of(model), null);
 
+        // an agent configured with thinking effort "none" arrives here as a null request effort;
+        // the none-only declaration must still put a literal "none" on the upstream request
         gateway.completion(request("gpt-6-luna"));
 
-        assertNull(gateway.upstream.capturedRequest.getReasoningEffortValue());
+        assertEquals("none", gateway.upstream.capturedRequest.getReasoningEffortValue());
         assertNull(gateway.upstream.capturedRequest.reasoningEffort);
+    }
+
+    @Test
+    void noneOnlyModelSendsExplicitNoneWhenRequestEffortIsNone() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("gpt-6-luna", provider.id, "gpt-6-luna");
+        model.reasoningEfforts = List.of("none");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-6-luna");
+        request.reasoningEffort = ReasoningEffort.NONE;
+
+        gateway.completion(request);
+
+        assertEquals("none", gateway.upstream.capturedRequest.getReasoningEffortValue());
+    }
+
+    @Test
+    void noneOnlyModelMapsAHigherRequestedEffortToNone() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var model = model("gpt-6-luna", provider.id, "gpt-6-luna");
+        model.reasoningEfforts = List.of("none");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-6-luna");
+        request.reasoningEffort = ReasoningEffort.LOW;
+
+        gateway.completion(request);
+
+        assertEquals("none", gateway.upstream.capturedRequest.getReasoningEffortValue());
     }
 
     @Test

@@ -48,12 +48,16 @@ public class GatewayLLMProvider extends LLMProvider {
     private static final List<String> REASONING_EFFORT_ORDER = List.of("minimal", "low", "medium", "high", "xhigh", "max");
 
     private static String resolveReasoningEffort(ReasoningEffort effort, List<String> supported) {
-        if (effort == null || effort == ReasoningEffort.NONE || supported == null || supported.isEmpty()) return null;
+        if (supported == null || supported.isEmpty()) return null;
         var ranked = supported.stream()
                 .filter(value -> value != null && !"none".equalsIgnoreCase(value))
                 .sorted(Comparator.comparingInt(GatewayLLMProvider::rank))
                 .toList();
-        if (ranked.isEmpty()) return null;
+        // a none-only declaration is sent explicitly: some upstreams (e.g. Azure gpt-6-luna on
+        // chat completions) reject function tools unless reasoning_effort is literally "none",
+        // while an omitted field falls back to the model's default reasoning instead
+        if (ranked.isEmpty()) return "none";
+        if (effort == null || effort == ReasoningEffort.NONE) return null;
         if (effort == ReasoningEffort.MAX) return ranked.getLast();
         var target = rank(effort);
         return ranked.stream().filter(value -> rank(value) >= target).findFirst().orElse(ranked.getLast());
