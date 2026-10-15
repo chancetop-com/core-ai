@@ -3,11 +3,25 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } from 'electron';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
+import https from 'node:https';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { removeStaged, stageAttachments, sweepStaging, type StagedAttachment } from './attachments/AttachmentStager';
 import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
+import {
+  type AuthServerEntry,
+  type AuthStatus,
+  activeAuthEntry,
+  authServersOf,
+  authStatusOf,
+  loadAuthEntries,
+  withActive,
+  withInsecure,
+  withSavedEntry,
+  without,
+  writeAuthEntries,
+} from './auth/AuthStore';
 import { BrowserManager } from './browser/BrowserManager';
 import { CuaManager } from './computer/CuaManager';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -34,9 +48,6 @@ interface DesktopSettings {
 }
 interface CallEnvelope { ok: boolean; result?: unknown; error?: { code: number; message: string; data?: Record<string, unknown> } }
 interface WorkspaceSessionSummary { path: string; count: number; latestSessionId: string | null; latestTitle: string | null; latestUpdatedAt: number }
-interface AuthEntry { server_url: string; api_key: string; user_id?: string | null; name?: string | null; role?: string | null; login_at?: string | null; active?: boolean }
-interface AuthStatus { loggedIn: boolean; name: string | null; userId: string | null; role: string | null; serverUrl: string | null; loginAt: string | null }
-interface AuthServerEntry { serverUrl: string; name: string | null; userId: string | null; active: boolean; loginAt: string | null }
 declare const __APP_VERSION__: string;
 
 const clientVersion = __APP_VERSION__;
@@ -191,46 +202,71 @@ function buildWorkspaceSummaries(): WorkspaceSessionSummary[] {
   if (!workspaces.includes(fallback)) workspaces.push(fallback);
   return workspaces.map(summarizeWorkspace);
 }
-function authFile(): string { return path.join(os.homedir(), '.core-ai', 'auth.json'); }
-function loadAuthEntries(): AuthEntry[] {
-  try {
-    const parsed = JSON.parse(readFileSync(authFile(), 'utf8')) as AuthEntry | AuthEntry[];
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    return [];
-  }
+function authStatus(): AuthStatus { return authStatusOf(loadAuthEntries()); }
+function listAuthServers(): AuthServerEntry[] { return authServersOf(loadAuthEntries()); }
+function saveAuthEntry(serverUrl: string, apiKey: string, userId: string | null, name: string | null, insecure: boolean): void {
+  writeAuthEntries(withSavedEntry(loadAuthEntries(), serverUrl, apiKey, userId, name, insecure));
 }
-function activeAuthEntry(): AuthEntry | null { return loadAuthEntries().find((entry) => entry.active && entry.api_key) ?? null; }
-function authStatus(): AuthStatus {
-  const entry = activeAuthEntry();
-  if (!entry) return { loggedIn: false, name: null, userId: null, role: null, serverUrl: null, loginAt: null };
-  return { loggedIn: true, name: entry.name ?? null, userId: entry.user_id ?? null, role: entry.role ?? null, serverUrl: entry.server_url ?? null, loginAt: entry.login_at ?? null };
-}
-function listAuthServers(): AuthServerEntry[] {
-  return loadAuthEntries()
-    .filter((entry) => entry.server_url && entry.api_key)
-    .map((entry) => ({ serverUrl: entry.server_url, name: entry.name ?? null, userId: entry.user_id ?? null, active: Boolean(entry.active), loginAt: entry.login_at ?? null }))
-    .sort((a, b) => Number(b.active) - Number(a.active) || (b.loginAt ?? '').localeCompare(a.loginAt ?? ''));
-}
-function writeAuthEntries(entries: AuthEntry[]): void {
-  mkdirSync(path.dirname(authFile()), { recursive: true });
-  writeFileSync(authFile(), JSON.stringify(entries, null, 2));
-}
-function saveAuthEntry(serverUrl: string, apiKey: string, userId: string | null, name: string | null): void {
+/** Flips the per-server TLS opt-in the CLI engine reads; the engine re-reads auth.json per request. */
+function setAuthInsecure(serverUrl: string, insecure: boolean): AuthStatus {
   const entries = loadAuthEntries();
-  const previous = entries.find((entry) => entry.server_url === serverUrl);
-  const kept = entries.filter((entry) => entry.server_url !== serverUrl).map((entry) => ({ ...entry, active: false }));
-  kept.push({ server_url: serverUrl, api_key: apiKey, user_id: userId, name, role: previous?.role ?? null, login_at: new Date().toISOString(), active: true });
-  writeAuthEntries(kept);
+  if (!entries.some((entry) => entry.server_url === serverUrl)) throw new Error(`environment is not signed in: ${serverUrl}`);
+  writeAuthEntries(withInsecure(entries, serverUrl, insecure));
+  return authStatus();
 }
-function removeAuthEntries(serverUrl: string): void { writeAuthEntries(loadAuthEntries().filter((entry) => entry.server_url !== serverUrl)); }
-async function fetchUserProfile(serverUrl: string, apiKey: string): Promise<{ id?: string; name?: string } | null> {
+function removeAuthEntries(serverUrl: string): void { writeAuthEntries(without(loadAuthEntries(), serverUrl)); }
+async function fetchUserProfile(serverUrl: string, apiKey: string, insecure: boolean): Promise<{ id?: string; name?: string } | null> {
+  if (insecure) return fetchUserProfileInsecure(serverUrl, apiKey);
   try {
     const response = await fetch(`${serverUrl}/api/user/me`, { headers: { Authorization: `Bearer ${apiKey}` } });
     return response.status === 200 ? await response.json() as { id?: string; name?: string } : null;
   } catch {
     return null;
   }
+}
+/**
+ * A self-signed server never reaches Chromium's fetch — the certificate is rejected before a
+ * response exists. The explicit opt-in therefore asks through node:https with verification off.
+ */
+function fetchUserProfileInsecure(serverUrl: string, apiKey: string): Promise<{ id?: string; name?: string } | null> {
+  return new Promise((resolve) => {
+    let target: URL;
+    try {
+      target = new URL(`${serverUrl}/api/user/me`);
+    } catch {
+      resolve(null);
+      return;
+    }
+    const options = {
+      hostname: target.hostname,
+      port: target.port || (target.protocol === 'http:' ? 80 : 443),
+      path: `${target.pathname}${target.search}`,
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+      timeout: 15_000,
+    };
+    const handler = (response: http.IncomingMessage): void => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk: Buffer) => chunks.push(chunk));
+      response.on('end', () => {
+        if (response.statusCode !== 200) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as { id?: string; name?: string });
+        } catch {
+          resolve(null);
+        }
+      });
+    };
+    const request = target.protocol === 'http:'
+      ? http.request(options, handler)
+      : https.request({ ...options, rejectUnauthorized: false }, handler);
+    request.on('timeout', () => request.destroy());
+    request.on('error', () => resolve(null));
+    request.end();
+  });
 }
 function normalizeServerUrl(value: string): string {
   const trimmed = value.trim().replace(/\/+$/, '');
@@ -289,17 +325,21 @@ function waitForBrowserCallback(serverUrl: string): Promise<string> {
     });
   });
 }
-async function loginViaBrowser(serverUrl: string): Promise<AuthStatus> {
+async function loginViaBrowser(serverUrl: string, insecure: boolean): Promise<AuthStatus> {
   const key = await waitForBrowserCallback(serverUrl);
-  const profile = await fetchUserProfile(serverUrl, key);
-  saveAuthEntry(serverUrl, key, profile?.id ?? null, profile?.name ?? null);
+  const profile = await fetchUserProfile(serverUrl, key, insecure);
+  saveAuthEntry(serverUrl, key, profile?.id ?? null, profile?.name ?? null, insecure);
   await supervisor?.shutdownAll();
   return authStatus();
 }
-async function loginWithApiKey(serverUrl: string, apiKey: string): Promise<AuthStatus> {
-  const profile = await fetchUserProfile(serverUrl, apiKey);
-  if (!profile) throw new Error('API key rejected by the server (GET /api/user/me failed)');
-  saveAuthEntry(serverUrl, apiKey, profile.id ?? null, profile.name ?? null);
+async function loginWithApiKey(serverUrl: string, apiKey: string, insecure: boolean): Promise<AuthStatus> {
+  const profile = await fetchUserProfile(serverUrl, apiKey, insecure);
+  if (!profile) {
+    throw new Error(insecure
+      ? 'API key rejected by the server (GET /api/user/me failed)'
+      : 'API key rejected by the server, or its certificate is not trusted — tick "Self-signed certificate" for a local server (GET /api/user/me failed)');
+  }
+  saveAuthEntry(serverUrl, apiKey, profile.id ?? null, profile.name ?? null, insecure);
   await supervisor?.shutdownAll();
   return authStatus();
 }
@@ -491,22 +531,27 @@ function registerIpc(): void {
     if (!normalized) throw new Error('invalid server url');
     const entries = loadAuthEntries();
     if (!entries.some((entry) => entry.server_url === normalized)) throw new Error(`environment is not signed in: ${normalized}`);
-    writeAuthEntries(entries.map((entry) => ({ ...entry, active: entry.server_url === normalized })));
+    writeAuthEntries(withActive(entries, normalized));
     await supervisor?.shutdownAll();
     return authStatus();
   });
-  ipcMain.handle('auth:login', async (_event, serverUrl: string) => {
+  ipcMain.handle('auth:login', async (_event, serverUrl: string, insecure: boolean) => {
     const normalized = normalizeServerUrl(serverUrl ?? '');
     if (!normalized) throw new Error('invalid server url');
-    return loginViaBrowser(normalized);
+    return loginViaBrowser(normalized, insecure === true);
   });
-  ipcMain.handle('auth:loginWithKey', async (_event, serverUrl: string, apiKey: string) => {
+  ipcMain.handle('auth:loginWithKey', async (_event, serverUrl: string, apiKey: string, insecure: boolean) => {
     const normalized = normalizeServerUrl(serverUrl ?? '');
     if (!normalized || !apiKey?.trim()) throw new Error('invalid server url or empty api key');
-    return loginWithApiKey(normalized, apiKey.trim());
+    return loginWithApiKey(normalized, apiKey.trim(), insecure === true);
+  });
+  ipcMain.handle('auth:setInsecure', (_event, serverUrl: string, insecure: boolean) => {
+    const normalized = normalizeServerUrl(serverUrl ?? '');
+    if (!normalized) throw new Error('invalid server url');
+    return setAuthInsecure(normalized, insecure === true);
   });
   ipcMain.handle('auth:logout', async () => {
-    const active = activeAuthEntry();
+    const active = activeAuthEntry(loadAuthEntries());
     if (!active) return authStatus();
     const confirm = await dialog.showMessageBox({
       type: 'question', buttons: ['Sign out', 'Cancel'], defaultId: 1, cancelId: 1,

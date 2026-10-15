@@ -48,6 +48,7 @@ interface AuthStatus {
   role: string | null;
   serverUrl: string | null;
   loginAt: string | null;
+  insecure: boolean;
 }
 
 interface AuthServerEntry {
@@ -56,6 +57,7 @@ interface AuthServerEntry {
   userId: string | null;
   active: boolean;
   loginAt: string | null;
+  insecure: boolean;
 }
 
 interface BrowserTabInfo {
@@ -181,8 +183,9 @@ interface CoreAiBridge {
   authStatus(): Promise<AuthStatus>;
   authServers(): Promise<AuthServerEntry[]>;
   authSwitch(serverUrl: string): Promise<AuthStatus>;
-  authLogin(serverUrl: string): Promise<AuthStatus>;
-  authLoginWithKey(serverUrl: string, apiKey: string): Promise<AuthStatus>;
+  authLogin(serverUrl: string, insecure: boolean): Promise<AuthStatus>;
+  authLoginWithKey(serverUrl: string, apiKey: string, insecure: boolean): Promise<AuthStatus>;
+  authSetInsecure(serverUrl: string, insecure: boolean): Promise<AuthStatus>;
   authLogout(): Promise<AuthStatus>;
   restartEngine(workspace: string): Promise<void>;
   engineCapabilities(workspace: string): Promise<string[]>;
@@ -890,6 +893,16 @@ function hostOf(url: string | null | undefined): string {
   }
 }
 
+/** Loopback hosts default the self-signed checkbox on: a local server cannot hold a public certificate. */
+function isLoopbackUrl(value: string): boolean {
+  try {
+    const host = new URL(value.trim()).hostname.toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
+  } catch {
+    return false;
+  }
+}
+
 // ---------- profile & server auth ----------
 
 async function refreshAuth(): Promise<void> {
@@ -969,7 +982,9 @@ async function openProfileMenu(anchor: HTMLElement): Promise<void> {
   const menu = el('div', 'profile-menu');
   menu.append(el('div', 'profile-menu-title', auth?.name ?? auth?.userId ?? '(authenticated)'));
   if (auth?.name && auth?.userId) menu.append(el('div', 'profile-menu-sub', auth.userId));
-  if (auth?.serverUrl) menu.append(el('div', 'profile-menu-sub', auth.serverUrl));
+  if (auth?.serverUrl) {
+    menu.append(el('div', 'profile-menu-sub', auth.insecure ? `${auth.serverUrl} · self-signed (TLS verification off)` : auth.serverUrl));
+  }
   if (auth?.loginAt) menu.append(el('div', 'profile-menu-sub', `Signed in ${formatWhen(auth.loginAt)}`));
   menu.append(el('div', 'profile-menu-sep'));
 
@@ -1077,6 +1092,21 @@ function openLoginDialog(onSuccess?: () => void): void {
   serverInput.value = state.auth?.serverUrl ?? 'https://core-ai-server.connexup-uat.net';
   dialog.append(serverInput);
 
+  // Local servers serve core-ng's self-signed certificate; the checkbox is the explicit
+  // opt-in the engine reads from auth.json. Pre-ticked for loopback hosts, never hidden.
+  const insecureRow = el('label', 'login-insecure');
+  const insecureCheck = el('input') as HTMLInputElement;
+  insecureCheck.type = 'checkbox';
+  insecureRow.append(insecureCheck, el('span', undefined, ' Self-signed certificate — skip TLS verification'));
+  dialog.append(insecureRow);
+  let insecureTouched = false;
+  insecureCheck.onchange = () => { insecureTouched = true; };
+  const syncInsecureDefault = (): void => {
+    if (!insecureTouched) insecureCheck.checked = isLoopbackUrl(serverInput.value);
+  };
+  serverInput.addEventListener('input', syncInsecureDefault);
+  syncInsecureDefault();
+
   const status = el('div', 'login-status');
   const setStatus = (text: string, isError = false) => {
     status.textContent = text;
@@ -1129,9 +1159,10 @@ function openLoginDialog(onSuccess?: () => void): void {
     keyButton.disabled = true;
     setStatus(kind === 'browser' ? 'Browser opened — finish signing in there (times out in 120s)…' : 'Validating the API key…');
     try {
+      const insecure = insecureCheck.checked;
       const next = kind === 'browser'
-        ? await window.coreai.authLogin(serverUrl)
-        : await window.coreai.authLoginWithKey(serverUrl, keyInput.value.trim());
+        ? await window.coreai.authLogin(serverUrl, insecure)
+        : await window.coreai.authLoginWithKey(serverUrl, keyInput.value.trim(), insecure);
       applyAuth(next);
       toast(`Signed in as ${next?.name ?? next?.userId ?? serverUrl}`);
       close();
@@ -4076,6 +4107,40 @@ function hubUnreachableState(detail: string, retry: () => Promise<void>): HTMLEl
   return empty;
 }
 
+/**
+ * A loopback core-ai-server serves core-ng's self-signed certificate; the engine cannot reach it
+ * until the login carries the TLS opt-in. The action flips that flag for the active environment —
+ * the CLI and the engine read the same auth.json.
+ */
+function hubCertificateState(detail: string, retry: () => Promise<void>): HTMLElement {
+  const empty = el('div', 'empty-state');
+  empty.append(el('div', 'big', 'Certificate not trusted'));
+  empty.append(el('div', 'notice', `${hostOf(state.auth?.serverUrl) || 'This server'} serves a certificate the app does not trust — normal for a local core-ai-server, which signs its own. Trusting it skips TLS verification for this server only (the CLI shares this sign-in).`));
+  empty.append(el('div', 'notice', detail));
+  const trust = el('button', 'btn primary', 'Trust this server');
+  trust.style.marginTop = '10px';
+  trust.onclick = async () => {
+    const serverUrl = state.auth?.serverUrl;
+    if (!serverUrl) return;
+    trust.disabled = true;
+    try {
+      applyAuth(await window.coreai.authSetInsecure(serverUrl, true));
+      toast('TLS verification disabled for this server');
+      await retry();
+    } catch (error) {
+      toast(`✗ ${cleanIpcError(error)}`, 'error');
+      trust.disabled = false;
+    }
+  };
+  empty.append(trust);
+  const button = el('button', 'btn', 'Retry');
+  button.style.marginTop = '10px';
+  button.style.marginLeft = '8px';
+  button.onclick = () => void retry();
+  empty.append(button);
+  return empty;
+}
+
 function hubRows(catalogData: any, skillsData: any): HubRow[] {
   const rows: HubRow[] = [];
   const kinds = HUB_FILTERS.map(([key]) => key);
@@ -4394,6 +4459,15 @@ async function renderHubPanel(): Promise<HTMLElement> {
     const skillsError = !skills.ok
       ? skills.error?.message ?? 'request failed'
       : skillsData?.connected === false ? String(skillsData.message ?? skillsData.reason) : null;
+    const certificateFailure = (catalogData?.connected === false && catalogData.reason === 'untrusted_certificate')
+      || (skillsData?.connected === false && skillsData.reason === 'untrusted_certificate');
+    if (certificateFailure) {
+      const wrap = el('div');
+      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
+      wrap.append(hubCertificateState(String(catalogError ?? skillsError ?? ''), build));
+      body.replaceChildren(wrap);
+      return;
+    }
     if (catalogError && skillsError) {
       const wrap = el('div');
       if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
