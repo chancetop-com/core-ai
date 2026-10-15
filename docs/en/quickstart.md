@@ -1,9 +1,10 @@
 # Quick Start
 
-Choose the part that matches your task. Server, CLI and the Java framework live in the same repository.
+Choose the part that matches your task. The desktop app, Server, CLI and the Java framework live in the same repository.
 
 | Task | Starting point | Requirements |
 | --- | --- | --- |
+| Run local agents in a GUI | [Desktop guide](/en/desktop) | A Windows or macOS preview build; a model config or Server sign-in |
 | Use shared agents and tools | [Server guide](/en/server) | Your administrator's service URL, account and permissions |
 | Work from a terminal | [CLI guide](/en/cli) | A release for your OS and architecture; Java 25 for source builds |
 | Build agents in Java | [Framework guide](/en/framework) | Java 25, Gradle Wrapper 9.3.0 and project dependencies |

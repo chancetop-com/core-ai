@@ -22,17 +22,18 @@
 
 **[访问 Core AI 中文官网 →](https://chancetop-com.github.io/core-ai/cn/)** · **[中文使用手册：Server / CLI / 框架](https://chancetop-com.github.io/core-ai/cn/manual/)** · [English documentation](https://chancetop-com.github.io/core-ai/en/)
 
-Core AI brings a team Agent service, a terminal CLI and a Java framework into one repository. Choose a starting point, then connect your own models, tools and runtime environment.
+Core AI brings a desktop client, a team Agent service, a terminal CLI and a Java framework into one repository. Choose a starting point, then connect your own models, tools and runtime environment.
 
 ## Choose a starting point
 
 | Part | Purpose | Guide |
 | --- | --- | --- |
+| **core-ai-desktop** | Run local agent sessions in a lightweight GUI: bundled CLI engine, embedded browser, scheduled tasks and artifact previews (preview builds) | [Desktop](https://chancetop-com.github.io/core-ai/en/desktop) |
 | **core-ai-server** | Manage agents, tools, skills and datasets through Web, REST and SSE | [Server](https://chancetop-com.github.io/core-ai/en/server) |
 | **core-ai-cli** | Local agents, editor ACP and Server Hub resource commands; configure a provider directly or sign in to Server | [CLI](https://chancetop-com.github.io/core-ai/en/cli) |
 | **core-ai framework** | Build agents, function tools, context, memory, RAG and Flow in Java applications | [Framework](https://chancetop-com.github.io/core-ai/en/framework) |
 
-Server and CLI share `core-ai` and `core-ai-api`. Framework Flow and Server Web workflows have different definitions and configurations.
+The desktop app runs the same CLI engine, workspace sessions and `~/.core-ai` configuration as the CLI. Server and CLI share `core-ai` and `core-ai-api`. Framework Flow and Server Web workflows have different definitions and configurations.
 
 ## Versions and requirements
 
@@ -45,6 +46,7 @@ Current source: CLI **2.0.21**, framework **1.4.0-SNAPSHOT**, public API **1.3.0
 | CLI native compilation | **GraalVM JDK 25** and platform native-image build dependencies |
 | Server container | Docker / Compose, MongoDB, Redis and your model configuration; no host JDK is required |
 | Server frontend build | The current release workflow uses **Node.js 22** and npm |
+| Desktop preview build | Windows x64 or macOS (Apple Silicon) preview package from [Releases](https://github.com/chancetop-com/core-ai/releases) (`desktop-v*` tags); the bundle carries the pinned engine, so no separate Java install is needed; packages are currently unsigned previews |
 
 SNAPSHOT version constants do not establish Maven availability. Use same-checkout project dependencies, artifacts confirmed by your team, or a composite build.
 
@@ -108,7 +110,13 @@ core-ai-cli --resume
 
 These operations use your model/Server environment and may make model requests. Use `/help` inside an interactive session.
 
-### 3. Use or deploy Server
+### 3. Run the desktop app
+
+[Releases](https://github.com/chancetop-com/core-ai/releases) also publishes desktop previews under `desktop-v*` tags: a Windows x64 installer and a macOS (Apple Silicon) `.dmg` / `.zip`. A package bundles the pinned CLI engine, reads the same `~/.core-ai` model configuration and sign-in as the CLI, and needs no separate CLI installation. Open the app, pick a workspace folder, then send the first message; tool calls that need approval show an approval bar. The [Desktop guide](https://chancetop-com.github.io/core-ai/en/desktop) covers the embedded browser, computer use, scheduled tasks and the artifacts dock.
+
+![core-ai-desktop: a session with a streamed answer](./docs/imgs/desktop/desktop-chat.png)
+
+### 4. Use or deploy Server
 
 For an existing service, follow the [Server guide](https://chancetop-com.github.io/core-ai/en/server) to obtain an account, available models and resource permissions, then start in Agents / Chat.
 
@@ -122,7 +130,7 @@ docker compose -f docker-compose.manual.yml ps
 
 `docker-compose.manual.yml` is the manual's suggested local filename and must be created and configured first. Open your configured `SYS_PUBLIC_URL`. The [Server manual (Chinese)](https://chancetop-com.github.io/core-ai/cn/manual/#第一部分-core-ai-server) includes source startup, REST/SSE, screenshots and troubleshooting.
 
-### 4. Develop a Java Agent
+### 5. Develop a Java Agent
 
 Use same-checkout dependencies in a repository module:
 
@@ -147,7 +155,7 @@ In Windows PowerShell use `.\gradlew.bat :core-ai-cli:run --args='--help'`. Nati
 
 ## Documentation and validation
 
-[Quick Start](https://chancetop-com.github.io/core-ai/en/quickstart) · [Full Chinese manual](https://chancetop-com.github.io/core-ai/cn/manual/) · [Tutorials](https://chancetop-com.github.io/core-ai/en/tutorials) · [API Reference](https://chancetop-com.github.io/core-ai/en/api) · [中文官网](https://chancetop-com.github.io/core-ai/cn/)
+[Quick Start](https://chancetop-com.github.io/core-ai/en/quickstart) · [Desktop guide](https://chancetop-com.github.io/core-ai/en/desktop) · [Full Chinese manual](https://chancetop-com.github.io/core-ai/cn/manual/) · [Tutorials](https://chancetop-com.github.io/core-ai/en/tutorials) · [API Reference](https://chancetop-com.github.io/core-ai/en/api) · [中文官网](https://chancetop-com.github.io/core-ai/cn/)
 
 The CLI manual is also published as an installable agent skill (`core-ai-cli-manual`) for tools such as Claude Code and Codex; [download and install instructions](https://chancetop-com.github.io/core-ai/skills/).
 

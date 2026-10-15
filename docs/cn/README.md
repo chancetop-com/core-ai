@@ -1,10 +1,10 @@
 # 中文文档索引
 
-从[快速开始](quickstart.md)选择角色；Server、CLI 与框架共享同一仓库，但环境与运行入口不同。
+从[快速开始](quickstart.md)选择角色；桌面端、Server、CLI 与框架共享同一仓库，但环境与运行入口不同。
 
 ## 使用指南
 
-[Server 上手](server.md) · [CLI 上手](cli.md) · [Java 框架](framework.md) · [跨平台排障](cli-troubleshooting.md) · [完整使用手册](manual/)
+[桌面端上手](desktop.md) · [Server 上手](server.md) · [CLI 上手](cli.md) · [Java 框架](framework.md) · [跨平台排障](cli-troubleshooting.md) · [完整使用手册](manual/)
 
 ## 教程
 

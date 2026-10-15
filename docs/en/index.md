@@ -3,7 +3,7 @@ layout: home
 hero:
   name: core-ai
   text: Build agents. Connect teams.
-  tagline: Manage resources with Server, work from CLI, build applications with the Java framework.
+  tagline: Use agents from the desktop or CLI, manage resources with Server, build applications with the Java framework.
   image:
     src: /core-ai-logo-v5-symbol-c-icon.svg
     alt: core-ai
@@ -18,6 +18,10 @@ hero:
       text: GitHub
       link: https://github.com/chancetop-com/core-ai
 features:
+  - title: Desktop
+    details: Run local agent sessions in a window — embedded browser, scheduled tasks and artifact previews.
+    link: /en/desktop
+    linkText: Desktop guide
   - title: Server
     details: Manage agents, tools, skills and datasets. Connect through Web, REST and SSE.
     link: /en/server

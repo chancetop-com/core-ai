@@ -1,6 +1,6 @@
 # Server Guide
 
-`core-ai-server` manages agents, tools, skills and datasets for browser, CLI and script clients. The Web UI comes from `core-ai-frontend`; execution uses the Java framework.
+`core-ai-server` manages agents, tools, skills and datasets for browser, desktop, CLI and script clients. The Web UI comes from `core-ai-frontend`; execution uses the Java framework.
 
 ## Use an existing service {#已有团队服务}
 

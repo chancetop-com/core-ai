@@ -21,17 +21,18 @@
 <span class="legacy-anchor" id="open-source-ecosystem"></span>
 <span class="legacy-anchor" id="next-steps"></span>
 
-Core AI combines a team service, a terminal client and a Java agent framework. Server and CLI share `core-ai` and `core-ai-api` within one repository, but their entry points and runtime requirements differ.
+Core AI combines a desktop client, a team service, a terminal client and a Java agent framework. They share `core-ai` and `core-ai-api` within one repository, but their entry points and runtime requirements differ.
 
 ## Choose an entry point {#选择入口}
 
 | Part | Purpose | Start here |
 | --- | --- | --- |
+| Desktop | Run local agent sessions in a GUI, with a bundled CLI engine and an embedded browser | [Desktop](desktop.md) |
 | Server | Manage agents, tools, skills and datasets; expose Web, REST and SSE | [Server](server.md) |
 | CLI | Local agents, editor ACP and Server Hub operations | [CLI](cli.md) |
 | Framework | Build agents, tools, context and Flow in Java applications | [Java framework](framework.md) |
 
-CLI can connect directly to a model provider or sign in to Server for its model proxy. Hub commands discover and call authorized Server resources. Framework Flow and the Server workflow editor are separate layers; their configurations are not interchangeable.
+The desktop app and the CLI run one engine and share sessions and `~/.core-ai` configuration. The CLI can connect directly to a model provider or sign in to Server for its model proxy. Hub commands discover and call authorized Server resources. Framework Flow and the Server workflow editor are separate layers; their configurations are not interchangeable.
 
 ## Environment and versions {#环境与版本}
 

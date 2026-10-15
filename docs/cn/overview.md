@@ -22,17 +22,18 @@
 <span class="legacy-anchor" id="开源生态"></span>
 <span class="legacy-anchor" id="下一步"></span>
 
-Core AI 由团队服务、命令行和 Java 框架组成。三部分在同一仓库中共享 `core-ai` 与 `core-ai-api`，但入口和运行前提不同。
+Core AI 由桌面客户端、团队服务、命令行和 Java 框架组成。四部分在同一仓库中共享 `core-ai` 与 `core-ai-api`，但入口和运行前提不同。
 
 ## 选择入口
 
 | 部分 | 解决什么问题 | 从哪里开始 |
 | --- | --- | --- |
+| 桌面端 | 在图形界面中运行本地 Agent 会话，内置 CLI 引擎与内嵌浏览器 | [桌面端上手](desktop.md) |
 | Server | 管理 Agent、工具、技能和数据集，提供 Web、REST、SSE | [Server 上手](server.md) |
 | CLI | 本地 Agent、编辑器 ACP、Server Hub 资源操作 | [CLI 上手](cli.md) |
 | 框架 | 在 Java 应用内构建 Agent、工具、上下文和 Flow | [Java 框架](framework.md) |
 
-CLI 可以独立配置模型，也可以登录 Server 使用模型代理。Hub 子命令负责发现与调用 Server 资源；登录和资源授权仍由服务决定。框架 Flow 与 Server Web 工作流是不同层次，配置不能直接互换。
+桌面端与 CLI 运行同一个引擎、共用会话与 `~/.core-ai` 配置。CLI 可以独立配置模型，也可以登录 Server 使用模型代理。Hub 子命令负责发现与调用 Server 资源；登录和资源授权仍由服务决定。框架 Flow 与 Server Web 工作流是不同层次，配置不能直接互换。
 
 ## 环境与版本
 

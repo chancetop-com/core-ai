@@ -3,7 +3,7 @@ layout: home
 hero:
   name: core-ai
   text: 构建 Agent 应用
-  tagline: 用 Server 管理资源，用 CLI 完成任务，用 Java 框架构建应用。
+  tagline: 用桌面端或 CLI 使用 Agent，用 Server 管理资源，用 Java 框架构建应用。
   image:
     src: /core-ai-logo-v5-symbol-c-icon.svg
     alt: core-ai
@@ -18,6 +18,10 @@ hero:
       text: GitHub
       link: https://github.com/chancetop-com/core-ai
 features:
+  - title: 桌面端 · 图形界面
+    details: 在窗口里运行本地 Agent 会话：内嵌浏览器、定时任务与产物预览。
+    link: /cn/desktop
+    linkText: 打开桌面端指南
   - title: Server · 团队服务
     details: 管理 Agent、工具、技能与数据集，从 Web、REST 和 SSE 接入。
     link: /cn/server

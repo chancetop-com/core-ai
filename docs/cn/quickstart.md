@@ -1,9 +1,10 @@
 # 快速开始
 
-先选择要完成的任务。Server、CLI、Java 框架在同一仓库中，安装要求和操作入口各不相同。
+先选择要完成的任务。桌面端、Server、CLI、Java 框架在同一仓库中，安装要求和操作入口各不相同。
 
 | 你要做什么 | 从这里开始 | 准备什么 |
 | --- | --- | --- |
+| 用图形界面运行本地 Agent | [桌面端上手](desktop.md) | Windows / macOS 预览包；模型配置或 Server 登录 |
 | 使用团队 Agent、工具与 Web 界面 | [Server 上手](server.md) | 管理员提供的服务地址、账号和资源权限 |
 | 在终端工作或调用 Server 资源 | [CLI 上手](cli.md) | 对应系统的发布包；源码运行需 Java 25 |
 | 在 Java 应用中开发 Agent | [框架上手](framework.md) | Java 25、仓库 Wrapper、依赖缓存或下载权限 |

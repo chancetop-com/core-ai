@@ -39,7 +39,7 @@ Run the [offline Agent](framework.md#离线-agent) first. This page describes cu
 ## Three parts and public API {#三部分与公共-api}
 
 <div class="architecture-map">
-<div><strong>Entry points</strong><a href="/core-ai/en/server">Server / Web</a><a href="/core-ai/en/cli">CLI</a><span>Java applications</span></div>
+<div><strong>Entry points</strong><a href="/core-ai/en/desktop">Desktop</a><a href="/core-ai/en/server">Server / Web</a><a href="/core-ai/en/cli">CLI</a><span>Java applications</span></div>
 <div><strong>Agent execution</strong><span>core-ai framework</span><span>Provider · Tools · Context</span></div>
 <div><strong>Shared types</strong><span>core-ai-api</span><a href="/core-ai/en/api">Interfaces and DTOs</a></div>
 </div>

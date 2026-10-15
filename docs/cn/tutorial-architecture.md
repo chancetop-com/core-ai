@@ -38,7 +38,7 @@
 ## 三部分与公共 API
 
 <div class="architecture-map">
-<div><strong>调用入口</strong><a href="/core-ai/cn/server">Server / Web</a><a href="/core-ai/cn/cli">CLI</a><span>Java 应用</span></div>
+<div><strong>调用入口</strong><a href="/core-ai/cn/desktop">桌面端</a><a href="/core-ai/cn/server">Server / Web</a><a href="/core-ai/cn/cli">CLI</a><span>Java 应用</span></div>
 <div><strong>Agent 执行</strong><span>core-ai 框架</span><span>Provider · Tools · Context</span></div>
 <div><strong>共享类型</strong><span>core-ai-api</span><a href="/core-ai/cn/api">接口与 DTO</a></div>
 </div>

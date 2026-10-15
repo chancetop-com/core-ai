@@ -82,6 +82,7 @@ export default defineConfig({
           { text: '使用指南', items: [
             { text: 'Server', link: '/cn/server' },
             { text: 'CLI', link: '/cn/cli' },
+            { text: '桌面端', link: '/cn/desktop' },
             { text: 'Java 框架', link: '/cn/framework' },
             { text: '完整手册', link: '/cn/manual/' },
             { text: '技能手册', link: '/skills/' },
@@ -114,6 +115,7 @@ export default defineConfig({
           { text: 'Use Guides', items: [
             { text: 'Server', link: '/en/server' },
             { text: 'CLI', link: '/en/cli' },
+            { text: 'Desktop', link: '/en/desktop' },
             { text: 'Java framework', link: '/en/framework' },
             { text: 'Skills', link: '/skills/' },
             { text: 'Troubleshooting', link: '/en/cli-troubleshooting' },

@@ -1,6 +1,6 @@
 # Server 上手
 
-`core-ai-server` 管理 Agent、工具、技能和数据集，为浏览器、CLI 和脚本提供服务。Web 界面来自 `core-ai-frontend`，Agent 执行依赖 `core-ai` 框架。
+`core-ai-server` 管理 Agent、工具、技能和数据集，为浏览器、桌面端、CLI 和脚本提供服务。Web 界面来自 `core-ai-frontend`，Agent 执行依赖 `core-ai` 框架。
 
 ## 已有团队服务
 

@@ -1,10 +1,10 @@
 # English Documentation Index
 
-Start with [Quick Start](quickstart.md). Server, CLI and the framework share a repository but have different prerequisites and entry points.
+Start with [Quick Start](quickstart.md). The desktop app, Server, CLI and the framework share a repository but have different prerequisites and entry points.
 
 ## Use guides
 
-[Server](server.md) · [CLI](cli.md) · [Java framework](framework.md) · [Troubleshooting](cli-troubleshooting.md)
+[Desktop](desktop.md) · [Server](server.md) · [CLI](cli.md) · [Java framework](framework.md) · [Troubleshooting](cli-troubleshooting.md)
 
 ## Tutorials
 

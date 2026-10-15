@@ -1,5 +1,10 @@
 # Desktop builds
 
+`core-ai-desktop` is the Electron desktop client for Core AI: local agent sessions in a
+lightweight GUI, backed by a pinned CLI engine. The [Desktop guide](../docs/en/desktop.md)
+(中文: [桌面端上手](../docs/cn/desktop.md)) covers the user-facing side; this page covers
+building and packaging the app.
+
 ```sh
 npm ci
 npm test

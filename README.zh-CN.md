@@ -22,17 +22,18 @@
 
 **[访问 Core AI 中文官网 →](https://chancetop-com.github.io/core-ai/cn/)** · **[中文使用手册：Server / CLI / 框架](https://chancetop-com.github.io/core-ai/cn/manual/)** · [English documentation](https://chancetop-com.github.io/core-ai/en/)
 
-Core AI 在同一仓库中提供团队 Agent 服务、终端 CLI 和 Java 框架。先按任务选择入口，再逐步接入自己的模型、工具与运行环境。
+Core AI 在同一仓库中提供桌面客户端、团队 Agent 服务、终端 CLI 和 Java 框架。先按任务选择入口，再逐步接入自己的模型、工具与运行环境。
 
 ## 选择入口
 
 | 部分 | 用途 | 开始阅读 |
 | --- | --- | --- |
+| **core-ai-desktop** | 在轻量图形界面中运行本地 Agent 会话：内置 CLI 引擎、内嵌浏览器、定时任务与产物预览（预览版） | [桌面端上手](https://chancetop-com.github.io/core-ai/cn/desktop) |
 | **core-ai-server** | 管理 Agent、工具、技能和数据集，提供 Web、REST 与 SSE | [Server 上手](https://chancetop-com.github.io/core-ai/cn/server) |
 | **core-ai-cli** | 本地 Agent、编辑器 ACP 和 Server Hub 资源命令；可独立配置模型或登录 Server | [CLI 上手](https://chancetop-com.github.io/core-ai/cn/cli) |
 | **core-ai 框架** | 在 Java 应用中构建 Agent、函数工具、上下文、记忆、RAG 与 Flow | [框架上手](https://chancetop-com.github.io/core-ai/cn/framework) |
 
-Server 与 CLI 共享 `core-ai` 和 `core-ai-api`。框架 Flow 与 Server Web 工作流有不同定义，配置不能直接互换。
+桌面端与 CLI 运行同一个引擎，共用工作区会话与 `~/.core-ai` 配置。Server 与 CLI 共享 `core-ai` 和 `core-ai-api`。框架 Flow 与 Server Web 工作流有不同定义，配置不能直接互换。
 
 ## 版本与环境
 
@@ -45,6 +46,7 @@ Server 与 CLI 共享 `core-ai` 和 `core-ai-api`。框架 Flow 与 Server Web �
 | CLI 原生编译 | **GraalVM JDK 25** 与对应平台的 native-image 构建依赖 |
 | Server 容器 | Docker / Compose、MongoDB、Redis 及自己的模型配置；宿主机无需安装 JDK |
 | Server 前端构建 | 当前发布流程使用 **Node.js 22** 与 npm |
+| 桌面端预览包 | 从 [Releases](https://github.com/chancetop-com/core-ai/releases)（`desktop-v*` 标签）获取 Windows x64 或 macOS（Apple Silicon）预览包；包内自带固定版本引擎，无需单独安装 Java；当前为未签名预览 |
 
 SNAPSHOT 版本常量不代表 Maven 制品已发布。仓库内优先使用 project 依赖；独立应用使用团队确认的制品或 composite build。
 
@@ -108,7 +110,13 @@ core-ai-cli --resume
 
 这些操作需要自己的模型/Server 环境，可能产生模型调用。会话中使用 `/help` 查看交互命令。
 
-### 3. 使用或部署 Server
+### 3. 运行桌面端
+
+[Releases](https://github.com/chancetop-com/core-ai/releases) 同时以 `desktop-v*` 标签发布桌面端预览包：Windows x64 安装包与 macOS（Apple Silicon）`.dmg` / `.zip`。安装包内置固定版本的 CLI 引擎，读取与 CLI 相同的 `~/.core-ai` 模型配置与登录状态，无需单独安装 CLI。打开应用、选择工作区文件夹后即可发送第一条消息；需要审批的工具调用会显示审批条。[桌面端上手](https://chancetop-com.github.io/core-ai/cn/desktop)介绍内嵌浏览器、计算机操作、定时任务与产物面板。
+
+![core-ai-desktop：会话与流式回答](./docs/imgs/desktop/desktop-chat-cn.png)
+
+### 4. 使用或部署 Server
 
 已有服务的读者按 [Server 指南](https://chancetop-com.github.io/core-ai/cn/server)取得账号、可用模型和资源权限，再从 Agents / Chat 开始。
 
@@ -122,7 +130,7 @@ docker compose -f docker-compose.manual.yml ps
 
 `docker-compose.manual.yml` 是手册建议的本地配置文件名，需要先创建和配置。浏览器访问自己配置的 `SYS_PUBLIC_URL`。[Server 手册](https://chancetop-com.github.io/core-ai/cn/manual/#第一部分-core-ai-server)涵盖源码启动、REST/SSE、截图与排障。
 
-### 4. 开发 Java Agent
+### 5. 开发 Java Agent
 
 在仓库内模块使用同 checkout 的依赖：
 
@@ -147,7 +155,7 @@ Windows PowerShell 使用 `.\gradlew.bat :core-ai-cli:run --args='--help'`。CLI
 
 ## 文档与验证范围
 
-[快速开始](https://chancetop-com.github.io/core-ai/cn/quickstart) · [完整中文手册](https://chancetop-com.github.io/core-ai/cn/manual/) · [教程索引](https://chancetop-com.github.io/core-ai/cn/tutorials) · [API 参考](https://chancetop-com.github.io/core-ai/cn/api) · [English docs](https://chancetop-com.github.io/core-ai/en/)
+[快速开始](https://chancetop-com.github.io/core-ai/cn/quickstart) · [桌面端上手](https://chancetop-com.github.io/core-ai/cn/desktop) · [完整中文手册](https://chancetop-com.github.io/core-ai/cn/manual/) · [教程索引](https://chancetop-com.github.io/core-ai/cn/tutorials) · [API 参考](https://chancetop-com.github.io/core-ai/cn/api) · [English docs](https://chancetop-com.github.io/core-ai/en/)
 
 CLI 手册同时作为 agent skill（`core-ai-cli-manual`）发布，可直接安装到 Claude Code、Codex 等工具；[下载与安装说明](https://chancetop-com.github.io/core-ai/skills/)。
 
