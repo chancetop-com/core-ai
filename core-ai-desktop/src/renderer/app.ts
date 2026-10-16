@@ -796,7 +796,7 @@ function workspaceLabel(workspace: string | null): string {
 
 async function call(method: string, params: Record<string, unknown> = {}): Promise<any | null> {
   if (!state.workspace) {
-    toast('The default workspace is not created yet — it appears with your first message, or pick a folder below');
+    toast('The default workspace is not created yet — it appears on first use, or pick a folder below');
     return null;
   }
   const envelope = await window.coreai.call(state.workspace, method, params);
@@ -1235,6 +1235,7 @@ function summaryCount(workspace: string): number {
 
 /** Model registry + current model / thinking level, straight from the engine. */
 async function refreshModelState(): Promise<void> {
+  if (!state.workspace) return;
   const sessionId = state.sessionId;
   const listed = await call('model/list', {});
   if (listed?.models) {
@@ -1435,7 +1436,7 @@ function renderComposerControls(): void {
   const defaultOption = el('option', undefined, withCount('default', state.info?.defaultWorkspacePath ?? null));
   defaultOption.value = 'default';
   if (state.info?.defaultWorkspacePath) {
-    defaultOption.title = `${state.info.defaultWorkspacePath}${state.defaultExists ? '' : ' (created with your first message)'}`;
+    defaultOption.title = `${state.info.defaultWorkspacePath}${state.defaultExists ? '' : ' (created on first use)'}`;
   }
   workspace.append(defaultOption);
   if (state.workspace && state.workspace !== state.info?.defaultWorkspacePath) {
@@ -1472,9 +1473,9 @@ function renderComposerControls(): void {
         await connect(state.info.defaultWorkspacePath);
       } else if (state.workspace) {
         await enterDefaultMode();
-        toast('Back to default — created with your first message');
+        toast('Back to default — created on first use');
       } else {
-        toast('The default workspace is created with your first message');
+        toast('The default workspace is created on first use');
       }
       return;
     }
@@ -1594,11 +1595,6 @@ function renderComposerControls(): void {
   composerControlsEl.append(statusChip);
 }
 
-async function chooseWorkspace(): Promise<void> {
-  const chosen = await window.coreai.chooseWorkspace();
-  if (chosen) await connect(chosen);
-}
-
 async function connect(workspace: string): Promise<void> {
   state.workspace = workspace;
   state.capabilities = await window.coreai.engineCapabilities(workspace).catch(() => []);
@@ -1663,7 +1659,7 @@ async function enterDefaultMode(): Promise<void> {
   await renderContent();
 }
 
-/** The dated default workspace is created here — the first time a session actually starts. */
+/** The dated default workspace is created here — on first use: a first message, or opening a panel. */
 async function materializeDefaultWorkspace(): Promise<void> {
   const workspace = await window.coreai.defaultWorkspace();
   state.defaultExists = true;
@@ -1846,7 +1842,7 @@ function showDefaultHint(): void {
   if (!view || state.sessionId || view.transcript.childElementCount > 0) return;
   const hint = el('div', 'default-hint');
   hint.append(el('div', 'big', 'default workspace'));
-  hint.append(el('div', undefined, 'No workspace folder yet. It is created with your first message:'));
+  hint.append(el('div', undefined, 'No workspace folder yet. It is created on first use (a message or a panel):'));
   hint.append(el('div', 'mono', state.info?.defaultWorkspacePath ?? ''));
   const others = otherWorkspacesWithSessions().slice(0, 3);
   if (others.length) {
@@ -1856,17 +1852,6 @@ function showDefaultHint(): void {
     hint.append(el('div', undefined, 'Or pick an existing folder from the Workspace menu below the composer.'));
   }
   view.transcript.append(hint);
-}
-
-function virtualDefaultPanel(): HTMLElement {
-  const label = NAV.find((item) => item.key === state.nav)?.label ?? state.nav;
-  const { root, body } = panel(label, 'The default workspace is not created yet');
-  body.append(el('div', 'notice', 'This panel needs an engine connection: send your first message to create the default workspace, or pick a folder from the Workspace menu below the composer.'));
-  const button = el('button', 'btn small', 'Choose folder…');
-  button.style.marginTop = '10px';
-  button.onclick = chooseWorkspace;
-  body.append(button);
-  return root;
 }
 
 // ---------- chat view ----------
@@ -3891,10 +3876,6 @@ let selectedScheduleId: string | null = null;
 
 async function renderSchedulesPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Scheduled tasks', 'Session-bound tasks from every workspace. They execute while core-ai-desktop is running.');
-  if (!state.workspace) {
-    body.append(el('div', 'empty-state', 'Connect a workspace to load scheduled tasks.'));
-    return root;
-  }
   const controls = el('div', 'schedule-controls');
   const workspaceFilter = el('select', 'input');
   for (const [value, label] of [['all', 'All workspaces'], ['current', 'This workspace']]) {
@@ -4740,7 +4721,9 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
 }
 
 async function renderSettingsPanel(): Promise<HTMLElement> {
-  const { root, body } = panel('Settings', 'Engine, approval policy, scheduled tasks and permission rules');
+  const { root, body } = panel('Settings', state.workspace
+    ? 'Engine, approval policy, scheduled tasks and permission rules'
+    : 'Desktop settings. Max turns and permission rules appear once a workspace is connected.');
   const info = state.info ?? (await window.coreai.info());
   state.info = info;
   const grid = el('dl', 'settings-grid');
@@ -4764,7 +4747,9 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   policy.onchange = async () => {
     state.approvalPolicy = policy.value;
     await window.coreai.setSettings({ approvalPolicy: policy.value });
-    toast(`Approval policy set to ${policy.value} (the engine restarts to apply it)`);
+    toast(state.workspace
+      ? `Approval policy set to ${policy.value} (the engine restarts to apply it)`
+      : `Approval policy set to ${policy.value} (applies once a workspace engine starts)`);
   };
   const policyCell = el('dd');
   policyCell.append(policy);
@@ -5123,11 +5108,6 @@ async function renderContent(): Promise<void> {
   }
 
   if (!state.workspace) {
-    if (state.nav === 'schedules') {
-      const panel = await renderSchedulesPanel();
-      if (token === contentRenderToken) content.replaceChildren(panel);
-      return;
-    }
     if (state.nav === 'sessions') {
       if (!chatView) buildChatView();
       content.replaceChildren(chatView as HTMLElement);
@@ -5136,7 +5116,17 @@ async function renderContent(): Promise<void> {
       showBlankHint();
       return;
     }
-    content.replaceChildren(virtualDefaultPanel());
+    // Settings is desktop-side: About/updates, computer use and the background-scheduling toggle
+    // must not wait for a workspace. The engine-scoped rows inside drop out on their own.
+    if (state.nav === 'settings') {
+      const panel = await renderSettingsPanel();
+      if (token === contentRenderToken) content.replaceChildren(panel);
+      return;
+    }
+    // The other panels are engine-backed but not about one specific workspace (hub, skills,
+    // memory, artifacts, scheduled tasks): stand up the default workspace on first use instead
+    // of asking the user to pick a folder — connect() re-renders this same panel against it.
+    await materializeDefaultWorkspace();
     return;
   }
 
