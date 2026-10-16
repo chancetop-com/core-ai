@@ -682,7 +682,8 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .msg .role { color: var(--faint); font-size: 12px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.6px; }
 .bubble { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; white-space: pre-wrap; word-break: break-word; }
 .msg.user { margin-left: auto; text-align: right; }
-.msg.user .bubble { display: inline-block; max-width: 100%; background: #e4e7eb; color: #171a1f; border: 1px solid transparent; }
+/* the wrapper's text-align only right-hugs the bubble / label; the message text itself reads left */
+.msg.user .bubble { display: inline-block; max-width: 100%; background: #e4e7eb; color: #171a1f; border: 1px solid transparent; text-align: left; }
 .msg.assistant { margin-right: auto; }
 
 /* ---------- markdown (assistant output, CLI terminal palette) ---------- */
