@@ -118,10 +118,16 @@ public class GatewayLLMProvider extends LLMProvider {
         }
         var resolved = resolveRoute(request.model, endpoint);
         if (resolved == null) return fallbackCompletionStream(request, callback);
+        // the resolved route owns the transport: a model that has no chat route falls back to the
+        // responses endpoint (e.g. Azure gpt-6.1-sol, whose chat surface rejects function tools),
+        // and the endpoint must carry through to both the upstream URL and the request bridge
+        if (resolved.responses()) endpoint = GatewayModelService.ENDPOINT_RESPONSES;
         var provider = resolved.route().provider();
         var upstreamModel = upstreamModel(resolved);
         var upstream = upstreamProvider(provider, upstreamModel, endpoint);
         var originalModel = request.model;
+        var originalEndpoint = request.getEndpoint();
+        request.setEndpoint(endpoint);
         if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
             // Vertex short-lived OAuth tokens expire within the hour; refresh before every call
             upstream.updateCredentials(GatewaySupport.geminiOpenAiCompatibleUrl(provider), vertexTokenProvider(provider).accessToken());
@@ -138,6 +144,7 @@ public class GatewayLLMProvider extends LLMProvider {
             return upstream.delegateCompletionStream(request, callback);
         } finally {
             request.model = originalModel;
+            request.setEndpoint(originalEndpoint);
         }
     }
 

@@ -69,11 +69,28 @@ class GatewayLLMProviderTest {
         var responsesModel = model("deep-research", provider.id, "gpt-5.2-pro");
         responsesModel.endpointTypes = List.of("responses");
         var gateway = gateway(List.of(provider), List.of(responsesModel), null);
+        var request = request("deep-research");
 
-        gateway.completion(request("deep-research"));
+        gateway.completion(request);
 
-        // transport is request-endpoint driven: the upstream model keeps its real name
+        // the upstream model keeps its real name, and the resolved transport must reach the request
+        // so the responses bridge (not chat completions) builds the call
         assertEquals("gpt-5.2-pro", gateway.upstream.capturedModel);
+        assertEquals("responses", gateway.upstream.capturedEndpoint);
+        assertNull(request.getEndpoint());
+    }
+
+    @Test
+    void responsesOnlyAzureModelUsesResourceLevelUrlWhenCallerDidNotSetEndpoint() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var responsesModel = model("sol", provider.id, "gpt-6.1-sol");
+        responsesModel.endpointTypes = List.of("responses");
+        var gateway = gateway(List.of(provider), List.of(responsesModel), null);
+
+        gateway.completion(request("sol"));
+
+        assertEquals("https://example.openai.azure.com/openai/responses?api-version=2024-10-21", gateway.upstreamBaseUrl);
+        assertEquals("responses", gateway.upstream.capturedEndpoint);
     }
 
     @Test
@@ -393,6 +410,7 @@ class GatewayLLMProviderTest {
     private static final class CapturingLiteLLMProvider extends LiteLLMProvider {
         final String content;
         String capturedModel;
+        String capturedEndpoint;
         CompletionRequest capturedRequest;
         String capturedUpdatedUrl;
         String capturedUpdatedToken;
@@ -411,6 +429,7 @@ class GatewayLLMProviderTest {
         @Override
         public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
             capturedModel = dto.model;
+            capturedEndpoint = dto.getEndpoint();
             capturedRequest = dto;
             return response(content);
         }
