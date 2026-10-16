@@ -206,6 +206,7 @@ class LLMProviderModalityTest {
 
     static class RecordingProvider extends LLMProvider {
         final List<List<Message>> seenMessages = new ArrayList<>();
+        Double seenTemperature;
         int failuresRemaining;
         String failureMessage = "invalid sse response, statusCode=400, content-type=application/json, "
                 + "body={\"error\":{\"message\":\"Failed to deserialize the JSON body into the target type: "
@@ -223,6 +224,7 @@ class LLMProviderModalityTest {
         @Override
         protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
             seenMessages.add(request.messages);
+            seenTemperature = request.temperature;
             if (failuresRemaining > 0) {
                 failuresRemaining--;
                 throw new RuntimeException(failureMessage);

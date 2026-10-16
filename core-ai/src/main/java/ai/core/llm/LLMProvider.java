@@ -228,7 +228,9 @@ public abstract class LLMProvider {
         if (dto.model.startsWith("o1") || dto.model.startsWith("o3")) {
             dto.temperature = null;
         }
-        if (dto.model.contains("gpt-5")) {
+        // gpt-5 / gpt-6 deployments only accept the default (1) temperature — any other value is
+        // rejected on chat completions and the responses surface alike (verified against azure)
+        if (dto.model.contains("gpt-5") || dto.model.contains("gpt-6")) {
             dto.temperature = 1.0;
         }
         dto.messages.forEach(message -> {
