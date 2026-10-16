@@ -353,6 +353,10 @@ const state: {
 let chatView: HTMLElement | null = null;
 let sessionItemsEl: HTMLElement | null = null;
 let sessionStackEl: HTMLElement | null = null;
+/** In-progress sidebar rename; the draft survives a list refresh so a running turn cannot eat it. */
+let sessionRename: { sessionId: string; value: string; select: boolean } | null = null;
+let sessionMenu: HTMLElement | null = null;
+let disposeSessionMenu: (() => void) | null = null;
 let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
 let composerAttachEl: HTMLElement | null = null;
@@ -724,6 +728,9 @@ const ICONS = {
   maximize: '<polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>',
   minimize: '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/>',
   x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+  'more-horizontal': '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>',
+  pencil: '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>',
+  trash: '<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
   folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
   cpu: '<rect x="4" y="4" width="16" height="16" rx="2" ry="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>',
   lightbulb: '<circle cx="12" cy="9.5" r="5"/><path d="M9.8 15h4.4"/><path d="M10.3 18h3.4"/>',
@@ -1195,6 +1202,7 @@ function buildSessionsNavRow(): HTMLElement {
   toggle.onclick = (event) => {
     event.stopPropagation();
     state.sessionsCollapsed = !state.sessionsCollapsed;
+    if (state.sessionsCollapsed) sessionRename = null;
     localStorage.setItem(COLLAPSE_KEY, state.sessionsCollapsed ? '1' : '0');
     renderSidebar();
   };
@@ -1329,6 +1337,7 @@ async function resumeLastSession(summary: WorkspaceSummary): Promise<void> {
 
 function renderSessionItems(): void {
   if (!sessionItemsEl) return;
+  closeSessionMenu();
   sessionItemsEl.replaceChildren();
   if (state.sessions.length === 0) {
     sessionItemsEl.append(el('div', 'session-sub-empty', 'No sessions in this workspace'));
@@ -1354,23 +1363,179 @@ function renderSessionItems(): void {
     }
   }
   for (const session of state.sessions) {
-    const item = el('button', `session-sub-item${session.sessionId === state.sessionId ? ' active' : ''}`);
-    if (session.status === 'running') {
-      item.append(el('span', 'session-spin'));
+    sessionItemsEl.append(buildSessionRow(session));
+  }
+  if (sessionRename) {
+    const input = sessionItemsEl.querySelector<HTMLInputElement>('.session-rename-input');
+    input?.focus();
+    if (input && sessionRename.select) {
+      input.select();
+      sessionRename.select = false;
     }
-    item.append(el('span', 'session-title', session.title || session.sessionId));
-    item.title = `${session.sessionId}\n${fmtTime(session.updatedAt)}${session.status === 'running' ? '\nrunning' : ''}`;
-    item.onclick = () => {
-      if (session.sessionId !== state.sessionId) void openSession(session.sessionId);
-      else void showConversationView();
-    };
-    sessionItemsEl.append(item);
   }
   if (state.hasMoreSessions) {
     const more = el('button', 'session-sub-more', 'More…');
     more.onclick = () => void loadMoreSessions();
     sessionItemsEl.append(more);
   }
+}
+
+function buildSessionRow(session: SessionRow): HTMLElement {
+  const active = session.sessionId === state.sessionId;
+  const row = el('div', `session-sub-row${active ? ' active' : ''}`);
+  if (sessionRename?.sessionId === session.sessionId) {
+    const input = el('input', 'session-rename-input');
+    input.value = sessionRename.value;
+    input.spellcheck = false;
+    input.maxLength = 200;
+    input.oninput = () => {
+      if (sessionRename?.sessionId === session.sessionId) sessionRename.value = input.value;
+    };
+    input.onkeydown = (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        void commitSessionRename(session.sessionId);
+      } else if (event.key === 'Escape') {
+        event.preventDefault();
+        cancelSessionRename();
+      }
+    };
+    input.onblur = () => {
+      if (input.isConnected) void commitSessionRename(session.sessionId);
+    };
+    row.append(input);
+    return row;
+  }
+  const item = el('button', `session-sub-item${active ? ' active' : ''}`);
+  if (session.status === 'running') {
+    item.append(el('span', 'session-spin'));
+  }
+  item.append(el('span', 'session-title', session.title || session.sessionId));
+  item.title = `${session.sessionId}\n${fmtTime(session.updatedAt)}${session.status === 'running' ? '\nrunning' : ''}`;
+  item.onclick = () => {
+    if (session.sessionId !== state.sessionId) void openSession(session.sessionId);
+    else void showConversationView();
+  };
+  const more = el('button', 'session-more');
+  more.title = 'Session actions';
+  more.append(icon('more-horizontal'));
+  more.onclick = (event) => {
+    event.stopPropagation();
+    openSessionMenu(more, session);
+  };
+  row.append(item, more);
+  return row;
+}
+
+function closeSessionMenu(): void {
+  sessionMenu?.remove();
+  sessionMenu = null;
+  disposeSessionMenu?.();
+  disposeSessionMenu = null;
+}
+
+/** Per-row actions menu; anchored beside the row so it never covers the list. */
+function openSessionMenu(anchor: HTMLElement, session: SessionRow): void {
+  closeSessionMenu();
+  const menu = el('div', 'session-menu');
+  const rename = el('button', 'session-menu-item');
+  rename.append(icon('pencil'), el('span', undefined, 'Rename'));
+  rename.onclick = () => {
+    closeSessionMenu();
+    startSessionRename(session.sessionId);
+  };
+  const remove = el('button', 'session-menu-item danger');
+  remove.append(icon('trash'), el('span', undefined, 'Delete'));
+  remove.onclick = () => {
+    closeSessionMenu();
+    void deleteSession(session);
+  };
+  menu.append(rename, remove);
+  document.body.append(menu);
+  const rect = anchor.getBoundingClientRect();
+  let left = rect.right + 6;
+  if (left + menu.offsetWidth > window.innerWidth - 8) left = Math.max(8, rect.left - menu.offsetWidth - 6);
+  let top = rect.top;
+  if (top + menu.offsetHeight > window.innerHeight - 8) top = Math.max(8, window.innerHeight - menu.offsetHeight - 8);
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+  sessionMenu = menu;
+
+  const onDown = (event: MouseEvent) => {
+    if (!menu.contains(event.target as Node)) closeSessionMenu();
+  };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') closeSessionMenu();
+  };
+  document.addEventListener('mousedown', onDown);
+  document.addEventListener('keydown', onKey);
+  disposeSessionMenu = () => {
+    document.removeEventListener('mousedown', onDown);
+    document.removeEventListener('keydown', onKey);
+  };
+}
+
+function startSessionRename(sessionId: string): void {
+  const session = state.sessions.find((row) => row.sessionId === sessionId);
+  sessionRename = { sessionId, value: session?.title ?? '', select: true };
+  renderSessionItems();
+}
+
+function cancelSessionRename(): void {
+  if (!sessionRename) return;
+  sessionRename = null;
+  renderSessionItems();
+}
+
+/** Commits the sidebar rename; Escape cancels, an empty or unchanged title keeps the old one. */
+async function commitSessionRename(sessionId: string): Promise<void> {
+  const pending = sessionRename;
+  if (!pending || pending.sessionId !== sessionId) return;
+  sessionRename = null;
+  const title = pending.value.trim();
+  const session = state.sessions.find((row) => row.sessionId === sessionId);
+  if (!title || title === (session?.title ?? '')) {
+    renderSessionItems();
+    return;
+  }
+  const renamed = await call('session/rename', { sessionId, title });
+  if (renamed) {
+    const row = state.sessions.find((candidate) => candidate.sessionId === sessionId);
+    if (row) row.title = title;
+    if (state.sessionId === sessionId) {
+      state.sessionTitle = title;
+      updateChatHeader();
+    }
+    void loadSummaries();
+  }
+  renderSessionItems();
+}
+
+async function deleteSession(session: SessionRow): Promise<void> {
+  const name = session.title || session.sessionId;
+  const details = session.status === 'running' ? '\n\nIts turn is still running and is cancelled.' : '';
+  if (!window.confirm(`Delete session “${name}”?\n\nThis removes the conversation from disk.${details}`)) return;
+  const deleted = await call('session/delete', { sessionIds: [session.sessionId] });
+  if (!deleted) return;
+  if (sessionRename?.sessionId === session.sessionId) sessionRename = null;
+  const wasOpen = state.sessionId === session.sessionId;
+  state.sessions = state.sessions.filter((row) => row.sessionId !== session.sessionId);
+  state.pendingSessionIds.delete(session.sessionId);
+  const view = findSessionView(session.sessionId);
+  if (view) disposeSessionView(view);
+  renderSessionItems();
+  if (wasOpen) {
+    if (state.nav === 'sessions') {
+      await startNewConversation();
+    } else {
+      state.sessionId = null;
+      state.sessionTitle = '';
+      updateChatHeader();
+    }
+  }
+  toast(`Deleted “${name}”`);
+  void loadSummaries();
+  void refreshSessionList();
 }
 
 let composerMenu: HTMLElement | null = null;
@@ -1608,6 +1773,7 @@ async function connect(workspace: string): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
+  sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
   state.sessionCursor = null;
@@ -1644,6 +1810,7 @@ async function enterDefaultMode(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
+  sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
   state.sessionCursor = null;
