@@ -8,6 +8,7 @@ import type { Capabilities } from './api/capabilities';
 import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
 import { authApi } from './api/client';
+import { getSystemSettingsAccess } from './api/permissions';
 import { clearCachedChat } from './pages/chat/cache';
 
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
@@ -36,7 +37,6 @@ const SettingsPage = lazy(() => import('./pages/settings/Settings'));
 const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
-const SandboxSettingsPage = lazy(() => import('./pages/settings/SandboxSettings'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
 const Tasks = lazy(() => import('./pages/tasks/Tasks'));
 const Mcp = lazy(() => import('./pages/mcp/Mcp'));
@@ -83,6 +83,7 @@ export default function App() {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
+  const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
 
   useEffect(() => {
     fetchCapabilities().then(c => {
@@ -222,8 +223,8 @@ export default function App() {
                     <Route path="/settings" element={<SettingsPage />}>
                       <Route path="api-keys" element={<ApiKeysPage />} />
                       <Route path="gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />
-                      <Route path="system" element={<RequirePermission permission="system.manage"><SystemSettingsPage /></RequirePermission>} />
-                      <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><SandboxSettingsPage /></RequirePermission>} />
+                      <Route path="system" element={canManageSystem || canManageSnapshots ? <SystemSettingsPage /> : <Navigate to="/for-you" replace />} />
+                      <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><Navigate to="/settings/system?tab=sandbox" replace /></RequirePermission>} />
                       <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
                       <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}

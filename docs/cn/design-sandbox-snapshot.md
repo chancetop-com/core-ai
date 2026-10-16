@@ -8,10 +8,10 @@
 
 ### 快照保留时长配置
 
-- 在 **Settings → Sandbox**（`/settings/sandbox`）配置全局保留天数，默认 **14 天**，允许 **1–3650** 的整数。
+- 在 **Settings → System Configuration → Sandbox**（`/settings/system?tab=sandbox`）配置全局保留天数，默认 **14 天**，允许 **1–3650** 的整数。旧地址 `/settings/sandbox` 自动跳转到此位置。
 - 配置保存在 `system_settings` 集合的独立文档 `_id: "sandbox-snapshot"` 的 `sandbox_snapshot_retention_days` 字段，避免其他系统设置整文档保存时覆盖此值；没有该记录或字段时使用 14 天，无需数据迁移。
 - `GET/PUT /api/settings/sandbox-snapshot` 仅提供保留时长设置，写入请求为 `{"retention_days": 30}`。
-- 独立权限码为 **`sandbox.snapshot.manage`**。管理员默认可用；在 Roles 中为自定义角色添加该权限，再通过 User Management 将角色分配给选定用户。普通 `user` / `member` 默认没有此权限，API 用户不能通过动作权限豁免修改该设置。此权限不会开放其他系统设置。
+- 独立权限码为 **`sandbox.snapshot.manage`**。管理员默认可用；在 Roles 中为自定义角色添加该权限，再通过 User Management 将角色分配给选定用户。普通 `user` / `member` 默认没有此权限，API 用户不能通过动作权限豁免修改该设置。被授权的非管理员进入系统配置后只显示 Sandbox 保留天数，不会读取或开放其他系统设置；保留天数通过独立按钮保存。
 - 每次生成新快照读取当前配置，无需重启 server。`expires_at = created_at + 保留天数`；修改配置不会重算已有快照的过期时间，恢复快照也不会自动续期。
 - 仍只保留每个会话最新的一份可用快照；到期后不能恢复，后台每小时尝试清理过期文档和存储对象。快照启用开关仍由原有系统设置管理。
 

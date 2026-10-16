@@ -1,7 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Gauge, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
+import { Navigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../api/auth';
+import { getSystemSettingsAccess } from '../../api/permissions';
 import RuntimePanel from './RuntimePanel';
+import SnapshotRetentionSettings from './SnapshotRetentionSettings';
 
 type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'runtime' | 'integrations';
 
@@ -16,6 +20,19 @@ const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
 ];
 
 export default function SystemSettings() {
+  const { user } = useAuth();
+  const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
+  if (!canManageSystem && !canManageSnapshots) return <Navigate to="/for-you" replace />;
+  return <SystemSettingsContent key={canManageSystem ? 'admin' : 'scoped'} canManageSystem={canManageSystem} canManageSnapshots={canManageSnapshots} />;
+}
+
+function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canManageSystem: boolean; canManageSnapshots: boolean }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedTab = searchParams.get('tab');
+  const activeTab: TabKey = canManageSystem
+    ? TABS.find(tab => tab.key === requestedTab)?.key ?? 'llm'
+    : 'sandbox';
+  const visibleTabs = canManageSystem ? TABS : TABS.filter(tab => tab.key === 'sandbox');
   const [settings, setSettings] = useState<SystemSettingsData | null>(null);
   const [models, setModels] = useState<GatewayModel[]>([]);
   const [memoryExtractionModel, setMemoryExtractionModel] = useState('');
@@ -43,8 +60,7 @@ export default function SystemSettings() {
   const [skillRepoSyncEnabled, setSkillRepoSyncEnabled] = useState(true);
   const [skillRepoSyncIntervalMinutes, setSkillRepoSyncIntervalMinutes] = useState('30');
   const [traceArchiveIntervalMinutes, setTraceArchiveIntervalMinutes] = useState('1440');
-  const [activeTab, setActiveTab] = useState<TabKey>('llm');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(canManageSystem);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -84,6 +100,7 @@ export default function SystemSettings() {
   const effectiveModel = memoryExtractionModel || settings?.default_memory_extraction_model || '';
 
   const load = async () => {
+    if (!canManageSystem) return;
     setLoading(true);
     setError('');
     setMessage('');
@@ -131,6 +148,7 @@ export default function SystemSettings() {
   }, []);
 
   const save = async () => {
+    if (!canManageSystem || !settings) return;
     const syncInterval = Number(skillRepoSyncIntervalMinutes.trim());
     const syncIntervalValid = Number.isInteger(syncInterval) && syncInterval >= 5 && syncInterval <= 10080;
     if (skillRepoSyncEnabled && !syncIntervalValid) {
@@ -229,14 +247,14 @@ export default function SystemSettings() {
             Configure server-level behavior for background jobs and system services.
           </p>
         </div>
-        <button
+        {canManageSystem && <button
           onClick={load}
           disabled={saving}
           className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
           style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
           <RefreshCw size={16} />
           Refresh
-        </button>
+        </button>}
       </div>
 
       {error && (
@@ -253,10 +271,14 @@ export default function SystemSettings() {
       )}
 
       <div className="flex flex-wrap gap-1 p-1 rounded-lg w-fit" style={{ background: 'var(--color-bg-secondary)' }}>
-        {TABS.map(tab => (
+        {visibleTabs.map(tab => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => setSearchParams(current => {
+              const next = new URLSearchParams(current);
+              next.set('tab', tab.key);
+              return next;
+            })}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors cursor-pointer"
             style={{
               background: activeTab === tab.key ? 'var(--color-bg-tertiary)' : 'transparent',
@@ -535,7 +557,7 @@ export default function SystemSettings() {
 
       {activeTab === 'sandbox' && (
         <>
-          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+          {canManageSystem && <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
             <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
               <h2 className="font-semibold">Sandbox Resume</h2>
               <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
@@ -566,7 +588,8 @@ export default function SystemSettings() {
                   activeText="Active" inactiveText="Inactive" />
               </div>
             </div>
-          </section>
+          </section>}
+          {canManageSnapshots && <SnapshotRetentionSettings />}
         </>
       )}
 
@@ -715,16 +738,16 @@ export default function SystemSettings() {
         </>
       )}
 
-      <div className="flex justify-end mt-6">
+      {canManageSystem && <div className="flex justify-end mt-6">
         <button
           onClick={save}
-          disabled={saving}
+          disabled={saving || !settings}
           className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-50 transition-colors"
           style={{ background: saved ? '#22c55e' : 'var(--color-primary)' }}>
           {saved ? <CheckCircle2 size={16} /> : <Save size={16} />}
           {saving ? 'Saving...' : saved ? 'Saved' : 'Save Settings'}
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

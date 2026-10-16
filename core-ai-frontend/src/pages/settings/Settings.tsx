@@ -1,11 +1,11 @@
-import { Activity, Bell, Box, ListChecks, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
+import { Activity, Bell, ListChecks, PlugZap, Settings as SettingsIcon, Shield, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
-import { usePermission } from '../../api/permissions';
+import { getSystemSettingsAccess } from '../../api/permissions';
 
 export default function Settings() {
   const { user } = useAuth();
-  const canManageSnapshots = usePermission('sandbox.snapshot.manage');
+  const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
 
   return (
     <div className="flex h-full">
@@ -27,18 +27,6 @@ export default function Settings() {
             <Shield size={16} />
             Security
           </NavLink>
-          {canManageSnapshots && (
-            <NavLink to="/settings/sandbox"
-              className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors"
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontWeight: isActive ? 500 : 400,
-              })}>
-              <Box size={16} />
-              Sandbox
-            </NavLink>
-          )}
           {user?.role === 'admin' && (
             <>
               <NavLink to="/settings"
@@ -90,31 +78,35 @@ export default function Settings() {
                 <PlugZap size={16} />
                 Gateway
               </NavLink>
-              <NavLink to="/settings/system"
-                className={() =>
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
-                }
-                style={({ isActive }) => ({
-                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                  fontWeight: isActive ? 500 : 400,
-                })}>
-                <SettingsIcon size={16} />
-                System Configuration
-              </NavLink>
-              <NavLink to="/settings/cost-alerts"
-                className={() =>
-                  'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
-                }
-                style={({ isActive }) => ({
-                  background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                  color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                  fontWeight: isActive ? 500 : 400,
-                })}>
-                <Bell size={16} />
-                Cost Alerts
-              </NavLink>
             </>
+          )}
+          {(canManageSystem || canManageSnapshots) && (
+            <NavLink to="/settings/system"
+              className={() =>
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+              }
+              style={({ isActive }) => ({
+                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                fontWeight: isActive ? 500 : 400,
+              })}>
+              <SettingsIcon size={16} />
+              System Configuration
+            </NavLink>
+          )}
+          {user?.role === 'admin' && (
+            <NavLink to="/settings/cost-alerts"
+              className={() =>
+                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
+              }
+              style={({ isActive }) => ({
+                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
+                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+                fontWeight: isActive ? 500 : 400,
+              })}>
+              <Bell size={16} />
+              Cost Alerts
+            </NavLink>
           )}
         </nav>
       </div>

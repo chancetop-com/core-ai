@@ -1,10 +1,21 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
+import { MemoryRouter } from 'react-router-dom';
+import { AuthContext } from '../../api/auth';
 import { api, type SystemSettings as SystemSettingsData } from '../../api/client';
 import SystemSettings from './SystemSettings';
 
+function renderSettings() {
+  return render(
+    <AuthContext.Provider value={{ user: { apiKey: 'test', userId: 'admin', name: 'Admin', role: 'admin', permissions: ['*'] }, login: vi.fn(), logout: vi.fn() }}>
+      <MemoryRouter><SystemSettings /></MemoryRouter>
+    </AuthContext.Provider>,
+  );
+}
+
 function mockLoad(settings: SystemSettingsData) {
+  vi.spyOn(api.sandboxSnapshotSettings, 'get').mockResolvedValue({ retention_days: 14 });
   vi.spyOn(api.systemSettings, 'get').mockResolvedValue(settings);
   vi.spyOn(api.gateway, 'listModels').mockResolvedValue({ models: [] });
 }
@@ -17,7 +28,7 @@ describe('SystemSettings sub-tabs', () => {
   it('switches between configuration sections', async () => {
     mockLoad({});
 
-    render(<SystemSettings />);
+    renderSettings();
 
     expect(await screen.findByText('Memory Extraction')).toBeTruthy();
     expect(screen.getByText('Default LLM Model')).toBeTruthy();
@@ -50,7 +61,7 @@ describe('SystemSettings sandbox resume control', () => {
       sandbox_snapshot_effective: false,
     });
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Sandbox');
 
     const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: /enable filesystem snapshot and resume/i });
@@ -68,7 +79,7 @@ describe('SystemSettings sandbox resume control', () => {
       sandbox_snapshot_effective: false,
     });
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Sandbox');
 
     const checkbox = await screen.findByRole<HTMLInputElement>('checkbox', { name: /enable filesystem snapshot and resume/i });
@@ -90,7 +101,7 @@ describe('SystemSettings sandbox resume control', () => {
       sandbox_snapshot_effective: true,
     });
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Sandbox');
     await userEvent.click(await screen.findByRole('checkbox', { name: /enable filesystem snapshot and resume/i }));
     await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
@@ -104,7 +115,7 @@ describe('SystemSettings skill repo sync control', () => {
   it('defaults to enabled with the default interval when unset', async () => {
     mockLoad({});
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Skills');
 
     const toggle = await screen.findByRole<HTMLInputElement>('checkbox', { name: /keep repo-sourced skills up to date/i });
@@ -121,7 +132,7 @@ describe('SystemSettings skill repo sync control', () => {
       skill_repo_sync_interval_minutes: 60,
     });
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Skills');
 
     const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /sync interval/i });
@@ -141,7 +152,7 @@ describe('SystemSettings skill repo sync control', () => {
     mockLoad({});
     const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({});
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Skills');
 
     const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /sync interval/i });
@@ -158,7 +169,7 @@ describe('SystemSettings trace archive interval', () => {
   it('defaults to one day when unset', async () => {
     mockLoad({});
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Storage');
 
     const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });
@@ -171,7 +182,7 @@ describe('SystemSettings trace archive interval', () => {
       trace_archive_interval_minutes: 60,
     });
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Storage');
 
     const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });
@@ -186,7 +197,7 @@ describe('SystemSettings trace archive interval', () => {
     mockLoad({});
     const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({});
 
-    render(<SystemSettings />);
+    renderSettings();
     await openTab('Storage');
 
     const interval = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /archive interval/i });

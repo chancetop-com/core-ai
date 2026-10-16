@@ -1,4 +1,4 @@
-import { useAuth } from './auth';
+import { useAuth, type AuthUser } from './auth';
 
 /**
  * Permission helpers mirroring the server-side RBAC rules:
@@ -23,4 +23,11 @@ export function usePermission(permission: string): boolean {
 export function usePermissions(): string[] {
   const { user } = useAuth();
   return user?.permissions ?? [];
+}
+
+export function getSystemSettingsAccess(user: AuthUser | null) {
+  return {
+    canManageSystem: user?.role === 'admin' && hasPermission(user.permissions, 'system.manage'),
+    canManageSnapshots: hasPermission(user?.permissions, 'sandbox.snapshot.manage'),
+  };
 }
