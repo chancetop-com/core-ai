@@ -7,6 +7,7 @@
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
+import { handleComposerKeyDown } from './composerKeyboard';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -1878,12 +1879,7 @@ function buildComposer(): HTMLElement {
   composerInput = el('textarea');
   composerInput.rows = 1;
   composerInput.placeholder = 'Type a message — Enter to send, Shift+Enter for a new line';
-  composerInput.onkeydown = (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      void sendCurrent();
-    }
-  };
+  composerInput.onkeydown = (event) => handleComposerKeyDown(event, sendCurrent);
   composerAutoGrow = () => {
     if (!composerInput) return;
     composerInput.style.height = 'auto';

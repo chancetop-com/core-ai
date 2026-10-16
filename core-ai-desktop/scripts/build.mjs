@@ -30,6 +30,7 @@ const targets = [
   { entryPoints: ['src/main/artifacts/artifactPath.ts'], outfile: 'dist/test/artifactPath.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/auth/AuthStore.ts'], outfile: 'dist/test/authStore.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/update/UpdateService.ts'], outfile: 'dist/test/updateService.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/renderer/composerKeyboard.ts'], outfile: 'dist/test/composerKeyboard.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', target: 'chrome120', format: 'iife' },
 ];
 
