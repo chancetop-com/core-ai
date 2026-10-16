@@ -19,6 +19,7 @@ import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -41,6 +42,10 @@ class LocalSkillsTest {
 
     @TempDir
     Path workspace;
+
+    /** Stand-in for the user skills root, so deletion tests never touch the developer's real {@code ~/.core-ai/skills}. */
+    @TempDir
+    Path userRoot;
 
     @Test
     void hubInstallCarriesProvenanceAndLocalState() throws Exception {
@@ -77,6 +82,74 @@ class LocalSkillsTest {
         var scratch = find(node, "scratch");
         assertFalse(scratch.path("hub").asBoolean());
         assertEquals("local", scratch.path("state").asText());
+    }
+
+    @Test
+    void deleteRemovesAUserSkillDirectoryAndItsNamespace() throws Exception {
+        var skill = userRoot.resolve("stephen/demo");
+        Files.createDirectories(skill.resolve("references"));
+        Files.writeString(skill.resolve("SKILL.md"), CONTENT);
+        Files.writeString(skill.resolve("references/notes.md"), "notes");
+
+        var outcome = LocalSkills.delete(workspace, Params.object().put("path", skill.toString()), userRoot);
+
+        assertTrue(outcome.path("deleted").asBoolean());
+        assertFalse(Files.exists(skill));
+        assertFalse(Files.exists(userRoot.resolve("stephen")));
+    }
+
+    @Test
+    void deleteRemovesAFlatMarkdownSkill() throws Exception {
+        var flat = userRoot.resolve("scratch.md");
+        Files.writeString(flat, CONTENT);
+
+        LocalSkills.delete(workspace, Params.object().put("path", flat.toString()), userRoot);
+
+        assertFalse(Files.exists(flat));
+        assertTrue(Files.isDirectory(userRoot));
+    }
+
+    @Test
+    void deleteRemovesAWorkspaceSkill() throws Exception {
+        var skill = workspace.resolve(".core-ai/skills/local-one");
+        Files.createDirectories(skill);
+        Files.writeString(skill.resolve("SKILL.md"), CONTENT);
+
+        LocalSkills.delete(workspace, Params.object().put("path", skill.toString()), userRoot);
+
+        assertFalse(Files.exists(skill));
+    }
+
+    @Test
+    void deleteRejectsPathsOutsideTheSkillRoots() throws Exception {
+        var outside = workspace.resolve("secret.md");
+        Files.writeString(outside, "secret");
+
+        var error = assertThrows(RpcException.class,
+                () -> LocalSkills.delete(workspace, Params.object().put("path", outside.toString()), userRoot));
+
+        assertEquals("PATH_NOT_ALLOWED", error.data().path("code").asText());
+        assertTrue(Files.exists(outside));
+    }
+
+    @Test
+    void deleteRejectsPathsThatAreNotListedSkills() throws Exception {
+        var notes = userRoot.resolve("notes");
+        Files.createDirectories(notes);
+        Files.writeString(notes.resolve("README.md"), "not a skill");
+
+        var error = assertThrows(RpcException.class,
+                () -> LocalSkills.delete(workspace, Params.object().put("path", notes.toString()), userRoot));
+        assertEquals("NOT_A_SKILL", error.data().path("code").asText());
+
+        var deepDir = userRoot.resolve("demo/references");
+        Files.createDirectories(deepDir);
+        var deep = deepDir.resolve("notes.md");
+        Files.writeString(deep, "deep");
+        var deepError = assertThrows(RpcException.class,
+                () -> LocalSkills.delete(workspace, Params.object().put("path", deep.toString()), userRoot));
+        assertEquals("NOT_A_SKILL", deepError.data().path("code").asText());
+        assertTrue(Files.exists(deep));
     }
 
     private JsonNode find(JsonNode node, String name) {

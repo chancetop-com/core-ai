@@ -188,6 +188,7 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
                 Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),
                 Map.entry("skills/list", ignored -> LocalSkills.list(bootstrap.workspace, hubBridge.skillClientOrNull())),
+                Map.entry("skills/delete", params -> LocalSkills.delete(bootstrap.workspace, params)),
                 Map.entry("tools/list", this::toolsList),
                 Map.entry("hub/catalog", ignored -> hubBridge.catalog()),
                 Map.entry("hub/skills", hubBridge::skills),

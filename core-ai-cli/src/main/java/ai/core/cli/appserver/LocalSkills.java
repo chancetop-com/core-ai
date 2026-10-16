@@ -13,7 +13,10 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -23,7 +26,8 @@ import java.util.stream.Stream;
  * enriched with its hub provenance and freshness (up-to-date / outdated / modified /
  * local / unverified) so the panel can offer updates. Detecting {@code outdated} needs
  * the server; without a client the envelope reports {@code connected:false} and the
- * states stay local-only.
+ * states stay local-only. Deletion removes one listed skill (its directory or flat
+ * markdown file) from disk, restricted to the two skill roots.
  *
  * @author stephen
  */
@@ -117,6 +121,70 @@ public final class LocalSkills {
         } catch (IOException e) {
             LOGGER.debug("failed to digest skill at {}", skillDir, e);
             return null;
+        }
+    }
+
+    /** Deletes one listed skill: its directory (recursively) or flat {@code .md} file, inside either skill root. */
+    public static ObjectNode delete(Path workspace, ObjectNode params) {
+        return delete(workspace, params, Path.of(System.getProperty("user.home"), ".core-ai", "skills"));
+    }
+
+    static ObjectNode delete(Path workspace, ObjectNode params, Path userRoot) {
+        var requested = Params.requiredText(params, "path");
+        var target = CanonicalPath.ofOrNormalized(Path.of(requested));
+        var roots = List.of(
+                CanonicalPath.ofOrNormalized(workspace.resolve(".core-ai/skills")),
+                CanonicalPath.ofOrNormalized(userRoot));
+        var root = roots.stream()
+                .filter(candidate -> target.startsWith(candidate) && !target.equals(candidate))
+                .findFirst()
+                .orElseThrow(() -> RpcException.business("PATH_NOT_ALLOWED",
+                        "skill path must be inside the user or workspace skills root: " + requested, "path", requested));
+        if (!isListedSkill(root, target)) {
+            throw RpcException.business("NOT_A_SKILL",
+                    "not a skill (a SKILL.md directory or a .md file): " + requested, "path", requested);
+        }
+        deleteRecursively(target);
+        removeNamespaceIfEmpty(root, target.getParent());
+        var node = Params.object();
+        node.put("deleted", true);
+        node.put("path", requested);
+        return node;
+    }
+
+    /** The panel lists skills at one or two segments below a root: a {@code .md} file or a {@code SKILL.md} directory. */
+    private static boolean isListedSkill(Path root, Path target) {
+        if (root.relativize(target).getNameCount() > 2) {
+            return false;
+        }
+        if (Files.isRegularFile(target)) {
+            var name = target.getFileName();
+            return name != null && name.toString().toLowerCase(Locale.ROOT).endsWith(".md");
+        }
+        return Files.isDirectory(target) && Files.isRegularFile(target.resolve("SKILL.md"));
+    }
+
+    private static void deleteRecursively(Path target) {
+        try (var walk = Files.walk(target)) {
+            for (var path : walk.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        } catch (IOException e) {
+            throw RpcException.business("DELETE_FAILED", "failed to delete skill: " + e.getMessage(), e);
+        }
+    }
+
+    /** The scan supports one namespace level; a namespace left empty by the deletion is cleaned up. */
+    private static void removeNamespaceIfEmpty(Path root, Path parent) {
+        if (parent == null || parent.equals(root) || !parent.startsWith(root)) {
+            return;
+        }
+        try (var stream = Files.list(parent)) {
+            if (stream.findAny().isEmpty()) {
+                Files.deleteIfExists(parent);
+            }
+        } catch (IOException e) {
+            LOGGER.warn("failed to clean up empty skill namespace {}: {}", parent, e.getMessage());
         }
     }
 
