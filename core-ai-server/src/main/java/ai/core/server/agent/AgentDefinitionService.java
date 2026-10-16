@@ -228,6 +228,7 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
+        requirePersonalAssistantOwnerOrAdmin(entity, userId);
         requireAccessibleSkills(request.skillIds != null ? request.skillIds : entity.skillIds, userId);
 
         if (request.name != null) {
@@ -273,6 +274,7 @@ public class AgentDefinitionService {
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
+        requirePersonalAssistantOwnerOrAdmin(entity, userId);
         var publishedSkillIds = requireAccessibleSkills(entity.skillIds, userId);
         requirePublishedLlmCallDependencies(entity);
         requirePublishedSubAgentDependencies(entity);
@@ -329,40 +331,12 @@ public class AgentDefinitionService {
         return cleanSkillIds;
     }
 
-//    public AgentDefinitionView createFromSession(CreateAgentFromSessionRequest request, String userId) {
-//        var session = sessionManager.getSession(request.sessionId);
-//        var agent = session.agent();
-//
-//        var entity = new AgentDefinition();
-//        entity.id = UUID.randomUUID().toString();
-//        entity.userId = userId;
-//        entity.name = request.name;
-//        entity.description = request.description;
-//        entity.systemPrompt = agent.getSystemPrompt();
-//        entity.model = agent.getModel();
-//        entity.multiModalModel = agent.getMultiModalModel();
-//        entity.temperature = agent.getTemperature();
-//        entity.maxTurns = 200;
-//        entity.timeoutSeconds = 600;
-//        entity.tools = agent.getToolCalls().stream()
-//                .map(tc -> ToolRef.fromLegacyToolId(tc.getName()))
-//                .toList();
-//        entity.inputTemplate = request.inputTemplate;
-//        entity.type = DefinitionType.AGENT;
-//        entity.enableMemory = Boolean.FALSE;
-//        entity.status = AgentStatus.DRAFT;
-//        entity.createdAt = ZonedDateTime.now();
-//        entity.updatedAt = entity.createdAt;
-//
-//        agentDefinitionCollection.insert(entity);
-//        return toView(entity);
-//    }
-
     public void delete(String id, String userId) {
         var entity = agentDefinitionCollection.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         requireAdminForSystemDefault(entity, userId);
         requireAdminForPersonalAssistant(entity, userId);
+        requireOwnerOrAdminForDelete(entity, userId);
         agentDefinitionCollection.delete(id);
         notifyCatalogChanged();
     }
@@ -434,6 +408,21 @@ public class AgentDefinitionService {
         if (userId == null || !isAdmin(userId)) {
             throw new ForbiddenException("personal assistant cannot be deleted");
         }
+    }
+
+    // A personal assistant is a per-user private copy (forkedFrom !== null), so unlike ordinary agents —
+    // which collaborators may edit — only its owner or an admin may change one.
+    private void requirePersonalAssistantOwnerOrAdmin(AgentDefinition entity, String userId) {
+        if (entity.forkedFrom == null) return;
+        if (userId != null && (userId.equals(entity.userId) || isAdmin(userId))) return;
+        throw new ForbiddenException("personal assistant can only be changed by its owner or an admin");
+    }
+
+    // Deleting is destructive and has no collaboration story: an ordinary agent may only be deleted
+    // by its owner; built-in agents and personal assistants are handled by the checks above.
+    private void requireOwnerOrAdminForDelete(AgentDefinition entity, String userId) {
+        if (userId != null && (userId.equals(entity.userId) || isAdmin(userId))) return;
+        throw new ForbiddenException("only the owner or an admin can delete this agent");
     }
 
     private boolean isAdmin(String userId) {

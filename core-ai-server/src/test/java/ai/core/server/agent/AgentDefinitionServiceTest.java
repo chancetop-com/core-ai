@@ -303,6 +303,110 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
+    void updateRejectsPersonalAssistantForNonOwner() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+        var request = new UpdateAgentRequest();
+        request.systemPrompt = "hijacked";
+
+        var error = assertThrows(ForbiddenException.class,
+                () -> service(collection).update(assistant.id, request, "user-2"));
+
+        assertEquals("personal assistant can only be changed by its owner or an admin", error.getMessage());
+        assertNull(assistant.systemPrompt);
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
+    void updateAllowsPersonalAssistantForItsOwner() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+        var request = new UpdateAgentRequest();
+        request.description = "my own assistant";
+
+        service(collection).update(assistant.id, request, "user-1");
+
+        assertEquals("my own assistant", assistant.description);
+        verify(collection).replace(assistant);
+    }
+
+    @Test
+    void updateAllowsPersonalAssistantForAdmin() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+        var admin = new User();
+        admin.id = "admin-1";
+        admin.role = "admin";
+        when(service.userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        var request = new UpdateAgentRequest();
+        request.description = "support fix";
+
+        service.update(assistant.id, request, "admin-1");
+
+        assertEquals("support fix", assistant.description);
+        verify(collection).replace(assistant);
+    }
+
+    @Test
+    void publishRejectsPersonalAssistantForNonOwner() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.DRAFT);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+
+        var error = assertThrows(ForbiddenException.class,
+                () -> service(collection).publish(assistant.id, "user-2"));
+
+        assertEquals("personal assistant can only be changed by its owner or an admin", error.getMessage());
+        assertEquals(AgentStatus.DRAFT, assistant.status);
+        assertNull(assistant.publishedConfig);
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
+    void publishAllowsPersonalAssistantForItsOwner() {
+        var collection = agentCollection();
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.DRAFT);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.get(assistant.id)).thenReturn(Optional.of(assistant));
+
+        service(collection).publish(assistant.id, "user-1");
+
+        assertEquals(AgentStatus.PUBLISHED, assistant.status);
+        verify(collection).replace(assistant);
+    }
+
+    @Test
+    void deleteRejectsOrdinaryAgentForNonOwner() {
+        var collection = agentCollection();
+        var agent = definition("team-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.get(agent.id)).thenReturn(Optional.of(agent));
+
+        var error = assertThrows(ForbiddenException.class, () -> service(collection).delete(agent.id, "user-2"));
+
+        assertEquals("only the owner or an admin can delete this agent", error.getMessage());
+        verify(collection, never()).delete(agent.id);
+    }
+
+    @Test
+    void deleteAllowsOrdinaryAgentForItsOwner() {
+        var collection = agentCollection();
+        var agent = definition("my-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.get(agent.id)).thenReturn(Optional.of(agent));
+
+        service(collection).delete(agent.id, "user-1");
+
+        verify(collection).delete(agent.id);
+    }
+
+    @Test
     void favoriteInitializesNullFieldThenAddsAgentId() {
         var collection = agentCollection();
         var agent = definition("agent-1", "owner", DefinitionType.AGENT, AgentStatus.PUBLISHED);
