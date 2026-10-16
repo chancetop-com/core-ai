@@ -138,7 +138,9 @@ public class ComparisonViewAssembler {
 
     public AgentComparisonView toDetailView(AgentComparison comparison, boolean manager) {
         var view = baseView(comparison);
-        view.agentChanged = agentChanged(comparison);
+        var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
+        view.agentChanged = agentChanged(comparison, agent);
+        view.adoptRevertable = adoptRevertable(comparison, agent);
         if (manager) {
             view.variantA = variantView(comparison.variantA, "a", managerLabel(comparison.variantA, "a"), true, summary(comparison, "a"));
             view.variantB = variantView(comparison.variantB, "b", managerLabel(comparison.variantB, "b"), true, summary(comparison, "b"));
@@ -239,10 +241,14 @@ public class ComparisonViewAssembler {
         return view;
     }
 
-    private boolean agentChanged(AgentComparison comparison) {
+    private boolean agentChanged(AgentComparison comparison, AgentDefinition agent) {
         // the fingerprint only exists once the test started; a draft has nothing to drift from
         if (comparison.status == null || comparison.status == ComparisonStatus.DRAFT) return false;
-        var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
         return agent == null || !Objects.equals(agent.publishedAt, comparison.agentPublishedAt);
+    }
+
+    private boolean adoptRevertable(AgentComparison comparison, AgentDefinition agent) {
+        if (comparison.adoptedVariant == null || comparison.preAdoptConfig == null) return false;
+        return agent != null && Objects.equals(agent.updatedAt, comparison.adoptAgentUpdatedAt);
     }
 }

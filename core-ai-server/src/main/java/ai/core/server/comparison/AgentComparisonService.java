@@ -36,7 +36,6 @@ import java.time.ZonedDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -69,6 +68,8 @@ public class AgentComparisonService {
     SkillService skillService;
     @Inject
     ComparisonViewAssembler assembler;
+    @Inject
+    ComparisonAdoptionService adoptionService;
 
     public AgentComparisonView create(CreateAgentComparisonRequest request, String userId) {
         if (request == null || request.agentId == null || request.agentId.isBlank()) {
@@ -264,12 +265,56 @@ public class AgentComparisonService {
             throw new BadRequestException("adopt must be a, b or null");
         }
         if (adopt != null) {
-            adoptVariant(comparison, adopt, request != null && Boolean.TRUE.equals(request.force), userId);
+            adoptionService.adopt(comparison, adopt, request != null && Boolean.TRUE.equals(request.force), userId);
+            comparison.adoptedVariant = adopt;
         }
-        comparison.adoptedVariant = adopt;
         comparison.status = ComparisonStatus.ENDED;
         comparison.endedAt = ZonedDateTime.now();
         comparison.updatedAt = comparison.endedAt;
+        comparisonCollection.replace(comparison);
+        return assembler.toDetailView(comparison, true);
+    }
+
+    /**
+     * Re-opens an ended comparison: sessions, votes and frozen variants are all kept, so testers can
+     * keep running pairs and voting. An adoption made at end time stays in effect on the agent until it
+     * is explicitly reverted (or superseded by a later adoption).
+     */
+    public AgentComparisonView resume(String id, String userId) {
+        var comparison = requireComparison(id);
+        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        if (comparison.status != ComparisonStatus.ENDED) {
+            throw new BadRequestException("only an ended comparison can be resumed");
+        }
+        if (runningComparison(comparison.agentId, comparison.id).isPresent()) {
+            throw new BadRequestException("agent already has a running comparison");
+        }
+        comparison.status = ComparisonStatus.RUNNING;
+        comparison.endedAt = null;
+        comparison.updatedAt = ZonedDateTime.now();
+        comparisonCollection.replace(comparison);
+        return assembler.toDetailView(comparison, true);
+    }
+
+    /**
+     * Undoes an adoption: republishes the config the agent had right before the adopting publish. Only
+     * possible while nobody has touched the agent since (updatedAt fingerprint), so a revert can never
+     * silently overwrite newer work.
+     */
+    public AgentComparisonView revertAdopt(String id, String userId) {
+        var comparison = requireComparison(id);
+        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        if (comparison.status == ComparisonStatus.DRAFT) {
+            throw new BadRequestException("comparison has not started");
+        }
+        if (comparison.adoptedVariant == null || comparison.preAdoptConfig == null) {
+            throw new BadRequestException("there is no adoption to revert");
+        }
+        adoptionService.revert(comparison, userId);
+        comparison.adoptedVariant = null;
+        comparison.preAdoptConfig = null;
+        comparison.adoptAgentUpdatedAt = null;
+        comparison.updatedAt = ZonedDateTime.now();
         comparisonCollection.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
@@ -281,46 +326,6 @@ public class AgentComparisonService {
             throw new BadRequestException("only a draft comparison can be deleted; end a running test instead");
         }
         comparisonCollection.delete(id);
-    }
-
-    private void adoptVariant(AgentComparison comparison, String adopt, boolean force, String userId) {
-        var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
-        if (agent == null) throw new BadRequestException("agent is unavailable");
-        if (!force && !Objects.equals(agent.publishedAt, comparison.agentPublishedAt)) {
-            throw new BadRequestException("agent was modified after the comparison started; retry with force to overwrite");
-        }
-        var variant = ComparisonVariantDefinitionFactory.variantOf(comparison, adopt);
-        if (variant == null || variant.config == null) throw new BadRequestException("variant is unavailable");
-        applyConfigAndPublish(agent, variant.config, userId);
-    }
-
-    /**
-     * Adopt a frozen variant: assign the editable fields from the snapshot, then run the normal publish
-     * flow so every validation (skill accessibility, dependencies, system-default admin) still applies.
-     */
-    private void applyConfigAndPublish(AgentDefinition entity, AgentPublishedConfig config, String userId) {
-        entity.systemPrompt = config.systemPrompt;
-        entity.systemPromptId = null;
-        entity.model = config.model;
-        entity.multiModalModel = config.multiModalModel;
-        entity.preferCaptionPath = config.preferCaptionPath;
-        entity.temperature = config.temperature;
-        entity.thinkingEffort = config.thinkingEffort;
-        entity.maxTurns = config.maxTurns;
-        entity.timeoutSeconds = config.timeoutSeconds;
-        entity.tools = config.tools != null ? List.copyOf(config.tools) : null;
-        entity.skillIds = IdLists.cleanOrNull(config.skillIds);
-        entity.subAgentIds = IdLists.cleanOrNull(config.subAgentIds);
-        entity.inputTemplate = config.inputTemplate;
-        entity.variables = config.variables;
-        entity.responseSchema = config.responseSchema;
-        entity.enableMemory = config.enableMemory;
-        entity.sandboxConfig = config.sandboxConfig;
-        entity.datasetConfig = config.datasetConfig;
-        entity.updatedAt = ZonedDateTime.now();
-        entity.updatedBy = userId;
-        agentDefinitionCollection.replace(entity);
-        agentDefinitionService.publish(entity.id, userId);
     }
 
     private ComparisonVariant newVariant(String label, AgentPublishedConfig config) {

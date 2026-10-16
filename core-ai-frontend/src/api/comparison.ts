@@ -100,6 +100,8 @@ export interface AgentComparison {
   counts?: ComparisonCounts;
   budget_usd?: number;
   agent_changed?: boolean;
+  /** true while an accidental adoption can still be undone (agent untouched since the adopting publish) */
+  adopt_revertable?: boolean;
   started_at?: string;
   ended_at?: string;
   adopted_variant?: string;
@@ -214,6 +216,18 @@ export const comparisonApi = {
     request<AgentComparison>(`/api/agent-comparisons/${encodeURIComponent(id)}/end`, {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  /** Re-opens an ended experiment; sessions, votes and frozen variants are kept. */
+  resume: (id: string) =>
+    request<AgentComparison>(`/api/agent-comparisons/${encodeURIComponent(id)}/resume`, {
+      method: 'POST',
+    }),
+
+  /** Undoes an adoption by republishing the config the agent had before the adopting publish. */
+  revertAdopt: (id: string) =>
+    request<AgentComparison>(`/api/agent-comparisons/${encodeURIComponent(id)}/revert-adopt`, {
+      method: 'POST',
     }),
 
   remove: (id: string) =>

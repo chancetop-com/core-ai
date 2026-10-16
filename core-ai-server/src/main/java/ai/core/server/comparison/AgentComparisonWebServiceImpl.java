@@ -95,6 +95,22 @@ public class AgentComparisonWebServiceImpl implements AgentComparisonWebService 
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_COMPARE)
+    public AgentComparisonView resume(String id) {
+        var userId = userId();
+        ActionLogContext.put("comparison_id", id);
+        return comparisonService.resume(id, userId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_COMPARE)
+    public AgentComparisonView revertAdopt(String id) {
+        var userId = userId();
+        ActionLogContext.put("comparison_id", id);
+        return comparisonService.revertAdopt(id, userId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_COMPARE)
     public void delete(String id) {
         comparisonService.delete(id, userId());
     }

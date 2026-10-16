@@ -1,5 +1,7 @@
 package ai.core.server.comparison.domain;
 
+import ai.core.server.domain.AgentPublishedConfig;
+
 import core.framework.mongo.Collection;
 import core.framework.mongo.Field;
 import core.framework.mongo.Id;
@@ -63,9 +65,23 @@ public class AgentComparison {
     @Field(name = "ended_at")
     public ZonedDateTime endedAt;
 
-    /** "a" | "b" | null (abandoned without adopting). */
+    /** "a" | "b" | null (nothing adopted by this comparison so far). */
     @Field(name = "adopted_variant")
     public String adoptedVariant;
+
+    /**
+     * Editable config of the live agent right before the last adoption, so an accidental adopt can be
+     * reverted without guessing which side was live. Cleared when the adoption is reverted.
+     */
+    @Field(name = "pre_adopt_config")
+    public AgentPublishedConfig preAdoptConfig;
+
+    /**
+     * updatedAt of the live agent right after the adopting publish. A mismatch means somebody touched
+     * the agent since (edited or republished), which invalidates the revert snapshot.
+     */
+    @Field(name = "adopt_agent_updated_at")
+    public ZonedDateTime adoptAgentUpdatedAt;
 
     @Field(name = "budget_usd")
     public Double budgetUsd;

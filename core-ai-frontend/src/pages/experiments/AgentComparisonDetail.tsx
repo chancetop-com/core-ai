@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, FlaskConical, Loader2, Trash2 } from 'lucide-react';
+import { ArrowLeft, Eye, FlaskConical, Loader2, RotateCcw, Trash2, Undo2 } from 'lucide-react';
 import {
   agentVersionApi,
   comparisonApi,
@@ -9,6 +9,7 @@ import {
   type ComparisonVariant,
 } from '../../api/comparison';
 import type { ToolRef } from '../../api/session';
+import VariantConfigModal from './VariantConfigModal';
 
 const inputStyle: React.CSSProperties = {
   borderColor: 'var(--color-border)',
@@ -29,6 +30,20 @@ function checkedToolIds(variant?: ComparisonVariant): Set<string> {
   return new Set((variant?.effective_tools || []).map(ref => ref.id));
 }
 
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto"
+      style={{ background: 'rgba(0,0,0,0.45)' }} onClick={onClose}>
+      <div className="my-8 w-[520px] max-w-[92vw] rounded-xl border p-5"
+        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)' }}
+        onClick={event => event.stopPropagation()}>
+        <h2 className="text-sm font-semibold" style={{ color: 'var(--color-text)' }}>{title}</h2>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 /** Detail of one comparison record: configuration (draft/running) plus votes and session pairs. */
 export default function AgentComparisonDetail() {
   const { id } = useParams();
@@ -42,6 +57,10 @@ export default function AgentComparisonDetail() {
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [configArm, setConfigArm] = useState<'a' | 'b' | null>(null);
+  const [endConfirm, setEndConfirm] = useState<{ adopt: 'a' | 'b' | null } | null>(null);
+  const [resumeConfirm, setResumeConfirm] = useState(false);
+  const [revertConfirm, setRevertConfirm] = useState(false);
 
   const applyDetail = useCallback((res: AgentComparison) => {
     setDetail(res);
@@ -125,6 +144,16 @@ export default function AgentComparisonDetail() {
     }
   }), [detail, run]);
 
+  const handleResume = useCallback(() => run(async () => {
+    if (!detail) return;
+    await comparisonApi.resume(detail.id);
+  }), [detail, run]);
+
+  const handleRevertAdopt = useCallback(() => run(async () => {
+    if (!detail) return;
+    await comparisonApi.revertAdopt(detail.id);
+  }), [detail, run]);
+
   const handleDelete = useCallback(async () => {
     if (!detail) return;
     if (!window.confirm('删除这条草稿实验记录？')) return;
@@ -177,6 +206,19 @@ export default function AgentComparisonDetail() {
     id: version.id,
     label: `${version.label || version.id.slice(0, 8)} · ${version.model || '(default)'}`,
   })), [versions]);
+
+  const armSourceNote = useCallback((which: 'a' | 'b') => {
+    if (!detail) return '';
+    const versionId = which === 'a' ? detail.version_a_id : detail.version_b_id;
+    if (versionId) return `来源：保存版本 ${versionId.slice(0, 8)}`;
+    return which === 'a' ? '来源：线上配置快照' : '来源：与版本 A 相同（副本）';
+  }, [detail]);
+
+  const variantLabel = useCallback((which: 'a' | 'b') => {
+    if (!detail) return which.toUpperCase();
+    const variant = which === 'a' ? detail.variant_a : detail.variant_b;
+    return variant?.label || `版本 ${which.toUpperCase()}`;
+  }, [detail]);
 
   const detailDraft = detail?.status === 'DRAFT';
   const detailRunning = detail?.status === 'RUNNING';
@@ -297,9 +339,18 @@ export default function AgentComparisonDetail() {
           const variant = which === 'a' ? detail.variant_a : detail.variant_b;
           return (
             <div key={which} className="rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
-              <div className="mb-1 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
-                {variant?.label || which.toUpperCase()}
-                {which === 'a' ? (detail.version_a_id ? '（版本）' : '（当前线上）') : (detail.version_b_id ? '（版本）' : '（A 副本）')}
+              <div className="mb-1 flex items-center gap-2 text-xs font-semibold" style={{ color: 'var(--color-text)' }}>
+                <span>
+                  {variant?.label || which.toUpperCase()}
+                  {which === 'a' ? (detail.version_a_id ? '（版本）' : '（当前线上）') : (detail.version_b_id ? '（版本）' : '（A 副本）')}
+                </span>
+                {!detail.blind && (
+                  <button type="button" onClick={() => setConfigArm(which)}
+                    className="ml-auto inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-normal cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                    <Eye size={11} /> 查看完整配置
+                  </button>
+                )}
               </div>
               <div className="mb-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                 model: <code className="font-mono">{variant?.model || '(default)'}</code>
@@ -314,44 +365,68 @@ export default function AgentComparisonDetail() {
         })}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {detailDraft && (
-          <>
-            <button type="button" onClick={() => void handleSaveDraft()} disabled={busy}
-              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-              保存配置
-            </button>
-            <button type="button" onClick={() => void handleStart()} disabled={busy}
-              className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer" style={{ background: 'var(--color-success)' }}>
-              启动测试
-            </button>
-          </>
-        )}
+      <div className="flex flex-col gap-2">
         {detailRunning && (
-          <>
-            <button type="button" onClick={() => void handleSaveDraft()} disabled={busy}
-              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-              保存参与者/预算
-            </button>
-            <button type="button" onClick={() => void handleEnd('a')} disabled={busy}
-              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-              结束并采用版本 A
-            </button>
-            <button type="button" onClick={() => void handleEnd('b')} disabled={busy}
-              className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer" style={{ background: 'var(--color-primary)' }}>
-              结束并采用版本 B
-            </button>
-            <button type="button" onClick={() => void handleEnd(null)} disabled={busy}
-              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-              结束（不采用）
-            </button>
-          </>
+          <div className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+            「结束」会让参与者不能再开启新的对比轮次；「采用」会立即把该版本发布为线上配置（选错可用「撤回采用」恢复）。
+          </div>
         )}
-        {detail.status === 'ENDED' && (
-          <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-            {detail.adopted_variant ? `已采用版本 ${detail.adopted_variant.toUpperCase()}` : '已结束（未采用任何版本）'}
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {detailDraft && (
+            <>
+              <button type="button" onClick={() => void handleSaveDraft()} disabled={busy}
+                className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                保存配置
+              </button>
+              <button type="button" onClick={() => void handleStart()} disabled={busy}
+                className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer" style={{ background: 'var(--color-success)' }}>
+                启动测试
+              </button>
+            </>
+          )}
+          {detailRunning && (
+            <>
+              <button type="button" onClick={() => void handleSaveDraft()} disabled={busy}
+                className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                保存参与者/预算
+              </button>
+              <button type="button" onClick={() => setEndConfirm({ adopt: 'a' })} disabled={busy}
+                className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                结束并采用版本 A
+              </button>
+              <button type="button" onClick={() => setEndConfirm({ adopt: 'b' })} disabled={busy}
+                className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                结束并采用版本 B
+              </button>
+              <button type="button" onClick={() => setEndConfirm({ adopt: null })} disabled={busy}
+                className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                结束（不采用）
+              </button>
+            </>
+          )}
+          {(detailRunning || detail.status === 'ENDED') && detail.adopted_variant && detail.adopt_revertable && (
+            <button type="button" onClick={() => setRevertConfirm(true)} disabled={busy}
+              className="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+              <Undo2 size={12} /> 撤回采用（恢复采用前的线上配置）
+            </button>
+          )}
+          {detail.status === 'ENDED' && (
+            <>
+              <button type="button" onClick={() => setResumeConfirm(true)} disabled={busy}
+                className="inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer disabled:opacity-40"
+                style={{ background: 'var(--color-success)' }}>
+                <RotateCcw size={12} /> 继续实验
+              </button>
+              <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                {detail.adopted_variant
+                  ? `已采用版本 ${detail.adopted_variant.toUpperCase()}；线上配置即该版本`
+                  : '已结束（未采用任何版本）'}
+                {detail.adopted_variant && !detail.adopt_revertable && '（撤回不可用：该 agent 在采用后又被修改过）'}
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
       {counts && (
@@ -380,6 +455,107 @@ export default function AgentComparisonDetail() {
             </div>
           )}
         </div>
+      )}
+
+      {configArm && (() => {
+        const versionId = configArm === 'a' ? detail.version_a_id : detail.version_b_id;
+        return (
+          <VariantConfigModal
+            variantKey={configArm}
+            variant={configArm === 'a' ? detail.variant_a : detail.variant_b}
+            sourceNote={armSourceNote(configArm)}
+            versionId={versionId}
+            onOpenVersion={() => {
+              if (versionId) navigate(`/experiments/agent-comparison/versions/${versionId}`);
+            }}
+            onClose={() => setConfigArm(null)}
+          />
+        );
+      })()}
+
+      {endConfirm && (
+        <Dialog title={endConfirm.adopt ? `结束并采用${variantLabel(endConfirm.adopt)}？` : '结束实验（不采用任何版本）？'}
+          onClose={() => { if (!busy) setEndConfirm(null); }}>
+          <ul className="mt-3 flex flex-col gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            {endConfirm.adopt ? (
+              <>
+                <li>· 线上 agent 立即换用「{variantLabel(endConfirm.adopt)}」的配置，对所有用户生效</li>
+                <li>· 实验结束，参与者不能再双跑与投票</li>
+                <li>· 如果选错了：结束后可用「撤回采用」恢复采用前的线上配置（期间若有人修改过该 agent 则无法撤回）</li>
+              </>
+            ) : (
+              <>
+                <li>· 实验结束，参与者不能再双跑与投票</li>
+                <li>· 线上配置保持不变{detail.adopted_variant ? `（此前采用的版本 ${detail.adopted_variant.toUpperCase()} 仍在线）` : ''}</li>
+              </>
+            )}
+          </ul>
+          {endConfirm.adopt && detail.agent_changed && (
+            <p className="mt-3 text-xs" style={{ color: 'var(--color-warning)' }}>
+              注意：线上 agent 在测试开始后被修改过，采用会覆盖那些修改（会再要求一次确认）。
+            </p>
+          )}
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setEndConfirm(null)} disabled={busy}
+              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              取消
+            </button>
+            <button type="button" disabled={busy}
+              onClick={() => { const adopt = endConfirm.adopt; setEndConfirm(null); void handleEnd(adopt); }}
+              className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer disabled:opacity-40"
+              style={{ background: endConfirm.adopt ? 'var(--color-error)' : 'var(--color-primary)' }}>
+              {endConfirm.adopt ? `确认采用${variantLabel(endConfirm.adopt)}并结束` : '确认结束'}
+            </button>
+          </div>
+        </Dialog>
+      )}
+
+      {resumeConfirm && (
+        <Dialog title="继续实验？" onClose={() => { if (!busy) setResumeConfirm(false); }}>
+          <ul className="mt-3 flex flex-col gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <li>· 实验重新变为「进行中」，参与者在聊天里会再次看到对比入口</li>
+            <li>· 已有的会话对与投票全部保留</li>
+            <li>· 线上配置不受影响</li>
+          </ul>
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setResumeConfirm(false)} disabled={busy}
+              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              取消
+            </button>
+            <button type="button" disabled={busy}
+              onClick={() => { setResumeConfirm(false); void handleResume(); }}
+              className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-success)' }}>
+              继续实验
+            </button>
+          </div>
+        </Dialog>
+      )}
+
+      {revertConfirm && detail.adopted_variant && (
+        <Dialog title={`撤回采用（版本 ${detail.adopted_variant.toUpperCase()}）？`}
+          onClose={() => { if (!busy) setRevertConfirm(false); }}>
+          <ul className="mt-3 flex flex-col gap-1.5 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            <li>· 线上 agent 配置恢复为“采用之前”的快照并重新发布，对所有用户生效</li>
+            <li>· 实验状态不变（仍为已结束；要继续测试请用「继续实验」）</li>
+            <li>· 只有在该 agent 于采用后没有被修改过时才允许撤回</li>
+          </ul>
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <button type="button" onClick={() => setRevertConfirm(false)} disabled={busy}
+              className="rounded-lg border px-3 py-1.5 text-xs cursor-pointer disabled:opacity-40"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              取消
+            </button>
+            <button type="button" disabled={busy}
+              onClick={() => { setRevertConfirm(false); void handleRevertAdopt(); }}
+              className="rounded-lg px-3 py-1.5 text-xs text-white cursor-pointer disabled:opacity-40"
+              style={{ background: 'var(--color-error)' }}>
+              确认撤回
+            </button>
+          </div>
+        </Dialog>
       )}
     </div>
   );

@@ -71,6 +71,10 @@ public class AgentComparisonView {
     @Property(name = "adopted_variant")
     public String adoptedVariant;
 
+    /** true while an accidental adoption can still be undone: the agent was not touched after the adopting publish. */
+    @Property(name = "adopt_revertable")
+    public Boolean adoptRevertable;
+
     @Property(name = "created_at")
     public ZonedDateTime createdAt;
 

@@ -15,6 +15,7 @@ public class ComparisonModule extends Module {
     protected void initialize() {
         bind(ComparisonViewAssembler.class);
         bind(AgentVersionService.class);
+        bind(ComparisonAdoptionService.class);
         bind(AgentComparisonService.class);
         bind(ComparisonSessionService.class);
         api().service(AgentComparisonWebService.class, bind(AgentComparisonWebServiceImpl.class));

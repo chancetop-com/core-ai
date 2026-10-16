@@ -54,6 +54,14 @@ public interface AgentComparisonWebService {
     @Path("/api/agent-comparisons/:id/end")
     AgentComparisonView end(@PathParam("id") String id, EndAgentComparisonRequest request);
 
+    @POST
+    @Path("/api/agent-comparisons/:id/resume")
+    AgentComparisonView resume(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/agent-comparisons/:id/revert-adopt")
+    AgentComparisonView revertAdopt(@PathParam("id") String id);
+
     @DELETE
     @Path("/api/agent-comparisons/:id")
     void delete(@PathParam("id") String id);
