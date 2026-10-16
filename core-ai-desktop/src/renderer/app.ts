@@ -217,7 +217,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   updateInstall(): Promise<UpdateState | null>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
-  onBrowserNeedPanel(callback: () => void): () => void;
+  onBrowserNeedPanel(callback: (force: boolean) => void): () => void;
   info(): Promise<any>;
   getSettings(): Promise<any>;
   setSettings(patch: Record<string, unknown>): Promise<any>;
@@ -2737,8 +2737,9 @@ async function browserAction(action: () => Promise<BrowserStatus | null>): Promi
 
 /**
  * The native view floats above the DOM, so main needs the placeholder rect in window
- * coordinates. Debounced through requestAnimationFrame and deduplicated; a hidden panel or a
- * stopped browser sends null once to hide the view.
+ * coordinates. Debounced through requestAnimationFrame and deduplicated; a pane that is not on
+ * screen — collapsed dock, stopped browser, another nav page, or a placeholder that is not laid
+ * out — sends null once to hide the view.
  */
 function scheduleBrowserBounds(): void {
   if (browserBoundsTimer !== null) window.cancelAnimationFrame(browserBoundsTimer);
@@ -2746,15 +2747,16 @@ function scheduleBrowserBounds(): void {
     browserBoundsTimer = null;
     const frame = browserBodyEl;
     const running = Boolean(state.browserStatus?.running);
-    if (state.rightDock !== 'browser' || !running || !frame) {
-      if (browserBoundsValue !== null) {
-        browserBoundsValue = null;
-        void window.coreai.browserSetBounds(null).catch(() => undefined);
-      }
+    // The pane lives on the session page: any other page (skills, settings, …) hides the view
+    // exactly like a collapsed dock does.
+    const onSessionPage = state.nav === 'sessions' && state.rightDock === 'browser';
+    const rect = onSessionPage && running && frame ? frame.getBoundingClientRect() : null;
+    // A detached or hidden placeholder reports a degenerate rect — hide instead of leaving the
+    // view floating at its stale rect.
+    if (!rect || rect.width < 2 || rect.height < 2) {
+      hideBrowserView();
       return;
     }
-    const rect = frame.getBoundingClientRect();
-    if (rect.width < 2 || rect.height < 2) return;
     const bounds: BrowserBounds = {
       x: Math.round(rect.left),
       y: Math.round(rect.top),
@@ -2766,6 +2768,13 @@ function scheduleBrowserBounds(): void {
     browserBoundsValue = serialized;
     void window.coreai.browserSetBounds(bounds).catch(() => undefined);
   });
+}
+
+/** Sends null once to hide the native view (deduplicated through browserBoundsValue). */
+function hideBrowserView(): void {
+  if (browserBoundsValue === null) return;
+  browserBoundsValue = null;
+  void window.coreai.browserSetBounds(null).catch(() => undefined);
 }
 
 function renderBrowserPanel(): void {
@@ -2934,8 +2943,13 @@ async function startBrowser(): Promise<void> {
   toast('Starting the embedded browser…');
   try {
     applyBrowserStatus(await window.coreai.browserStart());
-    state.rightDock = 'browser';
-    renderDock();
+    // The pane lives on the session page: a start triggered from elsewhere (an agent autostart
+    // while the user reads another page) must not open the dock under that page — the pane opens
+    // next time the session page is shown.
+    if (state.nav === 'sessions') {
+      state.rightDock = 'browser';
+      renderDock();
+    }
     toast('Browser ready — the agent attaches to this pane');
   } catch (error) {
     toast(`Browser start failed: ${cleanIpcError(error)}`);
@@ -2964,7 +2978,8 @@ function maybeAutoStartBrowser(event: Record<string, unknown>): void {
   const args = typeof event.arguments === 'string' ? event.arguments : '';
   if (!args.includes('browser-use')) return;
   if (state.browserStatus?.running) {
-    if (state.rightDock !== 'browser') setRightDock('browser');
+    // Reopen the pane for the tool — but only on the session page it belongs to.
+    if (state.rightDock !== 'browser' && state.nav === 'sessions') setRightDock('browser');
     return;
   }
   if (state.browserStarting) return;
@@ -5382,6 +5397,17 @@ function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
 
 let contentRenderToken = 0;
 
+/**
+ * Swaps the router's content, then re-syncs the browser view: the native view may only float
+ * over a placeholder that is on screen, so leaving (or re-entering) the session page must take
+ * effect immediately — a detached frame reports no rect, which hides the view.
+ */
+function mountContent(content: HTMLElement, node?: Node): void {
+  if (node) content.replaceChildren(node);
+  else content.replaceChildren();
+  scheduleBrowserBounds();
+}
+
 async function renderContent(): Promise<void> {
   const token = ++contentRenderToken;
   const content = document.getElementById('content') as HTMLElement;
@@ -5391,18 +5417,17 @@ async function renderContent(): Promise<void> {
   if (token !== contentRenderToken) return;
 
   if (!info.engineExists) {
-    content.replaceChildren();
     const empty = el('div', 'empty-state');
     empty.append(el('div', 'big', 'core-ai-desktop'));
     empty.append(el('div', 'notice error', `Engine not found: ${info.enginePath} — run .\\gradlew.bat :core-ai-cli:installDist first`));
-    content.append(empty);
+    mountContent(content, empty);
     return;
   }
 
   if (!state.workspace) {
     if (state.nav === 'sessions') {
       if (!chatView) buildChatView();
-      content.replaceChildren(chatView as HTMLElement);
+      mountContent(content, chatView as HTMLElement);
       updateChatHeader();
       showSessionView(ensureSessionView(state.sessionId));
       showBlankHint();
@@ -5412,7 +5437,7 @@ async function renderContent(): Promise<void> {
     // must not wait for a workspace. The engine-scoped rows inside drop out on their own.
     if (state.nav === 'settings') {
       const panel = await renderSettingsPanel();
-      if (token === contentRenderToken) content.replaceChildren(panel);
+      if (token === contentRenderToken) mountContent(content, panel);
       return;
     }
     // The other panels are engine-backed but not about one specific workspace (hub, skills,
@@ -5424,7 +5449,7 @@ async function renderContent(): Promise<void> {
 
   if (state.nav === 'sessions') {
     if (!chatView) buildChatView();
-    content.replaceChildren(chatView as HTMLElement);
+    mountContent(content, chatView as HTMLElement);
     updateChatHeader();
     showSessionView(ensureSessionView(state.sessionId));
     showBlankHint();
@@ -5445,7 +5470,7 @@ async function renderContent(): Promise<void> {
     panel = await renderSettingsPanel();
   }
   if (token !== contentRenderToken) return;
-  content.replaceChildren(panel);
+  mountContent(content, panel);
 }
 
 // ---------- bootstrap ----------
@@ -5518,14 +5543,24 @@ async function bootstrap(): Promise<void> {
     const wasRunning = Boolean(state.browserStatus?.running);
     applyBrowserStatus(status);
     // Covers a browser the main process started on its own (autostart): when it becomes
-    // running, open the pane so the view gets laid out (bounds) and the user can watch.
-    if (status?.running && !wasRunning && state.rightDock === 'none') {
+    // running, open the pane so the view gets laid out (bounds) and the user can watch — but
+    // only on the session page the pane lives on.
+    if (status?.running && !wasRunning && state.rightDock === 'none' && state.nav === 'sessions') {
       setRightDock('browser');
     }
   });
-  window.coreai.onBrowserNeedPanel(() => {
+  window.coreai.onBrowserNeedPanel((force: boolean) => {
     // The agent attached to a tab the view tree cannot lay out while the panel is hidden.
     if (!state.browserStatus?.running) return;
+    if (state.nav !== 'sessions') {
+      // The pane lives on the session page. A frame-dependent command about to dispatch (force)
+      // cannot run without a laid-out view — input and screenshots need a compositor frame — so
+      // the page must come back; a plain nudge must never pull the user off another page.
+      if (!force) return;
+      state.nav = 'sessions';
+      renderSidebar();
+      void renderContent();
+    }
     if (state.rightDock !== 'browser') {
       setRightDock('browser');
     } else {
@@ -5535,7 +5570,7 @@ async function bootstrap(): Promise<void> {
   void window.coreai.browserStatus().then((status) => {
     applyBrowserStatus(status);
     // A browser that was already running when the window loaded (e.g. autostart) opens the pane.
-    if (status?.running && state.rightDock === 'none') {
+    if (status?.running && state.rightDock === 'none' && state.nav === 'sessions') {
       setRightDock('browser');
     }
   }).catch(() => undefined);

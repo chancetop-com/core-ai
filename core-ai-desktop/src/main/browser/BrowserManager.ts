@@ -40,8 +40,13 @@ export interface BrowserBounds {
 
 export interface BrowserManagerOptions {
   onState: (status: BrowserStatus) => void;
-  /** The agent needs a laid-out tab but the panel is not reporting bounds (hidden/never opened). */
-  onNeedsPanel: () => void;
+  /**
+   * A tab needs the panel: it is not reporting bounds (hidden/never opened) and the view tree
+   * cannot lay the tab out. `force` marks a frame-dependent command about to dispatch — the pane
+   * must come back then, even if the user is on another page; a plain nudge may only open the
+   * pane where it lives.
+   */
+  onNeedsPanel: (force: boolean) => void;
 }
 
 /** Kept at the port the manual SOP and BU_CDP_URL conventions already use. */
@@ -309,7 +314,7 @@ export class BrowserManager implements BrowserHost {
     const bounds = tab.view.getBounds();
     if (bounds.width > 1 && bounds.height > 1) return;
     // Nudge the renderer to (re)open the panel so bounds arrive; only log the first time.
-    this.options.onNeedsPanel();
+    this.options.onNeedsPanel(false);
     if (this.zeroSizeWarned.has(tab.id)) return;
     this.zeroSizeWarned.add(tab.id);
     console.error(`[browser] tab ${tab.id} has a zero-size view — the panel has not reported bounds yet; `
@@ -322,7 +327,7 @@ export class BrowserManager implements BrowserHost {
    */
   private restorePaneForAgent(): boolean {
     if (this.panelVisible) return false;
-    this.options.onNeedsPanel();
+    this.options.onNeedsPanel(true);
     return true;
   }
 
@@ -462,12 +467,12 @@ export class BrowserManager implements BrowserHost {
   private setActive(targetId: string): void {
     const tab = this.tabById(targetId);
     if (!tab || this.activeId === targetId) {
-      if (tab && (!this.panelVisible || this.bounds === null)) this.options.onNeedsPanel();
+      if (tab && (!this.panelVisible || this.bounds === null)) this.options.onNeedsPanel(false);
       return;
     }
     this.activeId = targetId;
     this.applyViewBounds();
-    if (!this.panelVisible || this.bounds === null) this.options.onNeedsPanel();
+    if (!this.panelVisible || this.bounds === null) this.options.onNeedsPanel(false);
     this.emitState();
   }
 
