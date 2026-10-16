@@ -215,7 +215,7 @@
       ],
       "passed": true,
       "response": {
-        "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442",
+        "user_id": "test-api-manager",
         "status": "active"
       },
       "request_id": null
@@ -224,7 +224,7 @@
       "at": "2026-10-16T08:47:47.808499+00:00",
       "label": "identify-management-key",
       "method": "GET",
-      "path": "/api/api-users/api:89fde756-2493-4d0d-9f53-00f491398442/keys",
+      "path": "/api/api-users/test-api-manager/keys",
       "actor": "manager",
       "status": 200,
       "expected": [
@@ -252,7 +252,7 @@
       ],
       "passed": true,
       "response": {
-        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "user_id": "test-api-subject",
         "status": "active"
       },
       "request_id": null
@@ -261,7 +261,7 @@
       "at": "2026-10-16T08:47:49.481028+00:00",
       "label": "issue-api-call-key",
       "method": "POST",
-      "path": "/api/api-users/api:70514836-4ade-4577-8b8c-e81de00ca88e/keys",
+      "path": "/api/api-users/test-api-subject/keys",
       "actor": "manager",
       "status": 200,
       "expected": [
@@ -351,7 +351,7 @@
       ],
       "passed": true,
       "response": {
-        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "user_id": "test-api-subject",
         "role": "user",
         "permissions": [
           "dashboard.view",
@@ -636,7 +636,7 @@
       ],
       "passed": true,
       "response": {
-        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "user_id": "test-api-subject",
         "role": "user",
         "permissions": [
           "dashboard.view",
@@ -1275,7 +1275,7 @@
       "at": "2026-10-16T08:52:46.587691+00:00",
       "label": "call-key-revocation-readback",
       "method": "GET",
-      "path": "/api/api-users/api:70514836-4ade-4577-8b8c-e81de00ca88e/keys",
+      "path": "/api/api-users/test-api-subject/keys",
       "actor": "manager",
       "status": 200,
       "expected": [
@@ -1482,8 +1482,8 @@
       "label": "cleanup-complete",
       "passed": true,
       "removed_user_ids": [
-        "api:70514836-4ade-4577-8b8c-e81de00ca88e",
-        "api:89fde756-2493-4d0d-9f53-00f491398442",
+        "test-api-subject",
+        "test-api-manager",
         "snapshot-denied-20261016084715-b5d29133@example.invalid",
         "snapshot-selected-20261016084715-b5d29133@example.invalid"
       ],

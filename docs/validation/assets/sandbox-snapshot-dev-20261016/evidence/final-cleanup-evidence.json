@@ -89,13 +89,13 @@
       "records": [
         {
           "_id": "k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d",
-          "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+          "user_id": "test-api-subject",
           "scope": "call",
           "status": "revoked"
         },
         {
           "_id": "k_d203eee3-3851-4c7e-8ca1-2d052cfd5db3",
-          "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442",
+          "user_id": "test-api-manager",
           "scope": "manage",
           "status": "active"
         }
@@ -111,11 +111,11 @@
       "exact_id_user_pairs": [
         {
           "_id": "k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d",
-          "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e"
+          "user_id": "test-api-subject"
         },
         {
           "_id": "k_d203eee3-3851-4c7e-8ca1-2d052cfd5db3",
-          "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442"
+          "user_id": "test-api-manager"
         }
       ]
     },

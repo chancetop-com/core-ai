@@ -60,12 +60,12 @@
 
 ## 原始验证证据
 
-以下文件已检查不含本次测试密码或 API key：
+原始证据保存在代码仓库中，以下链接打开对应的 JSON 文件。文件已检查不含本次测试密码或 API key；测试 API 用户 ID 在字段及请求路径中统一替换为稳定别名：
 
-- [部署与接口回读](assets/sandbox-snapshot-dev-20261016/evidence/deployment-evidence.json)
-- [测试前后实例状态](assets/sandbox-snapshot-dev-20261016/evidence/runtime-stability-evidence.json)
-- [权限矩阵与参数验证](assets/sandbox-snapshot-dev-20261016/evidence/permission-evidence.json)
-- [网页保存与接口回读](assets/sandbox-snapshot-dev-20261016/evidence/ui-evidence.json)
-- [真实快照与旧快照对比](assets/sandbox-snapshot-dev-20261016/evidence/snapshots-evidence.json)
-- [会话与快照清理](assets/sandbox-snapshot-dev-20261016/evidence/cleanup-evidence.json)
-- [角色、凭据与配置最终恢复](assets/sandbox-snapshot-dev-20261016/evidence/final-cleanup-evidence.json)
+- [部署与接口回读](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/deployment-evidence.json)
+- [测试前后实例状态](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/runtime-stability-evidence.json)
+- [权限矩阵与参数验证](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/permission-evidence.json)
+- [网页保存与接口回读](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/ui-evidence.json)
+- [真实快照与旧快照对比](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/snapshots-evidence.json)
+- [会话与快照清理](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/cleanup-evidence.json)
+- [角色、凭据与配置最终恢复](https://github.com/chancetop-com/core-ai/blob/master/docs/validation/assets/sandbox-snapshot-dev-20261016/evidence/final-cleanup-evidence.json)
