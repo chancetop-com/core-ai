@@ -6,6 +6,7 @@ import ai.core.cli.hub.catalog.CatalogHubClient;
 import ai.core.cli.hub.skill.SkillHubClient;
 import ai.core.cli.hub.skill.SkillHubMarker;
 import ai.core.cli.hub.skill.SkillInstallConflictException;
+import ai.core.cli.hub.skill.SkillInstallResolver;
 import ai.core.cli.hub.skill.SkillInstaller;
 import ai.core.cli.hub.skill.SkillLocations;
 import ai.core.cli.hub.skill.SkillUpdater;
@@ -36,15 +37,17 @@ public class HubBridge {
 
     /**
      * Installs a fetched archive; package-visible so tests can drive the install paths against a
-     * temp directory without a server. A conflict the user could resolve by confirming comes back
-     * as {@code SKILL_CONFLICT}, anything else as {@code SKILL_PULL_FAILED}.
+     * temp directory without a server. The target is the directory already linked to the skill
+     * (a pushed working copy carries the marker), falling back to {@code {namespace}/{name}}.
+     * A conflict the user could resolve by confirming comes back as {@code SKILL_CONFLICT},
+     * anything else as {@code SKILL_PULL_FAILED}.
      */
     static ObjectNode install(Path baseDir, String serverUrl, String namespace, String name,
                               SkillHubClient.ArchiveResult archive, boolean force) {
         var qualified = namespace + "/" + name;
-        var targetDir = baseDir.resolve(namespace).resolve(name);
+        var targetDir = new SkillInstallResolver().resolveTarget(baseDir, serverUrl, archive.id(), qualified);
         var digest = archive.digest() == null ? "" : archive.digest();
-        var source = new SkillHubMarker.Marker(qualified, archive.id(), digest, serverUrl, null);
+        var source = SkillHubMarker.Marker.pulled(qualified, archive.id(), digest, serverUrl);
         try {
             var outcome = new SkillInstaller().install(targetDir, archive.bytes(), source, force);
             var node = Params.object();

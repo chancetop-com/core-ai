@@ -110,12 +110,41 @@ class SkillUpdaterTest {
         assertTrue(outcomes.get(0).updated());
     }
 
+    @Test
+    void linkedWorkingCopyIsUpdatedInPlace() throws Exception {
+        var linkedDir = tempDir.resolve("demo");
+        var source = SkillHubMarker.Marker.pulled("stephen/demo", "id-1", SkillDigest.of(V1, null), "https://server");
+        new SkillInstaller().install(linkedDir, zip("SKILL.md", V1), source, false);
+        var client = new FakeClient(Map.of("stephen/demo", SkillDigest.of(V2, null)), V2);
+
+        var outcomes = new SkillUpdater().update(client, tempDir, "stephen/demo", false);
+
+        assertTrue(outcomes.get(0).updated());
+        assertEquals(V2, Files.readString(linkedDir.resolve("SKILL.md")), "the pushed working copy is updated in place");
+        assertFalse(Files.exists(skillDir()), "no second install may appear at the canonical location");
+    }
+
+    @Test
+    void copyLinkedToAnotherServerIsNotUpdated() throws Exception {
+        var linkedDir = tempDir.resolve("demo");
+        var source = SkillHubMarker.Marker.pulled("stephen/demo", "id-1", SkillDigest.of(V1, null), "https://server");
+        new SkillInstaller().install(linkedDir, zip("SKILL.md", V1), source, false);
+        var client = new FakeClient("https://other-server", Map.of("stephen/demo", SkillDigest.of(V2, null)), V2);
+
+        var outcomes = new SkillUpdater().update(client, tempDir, "stephen/demo", false);
+
+        assertFalse(outcomes.get(0).updated());
+        assertEquals("(not installed, use pull)", outcomes.get(0).reason());
+        assertEquals(V1, Files.readString(linkedDir.resolve("SKILL.md")), "a copy linked to another hub must stay untouched");
+        assertFalse(Files.exists(skillDir()), "no second install may appear at the canonical location");
+    }
+
     private Path skillDir() {
         return tempDir.resolve("stephen").resolve("demo");
     }
 
     private void installV1() throws IOException {
-        var source = new SkillHubMarker.Marker("stephen/demo", "id-1", SkillDigest.of(V1, null), "https://server", null);
+        var source = SkillHubMarker.Marker.pulled("stephen/demo", "id-1", SkillDigest.of(V1, null), "https://server");
         new SkillInstaller().install(skillDir(), zip("SKILL.md", V1), source, false);
     }
 
@@ -124,7 +153,11 @@ class SkillUpdaterTest {
         private final String content;
 
         FakeClient(Map<String, String> digests, String content) {
-            super("https://server", "key");
+            this("https://server", digests, content);
+        }
+
+        FakeClient(String serverUrl, Map<String, String> digests, String content) {
+            super(serverUrl, "key");
             this.digests = digests;
             this.content = content;
         }

@@ -17,6 +17,9 @@ import java.util.Map;
  * Uploads a local skill directory to the server ({@code POST /api/skills/upload},
  * requires {@code skill.manage} on the server). The namespace is derived from the
  * authenticated server account — skills are always pushed into your own namespace.
+ * A successful upload links the pushed directory with the {@code .skill-hub.json}
+ * marker, so a later pull resolves to this working copy instead of creating a
+ * second install.
  *
  * @author stephen
  */
@@ -44,6 +47,9 @@ class SkillPushCommand extends HubCommandBase {
         String body = skillClient().push(files);
         if (body == null) {
             throw new HubCliError(HubExitCodes.TOOL_ERROR, "upload failed");
+        }
+        if (!SkillHubMarker.linkAfterPush(absolute, body, serverUrl(), local.digest())) {
+            metadata("uploaded, but could not link the local copy (marker write skipped)");
         }
         if (json()) {
             ConsoleWriter.println(body);

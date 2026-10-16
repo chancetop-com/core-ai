@@ -10,7 +10,7 @@ class SkillStatusTest {
     private static final String SERVER_DIGEST = "server";
 
     private SkillHubMarker.Marker marker(String digest) {
-        return new SkillHubMarker.Marker("stephen/code-review", "id", digest, "server", "ts");
+        return new SkillHubMarker.Marker("stephen/code-review", "id", digest, "server", "ts", null);
     }
 
     @Test

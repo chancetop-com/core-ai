@@ -9,7 +9,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -33,7 +32,8 @@ public class SkillInstaller {
     /**
      * @param targetDir target directory the skill lands in (caller applied the flat/namespaced layout)
      * @param zipBytes  archive bytes produced by the hub archive endpoint
-     * @param source    identity of the server content (qualified name, id, digest, server); pulled_at is set here
+     * @param source    the marker to write (identity of the server content); callers build it with
+     *                  {@link SkillHubMarker#pulled}
      * @param force     allow overwriting unmanaged or locally modified directories
      * @return outcome; {@code replaced=false, files=0} means the directory was already up to date
      * @throws IllegalStateException on local write failures or an unforced overwrite conflict
@@ -54,9 +54,7 @@ public class SkillInstaller {
             wipeIfExists(targetDir);
             Files.createDirectories(targetDir);
             int files = writeEntries(entries);
-            var marker = new SkillHubMarker.Marker(source.qualifiedName(), source.id(), source.digest(),
-                    source.server(), ZonedDateTime.now().toInstant().toString());
-            SkillHubMarker.write(targetDir, marker);
+            SkillHubMarker.write(targetDir, source);
             return new InstallOutcome(targetDir, true, files);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to write skill files to " + targetDir, e);

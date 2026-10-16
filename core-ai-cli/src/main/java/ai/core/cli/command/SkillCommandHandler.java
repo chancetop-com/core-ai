@@ -4,6 +4,7 @@ import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hub.skill.LocalSkillScanner;
 import ai.core.cli.hub.skill.SkillHubClient;
 import ai.core.cli.hub.skill.SkillHubMarker;
+import ai.core.cli.hub.skill.SkillInstallResolver;
 import ai.core.cli.hub.skill.SkillInstaller;
 import ai.core.cli.hub.skill.SkillLocations;
 import ai.core.cli.ui.AnsiTheme;
@@ -114,6 +115,7 @@ public class SkillCommandHandler {
         try {
             var result = client.push(files);
             if (result != null) {
+                SkillHubMarker.linkAfterPush(skill.skillDir(), result, client.serverUrl(), skill.digest());
                 ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET
                         + " Uploaded " + skill.name() + " to server.\n\n");
             } else {
@@ -207,9 +209,11 @@ public class SkillCommandHandler {
     private void installSkill(SkillHubClient client, ai.core.api.server.skillhub.SkillHubSummary skill, boolean force) {
         try {
             var archive = client.archive(skill.namespace, skill.name);
-            var targetDir = SkillLocations.userSkillsDir().resolve(skill.namespace).resolve(skill.name);
-            var source = new SkillHubMarker.Marker(skill.qualifiedName, archive.id() != null ? archive.id() : skill.id,
-                    archive.digest() != null ? archive.digest() : "", client.serverUrl(), null);
+            var id = archive.id() != null ? archive.id() : skill.id;
+            var targetDir = new SkillInstallResolver()
+                    .resolveTarget(SkillLocations.userSkillsDir(), client.serverUrl(), id, skill.qualifiedName);
+            var source = SkillHubMarker.Marker.pulled(skill.qualifiedName, id,
+                    archive.digest() != null ? archive.digest() : "", client.serverUrl());
             var outcome = new SkillInstaller().install(targetDir, archive.bytes(), source, force);
             ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "\u2713" + AnsiTheme.RESET
                     + (outcome.replaced() ? " Installed " : " Already up to date: ")

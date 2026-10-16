@@ -138,10 +138,10 @@ Server-side skills (`SKILL.md` + resources, the same format Claude Code and Code
 | `skill list [--workspace]` | Local skills with state: `up-to-date`, `outdated`, `modified`, `local` |
 | `skill update [<ns>/<name>… \| --all]` | Re-pull outdated skills; skips locally modified ones unless `--force` |
 | `skill remove <ns>/<name>` | Delete a local copy |
-| `skill push <dir> [--namespace NS]` | Upload a local skill directory to the server |
+| `skill push <dir> [--namespace NS]` | Upload a local skill directory to the server; a successful push links the directory (see below) |
 | `skill instructions` | Paste-ready snippet |
 
-A bare name without `/` is accepted when it is unique on the server; if ambiguous the CLI exits 2 and lists candidates. Pulled skills carry a `.skill-hub.json` marker (id, digest, server) so `list`/`update` can detect server-side changes.
+A bare name without `/` is accepted when it is unique on the server; if ambiguous the CLI exits 2 and lists candidates. Hub-linked directories carry a `.skill-hub.json` marker (id, digest, server) so `list`/`update` can detect server-side changes — `pull` writes it, and `push` writes it into the pushed directory too. `pull`/`update` resolve to the linked directory instead of creating a second copy, so pushing your own skill and pulling it back leaves one working copy, not two.
 
 Inside the REPL, `/skill` still opens the interactive menu for the same operations, and `/skill <name>` loads a local skill into the conversation.
 

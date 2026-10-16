@@ -35,9 +35,14 @@ class SkillPullCommand extends HubCommandBase {
         var qualified = new SkillNameResolver().resolve(client, skillRef);
         var archive = client.archive(qualified.namespace(), qualified.name());
         var digest = archive.digest() != null ? archive.digest() : "";
-        Path targetDir = toDir != null ? toDir.resolve(qualified.name())
-                : baseDir().resolve(qualified.namespace()).resolve(qualified.name());
-        var source = new SkillHubMarker.Marker(qualified.qualifiedName(), archive.id(), digest, serverUrl(), null);
+        Path targetDir;
+        if (toDir != null) {
+            targetDir = toDir.resolve(qualified.name());
+        } else {
+            targetDir = new SkillInstallResolver()
+                    .resolveTarget(baseDir(), serverUrl(), archive.id(), qualified.qualifiedName());
+        }
+        var source = SkillHubMarker.Marker.pulled(qualified.qualifiedName(), archive.id(), digest, serverUrl());
         var outcome = new SkillInstaller().install(targetDir, archive.bytes(), source, force);
         if (json()) {
             Map<String, Object> json = new LinkedHashMap<>();

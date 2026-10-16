@@ -4,6 +4,8 @@ import ai.core.cli.ConsoleWriter;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hub.skill.LocalSkillScanner;
 import ai.core.cli.hub.skill.SkillHubClient;
+import ai.core.cli.hub.skill.SkillHubMarker;
+import ai.core.cli.hub.skill.SkillInstallResolver;
 import ai.core.cli.hub.skill.SkillInstaller;
 import ai.core.cli.hub.skill.SkillLocations;
 import ai.core.cli.ui.AnsiTheme;
@@ -162,16 +164,30 @@ public class ManagedSkillProvisioner {
                 }
             }
             var archive = client.archive(qualified.namespace(), qualified.name());
-            var dir = USER_SKILLS_DIR.resolve(qualified.namespace()).resolve(qualified.name());
+            var dir = installDir(local, qualified, archive.id(), auth.serverUrl());
             boolean force = local != null && local.marker() == null;   // legacy install, safe to replace
-            var source = new ai.core.cli.hub.skill.SkillHubMarker.Marker(qualified.qualifiedName(), archive.id(),
-                    archive.digest() != null ? archive.digest() : "", auth.serverUrl(), null);
+            var source = SkillHubMarker.Marker.pulled(qualified.qualifiedName(), archive.id(),
+                    archive.digest() != null ? archive.digest() : "", auth.serverUrl());
             new SkillInstaller().install(dir, archive.bytes(), source, force);
             return true;
         } catch (Exception e) {
             LOGGER.warn("failed to install managed skill '{}' from server: {}", name, e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Where a managed skill installs: the directory linked to it (a pushed or pulled copy), an
+     * unmarked same-name install that gets upgraded in place, or the canonical hub location
+     * {@code {ns}/{name}} on first sight.
+     */
+    private static Path installDir(LocalSkillScanner.LocalSkill local,
+                                   ai.core.cli.hub.skill.SkillNameResolver.QualifiedName qualified,
+                                   String id, String serverUrl) {
+        var linked = new SkillInstallResolver().find(USER_SKILLS_DIR, serverUrl, id, qualified.qualifiedName());
+        if (linked != null) return linked.skillDir();
+        if (local != null && local.marker() == null) return local.skillDir();
+        return USER_SKILLS_DIR.resolve(qualified.namespace()).resolve(qualified.name());
     }
 
     private static String serverDigest(SkillHubClient client, ai.core.cli.hub.skill.SkillNameResolver.QualifiedName qualified) {

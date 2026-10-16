@@ -2,19 +2,19 @@ package ai.core.cli.hub.skill;
 
 import ai.core.api.server.skillhub.SkillHubSearchResponse;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Shared update logic behind {@code core-ai-cli skill update} and the desktop's
  * {@code hub/skills/update} RPC: only {@code outdated} skills are replaced, a local copy
- * that drifted from the pulled digest is skipped unless {@code force}.
+ * that drifted from the pulled digest is skipped unless {@code force}. The update happens
+ * in place, in the directory the skill is linked to (see {@link SkillInstallResolver}), so
+ * a working copy that was pushed never grows a second install.
  *
  * @author stephen
  */
@@ -22,7 +22,7 @@ public final class SkillUpdater {
     /** Every hub-marked skill under the root; empty when nothing is installed from the hub. */
     public List<Outcome> updateAll(SkillHubClient client, Path baseDir, boolean force) {
         var scanner = new LocalSkillScanner();
-        var names = new ArrayList<String>();
+        var names = new LinkedHashSet<String>();
         for (var local : scanner.scan(baseDir)) {
             if (local.marker() != null && local.marker().isManaged()) {
                 names.add(displayName(local));
@@ -31,7 +31,7 @@ public final class SkillUpdater {
         if (names.isEmpty()) {
             return List.of();
         }
-        return updateTargets(client, baseDir, names, force);
+        return updateTargets(client, baseDir, new ArrayList<>(names), force);
     }
 
     public List<Outcome> update(SkillHubClient client, Path baseDir, String qualifiedName, boolean force) {
@@ -40,17 +40,16 @@ public final class SkillUpdater {
 
     private List<Outcome> updateTargets(SkillHubClient client, Path baseDir, List<String> qualifiedNames, boolean force) {
         Map<String, String> serverDigests = fetchServerDigests(client);
-        var installer = new SkillInstaller();
         var outcomes = new ArrayList<Outcome>();
         for (var qualifiedName : qualifiedNames) {
-            outcomes.add(updateOne(client, baseDir, serverDigests, installer, qualifiedName, force));
+            outcomes.add(updateOne(client, baseDir, serverDigests, qualifiedName, force));
         }
         return outcomes;
     }
 
     private Outcome updateOne(SkillHubClient client, Path baseDir, Map<String, String> serverDigests,
-                              SkillInstaller installer, String qualifiedName, boolean force) {
-        var installed = findInstalled(baseDir, qualifiedName);
+                              String qualifiedName, boolean force) {
+        var installed = new SkillInstallResolver().find(baseDir, client.serverUrl(), null, qualifiedName);
         var marker = installed != null ? installed.marker() : null;
         if (marker == null || !marker.isManaged()) {
             return new Outcome(qualifiedName, false,
@@ -68,45 +67,12 @@ public final class SkillUpdater {
         try {
             var parts = qualifiedName.split("/", 2);
             var archive = client.archive(parts[0], parts[1]);
-            var dir = baseDir.resolve(parts[0]).resolve(parts[1]);
-            var source = new SkillHubMarker.Marker(qualifiedName, archive.id(),
-                    archive.digest() != null ? archive.digest() : "", client.serverUrl(), null);
-            installer.install(dir, archive.bytes(), source, force);
+            var source = SkillHubMarker.Marker.pulled(qualifiedName, archive.id(),
+                    archive.digest() != null ? archive.digest() : "", client.serverUrl());
+            new SkillInstaller().install(installed.skillDir(), archive.bytes(), source, force);
             return new Outcome(qualifiedName, true, null);
         } catch (IllegalStateException e) {
             return new Outcome(qualifiedName, false, "(" + e.getMessage() + ")");
-        }
-    }
-
-    private LocalSkillScanner.LocalSkill findInstalled(Path baseDir, String qualifiedName) {
-        // The canonical pull location first: a locally edited SKILL.md may no longer parse as a
-        // skill, but the directory and its marker still identify the install.
-        var parts = qualifiedName.split("/", 2);
-        if (parts.length == 2) {
-            var dir = baseDir.resolve(parts[0]).resolve(parts[1]);
-            var marker = Files.isDirectory(dir) ? SkillHubMarker.load(dir) : null;
-            if (marker != null) {
-                return new LocalSkillScanner.LocalSkill(parts[1], qualifiedName, dir, null, List.of(), digestOf(dir), marker);
-            }
-        }
-        var scanner = new LocalSkillScanner();
-        for (var local : scanner.scan(baseDir)) {
-            if (qualifiedName.equals(displayName(local))) {
-                return local;
-            }
-        }
-        return null;
-    }
-
-    private String digestOf(Path skillDir) {
-        try {
-            var skillFile = skillDir.resolve("SKILL.md");
-            if (!Files.exists(skillFile)) {
-                return null;
-            }
-            return new LocalSkillScanner().digestOf(skillDir, Files.readString(skillFile, StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            return null;
         }
     }
 

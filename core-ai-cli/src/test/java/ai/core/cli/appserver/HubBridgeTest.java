@@ -82,6 +82,40 @@ class HubBridgeTest {
     }
 
     @Test
+    void pullResolvesToThePushedWorkingCopy() throws Exception {
+        var digest = SkillDigest.of(CONTENT, null);
+        var workingCopy = tempDir.resolve("code-review");
+        Files.createDirectories(workingCopy);
+        Files.writeString(workingCopy.resolve("SKILL.md"), CONTENT);
+        SkillHubMarker.write(workingCopy, SkillHubMarker.Marker.pushed("stephen/code-review", "id-1", digest, "https://server"));
+        var archive = new SkillHubClient.ArchiveResult(zip("SKILL.md", CONTENT), "id-1", digest, "stephen/code-review");
+
+        var result = HubBridge.install(tempDir, "https://server", "stephen", "code-review", archive, false);
+
+        assertEquals("up_to_date", result.path("status").asText());
+        assertEquals(workingCopy.toString(), result.path("dir").asText());
+        assertFalse(Files.exists(tempDir.resolve("stephen").resolve("code-review")),
+                "pulling a pushed skill must not create a second install");
+    }
+
+    @Test
+    void modifiedWorkingCopySurvivesAPull() throws Exception {
+        var digest = SkillDigest.of(CONTENT, null);
+        var workingCopy = tempDir.resolve("code-review");
+        Files.createDirectories(workingCopy);
+        Files.writeString(workingCopy.resolve("SKILL.md"), CONTENT);
+        SkillHubMarker.write(workingCopy, SkillHubMarker.Marker.pushed("stephen/code-review", "id-1", digest, "https://server"));
+        Files.writeString(workingCopy.resolve("SKILL.md"), "user edit");
+        var archive = new SkillHubClient.ArchiveResult(zip("SKILL.md", CONTENT), "id-1", digest, "stephen/code-review");
+
+        var conflict = assertThrows(RpcException.class,
+                () -> HubBridge.install(tempDir, "https://server", "stephen", "code-review", archive, false));
+
+        assertEquals("SKILL_CONFLICT", conflict.data().path("code").asText());
+        assertEquals("user edit", Files.readString(workingCopy.resolve("SKILL.md")));
+    }
+
+    @Test
     void catalogForwardsAgentRefIdForTheDesktop() {
         var response = new HubCatalogResponse();
         response.tools = List.of(agentTool());

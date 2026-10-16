@@ -33,7 +33,7 @@ class SkillInstallerTest {
     }
 
     private SkillHubMarker.Marker source(String digest) {
-        return new SkillHubMarker.Marker("stephen/code-review", "id-1", digest, "https://server", null);
+        return SkillHubMarker.Marker.pulled("stephen/code-review", "id-1", digest, "https://server");
     }
 
     @Test

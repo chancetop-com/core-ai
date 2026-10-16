@@ -4329,15 +4329,27 @@ function hubLocalKey(row: HubRow): string {
   return `${home}/.core-ai/skills/${(row.namespace ?? '').toLowerCase()}/${row.name.toLowerCase()}`;
 }
 
-function hubInstalledSet(local: Envelope): Set<string> {
-  const set = new Set<string>();
-  for (const skill of local.ok ? local.result?.skills ?? [] : []) {
-    set.add(String(skill?.path ?? '').replace(/\\/g, '/').toLowerCase());
-  }
-  return set;
+/** Local installs the hub panel compares against: canonical paths and the qualified names of marked (pushed/pulled) skills. */
+interface HubInstalled {
+  paths: Set<string>;
+  names: Set<string>;
 }
 
-function buildHubRow(row: HubRow, installed: Set<string>, onPulled: (row: HubRow, actions: HTMLElement) => void,
+function hubInstalledSet(local: Envelope): HubInstalled {
+  const installed: HubInstalled = { paths: new Set(), names: new Set() };
+  for (const skill of local.ok ? local.result?.skills ?? [] : []) {
+    installed.paths.add(String(skill?.path ?? '').replace(/\\/g, '/').toLowerCase());
+    if (skill?.qualifiedName) installed.names.add(String(skill.qualifiedName).toLowerCase());
+  }
+  return installed;
+}
+
+function isHubInstalled(installed: HubInstalled, row: HubRow): boolean {
+  if (installed.paths.has(hubLocalKey(row))) return true;
+  return row.qualifiedName != null && installed.names.has(row.qualifiedName.toLowerCase());
+}
+
+function buildHubRow(row: HubRow, installed: HubInstalled, onPulled: (row: HubRow, actions: HTMLElement) => void,
                      mount: HubHelperMount): HTMLElement {
   const item = el('div', 'hub-row');
   const head = el('div', 'hub-row-head');
@@ -4351,7 +4363,7 @@ function buildHubRow(row: HubRow, installed: Set<string>, onPulled: (row: HubRow
   head.append(el('span', 'spacer'));
   const actions = el('span', 'hub-row-actions');
   if (row.kind === 'skill') {
-    if (installed.has(hubLocalKey(row))) actions.append(el('span', 'hub-installed', 'installed'));
+    if (isHubInstalled(installed, row)) actions.append(el('span', 'hub-installed', 'installed'));
     const pull = el('button', 'btn small', 'Pull');
     pull.title = `Pull ${row.qualifiedName ?? row.name} into ~/.core-ai/skills`;
     pull.onclick = () => void pullHubSkill(row, pull, actions, onPulled);
@@ -4677,7 +4689,8 @@ async function renderHubPanel(): Promise<HTMLElement> {
     const footer = el('div', 'hub-footer');
 
     const onPulled = (row: HubRow, actions: HTMLElement): void => {
-      installed.add(hubLocalKey(row));
+      installed.paths.add(hubLocalKey(row));
+      if (row.qualifiedName) installed.names.add(row.qualifiedName.toLowerCase());
       if (!actions.querySelector('.hub-installed')) {
         actions.prepend(el('span', 'hub-installed', 'installed'));
       }

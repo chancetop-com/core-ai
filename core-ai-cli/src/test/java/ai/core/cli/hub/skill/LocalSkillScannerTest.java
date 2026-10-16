@@ -69,7 +69,7 @@ class LocalSkillScannerTest {
         Files.createDirectories(skillDir);
         Files.writeString(skillDir.resolve("SKILL.md"), "---\nname: code-review\ndescription: review\n---\n");
         Files.writeString(skillDir.resolve(".hidden"), "secret");
-        SkillHubMarker.write(skillDir, new SkillHubMarker.Marker("stephen/code-review", "id", "digest", "server", "ts"));
+        SkillHubMarker.write(skillDir, new SkillHubMarker.Marker("stephen/code-review", "id", "digest", "server", "ts", null));
 
         var skill = scanner.scan(tempDir).getFirst();
         assertEquals(0, skill.resources().size(), "dot entries must not count as resources");
