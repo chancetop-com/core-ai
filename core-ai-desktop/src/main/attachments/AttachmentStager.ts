@@ -2,7 +2,7 @@
 // classifies each file into the app-server part type (image / pdf / file). The staging root
 // (`~/.core-ai/app-server/staging/<sessionId>`) mirrors EngineSessionRegistry.stagingDir();
 // session/send reads attachment paths only inside the workspace or that directory.
-import { copyFile, mkdir, readdir, rm, unlink } from 'node:fs/promises';
+import { copyFile, mkdir, readdir, rm, unlink, writeFile } from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import path from 'node:path';
 
@@ -27,6 +27,12 @@ export interface SkippedAttachment {
 export interface StageResult {
   attachments: StagedAttachment[];
   skipped: SkippedAttachment[];
+}
+
+/** In-memory bytes handed over by the renderer (clipboard paste) instead of a source path. */
+export interface StagedBufferInput {
+  name: string;
+  data: ArrayBuffer;
 }
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
@@ -90,6 +96,44 @@ export async function stageAttachments(stagingRoot: string, sessionId: string, s
       const target = uniqueTarget(dir, name, size);
       if (!existsSync(target)) await copyFile(source, target);
       attachments.push({ path: target, name, kind, size });
+    } catch (error) {
+      skipped.push({ name, reason: `could not be staged (${messageOf(error)})` });
+    }
+  }
+  return { attachments, skipped };
+}
+
+/** Stages pasted bytes under the same name/type/size/reuse rules as picked files. */
+export async function stageBuffers(stagingRoot: string, sessionId: string, inputs: StagedBufferInput[]): Promise<StageResult> {
+  const dir = stagingDirOf(stagingRoot, sessionId);
+  const attachments: StagedAttachment[] = [];
+  const skipped: SkippedAttachment[] = [];
+  for (const input of inputs) {
+    const requested = String(input?.name ?? '').trim();
+    const name = path.basename(requested.replace(/\\/g, '/')).replace(/[\u0000-\u001f]/g, '');
+    if (!name || name === '.' || name === '..') {
+      skipped.push({ name: requested, reason: 'not a file' });
+      continue;
+    }
+    const kind = classifyAttachment(name);
+    if (!kind) {
+      skipped.push({ name, reason: 'unsupported file type' });
+      continue;
+    }
+    const data = input?.data;
+    if (!(data instanceof ArrayBuffer)) {
+      skipped.push({ name, reason: 'could not be staged (missing data)' });
+      continue;
+    }
+    if (data.byteLength > maxBytesOf(kind)) {
+      skipped.push({ name, reason: sizeReasonOf(kind) });
+      continue;
+    }
+    try {
+      await mkdir(dir, { recursive: true });
+      const target = uniqueTarget(dir, name, data.byteLength);
+      if (!existsSync(target)) await writeFile(target, Buffer.from(data));
+      attachments.push({ path: target, name, kind, size: data.byteLength });
     } catch (error) {
       skipped.push({ name, reason: `could not be staged (${messageOf(error)})` });
     }

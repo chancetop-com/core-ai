@@ -1,13 +1,14 @@
 // Local tests for the attachment stager: classification, size/type gates, unique naming, reuse,
-// removal boundary and the age-based sweep. Run via `npm test` (builds dist/test/attachmentStager.js).
+// clipboard-buffer staging, removal boundary and the age-based sweep. Run via `npm test`
+// (builds dist/test/attachmentStager.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, truncateSync, utimesSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import stagerModule from '../dist/test/attachmentStager.js';
 
-const { classifyAttachment, stagingDirOf, stageAttachments, removeStaged, sweepStaging } = stagerModule;
+const { classifyAttachment, stagingDirOf, stageAttachments, stageBuffers, removeStaged, sweepStaging } = stagerModule;
 
 function tempDir() {
   return mkdtempSync(path.join(os.tmpdir(), 'attachment-stager-'));
@@ -79,6 +80,48 @@ test('same file re-staged reuses the copy, changed size gets a suffixed name', a
   assert.notEqual(third.attachments[0].path, first.attachments[0].path);
   assert.match(third.attachments[0].path, /notes-2\.md$/);
   assert.equal(statSync(third.attachments[0].path).size, 9);
+});
+
+test('stageBuffers writes pasted bytes to disk and re-stages the copy', async () => {
+  const root = tempDir();
+  const staging = path.join(root, 'staging');
+  const bytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+
+  const result = await stageBuffers(staging, 's', [{ name: 'screenshot-20261016-101010.png', data: bytes.buffer }]);
+  assert.equal(result.skipped.length, 0);
+  assert.equal(result.attachments.length, 1);
+  const attachment = result.attachments[0];
+  assert.equal(attachment.kind, 'image');
+  assert.equal(attachment.name, 'screenshot-20261016-101010.png');
+  assert.equal(attachment.size, bytes.byteLength);
+  assert.equal(attachment.path, path.join(staging, 's', 'screenshot-20261016-101010.png'));
+  assert.deepEqual([...readFileSync(attachment.path)], [...bytes]);
+
+  const again = await stageBuffers(staging, 's', [{ name: 'screenshot-20261016-101010.png', data: bytes.buffer }]);
+  assert.equal(again.attachments[0].path, attachment.path);
+});
+
+test('stageBuffers strips directories from names and applies the pick gates', async () => {
+  const root = tempDir();
+  const staging = path.join(root, 'staging');
+  const png = new Uint8Array([1, 2, 3]);
+  const big = new Uint8Array(16 * 1024 * 1024 + 1);
+
+  const result = await stageBuffers(staging, 's', [
+    { name: 'C:\\shots\\..\\deep\\screenshot.png', data: png.buffer },
+    { name: '', data: png.buffer },
+    { name: 'archive.zip', data: png.buffer },
+    { name: 'huge.png', data: big.buffer },
+    { name: 'no-data.png' },
+  ]);
+  assert.equal(result.attachments.length, 1);
+  assert.equal(result.attachments[0].name, 'screenshot.png');
+  assert.equal(result.attachments[0].path, path.join(staging, 's', 'screenshot.png'));
+  assert.equal(result.skipped.length, 4);
+  assert.equal(result.skipped[0].reason, 'not a file');
+  assert.equal(result.skipped[1].reason, 'unsupported file type');
+  assert.match(result.skipped[2].reason, /16 MB/);
+  assert.match(result.skipped[3].reason, /missing data/);
 });
 
 test('staging directories are per session', () => {

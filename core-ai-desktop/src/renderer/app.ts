@@ -192,6 +192,7 @@ interface CoreAiBridge {
   engineCapabilities(workspace: string): Promise<string[]>;
   pickAttachments(): Promise<{ paths: string[] }>;
   stageAttachments(sessionId: string, paths: string[]): Promise<StagedAttachmentResult>;
+stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: ArrayBuffer }>): Promise<StagedAttachmentResult>;
   removeAttachment(stagedPath: string): Promise<void>;
   artifactBase(workspace: string): Promise<{ baseUrl: string }>;
   browserStart(): Promise<BrowserStatus | null>;
@@ -2056,11 +2057,12 @@ function buildComposer(): HTMLElement {
     composerInput.style.height = `${Math.min(composerInput.scrollHeight, 360)}px`;
   };
   composerInput.oninput = () => composerAutoGrow?.();
+  composerInput.addEventListener('paste', (event) => void handleComposerPaste(event));
   // The + sits at the top-left corner of the input box, before the text.
   const inputRow = el('div', 'composer-input-row');
   const attach = el('button', 'composer-attach-btn') as HTMLButtonElement;
   attach.append(icon('plus'));
-  attach.title = 'Attach images or files';
+  attach.title = 'Attach images or files — a pasted screenshot becomes an image attachment';
   attach.onclick = () => void chooseAttachments();
   inputRow.append(attach, composerInput);
   composerAttachEl = el('div', 'composer-attachments');
@@ -2188,6 +2190,68 @@ async function chooseAttachments(): Promise<void> {
   }
   renderComposerAttachments();
   composerInput?.focus();
+}
+
+/**
+ * Screenshots (Win+Shift+S, QQ, …) live on the clipboard as a bitmap; pasting one in the composer
+ * attaches it like a picked image. Clipboard text is left to the textarea's default paste.
+ */
+async function handleComposerPaste(event: ClipboardEvent): Promise<void> {
+  const files = clipboardImageFiles(event);
+  if (!files.length) return;
+  event.preventDefault();
+  // Named once: the session title (first message) and the staged file must carry the same name.
+  const names = files.map((file, index) => pastedImageName(file, index, files.length));
+  if (!state.sessionId && !(await startNewSession(names[0]))) return;
+  let entries: Array<{ name: string; data: ArrayBuffer }>;
+  try {
+    entries = await Promise.all(files.map(async (file, index) => ({ name: names[index], data: await file.arrayBuffer() })));
+  } catch (error) {
+    toast(`Paste failed: ${cleanIpcError(error)}`, 'error');
+    return;
+  }
+  let staged: StagedAttachmentResult | null = null;
+  try {
+    staged = await window.coreai.stageAttachmentBuffers(state.sessionId as string, entries);
+  } catch (error) {
+    toast(`Paste failed: ${cleanIpcError(error)}`, 'error');
+    return;
+  }
+  for (const skip of staged?.skipped ?? []) {
+    toast(`Skipped ${skip.name || 'image'}: ${skip.reason}`, 'error');
+  }
+  for (const attachment of staged?.attachments ?? []) {
+    if (!pendingAttachments.some((entry) => entry.path === attachment.path)) {
+      pendingAttachments.push(attachment);
+    }
+  }
+  renderComposerAttachments();
+}
+
+function clipboardImageFiles(event: ClipboardEvent): File[] {
+  const items = event.clipboardData?.items;
+  if (!items) return [];
+  const files: File[] = [];
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+    const file = item.getAsFile();
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+/** A clipboard bitmap arrives as the generic "image.png" — name it like the screenshot it is. */
+function pastedImageName(file: File, index: number, batchSize: number): string {
+  const raw = (file.name ?? '').trim();
+  if (raw && !/^image(\.(png|jpe?g|bmp|gif|webp))?$/i.test(raw)) return raw;
+  const subtype = (file.type.split('/')[1] ?? '').toLowerCase();
+  const extension = subtype === 'jpeg' ? 'jpg' : subtype.replace(/[^a-z0-9]/g, '') || 'png';
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const suffix = batchSize > 1 ? `-${index + 1}` : '';
+  return `screenshot-${stamp}${suffix}.${extension}`;
 }
 
 function removePendingAttachment(attachment: PendingAttachment): void {

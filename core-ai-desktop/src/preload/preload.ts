@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('coreai', {
   engineCapabilities: (workspace: string) => ipcRenderer.invoke('engine:capabilities', workspace),
   pickAttachments: () => ipcRenderer.invoke('attachments:pick'),
   stageAttachments: (sessionId: string, paths: string[]) => ipcRenderer.invoke('attachments:stage', sessionId, paths),
+  stageAttachmentBuffers: (sessionId: string, entries: Array<{ name: string; data: ArrayBuffer }>) =>
+    ipcRenderer.invoke('attachments:stageBuffers', sessionId, entries),
   removeAttachment: (stagedPath: string) => ipcRenderer.invoke('attachments:remove', stagedPath),
   browserStart: () => ipcRenderer.invoke('browser:start'),
   browserStop: () => ipcRenderer.invoke('browser:stop'),

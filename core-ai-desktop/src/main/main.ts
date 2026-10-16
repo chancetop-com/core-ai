@@ -7,7 +7,7 @@ import https from 'node:https';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { removeStaged, stageAttachments, sweepStaging, type StagedAttachment } from './attachments/AttachmentStager';
+import { removeStaged, stageAttachments, stageBuffers, sweepStaging, type StagedAttachment, type StagedBufferInput } from './attachments/AttachmentStager';
 import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
 import {
   type AuthServerEntry,
@@ -589,6 +589,14 @@ function registerIpc(): void {
     if (!id) return { attachments: [], skipped: [{ name: '', reason: 'no session is open yet' }] };
     const files = Array.isArray(paths) ? paths.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0) : [];
     const result = await stageAttachments(stagingRoot(), id, files);
+    await attachPreviews(result.attachments);
+    return result;
+  });
+  ipcMain.handle('attachments:stageBuffers', async (_event, sessionId: string, entries: StagedBufferInput[]) => {
+    const id = String(sessionId ?? '').trim();
+    if (!id) return { attachments: [], skipped: [{ name: '', reason: 'no session is open yet' }] };
+    const inputs = Array.isArray(entries) ? entries : [];
+    const result = await stageBuffers(stagingRoot(), id, inputs);
     await attachPreviews(result.attachments);
     return result;
   });
