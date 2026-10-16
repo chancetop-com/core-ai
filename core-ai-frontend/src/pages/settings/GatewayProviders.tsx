@@ -85,6 +85,7 @@ type ModelFormState = {
   responseFormat: string;  // '' = JSON Schema (default), 'json_object' = JSON mode only
   reasoningEfforts: string;
   supportsReasoningEffort: string;  // '' = unknown (default), 'true' / 'false' = admin declaration
+  temperature: string;              // '' = pass the request temperature through, otherwise the forced value
   maxVideoBytes: string;
   maxVideoSeconds: string;
   maxImageReferences: string;
@@ -146,6 +147,7 @@ const emptyModelForm: ModelFormState = {
   responseFormat: '',
   reasoningEfforts: '',
   supportsReasoningEffort: '',
+  temperature: '',
   maxVideoBytes: '',
   maxVideoSeconds: '',
   maxImageReferences: '',
@@ -358,6 +360,7 @@ export default function GatewayProviders() {
       responseFormat: model.responseFormat || '',
       reasoningEfforts: model.reasoningEfforts?.join(', ') || '',
       supportsReasoningEffort: model.supportsReasoningEffort == null ? '' : String(model.supportsReasoningEffort),
+      temperature: model.temperature == null ? '' : String(model.temperature),
       maxVideoBytes: model.maxVideoBytes == null ? '' : String(model.maxVideoBytes),
       maxVideoSeconds: model.maxVideoSeconds == null ? '' : String(model.maxVideoSeconds),
       maxImageReferences: model.maxImageReferences == null ? '' : String(model.maxImageReferences),
@@ -432,6 +435,8 @@ export default function GatewayProviders() {
       else if (modelForm.id) payload.reasoningEfforts = [];
       if (modelForm.responseFormat) payload.responseFormat = modelForm.responseFormat;
       else if (modelForm.id) payload.responseFormat = null;
+      if (modelForm.temperature !== '') payload.temperature = optionalNumber(modelForm.temperature, 'Temperature');
+      else if (modelForm.id) payload.temperature = null;
       if (modelForm.inputPricePer1MTokens !== '') payload.inputPricePer1MTokens = optionalNumber(modelForm.inputPricePer1MTokens, 'Input price per 1M');
       if (modelForm.outputPricePer1MTokens !== '') payload.outputPricePer1MTokens = optionalNumber(modelForm.outputPricePer1MTokens, 'Output price per 1M');
       if (modelForm.cacheReadInputPricePer1MTokens !== '') payload.cacheReadInputPricePer1MTokens = optionalNumber(modelForm.cacheReadInputPricePer1MTokens, 'Cache read price per 1M');
@@ -1147,6 +1152,23 @@ function renderModelPanel(props: {
           </select>
           <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
             JSON-mode models (e.g. DeepSeek) cannot validate a response schema; the schema is injected into the prompt instead. Leave as JSON Schema for OpenAI-style structured outputs.
+          </p>
+        </Field>
+
+        <Field label="Temperature">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            type="number"
+            min={0}
+            max={2}
+            step="0.1"
+            placeholder="pass through"
+            value={form.temperature}
+            onChange={e => setForm({ ...form, temperature: e.target.value })}
+          />
+          <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+            Temperature forced onto every request to this model, replacing whatever the caller sent. Some deployments accept only the default value (Azure gpt-5/gpt-6 need 1). Leave empty to pass the request temperature through.
           </p>
         </Field>
 

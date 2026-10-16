@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 /**
  * Request rewrites applied by model family before the call goes upstream.
@@ -16,25 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class LLMProviderPreprocessTest {
     @Test
-    void gpt6ModelUsesTheDefaultTemperature() {
-        var provider = new LLMProviderModalityTest.RecordingProvider();
-
-        provider.completion(request("gpt-6.1-sol", 0.7));
-
-        assertEquals(1.0, provider.seenTemperature);
-    }
-
-    @Test
-    void gpt6ModelWithoutRequestTemperatureStillUsesTheDefault() {
-        var provider = new LLMProviderModalityTest.RecordingProvider();
-
-        provider.completion(request("gpt-6-luna", null));
-
-        assertEquals(1.0, provider.seenTemperature);
-    }
-
-    @Test
-    void otherModelsKeepTheRequestedTemperature() {
+    void requestedTemperatureIsSentUpstream() {
         var provider = new LLMProviderModalityTest.RecordingProvider();
 
         provider.completion(request("deepseek-v4-pro", 0.3));
@@ -43,12 +26,21 @@ class LLMProviderPreprocessTest {
     }
 
     @Test
-    void otherModelsWithoutRequestTemperatureFallBackToProviderConfig() {
+    void missingRequestTemperatureFallsBackToProviderConfig() {
         var provider = new LLMProviderModalityTest.RecordingProvider();
 
         provider.completion(request("deepseek-v4-pro", null));
 
         assertEquals(0.7, provider.seenTemperature);
+    }
+
+    @Test
+    void o1ModelNeverCarriesATemperature() {
+        var provider = new LLMProviderModalityTest.RecordingProvider();
+
+        provider.completion(request("o1-mini", 0.7));
+
+        assertNull(provider.seenTemperature);
     }
 
     private CompletionRequest request(String model, Double temperature) {

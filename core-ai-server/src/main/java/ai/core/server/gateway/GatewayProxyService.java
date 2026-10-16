@@ -220,9 +220,8 @@ public class GatewayProxyService {
         var outgoingBody = new LinkedHashMap<>(requestBody);
         mergeExtraBody(outgoingBody, provider.requestExtraBody);
         outgoingBody.put("model", selection.upstreamModel());
-        if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS) {
-            var model = routingEngine.modelConfig(string(requestBody.get("model")));
-            GatewayChatRequestNormalizer.normalize(outgoingBody, model == null ? null : model.supportsReasoningEffort);
+        if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES) {
+            GatewayChatRequestNormalizer.normalize(outgoingBody, routingEngine.modelConfig(string(requestBody.get("model"))));
         }
 
         var url = endpointUrl(provider, endpoint, selection.upstreamModel());

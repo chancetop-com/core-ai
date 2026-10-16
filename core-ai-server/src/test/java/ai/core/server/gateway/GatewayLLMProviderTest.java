@@ -298,6 +298,32 @@ class GatewayLLMProviderTest {
     }
 
     @Test
+    void forcesModelTemperatureOntoTheRequest() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("gpt-6.1-sol", provider.id, "gpt-6.1-sol");
+        model.temperature = 1D;
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-6.1-sol");
+        request.temperature = 0.7;
+
+        gateway.completion(request);
+
+        assertEquals(1D, gateway.upstream.capturedRequest.temperature);
+    }
+
+    @Test
+    void modelWithoutTemperatureLeavesRequestTemperatureAlone() {
+        var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
+        var gateway = gateway(List.of(provider), List.of(model("fast-chat", provider.id, "deepseek/deepseek-v4-flash")), null);
+        var request = request("fast-chat");
+        request.temperature = 0.7;
+
+        gateway.completion(request);
+
+        assertEquals(0.7, gateway.upstream.capturedRequest.temperature);
+    }
+
+    @Test
     void downgradesJsonSchemaToJsonObjectForJsonModeOnlyModel() {
         var provider = provider("litellm-1", "litellm", "https://litellm.example.com");
         var deepseek = model("deepseek-chat", provider.id, "deepseek/deepseek-chat");

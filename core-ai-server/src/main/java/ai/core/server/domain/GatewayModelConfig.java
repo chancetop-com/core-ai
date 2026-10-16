@@ -65,6 +65,11 @@ public class GatewayModelConfig {
     @Field(name = "supports_reasoning_effort")
     public Boolean supportsReasoningEffort;
 
+    // temperature forced onto every request to this model; null = the caller's temperature passes through.
+    // Some deployments accept only the default value (e.g. Azure gpt-5/gpt-6 need 1)
+    @Field(name = "temperature")
+    public Double temperature;
+
     // reference capability registry (media models): how many references of each modality the model
     // takes, and how its prompt addresses them. Seeded from the code-level family table; a null field
     // keeps the family default, so adding a model stays one admin row.

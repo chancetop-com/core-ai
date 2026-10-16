@@ -152,6 +152,58 @@ class GatewayModelServiceTest {
     }
 
     @Test
+    void createAppliesTemperature() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "Azure"));
+        var request = new GatewayModelRequest();
+        request.modelId = "gpt-6.1-sol";
+        request.providerId = "provider-1";
+        request.upstreamModel = "gpt-6.1-sol";
+        request.temperature = 1D;
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals(1D, view.temperature);
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).insert(captor.capture());
+        assertEquals(1D, captor.getValue().temperature);
+    }
+
+    @Test
+    void rejectsOutOfRangeTemperature() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "Azure"));
+        var request = new GatewayModelRequest();
+        request.modelId = "gpt-6.1-sol";
+        request.providerId = "provider-1";
+        request.upstreamModel = "gpt-6.1-sol";
+        request.temperature = 2.5D;
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void updateClearsTemperature() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "Azure"));
+        var existing = new GatewayModelConfig();
+        existing.id = "model-1";
+        existing.modelId = "gpt-6.1-sol";
+        existing.providerId = "provider-1";
+        existing.upstreamModel = "gpt-6.1-sol";
+        existing.endpointTypes = List.of("chat.completions");
+        existing.enabled = Boolean.TRUE;
+        existing.temperature = 1D;
+        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+
+        var request = new GatewayModelRequest();
+        request.fields = Map.of("temperature", Boolean.TRUE);
+
+        service.update("model-1", request, "admin-1");
+
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).replace(captor.capture());
+        assertNull(captor.getValue().temperature);
+    }
+
+    @Test
     void importUsesOfficialModelIdAsDefaultAlias() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
         service.gatewayModelDiscoveryService = new StubModelDiscoveryService();

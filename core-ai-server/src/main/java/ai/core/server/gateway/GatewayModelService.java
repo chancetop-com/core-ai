@@ -277,6 +277,7 @@ public class GatewayModelService {
         if (specified(request, "responseFormat", create)) entity.responseFormat = normalizeResponseFormat(request.responseFormat);
         if (specified(request, "reasoningEfforts", create)) entity.reasoningEfforts = normalizeReasoningEfforts(request.reasoningEfforts);
         if (specified(request, "supportsReasoningEffort", create)) entity.supportsReasoningEffort = request.supportsReasoningEffort;
+        if (specified(request, "temperature", create)) entity.temperature = request.temperature;
         if (specified(request, "maxVideoBytes", create)) entity.maxVideoBytes = request.maxVideoBytes;
         if (specified(request, "maxVideoSeconds", create)) entity.maxVideoSeconds = request.maxVideoSeconds;
         GatewayModelReferenceCapabilities.apply(entity, request, (field, isCreate) -> specified(request, field, isCreate), create);
@@ -329,6 +330,9 @@ public class GatewayModelService {
         if (request.contextWindow != null && request.contextWindow <= 0) throw new BadRequestException("contextWindow must be positive");
         if (request.maxVideoBytes != null && request.maxVideoBytes <= 0) throw new BadRequestException("maxVideoBytes must be positive");
         if (request.maxVideoSeconds != null && request.maxVideoSeconds <= 0) throw new BadRequestException("maxVideoSeconds must be positive");
+        if (request.temperature != null && (request.temperature < 0 || request.temperature > 2)) {
+            throw new BadRequestException("temperature must be between 0 and 2");
+        }
         GatewayModelReferenceCapabilities.validate(request);
         if (request.inputPricePer1MTokens != null && request.inputPricePer1MTokens < 0) {
             throw new BadRequestException("inputPricePer1MTokens must not be negative");
@@ -407,6 +411,7 @@ public class GatewayModelService {
         view.responseFormat = entity.responseFormat;
         view.reasoningEfforts = entity.reasoningEfforts;
         view.supportsReasoningEffort = entity.supportsReasoningEffort;
+        view.temperature = entity.temperature;
         view.maxVideoBytes = entity.maxVideoBytes;
         view.maxVideoSeconds = entity.maxVideoSeconds;
         GatewayModelReferenceCapabilities.view(view, entity);

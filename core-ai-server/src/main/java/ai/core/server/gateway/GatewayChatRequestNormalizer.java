@@ -1,22 +1,27 @@
 package ai.core.server.gateway;
 
+import ai.core.server.domain.GatewayModelConfig;
+
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Sanitizes chat.completions request bodies before forwarding: drops parameters the upstream
- * model rejects and repairs message sequences that would fail upstream validation.
+ * Sanitizes chat.completions / responses request bodies before forwarding: applies the model-level
+ * request overrides and drops parameters the upstream model rejects.
  */
 final class GatewayChatRequestNormalizer {
     // stub body for a tool call whose result never arrived (e.g. an interrupted Codex session converted to chat);
     // upstreams require a tool message for every assistant tool_call id, so fill in the missing ones
     private static final String INTERRUPTED_TOOL_RESULT = "[Tool call was interrupted and produced no result]";
 
-    static void normalize(Map<String, Object> outgoingBody, Boolean supportsReasoningEffort) {
+    static void normalize(Map<String, Object> outgoingBody, GatewayModelConfig model) {
+        // some deployments only accept the default temperature (e.g. Azure gpt-5/gpt-6 reject any other
+        // value on both surfaces); the model-level value replaces whatever the client sent
+        if (model != null && model.temperature != null) outgoingBody.put("temperature", model.temperature);
         // Azure gpt-5.x chat deployments reject the reasoning_effort parameter; drop the field when the model declares no support
-        if (Boolean.FALSE.equals(supportsReasoningEffort)) outgoingBody.remove("reasoning_effort");
+        if (model != null && Boolean.FALSE.equals(model.supportsReasoningEffort)) outgoingBody.remove("reasoning_effort");
         completeMissingToolResults(outgoingBody);
     }
 

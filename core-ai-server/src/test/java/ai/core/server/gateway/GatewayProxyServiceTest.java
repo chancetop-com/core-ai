@@ -185,6 +185,38 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void forcesModelTemperatureOnChatRequests() throws Exception {
+        var provider = provider("Azure", "azure", "https://example.openai.azure.com/openai/v1", "azure/", "gpt-6.1-sol");
+        var model = model("sol-chat", provider.id, "gpt-6.1-sol", List.of("chat.completions"));
+        model.temperature = 1D;
+        var service = service(provider, model);
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "sol-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi")),
+                "temperature", 0.7
+        )), "user-1", null, null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals(1D, ((Number) body.get("temperature")).doubleValue(), 1e-9);
+    }
+
+    @Test
+    void keepsClientTemperatureWhenModelDoesNotForceOne() throws Exception {
+        var provider = provider("OpenAI", "openai", "https://api.openai.com/v1", "openai/", "gpt-4o");
+        var service = service(provider, model("gpt-chat", provider.id, "gpt-4o", List.of("chat.completions")));
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "gpt-chat",
+                "messages", List.of(Map.of("role", "user", "content", "hi")),
+                "temperature", 0.7
+        )), "user-1", null, null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals(0.7, ((Number) body.get("temperature")).doubleValue(), 1e-9);
+    }
+
+    @Test
     void azureResponsesUrlToleratesOpenAiV1Suffix() throws Exception {
         var provider = provider("Azure", "azure", "https://example.openai.azure.com/openai/v1", "azure/", "gpt-5.6-luna");
         provider.apiVersion = "2025-01-01-preview";

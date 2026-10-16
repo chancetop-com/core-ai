@@ -93,7 +93,7 @@ public class GatewayLLMProvider extends LLMProvider {
     /**
      * Deferred on purpose: the base template calls preprocess before doCompletionStream,
      * when request.model is still the gateway alias. Model-specific request rewrites
-     * (o1 system-role conversion, gpt-5 temperature) must run against the real upstream
+     * (o1 system-role conversion, model-level temperature) must run against the real upstream
      * model name, so doCompletionStream applies {@link #applyPreprocess} after routing.
      */
     @Override
@@ -140,6 +140,7 @@ public class GatewayLLMProvider extends LLMProvider {
         applyReasoningEffort(request, modelConfig);
         applyResponseFormat(request, modelConfig);
         applyPreprocess(request);
+        applyTemperature(request, modelConfig);
         try {
             return upstream.delegateCompletionStream(request, callback);
         } finally {
@@ -195,6 +196,14 @@ public class GatewayLLMProvider extends LLMProvider {
         request.responseFormat = ResponseFormat.jsonObject();
         if (schemaJson == null) return;
         appendSystemInstruction(request, "Return a JSON object that conforms to the following JSON schema:\n" + schemaJson);
+    }
+
+    // some deployments only accept the default temperature (e.g. Azure gpt-5/gpt-6 reject any other
+    // value on chat completions and responses alike); the model-level value is applied after
+    // preprocess so it wins over both the caller's temperature and the provider default
+    private void applyTemperature(CompletionRequest request, GatewayModelConfig modelConfig) {
+        if (modelConfig == null || modelConfig.temperature == null) return;
+        request.temperature = modelConfig.temperature;
     }
 
     private void appendSystemInstruction(CompletionRequest request, String instruction) {

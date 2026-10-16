@@ -70,6 +70,9 @@ public class GatewayModelRequest {
     @Property(name = "supportsReasoningEffort")
     public Boolean supportsReasoningEffort;
 
+    @Property(name = "temperature")
+    public Double temperature;
+
     @Property(name = "maxVideoBytes")
     public Long maxVideoBytes;
 

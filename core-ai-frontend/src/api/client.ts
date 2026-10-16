@@ -1713,6 +1713,7 @@ export interface GatewayModel {
   responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   supportsReasoningEffort?: boolean | null;
+  temperature?: number | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   maxImageReferences?: number | null;
@@ -1748,6 +1749,7 @@ export interface GatewayModelRequest {
   responseFormat?: string | null;
   reasoningEfforts?: string[] | null;
   supportsReasoningEffort?: boolean | null;
+  temperature?: number | null;
   maxVideoBytes?: number | null;
   maxVideoSeconds?: number | null;
   maxImageReferences?: number | null;
