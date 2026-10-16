@@ -124,6 +124,20 @@ body {
 .nav-item:hover { background: var(--bg-elev); color: var(--text); }
 .nav-item.active { background: var(--bg-elev); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
 
+/* "Update" badge on the Settings row: the update hint a startup check leaves in the sidebar
+   (§4.7 About / updates); painted and removed by paintUpdateBadge(). */
+.nav-badge {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+  font-size: 10.5px;
+  line-height: 15px;
+  font-weight: 500;
+  flex: 0 0 auto;
+}
+
 #sidebar-footer { margin-top: auto; padding: 8px 10px 10px; display: flex; flex-direction: column; gap: 4px; }
 
 .footer-workspace { color: var(--faint); font-size: 12px; word-break: break-all; padding: 0 2px; }
@@ -455,8 +469,24 @@ select:hover, .btn:hover { border-color: var(--accent); }
 #app.sidebar-collapsed .brand-mark { display: block; }
 #app.sidebar-collapsed .sidebar-toggle { margin-left: 0; }
 
-#app.sidebar-collapsed .nav-item { justify-content: center; gap: 0; padding: 8px 0; }
+#app.sidebar-collapsed .nav-item { position: relative; justify-content: center; gap: 0; padding: 8px 0; }
 #app.sidebar-collapsed .nav-text { display: none; }
+/* In the icon rail the badge shrinks to a dot in the corner of the button. */
+#app.sidebar-collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  margin-left: 0;
+  padding: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+  background: var(--accent);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent) 55%, transparent);
+}
 #app.sidebar-collapsed .session-sub { display: none; }
 
 #app.sidebar-collapsed .nav-sessions-row { flex-direction: column; gap: 2px; background: transparent; box-shadow: none; }

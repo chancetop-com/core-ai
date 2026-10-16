@@ -67,6 +67,7 @@ registerArtifactScheme();
 const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
 const WINDOW_MIN = { width: 960, height: 600 };
+const UPDATE_CHECK_DELAY_MS = 3_000;
 type ColorScheme = 'system' | 'light' | 'dark';
 function normalizeColorScheme(value: unknown): ColorScheme {
   return value === 'light' || value === 'dark' ? value : 'system';
@@ -701,6 +702,12 @@ else {
         await shell.openPath(filePath);
       },
     });
+    // Startup update check (design §4.7): a newer release badges the Settings row in the sidebar
+    // without the user opening About. Delayed so window paint and engine start-up go first, and
+    // skipped when the About panel already triggered a check.
+    setTimeout(() => {
+      if (updateService?.snapshot().phase === 'idle') void updateService.check();
+    }, UPDATE_CHECK_DELAY_MS);
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,

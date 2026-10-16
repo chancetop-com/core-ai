@@ -379,6 +379,8 @@ let browserBoundsTimer: number | null = null;
 let browserBoundsValue: string | null = null;
 let browserResizeObserver: ResizeObserver | null = null;
 let sidebarToggleEl: HTMLButtonElement | null = null;
+let settingsNavEl: HTMLButtonElement | null = null;
+let settingsBadgeEl: HTMLElement | null = null;
 let rightDockEl: HTMLElement | null = null;
 let rightDockWasOpen = false;
 let browserTabEl: HTMLButtonElement | null = null;
@@ -845,6 +847,7 @@ function renderSidebar(): void {
       const button = el('button', `nav-item${state.nav === item.key ? ' active' : ''}`);
       button.append(icon(item.icon), el('span', 'nav-text', item.label));
       button.title = item.label;
+      if (item.key === 'settings') settingsNavEl = button;
       button.onclick = () => {
         state.nav = item.key;
         renderSidebar();
@@ -856,6 +859,7 @@ function renderSidebar(): void {
 
   ensureSidebarToggle();
   renderSidebarFooter();
+  paintUpdateBadge();
 }
 
 function renderSidebarFooter(): void {
@@ -4986,13 +4990,14 @@ let aboutUpdateNodes: AboutUpdateNodes | null = null;
 
 /**
  * Settings → About: version, update check and the one-click upgrade (design §4.7). The update
- * work itself lives in the main process; this section only renders the pushed state.
+ * work itself lives in the main process; this section only renders the pushed state — the startup
+ * check and the Settings nav badge both feed off the same stream.
  */
 function renderAboutSection(): HTMLElement {
   const section = el('div');
   section.append(el('h2', undefined, 'About'));
-  section.append(el('div', 'hint', 'Version and updates. Checks the GitHub release feed and, on a new version, '
-    + 'downloads the installer (sha512-verified) and installs it.'));
+  section.append(el('div', 'hint', 'Version and updates. The release feed is checked on startup — a newer release shows an '
+    + '"Update" badge on the Settings row in the sidebar. Upgrading downloads the installer (sha512-verified) and installs it.'));
   const grid = el('dl', 'settings-grid');
   const info = state.info;
   grid.append(el('dt', undefined, 'Version'));
@@ -5054,10 +5059,35 @@ function renderAboutSection(): HTMLElement {
   return section;
 }
 
-/** Stores the pushed state and repaints the About section when it is on screen. */
+/** Stores the pushed state and repaints the About section and the Settings nav badge. */
 function applyUpdateState(next: UpdateState): void {
   state.update = next;
   if (aboutUpdateNodes && aboutUpdateNodes.root.isConnected) paintUpdate(aboutUpdateNodes, next);
+  paintUpdateBadge();
+}
+
+/**
+ * The Settings row is the only update hint outside the About section: when a newer release is
+ * available (the startup check or a manual one said so) the row carries an "Update" badge, so the
+ * release is visible without opening Settings. The badge follows the update state — it clears when
+ * a later check reports up to date.
+ */
+function paintUpdateBadge(): void {
+  const button = settingsNavEl;
+  if (!button || !button.isConnected) return;
+  const current = state.update;
+  const available = current?.phase === 'available' && Boolean(current.latestVersion);
+  if (!available) {
+    settingsBadgeEl?.remove();
+    settingsBadgeEl = null;
+    button.title = 'Settings';
+    return;
+  }
+  if (!settingsBadgeEl || !settingsBadgeEl.isConnected) {
+    settingsBadgeEl = el('span', 'nav-badge', 'Update');
+    button.append(settingsBadgeEl);
+  }
+  button.title = `Settings — update v${current.latestVersion} available`;
 }
 
 function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
@@ -5172,6 +5202,14 @@ async function renderContent(): Promise<void> {
 // ---------- bootstrap ----------
 
 async function bootstrap(): Promise<void> {
+  // The startup update check can settle while this bootstrap is still loading panels: subscribe
+  // first, then pull a snapshot (covers a check that finished before this window subscribed).
+  window.coreai.onUpdateState((next: UpdateState) => {
+    if (next) applyUpdateState(next);
+  });
+  void window.coreai.updateStatus().then((current) => {
+    if (current) applyUpdateState(current);
+  }).catch(() => undefined);
   state.info = await window.coreai.info();
   const settings = await window.coreai.getSettings();
   state.info.backgroundScheduling = settings?.backgroundScheduling === true;
@@ -5225,10 +5263,6 @@ async function bootstrap(): Promise<void> {
       void refreshArtifactBase();
       void refreshArtifactBaseline();
     }
-  });
-
-  window.coreai.onUpdateState((next: UpdateState) => {
-    if (next) applyUpdateState(next);
   });
 
   window.coreai.onBrowserState((status: BrowserStatus) => {
