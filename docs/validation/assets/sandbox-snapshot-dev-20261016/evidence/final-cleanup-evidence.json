@@ -1,0 +1,256 @@
+{
+  "run_id": "20261016084715-b5d29133",
+  "base": "https://core-ai-server.connexup-dev.net",
+  "started_at": "2026-10-16T08:53:54.796491+00:00",
+  "events": [
+    {
+      "label": "dev-environment-only",
+      "passed": true
+    },
+    {
+      "label": "original-retention-record-was-absent",
+      "passed": true
+    },
+    {
+      "label": "permission-cleanup-already-complete",
+      "passed": true
+    },
+    {
+      "label": "no-unresolved-permission-mutation",
+      "passed": true
+    },
+    {
+      "label": "call-key-revocation-completed",
+      "passed": true
+    },
+    {
+      "label": "http-get",
+      "passed": true,
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "label": "admin-identity",
+      "passed": true
+    },
+    {
+      "label": "ui-final-restore-readback-present",
+      "passed": true
+    },
+    {
+      "label": "ui-final-restored-fourteen-days",
+      "passed": true
+    },
+    {
+      "label": "ui-final-restore-owned-by-selected-user",
+      "passed": true
+    },
+    {
+      "label": "ui-final-restore-timestamp-present",
+      "passed": true
+    },
+    {
+      "label": "ui-final-restore-timestamp-has-timezone",
+      "passed": true
+    },
+    {
+      "label": "first-successful-settings-write-present",
+      "passed": true
+    },
+    {
+      "label": "initial-creator-is-test-authorized-identity",
+      "passed": true,
+      "actor": "admin"
+    },
+    {
+      "label": "initial-write-audit-matches-identity",
+      "passed": true
+    },
+    {
+      "label": "two-distinct-owned-key-records",
+      "passed": true
+    },
+    {
+      "label": "four-distinct-owned-users",
+      "passed": true
+    },
+    {
+      "label": "administrator-is-not-cleanup-target",
+      "passed": true
+    },
+    {
+      "label": "owned-users-independently-absent",
+      "passed": true,
+      "remaining_user_ids": []
+    },
+    {
+      "label": "key-record-ownership-matches",
+      "passed": true,
+      "records": [
+        {
+          "_id": "k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d",
+          "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+          "scope": "call",
+          "status": "revoked"
+        },
+        {
+          "_id": "k_d203eee3-3851-4c7e-8ca1-2d052cfd5db3",
+          "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442",
+          "scope": "manage",
+          "status": "active"
+        }
+      ]
+    },
+    {
+      "label": "call-key-record-remains-revoked",
+      "passed": true
+    },
+    {
+      "label": "delete-owned-key-records-intent",
+      "passed": true,
+      "exact_id_user_pairs": [
+        {
+          "_id": "k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d",
+          "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e"
+        },
+        {
+          "_id": "k_d203eee3-3851-4c7e-8ca1-2d052cfd5db3",
+          "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442"
+        }
+      ]
+    },
+    {
+      "label": "delete-owned-key-records-result",
+      "passed": true,
+      "deleted_count": 2
+    },
+    {
+      "label": "owned-key-records-independent-readback",
+      "passed": true,
+      "remaining_records": []
+    },
+    {
+      "label": "retention-document-before-cleanup",
+      "passed": true,
+      "document": {
+        "_id": "sandbox-snapshot",
+        "sandbox_snapshot_retention_days": 14,
+        "created_by": "admin@example.com",
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "created_at": {
+          "$date": "2026-10-16T08:48:01.524Z"
+        },
+        "updated_at": {
+          "$date": "2026-10-16T08:51:25.972Z"
+        }
+      },
+      "expected_creator": "admin@example.com",
+      "expected_updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+      "expected_updated_at": "2026-10-16T08:51:25.972Z"
+    },
+    {
+      "label": "retention-document-matches-exact-owned-state",
+      "passed": true
+    },
+    {
+      "label": "delete-retention-document-cas-intent",
+      "passed": true,
+      "predicate": {
+        "_id": "sandbox-snapshot",
+        "created_by": "admin@example.com",
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "sandbox_snapshot_retention_days": 14
+      },
+      "updated_at": "2026-10-16T08:51:25.972Z"
+    },
+    {
+      "label": "delete-retention-document-cas-result",
+      "passed": true,
+      "deleted_count": 1
+    },
+    {
+      "label": "retention-document-restored-to-absence",
+      "passed": true,
+      "document": null
+    },
+    {
+      "label": "http-get",
+      "passed": true,
+      "path": "/api/settings/sandbox-snapshot",
+      "status": 200
+    },
+    {
+      "label": "final-admin-settings-default-without-audit",
+      "passed": true,
+      "settings": {
+        "retention_days": 14,
+        "updated_by": null,
+        "updated_at": null
+      }
+    },
+    {
+      "label": "original-role-field-exactly-restored",
+      "passed": true,
+      "document_exists": true,
+      "field_exists": true
+    },
+    {
+      "label": "http-get",
+      "passed": true,
+      "path": "/api/admin/system-settings",
+      "status": 200
+    },
+    {
+      "label": "system-settings-flags-match-baseline",
+      "passed": true,
+      "flags": {
+        "sandbox_snapshot_enabled": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "sandbox_snapshot_deployment_allowed": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "sandbox_snapshot_storage_ready": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "sandbox_snapshot_effective": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "skill_repo_sync_enabled": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "has_azure_blob_account_key": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "has_azure_speech_key": {
+          "before": true,
+          "after": true,
+          "matches": true
+        },
+        "has_github_app_private_key": {
+          "before": true,
+          "after": true,
+          "matches": true
+        }
+      }
+    },
+    {
+      "label": "final-cleanup-complete",
+      "passed": true
+    }
+  ],
+  "complete": true,
+  "completed_at": "2026-10-16T08:54:41.018340+00:00"
+}

@@ -1,0 +1,175 @@
+{
+  "run_id": "20261016084715-b5d29133",
+  "base": "https://core-ai-server.connexup-dev.net",
+  "selected_user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+  "model": "deepseek/deepseek-v4-flash",
+  "started_at": "2026-10-16T08:49:50.382390+00:00",
+  "status": "passed",
+  "snapshots": [
+    {
+      "session_id": "814e35ed-73cf-447d-8d63-73de0b5a792d",
+      "requested_retention_days": 21,
+      "marker": "SNAPSHOT_RETENTION_PROBE_21D_6e7f6feb2117481f85dd161b5f6f2c8a",
+      "file_path": "/workspace/snapshot-retention-21d-6e7f6feb2117481f85dd161b5f6f2c8a.txt",
+      "tool_results": [
+        {
+          "call_id": "call_00_19Q5LmSw0Rr755EgYBji6841",
+          "name": "run_bash_command",
+          "status": "success",
+          "arguments": "{\"command\":\"ls -d /workspace && printf '%s\\\\n' SNAPSHOT_RETENTION_PROBE_21D_6e7f6feb2117481f85dd161b5f6f2c8a > /workspace/snapshot-retention-21d-6e7f6feb2117481f85dd161b5f6f2c8a.txt && cat /workspace/snapshot-retention-21d-6e7f6feb2117481f85dd161b5f6f2c8a.txt\",\"description\":\"Create and read back the named probe file\"}",
+          "result": "/workspace\nSNAPSHOT_RETENTION_PROBE_21D_6e7f6feb2117481f85dd161b5f6f2c8a\n",
+          "message_seq": 2,
+          "trace_id": null,
+          "message_timestamp": "2026-10-16T08:49:58.699Z",
+          "marker_line_verified": true
+        }
+      ],
+      "final_status": {
+        "sessionId": "814e35ed-73cf-447d-8d63-73de0b5a792d",
+        "status": "idle",
+        "createdAt": "2026-10-16T08:49:52.989Z",
+        "lastActiveAt": "2026-10-16T08:49:58.708Z",
+        "messageCount": 2,
+        "estimatedTokens": null
+      },
+      "close_requested_at": "2026-10-16T08:50:00.052571+00:00",
+      "close_accepted_at": "2026-10-16T08:50:00.848614+00:00",
+      "verified_at": "2026-10-16T08:50:06.987903+00:00",
+      "metadata": {
+        "snapshot_id": "1f15f8b0-9d16-4ce7-be20-f4283fac20a1",
+        "session_id": "814e35ed-73cf-447d-8d63-73de0b5a792d",
+        "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "status": "AVAILABLE",
+        "created_at": {
+          "$date": "2026-10-16T08:50:00.842Z"
+        },
+        "expires_at": {
+          "$date": "2026-11-06T08:50:00.842Z"
+        },
+        "retention_days": 21,
+        "retention_milliseconds": 1814400000,
+        "file_count": 1,
+        "size_bytes": 389,
+        "sha256": "13ea640d0404f507658a71faf5d83986c51e3ce87733b9d70f67ec2811e238d7",
+        "epoch": 1,
+        "image": "chancetop/core-ai-sandbox-runtime:latest",
+        "runtime_version": "1.0.49"
+      }
+    },
+    {
+      "session_id": "95a16575-22c9-48e2-89ab-8ba8f0ee5404",
+      "requested_retention_days": 7,
+      "marker": "SNAPSHOT_RETENTION_PROBE_7D_664120a99ca84bea85b5c96e0c22301e",
+      "file_path": "/workspace/snapshot-retention-7d-664120a99ca84bea85b5c96e0c22301e.txt",
+      "tool_results": [
+        {
+          "call_id": "call_00_8HKG8N4pfJYBsNE58J3P7323",
+          "name": "run_bash_command",
+          "status": "success",
+          "arguments": "{\"command\":\"ls -d /workspace && printf '%s\\\\n' SNAPSHOT_RETENTION_PROBE_7D_664120a99ca84bea85b5c96e0c22301e > /workspace/snapshot-retention-7d-664120a99ca84bea85b5c96e0c22301e.txt && cat /workspace/snapshot-retention-7d-664120a99ca84bea85b5c96e0c22301e.txt\",\"description\":\"Write and read back the probe file\"}",
+          "result": "/workspace\nSNAPSHOT_RETENTION_PROBE_7D_664120a99ca84bea85b5c96e0c22301e\n",
+          "message_seq": 2,
+          "trace_id": null,
+          "message_timestamp": "2026-10-16T08:50:20.439Z",
+          "marker_line_verified": true
+        }
+      ],
+      "final_status": {
+        "sessionId": "95a16575-22c9-48e2-89ab-8ba8f0ee5404",
+        "status": "idle",
+        "createdAt": "2026-10-16T08:50:14.230Z",
+        "lastActiveAt": "2026-10-16T08:50:20.447Z",
+        "messageCount": 2,
+        "estimatedTokens": null
+      },
+      "close_requested_at": "2026-10-16T08:50:21.526524+00:00",
+      "close_accepted_at": "2026-10-16T08:50:22.873481+00:00",
+      "verified_at": "2026-10-16T08:50:27.652596+00:00",
+      "metadata": {
+        "snapshot_id": "cf340181-6f3e-44c9-bda9-e9f59b203a7b",
+        "session_id": "95a16575-22c9-48e2-89ab-8ba8f0ee5404",
+        "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "status": "AVAILABLE",
+        "created_at": {
+          "$date": "2026-10-16T08:50:22.399Z"
+        },
+        "expires_at": {
+          "$date": "2026-10-23T08:50:22.399Z"
+        },
+        "retention_days": 7,
+        "retention_milliseconds": 604800000,
+        "file_count": 1,
+        "size_bytes": 388,
+        "sha256": "56f867851f89599f754eac35d273146a2fe0bcb0b141c7fe8da0682f90d9e15e",
+        "epoch": 1,
+        "image": "chancetop/core-ai-sandbox-runtime:latest",
+        "runtime_version": "1.0.49"
+      }
+    }
+  ],
+  "retention_updates": [
+    {
+      "retention_days": 21,
+      "verified_at": "2026-10-16T08:49:51.941103+00:00",
+      "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+      "updated_at": "2026-10-16T08:49:51.139Z"
+    },
+    {
+      "retention_days": 7,
+      "verified_at": "2026-10-16T08:50:08.557137+00:00",
+      "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+      "updated_at": "2026-10-16T08:50:07.742Z"
+    }
+  ],
+  "old_snapshot_after_retention_change": {
+    "verified_at": "2026-10-16T08:50:13.437861+00:00",
+    "unchanged": true,
+    "metadata": {
+      "snapshot_id": "1f15f8b0-9d16-4ce7-be20-f4283fac20a1",
+      "session_id": "814e35ed-73cf-447d-8d63-73de0b5a792d",
+      "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+      "status": "AVAILABLE",
+      "created_at": {
+        "$date": "2026-10-16T08:50:00.842Z"
+      },
+      "expires_at": {
+        "$date": "2026-11-06T08:50:00.842Z"
+      },
+      "retention_days": 21,
+      "retention_milliseconds": 1814400000,
+      "file_count": 1,
+      "size_bytes": 389,
+      "sha256": "13ea640d0404f507658a71faf5d83986c51e3ce87733b9d70f67ec2811e238d7",
+      "epoch": 1,
+      "image": "chancetop/core-ai-sandbox-runtime:latest",
+      "runtime_version": "1.0.49"
+    }
+  },
+  "old_snapshot_after_second_capture": {
+    "verified_at": "2026-10-16T08:50:32.178424+00:00",
+    "unchanged": true,
+    "metadata": {
+      "snapshot_id": "1f15f8b0-9d16-4ce7-be20-f4283fac20a1",
+      "session_id": "814e35ed-73cf-447d-8d63-73de0b5a792d",
+      "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+      "status": "AVAILABLE",
+      "created_at": {
+        "$date": "2026-10-16T08:50:00.842Z"
+      },
+      "expires_at": {
+        "$date": "2026-11-06T08:50:00.842Z"
+      },
+      "retention_days": 21,
+      "retention_milliseconds": 1814400000,
+      "file_count": 1,
+      "size_bytes": 389,
+      "sha256": "13ea640d0404f507658a71faf5d83986c51e3ce87733b9d70f67ec2811e238d7",
+      "epoch": 1,
+      "image": "chancetop/core-ai-sandbox-runtime:latest",
+      "runtime_version": "1.0.49"
+    }
+  },
+  "completed_at": "2026-10-16T08:50:32.182489+00:00",
+  "cleanup_performed": false,
+  "retention_left_at_days": 7
+}

@@ -2,6 +2,7 @@ package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.settings.SandboxSnapshotSettingsService;
 import com.mongodb.MongoException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -31,7 +32,6 @@ import java.util.UUID;
  */
 public class SandboxSnapshotService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxSnapshotService.class);
-    private static final int EXPIRES_DAYS = 14;
 
     static int majorOf(String version) {
         if (version == null || version.isBlank() || "unknown".equals(version)) return -1;
@@ -49,6 +49,8 @@ public class SandboxSnapshotService {
     MongoCollection<SandboxEpochDoc> epochCollection;
     @Inject
     SandboxSnapshotPolicy policy;
+    @Inject
+    SandboxSnapshotSettingsService settings;
 
     SandboxSnapshotClient client = new SandboxSnapshotClient();
 
@@ -207,7 +209,7 @@ public class SandboxSnapshotService {
         doc.image = image;
         doc.runtimeVersion = captured.runtimeVersion();
         doc.createdAt = ZonedDateTime.now();
-        doc.expiresAt = doc.createdAt.plusDays(EXPIRES_DAYS);
+        doc.expiresAt = doc.createdAt.plusDays(settings.retentionDays());
         return doc;
     }
 

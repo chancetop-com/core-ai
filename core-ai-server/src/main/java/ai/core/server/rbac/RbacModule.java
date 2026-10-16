@@ -4,7 +4,7 @@ import ai.core.api.server.rbac.RbacWebService;
 import core.framework.module.Module;
 
 /**
- * RBAC role configuration module. {@link RoleRegistry} is bound in ApiUserModule
+ * RBAC role configuration module. {@link RoleRegistry} is bound in SettingsModule
  * (before {@code PermissionService}, which depends on it); this module only
  * registers the admin role config web service.
  *

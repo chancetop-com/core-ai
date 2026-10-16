@@ -5,7 +5,10 @@ import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
+import java.util.List;
+import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -29,6 +32,16 @@ class RoleRegistryTest {
     @Test
     void memberRoleCannotReadTheGatewayModelCatalog() {
         assertFalse(registry().permissionsOf(RoleRegistry.ROLE_MEMBER).contains(PermissionCodes.GATEWAY_VIEW));
+    }
+
+    @Test
+    void snapshotManagementIsSelectableWithoutGrantingItToDefaultRoles() {
+        var registry = registry();
+
+        assertTrue(PermissionCodes.ALL.contains(PermissionCodes.SANDBOX_SNAPSHOT_MANAGE));
+        assertFalse(registry.permissionsOf(RoleRegistry.ROLE_USER).contains(PermissionCodes.SANDBOX_SNAPSHOT_MANAGE));
+        assertFalse(registry.permissionsOf(RoleRegistry.ROLE_MEMBER).contains(PermissionCodes.SANDBOX_SNAPSHOT_MANAGE));
+        assertDoesNotThrow(() -> registry.updateRoles(Map.of("snapshot-operator", List.of(PermissionCodes.SANDBOX_SNAPSHOT_MANAGE))));
     }
 
     private RoleRegistry registry() {

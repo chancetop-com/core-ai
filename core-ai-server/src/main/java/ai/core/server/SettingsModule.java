@@ -1,6 +1,9 @@
 package ai.core.server;
 
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.gateway.GatewaySecretProtector;
+import ai.core.server.rbac.RoleRegistry;
+import ai.core.server.settings.SandboxSnapshotSettingsService;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.settings.TraceArchiveSettings;
 import core.framework.module.Module;
@@ -14,6 +17,9 @@ public class SettingsModule extends Module {
         bindGatewaySecretProtector();
         bind(TraceArchiveSettings.class);
         bind(SystemSettingsService.class);
+        bind(RoleRegistry.class);
+        bind(PermissionService.class);
+        bind(SandboxSnapshotSettingsService.class);
     }
 
     private void bindGatewaySecretProtector() {

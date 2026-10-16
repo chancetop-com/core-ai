@@ -1,0 +1,58 @@
+{
+  "verified_at": "2026-10-16T08:47:09.670453+00:00",
+  "base": "https://core-ai-server.connexup-dev.net",
+  "namespace": "dev-ai",
+  "pods": [
+    {
+      "pod": "core-ai-server-56985d96d6-2jqzt",
+      "image": "docker.io/chancetop/core-ai-server:dev-snapshot-retention-20261016-01",
+      "image_id": "docker.io/chancetop/core-ai-server@sha256:6fdea5f71884223c590d70d240cc9f99a1e6146dededa7bfe63b7180cf109190",
+      "platform": {
+        "kind": "multi-platform-index"
+      },
+      "ready": true,
+      "restart_count": 0
+    },
+    {
+      "pod": "core-ai-server-56985d96d6-wzn2j",
+      "image": "docker.io/chancetop/core-ai-server:dev-snapshot-retention-20261016-01",
+      "image_id": "docker.io/chancetop/core-ai-server@sha256:6fdea5f71884223c590d70d240cc9f99a1e6146dededa7bfe63b7180cf109190",
+      "platform": {
+        "kind": "multi-platform-index"
+      },
+      "ready": true,
+      "restart_count": 0
+    }
+  ],
+  "http_checks": [
+    {
+      "path": "/",
+      "status": 200
+    },
+    {
+      "path": "/settings/sandbox",
+      "status": 200
+    },
+    {
+      "path": "/api/capabilities",
+      "status": 200
+    },
+    {
+      "path": "/api/auth/me",
+      "status": 200
+    },
+    {
+      "path": "/api/admin/system-settings",
+      "status": 200
+    },
+    {
+      "path": "/api/settings/sandbox-snapshot",
+      "status": 200,
+      "body": {
+        "retention_days": 14,
+        "updated_by": null,
+        "updated_at": null
+      }
+    }
+  ]
+}

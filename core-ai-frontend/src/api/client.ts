@@ -1902,6 +1902,16 @@ export interface RuntimeSeries {
   points?: RuntimeSeriesPoint[];
 }
 
+export interface SandboxSnapshotSettings {
+  retention_days: number;
+  updated_by?: string;
+  updated_at?: string;
+}
+
+export interface SandboxSnapshotSettingsRequest {
+  retention_days: number;
+}
+
 export interface SystemSettings {
   memory_extraction_model?: string | null;
   default_memory_extraction_model?: string;
@@ -2075,6 +2085,12 @@ export const api = {
       request<void>(`/api/prompts/${id}`, { method: 'DELETE' }),
     publish: (id: string) =>
       request<PromptTemplate>(`/api/prompts/${id}/publish`, { method: 'POST' }),
+  },
+  sandboxSnapshotSettings: {
+    get: () =>
+      request<SandboxSnapshotSettings>('/api/settings/sandbox-snapshot'),
+    update: (data: SandboxSnapshotSettingsRequest) =>
+      request<SandboxSnapshotSettings>('/api/settings/sandbox-snapshot', { method: 'PUT', body: JSON.stringify(data) }),
   },
   systemSettings: {
     get: () =>

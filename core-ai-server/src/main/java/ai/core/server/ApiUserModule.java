@@ -8,7 +8,6 @@ import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.ApiUserUsageService;
 import ai.core.server.apiuser.ApiUserWebServiceImpl;
-import ai.core.server.apiuser.PermissionService;
 import ai.core.server.tool.CallerHeaderConfigResolver;
 import ai.core.tool.CallerHeaderProvider;
 import core.framework.module.Module;
@@ -25,8 +24,6 @@ public class ApiUserModule extends Module {
         keyService.maxTtlSeconds = property("sys.api-user.key.max.ttl").map(Integer::parseInt).orElse(604800);
         bind(ApiUserQuotaService.class);
         bind(ApiUserUsageService.class);
-        bind(ai.core.server.rbac.RoleRegistry.class);
-        bind(PermissionService.class);
         bind(ai.core.server.web.session.SessionIdentity.class);
 
         // registers the manager-config based caller header resolver used by outbound tool HTTP injection

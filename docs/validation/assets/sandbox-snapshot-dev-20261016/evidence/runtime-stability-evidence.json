@@ -1,0 +1,31 @@
+{
+  "verified_at": "2026-10-16T08:56:08.005327+00:00",
+  "initial_probe_at": "2026-10-16T08:47:09.670453+00:00",
+  "snapshot_probe_started_at": "2026-10-16T08:49:50.382390+00:00",
+  "snapshot_probe_completed_at": "2026-10-16T08:50:32.182489+00:00",
+  "same_pod_names_before_and_after": true,
+  "all_container_starts_before_snapshot_probe": true,
+  "pods": [
+    {
+      "pod": "core-ai-server-56985d96d6-2jqzt",
+      "uid": "20a85f87-6b4f-4891-b06d-3fe21d9d1aa0",
+      "created_at": "2026-10-16T08:46:06Z",
+      "container_started_at": "2026-10-16T08:46:10Z",
+      "restart_count": 0,
+      "ready": true,
+      "image_id": "docker.io/chancetop/core-ai-server@sha256:6fdea5f71884223c590d70d240cc9f99a1e6146dededa7bfe63b7180cf109190"
+    },
+    {
+      "pod": "core-ai-server-56985d96d6-wzn2j",
+      "uid": "03bc06a9-692c-4008-b098-b821c6358b25",
+      "created_at": "2026-10-16T08:45:40Z",
+      "container_started_at": "2026-10-16T08:45:44Z",
+      "restart_count": 0,
+      "ready": true,
+      "image_id": "docker.io/chancetop/core-ai-server@sha256:6fdea5f71884223c590d70d240cc9f99a1e6146dededa7bfe63b7180cf109190"
+    }
+  ],
+  "deployment_generation": 587,
+  "deployment_observed_generation": 587,
+  "ready_replicas": 2
+}

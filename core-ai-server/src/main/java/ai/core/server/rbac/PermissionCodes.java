@@ -60,6 +60,7 @@ public final class PermissionCodes {
     public static final String GATEWAY_VIEW = "gateway.view";
     public static final String GATEWAY_MANAGE = "gateway.manage";
     public static final String SYSTEM_MANAGE = "system.manage";
+    public static final String SANDBOX_SNAPSHOT_MANAGE = "sandbox.snapshot.manage";
     public static final String COSTALERT_MANAGE = "costalert.manage";
     public static final String USER_MANAGE = "user.manage";
     public static final String ANALYTICS_VIEW = "analytics.view";
@@ -79,7 +80,7 @@ public final class PermissionCodes {
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
             EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, AGENT_COMPARE, NOTIFICATION_VIEW,
-            GATEWAY_VIEW, GATEWAY_MANAGE, SYSTEM_MANAGE, COSTALERT_MANAGE,
+            GATEWAY_VIEW, GATEWAY_MANAGE, SYSTEM_MANAGE, SANDBOX_SNAPSHOT_MANAGE, COSTALERT_MANAGE,
             USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
 
     private PermissionCodes() {

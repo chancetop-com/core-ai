@@ -1,0 +1,17 @@
+{
+  "selected_navigation_visible": true,
+  "selected_input_error_for_fraction": true,
+  "selected_saved_days": 21,
+  "independent_api_readback": {
+    "retention_days": 21,
+    "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+    "updated_at": "2026-10-16T08:48:55.294Z"
+  },
+  "denied_navigation_absent": true,
+  "denied_direct_url_redirect": "https://core-ai-server.connexup-dev.net/for-you",
+  "restore_readback": {
+    "retention_days": 14,
+    "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+    "updated_at": "2026-10-16T08:51:25.972Z"
+  }
+}

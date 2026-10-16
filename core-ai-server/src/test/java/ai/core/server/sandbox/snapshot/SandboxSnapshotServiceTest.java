@@ -1,6 +1,7 @@
 package ai.core.server.sandbox.snapshot;
 
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.settings.SandboxSnapshotSettingsService;
 import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -34,6 +35,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -44,6 +46,7 @@ class SandboxSnapshotServiceTest {
     private ObjectStorageService storage;
     private SandboxSnapshotClient client;
     private SandboxSnapshotPolicy policy;
+    private SandboxSnapshotSettingsService settings;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -60,6 +63,9 @@ class SandboxSnapshotServiceTest {
         when(policy.decision()).thenReturn(decision(true, storage));
         when(policy.status()).thenReturn(new SandboxSnapshotPolicy.Status(true, true, true, true));
         service.policy = policy;
+        settings = mock(SandboxSnapshotSettingsService.class);
+        when(settings.retentionDays()).thenReturn(14);
+        service.settings = settings;
         service.configure("sandbox-snapshots", "sandbox-snapshots");
     }
 
@@ -299,10 +305,34 @@ class SandboxSnapshotServiceTest {
     }
 
     @Test
-    void restoreReturnsRestoredOnHappyPath() throws Exception {
+    void captureUsesCurrentRetentionForEachNewSnapshot() {
+        when(settings.retentionDays()).thenReturn(30, 7);
+        var result = new SandboxSnapshotClient.CaptureResult("0".repeat(64), 10, 1, "1.0.27");
+        when(client.capture(anyString(), anyInt(), any(Path.class))).thenAnswer(inv -> {
+            Files.writeString(inv.getArgument(2), "x");
+            return result;
+        });
+        when(epochs.get("s1")).thenReturn(Optional.of(epochDoc(5)));
+        when(snapshots.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+
+        service.captureBeforeRelease("s1", "u1", 5, "10.0.0.1", 8080, "img:latest");
+        service.captureBeforeRelease("s1", "u1", 5, "10.0.0.1", 8080, "img:latest");
+
+        var captured = ArgumentCaptor.forClass(SandboxSnapshotDoc.class);
+        verify(snapshots, times(2)).insert(captured.capture());
+        var first = captured.getAllValues().getFirst();
+        var second = captured.getAllValues().getLast();
+        assertEquals(first.createdAt.plusDays(30), first.expiresAt);
+        assertEquals(second.createdAt.plusDays(7), second.expiresAt);
+    }
+
+    @Test
+    void restoreUsesStoredExpiryAfterRetentionChanges() throws Exception {
         var content = "snapshot-bytes".getBytes(StandardCharsets.UTF_8);
         var sha = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
         var doc = availableDoc("1.0.27");
+        doc.createdAt = ZonedDateTime.now().minusDays(10);
+        when(settings.retentionDays()).thenReturn(1);
         doc.sha256 = sha;
         when(snapshots.find(any(Query.class))).thenReturn(List.of(doc));
         when(client.fetchRuntimeVersion("10.0.0.1", 8080)).thenReturn("1.0.30");
@@ -315,6 +345,7 @@ class SandboxSnapshotServiceTest {
         assertEquals(SandboxSnapshotService.RestoreOutcome.RESTORED, result.outcome());
         assertEquals(doc.createdAt, result.snapshotCreatedAt());
         verify(client).restore(eq("10.0.0.1"), eq(8080), any(Path.class), eq(sha));
+        verify(settings, never()).retentionDays();
     }
 
     @Test

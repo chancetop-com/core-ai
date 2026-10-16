@@ -1,0 +1,1497 @@
+{
+  "run_id": "20261016084715-b5d29133",
+  "base": "https://core-ai-server.connexup-dev.net",
+  "events": [
+    {
+      "at": "2026-10-16T08:47:15.906156+00:00",
+      "label": "admin-identity",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "admin@example.com",
+        "role": "admin",
+        "permissions": [
+          "*"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:15.910469+00:00",
+      "label": "admin-identity-confirmed",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:16.687146+00:00",
+      "label": "original-retention",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 14,
+        "updated_by": null,
+        "updated_at": null
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:17.734850+00:00",
+      "label": "read-current-roles",
+      "method": "GET",
+      "path": "/api/admin/rbac/roles",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:17.739661+00:00",
+      "label": "deployed-permission-catalog",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:26.982926+00:00",
+      "label": "roles-field-compare-and-set",
+      "passed": true,
+      "result": {
+        "matched": 1,
+        "modified": 1,
+        "upserted": 0
+      },
+      "changed_role_names": [
+        "snapshot-denied-20261016084715-b5d29133",
+        "snapshot-system-20261016084715-b5d29133",
+        "snapshot-test-20261016084715-b5d29133"
+      ]
+    },
+    {
+      "at": "2026-10-16T08:47:32.708767+00:00",
+      "label": "role-cas-independent-readback",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:39.547840+00:00",
+      "label": "read-current-roles",
+      "method": "GET",
+      "path": "/api/admin/rbac/roles",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:39.552087+00:00",
+      "label": "role-write-readback",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:40.648022+00:00",
+      "label": "create-selected",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "actor": "anon",
+      "status": 201,
+      "expected": [
+        201
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:41.634884+00:00",
+      "label": "activate-selected",
+      "method": "POST",
+      "path": "/api/auth/users/update-status",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:42.434180+00:00",
+      "label": "assign-selected-role",
+      "method": "POST",
+      "path": "/api/auth/users/update-role",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:43.332071+00:00",
+      "label": "create-denied",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "actor": "anon",
+      "status": 201,
+      "expected": [
+        201
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-denied-20261016084715-b5d29133@example.invalid"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:44.276209+00:00",
+      "label": "activate-denied",
+      "method": "POST",
+      "path": "/api/auth/users/update-status",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:45.524056+00:00",
+      "label": "assign-denied-role",
+      "method": "POST",
+      "path": "/api/auth/users/update-role",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:46.833778+00:00",
+      "label": "create-api-manager",
+      "method": "POST",
+      "path": "/api/admin/api-users",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "api:89fde756-2493-4d0d-9f53-00f491398442",
+        "status": "active"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:47.808499+00:00",
+      "label": "identify-management-key",
+      "method": "GET",
+      "path": "/api/api-users/api:89fde756-2493-4d0d-9f53-00f491398442/keys",
+      "actor": "manager",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:47.813691+00:00",
+      "label": "one-owned-management-key",
+      "passed": true,
+      "count": 1
+    },
+    {
+      "at": "2026-10-16T08:47:48.658651+00:00",
+      "label": "create-api-subject",
+      "method": "POST",
+      "path": "/api/api-users",
+      "actor": "manager",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "status": "active"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:49.481028+00:00",
+      "label": "issue-api-call-key",
+      "method": "POST",
+      "path": "/api/api-users/api:70514836-4ade-4577-8b8c-e81de00ca88e/keys",
+      "actor": "manager",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:49.486511+00:00",
+      "label": "api-credential-is-call-key",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:56.453191+00:00",
+      "label": "selected-identity-proof",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "role": "snapshot-test-20261016084715-b5d29133",
+        "permissions": [
+          "sandbox.snapshot.manage",
+          "chat.use"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:56.455845+00:00",
+      "label": "selected-identity-matches",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:56.457123+00:00",
+      "label": "selected-exact-permissions",
+      "passed": true,
+      "role": "snapshot-test-20261016084715-b5d29133"
+    },
+    {
+      "at": "2026-10-16T08:47:57.380402+00:00",
+      "label": "denied-identity-proof",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "denied",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-denied-20261016084715-b5d29133@example.invalid",
+        "role": "snapshot-denied-20261016084715-b5d29133",
+        "permissions": [
+          "chat.use"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:57.385002+00:00",
+      "label": "denied-identity-matches",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:57.387069+00:00",
+      "label": "denied-exact-permissions",
+      "passed": true,
+      "role": "snapshot-denied-20261016084715-b5d29133"
+    },
+    {
+      "at": "2026-10-16T08:47:58.280989+00:00",
+      "label": "api-identity-proof",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "api",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "role": "user",
+        "permissions": [
+          "dashboard.view",
+          "chat.use",
+          "trace.view",
+          "agent.view",
+          "agent.manage",
+          "workflow.view",
+          "workflow.manage",
+          "prompt.view",
+          "prompt.manage",
+          "trigger.view",
+          "trigger.manage",
+          "task.view",
+          "tool.view",
+          "apitool.view",
+          "apitool.manage",
+          "apitool.call",
+          "skill.view",
+          "skill.manage",
+          "dataset.view",
+          "dataset.manage",
+          "project.view",
+          "project.manage",
+          "experiment.view",
+          "experiment.replay",
+          "notification.view",
+          "agent.compare",
+          "mcp.view",
+          "mcp.manage",
+          "mcp.call",
+          "media.compare",
+          "gateway.view",
+          "gateway.manage",
+          "system.manage",
+          "costalert.manage",
+          "analytics.view"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:58.286137+00:00",
+      "label": "api-identity-matches",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:58.287942+00:00",
+      "label": "setup-complete",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:47:59.091649+00:00",
+      "label": "anon-get-denied",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "anon",
+      "status": 401,
+      "expected": [
+        401
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:47:59.929418+00:00",
+      "label": "anon-put-denied",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "anon",
+      "status": 401,
+      "expected": [
+        401
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:00.761524+00:00",
+      "label": "admin-get-allowed",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 14,
+        "updated_by": null,
+        "updated_at": null
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:01.561249+00:00",
+      "label": "admin-put-allowed",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 7,
+        "updated_by": "admin@example.com",
+        "updated_at": "2026-10-16T08:48:01.524Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:01.563443+00:00",
+      "label": "admin-put-allowed-response-value",
+      "passed": true,
+      "retention_days": 7
+    },
+    {
+      "at": "2026-10-16T08:48:01.564692+00:00",
+      "label": "admin-put-allowed-audit-user",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:02.436906+00:00",
+      "label": "admin-put-allowed-readback",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 7,
+        "updated_by": "admin@example.com",
+        "updated_at": "2026-10-16T08:48:01.524Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:02.442306+00:00",
+      "label": "admin-put-allowed-persisted-value",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:03.289529+00:00",
+      "label": "selected-get-allowed",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 7,
+        "updated_by": "admin@example.com",
+        "updated_at": "2026-10-16T08:48:01.524Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:04.177508+00:00",
+      "label": "selected-put-allowed",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:04.183419+00:00",
+      "label": "selected-put-allowed-response-value",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:04.189908+00:00",
+      "label": "selected-put-allowed-audit-user",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:05.014149+00:00",
+      "label": "selected-put-allowed-readback",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:05.018409+00:00",
+      "label": "selected-put-allowed-persisted-value",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:05.840713+00:00",
+      "label": "denied-identity-before-denial",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "denied",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-denied-20261016084715-b5d29133@example.invalid",
+        "role": "snapshot-denied-20261016084715-b5d29133",
+        "permissions": [
+          "chat.use"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:05.846670+00:00",
+      "label": "denied-authenticated-before-denial",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:06.896659+00:00",
+      "label": "denied-get-forbidden",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "denied",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:07.761517+00:00",
+      "label": "denied-put-forbidden",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "denied",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:08.545035+00:00",
+      "label": "api-identity-before-denial",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "api",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "role": "user",
+        "permissions": [
+          "dashboard.view",
+          "chat.use",
+          "trace.view",
+          "agent.view",
+          "agent.manage",
+          "workflow.view",
+          "workflow.manage",
+          "prompt.view",
+          "prompt.manage",
+          "trigger.view",
+          "trigger.manage",
+          "task.view",
+          "tool.view",
+          "apitool.view",
+          "apitool.manage",
+          "apitool.call",
+          "skill.view",
+          "skill.manage",
+          "dataset.view",
+          "dataset.manage",
+          "project.view",
+          "project.manage",
+          "experiment.view",
+          "experiment.replay",
+          "notification.view",
+          "agent.compare",
+          "mcp.view",
+          "mcp.manage",
+          "mcp.call",
+          "media.compare",
+          "gateway.view",
+          "gateway.manage",
+          "system.manage",
+          "costalert.manage",
+          "analytics.view"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:08.546583+00:00",
+      "label": "api-authenticated-before-denial",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:09.534138+00:00",
+      "label": "api-get-forbidden",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "api",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:10.338776+00:00",
+      "label": "api-put-forbidden",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "api",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:11.737507+00:00",
+      "label": "selected-old-admin-settings-get-forbidden",
+      "method": "GET",
+      "path": "/api/admin/system-settings",
+      "actor": "selected",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:13.244925+00:00",
+      "label": "selected-old-admin-settings-put-forbidden",
+      "method": "PUT",
+      "path": "/api/admin/system-settings",
+      "actor": "selected",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:14.288327+00:00",
+      "label": "assign-system-only-role",
+      "method": "POST",
+      "path": "/api/auth/users/update-role",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:15.257106+00:00",
+      "label": "system-only-identity-proof",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "denied",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "user_id": "snapshot-denied-20261016084715-b5d29133@example.invalid",
+        "role": "snapshot-system-20261016084715-b5d29133",
+        "permissions": [
+          "system.manage"
+        ]
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:15.259707+00:00",
+      "label": "system-only-exact-permissions",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:16.030633+00:00",
+      "label": "system-only-get-forbidden",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "denied",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:16.934157+00:00",
+      "label": "system-only-put-forbidden",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "denied",
+      "status": 403,
+      "expected": [
+        403
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:17.807116+00:00",
+      "label": "restore-denied-role",
+      "method": "POST",
+      "path": "/api/auth/users/update-role",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:18.652666+00:00",
+      "label": "invalid-zero",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:19.475432+00:00",
+      "label": "unchanged-after-zero",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:19.482643+00:00",
+      "label": "invalid-write-preserved-value-zero",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:20.486293+00:00",
+      "label": "invalid-too-large",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:21.306637+00:00",
+      "label": "unchanged-after-too-large",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:21.309418+00:00",
+      "label": "invalid-write-preserved-value-too-large",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:22.141836+00:00",
+      "label": "invalid-fraction",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:23.035242+00:00",
+      "label": "unchanged-after-fraction",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:23.039636+00:00",
+      "label": "invalid-write-preserved-value-fraction",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:23.881812+00:00",
+      "label": "invalid-fraction-over-boundary",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:24.683884+00:00",
+      "label": "unchanged-after-fraction-over-boundary",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:24.686559+00:00",
+      "label": "invalid-write-preserved-value-fraction-over-boundary",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:25.519340+00:00",
+      "label": "invalid-high-precision-fraction",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:26.364631+00:00",
+      "label": "unchanged-after-high-precision-fraction",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:26.369659+00:00",
+      "label": "invalid-write-preserved-value-high-precision-fraction",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:27.168355+00:00",
+      "label": "invalid-missing-field",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:28.077614+00:00",
+      "label": "unchanged-after-missing-field",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:28.082994+00:00",
+      "label": "invalid-write-preserved-value-missing-field",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:28.892678+00:00",
+      "label": "invalid-null-field",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 400,
+      "expected": [
+        400
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:29.707463+00:00",
+      "label": "unchanged-after-null-field",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:04.118Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:29.712903+00:00",
+      "label": "invalid-write-preserved-value-null-field",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:30.569358+00:00",
+      "label": "minimum-boundary",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 1,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:30.534Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:30.574695+00:00",
+      "label": "minimum-boundary-response-value",
+      "passed": true,
+      "retention_days": 1
+    },
+    {
+      "at": "2026-10-16T08:48:30.577209+00:00",
+      "label": "minimum-boundary-audit-user",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:31.588008+00:00",
+      "label": "minimum-boundary-readback",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 1,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:30.534Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:31.590444+00:00",
+      "label": "minimum-boundary-persisted-value",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:32.429502+00:00",
+      "label": "maximum-boundary",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 3650,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:32.394Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:32.435409+00:00",
+      "label": "maximum-boundary-response-value",
+      "passed": true,
+      "retention_days": 3650
+    },
+    {
+      "at": "2026-10-16T08:48:32.438778+00:00",
+      "label": "maximum-boundary-audit-user",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:33.284740+00:00",
+      "label": "maximum-boundary-readback",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 3650,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:32.394Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:33.288017+00:00",
+      "label": "maximum-boundary-persisted-value",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:34.141073+00:00",
+      "label": "final-selected-value",
+      "method": "PUT",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:34.103Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:34.148977+00:00",
+      "label": "final-selected-value-response-value",
+      "passed": true,
+      "retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:48:34.152814+00:00",
+      "label": "final-selected-value-audit-user",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:35.159917+00:00",
+      "label": "final-selected-value-readback",
+      "method": "GET",
+      "path": "/api/settings/sandbox-snapshot",
+      "actor": "selected",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {
+        "retention_days": 30,
+        "updated_by": "snapshot-selected-20261016084715-b5d29133@example.invalid",
+        "updated_at": "2026-10-16T08:48:34.103Z"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:48:35.163040+00:00",
+      "label": "final-selected-value-persisted-value",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:48:35.165240+00:00",
+      "label": "matrix-complete",
+      "passed": true,
+      "final_retention_days": 30
+    },
+    {
+      "at": "2026-10-16T08:52:45.805488+00:00",
+      "label": "revoke-owned-call-key",
+      "method": "POST",
+      "path": "/api/api-users/keys/k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d/expire",
+      "actor": "manager",
+      "status": 200,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:46.587691+00:00",
+      "label": "call-key-revocation-readback",
+      "method": "GET",
+      "path": "/api/api-users/api:70514836-4ade-4577-8b8c-e81de00ca88e/keys",
+      "actor": "manager",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:46.593977+00:00",
+      "label": "call-key-is-revoked",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:52:47.436458+00:00",
+      "label": "cleanup-current-users",
+      "method": "GET",
+      "path": "/api/auth/users",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:48.295686+00:00",
+      "label": "delete-owned-api",
+      "method": "POST",
+      "path": "/api/auth/users/delete",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:49.151284+00:00",
+      "label": "delete-owned-manager",
+      "method": "POST",
+      "path": "/api/auth/users/delete",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:50.038518+00:00",
+      "label": "delete-owned-selected",
+      "method": "POST",
+      "path": "/api/auth/users/delete",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:51.066397+00:00",
+      "label": "delete-owned-denied",
+      "method": "POST",
+      "path": "/api/auth/users/delete",
+      "actor": "admin",
+      "status": 204,
+      "expected": [
+        200,
+        204
+      ],
+      "passed": true,
+      "response": {
+        "type": "NoneType"
+      },
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:51.938350+00:00",
+      "label": "cleanup-users-readback",
+      "method": "GET",
+      "path": "/api/auth/users",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:51.940901+00:00",
+      "label": "owned-users-removed",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:52:52.801245+00:00",
+      "label": "api-credential-invalid-after-cleanup",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "api",
+      "status": 401,
+      "expected": [
+        401
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:53.623540+00:00",
+      "label": "selected-credential-invalid-after-cleanup",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "selected",
+      "status": 401,
+      "expected": [
+        401
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:52:54.509590+00:00",
+      "label": "denied-credential-invalid-after-cleanup",
+      "method": "GET",
+      "path": "/api/auth/me",
+      "actor": "denied",
+      "status": 401,
+      "expected": [
+        401
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:53:03.935830+00:00",
+      "label": "roles-field-compare-and-set",
+      "passed": true,
+      "result": {
+        "matched": 1,
+        "modified": 1,
+        "upserted": 0
+      },
+      "changed_role_names": [
+        "snapshot-denied-20261016084715-b5d29133",
+        "snapshot-system-20261016084715-b5d29133",
+        "snapshot-test-20261016084715-b5d29133"
+      ]
+    },
+    {
+      "at": "2026-10-16T08:53:09.041093+00:00",
+      "label": "role-cas-independent-readback",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:53:15.985393+00:00",
+      "label": "read-current-roles",
+      "method": "GET",
+      "path": "/api/admin/rbac/roles",
+      "actor": "admin",
+      "status": 200,
+      "expected": [
+        200
+      ],
+      "passed": true,
+      "response": {},
+      "request_id": null
+    },
+    {
+      "at": "2026-10-16T08:53:15.991618+00:00",
+      "label": "owned-roles-removed",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:53:15.995056+00:00",
+      "label": "other-current-roles-preserved",
+      "passed": true
+    },
+    {
+      "at": "2026-10-16T08:53:15.998551+00:00",
+      "label": "cleanup-complete",
+      "passed": true,
+      "removed_user_ids": [
+        "api:70514836-4ade-4577-8b8c-e81de00ca88e",
+        "api:89fde756-2493-4d0d-9f53-00f491398442",
+        "snapshot-denied-20261016084715-b5d29133@example.invalid",
+        "snapshot-selected-20261016084715-b5d29133@example.invalid"
+      ],
+      "key_records_for_exact_mongo_cleanup": [
+        "k_1289ff7e-5fda-4b82-9227-8d76c2d46d6d",
+        "k_d203eee3-3851-4c7e-8ca1-2d052cfd5db3"
+      ],
+      "limitation": "call key is revoked and subjects deleted; HTTP has no physical key delete, so root should delete only these key records"
+    }
+  ]
+}

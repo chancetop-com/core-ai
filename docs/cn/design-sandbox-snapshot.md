@@ -6,6 +6,15 @@
 
 本章是 v1 实施的**唯一优先依据**。下面第 1~20 章是完整版长期设计，继续保留；凡与本章冲突的地方（包括第 19 章旧的 v1 决策），v1 一律以本章为准，被裁剪的机制留给后续版本按需启用。
 
+### 快照保留时长配置
+
+- 在 **Settings → Sandbox**（`/settings/sandbox`）配置全局保留天数，默认 **14 天**，允许 **1–3650** 的整数。
+- 配置保存在 `system_settings` 集合的独立文档 `_id: "sandbox-snapshot"` 的 `sandbox_snapshot_retention_days` 字段，避免其他系统设置整文档保存时覆盖此值；没有该记录或字段时使用 14 天，无需数据迁移。
+- `GET/PUT /api/settings/sandbox-snapshot` 仅提供保留时长设置，写入请求为 `{"retention_days": 30}`。
+- 独立权限码为 **`sandbox.snapshot.manage`**。管理员默认可用；在 Roles 中为自定义角色添加该权限，再通过 User Management 将角色分配给选定用户。普通 `user` / `member` 默认没有此权限，API 用户不能通过动作权限豁免修改该设置。此权限不会开放其他系统设置。
+- 每次生成新快照读取当前配置，无需重启 server。`expires_at = created_at + 保留天数`；修改配置不会重算已有快照的过期时间，恢复快照也不会自动续期。
+- 仍只保留每个会话最新的一份可用快照；到期后不能恢复，后台每小时尝试清理过期文档和存储对象。快照启用开关仍由原有系统设置管理。
+
 ### 简化依据
 
 复核现有实现后确认两个事实，使 v1 可以大幅裁剪：
@@ -47,7 +56,7 @@ Server（新增 `SandboxSnapshotService` + 两个钩子）：
 
 Mongo：
 
-- `sandbox_snapshots`：`snapshot_id, session_id, user_id, epoch, status(UPLOADING/AVAILABLE/DELETED), blob_key, sha256, size, image, runtime_version, roots, created_at, expires_at(14 天)`（`image` 为 tag 仅供排查，兼容判断用 `runtime_version` 的 major）。
+- `sandbox_snapshots`：`snapshot_id, session_id, user_id, epoch, status(UPLOADING/AVAILABLE/DELETED), blob_key, sha256, size, image, runtime_version, roots, created_at, expires_at(按配置，默认 14 天)`（`image` 为 tag 仅供排查，兼容判断用 `runtime_version` 的 major）。
 - epoch 计数文档：`{_id: session_id, epoch}`——用 session_id 做 `_id`，主键查询免建索引，migration 只需覆盖 `sandbox_snapshots`。
 - ⚠️ 部署要求：新 collection 必须新增 index migration（`session_id + status + created_at`），dev 环境 notablescan 下缺索引会直接 500。
 
