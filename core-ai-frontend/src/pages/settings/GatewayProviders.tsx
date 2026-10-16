@@ -1431,7 +1431,10 @@ function effortRank(value: string): number {
 
 function resolveMappedEffort(effort: string, supported: string[]): string | null {
   if (!supported.length) return null;
-  const ranked = [...supported].sort((a, b) => effortRank(a) - effortRank(b));
+  const ranked = supported.filter(v => v && v.toLowerCase() !== 'none').sort((a, b) => effortRank(a) - effortRank(b));
+  // a none-only declaration sends an explicit none, matching GatewayLLMProvider.resolveReasoningEffort
+  if (!ranked.length) return 'none';
+  if (effort === 'none') return null;
   if (effort === 'max') return ranked[ranked.length - 1];
   const target = effortRank(effort);
   return ranked.find(v => effortRank(v) >= target) ?? ranked[ranked.length - 1];
@@ -1439,7 +1442,7 @@ function resolveMappedEffort(effort: string, supported: string[]): string | null
 
 function ReasoningEffortMappingPreview({ values }: { values: string[] }) {
   const rows = [
-    { level: 'none', value: null },
+    { level: 'none', value: resolveMappedEffort('none', values) },
     { level: 'low', value: resolveMappedEffort('low', values) },
     { level: 'high', value: resolveMappedEffort('high', values) },
     { level: 'max', value: resolveMappedEffort('max', values) },
