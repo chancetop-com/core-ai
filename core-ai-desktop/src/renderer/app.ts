@@ -4659,7 +4659,7 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     }
     const table = el('table');
     const headRow = el('tr');
-    for (const label of ['Name', 'Source', 'State', 'Path']) headRow.append(el('th', undefined, label));
+    for (const label of ['Name', 'Source', 'State', 'Path', '']) headRow.append(el('th', undefined, label));
     table.append(headRow);
     for (const skill of skills) {
       const row = el('tr');
@@ -4675,6 +4675,23 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
       }
       row.append(stateCell);
       row.append(el('td', 'mono', skill.path));
+      const actionsCell = el('td');
+      const remove = el('button', 'btn small danger', 'Delete') as HTMLButtonElement;
+      remove.title = 'Delete this skill from disk';
+      remove.onclick = async () => {
+        const hubNote = skill.hub ? ' It can be pulled again from the Hub.' : '';
+        if (!window.confirm(`Delete skill "${skill.name}" from disk?${hubNote}\n\n${skill.path}`)) return;
+        remove.disabled = true;
+        const outcome = await call('skills/delete', { path: skill.path });
+        if (!outcome) {
+          remove.disabled = false;
+          return;
+        }
+        toast(`Deleted ${skill.name}`);
+        await refresh();
+      };
+      actionsCell.append(remove);
+      row.append(actionsCell);
       table.append(row);
     }
     body.append(table);
