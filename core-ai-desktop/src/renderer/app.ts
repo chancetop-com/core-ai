@@ -598,7 +598,6 @@ function stopReasoningTick(current: StreamingState): void {
 function resetStreaming(view: SessionView): void {
   if (view.streaming) stopReasoningTick(view.streaming);
   view.streaming = null;
-  view.planBlock = null;
 }
 
 /**
@@ -3068,16 +3067,19 @@ function planState(status: unknown): PlanState {
 }
 
 /**
- * Sized and aligned like the assistant messages: write_todos re-emits the whole list, so the
- * turn's card is rewritten in place instead of stacking a new box per update.
+ * Sized and aligned like the assistant messages; the session owns one plan card — write_todos
+ * re-emits the whole list on every update, so the same block is rewritten and kept at the newest
+ * position instead of stacking a new box per update or per turn.
  */
 function renderPlanUpdate(view: SessionView, event: any): void {
   const todos: any[] = Array.isArray(event.todos) ? event.todos : [];
   if (!todos.length) return;
   let block = view.planBlock;
-  if (!block || !block.isConnected) {
+  // Parentage, not isConnected: a session the user switched away from is a detached DOM subtree,
+  // where isConnected is false for every node — checking it would mint a fresh card per update
+  // that arrives in the background and stack duplicates that all show on remount.
+  if (!block || block.parentElement !== view.transcript) {
     block = el('div', 'plan-block');
-    view.transcript.append(block);
     view.planBlock = block;
   }
   const head = el('div', 'plan-head');
@@ -3092,6 +3094,9 @@ function renderPlanUpdate(view: SessionView, event: any): void {
     item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(content)));
     block.append(item);
   }
+  // Appending an existing node moves it: the card tracks the newest activity instead of being
+  // stranded at the position its first update created it in.
+  if (view.transcript.lastElementChild !== block) view.transcript.append(block);
   scrollTranscript(view);
 }
 
