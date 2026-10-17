@@ -25,6 +25,8 @@ const targets = [
   { entryPoints: ['src/main/schedule/ScheduleWaker.ts'], outfile: 'dist/test/scheduleWaker.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/browser/CdpBridge.ts'], outfile: 'dist/test/cdpBridge.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/computer/managedSkill.ts'], outfile: 'dist/test/managedSkill.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/skills/BuiltinSkills.ts'], outfile: 'dist/test/builtinSkills.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/skills/RuntimeTools.ts'], outfile: 'dist/test/runtimeTools.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/computer/CuaManager.ts'], outfile: 'dist/test/cuaManager.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/attachments/AttachmentStager.ts'], outfile: 'dist/test/attachmentStager.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/artifacts/artifactPath.ts'], outfile: 'dist/test/artifactPath.js', platform: 'node', target: 'node20', format: 'cjs' },

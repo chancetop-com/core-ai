@@ -24,6 +24,8 @@ import {
 } from './auth/AuthStore';
 import { BrowserManager } from './browser/BrowserManager';
 import { CuaManager } from './computer/CuaManager';
+import { BuiltinSkills } from './skills/BuiltinSkills';
+import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
@@ -44,6 +46,8 @@ interface DesktopSettings {
   windowBounds?: WindowBounds;
   windowMaximized?: boolean;
   computerUse?: boolean;
+  browserSkillEnabled?: boolean;
+  channelsSkillEnabled?: boolean;
   backgroundScheduling?: boolean;
 }
 interface CallEnvelope { ok: boolean; result?: unknown; error?: { code: number; message: string; data?: Record<string, unknown> } }
@@ -55,6 +59,7 @@ let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
+let builtinSkills: BuiltinSkills | null = null;
 let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
 let tray: Tray | null = null;
@@ -117,6 +122,7 @@ function loadSettings(): DesktopSettings {
 function normalizeSettings(loaded: DesktopSettings): DesktopSettings {
   const result = { ...loaded };
   if (result.computerUse === undefined) result.computerUse = true;
+  if (result.browserSkillEnabled === undefined) result.browserSkillEnabled = true;
   const list = Array.isArray(result.workspaces) ? result.workspaces.filter((entry): entry is string => typeof entry === 'string') : [];
   if (result.lastWorkspace && !list.includes(result.lastWorkspace)) list.unshift(result.lastWorkspace);
   result.workspaces = list.slice(0, 8);
@@ -358,9 +364,33 @@ function resolveEnginePath(): string {
   const executable = process.platform === 'win32' ? 'core-ai-cli.bat' : 'core-ai-cli';
   return path.join(repoRoot, 'build', 'core-ai-cli', 'install', 'core-ai-cli', 'bin', executable);
 }
+function resolveSkillsRoot(): string {
+  if (app.isPackaged) return path.join(process.resourcesPath, 'skills');
+  return path.resolve(app.getAppPath(), '..', 'docs', 'skills');
+}
 function resolveSkillSourceDir(): string {
-  if (app.isPackaged) return path.join(process.resourcesPath, 'skills', 'gui-automation');
-  return path.resolve(app.getAppPath(), 'skills', 'gui-automation');
+  return path.join(resolveSkillsRoot(), 'gui-automation');
+}
+/**
+ * Installs the skills this launch should own. Always-local: no network, no auth. The gated
+ * capabilities only install when their runtime is actually ready, so the model is never told
+ * about a daemon that is not there.
+ */
+function installConfiguredBuiltins(): void {
+  if (!builtinSkills) return;
+  if (builtinSkills.error) console.error(`[skills] ${builtinSkills.error}`);
+  const defaults = builtinSkills.installDefaults((entry) => entry.name !== 'browser-use' || settings.browserSkillEnabled !== false);
+  const installs: Array<{ name: string; result: ReturnType<BuiltinSkills['install']> }> = [];
+  if (settings.computerUse === true && cuaManager?.readyForSkill()) {
+    installs.push({ name: 'gui-automation', result: builtinSkills.install('gui-automation') });
+  }
+  if (settings.channelsSkillEnabled === true
+    || (settings.channelsSkillEnabled !== false && resolveExecutable('ocg'))) {
+    installs.push({ name: 'ocg', result: builtinSkills.install('ocg') });
+  }
+  for (const item of [...defaults.map((result) => ({ name: 'default', result })), ...installs]) {
+    if (!item.result.ok) console.error(`[skills] ${item.name}: ${item.result.detail}`);
+  }
 }
 async function runDesktopInstaller(installerPath: string): Promise<void> {
   await browserManager?.stop();
@@ -513,6 +543,18 @@ function registerIpc(): void {
     if (typeof patch.backgroundScheduling === 'boolean') configureBackgroundScheduling();
     saveSettings();
     applyColorScheme();
+    let skillsChanged = false;
+    if (typeof patch.browserSkillEnabled === 'boolean') {
+      const result = patch.browserSkillEnabled ? builtinSkills?.install('browser-use') : builtinSkills?.remove('browser-use');
+      if (result && !result.ok) console.error(`[skills] browser-use: ${result.detail}`);
+      skillsChanged = true;
+    }
+    if (typeof patch.channelsSkillEnabled === 'boolean') {
+      const result = patch.channelsSkillEnabled ? builtinSkills?.install('ocg') : builtinSkills?.remove('ocg');
+      if (result && !result.ok) console.error(`[skills] ocg: ${result.detail}`);
+      skillsChanged = true;
+    }
+    if (skillsChanged) await supervisor?.shutdownAll();
     const nextPolicy = settings.approvalPolicy ?? 'ask';
     if (settings.lastWorkspace && nextPolicy !== previousPolicy) await supervisor?.restart(settings.lastWorkspace);
     return settings;
@@ -621,6 +663,8 @@ function registerIpc(): void {
     if (result.ok) {
       settings.computerUse = true;
       saveSettings();
+      const skill = builtinSkills?.install('gui-automation');
+      if (skill && !skill.ok) console.error(`[skills] gui-automation: ${skill.detail}`);
       await supervisor?.shutdownAll();
     }
     return result;
@@ -628,6 +672,8 @@ function registerIpc(): void {
   ipcMain.handle('computer:disable', async () => {
     settings.computerUse = false;
     saveSettings();
+    const skill = builtinSkills?.remove('gui-automation');
+    if (skill && !skill.ok) console.error(`[skills] gui-automation: ${skill.detail}`);
     await supervisor?.shutdownAll();
     return cuaManager?.status(false) ?? null;
   });
@@ -637,9 +683,72 @@ function registerIpc(): void {
     if (result.ok) {
       settings.computerUse = false;
       saveSettings();
+      const skill = builtinSkills?.remove('gui-automation');
+      if (skill && !skill.ok) console.error(`[skills] gui-automation: ${skill.detail}`);
       await supervisor?.shutdownAll();
     }
     return result;
+  });
+  ipcMain.handle('builtinSkills:list', () => ({
+    error: builtinSkills?.error ?? null,
+    skills: builtinSkills?.list() ?? [],
+  }));
+  ipcMain.handle('builtinSkills:install', async (_event, name: string, force?: boolean) => {
+    if (!builtinSkills) return { ok: false, changed: false, files: 0, detail: 'built-in skills manager unavailable' };
+    const skillName = String(name ?? '');
+    const result = force ? builtinSkills.restore(skillName) : builtinSkills.install(skillName);
+    if (result.ok && skillName === 'browser-use') {
+      settings.browserSkillEnabled = true;
+      saveSettings();
+    } else if (result.ok && skillName === 'ocg') {
+      settings.channelsSkillEnabled = true;
+      saveSettings();
+    }
+    if (result.changed) await supervisor?.shutdownAll();
+    return result;
+  });
+  ipcMain.handle('builtinSkills:remove', async (_event, name: string) => {
+    if (!builtinSkills) return { ok: false, changed: false, files: 0, detail: 'built-in skills manager unavailable' };
+    const skillName = String(name ?? '');
+    const result = builtinSkills.remove(skillName);
+    if (result.ok && skillName === 'browser-use') {
+      settings.browserSkillEnabled = false;
+      saveSettings();
+    } else if (result.ok && skillName === 'ocg') {
+      settings.channelsSkillEnabled = false;
+      saveSettings();
+    }
+    if (result.changed) await supervisor?.shutdownAll();
+    return result;
+  });
+  ipcMain.handle('browser:toolStatus', () => browserUseStatus());
+  ipcMain.handle('browser:installTool', async () => {
+    const result = await installBrowserUse();
+    if (result.ok) {
+      const skill = builtinSkills?.install('browser-use');
+      if (skill && !skill.ok) console.error(`[skills] browser-use: ${skill.detail}`);
+      await supervisor?.shutdownAll();
+    }
+    return { ...result, status: await browserUseStatus() };
+  });
+  ipcMain.handle('channels:status', () => ocgStatus());
+  ipcMain.handle('channels:setEnabled', async (_event, enabled: boolean) => {
+    const value = enabled === true;
+    settings.channelsSkillEnabled = value;
+    saveSettings();
+    const result = value ? builtinSkills?.install('ocg') : builtinSkills?.remove('ocg');
+    if (result && !result.ok) console.error(`[skills] ocg: ${result.detail}`);
+    await supervisor?.shutdownAll();
+    return { enabled: value, status: await ocgStatus(), skill: result ?? null };
+  });
+  ipcMain.handle('channels:installTool', async () => {
+    const result = await installOcg();
+    if (result.ok) {
+      const skill = builtinSkills?.install('ocg');
+      if (skill && !skill.ok) console.error(`[skills] ocg: ${skill.detail}`);
+      await supervisor?.shutdownAll();
+    }
+    return { ...result, status: await ocgStatus() };
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
@@ -699,7 +808,37 @@ else {
       onState: (status) => send('browser:state', status),
       onNeedsPanel: (force: boolean) => send('browser:needPanel', { force }),
     });
-    cuaManager = new CuaManager({ skillSourceDir: resolveSkillSourceDir(), desktopVersion: clientVersion });
+    cuaManager = new CuaManager({
+      skillSourceDir: resolveSkillSourceDir(),
+      desktopVersion: clientVersion,
+      installSkill: () => builtinSkills?.install('gui-automation')
+        ?? { ok: false, detail: 'built-in skills manager unavailable' },
+      skillStatus: () => {
+        const status = builtinSkills?.status('gui-automation');
+        if (!status) {
+          return {
+            installed: false, managed: false, upToDate: false, detail: 'not installed', files: 0,
+            targetDir: path.join(os.homedir(), '.core-ai', 'skills', 'gui-automation'),
+            sourceDir: resolveSkillSourceDir(),
+          };
+        }
+        return {
+          installed: status.installed || Boolean(status.coveredBy),
+          managed: status.managed,
+          upToDate: status.upToDate,
+          detail: status.coveredBy ? `provided by ${status.coveredBy}` : status.detail,
+          files: 0,
+          targetDir: status.targetDir,
+          sourceDir: status.sourceDir,
+        };
+      },
+    });
+    builtinSkills = new BuiltinSkills({
+      skillsRoot: resolveSkillsRoot(),
+      desktopVersion: clientVersion,
+      onLog: (message) => console.log(`[skills] ${message}`),
+    });
+    installConfiguredBuiltins();
     updateService = new UpdateService({
       currentVersion: clientVersion,
       isPackaged: app.isPackaged,
@@ -719,10 +858,23 @@ else {
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,
-      extraEnv: () => ({
-        ...(browserManager?.engineEnv() ?? {}),
-        ...(cuaManager?.engineEnv(settings.computerUse === true) ?? {}),
-      }),
+      extraEnv: () => {
+        const enginePath = resolveEnginePath();
+        let env: Record<string, string> = {
+          ...(browserManager?.engineEnv() ?? {}),
+          ...(cuaManager?.engineEnv(settings.computerUse === true) ?? {}),
+          CORE_AI_CLI_BIN: enginePath,
+          CORE_AI_BROWSER_TOOL: resolveExecutable('browser-use') ? 'ready' : 'missing',
+        };
+        env = withExecutableOnPath(env, path.dirname(enginePath));
+        // browser-use/ocg may live in ~/.local/bin or the npm global bin, which the app process
+        // did not necessarily inherit; the agent's shell needs the same directories on PATH.
+        for (const tool of ['browser-use', 'ocg']) {
+          const file = resolveExecutable(tool);
+          if (file) env = withExecutableOnPath(env, path.dirname(file));
+        }
+        return env;
+      },
       onEvent: (workspace, method, params) => send('engine:event', { workspace, method, params }),
       onLog: (workspace, line) => {
         console.error(`[engine ${workspace}] ${line}`);

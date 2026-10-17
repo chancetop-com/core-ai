@@ -51,6 +51,9 @@ export interface CuaManagerOptions {
   desktopVersion: string;
   /** Overridable for tests; defaults to the real user home. */
   homeDir?: string;
+  /** Lets the built-in skills manager own install/coverage decisions (e.g. a hub copy already provides it). */
+  installSkill?: () => { ok: boolean; detail: string };
+  skillStatus?: () => ManagedSkillState & { targetDir: string; sourceDir: string };
 }
 
 interface CommandResult {
@@ -131,20 +134,30 @@ export class CuaManager {
     }
   }
 
-  private tokenFileExists(): boolean {
-    return existsSync(path.join(this.cuaDir, 'host', 'env-token'));
-  }
+    private tokenFileExists(): boolean {
+        return existsSync(path.join(this.cuaDir, 'host', 'env-token'));
+    }
 
-  /** Everything `cua do` needs to work in this session, from cheap file checks (no subprocess). */
-  private syncProblems(): string[] {
-    const problems: string[] = [];
-    if (!this.resolveBin()) problems.push('the cua CLI is not installed');
-    if (!existsSync(path.join(this.cuaDir, 'host_consented'))) problems.push('desktop consent is not granted');
-    if (!this.hostTargetSelected()) problems.push('the host target is not selected');
-    if (this.tokenFileExists() && !this.encryptedTokenStored()) problems.push('the host access token is not stored');
-    if (!existsSync(path.join(this.skillDir, 'SKILL.md'))) problems.push('the gui-automation skill is not installed');
-    return problems;
-  }
+    private skillInstalled(): boolean {
+        if (this.options.skillStatus) return this.options.skillStatus().installed;
+        return existsSync(path.join(this.skillDir, 'SKILL.md'));
+    }
+
+    /** Everything `cua do` needs to work in this session, from cheap file checks (no subprocess). */
+    private syncProblems(includeSkill = true): string[] {
+        const problems: string[] = [];
+        if (!this.resolveBin()) problems.push('the cua CLI is not installed');
+        if (!existsSync(path.join(this.cuaDir, 'host_consented'))) problems.push('desktop consent is not granted');
+        if (!this.hostTargetSelected()) problems.push('the host target is not selected');
+        if (this.tokenFileExists() && !this.encryptedTokenStored()) problems.push('the host access token is not stored');
+        if (includeSkill && !this.skillInstalled()) problems.push('the gui-automation skill is not installed');
+        return problems;
+    }
+
+    /** Runtime-only readiness, used before installing the skill itself (avoids a skill-presence deadlock). */
+    readyForSkill(): boolean {
+        return this.resolveBin() !== null && this.syncProblems(false).length === 0;
+    }
 
   /**
    * Environment for engine spawns. The flag drives the CLI's computer-use prompt section; the cua
@@ -209,7 +222,9 @@ export class CuaManager {
       host: bin ? await this.hostInfo(bin) : { configured: false, installed: false, running: false, mode: null, directUrl: null, envTokenPath: null },
       target: { host: this.hostTargetSelected() },
       token: this.encryptedTokenStored(),
-      skill: { ...describeManagedSkill(this.options.skillSourceDir, this.skillDir), targetDir: this.skillDir, sourceDir: this.options.skillSourceDir },
+      skill: this.options.skillStatus
+        ? this.options.skillStatus()
+        : { ...describeManagedSkill(this.options.skillSourceDir, this.skillDir), targetDir: this.skillDir, sourceDir: this.options.skillSourceDir },
     };
   }
 
@@ -273,13 +288,14 @@ export class CuaManager {
       steps.push({ step: 'Verify desktop access', ok: probe.code === 0, detail: lastLine(probe.stdout, probe.stderr) || `exit ${probe.code}` });
     }
 
-    const skillInstall = installManagedSkill(this.options.skillSourceDir, this.skillDir, {
-      skill: 'gui-automation',
-      source: SKILL_SOURCE,
-      desktopVersion: this.options.desktopVersion,
-    });
-    const skill = describeManagedSkill(this.options.skillSourceDir, this.skillDir);
-    steps.push({ step: 'Install the gui-automation skill', ok: skill.installed, detail: skillInstall.detail });
+    const skillInstall = this.options.installSkill
+      ? this.options.installSkill()
+      : installManagedSkill(this.options.skillSourceDir, this.skillDir, {
+          skill: 'gui-automation',
+          source: SKILL_SOURCE,
+          desktopVersion: this.options.desktopVersion,
+        });
+    steps.push({ step: 'Install the gui-automation skill', ok: skillInstall.ok, detail: skillInstall.detail });
 
     return { ok: steps.every((step) => step.ok), steps };
   }

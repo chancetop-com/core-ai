@@ -106,6 +106,22 @@ test('an unmanaged copy is never overwritten', () => {
   assert.equal(readFileSync(path.join(target, 'SKILL.md'), 'utf8'), '# user copy\n');
 });
 
+test('readyForSkill ignores the skill file so startup can restore it', () => {
+  const source = makeSourceDir();
+  const home = makeInstalledHome(source);
+  rmSync(path.join(home, '.core-ai', 'skills', 'gui-automation'), { recursive: true, force: true });
+  const previous = process.env.CORE_AI_CUA_BIN;
+  process.env.CORE_AI_CUA_BIN = process.execPath;
+  try {
+    const manager = new CuaManager({ skillSourceDir: source, desktopVersion: '0.0.0', homeDir: home });
+    assert.equal(manager.readyForSkill(), true);
+    assert.deepEqual(manager.engineEnv(true), {});
+  } finally {
+    if (previous === undefined) delete process.env.CORE_AI_CUA_BIN;
+    else process.env.CORE_AI_CUA_BIN = previous;
+  }
+});
+
 test('engineEnv gates on enabled plus every ready file check', () => {
   const source = makeSourceDir();
   const home = makeInstalledHome(source);

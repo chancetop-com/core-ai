@@ -39,6 +39,19 @@ class ManagedSkillProvisionerTest {
     }
 
     @Test
+    void isDesktopManagedDetectsTheDesktopMarker() throws Exception {
+        var skillDir = tempDir.resolve("browser-use");
+        Files.createDirectories(skillDir);
+        Files.writeString(skillDir.resolve("SKILL.md"), "---\nname: browser-use\n---\n");
+
+        assertFalse(ManagedSkillProvisioner.isDesktopManaged(skillDir));
+
+        Files.writeString(skillDir.resolve(".core-ai-desktop.json"), "{\"skill\":\"browser-use\"}\n");
+
+        assertTrue(ManagedSkillProvisioner.isDesktopManaged(skillDir));
+    }
+
+    @Test
     void adaptForWindowsAppendsUsageOnWindows() {
         String content = "---\nname: browser-use\n---\n";
 

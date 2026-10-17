@@ -38,6 +38,8 @@ public class ManagedSkillProvisioner {
     private static final Duration ARCHIVE_TIMEOUT = Duration.ofSeconds(30);
     private static final int MAX_SKILL_FILE_SIZE = 512 * 1024;
     private static final String SKILL_FILE_NAME = "SKILL.md";
+    /** Written by core-ai-desktop for skills it installs from the bundled app resources. */
+    private static final String DESKTOP_MARKER_FILE = ".core-ai-desktop.json";
     private static final String WINDOWS_USAGE_MARKER = "## Windows Usage";
     private static final Path USER_SKILLS_DIR = SkillLocations.userSkillsDir();
     private static final String WINDOWS_USAGE = """
@@ -106,7 +108,7 @@ public class ManagedSkillProvisioner {
 
     private static final List<ManagedSkill> MANAGED_SKILLS = List.of(
             new ManagedSkill("browser-use",
-                    "https://raw.githubusercontent.com/browser-use/browser-use/main/skills/browser-use/SKILL.md")
+                    "https://raw.githubusercontent.com/chancetop-com/core-ai/master/docs/skills/browser-use/SKILL.md")
     );
 
     public static void provision() {
@@ -138,6 +140,11 @@ public class ManagedSkillProvisioner {
         }
     }
 
+    /** A desktop-installed copy is owned by the app: never replace it from the server or GitHub. */
+    static boolean isDesktopManaged(Path skillDir) {
+        return Files.isRegularFile(skillDir.resolve(DESKTOP_MARKER_FILE));
+    }
+
     static String adaptForWindows(String content, boolean windows) {
         if (!windows || content.contains(WINDOWS_USAGE_MARKER)) return content;
         return content + "\n\n" + WINDOWS_USAGE;
@@ -156,6 +163,10 @@ public class ManagedSkillProvisioner {
             var qualified = lookupSingle(client, name);
             if (qualified == null) return false;
             var local = findLocal(name);
+            if (local != null && isDesktopManaged(local.skillDir())) {
+                LOGGER.info("managed skill '{}' is installed by core-ai-desktop, keeping the bundled copy", name);
+                return true;
+            }
             if (local != null && local.marker() != null && local.marker().isManaged()) {
                 if (local.marker().digest().equals(serverDigest(client, qualified))) return true;   // up to date
                 if (!local.digest().equals(local.marker().digest())) {

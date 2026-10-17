@@ -105,6 +105,39 @@ interface ComputerStatus {
   skill: { installed: boolean; managed: boolean; upToDate: boolean; detail: string; targetDir: string };
 }
 
+interface RuntimeStatus {
+  present: boolean;
+  version: string | null;
+  path: string | null;
+  detail: string;
+  daemon?: string | null;
+}
+
+interface BuiltinSkillEntry {
+  name: string;
+  title: string;
+  description: string;
+  capability: 'hub' | 'browser' | 'computer' | 'channels';
+  default: 'always' | 'when-enabled' | 'auto-detect';
+  runtime: 'none' | 'browser-use' | 'cua' | 'ocg';
+  version: string;
+  source: string;
+  license: string;
+  docsUrl: string;
+  installed: boolean;
+  managed: boolean;
+  upToDate: boolean;
+  detail: string;
+  coveredBy: string | null;
+  targetDir: string;
+  sourceDir: string;
+}
+
+interface BuiltinSkillsEnvelope {
+  error: string | null;
+  skills: BuiltinSkillEntry[];
+}
+
 interface UpdateState {
   phase: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'installing' | 'ready' | 'error';
   currentVersion: string;
@@ -212,6 +245,14 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   computerEnable(): Promise<{ ok: boolean; steps: ComputerStep[] }>;
   computerDisable(): Promise<ComputerStatus | null>;
   computerRemoveService(): Promise<{ ok: boolean; detail: string }>;
+  builtinSkills(): Promise<BuiltinSkillsEnvelope>;
+  builtinInstall(name: string, force?: boolean): Promise<{ ok: boolean; changed: boolean; files: number; detail: string }>;
+  builtinRemove(name: string): Promise<{ ok: boolean; changed: boolean; files: number; detail: string }>;
+  browserToolStatus(): Promise<RuntimeStatus>;
+  browserInstallTool(): Promise<{ ok: boolean; detail: string; status: RuntimeStatus }>;
+  channelsStatus(): Promise<RuntimeStatus>;
+  channelsSetEnabled(enabled: boolean): Promise<{ enabled: boolean; status: RuntimeStatus; skill: { ok: boolean; detail: string } | null }>;
+  channelsInstallTool(): Promise<{ ok: boolean; detail: string; status: RuntimeStatus }>;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
   updateInstall(): Promise<UpdateState | null>;
@@ -705,6 +746,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   if (className) node.className = className;
   if (text !== undefined) node.textContent = text;
   return node;
+}
+
+function builtinStatusLabel(skill: BuiltinSkillEntry): string {
+  if (skill.coveredBy) return `Provided by ${skill.coveredBy}`;
+  if (!skill.installed) return 'Not installed';
+  if (!skill.managed) return 'Unmanaged copy';
+  if (skill.upToDate) return 'Installed';
+  return skill.detail.includes('modified') ? 'Modified locally' : 'Update available';
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -4964,7 +5013,11 @@ async function renderArtifactsPanel(): Promise<HTMLElement> {
 }
 
 async function renderSkillsPanel(): Promise<HTMLElement> {
-  const { root, body } = panel('Skills', 'Workspace and user-level skills (~/.core-ai/skills and {workspace}/.core-ai/skills)');
+  const { root, body } = panel('Skills', 'Built-in capabilities plus workspace and user-level skills (~/.core-ai/skills and {workspace}/.core-ai/skills)');
+  const builtinHost = el('div');
+  const listHost = el('div');
+  body.append(builtinHost, listHost);
+  let builtinByPath = new Map<string, BuiltinSkillEntry>();
 
   const skillState = (skill: any, connected: boolean): { label: string; update: boolean; force: boolean } => {
     switch (String(skill.state ?? '')) {
@@ -4977,17 +5030,162 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     }
   };
 
+  const builtinLabel = builtinStatusLabel;
+
+  const goSettings = (): void => {
+    state.nav = 'settings';
+    renderSidebar();
+    void renderContent();
+  };
+
+  async function refreshBuiltins(): Promise<void> {
+    const [envelope, browserTool, channelsTool] = await Promise.all([
+      window.coreai.builtinSkills(),
+      window.coreai.browserToolStatus().catch(() => null),
+      window.coreai.channelsStatus().catch(() => null),
+    ]);
+    builtinByPath = new Map(envelope.skills.map((skill) => [skill.targetDir, skill]));
+    builtinHost.replaceChildren();
+    builtinHost.append(el('h2', undefined, 'Built-in capabilities'));
+    builtinHost.append(el('div', 'hint', 'Shipped with the desktop app and installed locally. No sign-in or network is needed. Restore never overwrites a copy you edited without confirmation.'));
+    if (envelope.error) builtinHost.append(el('div', 'notice error', envelope.error));
+
+    const grid = el('div');
+    grid.style.display = 'grid';
+    grid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(270px, 1fr))';
+    grid.style.gap = '10px';
+    grid.style.margin = '0 0 18px';
+
+    const runtimeLine = (skill: BuiltinSkillEntry): string => {
+      switch (skill.runtime) {
+        case 'browser-use':
+          return browserTool?.present
+            ? `browser-use ${browserTool.version ?? ''}${browserTool.path ? ` · ${browserTool.path}` : ''}`.trim()
+            : 'browser-use CLI is not installed';
+        case 'ocg':
+          return channelsTool?.present
+            ? `ocg ${channelsTool.version ?? ''}${channelsTool.daemon ? ` · daemon ${channelsTool.daemon}` : ''}`.trim()
+            : 'ocg is not installed';
+        case 'cua':
+          return 'Configure Computer use in Settings';
+        default:
+          return '';
+      }
+    };
+
+    for (const skill of envelope.skills) {
+      const card = el('div', 'notice');
+      card.style.display = 'flex';
+      card.style.flexDirection = 'column';
+      card.style.gap = '6px';
+      const head = el('div');
+      head.style.display = 'flex';
+      head.style.alignItems = 'center';
+      head.style.justifyContent = 'space-between';
+      head.style.gap = '8px';
+      head.append(el('strong', undefined, skill.title));
+      head.append(el('span', 'hint', builtinLabel(skill)));
+      card.append(head);
+      card.append(el('div', 'hint', skill.description));
+      const meta = el('div', 'hint', `${skill.version ? `${skill.version} · ` : ''}${skill.detail}`);
+      meta.style.opacity = '0.85';
+      card.append(meta);
+      const runtime = runtimeLine(skill);
+      if (runtime) card.append(el('div', 'hint', runtime));
+      if (skill.coveredBy) {
+        card.append(el('div', 'hint', `Using ${skill.coveredBy}; delete that copy to switch to the built-in version.`));
+      }
+
+      const actions = el('div');
+      actions.style.display = 'flex';
+      actions.style.flexWrap = 'wrap';
+      actions.style.gap = '6px';
+      actions.style.marginTop = '4px';
+
+      if (!skill.installed && !skill.coveredBy && skill.runtime !== 'cua') {
+        const install = el('button', 'btn small primary', 'Install');
+        install.onclick = () => void runBuiltin(skill, false);
+        actions.append(install);
+      }
+      if (skill.installed && !skill.upToDate) {
+        const force = !skill.managed || skill.detail.includes('modified');
+        const restore = el('button', 'btn small primary', force ? 'Restore' : 'Update');
+        restore.title = force ? 'Overwrite the local copy with the packaged version' : 'Replace the outdated packaged copy';
+        restore.onclick = () => {
+          if (!force || window.confirm(`Overwrite ${skill.targetDir} with the packaged ${skill.title} copy?`)) void runBuiltin(skill, force);
+        };
+        actions.append(restore);
+      }
+      if (skill.runtime === 'browser-use' && !browserTool?.present) {
+        const installTool = el('button', 'btn small', 'Install browser-use CLI');
+        installTool.onclick = async () => {
+          const confirmed = window.confirm('Install browser-use with uv, pipx or pip (whichever is available)?\n\nThe installer runs locally and may take a few minutes.');
+          if (!confirmed) return;
+          installTool.disabled = true;
+          installTool.textContent = 'Installing…';
+          const result = await window.coreai.browserInstallTool();
+          toast(result.ok ? `browser-use installed: ${result.detail}` : `browser-use install failed: ${result.detail}`, result.ok ? '' : 'error');
+          await refresh();
+        };
+        actions.append(installTool);
+      }
+      if (skill.runtime === 'ocg' && !channelsTool?.present) {
+        const installTool = el('button', 'btn small', 'Install OCG');
+        installTool.onclick = async () => {
+          const confirmed = window.confirm('Install openclaw-channel-gateway with npm?\n\nRequires Node.js 22.12+. Channel credentials and QR login stay local.');
+          if (!confirmed) return;
+          installTool.disabled = true;
+          installTool.textContent = 'Installing…';
+          const result = await window.coreai.channelsInstallTool();
+          toast(result.ok ? `OCG installed: ${result.detail}` : `OCG install failed: ${result.detail}`, result.ok ? '' : 'error');
+          await refresh();
+        };
+        actions.append(installTool);
+      }
+      if (skill.runtime === 'cua') {
+        const settings = el('button', 'btn small', 'Settings');
+        settings.onclick = goSettings;
+        actions.append(settings);
+      }
+      if (skill.docsUrl) {
+        const docs = el('button', 'btn small', 'Docs');
+        docs.onclick = () => void window.coreai.openExternal(skill.docsUrl);
+        actions.append(docs);
+      }
+      if (skill.managed && skill.name !== 'core-ai-cli-manual') {
+        const remove = el('button', 'btn small danger', 'Remove');
+        remove.title = 'Remove the desktop-managed copy; the engine reloads';
+        remove.onclick = async () => {
+          if (!window.confirm(`Remove the built-in ${skill.title} skill from disk?\n\n${skill.targetDir}\n\nYou can install it again from this panel.`)) return;
+          const result = await window.coreai.builtinRemove(skill.name);
+          toast(result.ok ? `Removed ${skill.title}` : `Could not remove ${skill.title}: ${result.detail}`, result.ok ? '' : 'error');
+          await refresh();
+        };
+        actions.append(remove);
+      }
+      if (actions.childElementCount > 0) card.append(actions);
+      grid.append(card);
+    }
+    builtinHost.append(grid);
+  }
+
+  async function runBuiltin(skill: BuiltinSkillEntry, force: boolean): Promise<void> {
+    const result = await window.coreai.builtinInstall(skill.name, force);
+    toast(result.ok ? `${skill.title}: ${result.detail}` : `${skill.title}: ${result.detail}`, result.ok ? '' : 'error');
+    await refresh();
+  }
+
   const renderRows = (listed: any, checking: boolean): void => {
-    body.replaceChildren();
+    listHost.replaceChildren();
     const skills: any[] = listed.skills ?? [];
     if (!skills.length) {
-      body.append(el('div', 'notice', 'No skills yet.'));
+      listHost.append(el('div', 'notice', 'No skills yet.'));
       return;
     }
     if (checking) {
-      body.append(el('div', 'hint', 'Checking the skill hub for updates…'));
+      listHost.append(el('div', 'hint', 'Checking the skill hub for updates…'));
     } else if (!listed.signedIn && !listed.connected) {
-      body.append(el('div', 'notice', 'Sign in to core-ai-server to check for skill updates.'));
+      listHost.append(el('div', 'notice', 'Sign in to core-ai-server to check for skill updates.'));
     }
     if (skills.some((skill: any) => skill.state === 'outdated')) {
       const bar = el('div');
@@ -4995,7 +5193,7 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
       const all = el('button', 'btn small primary', 'Update all');
       all.onclick = () => void runUpdate(null, false);
       bar.append(all);
-      body.append(bar);
+      listHost.append(bar);
     }
     const table = el('table');
     const headRow = el('tr');
@@ -5004,10 +5202,11 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     for (const skill of skills) {
       const row = el('tr');
       const info = skillState(skill, Boolean(listed.connected) && !checking);
+      const builtin = builtinByPath.get(String(skill.path ?? ''));
       row.append(el('td', undefined, skill.name));
-      row.append(el('td', undefined, skill.source));
+      row.append(el('td', undefined, builtin ? 'built-in' : skill.source));
       const stateCell = el('td', undefined,
-        checking && String(skill.state ?? '') === 'unmodified' ? 'Checking…' : info.label);
+        checking && String(skill.state ?? '') === 'unmodified' ? 'Checking…' : builtin ? builtinStatusLabel(builtin) : info.label);
       if (info.update && skill.qualifiedName) {
         const button = el('button', 'btn small primary', info.force ? 'Overwrite' : 'Update');
         button.style.marginLeft = '8px';
@@ -5021,22 +5220,32 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
       remove.title = 'Delete this skill from disk';
       remove.onclick = async () => {
         const hubNote = skill.hub ? ' It can be pulled again from the Hub.' : '';
-        if (!window.confirm(`Delete skill "${skill.name}" from disk?${hubNote}\n\n${skill.path}`)) return;
+        const builtinNote = builtin ? ' This is a built-in skill; the desktop can restore it from the installer.' : '';
+        if (!window.confirm(`Delete skill "${skill.name}" from disk?${hubNote}${builtinNote}\n\n${skill.path}`)) return;
         remove.disabled = true;
-        const outcome = await call('skills/delete', { path: skill.path });
-        if (!outcome) {
-          remove.disabled = false;
-          return;
+        if (builtin) {
+          const result = await window.coreai.builtinRemove(builtin.name);
+          if (!result.ok) {
+            toast(`Could not remove ${skill.name}: ${result.detail}`, 'error');
+            remove.disabled = false;
+            return;
+          }
+        } else {
+          const outcome = await call('skills/delete', { path: skill.path });
+          if (!outcome) {
+            remove.disabled = false;
+            return;
+          }
         }
         toast(`Deleted ${skill.name}`);
         hubSnapshot = null;
-        await refresh();
+        await Promise.all([refresh(), refreshBuiltins()]);
       };
       actionsCell.append(remove);
       row.append(actionsCell);
       table.append(row);
     }
-    body.append(table);
+    listHost.append(table);
   };
 
   const runUpdate = async (qualifiedName: string | null, force: boolean): Promise<void> => {
@@ -5061,7 +5270,8 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
    * column. The first pass never waits on the network, which is what made the page feel stuck.
    */
   const refresh = async (): Promise<void> => {
-    body.replaceChildren(loadingLine('Loading skills…'));
+    listHost.replaceChildren(loadingLine('Loading skills…'));
+    await refreshBuiltins();
     const local = await call('skills/list', { localOnly: true });
     if (!local) return;
     // An engine without the signedIn field already answered with server digests (no two-phase).
@@ -5116,8 +5326,8 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
 
 async function renderSettingsPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Settings', state.workspace
-    ? 'Engine, approval policy, scheduled tasks and permission rules'
-    : 'Desktop settings. Max turns and permission rules appear once a workspace is connected.');
+    ? 'Engine, built-in skills, approval policy, scheduled tasks and permission rules'
+    : 'Desktop settings. Built-in skills and approval policy work without a workspace; max turns and permission rules appear once one is connected.');
   const info = state.info ?? (await window.coreai.info());
   state.info = info;
   const grid = el('dl', 'settings-grid');
@@ -5213,9 +5423,209 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
     body.append(pre);
   }
 
+  body.append(await renderBuiltinSkillsSection());
+  body.append(await renderBrowserAutomationSection());
+  body.append(await renderChannelsSection());
   body.append(await renderComputerUseSection());
   body.append(renderAboutSection());
   return root;
+}
+
+/** Settings → Built-in skills: the four packages shipped with the app, with restore/update actions. */
+async function renderBuiltinSkillsSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'Built-in skills'));
+  section.append(el('div', 'hint', 'Bundled with the desktop app and installed under ~/.core-ai/skills. These copies work without a server login and are never fetched from the network at startup.'));
+  const envelope = await window.coreai.builtinSkills();
+  if (envelope.error) section.append(el('div', 'notice error', envelope.error));
+  const rerender = async (): Promise<void> => {
+    const fresh = await renderBuiltinSkillsSection();
+    section.replaceWith(fresh);
+  };
+  const table = el('table');
+  const head = el('tr');
+  for (const label of ['Skill', 'State', 'Version', 'Path', '']) head.append(el('th', undefined, label));
+  table.append(head);
+  for (const skill of envelope.skills) {
+    const row = el('tr');
+    row.append(el('td', undefined, skill.title));
+    row.append(el('td', undefined, builtinStatusLabel(skill)));
+    row.append(el('td', undefined, skill.version || '-'));
+    row.append(el('td', 'mono', skill.targetDir));
+    const actions = el('td');
+    if (!skill.installed && !skill.coveredBy && skill.runtime !== 'cua') {
+      const install = el('button', 'btn small primary', 'Install');
+      install.onclick = async () => {
+        install.disabled = true;
+        const result = await window.coreai.builtinInstall(skill.name);
+        toast(result.ok ? `${skill.title}: ${result.detail}` : `${skill.title}: ${result.detail}`, result.ok ? '' : 'error');
+        await rerender();
+      };
+      actions.append(install);
+    } else if (skill.installed && !skill.upToDate) {
+      const force = !skill.managed || skill.detail.includes('modified');
+      const restore = el('button', 'btn small primary', force ? 'Restore' : 'Update');
+      restore.onclick = async () => {
+        if (force && !window.confirm(`Overwrite ${skill.targetDir} with the packaged copy?`)) return;
+        restore.disabled = true;
+        const result = await window.coreai.builtinInstall(skill.name, force);
+        toast(result.ok ? `${skill.title}: ${result.detail}` : `${skill.title}: ${result.detail}`, result.ok ? '' : 'error');
+        await rerender();
+      };
+      actions.append(restore);
+    }
+    if (skill.docsUrl) {
+      const docs = el('button', 'btn small', 'Docs');
+      docs.onclick = () => void window.coreai.openExternal(skill.docsUrl);
+      actions.append(docs);
+    }
+    row.append(actions);
+    table.append(row);
+  }
+  section.append(table);
+  return section;
+}
+
+/** Settings → Browser automation: the embedded pane plus the optional browser-use CLI. */
+async function renderBrowserAutomationSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'Browser automation'));
+  section.append(el('div', 'hint', 'The embedded browser pane is always available for manual use. Agents drive it through browser-use over the app\'s CDP bridge; the CLI is the only extra dependency.'));
+  const [tool, envelope] = await Promise.all([window.coreai.browserToolStatus(), window.coreai.builtinSkills()]);
+  const skill = envelope.skills.find((entry) => entry.name === 'browser-use') ?? null;
+  const grid = el('dl', 'settings-grid');
+  const row = (label: string, value: string): void => {
+    grid.append(el('dt', undefined, label));
+    grid.append(el('dd', undefined, value));
+  };
+  row('browser-use CLI', tool.present ? `${tool.version ? `v${tool.version}` : 'installed'} - ${tool.path ?? ''}` : 'not installed');
+  row('browser-use skill', skill ? `${builtinStatusLabel(skill)} - ${skill.targetDir}` : 'not in the built-in catalog');
+  section.append(grid);
+  const rerender = async (): Promise<void> => {
+    const fresh = await renderBrowserAutomationSection();
+    section.replaceWith(fresh);
+  };
+  const actions = el('div');
+  actions.style.display = 'flex';
+  actions.style.flexWrap = 'wrap';
+  actions.style.gap = '8px';
+  actions.style.margin = '10px 0 18px';
+  if (!tool.present) {
+    const install = el('button', 'btn small primary', 'Install browser-use CLI');
+    install.onclick = async () => {
+      if (!window.confirm('Install browser-use with uv, pipx or pip (whichever is available)?\n\nThe installer runs locally and may take a few minutes.')) return;
+      install.disabled = true;
+      install.textContent = 'Installing…';
+      const result = await window.coreai.browserInstallTool();
+      toast(result.ok ? `browser-use installed: ${result.detail}` : `browser-use install failed: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    actions.append(install);
+  }
+  if (skill && !skill.installed && !skill.coveredBy) {
+    const install = el('button', 'btn small', 'Install skill');
+    install.onclick = async () => {
+      const result = await window.coreai.builtinInstall('browser-use');
+      toast(result.ok ? `browser-use skill: ${result.detail}` : `browser-use skill: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    actions.append(install);
+  }
+  if (skill && skill.installed && !skill.upToDate) {
+    const force = !skill.managed || skill.detail.includes('modified');
+    const restore = el('button', 'btn small', force ? 'Restore skill' : 'Update skill');
+    restore.onclick = async () => {
+      if (force && !window.confirm(`Overwrite ${skill.targetDir} with the packaged copy?`)) return;
+      const result = await window.coreai.builtinInstall('browser-use', force);
+      toast(result.ok ? `browser-use skill: ${result.detail}` : `browser-use skill: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    actions.append(restore);
+  }
+  if (skill?.docsUrl) {
+    const docs = el('button', 'btn small', 'Docs');
+    docs.onclick = () => void window.coreai.openExternal(skill.docsUrl);
+    actions.append(docs);
+  }
+  section.append(actions);
+  return section;
+}
+
+/** Settings → IM channels: local OCG daemon and the optional ocg skill. */
+async function renderChannelsSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'IM channels'));
+  section.append(el('div', 'hint', 'Read and reply to QQ, WeChat, Telegram, DingTalk or Discord through a local OpenClaw Channel Gateway. Credentials, channel configuration and QR login stay on this machine; the app does not store them.'));
+  const [status, envelope, settings] = await Promise.all([
+    window.coreai.channelsStatus(),
+    window.coreai.builtinSkills(),
+    window.coreai.getSettings(),
+  ]);
+  const skill = envelope.skills.find((entry) => entry.name === 'ocg') ?? null;
+  const grid = el('dl', 'settings-grid');
+  const row = (label: string, value: string): void => {
+    grid.append(el('dt', undefined, label));
+    grid.append(el('dd', undefined, value));
+  };
+  row('OCG CLI', status.present ? `${status.version ? `v${status.version}` : 'installed'} - ${status.path ?? ''}` : 'not installed');
+  row('OCG daemon', status.daemon ?? (status.present ? 'status unknown' : 'not available'));
+  row('ocg skill', skill ? `${builtinStatusLabel(skill)} - ${skill.targetDir}` : 'not in the built-in catalog');
+  section.append(grid);
+  const rerender = async (): Promise<void> => {
+    const fresh = await renderChannelsSection();
+    section.replaceWith(fresh);
+  };
+  const enableLabel = el('label', 'schedule-filter');
+  const toggle = el('input') as HTMLInputElement;
+  toggle.type = 'checkbox';
+  toggle.checked = skill?.installed === true || settings?.channelsSkillEnabled === true;
+  toggle.onchange = async () => {
+    if (toggle.checked && !window.confirm('Enable IM channels for agents?\n\nWhen configured, agents can read and send messages through your QQ/WeChat/Telegram/DingTalk/Discord channels. Only enable this if you want that access.')) {
+      toggle.checked = false;
+      return;
+    }
+    toggle.disabled = true;
+    const result = await window.coreai.channelsSetEnabled(toggle.checked);
+    toast(result.skill?.ok === false ? `ocg skill: ${result.skill.detail}` : `IM channels ${toggle.checked ? 'enabled' : 'disabled'}`);
+    await rerender();
+  };
+  enableLabel.append(toggle, document.createTextNode('Enable the ocg skill for this desktop'));
+  section.append(enableLabel);
+  const actions = el('div');
+  actions.style.display = 'flex';
+  actions.style.flexWrap = 'wrap';
+  actions.style.gap = '8px';
+  actions.style.margin = '10px 0 18px';
+  if (!status.present) {
+    const install = el('button', 'btn small primary', 'Install OCG');
+    install.onclick = async () => {
+      if (!window.confirm('Install openclaw-channel-gateway with npm?\n\nRequires Node.js 22.12+. Channel credentials and QR login stay local.')) return;
+      install.disabled = true;
+      install.textContent = 'Installing…';
+      const result = await window.coreai.channelsInstallTool();
+      toast(result.ok ? `OCG installed: ${result.detail}` : `OCG install failed: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    actions.append(install);
+  }
+  if (skill?.installed && !skill.upToDate) {
+    const force = !skill.managed || skill.detail.includes('modified');
+    const restore = el('button', 'btn small', force ? 'Restore skill' : 'Update skill');
+    restore.onclick = async () => {
+      if (force && !window.confirm(`Overwrite ${skill.targetDir} with the packaged copy?`)) return;
+      const result = await window.coreai.builtinInstall('ocg', force);
+      toast(result.ok ? `ocg skill: ${result.detail}` : `ocg skill: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    actions.append(restore);
+  }
+  if (skill?.docsUrl) {
+    const docs = el('button', 'btn small', 'Setup guide');
+    docs.onclick = () => void window.coreai.openExternal(skill.docsUrl);
+    actions.append(docs);
+  }
+  section.append(actions);
+  return section;
 }
 
 /**
@@ -5270,6 +5680,21 @@ async function renderComputerUseSection(): Promise<HTMLElement> {
     section.replaceWith(fresh);
     return fresh;
   };
+
+  if (!status.skill.installed) {
+    const restoreRow = el('div');
+    restoreRow.style.margin = '0 0 10px';
+    const restore = el('button', 'btn small', 'Restore gui-automation skill');
+    restore.title = 'Install the packaged GUI automation skill without changing the CUA service';
+    restore.onclick = async () => {
+      restore.disabled = true;
+      const result = await window.coreai.builtinInstall('gui-automation');
+      toast(result.ok ? `gui-automation: ${result.detail}` : `gui-automation: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    restoreRow.append(restore);
+    section.append(restoreRow);
+  }
 
   const refresh = el('button', 'btn small', 'Refresh');
   refresh.onclick = () => void rerender();

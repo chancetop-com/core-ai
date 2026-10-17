@@ -1,0 +1,53 @@
+{
+  "schema": 1,
+  "skills": [
+    {
+      "name": "core-ai-cli-manual",
+      "title": "CLI & Hub manual",
+      "description": "Install, configure and drive core-ai-cli; reach server Hub resources with the mcp, skill, api-tool and agent subcommands.",
+      "capability": "hub",
+      "default": "always",
+      "runtime": "none",
+      "version": "2.1",
+      "source": "chancetop-com/core-ai",
+      "license": "Apache-2.0",
+      "docsUrl": "https://chancetop-com.github.io/core-ai/skills/core-ai-cli-manual/SKILL"
+    },
+    {
+      "name": "browser-use",
+      "title": "Browser automation",
+      "description": "Drive the desktop's embedded browser through CDP: navigate, click, type, read pages, take screenshots and handle anti-bot sites.",
+      "capability": "browser",
+      "default": "always",
+      "runtime": "browser-use",
+      "version": "2026-10-17",
+      "source": "browser-use/browser-use + core-ai desktop additions",
+      "license": "MIT",
+      "docsUrl": "https://chancetop-com.github.io/core-ai/skills/browser-use/SKILL"
+    },
+    {
+      "name": "gui-automation",
+      "title": "Computer use",
+      "description": "Operate native applications through the CUA CLI: look at the screen, click, type, drag and verify the result.",
+      "capability": "computer",
+      "default": "when-enabled",
+      "runtime": "cua",
+      "version": "0f92100",
+      "source": "trycua/cua@0f921000ba7721ffc7be8b563dbb96ef8b3d543c",
+      "license": "MIT",
+      "docsUrl": "https://chancetop-com.github.io/core-ai/skills/gui-automation/SKILL"
+    },
+    {
+      "name": "ocg",
+      "title": "IM channels",
+      "description": "Read and reply to QQ, WeChat, Telegram, DingTalk and Discord messages through a local OpenClaw Channel Gateway daemon.",
+      "capability": "channels",
+      "default": "auto-detect",
+      "runtime": "ocg",
+      "version": "1.3.1",
+      "source": "openclaw-channel-gateway@1.3.1",
+      "license": "MIT",
+      "docsUrl": "https://chancetop-com.github.io/core-ai/skills/ocg/SKILL"
+    }
+  ]
+}

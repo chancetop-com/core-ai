@@ -1,16 +1,16 @@
-# gui-automation (vendored)
+# browser-use (vendored)
 
-Vendored from [trycua/cua](https://github.com/trycua/cua) `skills/gui-automation`, pinned at commit
-[`0f921000ba7721ffc7be8b563dbb96ef8b3d543c`](https://github.com/trycua/cua/tree/0f921000ba7721ffc7be8b563dbb96ef8b3d543c/skills/gui-automation).
+Based on the `browser-use` skill from [browser-use/browser-use](https://github.com/browser-use/browser-use)
+(`skills/browser-use/SKILL.md`), with core-ai additions for the desktop-managed browser pane,
+anti-bot handling, and Windows/PowerShell note-taking.
 
-The desktop app installs this copy into `~/.core-ai/skills/gui-automation` when Computer use is
-enabled (see `src/main/computer/`). Keep the skill files byte-identical to upstream; desktop
-context (host target already selected, setup done by the app) is injected by the CLI's computer-use
-prompt section instead of editing the skill.
+The desktop app and the public skill package use this copy; `core-ai-cli` may also install it as
+its managed `browser-use` skill. Keep the frontmatter name `browser-use` and the directory name
+in sync so the skill loader and the built-in installer agree.
 
 ## License
 
-MIT License — Copyright (c) 2025 Cua AI, Inc.
+MIT License — Copyright (c) 2024 Gregor Zunic
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software
 and associated documentation files (the "Software"), to deal in the Software without
