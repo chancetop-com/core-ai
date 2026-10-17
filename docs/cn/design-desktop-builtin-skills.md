@@ -496,10 +496,10 @@ digest 建议按“文件相对路径 + 文件内容”的稳定树哈希计算�
 - 桌面 release workflow 增加 `stage:skills`。
 - 可选：把 `docs/skills` 注册为 server hub 的 repo skill source，让登录用户也能在 Hub 看到（不是默认安装）。
 
-## 11. 待确认的问题
+## 11. 已确定的取舍与后续
 
-1. **OCG 默认策略**：建议“检测到 `ocg` 自动安装，否则手动启用”。如果希望所有用户默认看到 IM 能力，可改为默认安装 + 首次使用时提示配置。
-2. **`browser-use` CLI 安装方式**：优先 `uv tool install`；没有 uv 时是引导安装 uv，还是只显示官方命令让用户自己执行？建议前者提供按钮，后者保底。
-3. **公开站点的第三方技能是否要逐字 vendored**：建议 vendored + `SOURCE.md` 记录修改；不直接链接上游 raw，避免上游变更导致行为漂移。
-4. **是否需要在 v1 做签名 manifest**：建议不做；v1 只发布 digest 供人工/CLI 校验，desktop 不自动更新。
-5. **Server hub 是否同步这四个技能**：可选；如果做，建议作为 repo skill source，而不是 migration 种子，避免与本地内置副本重复。
+1. **OCG 默认策略**：已按“检测到 `ocg` 自动安装，否则在 Settings 手动启用”实现；关闭开关会移除 desktop 托管副本，并在后续启动中保持关闭。
+2. **`browser-use` CLI 安装方式**：已实现 `uv` → `pipx` → `python -m pip` 的本地回退；安装后重启引擎，让 PATH 与 `CORE_AI_BROWSER_TOOL` 生效。
+3. **公开站点的第三方技能**：已采用 vendored + `SOURCE.md`（来源、固定版本、MIT 正文、修改说明），不直接链接上游 raw。
+4. **签名 manifest**：v1 不做；只发布 tree digest 供人工/CLI 核对，desktop 不自动更新技能指令。
+5. **Server hub 同步**：未做；如果后续需要，建议把 `docs/skills` 注册为 repo skill source，而不是 migration 种子，避免与本地内置副本重复。
