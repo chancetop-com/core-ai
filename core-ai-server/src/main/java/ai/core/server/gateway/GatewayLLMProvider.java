@@ -77,6 +77,11 @@ public class GatewayLLMProvider extends LLMProvider {
         return index < 0 ? REASONING_EFFORT_ORDER.size() : index;
     }
 
+    private static boolean declaresReasoningLevel(List<String> efforts) {
+        if (efforts == null) return false;
+        return efforts.stream().anyMatch(value -> value != null && !"none".equalsIgnoreCase(value));
+    }
+
     private final GatewayRoutingEngine routingEngine;
     private final GatewaySecretProtector secretProtector;
     private final LLMProvider fallback;
@@ -114,6 +119,12 @@ public class GatewayLLMProvider extends LLMProvider {
         // derive the endpoint when the caller did not specify one
         var endpoint = request.getEndpoint();
         if (endpoint == null && CompletionRequest.containsFileContent(request.messages)) {
+            endpoint = GatewayModelService.ENDPOINT_RESPONSES;
+        }
+        // Azure gpt-6 reasoning deployments reject function tools on the chat surface whenever
+        // reasoning is on (omitting reasoning_effort still applies the model default); the
+        // responses surface accepts tools and reasoning together, so tool-bearing turns go there
+        if (endpoint == null && shouldPreferResponsesForTools(request)) {
             endpoint = GatewayModelService.ENDPOINT_RESPONSES;
         }
         var resolved = resolveRoute(request.model, endpoint);
@@ -174,6 +185,17 @@ public class GatewayLLMProvider extends LLMProvider {
 
     private void applyPreprocess(CompletionRequest request) {
         super.preprocess(request);
+    }
+
+    // a model declaring real reasoning levels cannot combine them with function tools on the chat
+    // surface; when it also serves the responses endpoint, tool-bearing turns must use that transport
+    private boolean shouldPreferResponsesForTools(CompletionRequest request) {
+        if (request.tools == null || request.tools.isEmpty()) return false;
+        var modelConfig = routingEngine.modelConfig(request.model);
+        if (modelConfig == null) return false;
+        if (!declaresReasoningLevel(modelConfig.reasoningEfforts)) return false;
+        return modelConfig.endpointTypes != null
+                && modelConfig.endpointTypes.contains(GatewayModelService.ENDPOINT_RESPONSES);
     }
 
     // reasoning effort is model-specific: internal levels (none/low/high/max) are mapped to the

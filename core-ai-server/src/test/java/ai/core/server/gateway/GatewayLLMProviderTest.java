@@ -1,14 +1,18 @@
 package ai.core.server.gateway;
 
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Content;
 import ai.core.llm.domain.FinishReason;
+import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Tool;
+import ai.core.llm.domain.ToolType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.llm.streaming.StreamingCallback;
@@ -21,6 +25,7 @@ import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -105,6 +110,88 @@ class GatewayLLMProviderTest {
         gateway.completion(request);
 
         assertEquals("gpt-5-mini", gateway.upstream.capturedModel);
+    }
+
+    @Test
+    void routesToolRequestsToResponsesForReasoningModelServingBothEndpoints() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("gpt-6.1-sol", provider.id, "gpt-6.1-sol");
+        model.endpointTypes = List.of("responses", "chat.completions");
+        model.reasoningEfforts = List.of("low", "medium", "high", "xhigh");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-6.1-sol");
+        request.tools = List.of(tool());
+        request.reasoningEffort = ReasoningEffort.HIGH;
+
+        gateway.completion(request);
+
+        // the chat surface rejects function tools whenever reasoning is on (the upstream error
+        // fires even without an explicit effort), so the tool-bearing turn must use responses
+        assertEquals("responses", gateway.upstream.capturedEndpoint);
+        assertEquals("https://example.openai.azure.com/openai/responses?api-version=2024-10-21", gateway.upstreamBaseUrl);
+        assertEquals("high", gateway.upstream.capturedRequest.getReasoningEffortValue());
+    }
+
+    @Test
+    void keepsChatForToolRequestsWhenModelDeclaresNoReasoningLevels() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("gpt-5.2", provider.id, "gpt-5.2");
+        model.endpointTypes = List.of("responses", "chat.completions");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-5.2");
+        request.tools = List.of(tool());
+
+        gateway.completion(request);
+
+        assertNull(gateway.upstream.capturedEndpoint);
+        assertEquals("https://example.openai.azure.com/openai/deployments/gpt-5.2/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
+    }
+
+    @Test
+    void keepsChatForNoneOnlyReasoningModelWithTools() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("gpt-6-luna", provider.id, "gpt-6-luna");
+        model.endpointTypes = List.of("responses", "chat.completions");
+        model.reasoningEfforts = List.of("none");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("gpt-6-luna");
+        request.tools = List.of(tool());
+
+        gateway.completion(request);
+
+        // a none-only declaration is expressible on the chat surface (explicit "none"), so it stays there
+        assertNull(gateway.upstream.capturedEndpoint);
+        assertEquals("none", gateway.upstream.capturedRequest.getReasoningEffortValue());
+    }
+
+    @Test
+    void keepsChatForReasoningModelWithoutTools() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("gpt-6.1-sol", provider.id, "gpt-6.1-sol");
+        model.endpointTypes = List.of("responses", "chat.completions");
+        model.reasoningEfforts = List.of("low", "medium", "high", "xhigh");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+
+        gateway.completion(request("gpt-6.1-sol"));
+
+        assertNull(gateway.upstream.capturedEndpoint);
+        assertEquals("https://example.openai.azure.com/openai/deployments/gpt-6.1-sol/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
+    }
+
+    @Test
+    void keepsChatForReasoningModelThatDoesNotServeResponses() {
+        var provider = provider("azure-1", "azure", "https://example.openai.azure.com/openai/v1");
+        var model = model("reasoning-chat", provider.id, "reasoning-chat");
+        model.endpointTypes = List.of("chat.completions");
+        model.reasoningEfforts = List.of("low", "high");
+        var gateway = gateway(List.of(provider), List.of(model), null);
+        var request = request("reasoning-chat");
+        request.tools = List.of(tool());
+
+        gateway.completion(request);
+
+        assertNull(gateway.upstream.capturedEndpoint);
+        assertEquals("https://example.openai.azure.com/openai/deployments/reasoning-chat/chat/completions?api-version=2024-10-21", gateway.upstreamBaseUrl);
     }
 
     @Test
@@ -371,6 +458,18 @@ class GatewayLLMProviderTest {
 
     private CompletionRequest request(String model) {
         return CompletionRequest.of(List.of(Message.of(RoleType.USER, "hi")), null, null, model, null);
+    }
+
+    private Tool tool() {
+        var tool = new Tool();
+        tool.type = ToolType.FUNCTION;
+        tool.function = new Function();
+        tool.function.name = "lookup";
+        tool.function.description = "Look up a record.";
+        tool.function.parameters = new JsonSchema();
+        tool.function.parameters.type = JsonSchema.PropertyType.OBJECT;
+        tool.function.parameters.properties = new LinkedHashMap<>();
+        return tool;
     }
 
     @SuppressWarnings("unchecked")
