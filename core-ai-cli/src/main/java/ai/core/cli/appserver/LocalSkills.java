@@ -35,14 +35,26 @@ public final class LocalSkills {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalSkills.class);
 
     public static ObjectNode list(Path workspace) {
-        return list(workspace, null);
+        return list(workspace, (Map<String, String>) null, false);
     }
 
     /** {@code client} is null when not signed in — entries then carry local-only states. */
     public static ObjectNode list(Path workspace, SkillHubClient client) {
+        if (client == null) {
+            return list(workspace, (Map<String, String>) null, false);
+        }
+        return list(workspace, serverDigests(client), true);
+    }
+
+    /**
+     * The fast path: {@code serverDigests} may come from a cached hub read, and null means the server
+     * answered nothing — the panel then shows local-only states ({@code connected:false}) while
+     * {@code signedIn} still says whether a check was even possible.
+     */
+    public static ObjectNode list(Path workspace, Map<String, String> serverDigests, boolean signedIn) {
         var node = Params.object();
-        Map<String, String> serverDigests = client == null ? null : serverDigests(client);
         node.put("connected", serverDigests != null);
+        node.put("signedIn", signedIn);
         var array = node.putArray("skills");
         scan(workspace.resolve(".core-ai/skills"), "workspace", array, 2, serverDigests);
         scan(Path.of(System.getProperty("user.home"), ".core-ai", "skills"), "user", array, 2, serverDigests);

@@ -18,7 +18,14 @@ import org.slf4j.LoggerFactory;
 import javax.net.ssl.SSLException;
 import java.nio.file.Path;
 import java.security.cert.CertificateException;
+import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Server capability bridge behind the desktop Hub panel: the one-shot capability catalog
@@ -34,6 +41,16 @@ public class HubBridge {
     private static final Logger LOGGER = LoggerFactory.getLogger(HubBridge.class);
     private static final int DEFAULT_SKILL_LIMIT = 200;
     private static final int MAX_SKILL_LIMIT = 200;
+    /** The hub panels are re-opened often; answers this recent are served without another round trip. */
+    private static final long CACHE_TTL_MILLIS = 120_000L;
+    /** A panel that waits longer than this reads as broken — the catalog normally takes a couple of seconds. */
+    private static final Duration HUB_TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration ARCHIVE_TIMEOUT = Duration.ofSeconds(120);
+    private static final ExecutorService REFRESH_EXECUTOR = Executors.newCachedThreadPool(runnable -> {
+        var thread = new Thread(runnable, "hub-cache-refresh");
+        thread.setDaemon(true);
+        return thread;
+    });
 
     /**
      * Installs a fetched archive; package-visible so tests can drive the install paths against a
@@ -156,21 +173,53 @@ public class HubBridge {
         return new Credentials(auth.serverUrl(), auth.apiKey(), auth.insecure());
     }
 
-    /** Skill client for the current login, or null when not signed in (the skills panel shows local states then). */
-    SkillHubClient skillClientOrNull() {
-        var credentials = credentials();
-        return credentials == null ? null
-                : new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
+    private static boolean fresh(long fetchedAt) {
+        return System.currentTimeMillis() - fetchedAt < CACHE_TTL_MILLIS;
+    }
+
+    private static boolean answered(ObjectNode node) {
+        return node.path("connected").asBoolean(false);
+    }
+
+    private volatile CachedCatalog catalogCache;
+    private volatile CachedSkills skillsCache;
+    private final AtomicBoolean catalogRefreshing = new AtomicBoolean();
+    private final AtomicBoolean skillsRefreshing = new AtomicBoolean();
+
+    /** Whether a login exists, i.e. a hub check is possible at all (it may still fail). */
+    public boolean signedIn() {
+        return credentials() != null;
     }
 
     public ObjectNode catalog() {
-        var node = Params.object();
+        return catalog(false);
+    }
+
+    /** {@code refresh} bypasses the cache (the panel's explicit Refresh action). */
+    public ObjectNode catalog(boolean refresh) {
         var credentials = credentials();
         if (credentials == null) {
-            return notConnected(node, "not_logged_in");
+            return notConnected(Params.object(), "not_logged_in");
         }
+        var cached = catalogCache;
+        if (!refresh && cached != null && cached.credentials().equals(credentials)) {
+            if (!fresh(cached.fetchedAt())) {
+                refreshCatalogInBackground(credentials);
+            }
+            return cached.node();
+        }
+        var node = fetchCatalog(credentials);
+        if (answered(node)) {
+            catalogCache = new CachedCatalog(credentials, System.currentTimeMillis(), node);
+        }
+        return node;
+    }
+
+    private ObjectNode fetchCatalog(Credentials credentials) {
+        var node = Params.object();
         try {
-            var response = new CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure()).catalog();
+            var response = new CatalogHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure(), HUB_TIMEOUT)
+                    .catalog();
             node.put("connected", true);
             node.put("serverUrl", credentials.serverUrl());
             if (response.generatedAt != null) {
@@ -187,19 +236,76 @@ public class HubBridge {
         }
     }
 
-    public ObjectNode skills(ObjectNode params) {
+    /** The catalog and skill list are independent network calls; fetch them together for the Hub panel. */
+    public ObjectNode overview(ObjectNode params) {
+        boolean refresh = params.path("refresh").asBoolean(false);
+        var catalogFuture = CompletableFuture.supplyAsync(() -> catalog(refresh), REFRESH_EXECUTOR);
+        var skillsFuture = CompletableFuture.supplyAsync(() -> skills(Params.object().put("limit", DEFAULT_SKILL_LIMIT), refresh),
+                REFRESH_EXECUTOR);
         var node = Params.object();
+        node.set("catalog", catalogFuture.join());
+        node.set("skills", skillsFuture.join());
+        return node;
+    }
+
+    public ObjectNode skills(ObjectNode params) {
+        return skills(params, params.path("refresh").asBoolean(false));
+    }
+
+    private ObjectNode skills(ObjectNode params, boolean refresh) {
         var credentials = credentials();
         if (credentials == null) {
-            return notConnected(node, "not_logged_in");
+            return notConnected(Params.object(), "not_logged_in");
         }
+        var query = Params.optionalText(params, "query");
+        int limit = Math.max(1, Math.min(Params.intParam(params, "limit", DEFAULT_SKILL_LIMIT), MAX_SKILL_LIMIT));
+        boolean cacheable = query == null && limit == DEFAULT_SKILL_LIMIT;
+        var cached = skillsCache;
+        if (cacheable && !refresh && cached != null && cached.credentials().equals(credentials)) {
+            if (!fresh(cached.fetchedAt())) {
+                refreshSkillsInBackground(credentials);
+            }
+            return cached.node();
+        }
+        var fetched = fetchSkills(credentials, query, limit);
+        if (cacheable && fetched.connected()) {
+            skillsCache = new CachedSkills(credentials, System.currentTimeMillis(), fetched.node(), fetched.digests());
+        }
+        return fetched.node();
+    }
+
+    /**
+     * Server digests for the skills panel's freshness column. Reuses the skill list the Hub panel just
+     * fetched instead of issuing the same search again; null digests mean the server could not be read.
+     */
+    public SkillDigests skillDigests() {
+        var credentials = credentials();
+        if (credentials == null) {
+            return new SkillDigests(null, false);
+        }
+        var cached = skillsCache;
+        if (cached != null && cached.credentials().equals(credentials)) {
+            if (!fresh(cached.fetchedAt())) {
+                refreshSkillsInBackground(credentials);
+            }
+            return new SkillDigests(cached.digests(), true);
+        }
+        var fetched = fetchSkills(credentials, null, DEFAULT_SKILL_LIMIT);
+        if (!fetched.connected()) {
+            return new SkillDigests(null, true);
+        }
+        skillsCache = new CachedSkills(credentials, System.currentTimeMillis(), fetched.node(), fetched.digests());
+        return new SkillDigests(fetched.digests(), true);
+    }
+
+    private SkillsFetch fetchSkills(Credentials credentials, String query, int limit) {
+        var node = Params.object();
         try {
-            var query = Params.optionalText(params, "query");
-            int limit = Math.max(1, Math.min(Params.intParam(params, "limit", DEFAULT_SKILL_LIMIT), MAX_SKILL_LIMIT));
-            var response = new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure())
-                    .search(query, null, null, limit);
+            var response = new SkillHubClient(credentials.serverUrl(), credentials.apiKey(), HUB_TIMEOUT, ARCHIVE_TIMEOUT,
+                    credentials.insecure()).search(query, null, null, limit);
             node.put("connected", true);
             node.put("serverUrl", credentials.serverUrl());
+            var digests = new HashMap<String, String>();
             var array = node.putArray("skills");
             for (var skill : nullSafe(response.skills)) {
                 var item = array.addObject();
@@ -210,13 +316,48 @@ public class HubBridge {
                 if (skill.sourceType != null) item.put("sourceType", skill.sourceType);
                 if (skill.resourceCount != null) item.put("resourceCount", skill.resourceCount);
                 if (skill.updatedAt != null) item.put("updatedAt", skill.updatedAt.toInstant().toString());
+                if (skill.qualifiedName != null && skill.digest != null) {
+                    digests.put(skill.qualifiedName, skill.digest);
+                }
             }
-            return node;
+            return new SkillsFetch(node, digests, true);
         } catch (RemoteApiException e) {
-            return unreachable(node, e);
+            return new SkillsFetch(unreachable(node, e), null, false);
         } catch (RuntimeException e) {
-            return failure(node, "hub skill list", e);
+            return new SkillsFetch(failure(node, "hub skill list", e), null, false);
         }
+    }
+
+    private void refreshCatalogInBackground(Credentials credentials) {
+        if (!catalogRefreshing.compareAndSet(false, true)) {
+            return;
+        }
+        REFRESH_EXECUTOR.execute(() -> {
+            try {
+                var node = fetchCatalog(credentials);
+                if (answered(node) && credentials.equals(credentials())) {
+                    catalogCache = new CachedCatalog(credentials, System.currentTimeMillis(), node);
+                }
+            } finally {
+                catalogRefreshing.set(false);
+            }
+        });
+    }
+
+    private void refreshSkillsInBackground(Credentials credentials) {
+        if (!skillsRefreshing.compareAndSet(false, true)) {
+            return;
+        }
+        REFRESH_EXECUTOR.execute(() -> {
+            try {
+                var fetched = fetchSkills(credentials, null, DEFAULT_SKILL_LIMIT);
+                if (fetched.connected() && credentials.equals(credentials())) {
+                    skillsCache = new CachedSkills(credentials, System.currentTimeMillis(), fetched.node(), fetched.digests());
+                }
+            } finally {
+                skillsRefreshing.set(false);
+            }
+        });
     }
 
     /**
@@ -277,6 +418,20 @@ public class HubBridge {
         return install(SkillLocations.userSkillsDir(), credentials.serverUrl(), namespace, name, archive, force);
     }
 
+    /** What the cached answers belong to: switching servers or accounts must not reuse them. */
     private record Credentials(String serverUrl, String apiKey, boolean insecure) {
+    }
+
+    private record CachedCatalog(Credentials credentials, long fetchedAt, ObjectNode node) {
+    }
+
+    private record CachedSkills(Credentials credentials, long fetchedAt, ObjectNode node, Map<String, String> digests) {
+    }
+
+    /** Skill freshness inputs for {@code skills/list}: null digests mean the server could not be read. */
+    public record SkillDigests(Map<String, String> digests, boolean signedIn) {
+    }
+
+    private record SkillsFetch(ObjectNode node, Map<String, String> digests, boolean connected) {
     }
 }

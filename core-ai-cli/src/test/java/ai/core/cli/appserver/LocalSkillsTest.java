@@ -71,6 +71,28 @@ class LocalSkillsTest {
         assertEquals("outdated", find(node, "demo").path("state").asText());
     }
 
+    /** The panel's first pass: local scan only, knowing a hub check is possible but not waiting for it. */
+    @Test
+    void localOnlyListReportsSignedInWithoutServerDigests() throws Exception {
+        installDemo();
+
+        var node = LocalSkills.list(workspace, null, true);
+
+        assertFalse(node.path("connected").asBoolean());
+        assertTrue(node.path("signedIn").asBoolean());
+        assertEquals("unmodified", find(node, "demo").path("state").asText());
+    }
+
+    @Test
+    void signedOutListMarksBothFlagsFalse() throws Exception {
+        installDemo();
+
+        var node = LocalSkills.list(workspace, null, false);
+
+        assertFalse(node.path("connected").asBoolean());
+        assertFalse(node.path("signedIn").asBoolean());
+    }
+
     @Test
     void localSkillWithoutMarkerStaysLocal() throws Exception {
         var dir = workspace.resolve(".core-ai/skills/scratch");

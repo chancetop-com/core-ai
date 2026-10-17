@@ -187,10 +187,11 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),
                 Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
                 Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),
-                Map.entry("skills/list", ignored -> LocalSkills.list(bootstrap.workspace, hubBridge.skillClientOrNull())),
+                Map.entry("skills/list", this::skillsList),
                 Map.entry("skills/delete", params -> LocalSkills.delete(bootstrap.workspace, params)),
                 Map.entry("tools/list", this::toolsList),
-                Map.entry("hub/catalog", ignored -> hubBridge.catalog()),
+                Map.entry("hub/overview", hubBridge::overview),
+                Map.entry("hub/catalog", params -> hubBridge.catalog(params.path("refresh").asBoolean(false))),
                 Map.entry("hub/skills", hubBridge::skills),
                 Map.entry("hub/skills/pull", hubBridge::pullSkill),
                 Map.entry("hub/skills/update", hubBridge::updateSkill),
@@ -198,6 +199,14 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("helpers/add", helperBridge::add),
                 Map.entry("helpers/update", helperBridge::update),
                 Map.entry("helpers/remove", helperBridge::remove));
+    }
+
+    private ObjectNode skillsList(ObjectNode params) {
+        if (params.path("localOnly").asBoolean(false)) {
+            return LocalSkills.list(bootstrap.workspace, null, hubBridge.signedIn());
+        }
+        var digests = hubBridge.skillDigests();
+        return LocalSkills.list(bootstrap.workspace, digests.digests(), digests.signedIn());
     }
 
     private ObjectNode modelList() {

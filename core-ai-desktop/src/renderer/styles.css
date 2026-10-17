@@ -830,6 +830,18 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .notice.error { color: var(--red); }
 .notice.compression { color: var(--amber); }
 
+.loading-line { display: flex; align-items: center; gap: 9px; color: var(--faint); font-size: 12.5px; margin: 10px 0; }
+.loading-line::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+}
+@keyframes loading-spin { to { transform: rotate(360deg); } }
+
 .turn-summary { color: var(--faint); font-size: 12px; margin: 6px 0 0 2px; }
 
 .system-note {

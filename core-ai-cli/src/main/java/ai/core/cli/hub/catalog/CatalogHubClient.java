@@ -21,15 +21,22 @@ public class CatalogHubClient {
     private final String serverUrl;
     private final String apiKey;
     private final boolean insecure;
+    private final Duration timeout;
 
     public CatalogHubClient(String serverUrl, String apiKey, boolean insecure) {
+        this(serverUrl, apiKey, insecure, DEFAULT_TIMEOUT);
+    }
+
+    /** Interactive callers (the desktop panel) pass a shorter budget than the batch CLI default. */
+    public CatalogHubClient(String serverUrl, String apiKey, boolean insecure, Duration timeout) {
         this.serverUrl = serverUrl;
         this.apiKey = apiKey;
         this.insecure = insecure;
+        this.timeout = timeout;
     }
 
     public HubCatalogResponse catalog() {
-        var body = new RemoteApiClient(serverUrl, apiKey, DEFAULT_TIMEOUT, Map.of(CLIENT_HEADER, "cli"), insecure)
+        var body = new RemoteApiClient(serverUrl, apiKey, timeout, Map.of(CLIENT_HEADER, "cli"), insecure)
                 .getRequired("/api/hub/catalog");
         return JsonUtil.fromJson(HubCatalogResponse.class, body);
     }

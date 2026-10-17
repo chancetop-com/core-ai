@@ -926,12 +926,14 @@ async function refreshAuth(): Promise<void> {
   }
   if (JSON.stringify(next) !== JSON.stringify(state.auth)) {
     state.auth = next;
+    hubSnapshot = null;
     renderSidebar();
   }
 }
 
 function applyAuth(next: AuthStatus | null): void {
   state.auth = next;
+  hubSnapshot = null;
   renderSidebar();
 }
 
@@ -4101,6 +4103,28 @@ function panel(title: string, hint: string): { root: HTMLElement; body: HTMLElem
   return { root, body };
 }
 
+/** Muted one-liner with a spinner: panels paint this before their engine round trip settles. */
+function loadingLine(text: string): HTMLElement {
+  return el('div', 'loading-line', text);
+}
+
+const PANEL_TITLES: Record<string, string> = {
+  schedules: 'Scheduled tasks',
+  hub: 'Hub',
+  artifacts: 'Artifacts',
+  skills: 'Skills',
+  memory: 'Memory',
+  settings: 'Settings',
+};
+
+/** The shell shown when a panel takes long enough for the click to feel unacknowledged. */
+function loadingPanel(title: string): HTMLElement {
+  const root = el('div', 'panel');
+  root.append(el('h2', undefined, title));
+  root.append(loadingLine('Loading…'));
+  return root;
+}
+
 // ---------- scheduled tasks ----------
 
 interface ScheduledTaskView {
@@ -4662,6 +4686,62 @@ function renderHubFooter(footer: HTMLElement, counts: Record<HubKind, number>, s
   footer.append(line);
 }
 
+interface HubSnapshot {
+  key: string;
+  at: number;
+  catalog: any;
+  skills: any;
+  local: Envelope;
+  helpers: HubHelpersData;
+}
+
+/** Reopening the panel within this window paints from memory instead of refetching the catalog. */
+const HUB_SNAPSHOT_TTL_MS = 60_000;
+let hubSnapshot: HubSnapshot | null = null;
+
+/** A snapshot belongs to one account on one server; switching either must not reuse it. */
+function hubSnapshotKey(): string {
+  const auth = state.auth;
+  return auth?.loggedIn ? `${auth.serverUrl ?? ''}|${auth.userId ?? ''}` : 'anonymous';
+}
+
+async function fetchHubPanelData(force: boolean): Promise<{
+  catalog: Envelope;
+  skills: Envelope;
+  local: Envelope;
+  helpers: HubHelpersData;
+}> {
+  const localAndHelpers = async (): Promise<{ local: Envelope; helpers: HubHelpersData }> => {
+    const [local, helperList] = await Promise.all([
+      callEnvelope('skills/list', { localOnly: true }),
+      callEnvelope('helpers/list'),
+    ]);
+    return { local, helpers: normalizeHelpers(helperList.ok ? helperList.result : null) };
+  };
+  if (state.auth?.loggedIn) {
+    const overview = await callEnvelope('hub/overview', force ? { refresh: true } : {});
+    if (overview.ok) {
+      const rest = await localAndHelpers();
+      return {
+        catalog: { ok: true, result: overview.result?.catalog ?? { connected: false, reason: 'unreachable' } },
+        skills: { ok: true, result: overview.result?.skills ?? { connected: false, reason: 'unreachable' } },
+        ...rest,
+      };
+    }
+    // An engine built before hub/overview still answers the two independent calls (METHOD_NOT_FOUND).
+    if (overview.error?.code !== -32601) {
+      return { catalog: overview, skills: overview, ...(await localAndHelpers()) };
+    }
+  }
+  const [catalog, skills, local, helperList] = await Promise.all([
+    callEnvelope('hub/catalog', force ? { refresh: true } : {}),
+    callEnvelope('hub/skills', force ? { limit: 200, refresh: true } : { limit: 200 }),
+    callEnvelope('skills/list', { localOnly: true }),
+    callEnvelope('helpers/list'),
+  ]);
+  return { catalog, skills, local, helpers: normalizeHelpers(helperList.ok ? helperList.result : null) };
+}
+
 async function renderHubPanel(): Promise<HTMLElement> {
   const host = hostOf(state.auth?.serverUrl);
   const { root, body } = panel('Hub', host
@@ -4669,32 +4749,21 @@ async function renderHubPanel(): Promise<HTMLElement> {
     : 'Server capabilities via the hub — MCP tools, API tools, agents and skills.');
 
   const view: { filter: HubFilter; query: string } = { filter: 'all', query: '' };
+  const cached = hubSnapshot && hubSnapshot.key === hubSnapshotKey()
+    && Date.now() - hubSnapshot.at < HUB_SNAPSHOT_TTL_MS ? hubSnapshot : null;
 
-  const build = async (): Promise<void> => {
-    if (!state.auth?.loggedIn) {
-      const helperList = await callEnvelope('helpers/list');
-      const data = normalizeHelpers(helperList.ok ? helperList.result : null);
-      const wrap = el('div');
-      if (data.helpers.length) wrap.append(renderHelpersSection(data, () => void build()));
-      wrap.append(hubSignInState(() => void build()));
-      body.replaceChildren(wrap);
-      return;
-    }
-    body.replaceChildren(el('div', 'notice', 'Loading the capability catalog…'));
-    const [catalog, skills, local, helperList] = await Promise.all([
-      callEnvelope('hub/catalog'),
-      callEnvelope('hub/skills', { limit: 200 }),
-      callEnvelope('skills/list'),
-      callEnvelope('helpers/list'),
-    ]);
+  const showSignIn = (helpersData: HubHelpersData): void => {
+    const wrap = el('div');
+    if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build(true)));
+    wrap.append(hubSignInState(() => void build(true)));
+    body.replaceChildren(wrap);
+  };
+
+  const apply = (catalog: Envelope, skills: Envelope, local: Envelope, helpersData: HubHelpersData): void => {
     const catalogData = catalog.ok ? catalog.result ?? {} : null;
     const skillsData = skills.ok ? skills.result ?? {} : null;
-    const helpersData = normalizeHelpers(helperList.ok ? helperList.result : null);
     if (catalogData?.reason === 'not_logged_in' || skillsData?.reason === 'not_logged_in') {
-      const wrap = el('div');
-      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
-      wrap.append(hubSignInState(() => void build()));
-      body.replaceChildren(wrap);
+      showSignIn(helpersData);
       return;
     }
     const catalogError = !catalog.ok
@@ -4707,15 +4776,15 @@ async function renderHubPanel(): Promise<HTMLElement> {
       || (skillsData?.connected === false && skillsData.reason === 'untrusted_certificate');
     if (certificateFailure) {
       const wrap = el('div');
-      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
-      wrap.append(hubCertificateState(String(catalogError ?? skillsError ?? ''), build));
+      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build(true)));
+      wrap.append(hubCertificateState(String(catalogError ?? skillsError ?? ''), () => build(true)));
       body.replaceChildren(wrap);
       return;
     }
     if (catalogError && skillsError) {
       const wrap = el('div');
-      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build()));
-      wrap.append(hubUnreachableState(String(catalogError), build));
+      if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build(true)));
+      wrap.append(hubUnreachableState(String(catalogError), () => build(true)));
       body.replaceChildren(wrap);
       return;
     }
@@ -4766,7 +4835,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
     toolbar.append(chips);
     const refresh = el('button', 'btn small hub-refresh', 'Refresh');
     refresh.title = 'Fetch the catalog and skill list again';
-    refresh.onclick = () => void build();
+    refresh.onclick = () => void build(true);
     toolbar.append(refresh);
 
     const list = el('div', 'hub-list');
@@ -4778,6 +4847,8 @@ async function renderHubPanel(): Promise<HTMLElement> {
       if (!actions.querySelector('.hub-installed')) {
         actions.prepend(el('span', 'hub-installed', 'installed'));
       }
+      // The cached local inventory no longer carries this skill's provenance.
+      hubSnapshot = null;
     };
 
     const render = (): void => {
@@ -4815,7 +4886,29 @@ async function renderHubPanel(): Promise<HTMLElement> {
     render();
   };
 
-  await build();
+  const build = async (force = false): Promise<void> => {
+    if (!state.auth?.loggedIn) {
+      body.replaceChildren(loadingLine('Loading helpers…'));
+      const helperList = await callEnvelope('helpers/list');
+      showSignIn(normalizeHelpers(helperList.ok ? helperList.result : null));
+      return;
+    }
+    if (cached && !force) {
+      apply({ ok: true, result: cached.catalog }, { ok: true, result: cached.skills }, cached.local, cached.helpers);
+      return;
+    }
+    body.replaceChildren(loadingLine('Loading the capability catalog…'));
+    const data = await fetchHubPanelData(force);
+    const catalogData = data.catalog.ok ? data.catalog.result ?? {} : null;
+    const skillsData = data.skills.ok ? data.skills.result ?? {} : null;
+    if (catalogData?.connected === true || skillsData?.connected === true) {
+      hubSnapshot = { key: hubSnapshotKey(), at: Date.now(), catalog: catalogData, skills: skillsData, local: data.local, helpers: data.helpers };
+    }
+    apply(data.catalog, data.skills, data.local, data.helpers);
+  };
+
+  // Paint the shell immediately; the catalog fills it in once the engine answers.
+  void build();
   return root;
 }
 
@@ -4884,33 +4977,16 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     }
   };
 
-  const runUpdate = async (qualifiedName: string | null, force: boolean): Promise<void> => {
-    if (force && !window.confirm(`Overwrite local changes in ${qualifiedName ?? 'every hub skill'}?`)) return;
-    const outcome = await callEnvelope('hub/skills/update', {
-      ...(qualifiedName ? { name: qualifiedName } : {}),
-      ...(force ? { force: true } : {}),
-    });
-    if (!outcome.ok) {
-      toast(`Skill update failed: ${outcome.error?.message ?? 'request failed'}`, 'error');
-      return;
-    }
-    const updated: string[] = outcome.result?.updated ?? [];
-    const skipped: string[] = outcome.result?.skipped ?? [];
-    toast(updated.length ? `Updated ${updated.join(', ')}`
-      : skipped.length ? `Nothing to update (${skipped.length} skipped)` : 'Nothing to update');
-    await refresh();
-  };
-
-  const refresh = async (): Promise<void> => {
+  const renderRows = (listed: any, checking: boolean): void => {
     body.replaceChildren();
-    const listed = await call('skills/list', {});
-    if (!listed) return;
     const skills: any[] = listed.skills ?? [];
     if (!skills.length) {
       body.append(el('div', 'notice', 'No skills yet.'));
       return;
     }
-    if (!listed.connected) {
+    if (checking) {
+      body.append(el('div', 'hint', 'Checking the skill hub for updates…'));
+    } else if (!listed.signedIn && !listed.connected) {
       body.append(el('div', 'notice', 'Sign in to core-ai-server to check for skill updates.'));
     }
     if (skills.some((skill: any) => skill.state === 'outdated')) {
@@ -4927,10 +5003,11 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     table.append(headRow);
     for (const skill of skills) {
       const row = el('tr');
-      const info = skillState(skill, Boolean(listed.connected));
+      const info = skillState(skill, Boolean(listed.connected) && !checking);
       row.append(el('td', undefined, skill.name));
       row.append(el('td', undefined, skill.source));
-      const stateCell = el('td', undefined, info.label);
+      const stateCell = el('td', undefined,
+        checking && String(skill.state ?? '') === 'unmodified' ? 'Checking…' : info.label);
       if (info.update && skill.qualifiedName) {
         const button = el('button', 'btn small primary', info.force ? 'Overwrite' : 'Update');
         button.style.marginLeft = '8px';
@@ -4952,6 +5029,7 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
           return;
         }
         toast(`Deleted ${skill.name}`);
+        hubSnapshot = null;
         await refresh();
       };
       actionsCell.append(remove);
@@ -4961,7 +5039,42 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     body.append(table);
   };
 
-  await refresh();
+  const runUpdate = async (qualifiedName: string | null, force: boolean): Promise<void> => {
+    if (force && !window.confirm(`Overwrite local changes in ${qualifiedName ?? 'every hub skill'}?`)) return;
+    const outcome = await callEnvelope('hub/skills/update', {
+      ...(qualifiedName ? { name: qualifiedName } : {}),
+      ...(force ? { force: true } : {}),
+    });
+    if (!outcome.ok) {
+      toast(`Skill update failed: ${outcome.error?.message ?? 'request failed'}`, 'error');
+      return;
+    }
+    const updated: string[] = outcome.result?.updated ?? [];
+    const skipped: string[] = outcome.result?.skipped ?? [];
+    toast(updated.length ? `Updated ${updated.join(', ')}`
+      : skipped.length ? `Nothing to update (${skipped.length} skipped)` : 'Nothing to update');
+    await refresh();
+  };
+
+  /**
+   * Two passes: the local inventory paints immediately, then the hub check fills in the freshness
+   * column. The first pass never waits on the network, which is what made the page feel stuck.
+   */
+  const refresh = async (): Promise<void> => {
+    body.replaceChildren(loadingLine('Loading skills…'));
+    const local = await call('skills/list', { localOnly: true });
+    if (!local) return;
+    // An engine without the signedIn field already answered with server digests (no two-phase).
+    const twoPhase = local.signedIn === true;
+    renderRows(local, twoPhase);
+    if (!twoPhase) return;
+    const verified = await call('skills/list', {});
+    if (!verified) return;
+    renderRows(verified, false);
+  };
+
+  // Paint the shell immediately; the list is filled once the local scan returns.
+  void refresh();
   return root;
 }
 
@@ -5408,6 +5521,21 @@ function mountContent(content: HTMLElement, node?: Node): void {
   scheduleBrowserBounds();
 }
 
+/**
+ * Waits for a panel but keeps the click acknowledged: after a short grace period a titled shell is
+ * mounted, then swapped for the real panel. Fast panels never show the shell, so there is no flicker.
+ */
+async function mountPanelWhenReady(content: HTMLElement, token: number, title: string, pending: Promise<HTMLElement>): Promise<void> {
+  const timer = window.setTimeout(() => {
+    if (token !== contentRenderToken) return;
+    mountContent(content, loadingPanel(title));
+  }, 150);
+  const panel = await pending;
+  window.clearTimeout(timer);
+  if (token !== contentRenderToken) return;
+  mountContent(content, panel);
+}
+
 async function renderContent(): Promise<void> {
   const token = ++contentRenderToken;
   const content = document.getElementById('content') as HTMLElement;
@@ -5455,22 +5583,21 @@ async function renderContent(): Promise<void> {
     showBlankHint();
     return;
   }
-  let panel: HTMLElement;
+  let pending: Promise<HTMLElement>;
   if (state.nav === 'schedules') {
-    panel = await renderSchedulesPanel();
+    pending = renderSchedulesPanel();
   } else if (state.nav === 'hub') {
-    panel = await renderHubPanel();
+    pending = renderHubPanel();
   } else if (state.nav === 'artifacts') {
-    panel = await renderArtifactsPanel();
+    pending = renderArtifactsPanel();
   } else if (state.nav === 'skills') {
-    panel = await renderSkillsPanel();
+    pending = renderSkillsPanel();
   } else if (state.nav === 'memory') {
-    panel = await renderMemoryPanel();
+    pending = renderMemoryPanel();
   } else {
-    panel = await renderSettingsPanel();
+    pending = renderSettingsPanel();
   }
-  if (token !== contentRenderToken) return;
-  mountContent(content, panel);
+  await mountPanelWhenReady(content, token, PANEL_TITLES[state.nav] ?? 'Loading', pending);
 }
 
 // ---------- bootstrap ----------
