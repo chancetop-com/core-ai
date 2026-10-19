@@ -752,6 +752,7 @@ function registerIpc(): void {
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
+  ipcMain.handle('update:download', async () => updateService?.download() ?? null);
   ipcMain.handle('update:install', async () => updateService?.install() ?? null);
   ipcMain.handle('engine:call', async (_event, workspace: string, method: string, params: Record<string, unknown>): Promise<CallEnvelope> => {
     if (!supervisor) return { ok: false, error: { code: 0, message: 'engine supervisor not ready' } };

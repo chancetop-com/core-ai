@@ -171,38 +171,77 @@ test('check retries once on a transient network blip', async () => {
   assert.equal(attempts, 2);
 });
 
-test('install downloads, verifies and hands over the installer', async () => {
+test('download verifies the installer and stops before installing', async () => {
   const { service, states, installed, dir } = makeService();
   await service.check();
-  const state = await service.install();
-  assert.equal(state.phase, 'installing');
-  assert.equal(installed.length, 1);
-  assert.equal(installed[0], path.join(dir, 'core-ai-desktop-win-x64.exe'));
-  assert.deepEqual(readFileSync(installed[0]), INSTALLER_BYTES);
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
+  assert.equal(installed.length, 0);
+  const target = path.join(dir, 'core-ai-desktop-win-x64.exe');
+  assert.deepEqual(readFileSync(target), INSTALLER_BYTES);
   const progress = states.filter((entry) => entry.phase === 'downloading');
   assert.ok(progress.length > 0);
   assert.equal(progress[progress.length - 1].transferred, INSTALLER_BYTES.length);
 });
 
-test('install creates the download directory on first use', async () => {
-  const nested = path.join(tempDir(), 'updates');
-  const { service, installed } = makeService({ downloadDir: nested });
+test('install hands the downloaded installer over', async () => {
+  const { service, installed, dir } = makeService();
   await service.check();
+  await service.download();
   const state = await service.install();
   assert.equal(state.phase, 'installing');
   assert.equal(installed.length, 1);
+  assert.equal(installed[0], path.join(dir, 'core-ai-desktop-win-x64.exe'));
+});
+
+test('install does nothing before the download completes', async () => {
+  const { service, installed } = makeService();
+  await service.check();
+  const state = await service.install();
+  assert.equal(state.phase, 'available');
+  assert.equal(installed.length, 0);
+});
+
+test('download creates the download directory on first use', async () => {
+  const nested = path.join(tempDir(), 'updates');
+  const { service, installed } = makeService({ downloadDir: nested });
+  await service.check();
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
+  assert.equal(installed.length, 0);
   assert.ok(existsSync(path.join(nested, 'core-ai-desktop-win-x64.exe')));
 });
 
-test('install reuses an already verified download', async () => {
+test('download reuses an already verified download', async () => {
   const { service, installed, dir } = makeService({
     fetchImpl: stubFetch({ releases: [releaseFixture('0.1.3')], blockDownloads: true }),
   });
   writeFileSync(path.join(dir, 'core-ai-desktop-win-x64.exe'), INSTALLER_BYTES);
   await service.check();
-  const state = await service.install();
-  assert.equal(state.phase, 'installing');
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
+  const installedState = await service.install();
+  assert.equal(installedState.phase, 'installing');
   assert.equal(installed.length, 1);
+});
+
+test('a re-check keeps the already downloaded update ready to install', async () => {
+  const { service } = makeService();
+  await service.check();
+  await service.download();
+  const state = await service.check();
+  assert.equal(state.phase, 'downloaded');
+});
+
+test('install re-verifies the installer and refuses a file changed after download', async () => {
+  const { service, installed, dir } = makeService();
+  await service.check();
+  await service.download();
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64.exe'), Buffer.alloc(INSTALLER_BYTES.length, 9));
+  const state = await service.install();
+  assert.equal(state.phase, 'error');
+  assert.match(state.error, /changed on disk/);
+  assert.equal(installed.length, 0);
 });
 
 test('a checksum mismatch discards the download and never installs', async () => {
@@ -211,7 +250,7 @@ test('a checksum mismatch discards the download and never installs', async () =>
     fetchImpl: stubFetch({ releases: [releaseFixture('0.1.3')], feed: FEED_TEXT.split(INSTALLER_SHA).join(wrongSha) }),
   });
   await service.check();
-  const state = await service.install();
+  const state = await service.download();
   assert.equal(state.phase, 'error');
   assert.match(state.error, /checksum mismatch/);
   assert.equal(installed.length, 0);
@@ -224,7 +263,7 @@ test('macOS downloads the dmg and opens it instead of installing', async () => {
   const checked = await service.check();
   assert.equal(checked.installMode, 'download');
   assert.equal(checked.assetName, 'core-ai-desktop-mac-arm64.dmg');
-  const state = await service.install();
+  const state = await service.download();
   assert.equal(state.phase, 'ready');
   assert.equal(opened.length, 1);
 });

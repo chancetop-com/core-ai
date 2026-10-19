@@ -139,7 +139,7 @@ interface BuiltinSkillsEnvelope {
 }
 
 interface UpdateState {
-  phase: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'installing' | 'ready' | 'error';
+  phase: 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error';
   currentVersion: string;
   latestVersion: string | null;
   releaseUrl: string | null;
@@ -255,6 +255,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   channelsInstallTool(): Promise<{ ok: boolean; detail: string; status: RuntimeStatus }>;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
+  updateDownload(): Promise<UpdateState | null>;
   updateInstall(): Promise<UpdateState | null>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
@@ -5789,6 +5790,10 @@ interface AboutUpdateNodes {
 }
 
 let aboutUpdateNodes: AboutUpdateNodes | null = null;
+/** Version whose install prompt is already shown (or was dismissed), so state repaints cannot re-open it. */
+let updatePromptVersion: string | null = null;
+let updatePromptEl: HTMLElement | null = null;
+let updatePromptClose: (() => void) | null = null;
 
 /**
  * Settings → About: version, update check and the one-click upgrade (design §4.7). The update
@@ -5799,7 +5804,8 @@ function renderAboutSection(): HTMLElement {
   const section = el('div');
   section.append(el('h2', undefined, 'About'));
   section.append(el('div', 'hint', 'Version and updates. The release feed is checked on startup — a newer release shows an '
-    + '"Update" badge on the Settings row in the sidebar. Upgrading downloads the installer (sha512-verified) and installs it.'));
+    + '"Update" badge on the Settings row in the sidebar. Upgrading downloads the installer (sha512-verified) first and asks '
+    + 'before installing, so running sessions are never interrupted without your consent.'));
   const grid = el('dl', 'settings-grid');
   const info = state.info;
   grid.append(el('dt', undefined, 'Version'));
@@ -5832,16 +5838,21 @@ function renderAboutSection(): HTMLElement {
     }
   };
   action.onclick = async () => {
-    if (state.update?.installMode === 'manual') {
-      if (state.update.releaseUrl) await window.coreai.openExternal(state.update.releaseUrl);
+    const current = state.update;
+    if (current?.installMode === 'manual') {
+      if (current.releaseUrl) await window.coreai.openExternal(current.releaseUrl);
       return;
     }
     action.disabled = true;
     try {
-      const next = await window.coreai.updateInstall();
+      const next = current?.phase === 'downloaded'
+        ? await window.coreai.updateInstall()
+        : await window.coreai.updateDownload();
       if (next) applyUpdateState(next);
     } catch (error) {
-      toast(`Update install failed: ${cleanIpcError(error)}`);
+      toast(current?.phase === 'downloaded'
+        ? `Update install failed: ${cleanIpcError(error)}`
+        : `Update download failed: ${cleanIpcError(error)}`);
     } finally {
       action.disabled = false;
     }
@@ -5866,6 +5877,79 @@ function applyUpdateState(next: UpdateState): void {
   state.update = next;
   if (aboutUpdateNodes && aboutUpdateNodes.root.isConnected) paintUpdate(aboutUpdateNodes, next);
   paintUpdateBadge();
+  promptUpdateInstall(next);
+}
+
+/**
+ * Runs when a download completes: the installer is ready, but installing stops every running
+ * session, so the choice belongs to the user. Choosing "later" leaves the About section with an
+ * "Install now" action for whenever they are ready.
+ */
+function promptUpdateInstall(current: UpdateState): void {
+  if (current.phase === 'downloaded' && current.latestVersion) {
+    if (updatePromptVersion === current.latestVersion) return;
+    updatePromptVersion = current.latestVersion;
+    openUpdateInstallPrompt(current);
+    return;
+  }
+  if (current.phase !== 'checking' && current.phase !== 'installing') updatePromptVersion = null;
+}
+
+function openUpdateInstallPrompt(current: UpdateState): void {
+  updatePromptClose?.();
+  const version = current.latestVersion ?? '';
+  const overlay = el('div', 'overlay');
+  updatePromptEl = overlay;
+  const dialog = el('div', 'login-dialog');
+  dialog.append(el('div', 'login-title', `Update v${version} is ready to install`));
+  dialog.append(el('div', 'login-hint', 'The installer has been downloaded and verified. Installing now closes '
+    + 'core-ai-desktop and restarts it, so any agent sessions that are still running will stop.'));
+  dialog.append(el('div', 'login-hint', 'Choose “Install later” to keep working — the update stays downloaded, and '
+    + 'Settings → About has an “Install now” button whenever you are ready.'));
+
+  const actions = el('div', 'login-actions');
+  const later = el('button', 'btn', 'Install later') as HTMLButtonElement;
+  const now = el('button', 'btn primary', 'Install now') as HTMLButtonElement;
+  actions.append(later, now);
+  dialog.append(actions);
+  overlay.append(dialog);
+  document.body.append(overlay);
+
+  const close = (): void => {
+    overlay.remove();
+    if (updatePromptEl === overlay) {
+      updatePromptEl = null;
+      updatePromptClose = null;
+    }
+    document.removeEventListener('keydown', onKey);
+  };
+  updatePromptClose = close;
+  const onKey = (event: KeyboardEvent): void => {
+    if (event.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKey);
+  // A backdrop click is the safe choice: never install by accident.
+  overlay.addEventListener('mousedown', (event) => {
+    if (event.target === overlay) close();
+  });
+  later.onclick = close;
+  later.focus();
+  now.onclick = async () => {
+    now.disabled = true;
+    later.disabled = true;
+    now.textContent = 'Installing…';
+    try {
+      const next = await window.coreai.updateInstall();
+      if (next) applyUpdateState(next);
+      if (next && next.phase !== 'installing') {
+        close();
+        if (next.error) toast(next.error, 'error');
+      }
+    } catch (error) {
+      close();
+      toast(`Update install failed: ${cleanIpcError(error)}`, 'error');
+    }
+  };
 }
 
 /**
@@ -5878,18 +5962,22 @@ function paintUpdateBadge(): void {
   const button = settingsNavEl;
   if (!button || !button.isConnected) return;
   const current = state.update;
-  const available = current?.phase === 'available' && Boolean(current.latestVersion);
-  if (!available) {
+  const pending = Boolean(current && current.latestVersion && (current.phase === 'available' || current.phase === 'downloaded'));
+  if (!pending) {
     settingsBadgeEl?.remove();
     settingsBadgeEl = null;
     button.title = 'Settings';
     return;
   }
   if (!settingsBadgeEl || !settingsBadgeEl.isConnected) {
-    settingsBadgeEl = el('span', 'nav-badge', 'Update');
+    settingsBadgeEl = el('span', 'nav-badge');
     button.append(settingsBadgeEl);
   }
-  button.title = `Settings — update v${current.latestVersion} available`;
+  const downloaded = current?.phase === 'downloaded';
+  settingsBadgeEl.textContent = downloaded ? 'Install' : 'Update';
+  button.title = downloaded
+    ? `Settings — update v${current?.latestVersion} downloaded, ready to install`
+    : `Settings — update v${current?.latestVersion} available`;
 }
 
 function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
@@ -5913,14 +6001,19 @@ function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
       ? `New version ${latest} available (current v${current.currentVersion}). This build runs from source — installs apply to packaged builds.`
       : `New version ${latest} available (current v${current.currentVersion}).`;
     nodes.action.style.display = '';
-    nodes.action.textContent = current.installMode === 'install' ? 'Download & install'
-      : current.installMode === 'download' ? 'Download update' : 'Open release page';
+    nodes.action.textContent = current.installMode === 'manual' ? 'Open release page' : 'Download update';
     nodes.notes.style.display = '';
   } else if (current.phase === 'downloading') {
     const percent = current.total > 0 ? Math.floor((current.transferred / current.total) * 100) : 0;
     nodes.status.textContent = `Downloading ${latest}… ${percent}% (${fmtBytes(current.transferred)} / ${fmtBytes(current.total)})`;
     nodes.bar.style.display = '';
     nodes.fill.style.width = `${percent}%`;
+  } else if (current.phase === 'downloaded') {
+    nodes.status.textContent = `Update ${latest} downloaded and verified — not installed yet. “Install now” closes the app `
+      + 'and stops any agent sessions that are still running.';
+    nodes.action.style.display = '';
+    nodes.action.textContent = 'Install now';
+    nodes.notes.style.display = '';
   } else if (current.phase === 'installing') {
     nodes.status.textContent = `Installing ${latest} — the app will restart automatically.`;
   } else if (current.phase === 'ready') {

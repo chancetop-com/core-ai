@@ -17,7 +17,7 @@ const DESKTOP_TAG_PATTERN = /^desktop-v(\d+(?:\.\d+)*)$/;
 const PLATFORM_ASSET_KEY: Partial<Record<NodeJS.Platform, string>> = { win32: 'win', darwin: 'mac', linux: 'linux' };
 const PLATFORM_FEED_ASSET: Partial<Record<NodeJS.Platform, string>> = { win32: 'latest.yml', darwin: 'latest-mac.yml' };
 
-export type UpdatePhase = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'installing' | 'ready' | 'error';
+export type UpdatePhase = 'idle' | 'checking' | 'up-to-date' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'ready' | 'error';
 
 /** install = silent NSIS install + relaunch (Windows); download = fetch and open the artifact (macOS dmg). */
 export type UpdateInstallMode = 'install' | 'download' | 'manual';
@@ -159,7 +159,9 @@ export class UpdateService {
   private state: UpdateState;
   private release: DesktopRelease | null = null;
   private checkInFlight: Promise<UpdateState> | null = null;
+  private downloadInFlight: Promise<UpdateState> | null = null;
   private installInFlight: Promise<UpdateState> | null = null;
+  private downloaded: { version: string; path: string; sha512: string; size: number } | null = null;
   private lastProgressAt = 0;
 
   constructor(options: UpdateServiceOptions) {
@@ -190,6 +192,15 @@ export class UpdateService {
     return this.checkInFlight;
   }
 
+  /** Fetches and verifies the installer, then stops at `downloaded` — installing is the user's call. */
+  download(): Promise<UpdateState> {
+    this.downloadInFlight ??= this.runDownload().finally(() => {
+      this.downloadInFlight = null;
+    });
+    return this.downloadInFlight;
+  }
+
+  /** Runs the already downloaded installer; the app hands over and exits. */
   install(): Promise<UpdateState> {
     this.installInFlight ??= this.runInstall().finally(() => {
       this.installInFlight = null;
@@ -230,6 +241,7 @@ export class UpdateService {
   }
 
   private async runCheck(): Promise<UpdateState> {
+    const wasDownloaded = this.state.phase === 'downloaded';
     this.setState({ phase: 'checking', error: null });
     try {
       const release = pickLatestDesktopRelease(await this.fetchReleases());
@@ -239,15 +251,25 @@ export class UpdateService {
         return this.snapshot();
       }
       const asset = pickReleaseAsset(release, this.platform(), this.arch());
+      const hasUpdate = compareVersions(release.version, this.state.currentVersion) > 0;
+      if (!hasUpdate) this.downloaded = null;
+      // A re-check must not hide an installer the user already downloaded: the update is still
+      // pending, so keep the ready-to-install state for the same release.
+      const keepDownloaded = hasUpdate && wasDownloaded && this.downloaded?.version === release.version;
       this.setState({
-        phase: compareVersions(release.version, this.state.currentVersion) > 0 ? 'available' : 'up-to-date',
+        phase: !hasUpdate ? 'up-to-date' : keepDownloaded ? 'downloaded' : 'available',
         latestVersion: release.version,
         releaseUrl: release.url,
         assetName: asset?.name ?? null,
         installMode: installModeFor(this.platform(), this.options.isPackaged, Boolean(asset)),
       });
     } catch (error) {
-      this.setState({ phase: 'error', error: `Update check failed: ${errorMessage(error)}` });
+      // A failed re-check keeps the downloaded installer usable.
+      if (wasDownloaded) {
+        this.setState({ phase: 'downloaded', error: null });
+      } else {
+        this.setState({ phase: 'error', error: `Update check failed: ${errorMessage(error)}` });
+      }
     }
     return this.snapshot();
   }
@@ -262,19 +284,26 @@ export class UpdateService {
     }
   }
 
-  private async runInstall(): Promise<UpdateState> {
+  private async runDownload(): Promise<UpdateState> {
     const release = this.release;
     const asset = release ? pickReleaseAsset(release, this.platform(), this.arch()) : null;
-    if (this.state.phase !== 'available' || !release || !asset || this.state.installMode === 'manual') {
+    if ((this.state.phase !== 'available' && this.state.phase !== 'downloaded')
+      || !release || !asset || this.state.installMode === 'manual') {
       return this.snapshot();
     }
+    if (this.state.phase === 'downloaded' && this.downloaded?.version === release.version) return this.snapshot();
     try {
       this.setState({ phase: 'downloading', transferred: 0, total: asset.size, error: null });
       const target = path.join(this.options.downloadDir, asset.name);
-      await this.downloadAndVerify(release, asset, target);
+      const checksum = await this.downloadAndVerify(release, asset, target);
       if (this.state.installMode === 'install') {
-        this.setState({ phase: 'installing' });
-        await this.options.install?.(target);
+        this.downloaded = {
+          version: release.version,
+          path: target,
+          sha512: checksum.sha512,
+          size: checksum.size,
+        };
+        this.setState({ phase: 'downloaded' });
       } else {
         await this.options.openFile?.(target);
         this.setState({ phase: 'ready' });
@@ -285,24 +314,47 @@ export class UpdateService {
     return this.snapshot();
   }
 
-  private async downloadAndVerify(release: DesktopRelease, asset: ReleaseAsset, target: string): Promise<void> {
+  private async runInstall(): Promise<UpdateState> {
+    const downloaded = this.downloaded;
+    if (this.state.phase !== 'downloaded' || !downloaded) return this.snapshot();
+    try {
+      // The installer waited on disk for the user's decision — re-check it before handing over.
+      const intact = existsSync(downloaded.path)
+        && statSync(downloaded.path).size === downloaded.size
+        && await fileSha512(downloaded.path) === downloaded.sha512;
+      if (!intact) {
+        this.downloaded = null;
+        this.setState({ phase: 'error', error: 'The downloaded installer changed on disk — download the update again' });
+        return this.snapshot();
+      }
+      this.setState({ phase: 'installing' });
+      await this.options.install?.(downloaded.path);
+    } catch (error) {
+      this.setState({ phase: 'error', error: `Update failed: ${errorMessage(error)}` });
+    }
+    return this.snapshot();
+  }
+
+  private async downloadAndVerify(release: DesktopRelease, asset: ReleaseAsset, target: string): Promise<{ sha512: string; size: number }> {
     const feedName = PLATFORM_FEED_ASSET[this.platform()];
     const feed = release.assets.find((entry) => entry.name === feedName);
     if (!feed) throw new Error(`release ${release.version} has no ${feedName} checksum file`);
     const checksum = parseLatestYml(await this.fetchText(feed.url));
     if (!checksum) throw new Error(`could not parse ${feedName}`);
+    const size = checksum.size || asset.size;
 
-    if (existsSync(target) && statSync(target).size === (checksum.size || asset.size) && await fileSha512(target) === checksum.sha512) {
-      return;
+    if (existsSync(target) && statSync(target).size === size && await fileSha512(target) === checksum.sha512) {
+      return { sha512: checksum.sha512, size };
     }
-    await this.download(asset, target);
+    await this.fetchAsset(asset, target);
     if (await fileSha512(target) !== checksum.sha512) {
       rmSync(target, { force: true });
       throw new Error('checksum mismatch — the downloaded installer was discarded');
     }
+    return { sha512: checksum.sha512, size };
   }
 
-  private async download(asset: ReleaseAsset, target: string): Promise<void> {
+  private async fetchAsset(asset: ReleaseAsset, target: string): Promise<void> {
     const part = `${target}.part`;
     const response = await this.request(asset.url);
     if (!response.ok || !response.body) throw new Error(`installer download failed (${httpMessage(response.status)})`);

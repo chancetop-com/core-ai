@@ -49,6 +49,7 @@ contextBridge.exposeInMainWorld('coreai', {
   channelsInstallTool: () => ipcRenderer.invoke('channels:installTool'),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.invoke('update:download'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
   onUpdateState: (callback: (state: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
