@@ -135,11 +135,13 @@ public class CliApp {
         boolean a2aAutoDiscover = props.property("a2a.autoDiscover").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         var videoMediaProvider = CliAppHelper.videoMediaProvider(props);
-        var mediaProvider = imageMediaProvider != null ? imageMediaProvider : videoMediaProvider;
+        var mediaProvider = CliAppHelper.sharedMediaProvider(props);
+        var mediaCatalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider);
         return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
                 remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs, a2aAutoDiscover,
                 mediaProvider, imageMediaProvider, videoMediaProvider,
-                props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null), helpers);
+                props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null),
+                props.property("media.image.edit.model").orElse(null), helpers, mediaCatalog);
     }
 
     private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
@@ -207,7 +209,8 @@ public class CliApp {
         return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
                 bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds, bc.a2aAutoDiscover(),
-                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(), bc.helpers());
+                bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(),
+                bc.defaultImageEditModel(), bc.helpers(), bc.mediaCatalog());
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -238,11 +241,14 @@ public class CliApp {
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
         var scheduledTaskStore = new ai.core.cli.schedule.FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), workspace);
+        var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider(), sessionId);
+        var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider(), sessionId);
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
-                ctx.mediaProvider(), ctx.imageMediaProvider(), ctx.videoMediaProvider(), ctx.defaultImageModel(), ctx.defaultVideoModel(), scheduledTaskStore,
-                CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers());
+                ctx.mediaProvider(), imageMediaProvider, videoMediaProvider, ctx.defaultImageModel(), ctx.defaultVideoModel(),
+                ctx.defaultImageEditModel(), scheduledTaskStore,
+                CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers(), ctx.mediaCatalog());
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {

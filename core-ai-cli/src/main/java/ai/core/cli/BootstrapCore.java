@@ -6,6 +6,7 @@ import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
 import ai.core.cli.helper.HelperEntry;
+import ai.core.cli.media.MediaModelCatalog;
 import ai.core.media.MediaProvider;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionManager;
@@ -21,5 +22,6 @@ record BootstrapCore(PropertiesFileSource props, BootstrapResult result, int max
                      SessionManager sessionManager, ToolPermissionStore permissionStore,
                       Map<String, SubAgentConfig> subAgentConfigs, boolean a2aAutoDiscover,
                        MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
-                       String defaultImageModel, String defaultVideoModel, List<HelperEntry> helpers) {
+                       String defaultImageModel, String defaultVideoModel, String defaultImageEditModel,
+                      List<HelperEntry> helpers, MediaModelCatalog mediaCatalog) {
 }

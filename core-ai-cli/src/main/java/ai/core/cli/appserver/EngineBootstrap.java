@@ -12,6 +12,7 @@ import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.log.CliLogger;
+import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.schedule.FileScheduledTaskStore;
 import ai.core.cli.utils.PathUtils;
@@ -85,6 +86,7 @@ public class EngineBootstrap {
     public final MediaProvider mediaProvider;
     public final MediaProvider imageMediaProvider;
     public final MediaProvider videoMediaProvider;
+    public final MediaModelCatalog mediaModelCatalog;
     public final String defaultImageModel;
     public final String defaultVideoModel;
     public final CompressionConfig compressionConfig;
@@ -119,7 +121,8 @@ public class EngineBootstrap {
         this.subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
         this.imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         this.videoMediaProvider = CliAppHelper.videoMediaProvider(props);
-        this.mediaProvider = imageMediaProvider != null ? imageMediaProvider : videoMediaProvider;
+        this.mediaProvider = CliAppHelper.sharedMediaProvider(props);
+        this.mediaModelCatalog = createMediaModelCatalog();
         this.defaultImageModel = props.property("media.image.model").orElse(null);
         this.defaultVideoModel = props.property("media.video.model").orElse(null);
         this.compressionConfig = CliAppHelper.compressionConfig(props);
@@ -127,6 +130,14 @@ public class EngineBootstrap {
         this.scheduledTaskStore = new FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
+    }
+
+    private MediaModelCatalog createMediaModelCatalog() {
+        var catalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider);
+        if (catalog != null) {
+            LOGGER.info("media gateway configured: base={}", CliAppHelper.mediaGatewayBase(props));
+        }
+        return catalog;
     }
 
     private int intFlag(String name, int fallback) {

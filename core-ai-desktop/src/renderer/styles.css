@@ -672,6 +672,8 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .artifact-preview .artifact-markdown { line-height: 1.5; }
 .artifact-preview .artifact-markdown img { max-width: 100%; }
 img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; }
+.inline-video { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.inline-video video { max-width: min(640px, 100%); border: 1px solid var(--border); border-radius: 6px; background: #000; }
 .tool-artifact-thumb { display: inline-flex; align-items: center; gap: 8px; margin-top: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; max-width: 220px; }
 .tool-artifact-thumb img { max-width: 200px; max-height: 140px; border-radius: 4px; display: block; }
 .tool-artifact-icon { font-size: 16px; }

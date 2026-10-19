@@ -11,9 +11,14 @@ import { handleComposerKeyDown } from './composerKeyboard';
 
 marked.setOptions({ gfm: true, breaks: true });
 
-/** Assistant output is markdown; sanitize before it touches innerHTML. */
+/**
+ * Assistant output is markdown; sanitize before it touches innerHTML. Unknown protocols are allowed only
+ * because tool results link generated images/videos by absolute path (`C:\…`, `/home/…`), which DOMPurify
+ * would otherwise drop; it still strips script tags and event handlers, and link clicks go through the
+ * main-process opener, which only opens http(s).
+ */
 function sanitizeMarkdown(text: string): string {
-  return DOMPurify.sanitize(marked.parse(text, { async: false }) as string);
+  return DOMPurify.sanitize(marked.parse(text, { async: false }) as string, { ALLOW_UNKNOWN_PROTOCOLS: true });
 }
 
 /** Renders sanitized markdown and syntax-highlights fenced code blocks (CLI palette). */
@@ -26,6 +31,7 @@ function renderMarkdownInto(body: HTMLElement, text: string): void {
     }
   }
   rewriteLocalImageSources(body);
+  rewriteLocalVideoLinks(body);
 }
 
 interface Envelope {
@@ -2762,12 +2768,43 @@ function workspaceRelativePath(value: string | null): string | null {
 function rewriteLocalImageSources(root: HTMLElement): void {
   if (!state.workspace || !state.artifactBase) return;
   for (const img of Array.from(root.querySelectorAll('img'))) {
-    const relative = workspaceRelativePath(img.getAttribute('src'));
+    const src = img.getAttribute('src');
+    if (!src) continue;
+    // marked percent-encodes a Windows path's backslashes (C:\… becomes C:%5C…)
+    let decoded = src;
+    try { decoded = decodeURIComponent(src); } catch { /* keep the raw src */ }
+    const relative = workspaceRelativePath(decoded);
     if (!relative) continue;
     img.src = artifactUrl(relative);
     img.loading = 'lazy';
     img.classList.add('artifact-inline-image');
     img.onclick = () => openArtifactInDock(artifactEntryFromPath(relative));
+  }
+}
+
+/**
+ * Generated videos come back as `[Download/play video](C:\...\clip.mp4)`. A plain anchor cannot play a
+ * local file and shell:openExternal only opens http(s), so the link becomes an inline player plus a
+ * shortcut into the Artifacts panel.
+ */
+function rewriteLocalVideoLinks(root: HTMLElement): void {
+  if (!state.workspace || !state.artifactBase) return;
+  for (const anchor of Array.from(root.querySelectorAll('a'))) {
+    const href = anchor.getAttribute('href');
+    if (!href) continue;
+    let decoded = href;
+    try { decoded = decodeURIComponent(href); } catch { /* keep the raw href */ }
+    const relative = workspaceRelativePath(decoded);
+    if (!relative || !/\.(mp4|webm|mov)$/i.test(relative)) continue;
+    const wrapper = el('div', 'inline-video');
+    const video = el('video') as HTMLVideoElement;
+    video.controls = true;
+    video.preload = 'metadata';
+    video.src = artifactUrl(relative);
+    const open = el('button', 'btn small', 'Open in Artifacts');
+    open.onclick = () => openArtifactInDock(artifactEntryFromPath(relative));
+    wrapper.append(video, open);
+    anchor.replaceWith(wrapper);
   }
 }
 
@@ -5435,12 +5472,144 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
     body.append(pre);
   }
 
+  if (state.workspace) body.append(await renderMediaGenerationSection());
   body.append(await renderBuiltinSkillsSection());
   body.append(await renderBrowserAutomationSection());
   body.append(await renderChannelsSection());
   body.append(await renderComputerUseSection());
   body.append(renderAboutSection());
   return root;
+}
+
+/**
+ * Settings → Media generation: which gateway the engine uses, and the default image/video model.
+ * The values live in ~/.core-ai/agent.properties (shared with the CLI); the engine reloads to apply them.
+ */
+async function renderMediaGenerationSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'Media generation'));
+  const media = await call('media/get', {});
+  if (!media) {
+    section.append(el('div', 'notice error', 'Media settings are unavailable for this workspace.'));
+    return section;
+  }
+  section.append(el('div', 'hint', 'Agents generate images and videos through the core-ai server gateway. '
+    + 'The choices are shared with the CLI in ~/.core-ai/agent.properties; the engine reloads to apply them.'));
+  if (!media.signedIn && media.imageSource === 'none' && media.videoSource === 'none') {
+    section.append(el('div', 'notice', 'Sign in from Hub to generate images and videos with the server gateway.'));
+    const hub = el('button', 'btn small primary', 'Open Hub');
+    hub.onclick = () => { state.nav = 'hub'; renderSidebar(); void renderContent(); };
+    section.append(hub);
+  }
+
+  const grid = el('dl', 'settings-grid');
+  const row = (label: string, value: string): void => {
+    grid.append(el('dt', undefined, label));
+    grid.append(el('dd', undefined, value));
+  };
+  const sourceLabel = (source: string, base: string | null): string => {
+    if (source === 'server') return `Server (${media.gateway ?? base ?? 'core-ai gateway'})`;
+    if (source === 'custom') return base === 'vertex' ? 'Vertex (media.video.protocol)' : `Custom endpoint (${base ?? 'media.*'})`;
+    return 'Not configured';
+  };
+  row('Image source', sourceLabel(String(media.imageSource ?? 'none'), media.imageBase ?? null));
+  row('Video source', sourceLabel(String(media.videoSource ?? 'none'), media.videoBase ?? null));
+  row('Enabled models', `${media.imageModels?.length ?? 0} image · ${media.videoModels?.length ?? 0} video`);
+
+  if (state.workspace) {
+    grid.append(el('dt', undefined, 'Default image model'));
+    grid.append(modelSettingCell(
+      String(media.imageSource ?? 'none'), media.imageModels ?? [], media.imageModel ?? null,
+      media.effectiveImageModel ?? null, 'imageModel', 'Image model',
+      media.imageModelFromWorkspace === true));
+    grid.append(el('dt', undefined, 'Default video model'));
+    grid.append(modelSettingCell(
+      String(media.videoSource ?? 'none'), media.videoModels ?? [], media.videoModel ?? null,
+      media.effectiveVideoModel ?? null, 'videoModel', 'Video model',
+      media.videoModelFromWorkspace === true));
+  }
+  section.append(grid);
+
+  if (media.catalogUnavailable) {
+    section.append(el('div', 'notice', 'This server does not expose a media model catalog; set a model manually or upgrade the server.'));
+  } else if (media.error) {
+    section.append(el('div', 'notice', `Media model catalog: ${media.error}`));
+  }
+  return section;
+}
+
+/** A model selector for one modality: server catalog, custom endpoint text, or a disabled "not configured". */
+function modelSettingCell(
+  source: string,
+  models: Array<{ modelId?: string; displayName?: string; providerName?: string }>,
+  current: string | null,
+  effective: string | null,
+  key: 'imageModel' | 'videoModel',
+  label: string,
+  workspaceOverride: boolean,
+): HTMLElement {
+  const cell = el('dd');
+  if (source === 'none') {
+    cell.append(el('span', 'hint', 'No endpoint configured'));
+    return cell;
+  }
+  if (source === 'custom') {
+    const input = el('input', 'settings-input');
+    input.value = current ?? '';
+    input.placeholder = 'model name for this endpoint';
+    input.onchange = () => void applyMediaModel(key, input.value.trim() || null, label);
+    cell.append(input);
+  } else if (models.length === 0) {
+    // an older server without the catalog, or one with no media models enabled: a typed model is the
+    // only option, and the tool only appears when one is configured
+    const input = el('input', 'settings-input');
+    input.value = current ?? '';
+    input.placeholder = 'model name';
+    input.onchange = () => void applyMediaModel(key, input.value.trim() || null, label);
+    cell.append(input);
+    cell.append(el('div', 'hint', 'No media models are listed by this server; enter a model id manually or ask an administrator to enable one.'));
+  } else {
+    const select = el('select');
+    const auto = el('option', undefined, effective ? `Auto (first enabled: ${effective})` : 'Auto');
+    auto.value = '';
+    select.append(auto);
+    for (const model of models) {
+      const id = String(model.modelId ?? '');
+      if (!id) continue;
+      const name = model.displayName ? `${model.displayName} (${id})` : id;
+      const option = el('option', undefined, name);
+      option.value = id;
+      select.append(option);
+    }
+    if (current && !models.some((model) => model.modelId === current)) {
+      const saved = el('option', undefined, `${current} (not enabled on this server)`);
+      saved.value = current;
+      select.append(saved);
+    }
+    select.value = current ?? '';
+    select.onchange = () => void applyMediaModel(key, select.value || null, label);
+    cell.append(select);
+  }
+  cell.append(el('div', 'hint', workspaceOverride
+    ? 'Overridden by workspace .core-ai/agent.properties'
+    : 'Stored in ~/.core-ai/agent.properties (shared with the CLI).'));
+  return cell;
+}
+
+async function applyMediaModel(
+  key: 'imageModel' | 'videoModel',
+  value: string | null,
+  label: string,
+): Promise<void> {
+  const applied = await call('media/set', { [key]: value });
+  if (!applied) return;
+  if (state.status === 'running') {
+    state.pendingEngineRestart = true;
+    toast(`${label}: ${value ?? 'auto'} — applies when this turn ends (engine reload)`);
+    return;
+  }
+  toast(`${label}: ${value ?? 'auto'} — reloading engine…`);
+  await restartWorkspaceEngine();
 }
 
 /** Settings → Built-in skills: the four packages shipped with the app, with restore/update actions. */

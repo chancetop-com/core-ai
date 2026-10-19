@@ -127,12 +127,16 @@ Sub-agents are auto-discovered from any property starting with `agent.sub.`. The
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `media.image.model` | String | — | Default image generation model |
+| `media.image.edit.model` | String | — | Default image-to-image model; when unset, the gateway catalog's first `image.edits` model is used |
 | `media.video.model` | String | — | Default video generation model |
+| `media.gateway.api.base` / `media.gateway.api.key` | String | derived from the login | Internal: `{server}/api/gateway/v1`. Written in memory by the login fallback, never to this file; do not set it by hand |
 | `media.api.base` / `media.api.key` | String | falls back to `litellm.api.base` / `litellm.api.key` | Shared media endpoint |
-| `media.image.api.base` / `media.image.api.key` | String | falls back to `media.*` | Image endpoint override |
-| `media.video.api.base` / `media.video.api.key` | String | falls back to `media.*` | Video endpoint override |
-| `media.protocol` / `media.video.protocol` | String | — | Set `VERTEX_GEMINI_INTERACTIONS` to use Vertex for video |
+| `media.image.api.base` / `media.image.api.key` | String | falls back to `media.*`, then the gateway | Image endpoint override; an explicit custom endpoint wins over the gateway |
+| `media.video.api.base` / `media.video.api.key` | String | falls back to `media.*`, then the gateway | Video endpoint override; an explicit custom endpoint wins over the gateway |
+| `media.protocol` / `media.video.protocol` | String | — | Set `VERTEX_GEMINI_INTERACTIONS` to use Vertex for video (bypasses the gateway) |
 | `media.vertex.api.base`, `media.vertex.project-id`, `media.vertex.location` | String | location `global` | Vertex settings (with a Google service-account JSON) |
+
+After `core-ai-cli --login`, image and video calls go to the server media gateway automatically; the enabled models are read from `GET /api/hub/media-models`. The tool descriptions then list those model ids and their model-specific parameters. A custom `media.*` endpoint keeps the previous generic LiteLLM behavior (no `media_id` editing, and reference images are refused rather than silently dropped).
 
 ## A2A Remote Agent Configuration
 

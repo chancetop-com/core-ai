@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
 import ai.core.media.MediaProvider;
+import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
@@ -14,16 +15,11 @@ import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.ImageDimensions;
 import core.framework.util.Strings;
-import core.framework.web.exception.BadRequestException;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 
     /**
      * Generates images via the configured MediaProvider.
@@ -75,6 +71,23 @@ public final class GenerateImageTool extends ToolCall {
         if (notes == null || notes.isEmpty()) return;
         result.append("\n\nNotes:");
         for (var note : notes) result.append("\n- ").append(note);
+    }
+
+    /**
+     * A status code alone gives the agent no next step. Login expiry and a missing gateway route are the
+     * two failures a desktop user can actually fix; model and reference errors already carry the server's
+     * own explanation.
+     */
+    static String httpHint(String message) {
+        if (message == null) return "";
+        if (message.contains("HTTP 401")) {
+            return "\n\nAuthentication failed. Sign in again from Hub, then retry.";
+        }
+        if (message.contains("HTTP 404")) {
+            return "\n\nThe media gateway was not found on this server. Upgrade the server, or configure "
+                    + "media.image.api.base / media.video.api.base to use a custom endpoint.";
+        }
+        return "";
     }
 
     /**
@@ -140,8 +153,17 @@ public final class GenerateImageTool extends ToolCall {
             var prompt = getStringValue(args, "prompt");
             if (Strings.isBlank(prompt)) return ToolCallResult.failed("prompt is required");
 
+            var inputImages = inputImages(args, context, provider);
+            var mask = mask(args, provider, context);
+            var editing = inputImages != null && !inputImages.isEmpty() || mask != null;
+            if (editing && !provider.acceptsImageReferences()) {
+                return ToolCallResult.failed("Image generation failed: the configured media endpoint does not accept "
+                        + "reference images; use a gateway image-to-image model or an endpoint that supports input_images/mask")
+                        .withDuration(System.currentTimeMillis() - startTime);
+            }
+
             request = new ImageGenerationRequest(
-                    getStringValue(args, "model") != null ? getStringValue(args, "model") : defaultModel(context),
+                    imageModel(args, context, editing),
                     prompt,
                     parseInteger(args, "n"),
                     getStringValue(args, "size"),
@@ -149,38 +171,88 @@ public final class GenerateImageTool extends ToolCall {
                     getStringValue(args, "output_format"),
                     parseInteger(args, "output_compression"),
                     getStringValue(args, "background"),
-                    inputImages(args, context, provider),
-                    mask(args, provider, context),
+                    inputImages,
+                    mask,
                     getStringValue(args, "provider_extra"),
                     getStringValue(args, "previous_interaction_id"));
 
             var response = provider.generateImage(request);
             GenerateVideoTool.applySessionModelScope(context, args, "media.image.model");
-
-            if (response.data() != null && response.data().size() == 1) {
-                return singleImageResult(context, response, getStringValue(args, "output_format"), startTime);
-            }
-
-            var sb = new StringBuilder(256);
-            sb.append("Generated ").append(response.data() != null ? response.data().size() : 0).append(" image(s).\n");
-            if (response.data() != null) {
-                for (int i = 0; i < response.data().size(); i++) {
-                    var img = response.data().get(i);
-                    sb.append("Image ").append(i + 1).append(": ");
-                    if (img.url() != null) sb.append(img.url());
-                    else if (img.b64Json() != null) sb.append("[base64 encoded]");
-                    if (img.revisedPrompt() != null) sb.append(" (revised)");
-                    sb.append('\n');
-                }
-            }
-            if (response.mediaId() != null) sb.append("media_id (first image): ").append(response.mediaId()).append('\n');
-            appendNotes(sb, response.notes());
-            return ToolCallResult.completed(sb.toString()).withDuration(System.currentTimeMillis() - startTime);
+            return imagesResult(context, response, getStringValue(args, "output_format"), startTime);
         } catch (Exception e) {
             return ToolCallResult.failed("Image generation failed: " + e.getMessage()
-                            + unreadableImageHint(e.getMessage()) + maskSizeHint(e.getMessage(), request), e)
+                            + httpHint(e.getMessage()) + unreadableImageHint(e.getMessage())
+                            + maskSizeHint(e.getMessage(), request), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private ToolCallResult imagesResult(ExecutionContext context, ImageGenerationResponse response,
+                                        String outputFormat, long startTime) {
+        var images = response.data() == null ? List.<ImageData>of() : response.data();
+        if (images.isEmpty()) {
+            return ToolCallResult.completed("Image generation returned no images.")
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+        if (images.size() == 1) {
+            var notes = new ArrayList<>(response.notes());
+            var output = imageOutput(context, images.getFirst(), outputFormat, notes);
+            return ToolCallResult.completed(imageResult(output, response, notes))
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+        return ToolCallResult.completed(multipleImageResult(context, response, images, outputFormat))
+                .withDuration(System.currentTimeMillis() - startTime);
+    }
+
+    private String multipleImageResult(ExecutionContext context, ImageGenerationResponse response,
+                                       List<ImageData> images, String outputFormat) {
+        var sb = new StringBuilder(256).append("Generated ").append(images.size()).append(" image(s).\n");
+        var notes = new ArrayList<>(response.notes());
+        for (var i = 0; i < images.size(); i++) {
+            var output = imageOutput(context, images.get(i), outputFormat, notes);
+            var rendered = isLinkable(output) ? "![Generated image " + (i + 1) + "](" + output + ")" : output;
+            var revised = images.get(i).revisedPrompt() != null ? " (revised)" : "";
+            sb.append("Image ").append(i + 1).append(": ").append(rendered).append(revised).append('\n');
+        }
+        if (response.mediaId() != null) sb.append("\nmedia_id (first image): ").append(response.mediaId()).append('\n');
+        appendNotes(sb, notes);
+        return sb.toString();
+    }
+
+    private boolean isLinkable(String output) {
+        return output != null && (output.startsWith("http://") || output.startsWith("https://")
+                || output.contains("/") || output.contains("\\"));
+    }
+
+    /**
+     * URL results are downloaded only when the run has an artifact sink (desktop). A CLI run has no sink and
+     * keeps the URL, exactly as before.
+     */
+    private String imageOutput(ExecutionContext context, ImageData image, String outputFormat, List<String> notes) {
+        if (image.b64Json() != null) return GeneratedImageFiles.saveBase64(context, image.b64Json(), outputFormat);
+        if (image.url() == null) return "(no URL)";
+        if (!GeneratedImageFiles.hasSink(context)) return image.url();
+        var saved = GeneratedImageFiles.saveUrl(context, image.url());
+        if (saved != null) return saved;
+        notes.add("could not download the generated image; the upstream URL was returned instead: " + image.url());
+        return image.url();
+    }
+
+    /**
+     * The media_id is the durable handle for this image; echoing it back is what lets a later edit name
+     * the image instead of copying a 120-character URL back through the model.
+     */
+    private String imageResult(String output, ImageGenerationResponse response, List<String> notes) {
+        var result = new StringBuilder(256)
+                .append("Image generated. Include this exact Markdown image link in your final response:\n\n![Generated image](")
+                .append(output).append(')');
+        if (response.mediaId() != null) {
+            result.append("\n\nmedia_id: ").append(response.mediaId())
+                    .append("\nPass this media_id in input_images to edit or reuse this image later.");
+        }
+        if (response.interactionId() != null) result.append("\n\nprevious_interaction_id: ").append(response.interactionId());
+        appendNotes(result, notes);
+        return result.toString();
     }
 
     // model_scope=session mutates the session default model — keep those calls serial; plain generations fan out
@@ -192,31 +264,6 @@ public final class GenerateImageTool extends ToolCall {
         } catch (RuntimeException e) {
             return false;
         }
-    }
-
-    private ToolCallResult singleImageResult(ExecutionContext context, ImageGenerationResponse response, String outputFormat, long startTime) {
-        var image = response.data().get(0);
-        var output = image.b64Json() != null ? saveImage(context, image.b64Json(), outputFormat)
-                : image.url() != null ? image.url() : "(no URL)";
-        return ToolCallResult.completed(imageResult(output, response))
-                .withDuration(System.currentTimeMillis() - startTime);
-    }
-
-    /**
-     * The media_id is the durable handle for this image; echoing it back is what lets a later edit name
-     * the image instead of copying a 120-character URL back through the model.
-     */
-    private String imageResult(String output, ImageGenerationResponse response) {
-        var result = new StringBuilder(256)
-                .append("Image generated. Include this exact Markdown image link in your final response:\n\n![Generated image](")
-                .append(output).append(')');
-        if (response.mediaId() != null) {
-            result.append("\n\nmedia_id: ").append(response.mediaId())
-                    .append("\nPass this media_id in input_images to edit or reuse this image later.");
-        }
-        if (response.interactionId() != null) result.append("\n\nprevious_interaction_id: ").append(response.interactionId());
-        appendNotes(result, response.notes());
-        return result.toString();
     }
 
     private List<MediaReference> inputImages(Map<String, Object> args, ExecutionContext context, MediaProvider provider) {
@@ -287,39 +334,35 @@ public final class GenerateImageTool extends ToolCall {
         return download(reference);
     }
 
-    private String defaultModel(ExecutionContext context) {
-        var model = context.getCustomVariables().get("media.image.model");
+    /**
+     * Image-to-image defaults to an editing model: the gateway rejects a text-to-image registration on the
+     * image.edits endpoint. A session default set with model_scope=session wins when that model also edits.
+     */
+    private String imageModel(Map<String, Object> args, ExecutionContext context, boolean editing) {
+        var requested = getStringValue(args, "model");
+        if (requested != null && !requested.isBlank()) return requested;
+        var sessionModel = configuredModel(context, "media.image.model");
+        if (editing) {
+            if (sessionModel != null && editModels(context).contains(sessionModel)) return sessionModel;
+            var editDefault = configuredModel(context, "media.image.edit.model");
+            if (editDefault != null) return editDefault;
+        }
+        return sessionModel != null ? sessionModel : configuredModel(context, "media.image.default.model");
+    }
+
+    private String configuredModel(ExecutionContext context, String key) {
+        var model = context.getCustomVariables().get(key);
         return model instanceof String value && !value.isBlank() ? value : null;
     }
 
-    private String saveImage(ExecutionContext context, String base64, String outputFormat) {
-        var extension = "jpeg".equalsIgnoreCase(outputFormat) ? "jpeg" : "png";
-        var fileName = "image-" + UUID.randomUUID() + "." + extension;
-        var bytes = decodeImage(base64);
-        var sink = context.getCustomVariable(IMAGE_OUTPUT_SINK_CONTEXT_KEY, ImageOutputSink.class);
-        if (sink != null) return sink.save(fileName, "image/" + extension, bytes);
-
-        var workspace = context.getCustomVariables().get("workspace");
-        if (!(workspace instanceof String workspacePath) || workspacePath.isBlank()) {
-            throw new BadRequestException("workspace is required to save the generated image");
+    private List<String> editModels(ExecutionContext context) {
+        var value = context.getCustomVariables().get("media.image.edit.models");
+        if (!(value instanceof List<?> models)) return List.of();
+        var ids = new ArrayList<String>();
+        for (var model : models) {
+            if (model instanceof String id) ids.add(id);
         }
-        var outputDirectory = Path.of(workspacePath).resolve(".core-ai").resolve("media").resolve("images");
-        var outputPath = outputDirectory.resolve(fileName);
-        try {
-            Files.createDirectories(outputDirectory);
-            Files.write(outputPath, bytes);
-            return outputPath.toString();
-        } catch (IOException e) {
-            throw new RuntimeException("failed to save generated image: " + outputPath, e);
-        }
-    }
-
-    private byte[] decodeImage(String base64) {
-        try {
-            return Base64.getDecoder().decode(base64);
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("image provider returned invalid base64 data", "BAD_REQUEST", e);
-        }
+        return ids;
     }
 
     @Override

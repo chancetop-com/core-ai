@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.gateway.GatewayModelWebService;
 import ai.core.api.server.gateway.GatewayProviderWebService;
+import ai.core.api.server.hubmodels.HubMediaModelWebService;
 import ai.core.api.server.hubmodels.HubModelWebService;
 import ai.core.api.server.media.MediaJobWebService;
 import ai.core.llm.LLMProviderConfig;
@@ -39,6 +40,8 @@ import ai.core.server.domain.GeminiFilesClient;
 import ai.core.server.domain.GeminiVideoUnderstandingService;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.gateway.GatewayVideoController;
+import ai.core.server.gateway.HubMediaModelService;
+import ai.core.server.gateway.HubMediaModelWebServiceImpl;
 import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.telemetry.LLMTracer;
 import ai.core.tool.tools.UnderstandVideoTool;
@@ -120,6 +123,8 @@ public class GatewayModule extends Module {
         api().service(GatewayModelWebService.class, bind(GatewayModelWebServiceImpl.class));
         bind(HubModelService.class);
         api().service(HubModelWebService.class, bind(HubModelWebServiceImpl.class));
+        bind(HubMediaModelService.class);
+        api().service(HubMediaModelWebService.class, bind(HubMediaModelWebServiceImpl.class));
     }
 
     private void registerGatewayProxyRoutes() {

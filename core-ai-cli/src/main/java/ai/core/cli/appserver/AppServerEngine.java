@@ -83,6 +83,7 @@ public class AppServerEngine implements EngineApi {
     private final EngineSessionRegistry registry;
     private final EngineScheduler scheduler;
     private final SchedulesApi schedulesApi;
+    private final MediaSettingsApi mediaSettings;
     private final HubBridge hubBridge = new HubBridge();
     private final HelperBridge helperBridge = new HelperBridge();
     private final Set<String> supportedMethods;
@@ -96,6 +97,9 @@ public class AppServerEngine implements EngineApi {
         this.scheduler = new EngineScheduler(bootstrap, registry, () -> sink);
         this.registry.setScheduler(scheduler);
         this.schedulesApi = new SchedulesApi(bootstrap, registry, scheduler);
+        this.mediaSettings = new MediaSettingsApi(bootstrap.props, bootstrap.workspace, bootstrap.imageMediaProvider,
+                bootstrap.videoMediaProvider, bootstrap.mediaModelCatalog,
+                Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties"));
         this.handlers = buildHandlers();
         this.supportedMethods = Set.copyOf(handlers.keySet());
     }
@@ -182,6 +186,8 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("thinking/set", this::thinkingSet),
                 Map.entry("maxturn/get", ignored -> maxTurnGet()),
                 Map.entry("maxturn/set", this::maxTurnSet),
+                Map.entry("media/get", ignored -> mediaSettings.get()),
+                Map.entry("media/set", mediaSettings::set),
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),

@@ -2,8 +2,10 @@ package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationResponse;
+import ai.core.server.web.auth.AuthContext;
 import core.framework.web.MultipartFile;
 import core.framework.web.Request;
+import core.framework.web.WebContext;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -11,9 +13,11 @@ import java.nio.file.Files;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -57,7 +61,7 @@ class GatewayImageControllerTest {
         var controller = new GatewayImageController();
         controller.gatewayMediaProvider = provider;
         var owner = new MediaJobOwner("user-1", null, null);
-        when(provider.generateImage(org.mockito.ArgumentMatchers.any(), eq(owner)))
+        when(provider.generateImage(any(), eq(owner)))
                 .thenReturn(new ImageGenerationResponse(
                         List.of(new ImageData("aW1hZ2U=", null, "revised")), null, null,
                         "gateway-media-v1.img.am9iLTE", List.of()));
@@ -107,5 +111,27 @@ class GatewayImageControllerTest {
                 """.getBytes(StandardCharsets.UTF_8), true))
                 .isInstanceOf(core.framework.web.exception.BadRequestException.class)
                 .hasMessageContaining("input_images or mask");
+    }
+
+    @Test
+    void scopesTheMediaJobOwnerToTheClientSession() {
+        var provider = mock(GatewayMediaProvider.class);
+        var controller = new GatewayImageController();
+        controller.gatewayMediaProvider = provider;
+        var webContext = mock(WebContext.class);
+        var request = mock(Request.class);
+        controller.webContext = webContext;
+        when(webContext.get(AuthContext.USER_ID_KEY)).thenReturn("user-1");
+        when(webContext.request()).thenReturn(request);
+        when(request.header("x-session-id")).thenReturn(Optional.of("session-7"));
+        when(request.body()).thenReturn(Optional.of("""
+                {"model":"gpt-image-2.5","prompt":"a cafe"}
+                """.getBytes(StandardCharsets.UTF_8)));
+        when(provider.generateImage(any(), any()))
+                .thenReturn(new ImageGenerationResponse(List.of(new ImageData("aW1n", null, null)), null));
+
+        controller.generate(request);
+
+        verify(provider).generateImage(any(), eq(new MediaJobOwner("user-1", "session-7", null)));
     }
 }

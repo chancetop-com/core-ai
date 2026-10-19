@@ -5,6 +5,7 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
+import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.context.CompressionConfig;
@@ -12,6 +13,7 @@ import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.providers.LiteLLMMediaProvider;
 import ai.core.llm.providers.LiteLLMProvider;
+import ai.core.media.CoreAiGatewayMediaProvider;
 import ai.core.media.GoogleAccessTokenProvider;
 import ai.core.media.MediaProvider;
 import ai.core.media.VertexGeminiOmniMediaProvider;
@@ -55,6 +57,10 @@ import java.util.function.Supplier;
  */
 public class CliAppHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger(CliAppHelper.class);
+    /** Media gateway base derived from the login; chat keeps using {@link RuntimeAuthConfig#LLM_PROXY_PATH}. */
+    private static final String MEDIA_GATEWAY_PATH = "/api/gateway/v1";
+    private static final String MEDIA_GATEWAY_BASE_PROPERTY = "media.gateway.api.base";
+    private static final String MEDIA_GATEWAY_KEY_PROPERTY = "media.gateway.api.key";
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final DateTimeFormatter SESSION_ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     /** the CLI proxy rejects a request body over 10MB and the whole history is resent on every turn */
@@ -144,36 +150,33 @@ public class CliAppHelper {
     }
 
     /**
-     * If {@code litellm.api.base} is not in agent.properties, inject fallback
-     * values from saved auth credentials so the server's CLI LLM endpoint is
-     * used without manual configuration.
+     * If {@code litellm.api.base} is not in agent.properties, inject fallback values from saved auth
+     * credentials so the server's CLI LLM endpoint is used without manual configuration. The same login
+     * also derives the media gateway base: the chat proxy path has no image/video routes, while the
+     * gateway owns routing, reference resolution and media job records.
      */
     public static void injectLiteLLMFallback(PropertiesFileSource props) {
         if (props.property("litellm.api.base").isPresent()) return;
         var auth = AuthConfig.load();
-        if (auth != null && auth.apiKey() != null) {
-            props.putProperty("litellm.api.base", auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH);
-            props.putProperty("litellm.api.key", auth.apiKey());
+        if (auth == null || auth.apiKey() == null) return;
+        var serverBase = stripTrailingSlashes(auth.serverUrl());
+        props.putProperty("litellm.api.base", serverBase + RuntimeAuthConfig.LLM_PROXY_PATH);
+        props.putProperty("litellm.api.key", auth.apiKey());
+        if (props.property(MEDIA_GATEWAY_BASE_PROPERTY).isEmpty()) {
+            props.putProperty(MEDIA_GATEWAY_BASE_PROPERTY, serverBase + MEDIA_GATEWAY_PATH);
+            props.putProperty(MEDIA_GATEWAY_KEY_PROPERTY, auth.apiKey());
         }
     }
 
     public static MediaProvider imageMediaProvider(PropertiesFileSource props) {
-        var baseUrl = props.property("media.image.api.base")
-                .orElseGet(() -> props.property("media.api.base").orElseGet(() -> props.property("litellm.api.base").orElse(null)));
-        var apiKey = props.property("media.image.api.key")
-                .orElseGet(() -> props.property("media.api.key").orElseGet(() -> props.property("litellm.api.key").orElse(null)));
-        if (baseUrl == null || baseUrl.isBlank()) return null;
-        return new LiteLLMMediaProvider(baseUrl, apiKey);
+        var baseUrl = imageMediaBase(props);
+        return mediaProvider(baseUrl, mediaKey(props, "media.image.api.key"));
     }
 
     public static MediaProvider videoMediaProvider(PropertiesFileSource props) {
         var protocol = props.property("media.video.protocol").orElseGet(() -> props.property("media.protocol").orElse(null));
         if (!"VERTEX_GEMINI_INTERACTIONS".equalsIgnoreCase(protocol)) {
-            var baseUrl = props.property("media.video.api.base").orElseGet(() -> props.property("media.api.base")
-                    .orElseGet(() -> props.property("litellm.api.base").orElse(null)));
-            var apiKey = props.property("media.video.api.key").orElseGet(() -> props.property("media.api.key")
-                    .orElseGet(() -> props.property("litellm.api.key").orElse(null)));
-            return baseUrl == null || baseUrl.isBlank() ? null : new LiteLLMMediaProvider(baseUrl, apiKey);
+            return mediaProvider(videoMediaBase(props), mediaKey(props, "media.video.api.key"));
         }
         return new VertexGeminiOmniMediaProvider(
                 props.property("media.vertex.api.base").orElse(null),
@@ -182,9 +185,84 @@ public class CliAppHelper {
                 new GoogleAccessTokenProvider(googleServiceAccountJson(props)));
     }
 
-    public static MediaProvider mediaProvider(PropertiesFileSource props) {
-        var imageProvider = imageMediaProvider(props);
-        return imageProvider != null ? imageProvider : videoMediaProvider(props);
+    /**
+     * The shared endpoint used by both modalities, present only when the user explicitly configured
+     * {@code media.api.base}. It is not inferred from a modality-specific provider: that inference made a
+     * video-only endpoint look like an image provider and registered generate_image against it.
+     */
+    public static MediaProvider sharedMediaProvider(PropertiesFileSource props) {
+        var baseUrl = props.property("media.api.base").orElse(null);
+        if (baseUrl == null || baseUrl.isBlank()) return null;
+        return mediaProvider(baseUrl, mediaKey(props, "media.api.key"));
+    }
+
+    /** The URL a modality would call, or null when the modality has no endpoint configured. */
+    public static String imageMediaBase(PropertiesFileSource props) {
+        return props.property("media.image.api.base")
+                .orElseGet(() -> props.property("media.api.base")
+                        .orElseGet(() -> props.property(MEDIA_GATEWAY_BASE_PROPERTY)
+                                .orElseGet(() -> props.property("litellm.api.base").orElse(null))));
+    }
+
+    public static String videoMediaBase(PropertiesFileSource props) {
+        var protocol = props.property("media.video.protocol").orElseGet(() -> props.property("media.protocol").orElse(null));
+        if ("VERTEX_GEMINI_INTERACTIONS".equalsIgnoreCase(protocol)) {
+            return props.property("media.vertex.api.base").orElse("vertex");
+        }
+        return props.property("media.video.api.base")
+                .orElseGet(() -> props.property("media.api.base")
+                        .orElseGet(() -> props.property(MEDIA_GATEWAY_BASE_PROPERTY)
+                                .orElseGet(() -> props.property("litellm.api.base").orElse(null))));
+    }
+
+    public static String mediaGatewayBase(PropertiesFileSource props) {
+        return props.property(MEDIA_GATEWAY_BASE_PROPERTY).map(CliAppHelper::stripTrailingSlashes).orElse(null);
+    }
+
+    /**
+     * Only a managed gateway can supply a model catalog; a custom endpoint keeps its model in
+     * {@code media.*.model}. The fetch is started in the background so engine startup never waits on it.
+     */
+    public static MediaModelCatalog mediaModelCatalog(MediaProvider imageProvider, MediaProvider videoProvider) {
+        if (!(imageProvider instanceof CoreAiGatewayMediaProvider)
+                && !(videoProvider instanceof CoreAiGatewayMediaProvider)) {
+            return null;
+        }
+        var catalog = MediaModelCatalog.create(AuthConfig.load());
+        if (catalog != null) catalog.warmUp();
+        return catalog;
+    }
+
+    /** The gateway provider carries the session id; the copy shares the parent's HTTP clients. */
+    public static MediaProvider sessionMediaProvider(MediaProvider provider, String sessionId) {
+        if (provider instanceof CoreAiGatewayMediaProvider gateway) return gateway.withSessionId(sessionId);
+        return provider;
+    }
+
+    private static String mediaKey(PropertiesFileSource props, String specificKey) {
+        return props.property(specificKey)
+                .orElseGet(() -> props.property("media.api.key")
+                        .orElseGet(() -> props.property(MEDIA_GATEWAY_KEY_PROPERTY)
+                                .orElseGet(() -> props.property("litellm.api.key").orElse(null))));
+    }
+
+    private static MediaProvider mediaProvider(String baseUrl, String apiKey) {
+        if (baseUrl == null || baseUrl.isBlank()) return null;
+        if (isGatewayBase(baseUrl)) return new CoreAiGatewayMediaProvider(baseUrl, apiKey);
+        return new LiteLLMMediaProvider(baseUrl, apiKey);
+    }
+
+    /**
+     * A generic LiteLLM endpoint cannot resolve {@code gateway-media-v1.*} handles (it has no media job
+     * index), so only the core-ai gateway is marked as a managed-reference client.
+     */
+    private static boolean isGatewayBase(String baseUrl) {
+        return stripTrailingSlashes(baseUrl).endsWith(MEDIA_GATEWAY_PATH);
+    }
+
+    private static String stripTrailingSlashes(String value) {
+        if (value == null) return null;
+        return value.replaceAll("/+$", "");
     }
 
     private static String googleServiceAccountJson(PropertiesFileSource props) {

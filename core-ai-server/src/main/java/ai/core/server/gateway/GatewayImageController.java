@@ -205,7 +205,7 @@ public class GatewayImageController {
     }
 
     private MediaJobOwner currentOwner() {
-        return new MediaJobOwner(AuthContext.userId(webContext), null, null);
+        return new MediaJobOwner(AuthContext.userId(webContext), GatewaySupport.clientSessionId(webContext.request()), null);
     }
 
     private byte[] body(Request request) {

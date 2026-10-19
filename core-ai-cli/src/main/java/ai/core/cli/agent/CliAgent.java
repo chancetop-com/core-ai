@@ -16,6 +16,7 @@ import ai.core.cli.memory.CliMemoryLifecycle;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
+import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
@@ -28,6 +29,7 @@ import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.cli.trace.HttpTraceUploader;
 import ai.core.cli.trace.TraceCollectorLifecycle;
 import ai.core.llm.LLMProviders;
+import ai.core.media.CoreAiGatewayMediaProvider;
 import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
@@ -44,6 +46,7 @@ import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
+import ai.core.tool.tools.MediaModelHint;
 import ai.core.utils.SystemUtil;
 
 import java.nio.file.Files;
@@ -64,8 +67,9 @@ public class CliAgent {
         toolRegistry.registerProvider(new McpToolProvider());
         toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager), config.workspace.toAbsolutePath().toString()));
         toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
-        if (config.imageMediaProvider != null || config.videoMediaProvider != null || config.mediaProvider != null) {
-            toolRegistry.registerProvider(ListToolProvider.of(mediaTools(config.imageMediaProvider, config.videoMediaProvider, config.mediaProvider)));
+        var mediaTools = mediaTools(config);
+        if (!mediaTools.isEmpty()) {
+            toolRegistry.registerProvider(ListToolProvider.of(mediaTools));
         }
         toolRegistry.registerProvider(buildRemoteAgentProvider(config));
         var helperProvider = buildHelperProvider(config, toolRegistry);
@@ -101,13 +105,24 @@ public class CliAgent {
     }
 
     private static void configureExecutionContext(Agent agent, Config config, AuthConfig auth, String hookOutput) {
+        var imageProvider = config.imageMediaProvider != null ? config.imageMediaProvider : config.mediaProvider;
+        var videoProvider = config.videoMediaProvider != null ? config.videoMediaProvider : config.mediaProvider;
+        var imageModel = effectiveImageModel(imageProvider, config.defaultImageModel, config.mediaCatalog);
+        var videoModel = effectiveVideoModel(videoProvider, config.defaultVideoModel, config.mediaCatalog);
+        var editModels = imageProvider instanceof CoreAiGatewayMediaProvider
+                ? modelIds(imageEditModels(config.mediaCatalog)) : List.<String>of();
         var execCtx = ExecutionContext.builder()
                 .sessionId(config.sessionId)
                 .userId(auth != null ? auth.userId() : null)
                 .customVariables(Map.of(
                         "workspace", config.workspace.toAbsolutePath().toString(),
-                        "media.image.model", config.defaultImageModel != null ? config.defaultImageModel : "",
-                        "media.video.model", config.defaultVideoModel != null ? config.defaultVideoModel : ""))
+                        "media.image.model", blankToEmpty(imageModel),
+                        "media.image.default.model", blankToEmpty(imageModel),
+                        "media.image.edit.model", blankToEmpty(effectiveImageEditModel(imageProvider,
+                                config.defaultImageModel, config.defaultImageEditModel, config.mediaCatalog)),
+                        "media.image.edit.models", editModels,
+                        "media.video.model", blankToEmpty(videoModel),
+                        "media.video.default.model", blankToEmpty(videoModel)))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
@@ -119,6 +134,53 @@ public class CliAgent {
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
         execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);
+    }
+
+    private static String blankToEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String effectiveImageModel(MediaProvider provider, String configured, MediaModelCatalog catalog) {
+        if (configured != null && !configured.isBlank()) return configured.trim();
+        if (!(provider instanceof CoreAiGatewayMediaProvider) || catalog == null) return null;
+        return catalog.defaultImageModel();
+    }
+
+    private static String effectiveVideoModel(MediaProvider provider, String configured, MediaModelCatalog catalog) {
+        if (configured != null && !configured.isBlank()) return configured.trim();
+        if (!(provider instanceof CoreAiGatewayMediaProvider) || catalog == null) return null;
+        return catalog.defaultVideoModel();
+    }
+
+    private static String effectiveImageEditModel(MediaProvider provider, String configuredImageModel,
+                                                  String configuredEditModel, MediaModelCatalog catalog) {
+        if (configuredEditModel != null && !configuredEditModel.isBlank()) return configuredEditModel.trim();
+        if (!(provider instanceof CoreAiGatewayMediaProvider)) {
+            return effectiveImageModel(provider, configuredImageModel, null);
+        }
+        var imageModel = effectiveImageModel(provider, configuredImageModel, catalog);
+        var editIds = modelIds(imageEditModels(catalog));
+        if (imageModel != null && editIds.contains(imageModel)) return imageModel;
+        var catalogEditModel = catalog == null ? null : catalog.defaultImageEditModel();
+        return catalogEditModel != null ? catalogEditModel : imageModel;
+    }
+
+    private static List<MediaModelHint> imageModels(MediaModelCatalog catalog) {
+        return catalog == null ? List.of() : catalog.imageModels();
+    }
+
+    private static List<MediaModelHint> imageEditModels(MediaModelCatalog catalog) {
+        return catalog == null ? List.of() : catalog.imageEditModels();
+    }
+
+    private static List<MediaModelHint> videoModels(MediaModelCatalog catalog) {
+        return catalog == null ? List.of() : catalog.videoModels();
+    }
+
+    private static List<String> modelIds(List<MediaModelHint> models) {
+        var ids = new ArrayList<String>(models.size());
+        for (var model : models) ids.add(model.modelId());
+        return List.copyOf(ids);
     }
 
     private static void configureLifecycles(AgentBuilder builder, Config config, ScriptHookLifecycle hookLifecycle) {
@@ -160,16 +222,47 @@ public class CliAgent {
         return List.copyOf(tools);
     }
 
-    private static List<ToolCall> mediaTools(MediaProvider imageMediaProvider, MediaProvider videoMediaProvider, MediaProvider mediaProvider) {
-        var imageProvider = imageMediaProvider != null ? imageMediaProvider : mediaProvider;
-        var videoProvider = videoMediaProvider != null ? videoMediaProvider : mediaProvider;
+    /**
+     * A managed gateway needs at least one known model: the server rejects a request without a model, and a
+     * tool the agent can see but never call successfully wastes a turn. A custom endpoint is registered as
+     * before, with the static description, because the server does not know its models.
+     */
+    static List<ToolCall> mediaTools(Config config) {
+        var catalog = config.mediaCatalog;
+        // the first session on a cold engine may race the warm-up fetch; bound the wait so the tools
+        // are registered from the real catalog instead of appearing only on the second session
+        if (catalog != null) catalog.ensureLoaded(3_000);
+        var imageProvider = config.imageMediaProvider != null ? config.imageMediaProvider : config.mediaProvider;
+        var videoProvider = config.videoMediaProvider != null ? config.videoMediaProvider : config.mediaProvider;
+        var imageModel = effectiveImageModel(imageProvider, config.defaultImageModel, catalog);
+        var videoModel = effectiveVideoModel(videoProvider, config.defaultVideoModel, catalog);
         var tools = new ArrayList<ToolCall>();
-        if (imageProvider != null) tools.add(GenerateImageTool.builder().build());
-        if (videoProvider != null) {
-            tools.add(GenerateVideoTool.builder(videoProvider).build());
+        if (imageToolAvailable(imageProvider, imageModel)) {
+            var managed = imageProvider instanceof CoreAiGatewayMediaProvider;
+            var description = GenerateImageTool.buildDescription(
+                    managed ? imageModels(catalog) : List.of(),
+                    managed ? imageEditModels(catalog) : List.of());
+            if (imageModel != null) description += "\n\nDefault image model for this session: " + imageModel;
+            tools.add(GenerateImageTool.builder().description(description).build());
+        }
+        if (videoToolAvailable(videoProvider, videoModel)) {
+            var managed = videoProvider instanceof CoreAiGatewayMediaProvider;
+            var description = GenerateVideoTool.buildDescription(managed ? videoModels(catalog) : List.of());
+            if (videoModel != null) description += "\n\nDefault video model for this session: " + videoModel;
+            tools.add(GenerateVideoTool.builder(videoProvider).description(description).build());
             tools.add(GetVideoStatusTool.builder().build());
         }
         return tools;
+    }
+
+    private static boolean imageToolAvailable(MediaProvider provider, String model) {
+        if (provider == null) return false;
+        return !(provider instanceof CoreAiGatewayMediaProvider) || model != null;
+    }
+
+    private static boolean videoToolAvailable(MediaProvider provider, String model) {
+        if (provider == null) return false;
+        return !(provider instanceof CoreAiGatewayMediaProvider) || model != null;
     }
 
     private static RemoteAgentToolProvider buildRemoteAgentProvider(Config config) {
@@ -261,10 +354,12 @@ public class CliAgent {
                              MediaProvider imageMediaProvider,
                              MediaProvider videoMediaProvider,
                              String defaultImageModel,
-                            String defaultVideoModel,
-                            ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
-                            ai.core.context.CompressionConfig compressionConfig,
+                             String defaultVideoModel,
+                             String defaultImageEditModel,
+                             ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
+                             ai.core.context.CompressionConfig compressionConfig,
                              String clientType,
-                             List<HelperEntry> helpers) {
+                             List<HelperEntry> helpers,
+                             MediaModelCatalog mediaCatalog) {
     }
 }

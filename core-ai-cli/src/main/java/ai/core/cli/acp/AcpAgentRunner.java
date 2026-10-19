@@ -15,6 +15,7 @@ import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.memory.SessionCloseExtractor;
+import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
@@ -67,15 +68,6 @@ import static com.agentclientprotocol.sdk.spec.AcpSchema.AvailableCommandsUpdate
 public class AcpAgentRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AcpAgentRunner.class);
 
-    private static void injectLiteLLMFallback(PropertiesFileSource props) {
-        if (props.property("litellm.api.base").isPresent()) return;
-        var auth = AuthConfig.load();
-        if (auth != null && auth.apiKey() != null) {
-            props.putProperty("litellm.api.base", auth.serverUrl() + RuntimeAuthConfig.LLM_PROXY_PATH);
-            props.putProperty("litellm.api.key", auth.apiKey());
-        }
-    }
-
     private static void registerMcpLoadingListener() {
         McpClientManagerRegistry.addCreationListener(manager ->
                 manager.addListener((serverName, oldState, newState) -> {
@@ -123,7 +115,7 @@ public class AcpAgentRunner {
 
         var props = PropertiesFileSource.fromFile(configFile);
         CliAppHelper.mergeWorkspaceConfig(props, workspace);
-        injectLiteLLMFallback(props);
+        CliAppHelper.injectLiteLLMFallback(props);
         var bootstrap = new AgentBootstrap(props);
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
@@ -132,6 +124,8 @@ public class AcpAgentRunner {
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result.liteLLMProvider);
 
+        var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
+        var videoMediaProvider = CliAppHelper.videoMediaProvider(props);
         var ctx = new AgentContext(result,
                 props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE),
                 props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE),
@@ -139,11 +133,14 @@ public class AcpAgentRunner {
                 props.property("agent.max.turn").map(Integer::parseInt).orElse(100),
                 A2ARemoteAgentConfigLoader.load(props),
                 A2ARemoteAgentConfigLoader.loadServers(props),
-                CliAppHelper.imageMediaProvider(props),
-                CliAppHelper.videoMediaProvider(props),
+                CliAppHelper.sharedMediaProvider(props),
+                imageMediaProvider,
+                videoMediaProvider,
                 props.property("media.image.model").orElse(null),
                 props.property("media.video.model").orElse(null),
-                CliAppHelper.compressionConfig(props));
+                props.property("media.image.edit.model").orElse(null),
+                CliAppHelper.compressionConfig(props),
+                CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -204,13 +201,16 @@ public class AcpAgentRunner {
         CliLogger.initialize(workspace, sessionId);
 
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider, sessionId);
+        var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider, sessionId);
         var agentConfig = new CliAgent.Config(
                 ctx.result.llmProviders, modelOverride, ctx.maxTurn, sessionPersistence,
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                    Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list());
+                    Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
+                    ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -245,13 +245,17 @@ public class AcpAgentRunner {
         CliLogger.initialize(workspace, sessionId);
 
         var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider, sessionId);
+        var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider, sessionId);
         var agentConfig = new CliAgent.Config(
                 ctx.result.llmProviders, modelOverride, ctx.maxTurn, sessionPersistence,
                 effectiveWorkspace,
                 question -> "(user input not available in ACP mode)",
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
-                Map.of(), false, ctx.imageMediaProvider, ctx.imageMediaProvider, ctx.videoMediaProvider, ctx.defaultImageModel, ctx.defaultVideoModel, null,
-                ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list());
+                    Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
+                    ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog);
+
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -415,10 +419,13 @@ public class AcpAgentRunner {
                                 int maxTurn,
                                 List<A2ARemoteAgentConfig> remoteAgents,
                                 List<A2ARemoteServerConfig> remoteServers,
+                                MediaProvider mediaProvider,
                                 MediaProvider imageMediaProvider,
                                 MediaProvider videoMediaProvider,
                                 String defaultImageModel,
                                 String defaultVideoModel,
-                                CompressionConfig compressionConfig) {
+                                String defaultImageEditModel,
+                                CompressionConfig compressionConfig,
+                                MediaModelCatalog mediaCatalog) {
     }
 }

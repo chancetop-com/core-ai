@@ -332,9 +332,13 @@ public class EngineSessionRegistry {
                 bootstrap.sessionPersistence, bootstrap.workspace, NO_INTERACTIVE_USER,
                 bootstrap.memoryEnabled, bootstrap.dailyLogsEnabled, bootstrap.coding, bootstrap.todoV2Enabled,
                 sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
-                bootstrap.a2aAutoDiscover, bootstrap.mediaProvider, bootstrap.imageMediaProvider,
-                bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
-                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers);
+                bootstrap.a2aAutoDiscover, bootstrap.mediaProvider,
+                CliAppHelper.sessionMediaProvider(bootstrap.imageMediaProvider, sessionId),
+                CliAppHelper.sessionMediaProvider(bootstrap.videoMediaProvider, sessionId),
+                bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
+                bootstrap.props.property("media.image.edit.model").orElse(null),
+                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers,
+                bootstrap.mediaModelCatalog);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
             agent.load(sessionId);

@@ -151,7 +151,7 @@ public class GatewayRoutingEngine {
     public List<MediaModelHint> mediaModelHints(GatewayEndpointType endpoint) {
         return registeredModels(snapshot(), endpoint).stream()
                 .map(route -> new MediaModelHint(route.model.modelId, route.model.upstreamModel,
-                        route.provider.name == null ? null : route.provider.name))
+                        route.provider.name == null ? null : route.provider.name, route.model.displayName))
                 .toList();
     }
 

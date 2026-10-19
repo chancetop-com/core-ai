@@ -51,9 +51,10 @@ public class GetVideoStatusTool extends ToolCall {
         var startTime = System.currentTimeMillis();
         var provider = context.getVideoMediaProvider();
         if (provider == null) return ToolCallResult.failed("no media provider configured");
+        String videoId = null;
         try {
             var args = parseArguments(arguments);
-            var videoId = getStringValue(args, "video_id");
+            videoId = getStringValue(args, "video_id");
             if (Strings.isBlank(videoId)) return ToolCallResult.failed("video_id is required");
 
             var status = provider.getVideoStatus(videoId);
@@ -90,8 +91,10 @@ public class GetVideoStatusTool extends ToolCall {
                 }
             };
         } catch (RuntimeException e) {
-            return ToolCallResult.failed("Video status check failed: " + e.getMessage(), e)
-                    .withDuration(System.currentTimeMillis() - startTime);
+            var message = "Video status check failed: " + e.getMessage();
+            if (videoId != null) message += "\nvideo_id: " + videoId + " — call get_video_status again to retry the download.";
+            var failed = ToolCallResult.failed(message, e).withDuration(System.currentTimeMillis() - startTime);
+            return videoId != null ? failed.withStats("video_id", videoId) : failed;
         }
     }
 
@@ -135,6 +138,9 @@ public class GetVideoStatusTool extends ToolCall {
         public GetVideoStatusTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            // a completed status is followed by the MP4 download in the same call; the default 5 min tool
+            // timeout would cut that download off on a slow link
+            this.timeoutMs(10 * 60 * 1000L);
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "video_id", "The video task ID returned by generate_video").required()
             ));

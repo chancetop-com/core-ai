@@ -219,11 +219,13 @@ public final class GenerateVideoTool extends ToolCall {
 
     private String failureMessage(Exception e, ExecutionContext context) {
         var count = incrementFailCount(context);
-        var message = "Video generation failed: " + sanitize(e.getMessage() != null ? e.getMessage() : e.toString());
+        var message = "Video generation failed: " + sanitize(e.getMessage() != null ? e.getMessage() : e.toString())
+                + GenerateImageTool.httpHint(e.getMessage());
         if (count >= 2) {
             message += "\n\nYou have now failed " + count + " times in a row. Do NOT keep guessing. "
-                    + "Re-read the generate_video tool description: input_references items must be either "
-                    + "a full data URL (\"data:image/jpeg;base64,...\") or an http(s) url (the server downloads it), "
+                    + "Re-read the generate_video tool description: an input_references item must name one of "
+                    + "{\"media_id\": \"gateway-media-v1.img....\"}, {\"sandbox_path\": \"/path/to/file.jpg\"}, "
+                    + "{\"url\": \"https://...\"} or {\"b64Json\": \"data:image/jpeg;base64,...\"}, "
                     + "and the model must be one actually configured in the gateway.";
         }
         return message;
@@ -283,7 +285,9 @@ public final class GenerateVideoTool extends ToolCall {
 
     private String defaultModel(ExecutionContext context) {
         var model = context.getCustomVariables().get("media.video.model");
-        return model instanceof String value && !value.isBlank() ? value : null;
+        if (model instanceof String value && !value.isBlank()) return value;
+        var defaultModel = context.getCustomVariables().get("media.video.default.model");
+        return defaultModel instanceof String value && !value.isBlank() ? value : null;
     }
 
     private String pendingVideoTask(ExecutionContext context) {
