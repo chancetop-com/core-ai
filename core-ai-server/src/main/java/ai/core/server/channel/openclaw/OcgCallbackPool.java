@@ -94,17 +94,31 @@ public class OcgCallbackPool {
             LOGGER.warn("invalid OCG callback url, url={}", callbackUrl);
             return callbackUrl;
         }
-        var port = uri.getPort();
         var host = uri.getHost();
-        if (port != 3457 || !isLocalCallbackHost(host)) return callbackUrl;
+        if (host == null) return callbackUrl;
         var sandbox = sandboxService.getSandbox(sandboxSessionId(config.id));
         if (sandbox == null || sandbox.getStatus() == SandboxStatus.TERMINATED || sandbox.getStatus() == SandboxStatus.ERROR) {
             LOGGER.warn("OCG sandbox unavailable while resolving callback url, configId={}, sandboxId={}, url={}", config.id, config.sandboxId, callbackUrl);
             return callbackUrl;
         }
-        var resolved = "http://" + sandbox.ip() + ":" + sandbox.port() + uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
+        var sandboxIp = sandbox.ip();
+        if (sandboxIp == null || sandboxIp.isBlank()) {
+            LOGGER.warn("OCG sandbox ip unavailable while resolving callback url, configId={}, sandboxId={}, url={}", config.id, config.sandboxId, callbackUrl);
+            return callbackUrl;
+        }
+        // The gateway's callback listener lives inside the sandbox; the only way in from
+        // here is the sandbox runtime proxy. Any URL that points back at the sandbox itself
+        // (loopback or its own pod IP) is rewritten to the proxy port, regardless of which
+        // internal port the gateway advertised.
+        if (!isSandboxHost(host, sandboxIp, config.sandboxIp)) return callbackUrl;
+        if (sandboxIp.equals(host) && uri.getPort() == sandbox.port()) return callbackUrl;
+        var resolved = "http://" + sandboxIp + ":" + sandbox.port() + uri.getRawPath() + (uri.getRawQuery() == null ? "" : "?" + uri.getRawQuery());
         LOGGER.info("rewrote OCG callback url via sandbox runtime, original={}, resolved={}", callbackUrl, resolved);
         return resolved;
+    }
+
+    private boolean isSandboxHost(String host, String sandboxIp, String configuredSandboxIp) {
+        return isLocalCallbackHost(host) || host.equals(sandboxIp) || host.equals(configuredSandboxIp);
     }
 
     private boolean isLocalCallbackHost(String host) {

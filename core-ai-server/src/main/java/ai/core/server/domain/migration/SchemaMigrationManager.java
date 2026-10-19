@@ -160,7 +160,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVAgentComparisonIndexes(),
             new SchemaMigrationVAgentVersionIndexes(),
             new SchemaMigrationVAgentComparisonListIndexes(),
-            new SchemaMigrationVRuntimeSampleIndexes()
+            new SchemaMigrationVRuntimeSampleIndexes(),
+            new SchemaMigrationVOpenClawChannelAnonymous()
         );
     }
 }

@@ -351,7 +351,10 @@ public class OcgSandboxService {
     }
 
     private void stopGatewayProcess(Sandbox sandbox) {
-        runCommand(sandbox, "ps -eo pid=,args= | awk '($0 ~ /openclaw-channel-gateway/ && $0 ~ /dist\\/cli.js start/ || $0 ~ /node \\/usr\\/local\\/bin\\/ocg start/) && $0 !~ /awk/ && $0 !~ /bash -c/ {print $1}' | xargs -r kill; true", 10);
+        // Kill every OCG process for this sandbox, not only the gateway: a stray
+        // `ocg channels start` would survive a restart and split messages from replies.
+        // The [o] keeps awk (and this shell) from matching itself.
+        runCommand(sandbox, "ps -eo pid=,args= | awk '(/[o]penclaw-channel-gateway.dist.cli.js/ || /node \\/usr\\/local\\/bin\\/ocg start/) && $0 !~ /awk/ {print $1}' | xargs -r kill; i=0; while [ $i -lt 10 ]; do if ! ps -eo args= | grep -q '[o]penclaw-channel-gateway.dist.cli.js'; then exit 0; fi; sleep 0.5; i=$((i+1)); done; ps -eo pid=,args= | awk '(/[o]penclaw-channel-gateway.dist.cli.js/ || /node \\/usr\\/local\\/bin\\/ocg start/) && $0 !~ /awk/ {print $1}' | xargs -r kill -9; true", 20);
     }
 
     @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")

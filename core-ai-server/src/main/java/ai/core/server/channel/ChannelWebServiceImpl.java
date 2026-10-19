@@ -115,7 +115,12 @@ public class ChannelWebServiceImpl implements ChannelWebService {
         view.agentId = request.agentId;
         view.userId = request.userId;
         view.sessionTtlMinutes = request.sessionTtlMinutes != null ? request.sessionTtlMinutes : 60;
-        if (request.requireAuth != null) {
+        if ("openclaw".equals(view.channelType)) {
+            // OCG runs inside the platform sandbox and calls the sync endpoint without user
+            // credentials; its inbound requests are anonymous by design, so requiring auth
+            // would reject every message (plain HTTP fails the session lookup).
+            view.requireAuth = Boolean.FALSE;
+        } else if (request.requireAuth != null) {
             view.requireAuth = request.requireAuth;
         }
         view.config = request.config;

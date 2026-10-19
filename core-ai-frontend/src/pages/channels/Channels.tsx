@@ -82,7 +82,7 @@ export default function Channels() {
       mode: c.mode || 'conversation',
       agentId: c.agentId || '',
       enabled: c.enabled,
-      requireAuth: c.requireAuth ?? true,
+      requireAuth: c.channelType === 'openclaw' ? false : (c.requireAuth ?? true),
       sessionTtlMinutes: c.sessionTtlMinutes || 60,
       config: { ...c.config },
       filterConfig: { ...(c.filterConfig || {}) },
@@ -102,7 +102,7 @@ export default function Channels() {
       channelType: editor.channelType,
       mode: editor.mode,
       enabled: editor.enabled,
-      requireAuth: isOutput ? true : editor.requireAuth,
+      requireAuth: isOutput ? true : (editor.channelType === 'openclaw' ? false : editor.requireAuth),
       agentId: isOutput ? null : editor.agentId,
       sessionTtlMinutes: isOutput ? null : editor.sessionTtlMinutes,
       config: editor.config,
@@ -136,7 +136,7 @@ export default function Channels() {
       mode: c.mode || 'conversation',
       agentId: isOutput ? null : (c.agentId || ''),
       enabled: !c.enabled,
-      requireAuth: isOutput ? true : (c.requireAuth ?? true),
+      requireAuth: isOutput ? true : (c.channelType === 'openclaw' ? false : (c.requireAuth ?? true)),
       sessionTtlMinutes: isOutput ? null : (c.sessionTtlMinutes || 60),
       config: c.config,
       filterConfig: isOutput ? null : c.filterConfig,
@@ -383,8 +383,9 @@ export default function Channels() {
                     Output channels accept no inbound messages; they are used by schedules and cost alerts to deliver output directly.
                   </p>
                 ) : (
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input type="checkbox" checked={editor.requireAuth}
+                  <label className={`flex items-center gap-2 ${editor.channelType === 'openclaw' ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}>
+                    <input type="checkbox" checked={editor.channelType === 'openclaw' ? false : editor.requireAuth}
+                      disabled={editor.channelType === 'openclaw'}
                       onChange={e => setEditor({ ...editor, requireAuth: e.target.checked })}
                       className="w-4 h-4 rounded" style={{ accentColor: 'var(--color-primary)' }} />
                     <span className="text-sm font-medium">Require Authentication</span>
@@ -392,7 +393,9 @@ export default function Channels() {
                 )}
                 {editor.mode !== 'output' && (
                   <p className="text-xs mt-1 ml-6" style={{ color: 'var(--color-text-secondary)' }}>
-                    If disabled, requests to this channel bypass API key auth. Turn off for platforms like WeClaw that call directly.
+                    {editor.channelType === 'openclaw'
+                      ? 'OpenClaw runs inside the platform sandbox and calls the channel without user credentials, so inbound calls are always anonymous.'
+                      : 'If disabled, requests to this channel bypass API key auth. Turn off for platforms like WeClaw that call directly.'}
                   </p>
                 )}
               </div>
