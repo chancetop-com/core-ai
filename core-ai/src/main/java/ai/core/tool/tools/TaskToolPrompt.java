@@ -136,9 +136,13 @@ final class TaskToolPrompt {
         return sb.toString();
     }
 
-    static String asyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType, String model) {
+    static String asyncLaunchedNotificationXml(String taskId, String outputRef, String description, String subagentType, String model,
+                                               boolean notifyOnCompletion) {
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        var reminder = "  Async agent launched successfully.%n  agentId: %s (internal ID - do not mention to user)%n  The agent is working in the background. You will be notified automatically when it completes.%n  After it completes, pass task_id=%s to `task` to continue this agent with its full context.%n  Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(taskId, taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
+        var notification = notifyOnCompletion
+                ? "You will be notified automatically when it completes."
+                : "Completion notification is disabled (notify=false); poll it with " + AsyncTaskOutputTool.TOOL_NAME + " if you need the result.";
+        var reminder = "  Async agent launched successfully.%n  agentId: %s (internal ID - do not mention to user)%n  The agent is working in the background. %s%n  After it completes, pass task_id=%s to `task` to continue this agent with its full context.%n  If your next step depends on this agent's result, call %s with action='wait' and task_id=%s before answering; wait returns the result in this turn and suppresses the completion notification.%n  Do not duplicate this agent's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(taskId, notification, taskId, AsyncTaskOutputTool.TOOL_NAME, taskId, outputRef, ReadFileTool.TOOL_NAME, ShellCommandTool.TOOL_NAME);
         return "<task-notification>%n<task-id>%s</task-id>%n<task-type>%s</task-type>%n<task-description>%s</task-description>%n<task-model>%s</task-model>%n<status>%s</status>%n%s%n<system-reminder>%s</system-reminder>%n</task-notification>%n".formatted(taskId, subagentType, description, model != null ? model : "default", "async_launched", outputRefXml, reminder);
     }
 

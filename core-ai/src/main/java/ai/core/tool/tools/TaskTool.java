@@ -188,11 +188,12 @@ public class TaskTool extends ToolCall {
         try {
             var handle = taskManager.submit(run.call().taskId(),
                     () -> runInBackgroundAndCollect(run, agent), run.context().getCancellationToken(),
-                    () -> run.registry().abort(run.thread()));
+                    () -> run.registry().abort(run.thread()), run.call().notifyOnCompletion());
             submitted = true;
             taskManager.register(new Task(run.call().taskId(), run.call().description(), run.context().getTaskId(), handle.future(), run.subContext()));
             return ToolCallResult.asyncLaunched(run.call().taskId(), TaskToolPrompt.asyncLaunchedNotificationXml(
-                    run.call().taskId(), handle.outputRef(), run.call().description(), run.thread().type(), run.thread().model()));
+                    run.call().taskId(), handle.outputRef(), run.call().description(), run.thread().type(), run.thread().model(),
+                    run.call().notifyOnCompletion()));
         } finally {
             if (!submitted) {
                 releaseThread(run.registry(), run.thread(), agent);
@@ -354,7 +355,7 @@ public class TaskTool extends ToolCall {
     }
 
     private record TaskCall(String taskId, boolean taskIdProvided, String subagentType, String description,
-                            String prompt, boolean runInBackground) {
+                            String prompt, boolean runInBackground, boolean notifyOnCompletion) {
         static TaskCall of(Map<String, Object> argsMap) {
             var requestedTaskId = getStringValue(argsMap, "task_id");
             var taskIdProvided = requestedTaskId != null && !requestedTaskId.isBlank();
@@ -364,7 +365,8 @@ public class TaskTool extends ToolCall {
                     getStringValue(argsMap, "subagent_type"),
                     getStringValue(argsMap, "description"),
                     getStringValue(argsMap, "prompt"),
-                    Boolean.TRUE.equals(argsMap.get("run_in_background")));
+                    Boolean.TRUE.equals(argsMap.get("run_in_background")),
+                    !Boolean.FALSE.equals(argsMap.get("notify")));
         }
     }
 
@@ -397,7 +399,13 @@ public class TaskTool extends ToolCall {
                                     + "Returns immediately with a taskId. "
                                     + "You will receive a <task-notification> when the agent completes. "
                                     + "Launch multiple agents concurrently by calling task() with run_in_background=true multiple times in a single message.")
+                            .optional(),
+                    ToolCallParameters.ParamSpec.of(Boolean.class, "notify",
+                            "Only for run_in_background=true. Set to false when you only need this agent's side effect and will not act on its result; "
+                                    + "you can still poll it with async_task_output. Defaults to true.")
+                            .optional()
             ));
+
             var tool = new TaskTool();
             build(tool);
             return tool;

@@ -305,25 +305,29 @@ public class ShellCommandTool extends ToolCall {
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
                 var description = getStringValue(argsMap, "description");
-                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null), context.getCancellationToken());
+                var notify = !Boolean.FALSE.equals(argsMap.get("notify"));
+                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null), context.getCancellationToken(), null, notify);
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
-                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description))
+                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
                         .withDuration(System.currentTimeMillis() - startTime);
             } else {
                 return ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null);
             }
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             var error = "Failed to parse shell command arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description) {
+    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, boolean notify) {
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        var reminder = "  Async bash launched successfully.%n  The bash packaged as a task is working in the background. You will be notified automatically when it completes.%n  task id: %s (internal ID - do not mention to user)%n  Do not duplicate this task's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
+        var notification = notify
+                ? "You will be notified automatically when it completes."
+                : "Completion notification is disabled (notify=false); poll it with " + AsyncTaskOutputTool.TOOL_NAME + " if you need the result.";
+        var reminder = "  Async bash launched successfully.%n  The bash packaged as a task is working in the background. %s%n  task id: %s (internal ID - do not mention to user)%n  If your next step depends on this command's result, call %s with action='wait' and task_id=%s before answering; wait returns the result in this turn and suppresses the completion notification.%n  Do not duplicate this task's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(notification, taskId, AsyncTaskOutputTool.TOOL_NAME, taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
         return "<task-notification>%n<task-id>%s</task-id>%n<task-type>%s</task-type>%n<task-description>%s</task-description>%n<status>%s</status>%n%s%n<system-reminder>%s</system-reminder>%n</task-notification>%n".formatted(taskId, "bash", description, "async_launched", outputRefXml, reminder);
     }
 
@@ -364,7 +368,10 @@ public class ShellCommandTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(Integer.class, "timeout", "Optional timeout in milliseconds (max 600000)"),
                     ToolCallParameters.ParamSpec.of(String.class, "command", "The command to execute").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "description", "Clear, concise description of what this command does in active voice. Never use words like \\\"complex\\\" or \\\"risk\\\" in the description - just describe what it does.\\n\\nFor simple commands (git, npm, standard CLI tools), keep it brief (5-10 words):\\n- ls \\u2192 \\\"List files in current directory\\\"\\n- git status \\u2192 \\\"Show working tree status\\\"\\n- npm install \\u2192 \\\"Install package dependencies\\\"\\n\\nFor commands that are harder to parse at a glance (piped commands, obscure flags, etc.), add enough context to clarify what it does:\\n- find . -name \\\"*.tmp\\\" -exec rm {} \\\\; \\u2192 \\\"Find and delete all .tmp files recursively\\\"\\n- git reset --hard origin/main \\u2192 \\\"Discard all local changes and match remote main\\\"\\n- curl -s url | jq '.data[]' \\u2192 \\\"Fetch JSON from URL and extract data array elements\\"),
-                    ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background", "Set to true to run this command in the background. Use Read to read the output later.")
+                    ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background", "Set to true to run this command in the background. Use Read to read the output later."),
+                    ToolCallParameters.ParamSpec.of(Boolean.class, "notify",
+                            "Only for run_in_background=true. Set to false when you only need this command's side effect and will not act on its completion; "
+                                    + "you can still poll it with async_task_output. Defaults to true.")
             ));
             var tool = new ShellCommandTool();
             build(tool);

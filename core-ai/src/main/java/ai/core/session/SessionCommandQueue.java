@@ -11,6 +11,8 @@ import java.util.Queue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Predicate;
+import java.util.regex.Pattern;
 
 /**
  * Session-level priority command queue.
@@ -19,11 +21,23 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class SessionCommandQueue {
 
+    private static final Pattern TASK_ID_PATTERN = Pattern.compile("<task-id>\\s*([^<]+?)\\s*</task-id>");
+
     private final Queue<QueuedCommand> queue = new PriorityQueue<>(
             Comparator.comparingInt(a -> a.mode().priority)
     );
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
+    private volatile Predicate<String> consumedTaskFilter;
+
+    /**
+     * A terminal task whose result the session already consumed must not start a notification turn.
+     * The filter is keyed by task id and is consulted when the queue is drained, so a task consumed
+     * while its notification is still waiting is dropped as well.
+     */
+    void setConsumedTaskFilter(Predicate<String> filter) {
+        this.consumedTaskFilter = filter;
+    }
 
     public void enqueueUserInput(String value, Map<String, Object> variables) {
         enqueueUserInput(value, variables, null);
@@ -67,6 +81,7 @@ public class SessionCommandQueue {
     /**
      * Drains all commands of the highest-priority mode present in the queue.
      * Returns a CommandBatch with the shared mode and all values.
+     * Consumed task notifications are dropped instead of starting an empty turn.
      */
     public CommandBatch drainSameMode() {
         lock.lock();
@@ -75,7 +90,11 @@ public class SessionCommandQueue {
             var targetMode = queue.peek().mode();
             var values = new ArrayList<QueuedMessage>();
             while (!queue.isEmpty() && queue.peek().mode() == targetMode) {
-                values.add(queue.poll().value());
+                var message = queue.poll().value();
+                if (targetMode == CommandMode.TASK_NOTIFICATION && isConsumedNotification(message.value())) {
+                    continue;
+                }
+                values.add(message);
             }
             return new CommandBatch(targetMode, values);
         } finally {
@@ -139,6 +158,13 @@ public class SessionCommandQueue {
         } finally {
             lock.unlock();
         }
+    }
+
+    private boolean isConsumedNotification(String notification) {
+        var filter = consumedTaskFilter;
+        if (filter == null) return false;
+        var matcher = TASK_ID_PATTERN.matcher(notification);
+        return matcher.find() && filter.test(matcher.group(1));
     }
 
     public enum CommandMode {

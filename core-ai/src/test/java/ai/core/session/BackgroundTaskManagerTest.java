@@ -142,6 +142,81 @@ class BackgroundTaskManagerTest {
         }
     }
 
+    @Test
+    void pollAndAwaitExposeTerminalResult() throws Exception {
+        var commandQueue = new SessionCommandQueue();
+        var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
+        var handle = manager.submit("done-1", () -> "done", null);
+        handle.future().get(5, TimeUnit.SECONDS);
+
+        var polled = manager.pollTask("done-1");
+        assertTrue(polled.isCompleted());
+        assertEquals("done", polled.getResult());
+
+        var awaited = manager.awaitTask("done-1", 1000);
+        assertTrue(awaited.isCompleted());
+        assertEquals("done", awaited.getResult());
+    }
+
+    @Test
+    void consumedTaskNotificationIsDropped() throws Exception {
+        var commandQueue = new SessionCommandQueue();
+        var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
+        var handle = manager.submit("done-2", () -> "done", null);
+        handle.future().get(5, TimeUnit.SECONDS);
+
+        manager.markConsumed("done-2");
+
+        assertTrue(commandQueue.drainSameMode().isEmpty());
+    }
+
+    @Test
+    void readingTaskOutputConsumesTerminalTask() throws Exception {
+        var commandQueue = new SessionCommandQueue();
+        var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
+        var handle = manager.submit("done-3", () -> "done", null);
+        handle.future().get(5, TimeUnit.SECONDS);
+
+        manager.markOutputRead("memory://done-3");
+
+        assertTrue(manager.isConsumed("done-3"));
+        assertTrue(commandQueue.drainSameMode().isEmpty());
+    }
+
+    @Test
+    void notifyFalseSkipsQueueNotificationButKeepsResult() throws Exception {
+        var commandQueue = new SessionCommandQueue();
+        var manager = new BackgroundTaskManager(commandQueue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
+        var handle = manager.submit("quiet-1", () -> "done", null, null, false);
+        handle.future().get(5, TimeUnit.SECONDS);
+
+        var result = manager.pollTask("quiet-1");
+
+        assertTrue(result.isCompleted());
+        assertEquals("done", result.getResult());
+        assertTrue(commandQueue.drainSameMode().isEmpty());
+    }
+
+    @Test
+    void awaitReturnsPendingWhenDeadlineExpires() throws Exception {
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> new InMemorySink(taskId), "test-session", event -> { }, executor);
+            var started = new CountDownLatch(1);
+            var gate = new CountDownLatch(1);
+            manager.submit("slow", () -> {
+                started.countDown();
+                awaitQuietly(gate);
+                return "done";
+            }, null);
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+
+            var result = manager.awaitTask("slow", 100);
+
+            assertTrue(result.isPending());
+            gate.countDown();
+        }
+    }
+
     private static final class InMemorySink implements SubagentOutputSink {
         private final String taskId;
 

@@ -9,6 +9,7 @@ import ai.core.sandbox.SandboxImageReader;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.tools.AsyncTaskOutputTool;
+import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonUtil;
@@ -176,6 +177,7 @@ public class ToolExecutor {
         result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
         consumeLlmUsage(result);
         handleAsyncResult(result, tool, functionCall, context);
+        if (result.isCompleted()) markTaskOutputRead(tool, args, context);
 
         if (saveToFile != null && result.isCompleted()) {
             result = saveResultToFile(saveToFile, result, sandbox, tool.getName());
@@ -354,6 +356,19 @@ public class ToolExecutor {
         var existing = asyncTaskManager.loadTask(taskId);
         if (existing.isEmpty()) return true;
         return existing.get().isTerminal() && tool.getName().equals(existing.get().tool().getName());
+    }
+
+    /**
+     * A background task's output file is its result. Once the model reads that file the completion
+     * notification has nothing left to deliver, so the run is marked consumed and its notification turn
+     * is skipped.
+     */
+    private void markTaskOutputRead(ToolCall tool, Map<String, Object> args, ExecutionContext context) {
+        if (!ReadFileTool.TOOL_NAME.equals(tool.getName())) return;
+        var taskManager = context.getTaskManager();
+        if (taskManager == null) return;
+        var path = ToolCall.getStringValue(args, "file_path");
+        if (path != null) taskManager.markOutputRead(path);
     }
 
     private void handleAsyncResult(ToolCallResult result, ToolCall tool, FunctionCall functionCall, ExecutionContext context) {

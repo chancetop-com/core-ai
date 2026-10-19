@@ -86,6 +86,12 @@ public class ToolCallAsyncTaskManager {
         });
     }
 
+    /** Whether the stored task is terminal, without resolving its tool. */
+    public boolean isTaskTerminal(String taskId) {
+        var data = loadData(taskId);
+        return data.isPresent() && isTerminal(data.get());
+    }
+
     public Optional<String> sessionIdOf(String taskId) {
         return loadData(taskId).map(data -> data.sessionId);
     }

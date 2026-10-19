@@ -2,11 +2,13 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -14,17 +16,22 @@ import java.util.List;
 public class AsyncTaskOutputTool extends ToolCall {
     public static final String TOOL_NAME = "async_task_output";
 
+    private static final long DEFAULT_WAIT_TIMEOUT_MS = 30_000;
+    private static final long MAX_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
+    private static final long WAIT_POLL_INTERVAL_MS = 1000;
+
     private static final String TOOL_DESC = """
             Query the status and output of async tasks: long-running tool calls that returned a task id
-            (renders, assembly, video generation, async scripts) and background agents launched via the
-            task tool (run_in_background=true). You are notified automatically when such a task finishes,
-            so poll only when you need an interim status.
+            (renders, assembly, video generation, async scripts) and background agents or commands launched
+            with run_in_background=true.
 
-            Use action='poll' with task_id to check a specific task's status and get its result when completed.
-            Use action='cancel' with task_id to stop a running task or background agent.
+            Use action='wait' with task_id to block until the task reaches a terminal state (or timeout_ms
+            expires) and get its result in this turn. Waiting consumes the result and suppresses the automatic
+            completion notification, so prefer it when your next step depends on the result. Use action='poll'
+            only when you need an interim status; use action='cancel' to stop a running task or background agent.
 
-            Poll returns one of these statuses:
-            - PENDING: Task is still running, poll again later
+            Poll and wait return one of these statuses:
+            - PENDING: Task is still running, poll or wait again later
             - COMPLETED: Task finished successfully, result is included
             - FAILED: Task failed, error message is included
             """;
@@ -49,8 +56,9 @@ public class AsyncTaskOutputTool extends ToolCall {
             var executor = AsyncToolTaskExecutor.getInstance();
             var result = switch (action) {
                 case "poll" -> pollTask(executor, taskId, context);
+                case "wait" -> waitTask(executor, taskId, waitTimeout(args), context);
                 case "cancel" -> cancelTask(executor, taskId, context);
-                default -> ToolCallResult.failed("Unknown action: " + action + ". Use 'poll' or 'cancel'.");
+                default -> ToolCallResult.failed("Unknown action: " + action + ". Use 'poll', 'wait' or 'cancel'.");
             };
 
             return result.withDuration(System.currentTimeMillis() - startTime)
@@ -67,42 +75,113 @@ public class AsyncTaskOutputTool extends ToolCall {
         return execute(arguments, null);
     }
 
+    @Override
+    public long getTimeoutMs() {
+        return MAX_WAIT_TIMEOUT_MS + 60_000;
+    }
+
     private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
-        // long-running tool calls (pending results) live in the async task manager, which drives the tool's own poll
+        var taskManager = context != null ? context.getTaskManager() : null;
+        if (taskManager != null && taskManager.hasTask(taskId)) {
+            var result = taskManager.pollTask(taskId);
+            if (result.isTerminal()) taskManager.markConsumed(taskId);
+            return result;
+        }
         var manager = context != null ? context.getAsyncTaskManager() : null;
         if (manager != null && manager.loadTask(taskId).isPresent()) {
-            // relay of a task the manager already tracks: marking it managed keeps the executor from
-            // re-registering the pending result under this polling tool (which does not support poll)
-            return manager.pollTask(taskId).withManagedTask();
+            var result = manager.pollTask(taskId);
+            if (manager.isTaskTerminal(taskId)) manager.markNotificationDelivered(taskId);
+            return result.withManagedTask();
         }
         var result = executor.poll(taskId);
-        var taskManager = context != null ? context.getTaskManager() : null;
-        if (taskManager != null && result.isFailed() && taskManager.isRunning(taskId)) {
-            // Not an async tool task - a background agent launched via the task tool is still running.
-            // The agent task manager owns it, so this status must never be registered as an async tool task.
-            return ToolCallResult.pending(taskId, "Background agent is still running").withManagedTask();
-        }
-
         var taskInfo = executor.getTaskInfo(taskId);
         if (taskInfo.isPresent()) {
             var info = taskInfo.get();
             result.withStats("toolName", info.toolName())
                     .withStats("elapsedMs", info.elapsedMs());
         }
-
         return result;
     }
 
+    private ToolCallResult waitTask(AsyncToolTaskExecutor executor, String taskId, long timeoutMs, ExecutionContext context) {
+        var taskManager = context != null ? context.getTaskManager() : null;
+        if (taskManager != null && taskManager.hasTask(taskId)) {
+            var result = taskManager.awaitTask(taskId, timeoutMs);
+            if (result.isTerminal()) taskManager.markConsumed(taskId);
+            return result;
+        }
+        var manager = context != null ? context.getAsyncTaskManager() : null;
+        if (manager != null && manager.loadTask(taskId).isPresent()) {
+            return waitForServerTask(manager, taskId, timeoutMs, context);
+        }
+        return waitForExecutorTask(executor, taskId, timeoutMs, context);
+    }
+
+    private ToolCallResult waitForServerTask(ToolCallAsyncTaskManager manager, String taskId, long timeoutMs,
+                                             ExecutionContext context) {
+        var deadline = System.currentTimeMillis() + timeoutMs;
+        while (true) {
+            var result = manager.pollTask(taskId);
+            if (manager.isTaskTerminal(taskId)) {
+                manager.markNotificationDelivered(taskId);
+                return result.withManagedTask();
+            }
+            if (result.isFailed()) return result.withManagedTask();
+            var remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) {
+                return ToolCallResult.pending(taskId, "Task is still running after " + timeoutMs + "ms").withManagedTask();
+            }
+            if (isCancelled(context)) return ToolCallResult.failed("Task wait cancelled: " + taskId).withManagedTask();
+            if (!sleep(Math.min(WAIT_POLL_INTERVAL_MS, remaining))) {
+                return ToolCallResult.failed("Task wait interrupted: " + taskId).withManagedTask();
+            }
+        }
+    }
+
+    private ToolCallResult waitForExecutorTask(AsyncToolTaskExecutor executor, String taskId, long timeoutMs,
+                                               ExecutionContext context) {
+        var deadline = System.currentTimeMillis() + timeoutMs;
+        while (true) {
+            var result = executor.poll(taskId);
+            if (result.isTerminal()) return result;
+            if (result.isFailed()) return result;
+            var remaining = deadline - System.currentTimeMillis();
+            if (remaining <= 0) {
+                return ToolCallResult.pending(taskId, "Task is still running after " + timeoutMs + "ms");
+            }
+            if (isCancelled(context)) return ToolCallResult.failed("Task wait cancelled: " + taskId);
+            if (!sleep(Math.min(WAIT_POLL_INTERVAL_MS, remaining))) {
+                return ToolCallResult.failed("Task wait interrupted: " + taskId);
+            }
+        }
+    }
+
     private ToolCallResult cancelTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {
+        var taskManager = context != null ? context.getTaskManager() : null;
+        if (taskManager != null && taskManager.hasTask(taskId)) return taskManager.cancelTask(taskId);
         var manager = context != null ? context.getAsyncTaskManager() : null;
         if (manager != null && manager.loadTask(taskId).isPresent()) return manager.cancelTask(taskId);
-        var result = executor.cancel(taskId);
-        var taskManager = context != null ? context.getTaskManager() : null;
-        if (taskManager != null && result.isFailed() && taskManager.cancel(taskId)) {
-            // Not an async tool task - cancelled a background agent launched via the task tool.
-            return ToolCallResult.completed("Task cancelled: " + taskId);
+        return executor.cancel(taskId);
+    }
+
+    private boolean isCancelled(ExecutionContext context) {
+        return context != null && context.isCancelled();
+    }
+
+    private boolean sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
         }
-        return result;
+    }
+
+    private long waitTimeout(Map<String, Object> args) {
+        var value = args.get("timeout_ms");
+        var timeout = value instanceof Number number ? number.longValue() : DEFAULT_WAIT_TIMEOUT_MS;
+        return Math.max(1000, Math.min(MAX_WAIT_TIMEOUT_MS, timeout));
     }
 
     public static class Builder extends ToolCall.Builder<Builder, AsyncTaskOutputTool> {
@@ -115,8 +194,12 @@ public class AsyncTaskOutputTool extends ToolCall {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
             this.parameters(ToolCallParameters.of(
-                    ToolCallParameters.ParamSpec.of(String.class, "action", "The action to perform: 'poll' or 'cancel'").required().enums(List.of("poll", "cancel")),
-                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "The task ID to poll or cancel").required()
+                    ToolCallParameters.ParamSpec.of(String.class, "action", "The action to perform: 'poll', 'wait' or 'cancel'")
+                            .required().enums(List.of("poll", "wait", "cancel")),
+                    ToolCallParameters.ParamSpec.of(String.class, "task_id", "The task ID to poll, wait for or cancel").required(),
+                    ToolCallParameters.ParamSpec.of(Integer.class, "timeout_ms",
+                            "For action='wait': how long to wait before returning PENDING, in milliseconds (default 30000, max 1800000)")
+                            .optional()
             ));
             var tool = new AsyncTaskOutputTool();
             build(tool);
