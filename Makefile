@@ -82,36 +82,20 @@ release: cli
 	gh release upload v$(VERSION) $(CLI_BUILD_DIR)/$(CLI_BINARY) --repo $(REPO) --clobber
 	@echo "Uploaded $(CLI_BINARY) to release v$(VERSION)"
 
-.PHONY: benchmark tbench2 cli-dist install-harbor jre25-linux
+.PHONY: benchmark tbench2 install-harbor
 
-JRE25_DIR ?= /tmp/jre25-linux
-
-# Run Harbor benchmarks against core-ai-cli
-# Usage: make benchmark DATASET=terminal-bench@2.0 TASK=write-compressor
+# Run the full Terminal-Bench 2.1 benchmark against core-ai-cli
+# Usage: make benchmark
+#        make benchmark TASK=fix-git TRIALS=1 CONCURRENCY=1
 benchmark:
-	@command -v harbor >/dev/null 2>&1 || { echo "❌ harbor not installed. Run: make install-harbor"; exit 1; }
-	bash core-ai-benchmark/harbor/run.sh $(DATASET) $(TASK)
+	@command -v harbor >/dev/null 2>&1 || { echo "harbor not installed. Run: make install-harbor"; exit 1; }
+	bash core-ai-benchmark/harbor/run.sh $(if $(TASK),--task $(TASK),) $(if $(TRIALS),--trials $(TRIALS),) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY),) $(if $(MODEL),--model $(MODEL),) $(if $(N_TASKS),--n-tasks $(N_TASKS),)
 
-# Build CLI install distribution (for Harbor benchmark)
-cli-dist:
-	$(GRADLEW) :core-ai-cli:installDist
-
-# Install Harbor CLI via uv
+# Install the pinned Harbor CLI via uv
 install-harbor:
-	uv tool install harbor
+	uv tool install "harbor==0.24.0"
 
-# Download and extract Linux JRE 25 for offline container use
-jre25-linux:
-	@echo "Downloading JRE 25 (Linux x64)..."
-	mkdir -p $(JRE25_DIR)
-	curl -sL "https://api.adoptium.net/v3/binary/latest/25/ga/linux/x64/jre/hotspot/normal/eclipse?project=jdk" -o $(JRE25_DIR)/jre.tar.gz
-	tar -xzf $(JRE25_DIR)/jre.tar.gz -C $(JRE25_DIR) --strip-components=1
-	rm -f $(JRE25_DIR)/jre.tar.gz
-	@echo "✅ JRE 25 installed to $(JRE25_DIR)"
-
-# Run Terminal-Bench 2 benchmarks via native binary (no JRE needed)
+# Alias for the Terminal-Bench 2.1 benchmark
 # Usage: make tbench2 TASK=fix-git
-#        make tbench2 MODEL=litellm/claude-sonnet-4-20250514
-tbench2:
-	@command -v harbor >/dev/null 2>&1 || { echo "❌ harbor not installed. Run: make install-harbor"; exit 1; }
-	bash core-ai-benchmark/terminal-bench-2/run.sh $(DATASET) $(TASK)
+#        make tbench2 MODEL=litellm/deepseek-v4-flash
+tbench2: benchmark

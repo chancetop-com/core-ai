@@ -1,79 +1,133 @@
-# Harbor Benchmarks for core-ai-cli
+# Harbor benchmark for core-ai-cli
 
-Run [Harbor](https://github.com/harbor-framework/harbor) benchmarks against `core-ai-cli`.
+Run [Terminal-Bench 2.1](https://www.tbench.ai/leaderboard/terminal-bench/2.1)
+against `core-ai-cli` with [Harbor](https://github.com/harbor-framework/harbor).
 
-> **Windows users:** Requires WSL2 or Git Bash. Harbor depends on Docker, and Docker itself runs on WSL2 on Windows, so bash scripts can be used directly.
-## Quick Start
+The runner is a full-benchmark entrypoint: it clones the dataset, downloads the
+pinned Linux binary, resolves the active core-ai login, and runs all 89 tasks.
+A 10-task pilot on Windows + Docker passed 10/10 (one Docker daemon restart was
+retried; see the notes below).
 
-```bash
-# 1. Install Harbor (first time only)
-make install-harbor
+## Prerequisites
 
-# 2. Build the CLI distribution
-make cli-dist
+- Python 3.12+
+- Docker (Linux containers, x86_64)
+- [uv](https://docs.astral.sh/uv/)
+- `git`, `curl` (or `wget`), and `tar` for the automatic dataset/binary setup
+- A core-ai login: `core-ai-cli --login <server-url>`
 
-# 3. Download JRE for offline container use
-make jre25-linux
+Install the pinned Harbor version:
 
-# 4. Configure API keys
-cp core-ai-benchmark/harbor/.env.example core-ai-benchmark/harbor/.env
-# Edit .env with your LiteLLM / provider credentials
-
-# 5. Run a benchmark
-bash core-ai-benchmark/harbor/run.sh terminal-bench@2.0 write-compressor
+```shell
+uv tool install "harbor==0.24.0"
 ```
 
-Or using Make:
+## Quick start
 
-```bash
-make benchmark DATASET=terminal-bench@2.0 TASK=write-compressor
+```shell
+# Linux / macOS / WSL / Git Bash
+bash core-ai-benchmark/harbor/run.sh
 ```
 
-## Configuration
-
-All settings are in `.env` (copy from `.env.example`):
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `LITELLM_API_KEY` | Yes | - | LiteLLM API key |
-| `LITELLM_API_BASE` | Yes | - | LiteLLM API base URL |
-| `CORE_AI_JRE_PATH` | Yes | `/tmp/jre25-linux` | Pre-extracted Linux JRE (run `make jre25-linux`) |
-| `CORE_AI_MODEL` | No | `litellm/gpt-5.4-nano` | Model in `provider/model` format |
-| `CORE_AI_INSTALL_DIR` | No | auto | Path to `installDist` output |
-
-## Usage
-
-```bash
-# Run all tasks in a dataset
-bash core-ai-benchmark/harbor/run.sh terminal-bench@2.0
-
-# Filter by task name
-bash core-ai-benchmark/harbor/run.sh terminal-bench@2.0 write-compressor
-
-# Override model
-CORE_AI_MODEL=openrouter/anthropic/claude-sonnet-4-5 bash core-ai-benchmark/harbor/run.sh swebench@2.0
+```powershell
+# Windows PowerShell
+.\core-ai-benchmark\harbor\run.ps1
 ```
 
-## Supported Datasets
+By default this runs:
 
-Any dataset from the [Harbor Registry](https://github.com/harbor-framework/registry) works. Examples:
+- all 89 tasks from `terminal-bench/terminal-bench-2-1`;
+- 1 trial per task;
+- 1 concurrent trial;
+- model `litellm/deepseek-v4-flash`;
+- results under `core-ai-benchmark/harbor/.harbor-jobs/`.
 
-- `terminal-bench@2.0` — Terminal-based tasks
-- `swebench@2.0` — Software engineering bugs
-- `aider-polyglot@2.0` — Multi-language code generation
-- `aime@1.0` — Math reasoning
+Authentication is automatic: the runner reads the active entry in
+`~/.core-ai/auth.json` and uses `<server_url>/api/cli/v1` as the LiteLLM base
+and its `api_key`. To override, set `LITELLM_API_BASE` and `LITELLM_API_KEY`
+(or put them in `core-ai-benchmark/harbor/.env`).
 
-See available datasets: `harbor datasets list`
+## Common options
 
-## How It Works
+Bash:
 
-The script wraps `harbor run` with:
-- `--agent-import-path cli:CoreAiCli` — dynamically loads the agent from `harbor/cli.py` via Python `importlib`
-- `--agent-kwarg install_dir=...` — points to the Gradle `installDist` output (auto-detected)
-- `--agent-kwarg jre_path=...` — provides offline JRE for the container
-- `--ae LITELLM_API_KEY=...` — passes API credentials to the container
-- `PYTHONPATH` — set to `harbor/` dir so the `cli` module is importable
+```shell
+bash core-ai-benchmark/harbor/run.sh \
+  --trials 1 \
+  --concurrency 2 \
+  --model litellm/deepseek-v4-flash \
+  --n-tasks 10
+```
 
-Agent code lives in `core-ai-benchmark/harbor/cli.py` — self-contained, no Harbor source modifications needed.
+PowerShell:
 
-Results are stored in `core-ai-benchmark/harbor/.harbor-jobs/` (git-ignored).
+```powershell
+.\core-ai-benchmark\harbor\run.ps1 -Trials 1 -Concurrency 2 -NTasks 10
+```
+
+| Option | Default | Description |
+|---|---|---|
+| `--trials` / `-Trials` | `1` | Trials per task. Official leaderboard runs use 5. |
+| `--concurrency` / `-Concurrency` | `1` | Concurrent trials. Raise only after increasing Docker memory. |
+| `--model` / `-Model` | `litellm/deepseek-v4-flash` | Model in `provider/model` form. |
+| `--task` / `-Task` | all | Run one task by name. |
+| `--n-tasks` / `-NTasks` | all | Run the first N tasks. |
+| `--jobs-dir` / `-JobsDir` | `.harbor-jobs` | Harbor results directory. |
+| `--dataset-dir` / `-DatasetDir` | `.datasets/terminal-bench-2-1` | Local dataset checkout. |
+| `--dataset-ref` / `-DatasetRef` | `main` | Pin a commit or branch. |
+| `--cli-binary` / `-CliBinary` | auto-download | Prebuilt Linux `core-ai-cli` binary. |
+| `--cli-version` / `-CliVersion` | `2.0.52` | Release version to download. |
+| `--update-dataset` / `-UpdateDataset` | off | `git pull` the local dataset first. |
+
+Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `TASK`, `N_TASKS`,
+`HARBOR_JOBS_DIR`, `TB21_DATASET_DIR`, `TB21_DATASET_REF`,
+`CORE_AI_CLI_VERSION`, `CORE_AI_CLI_BINARY`, `HARBOR`.
+
+## What the runner does
+
+1. Reads the active `~/.core-ai/auth.json` entry (or `LITELLM_API_*` overrides).
+2. Ensures Harbor 0.24+ is available.
+3. Downloads `core-ai-cli-linux.tar.gz` from the pinned GitHub release when the
+   local `.cache/core-ai-cli-linux` is missing.
+4. Clones `harbor-framework/terminal-bench-2-1` when `.datasets/` is missing.
+5. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
+   `--ak binary_path=...`.
+6. Writes results to `.harbor-jobs/<timestamp>/`.
+
+The adapter lives in `cli.py`. It installs the native binary into the task
+container, writes `~/.core-ai/agent.properties` with the resolved provider and
+model, runs one `--prompt` turn with `--dangerously-skip-permissions`, and
+parses the final token usage line into Harbor's result statistics.
+
+## Results
+
+```shell
+harbor view core-ai-benchmark/harbor/.harbor-jobs
+```
+
+Useful files:
+
+- `result.json` — job summary, `stats.evals.*.metrics[0].mean` is the mean reward.
+- `<task>__<id>/verifier/reward.txt` — per-trial reward.
+- `<task>__<id>/verifier/ctrf.json` — verifier test details.
+- `<task>__<id>/agent/core-ai-cli.txt` — full agent log.
+
+## Notes
+
+- **Docker memory.** The benchmark task containers request ~2 GB each. The
+  runner defaults to `--concurrency 1` so it also works on small Docker Desktop
+  VMs. Increase Docker Desktop memory to 8–12 GB before raising concurrency.
+- **Trials.** Local smoke tests use 1 trial. Official Terminal-Bench 2.1
+  leaderboard runs use 5 trials per task (`--trials 5`), but community
+  submissions for 2.1 are currently closed; use this runner for internal
+  comparisons.
+- **Model.** `litellm/deepseek-v4-flash` is the model used by the validated
+  pilot. Set `--model` to a model available on your core-ai server.
+- **Dataset pinning.** The 10-task pilot used dataset commit
+  `7131e4375048a0e408a8fb404b5f499d726b695b`. Set
+  `--dataset-ref 7131e4375048a0e408a8fb404b5f499d726b695b` to reproduce it.
+- **Infra failures.** `git-multibranch` once failed with
+  `Docker daemon is not running` during a Docker Desktop restart, then passed
+  on retry. Treat Harbor exceptions/unfinished trials separately from model
+  failures.
+- **Windows.** PowerShell runs the full flow natively. WSL2/Git Bash works too.

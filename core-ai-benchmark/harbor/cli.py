@@ -1,269 +1,237 @@
+"""Harbor installed-agent adapter for core-ai-cli.
+
+Targets Harbor 0.24+ and Terminal-Bench 2.1. The adapter installs the
+core-ai-cli native binary into the task container, writes the CLI config, and
+runs one non-interactive prompt per trial.
+"""
+
+from __future__ import annotations
+
+import json
+import re
 import shlex
 from pathlib import Path
 
-from harbor.agents.installed.base import (
-    BaseInstalledAgent,
-    CliFlag,
-    with_prompt_template,
-)
+from harbor.agents.installed.base import BaseInstalledAgent, with_prompt_template
 from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
+from harbor.models.trial.paths import EnvironmentPaths
 
 _PROVIDER_ENV_KEYS: dict[str, list[str]] = {
     "openrouter": ["OPENROUTER_API_KEY"],
     "openai": ["OPENAI_API_KEY"],
     "deepseek": ["DEEPSEEK_API_KEY"],
     "azure": ["AZURE_OPENAI_API_KEY"],
-    "azure-inference": ["AZURE_INFERENCE_API_KEY"],
     "litellm": ["LITELLM_API_KEY"],
 }
 
-# Providers that require a base URL in agent.properties ({provider}.api.base)
-_PROVIDER_BASE_URL_KEYS: dict[str, list[str]] = {
+_PROVIDER_BASE_ENV_KEYS: dict[str, list[str]] = {
     "litellm": ["LITELLM_API_BASE", "LITELLM_BASE_URL"],
+    "openai": ["OPENAI_API_BASE", "OPENAI_BASE_URL"],
+    "azure": ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_BASE"],
 }
 
+_DEFAULT_MODEL = "deepseek-v4-flash"
+_REMOTE_BIN = "/usr/local/bin/core-ai-cli"
 _OUTPUT_FILENAME = "core-ai-cli.txt"
-_REMOTE_INSTALL_DIR = "/opt/core-ai-cli"
+
+
+def _active_auth_entry() -> dict | None:
+    """Return the active entry from ~/.core-ai/auth.json, if present."""
+    path = Path.home() / ".core-ai" / "auth.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    if isinstance(payload, list):
+        for entry in payload:
+            if isinstance(entry, dict) and entry.get("active") is True:
+                return entry
+        return None
+    if isinstance(payload, dict) and payload.get("api_key"):
+        return payload
+    return None
+
+
+def _host_default_model() -> str | None:
+    """Read the model configured by the local core-ai-cli login."""
+    path = Path.home() / ".core-ai" / "agent.properties"
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    litellm_model = None
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key == "llm.model" and value:
+            return value
+        if key == "litellm.model" and value:
+            litellm_model = value
+    return litellm_model
 
 
 class CoreAiCli(BaseInstalledAgent):
-    """
-    Core-AI CLI agent — a Java-based AI coding assistant.
-
-    Installation requires either a pre-built Gradle distribution directory
-    (``install_dir``) or a native binary path (``binary_path``).  When neither
-    is supplied the agent attempts to download the latest release from GitHub.
-
-    Model name format follows the Harbor convention ``provider/model``, e.g.
-    ``openrouter/anthropic/claude-sonnet-4-5``.  For providers that include a
-    sub-path (OpenRouter), the first segment is the provider name and the rest
-    is the model identifier passed to core-ai-cli.
-    """
-
-    CLI_FLAGS = [
-        CliFlag(
-            "max_turns",
-            cli="--max-turns",
-            type="int",
-            env_fallback="CORE_AI_MAX_TURNS",
-        ),
-    ]
+    """Install core-ai-cli inside the task container and run one prompt."""
 
     def __init__(
         self,
         logs_dir: Path,
-        install_dir: str | None = None,
         binary_path: str | None = None,
-        jre_path: str | None = None,
         api_key: str | None = None,
         api_base: str | None = None,
+        max_turns: int | None = None,
+        time_limit_seconds: int | None = None,
+        coding: bool = True,
+        todo_v2: bool = True,
+        memory: bool = False,
+        reasoning_effort: str | None = None,
         *args,
         **kwargs,
     ):
-        """
-        Args:
-            logs_dir: Directory for trial logs.
-            install_dir: Path to a Gradle install distribution directory
-                (the directory that contains ``bin/`` and ``lib/``).
-                If supplied, it is uploaded to the container and Java is
-                installed as a runtime dependency.
-            binary_path: Path to a pre-built native ``core-ai-cli`` binary.
-                Takes precedence over ``install_dir`` when both are set.
-            jre_path: Path to a pre-extracted Linux JRE directory on the host
-                (the directory that contains ``bin/java``). When set, the JRE
-                is uploaded directly instead of installed via apt-get, making
-                the setup fully offline. Takes precedence over apt-get when
-                ``install_dir`` is used.
-            api_key: API key for the LLM provider.  Falls back to the
-                provider-specific environment variable if not set.
-            api_base: Base URL for providers that require it (e.g. litellm).
-                Falls back to the provider-specific environment variable.
-        """
-        self._install_dir = install_dir
         self._binary_path = binary_path
-        self._jre_path = jre_path
         self._api_key = api_key
         self._api_base = api_base
+        self._max_turns = max_turns
+        self._time_limit_seconds = time_limit_seconds
+        self._coding = coding
+        self._todo_v2 = todo_v2
+        self._memory = memory
+        self._reasoning_effort = reasoning_effort
         super().__init__(logs_dir, *args, **kwargs)
 
     @staticmethod
     def name() -> str:
         return "core-ai-cli"
 
-    def get_version_command(self) -> str | None:
+    def get_version_command(self) -> str:
         return "core-ai-cli --version 2>&1 || true"
 
     def parse_version(self, stdout: str) -> str:
-        # core-ai-cli prints "1.0.0" or similar
-        import re
-
-        text = stdout.strip()
-        match = re.search(r"(\d+\.\d+[\.\d]*)", text)
-        if match:
-            return match.group(1)
-        return text
+        match = re.search(r"(\d+\.\d+[\.\d]*)", stdout or "")
+        return match.group(1) if match else (stdout or "").strip()
 
     # ------------------------------------------------------------------
-    # Installation
+    # install
     # ------------------------------------------------------------------
 
     async def install(self, environment: BaseEnvironment) -> None:
         if self._binary_path:
-            await self._install_native_binary(environment)
-        elif self._install_dir:
-            await self._install_from_dist(environment)
-        else:
-            await self._install_from_github(environment)
-
-    async def _install_native_binary(self, environment: BaseEnvironment) -> None:
-        """Upload a locally-built native binary to the container."""
-        await environment.upload_file(self._binary_path, "/usr/local/bin/core-ai-cli")  # type: ignore[arg-type]
-        await self.exec_as_root(
-            environment,
-            command="chmod +x /usr/local/bin/core-ai-cli",
-        )
-
-    async def _install_from_dist(self, environment: BaseEnvironment) -> None:
-        """Upload a Gradle application distribution and ensure Java is available."""
-        await self._ensure_java(environment)
-        await environment.upload_dir(self._install_dir, _REMOTE_INSTALL_DIR)  # type: ignore[arg-type]
-        await self.exec_as_root(
-            environment,
-            command=(
-                f"chmod +x {_REMOTE_INSTALL_DIR}/bin/core-ai-cli && "
-                f"ln -sf {_REMOTE_INSTALL_DIR}/bin/core-ai-cli /usr/local/bin/core-ai-cli"
-            ),
-        )
-
-    async def _ensure_java(self, environment: BaseEnvironment) -> None:
-        """Make Java available in the container via one of three strategies:
-        1. jre_path supplied → upload from host (fully offline)
-        2. java already in PATH → nothing to do
-        3. fallback → apt-get install (requires internet)
-        """
-        _REMOTE_JRE_DIR = "/opt/jre"
-
-        if self._jre_path:
-            await environment.upload_dir(self._jre_path, _REMOTE_JRE_DIR)
-            await self.exec_as_root(
-                environment,
-                command=(
-                    f"chmod +x {_REMOTE_JRE_DIR}/bin/java && "
-                    f"ln -sf {_REMOTE_JRE_DIR}/bin/java /usr/local/bin/java"
-                ),
-            )
+            await environment.upload_file(self._binary_path, _REMOTE_BIN)
+            await self.exec_as_root(environment, command=f"chmod +x {_REMOTE_BIN}")
             return
+        await self._install_from_release(environment)
 
-        java_check = await environment.exec(command="java -version 2>&1; echo $?")
-        if (java_check.stdout or "").strip().endswith("0"):
-            return  # already installed
-
-        await self.exec_as_root(
-            environment,
-            command="apt-get update && apt-get install -y openjdk-21-jre-headless",
-            env={"DEBIAN_FRONTEND": "noninteractive"},
-        )
-
-    async def _install_from_github(self, environment: BaseEnvironment) -> None:
-        """Download native binary from GitHub releases."""
-        await self.exec_as_root(
-            environment,
-            command="apt-get update && apt-get install -y curl",
-            env={"DEBIAN_FRONTEND": "noninteractive"},
-        )
-        version_tag = f"v{self._version}" if self._version else "latest"
-        if version_tag == "latest":
-            base_url = (
-                "https://github.com/chancetop-com/core-ai/releases/latest/download"
-            )
+    async def _install_from_release(self, environment: BaseEnvironment) -> None:
+        version = self._version or "latest"
+        if version == "latest":
+            base = "https://github.com/chancetop-com/core-ai/releases/latest/download"
         else:
-            base_url = f"https://github.com/chancetop-com/core-ai/releases/download/{version_tag}"
-
-        await self.exec_as_agent(
+            base = (
+                "https://github.com/chancetop-com/core-ai/releases/download/"
+                f"v{version}"
+            )
+        await self.exec_as_root(
             environment,
             command=(
                 "set -euo pipefail; "
-                'ARCH=$(uname -m | sed "s/x86_64/amd64/;s/aarch64/arm64/"); '
-                f'URL="{base_url}/core-ai-cli-linux-${{ARCH}}"; '
-                'mkdir -p "$HOME/.local/bin" && '
-                'curl -fsSL "$URL" -o "$HOME/.local/bin/core-ai-cli" && '
-                'chmod +x "$HOME/.local/bin/core-ai-cli" && '
-                'export PATH="$HOME/.local/bin:$PATH" && '
-                "core-ai-cli --version"
+                "if ! command -v curl >/dev/null 2>&1; then "
+                "  (apt-get update && apt-get install -y curl ca-certificates) "
+                "  || (apk add --no-cache curl ca-certificates) "
+                "  || (dnf install -y curl ca-certificates); "
+                "fi; "
+                f"curl -fsSL {base}/core-ai-cli-linux.tar.gz "
+                "-o /tmp/core-ai-cli.tar.gz; "
+                "tar -xzf /tmp/core-ai-cli.tar.gz -C /usr/local/bin; "
+                f"mv /usr/local/bin/core-ai-cli-linux {_REMOTE_BIN}; "
+                f"chmod +x {_REMOTE_BIN}; "
+                f"{_REMOTE_BIN} --version"
             ),
         )
 
     # ------------------------------------------------------------------
-    # Config helpers
+    # model / config
     # ------------------------------------------------------------------
 
     def _resolve_provider_and_model(self) -> tuple[str, str]:
-        """Split ``provider/model`` into (provider, model).
-
-        For OpenRouter the model string itself contains a slash
-        (e.g. ``anthropic/claude-sonnet-4-5``), so only the first segment is
-        the provider.
-        """
-        if not self.model_name:
-            return "openrouter", "anthropic/claude-sonnet-4-5"
-        if "/" not in self.model_name:
-            return "openrouter", self.model_name
-        provider, model = self.model_name.split("/", 1)
+        model_name = self.model_name or _host_default_model() or _DEFAULT_MODEL
+        if "/" not in model_name:
+            return "litellm", model_name
+        provider, model = model_name.split("/", 1)
+        if provider not in _PROVIDER_ENV_KEYS:
+            return "litellm", model_name
         return provider, model
 
     def _resolve_api_key(self, provider: str) -> str:
         if self._api_key:
             return self._api_key
-        for env_key in _PROVIDER_ENV_KEYS.get(provider, []):
-            val = self._get_env(env_key)
-            if val:
-                return val
+        for key in _PROVIDER_ENV_KEYS.get(provider, []):
+            value = self._get_env(key)
+            if value:
+                return value
+        if provider == "litellm":
+            entry = _active_auth_entry()
+            if entry and entry.get("api_key"):
+                return str(entry["api_key"])
         return ""
 
     def _resolve_api_base(self, provider: str) -> str | None:
         if self._api_base:
             return self._api_base
-        for env_key in _PROVIDER_BASE_URL_KEYS.get(provider, []):
-            val = self._get_env(env_key)
-            if val:
-                return val
+        for key in _PROVIDER_BASE_ENV_KEYS.get(provider, []):
+            value = self._get_env(key)
+            if value:
+                return value
+        if provider == "litellm":
+            entry = _active_auth_entry()
+            if entry and entry.get("server_url"):
+                return str(entry["server_url"]).rstrip("/") + "/api/cli/v1"
         return None
 
-    def _build_config_properties(self, provider: str, model: str, api_key: str) -> str:
-        lines = [
-            f"{provider}.api.key={api_key}",
-            f"{provider}.model={model}",
-            f"{provider}.models={model}",
-            f"active.provider={provider}",
-            # Dummy username — required by InteractiveConfigSetup.writeConfig() for
-            # litellm; harmless for other providers.
-            "username=harbor",
-            "agent.max.turn=10000",
-            "agent.coding.enabled=true",
-            "agent.todo.v2.enabled=true",
-        ]
+    def _build_config(self, provider: str, model: str, api_key: str) -> str:
+        lines = []
         api_base = self._resolve_api_base(provider)
         if api_base:
-            lines.insert(0, f"{provider}.api.base={api_base}")
-        # litellm needs extra tuning fields to avoid hitting default timeouts
-        if provider == "litellm":
-            lines += [
-                "litellm.stream.buffer.size=256",
-                "litellm.timeout.seconds=300",
+            lines.append(f"{provider}.api.base={api_base}")
+        lines.extend(
+            [
+                f"{provider}.api.key={api_key}",
+                f"{provider}.model={model}",
+                f"{provider}.models={model}",
+                "active.provider=" + provider,
+                "llm.model=" + model,
+                "username=bench",
+                f"agent.max.turn={self._max_turns or 10000}",
+                f"agent.coding.enabled={str(self._coding).lower()}",
+                f"agent.todo.v2.enabled={str(self._todo_v2).lower()}",
+                f"agent.memory.enabled={str(self._memory).lower()}",
+                "agent.memory.prompt.extraction=false",
             ]
-        return "\n".join(lines)
+        )
+        if self._reasoning_effort:
+            lines.append(
+                "llm.request.extra_body={\"reasoning_effort\":"
+                + f"\"{self._reasoning_effort}\"}}"
+            )
+        return "\n".join(lines) + "\n"
+
+    async def _prepare_config(
+        self, environment: BaseEnvironment, config: str
+    ) -> None:
+        await self.exec_as_agent(
+            environment,
+            command=(
+                "mkdir -p ~/.core-ai && "
+                f"printf %s {shlex.quote(config)} > ~/.core-ai/agent.properties"
+            ),
+        )
 
     # ------------------------------------------------------------------
-    # ATIF context
-    # ------------------------------------------------------------------
-
-    def populate_context_post_run(self, context: AgentContext) -> None:
-        # Plain text output only — no structured trajectory for now.
-        pass
-
-    # ------------------------------------------------------------------
-    # Run
+    # run
     # ------------------------------------------------------------------
 
     @with_prompt_template
@@ -275,48 +243,57 @@ class CoreAiCli(BaseInstalledAgent):
     ) -> None:
         provider, model = self._resolve_provider_and_model()
         api_key = self._resolve_api_key(provider)
+        config = self._build_config(provider, model, api_key)
+        await self._prepare_config(environment, config)
 
-        config_content = self._build_config_properties(provider, model, api_key)
-        escaped_config = shlex.quote(config_content)
-        escaped_instruction = shlex.quote(instruction)
+        workspace = environment.task_env_config.workdir
+        if not workspace:
+            pwd = await environment.exec(command="pwd")
+            workspace = (pwd.stdout or "/app").strip() or "/app"
+        if not workspace.startswith("/"):
+            workspace = "/app"
+
+        flags = [
+            "--dangerously-skip-permissions",
+            f"--workspace {shlex.quote(workspace)}",
+            f"--prompt {shlex.quote(instruction)}",
+        ]
+        if self._time_limit_seconds:
+            flags.append(f"--time-limit-seconds {int(self._time_limit_seconds)}")
 
         env: dict[str, str] = {}
-        for env_key in _PROVIDER_ENV_KEYS.get(provider, []):
-            val = self._get_env(env_key)
-            if val:
-                env[env_key] = val
+        for key in _PROVIDER_ENV_KEYS.get(provider, []):
+            value = self._get_env(key)
+            if value:
+                env[key] = value
 
-        # When using a JRE/JDK distribution, set JAVA_HOME so the Gradle startup
-        # script resolves the full path to java directly (JAVACMD=$JAVA_HOME/bin/java)
-        # instead of relying on PATH lookup which can fail in some shell environments.
-        if self._install_dir and not self._binary_path:
-            env["JAVA_HOME"] = "/opt/jre"
-
-        # Write config to the default location (~/.core-ai/agent.properties).
-        # InteractiveConfigSetup.isConfigValid() hard-codes this path, so using
-        # --config /tmp/... alone is not enough to bypass the interactive setup.
-        await self.exec_as_agent(
-            environment,
-            command=(
-                f"mkdir -p ~/.core-ai && "
-                f"printf %s {escaped_config} > ~/.core-ai/agent.properties"
-            ),
-            env=env,
-        )
-
-        cli_flags = self.build_cli_flags()
-        extra_flags = (cli_flags + " ") if cli_flags else ""
-
+        output_path = EnvironmentPaths.agent_dir / _OUTPUT_FILENAME
         await self.exec_as_agent(
             environment,
             command=(
                 'export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"; '
-                f"core-ai-cli "
-                f"--dangerously-skip-permissions "
-                f"--workspace /app "
-                f"--prompt {escaped_instruction} "
-                f"{extra_flags}"
-                f"2>&1 | tee /logs/agent/{_OUTPUT_FILENAME}"
+                f"core-ai-cli {' '.join(flags)} 2>&1 | tee {output_path}"
             ),
             env=env,
         )
+
+    def populate_context_post_run(self, context: AgentContext) -> None:
+        # core-ai-cli prints a human-readable stream, not an ATIF trajectory.
+        # Parse its final usage line, e.g.
+        #   ✦ 22s | 138,223 tokens (↑ 135,776 ↓ 2,447 ~115,968)
+        log_path = self.logs_dir / _OUTPUT_FILENAME
+        try:
+            text = log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return
+        matches = re.findall(
+            r"([\d,]+) tokens \(↑ ([\d,]+) ↓ ([\d,]+)(?: ~([\d,]+))?",
+            text,
+        )
+        if not matches:
+            return
+        _, input_tokens, output_tokens, cache_tokens = matches[-1]
+        context.n_input_tokens = int(input_tokens.replace(",", ""))
+        context.n_output_tokens = int(output_tokens.replace(",", ""))
+        if cache_tokens:
+            context.n_cache_tokens = int(cache_tokens.replace(",", ""))
