@@ -71,10 +71,8 @@ if (-not $env:LITELLM_API_BASE -or -not $env:LITELLM_API_KEY) {
         $Auth = Get-Content -Raw $AuthPath | ConvertFrom-Json |
             Where-Object { $_.active -eq $true } | Select-Object -First 1
         if ($Auth) {
-            if (-not $env:LITELLM_API_BASE) {
-                $env:LITELLM_API_BASE = $Auth.server_url.TrimEnd('/') + "/api/cli/v1"
-            }
-            if (-not $env:LITELLM_API_KEY) { $env:LITELLM_API_KEY = $Auth.api_key }
+            $env:LITELLM_API_BASE = $Auth.server_url.TrimEnd('/') + "/api/cli/v1"
+            $env:LITELLM_API_KEY = $Auth.api_key
         }
     }
 }

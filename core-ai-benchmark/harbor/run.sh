@@ -120,10 +120,11 @@ if not entry:
 base = os.environ.get("LITELLM_API_BASE")
 key = os.environ.get("LITELLM_API_KEY")
 server_url = str(entry.get("server_url") or "").rstrip("/")
-if not base and server_url:
-    print("export LITELLM_API_BASE=" + shlex.quote(server_url + "/api/cli/v1"))
-if not key and entry.get("api_key"):
-    print("export LITELLM_API_KEY=" + shlex.quote(str(entry["api_key"])))
+if not (base and key):
+    if server_url:
+        print("export LITELLM_API_BASE=" + shlex.quote(server_url + "/api/cli/v1"))
+    if entry.get("api_key"):
+        print("export LITELLM_API_KEY=" + shlex.quote(str(entry["api_key"])))
 PY
 )"
 }
