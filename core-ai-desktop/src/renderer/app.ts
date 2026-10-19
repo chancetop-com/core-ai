@@ -442,6 +442,7 @@ const artifactByCallId = new Map<string, ArtifactEntry>();
 interface AssistToggle {
   chip: HTMLButtonElement;
   panel: HTMLElement;
+  body: HTMLElement;
   setLabel(label: string): void;
 }
 
@@ -3335,25 +3336,35 @@ function ensureTurnStatusChip(current: StreamingState): void {
   startTurnTick(chip, clock);
 }
 
+/**
+ * A chip toggle with its panel. The collapse footer stays at the end of the expanded content, so a
+ * long panel (thinking, tool output) can be closed without scrolling back up to the chip.
+ */
 function createAssistToggle(label: string): AssistToggle {
   const chip = el('button', 'assist-chip') as HTMLButtonElement;
-  const panel = el('div', 'assist-panel');
-  panel.hidden = true;
+  const group = el('div', 'assist-panel');
+  const body = el('div', 'assist-panel-body');
+  const collapse = el('button', 'assist-collapse', 'Collapse') as HTMLButtonElement;
   let base = label;
+  let open = false;
   const render = () => {
-    chip.textContent = `${panel.hidden ? '▸' : '▾'} ${base}`;
+    group.hidden = !open;
+    chip.textContent = `${open ? '▾' : '▸'} ${base}`;
+    chip.classList.toggle('active', open);
   };
-  chip.onclick = () => {
-    panel.hidden = !panel.hidden;
-    chip.classList.toggle('active', !panel.hidden);
+  const setOpen = (next: boolean) => {
+    open = next;
     render();
   };
+  chip.onclick = () => setOpen(!open);
+  collapse.onclick = () => setOpen(false);
+  group.append(body, collapse);
   const setLabel = (next: string) => {
     base = next;
     render();
   };
   setLabel(label);
-  return { chip, panel, setLabel };
+  return { chip, panel: group, body, setLabel };
 }
 
 function formatSeconds(ms: number): string {
@@ -3371,7 +3382,7 @@ function ensureToolPanel(current: StreamingState): HTMLElement {
     const toggle = createAssistToggle('Tool use');
     toggle.chip.classList.add('tools-chip');
     current.toolsToggle = toggle;
-    current.toolsPanel = toggle.panel;
+    current.toolsPanel = toggle.body;
     chips.append(toggle.chip);
     panels.append(toggle.panel);
   }
@@ -3500,7 +3511,7 @@ function recordToolUse(current: StreamingState, kind: ToolUseKind, text: string)
     const { chips, panels } = ensureAssistBlock(current);
     const toggle = createAssistToggle(meta.label);
     toggle.chip.classList.add(meta.chipClass);
-    chip = { toggle, panel: toggle.panel, rows: new Map() };
+    chip = { toggle, panel: toggle.body, rows: new Map() };
     current.toolUses.set(kind, chip);
     chips.append(toggle.chip);
     panels.append(toggle.panel);
@@ -3542,7 +3553,7 @@ function ensureMemoryUi(wrapper: HTMLElement): MemoryUi {
   chips.append(toggle.chip);
   panels.append(toggle.panel);
   const list = el('div', 'memory-runs');
-  toggle.panel.append(list);
+  toggle.body.append(list);
   const ui: MemoryUi = { toggle, list, runs: [] };
   memoryUi.set(wrapper, ui);
   return ui;
@@ -3725,8 +3736,8 @@ function appendTaskEntry(view: SessionView, name: string, desc: string, status: 
     chevron.textContent = body.hidden ? '▸' : '▾';
   };
   entry.append(head, body);
-  toggle.panel.append(entry);
-  toggle.setLabel(`Tasks (${toggle.panel.childElementCount})`);
+  toggle.body.append(entry);
+  toggle.setLabel(`Tasks (${toggle.body.childElementCount})`);
   const task: UiTask = { status, node: entry, statusNode };
   refreshTasksBusy(entry);
   return task;
@@ -3982,7 +3993,7 @@ function applySessionEvent(view: SessionView, event: any): void {
         const toggle = createAssistToggle('Thinking…');
         current.reasoningToggle = toggle;
         current.reasoningPre = el('div', 'reasoning');
-        toggle.panel.append(current.reasoningPre);
+        toggle.body.append(current.reasoningPre);
         // the status chip stays first in the row; the thinking chip slots in right after it
         const statusChip = chips.querySelector('.turn-status');
         if (statusChip) chips.insertBefore(toggle.chip, statusChip.nextSibling);
