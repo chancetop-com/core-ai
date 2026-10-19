@@ -31,7 +31,7 @@ _PROVIDER_BASE_ENV_KEYS: dict[str, list[str]] = {
     "azure": ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_BASE"],
 }
 
-_DEFAULT_MODEL = "deepseek-v4-flash"
+_DEFAULT_MODEL = "deepseek-flash"
 _REMOTE_BIN = "/usr/local/bin/core-ai-cli"
 _OUTPUT_FILENAME = "core-ai-cli.txt"
 
@@ -89,7 +89,7 @@ class CoreAiCli(BaseInstalledAgent):
         coding: bool = True,
         todo_v2: bool = True,
         memory: bool = False,
-        reasoning_effort: str | None = None,
+        reasoning_effort: str | None = "max",
         *args,
         **kwargs,
     ):
@@ -214,8 +214,11 @@ class CoreAiCli(BaseInstalledAgent):
         )
         if self._reasoning_effort:
             lines.append(
-                "llm.request.extra_body={\"reasoning_effort\":"
-                + f"\"{self._reasoning_effort}\"}}"
+                "llm.request.extra_body="
+                + json.dumps(
+                    {"reasoning_effort": self._reasoning_effort},
+                    separators=(",", ":"),
+                )
             )
         return "\n".join(lines) + "\n"
 

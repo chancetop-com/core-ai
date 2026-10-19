@@ -7,7 +7,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HARBOR="${HARBOR:-harbor}"
 TRIALS="${TRIALS:-1}"
 CONCURRENCY="${CONCURRENCY:-1}"
-MODEL="${MODEL:-litellm/deepseek-v4-flash}"
+MODEL="${MODEL:-litellm/deepseek-flash}"
+THINKING_EFFORT="${THINKING_EFFORT-max}"
 TASK="${TASK:-}"
 N_TASKS="${N_TASKS:-}"
 JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
@@ -22,12 +23,14 @@ usage() {
 Usage: run.sh [options]
 
 Runs the full Terminal-Bench 2.1 dataset (89 tasks) against core-ai-cli.
-Defaults: 1 trial, 1 concurrent trial, model litellm/deepseek-v4-flash.
+Defaults: 1 trial, 1 concurrent trial, model litellm/deepseek-flash,
+thinking effort max.
 
 Options:
   --trials N            Trials per task (default: 1; official leaderboard uses 5)
   --concurrency N       Concurrent trials (default: 1; raise after increasing Docker memory)
-  --model MODEL         Model in provider/model form (default: litellm/deepseek-v4-flash)
+  --model MODEL         Model in provider/model form (default: litellm/deepseek-flash)
+  --thinking-effort E   Reasoning effort: none|low|medium|high|max (default: max)
   --task NAME           Run one task only (repeatable flag not required)
   --n-tasks N           Run the first N tasks only
   --jobs-dir DIR        Harbor jobs directory (default: .harbor-jobs)
@@ -43,8 +46,9 @@ Authentication:
   `core-ai-cli --login`) is used. LITELLM_API_BASE / LITELLM_API_KEY override it.
 
 Environment:
-  HARBOR, TRIALS, CONCURRENCY, MODEL, TASK, N_TASKS, HARBOR_JOBS_DIR,
-  TB21_DATASET_DIR, TB21_DATASET_REF, CORE_AI_CLI_VERSION, CORE_AI_CLI_BINARY.
+  HARBOR, TRIALS, CONCURRENCY, MODEL, THINKING_EFFORT, TASK, N_TASKS,
+  HARBOR_JOBS_DIR, TB21_DATASET_DIR, TB21_DATASET_REF,
+  CORE_AI_CLI_VERSION, CORE_AI_CLI_BINARY.
 EOF
 }
 
@@ -53,6 +57,7 @@ while [ $# -gt 0 ]; do
         --trials) TRIALS="$2"; shift 2 ;;
         --concurrency) CONCURRENCY="$2"; shift 2 ;;
         --model) MODEL="$2"; shift 2 ;;
+        --thinking-effort) THINKING_EFFORT="$2"; shift 2 ;;
         --task) TASK="$2"; shift 2 ;;
         --n-tasks) N_TASKS="$2"; shift 2 ;;
         --jobs-dir) JOBS_DIR="$2"; shift 2 ;;
@@ -226,6 +231,9 @@ HARBOR_ARGS=(
     -y
     --jobs-dir "$JOBS_DIR"
 )
+if [ -n "$THINKING_EFFORT" ]; then
+    HARBOR_ARGS+=(--ak "reasoning_effort=$THINKING_EFFORT")
+fi
 if [ -n "$MODEL" ]; then
     HARBOR_ARGS+=(-m "$MODEL")
 fi
@@ -239,6 +247,7 @@ fi
 echo "Dataset: $DATASET_DIR ($(git -C "$DATASET_DIR" rev-parse --short HEAD))"
 echo "core-ai-cli: $CLI_BINARY"
 echo "Model: $MODEL"
+echo "Thinking effort: ${THINKING_EFFORT:-none}"
 echo "Trials: $TRIALS, concurrency: $CONCURRENCY"
 echo "Jobs: $JOBS_DIR"
 

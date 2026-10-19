@@ -1,7 +1,8 @@
 ﻿param(
     [int]$Trials = 1,
     [int]$Concurrency = 1,
-    [string]$Model = "litellm/deepseek-v4-flash",
+    [string]$Model = "litellm/deepseek-flash",
+    [string]$ThinkingEffort = "max",
     [string]$Task = "",
     [int]$NTasks = 0,
     [string]$JobsDir = "",
@@ -23,12 +24,14 @@ if ($Help) {
 Usage: .\run.ps1 [options]
 
 Runs the full Terminal-Bench 2.1 dataset (89 tasks) against core-ai-cli.
-Defaults: 1 trial, 1 concurrent trial, model litellm/deepseek-v4-flash.
+Defaults: 1 trial, 1 concurrent trial, model litellm/deepseek-flash,
+thinking effort max.
 
 Options:
   -Trials N            Trials per task (default: 1; official leaderboard uses 5)
   -Concurrency N       Concurrent trials (default: 1; raise after increasing Docker memory)
-  -Model MODEL         Model in provider/model form (default: litellm/deepseek-v4-flash)
+  -Model MODEL         Model in provider/model form (default: litellm/deepseek-flash)
+  -ThinkingEffort E    Reasoning effort: none|low|medium|high|max (default: max)
   -Task NAME           Run one task only
   -NTasks N            Run the first N tasks only
   -JobsDir DIR         Harbor jobs directory (default: .harbor-jobs)
@@ -150,6 +153,7 @@ $HarborArgs = @(
     "-y",
     "--jobs-dir", $JobsDir
 )
+if ($ThinkingEffort) { $HarborArgs += @("--ak", "reasoning_effort=$ThinkingEffort") }
 if ($Model) { $HarborArgs += @("-m", $Model) }
 if ($Task) { $HarborArgs += @("-i", $Task) }
 if ($NTasks -gt 0) { $HarborArgs += @("-l", "$NTasks") }
@@ -158,6 +162,7 @@ $commit = (git -C $DatasetDir rev-parse --short HEAD)
 Write-Host "Dataset: $DatasetDir ($commit)"
 Write-Host "core-ai-cli: $CliBinary"
 Write-Host "Model: $Model"
+Write-Host "Thinking effort: $ThinkingEffort"
 Write-Host "Trials: $Trials, concurrency: $Concurrency"
 Write-Host "Jobs: $JobsDir"
 

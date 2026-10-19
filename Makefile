@@ -89,7 +89,7 @@ release: cli
 #        make benchmark TASK=fix-git TRIALS=1 CONCURRENCY=1
 benchmark:
 	@command -v harbor >/dev/null 2>&1 || { echo "harbor not installed. Run: make install-harbor"; exit 1; }
-	bash core-ai-benchmark/harbor/run.sh $(if $(TASK),--task $(TASK),) $(if $(TRIALS),--trials $(TRIALS),) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY),) $(if $(MODEL),--model $(MODEL),) $(if $(N_TASKS),--n-tasks $(N_TASKS),)
+	bash core-ai-benchmark/harbor/run.sh $(if $(TASK),--task $(TASK),) $(if $(TRIALS),--trials $(TRIALS),) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY),) $(if $(MODEL),--model $(MODEL),) $(if $(THINKING_EFFORT),--thinking-effort $(THINKING_EFFORT),) $(if $(N_TASKS),--n-tasks $(N_TASKS),)
 
 # Install the pinned Harbor CLI via uv
 install-harbor:
@@ -97,5 +97,5 @@ install-harbor:
 
 # Alias for the Terminal-Bench 2.1 benchmark
 # Usage: make tbench2 TASK=fix-git
-#        make tbench2 MODEL=litellm/deepseek-v4-flash
+#        make tbench2 MODEL=litellm/deepseek-flash THINKING_EFFORT=max
 tbench2: benchmark

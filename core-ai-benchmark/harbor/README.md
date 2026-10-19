@@ -39,7 +39,8 @@ By default this runs:
 - all 89 tasks from `terminal-bench/terminal-bench-2-1`;
 - 1 trial per task;
 - 1 concurrent trial;
-- model `litellm/deepseek-v4-flash`;
+- model `litellm/deepseek-flash`;
+- reasoning effort `max`;
 - results under `core-ai-benchmark/harbor/.harbor-jobs/`.
 
 Authentication is automatic: the runner reads the active entry in
@@ -55,7 +56,7 @@ Bash:
 bash core-ai-benchmark/harbor/run.sh \
   --trials 1 \
   --concurrency 2 \
-  --model litellm/deepseek-v4-flash \
+  --model litellm/deepseek-flash \
   --n-tasks 10
 ```
 
@@ -69,7 +70,8 @@ PowerShell:
 |---|---|---|
 | `--trials` / `-Trials` | `1` | Trials per task. Official leaderboard runs use 5. |
 | `--concurrency` / `-Concurrency` | `1` | Concurrent trials. Raise only after increasing Docker memory. |
-| `--model` / `-Model` | `litellm/deepseek-v4-flash` | Model in `provider/model` form. |
+| `--model` / `-Model` | `litellm/deepseek-flash` | Model in `provider/model` form. |
+| `--thinking-effort` / `-ThinkingEffort` | `max` | Reasoning effort: `none`, `low`, `medium`, `high`, `max`. |
 | `--task` / `-Task` | all | Run one task by name. |
 | `--n-tasks` / `-NTasks` | all | Run the first N tasks. |
 | `--jobs-dir` / `-JobsDir` | `.harbor-jobs` | Harbor results directory. |
@@ -79,9 +81,9 @@ PowerShell:
 | `--cli-version` / `-CliVersion` | `2.0.52` | Release version to download. |
 | `--update-dataset` / `-UpdateDataset` | off | `git pull` the local dataset first. |
 
-Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `TASK`, `N_TASKS`,
-`HARBOR_JOBS_DIR`, `TB21_DATASET_DIR`, `TB21_DATASET_REF`,
-`CORE_AI_CLI_VERSION`, `CORE_AI_CLI_BINARY`, `HARBOR`.
+Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
+`TASK`, `N_TASKS`, `HARBOR_JOBS_DIR`, `TB21_DATASET_DIR`,
+`TB21_DATASET_REF`, `CORE_AI_CLI_VERSION`, `CORE_AI_CLI_BINARY`, `HARBOR`.
 
 ## What the runner does
 
@@ -121,8 +123,11 @@ Useful files:
   leaderboard runs use 5 trials per task (`--trials 5`), but community
   submissions for 2.1 are currently closed; use this runner for internal
   comparisons.
-- **Model.** `litellm/deepseek-v4-flash` is the model used by the validated
-  pilot. Set `--model` to a model available on your core-ai server.
+- **Model.** `litellm/deepseek-flash` is the default. Set `--model` to a model
+  available on your core-ai server.
+- **Thinking effort.** The runner defaults to `max` and passes it through
+  `--ak reasoning_effort=...`, which the adapter writes into
+  `llm.request.extra_body`.
 - **Dataset pinning.** The 10-task pilot used dataset commit
   `7131e4375048a0e408a8fb404b5f499d726b695b`. Set
   `--dataset-ref 7131e4375048a0e408a8fb404b5f499d726b695b` to reproduce it.
