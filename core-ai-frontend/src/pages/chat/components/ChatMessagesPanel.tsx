@@ -166,7 +166,8 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const tasksSeg = msg.segments?.find(s => s.type === 'tasks') as TasksSegment | undefined;
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
-  const customSegs = msg.segments?.filter((s): s is QuickRepliesSegment | CardSegment => s.type === 'quick_replies' || s.type === 'card') ?? [];
+  const cardSegs = msg.segments?.filter((s): s is CardSegment => s.type === 'card') ?? [];
+  const quickReplySegs = msg.segments?.filter((s): s is QuickRepliesSegment => s.type === 'quick_replies') ?? [];
   const textSeg = msg.segments?.find(s => s.type === 'text');
   const generatedVideo = textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
   const attachments = msg.attachments ?? [];
@@ -210,11 +211,11 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             <ToolsBlock tools={toolsSeg?.tools ?? []} compression={compressionSeg} />
           </div>
         )}
-        {customSegs.length > 0 && (
+        {cardSegs.length > 0 && (
           <div className="mb-3 flex flex-col gap-2">
-            {customSegs.map((seg, idx) => seg.type === 'quick_replies'
-              ? <QuickReplyButtons key={idx} question={seg.question} options={seg.options} disabled={interactiveDisabled} onSelect={onQuickReply} />
-              : <RichCardView key={idx} card={seg.card} disabled={interactiveDisabled} onAction={onQuickReply} />)}
+            {cardSegs.map((seg, idx) => (
+              <RichCardView key={idx} card={seg.card} disabled={interactiveDisabled} onAction={onQuickReply} />
+            ))}
           </div>
         )}
         {(hasAttachments || hasRenderableText) && (
@@ -287,6 +288,13 @@ export const ChatMessageRow = memo(function ChatMessageRow({
                 }}
                 onOpen={onOpenArtifact}
               />
+            ))}
+          </div>
+        )}
+        {quickReplySegs.length > 0 && (
+          <div className="mt-2 flex flex-col gap-2">
+            {quickReplySegs.map((seg, idx) => (
+              <QuickReplyButtons key={idx} question={seg.question} options={seg.options} disabled={interactiveDisabled} onSelect={onQuickReply} />
             ))}
           </div>
         )}
