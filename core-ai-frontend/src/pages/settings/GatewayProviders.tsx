@@ -533,10 +533,14 @@ export default function GatewayProviders() {
   const setDefaultModel = async (model: GatewayModel) => {
     setError('');
     try {
-      await api.gateway.setDefaultModel(model.id);
+      if (model.isDefault) {
+        await api.gateway.clearDefaultModel(model.id);
+      } else {
+        await api.gateway.setDefaultModel(model.id);
+      }
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to set default model');
+      setError(err instanceof Error ? err.message : 'Failed to update default model');
     }
   };
 
@@ -813,7 +817,7 @@ function renderModelsTable(props: {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-1">
-                    <IconButton title={model.isDefault ? 'Default model' : 'Set as default'} onClick={() => { if (!model.isDefault) setDefaultModel(model); }}>
+                    <IconButton title={model.isDefault ? 'Clear default' : 'Set as default'} onClick={() => setDefaultModel(model)}>
                       <Star size={15} style={model.isDefault ? { color: 'var(--color-warning)', fill: 'var(--color-warning)' } : undefined} />
                     </IconButton>
                     <IconButton

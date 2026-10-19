@@ -2137,6 +2137,8 @@ export const api = {
       request<void>(`/api/gateway/models/${id}`, { method: 'DELETE' }),
     setDefaultModel: (id: string) =>
       request<GatewayModel>(`/api/gateway/models/${id}/set-default`, { method: 'POST' }),
+    clearDefaultModel: (id: string) =>
+      request<GatewayModel>(`/api/gateway/models/${id}/clear-default`, { method: 'POST' }),
     discoverModels: (providerId: string) =>
       request<ListGatewayDiscoveredModelsResponse>(`/api/gateway/providers/${providerId}/models/discover`, { method: 'POST' }),
     importModels: (providerId: string, data: ImportGatewayModelsRequest) =>

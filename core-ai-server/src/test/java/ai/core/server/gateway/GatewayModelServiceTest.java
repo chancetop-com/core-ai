@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -201,6 +202,53 @@ class GatewayModelServiceTest {
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
         verify(service.gatewayModelCollection).replace(captor.capture());
         assertNull(captor.getValue().temperature);
+    }
+
+    @Test
+    void updateDefaultFalseUnmarksDefaultModel() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var existing = new GatewayModelConfig();
+        existing.id = "model-1";
+        existing.modelId = "fast-chat";
+        existing.providerId = "provider-1";
+        existing.upstreamModel = "gpt-4o";
+        existing.endpointTypes = List.of("chat.completions");
+        existing.enabled = Boolean.TRUE;
+        existing.isDefault = Boolean.TRUE;
+        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+
+        var view = service.updateDefault("model-1", false, "admin-1");
+
+        assertEquals(Boolean.FALSE, view.isDefault);
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).replace(captor.capture());
+        assertEquals(Boolean.FALSE, captor.getValue().isDefault);
+    }
+
+    @Test
+    void updateDefaultFalseLeavesNonDefaultModelUntouched() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var existing = new GatewayModelConfig();
+        existing.id = "model-1";
+        existing.modelId = "fast-chat";
+        existing.providerId = "provider-1";
+        existing.upstreamModel = "gpt-4o";
+        existing.endpointTypes = List.of("chat.completions");
+        existing.enabled = Boolean.TRUE;
+        existing.isDefault = Boolean.FALSE;
+        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+
+        var view = service.updateDefault("model-1", false, "admin-1");
+
+        assertEquals(Boolean.FALSE, view.isDefault);
+        verify(service.gatewayModelCollection, never()).replace(any(GatewayModelConfig.class));
+    }
+
+    @Test
+    void rejectsNonAdminForUpdateDefault() {
+        var service = serviceWithUser(user("user-1"), provider("provider-1", "LiteLLM"));
+
+        assertThrows(ForbiddenException.class, () -> service.updateDefault("model-1", false, "user-1"));
     }
 
     @Test

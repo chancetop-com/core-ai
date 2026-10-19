@@ -187,11 +187,12 @@ public class GatewayModelService {
         return toView(entity, provider);
     }
 
-    public GatewayModelView markDefault(String id, String userId) {
+    public GatewayModelView updateDefault(String id, boolean isDefault, String userId) {
         GatewayAdminGuard.requireAdmin(userCollection, userId);
         var entity = getEntity(id);
-        clearDefaults(entity.providerId);
-        entity.isDefault = Boolean.TRUE;
+        if (!isDefault && !Boolean.TRUE.equals(entity.isDefault)) return toView(entity, provider(entity.providerId));
+        if (isDefault) clearDefaults(entity.providerId);
+        entity.isDefault = isDefault;
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
         gatewayModelCollection.replace(entity);

@@ -39,6 +39,10 @@ public interface GatewayModelWebService {
     GatewayModelView markDefault(@PathParam("id") String id);
 
     @POST
+    @Path("/api/gateway/models/:id/clear-default")
+    GatewayModelView clearDefault(@PathParam("id") String id);
+
+    @POST
     @Path("/api/gateway/providers/:id/models/discover")
     ListGatewayDiscoveredModelsResponse discover(@PathParam("id") String id);
 

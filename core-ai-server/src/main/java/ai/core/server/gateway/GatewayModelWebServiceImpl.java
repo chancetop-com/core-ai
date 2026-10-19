@@ -64,7 +64,13 @@ public class GatewayModelWebServiceImpl implements GatewayModelWebService {
     @Override
     @PermissionsRequired(PermissionCodes.GATEWAY_MANAGE)
     public GatewayModelView markDefault(String id) {
-        return gatewayModelService.markDefault(id, userId());
+        return gatewayModelService.updateDefault(id, true, userId());
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.GATEWAY_MANAGE)
+    public GatewayModelView clearDefault(String id) {
+        return gatewayModelService.updateDefault(id, false, userId());
     }
 
     @Override
