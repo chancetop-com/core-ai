@@ -181,7 +181,9 @@ export function withExecutableOnPath(env: Record<string, string>, directory: str
   const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === 'PATH') ?? 'PATH';
   const separator = process.platform === 'win32' ? ';' : ':';
   const current = env[pathKey] ?? process.env[pathKey] ?? '';
-  const parts = current.split(separator).filter(Boolean);
-  if (!parts.includes(directory)) parts.unshift(directory);
+  // Moving an existing entry to the front matters: npm puts node_modules/.bin first, so merely
+  // checking `includes` would leave a globally installed core-ai-cli ahead of the bundled one.
+  const parts = current.split(separator).filter((part) => Boolean(part) && part !== directory);
+  parts.unshift(directory);
   return { ...env, [pathKey]: parts.join(separator) };
 }

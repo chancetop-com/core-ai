@@ -29,4 +29,11 @@ test('withExecutableOnPath prepends the bundled engine directory once', () => {
   assert.equal(first[pathKey].split(path.delimiter)[0], directory);
   const second = withExecutableOnPath({ [pathKey]: first[pathKey] }, directory);
   assert.equal(second[pathKey].split(path.delimiter).filter((part) => part === directory).length, 1);
+
+  // npm puts node_modules/.bin first and node's own bin later; the bundled directory must still
+  // win even when it is already somewhere on PATH.
+  const seeded = [path.join(directory, '..', 'somewhere'), directory, path.join(directory, '..', 'elsewhere')].join(path.delimiter);
+  const moved = withExecutableOnPath({ [pathKey]: seeded }, directory);
+  assert.equal(moved[pathKey].split(path.delimiter)[0], directory);
+  assert.equal(moved[pathKey].split(path.delimiter).filter((part) => part === directory).length, 1);
 });
