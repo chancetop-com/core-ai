@@ -251,9 +251,17 @@ echo "Thinking effort: ${THINKING_EFFORT:-none}"
 echo "Trials: $TRIALS, concurrency: $CONCURRENCY"
 echo "Jobs: $JOBS_DIR"
 
+set +e
 "$HARBOR" "${HARBOR_ARGS[@]}"
+HARBOR_EXIT=$?
+set -e
+
+if [ -f "$SCRIPT_DIR/summarize.py" ]; then
+    "$PYTHON_BIN" "$SCRIPT_DIR/summarize.py" "$JOBS_DIR" || true
+fi
 
 echo
 echo "Results: $JOBS_DIR"
 echo "Inspect: $HARBOR view \"$JOBS_DIR\""
 echo "Official leaderboard note: Terminal-Bench 2.1 community submissions are closed."
+exit "$HARBOR_EXIT"

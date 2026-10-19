@@ -95,6 +95,11 @@ Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 5. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
    `--ak binary_path=...`.
 6. Writes results to `.harbor-jobs/<timestamp>/`.
+7. Summarizes the job into `<job>/report.md` and `<job>/summary.csv`.
+
+The report includes pass/fail/error counts, pass rates, mean reward, token
+totals, and a per-task table. Infra errors are listed separately from model
+failures.
 
 The adapter lives in `cli.py`. It installs the native binary into the task
 container, writes `~/.core-ai/agent.properties` with the resolved provider and
@@ -109,6 +114,8 @@ harbor view core-ai-benchmark/harbor/.harbor-jobs
 
 Useful files:
 
+- `report.md` — human-readable summary with pass rate, tokens, and a per-task table.
+- `summary.csv` — the same per-task data in machine-readable form.
 - `result.json` — job summary, `stats.evals.*.metrics[0].mean` is the mean reward.
 - `<task>__<id>/verifier/reward.txt` — per-trial reward.
 - `<task>__<id>/verifier/ctrf.json` — verifier test details.

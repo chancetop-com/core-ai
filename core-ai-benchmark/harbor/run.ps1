@@ -168,6 +168,15 @@ Write-Host "Jobs: $JobsDir"
 
 & $HarborCommand @HarborArgs
 $exitCode = $LASTEXITCODE
+$Python = Get-Command python -ErrorAction SilentlyContinue
+if ($Python -and (Test-Path (Join-Path $ScriptDir "summarize.py"))) {
+    try {
+        & $Python.Source (Join-Path $ScriptDir "summarize.py") $JobsDir
+    }
+    catch {
+        Write-Warning "Failed to generate report: $_"
+    }
+}
 
 Write-Host ""
 Write-Host "Results: $JobsDir"
