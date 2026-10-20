@@ -7,6 +7,9 @@ import ai.core.tool.tools.MediaModelHint;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,6 +41,28 @@ class MediaModelCatalogTest {
         assertEquals("GPT Image 2.5", catalog.imageModels().getFirst().displayName());
         assertNull(catalog.error());
         assertFalse(catalog.unavailable());
+    }
+
+    @Test
+    void concurrentLoadsJoinTheSameRefresh() throws Exception {
+        var client = mock(HubMediaModelClient.class);
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        when(client.models()).thenAnswer(invocation -> {
+            entered.countDown();
+            release.await(2, TimeUnit.SECONDS);
+            return response();
+        });
+        var catalog = new MediaModelCatalog(client);
+
+        var first = CompletableFuture.runAsync(() -> catalog.ensureLoaded(2_000));
+        assertTrue(entered.await(2, TimeUnit.SECONDS));
+        var second = CompletableFuture.runAsync(() -> catalog.ensureLoaded(2_000));
+        release.countDown();
+        first.get(5, TimeUnit.SECONDS);
+        second.get(5, TimeUnit.SECONDS);
+
+        verify(client, times(1)).models();
     }
 
     @Test
@@ -78,6 +103,17 @@ class MediaModelCatalogTest {
         assertTrue(catalog.unavailable());
         assertTrue(catalog.imageModels().isEmpty());
         assertNull(catalog.defaultImageModel());
+    }
+
+    @Test
+    void reportsAnExpiredLoginWithANextStep() {
+        var client = mock(HubMediaModelClient.class);
+        when(client.models()).thenThrow(new RemoteApiException(401, "unauthorized"));
+        var catalog = new MediaModelCatalog(client);
+
+        catalog.ensureLoaded(1_000);
+
+        assertEquals("Authentication failed. Sign in again from Hub.", catalog.error());
     }
 
     @Test

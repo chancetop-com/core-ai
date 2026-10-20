@@ -14,8 +14,9 @@ marked.setOptions({ gfm: true, breaks: true });
 /**
  * Assistant output is markdown; sanitize before it touches innerHTML. Unknown protocols are allowed only
  * because tool results link generated images/videos by absolute path (`C:\…`, `/home/…`), which DOMPurify
- * would otherwise drop; it still strips script tags and event handlers, and link clicks go through the
- * main-process opener, which only opens http(s).
+ * would otherwise drop; it still strips script tags and event handlers, and the main window refuses any
+ * top-level navigation that is not the app itself (main.ts `will-navigate`), so a custom-protocol link
+ * cannot replace the app or reach the OS handler from an artifact/memory preview.
  */
 function sanitizeMarkdown(text: string): string {
   return DOMPurify.sanitize(marked.parse(text, { async: false }) as string, { ALLOW_UNKNOWN_PROTOCOLS: true });
@@ -5520,13 +5521,11 @@ async function renderMediaGenerationSection(): Promise<HTMLElement> {
     grid.append(el('dt', undefined, 'Default image model'));
     grid.append(modelSettingCell(
       String(media.imageSource ?? 'none'), media.imageModels ?? [], media.imageModel ?? null,
-      media.effectiveImageModel ?? null, 'imageModel', 'Image model',
-      media.imageModelFromWorkspace === true));
+      'imageModel', 'Image model', media.imageModelFromWorkspace === true));
     grid.append(el('dt', undefined, 'Default video model'));
     grid.append(modelSettingCell(
       String(media.videoSource ?? 'none'), media.videoModels ?? [], media.videoModel ?? null,
-      media.effectiveVideoModel ?? null, 'videoModel', 'Video model',
-      media.videoModelFromWorkspace === true));
+      'videoModel', 'Video model', media.videoModelFromWorkspace === true));
   }
   section.append(grid);
 
@@ -5543,7 +5542,6 @@ function modelSettingCell(
   source: string,
   models: Array<{ modelId?: string; displayName?: string; providerName?: string }>,
   current: string | null,
-  effective: string | null,
   key: 'imageModel' | 'videoModel',
   label: string,
   workspaceOverride: boolean,
@@ -5570,7 +5568,9 @@ function modelSettingCell(
     cell.append(el('div', 'hint', 'No media models are listed by this server; enter a model id manually or ask an administrator to enable one.'));
   } else {
     const select = el('select');
-    const auto = el('option', undefined, effective ? `Auto (first enabled: ${effective})` : 'Auto');
+    // Auto means "no configured model": the gateway uses the first model of the catalog list
+    const firstModel = models[0]?.modelId;
+    const auto = el('option', undefined, firstModel ? `Auto (first enabled: ${firstModel})` : 'Auto');
     auto.value = '';
     select.append(auto);
     for (const model of models) {

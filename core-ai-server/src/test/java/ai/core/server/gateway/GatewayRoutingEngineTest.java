@@ -73,6 +73,22 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void explicitMediaModelHintsExcludeModelsWithoutEndpointTypes() {
+        var image = model("gpt-image-2", false, 100);
+        image.endpointTypes = List.of("image.generations");
+        var legacy = model("legacy-chat", false, 200);
+        legacy.endpointTypes = null;
+        var engine = engine(List.of(image, legacy));
+
+        assertEquals(List.of("gpt-image-2"),
+                engine.explicitMediaModelHints(GatewayEndpointType.IMAGE_GENERATION).stream()
+                        .map(MediaModelHint::modelId).toList());
+        assertEquals(List.of("gpt-image-2", "legacy-chat"),
+                engine.mediaModelHints(GatewayEndpointType.IMAGE_GENERATION).stream()
+                        .map(MediaModelHint::modelId).toList());
+    }
+
+    @Test
     void routeRejectsDisabledModelInsteadOfFallingBackToTheProviderPrefix() {
         var disabled = model("gemini-3.1-flash-image", false, 100);
         disabled.endpointTypes = List.of("image.generations");

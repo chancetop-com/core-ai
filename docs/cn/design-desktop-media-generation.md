@@ -16,6 +16,9 @@
 - **Settings 的读写逻辑拆成 `MediaSettingsApi`**。`AppServerEngine` 已接近 450 行文件上限，且拆出后可对 `media/set` 的写入/删除、`UNKNOWN_MODEL` 校验做单测。
 - **能力防御返回失败结果而不是抛异常**：`GenerateImageTool` 在非 managed 端点收到引用图时直接返回 `ToolCallResult.failed(...)`，避免 PMD 的 `ExceptionAsFlowControl`，调用方看到的信息不变。
 - **目录显示名与顺序**：`HubMediaModelService` 直接映射 `mediaModelHints`，每个列表内按 `modelId` 去重并保留 priority 顺序；不跨列表合并。
+- **目录只列出显式媒体模型**：`HubMediaModelService` 改用 `explicitMediaModelHints`，不再把 `endpointTypes` 为空的 legacy 模型（可能是 chat 模型）列为图片/视频可选模型；网关路由的兼容语义不变。
+- **`media/set` 在空目录时放行手动模型**：目录健康但为空（旧 server 或未启用模型）时不做 `UNKNOWN_MODEL` 校验，与「显式模型优先于目录」的注册规则保持一致。
+- **媒体 key 与 endpoint 配对**：登录派生的 `media.gateway.api.key` 只发给 gateway base；自定义 `media.*.api.base` 不回落到它（保留既有的 `media.api.key` / `litellm.api.key` fallback）。
 - **P2 未做**：目录不返回 `supportsImageReferences` / 时长能力；没有视频任务取消工具；工具结果不带 cost（`media_jobs` 已记录，可后续接 `/generations`）。
 
 
@@ -164,7 +167,7 @@ media.gateway.api.key  = coreai_xxx
 
 规则：
 
-- 只有 `litellm.api.base` **不是用户显式配置**（即本次 fallback 确实由 auth 注入）时才派生 `media.gateway.api.base`。用户已经配置了自己的 LiteLLM 代理时，媒体继续跟随 `litellm.api.base`，保持现有行为。
+- 只有 `litellm.api.base` **不是用户显式配置**（即本次 fallback 确实由 auth 注入）时才派生 `media.gateway.api.base`。用户已经配置了自己的 LiteLLM 代理时，媒体继续跟随 `litellm.api.base`，保持现有行为。例外：显式配置的值与登录派生的 `{server}/api/cli/v1` 相同（从旧版本复制）时，仍按登录派生处理，因为该路径没有媒体路由。
 - `media.gateway.api.base` 只是内存中的 `PropertiesFileSource` 覆盖，不落盘；用户不需要也不应该手写它。如果它已经被显式配置（测试/特殊环境），不要覆盖。
 - 用户显式配置的 `media.image.api.base` / `media.video.api.base` / `media.api.base` 永远优先；显式配置的端点不会被 gateway 替换。
 - `media.gateway.api.base` 只用于“没有更具体的媒体配置”的情况；它不会覆盖 `media.video.protocol=VERTEX_GEMINI_INTERACTIONS`。
@@ -356,11 +359,12 @@ Authorization: Bearer <apiKey>
 
 - `core-ai-api` 新增 `HubMediaModelWebService`、`ListHubMediaModelsResponse`、`HubMediaModelView`。响应使用**三个有序列表**而不是一个带 `endpointTypes` 的扁平列表：每个列表的顺序就是对应端点的 `mediaModelHints` 顺序，这样“第一个模型”与 gateway 的默认选择一致，`image.edits` 的默认也不会被生成列表的顺序污染。同一个模型可以同时出现在 `imageModels` 和 `imageEditModels` 中。
 - **不复用** `HubModelWebService`：chat 模型目录与媒体目录的权限、字段和用途不同，单独一个接口更清晰。`HubMediaModelWebServiceImpl` 使用 `@PermissionsBypass`（认证即可读），与 `GatewayImageController` / `GatewayVideoController` 的媒体网关保持一致；否则会出现“能调用媒体端点、却看不到模型列表”的错位。如果产品要求媒体模型也受 `CHAT_USE` 约束，那么网关 controller、目录接口和路由必须一起改，不能只改目录。
-- 新增 `HubMediaModelService`：分别调用 `GatewayRoutingEngine.mediaModelHints(IMAGE_GENERATION / IMAGE_EDIT / VIDEO_GENERATION)`，每个列表内按 `modelId` 去重（同一 modelId 的多条 failover route 取优先级最高的一条），`displayName` 从 `GatewayRoutingEngine.availableModels()` 按 `modelId` 关联。不要跨列表合并。
+- 新增 `HubMediaModelService`：分别调用 `GatewayRoutingEngine.explicitMediaModelHints(IMAGE_GENERATION / IMAGE_EDIT / VIDEO_GENERATION)`，每个列表内按 `modelId` 去重（同一 modelId 的多条 failover route 取优先级最高的一条），`displayName` 从 `GatewayRoutingEngine.availableModels()` 按 `modelId` 关联。不要跨列表合并。
 - 只返回 enabled 且 provider enabled 的模型（`registeredModels` 已过滤）。
+- 只返回 **显式声明了该端点** 的模型（`endpointTypes` 非空且包含目标端点）。既有路由语义把空 `endpointTypes` 视为「所有端点可用」，这会让 chat 模型出现在媒体目录里、甚至成为默认图片/视频模型；目录侧用 `explicitMediaModelHints` 过滤，路由侧的兼容语义保持不变。
 - 每个列表沿用 `registeredModels` 的 priority → modelId → provider → id 顺序，保证 Desktop 看到的默认模型稳定。
 - 用户级模型访问策略：当前与 `HubModelService.models()` 一样，目录是全局 enabled 模型；如果后续引入 per-user model access，过滤函数必须与 `GatewayRoutingEngine.route()` 共用，保证“列出的就是能用的”，避免 Desktop 选到一个调用时才 403 的模型。
-- 兼容说明：路由引擎把 `endpointTypes` 为空的模型视为“所有端点可用”（`supportsEndpoint` 的既有语义），所以历史上没有显式配置 `endpointTypes` 的媒体模型仍会出现在目录里；管理端应给媒体模型显式配置 `endpointTypes`，避免 chat 模型被误列为媒体模型。
+- 兼容说明：路由引擎把 `endpointTypes` 为空的模型视为“所有端点可用”（`supportsEndpoint` 的既有语义）；但目录接口不再列出这些模型，管理端应给媒体模型显式配置 `endpointTypes`，否则它们不会出现在 Desktop/CLI 的可选列表里，也不会被自动选为默认模型。
 - `upstreamModel` 出现在响应里是为了让 CLI 复用 `MediaModelParameterHints` 的模型参数提示；这是登录用户可见的内部 API，不包含密钥。若后续认为上游模型名不应外露，可改为由 server 直接返回 `parameterHint` 字段，CLI 不再需要 `upstreamModel`。
 
 #### 4.3.2 CLI 侧 `MediaModelCatalog`
@@ -371,7 +375,7 @@ Authorization: Bearer <apiKey>
 MediaModelCatalog
   - 构造：AuthConfig（serverUrl / apiKey / insecure）
   - fetch(): HubMediaModelClient -> ListHubMediaModelsResponse
-  - 缓存：成功 60s；失败 30s 内不重试；保留 last-known-good
+  - 缓存：成功 60s；失败 30s 内不重试；保留 last-known-good；并发调用共享同一个在途刷新任务
   - 线程安全：synchronized 刷新，读走 volatile snapshot
   - 方法：
       imageModels()         -> List<MediaModelHint>   // 对应响应 imageModels
@@ -565,8 +569,8 @@ Desktop renderer 通过现有 `window.coreai.call(workspace, method, params)` �
 ```
 
 - `media/get` 内部使用 `MediaModelCatalog`；目录请求失败时返回 `error`，但不要阻塞 Settings 其他区块。额外返回 `imageModelFromWorkspace` / `videoModelFromWorkspace` 两个布尔值（读 `{workspace}/.core-ai/agent.properties` 是否存在对应键），用于显示 override 提示。
-- `media/set` 写 `~/.core-ai/agent.properties` 的 `media.image.model` / `media.video.model`；字段省略表示不改，空字符串/null 表示删除该键（回到 auto）。沿用 `AppServerEngine.persistActiveModel()` 的 `Properties.store` 方式，不新增配置文件。
-- managed gateway 下，`media/set` 对非空的 `imageModel` / `videoModel` 做一次 catalog 校验（模型不在对应列表里就返回 `UNKNOWN_MODEL`）；custom endpoint 不校验，模型名由用户端点决定。
+- `media/set` 写 `~/.core-ai/agent.properties` 的 `media.image.model` / `media.video.model`；字段省略表示不改，空字符串/null 表示删除该键（回到 auto）。沿用 `AppServerEngine.persistActiveModel()` 的 `Properties.store` 格式，不新增配置文件；写入走临时文件 + 原子 move，避免读到半写状态。
+- managed gateway 下，`media/set` 对非空的 `imageModel` / `videoModel` 做一次 catalog 校验（模型不在对应列表里就返回 `UNKNOWN_MODEL`）；但目录为空时不校验（旧 server 或未启用任何模型时允许手动输入，与 §4.3.4 的「显式模型优先」一致）。custom endpoint 不校验，模型名由用户端点决定。
 - 返回 `restartRequired: true`；renderer 复用 `restartWorkspaceEngine()`。如果当前有 turn 在跑，复用 `state.pendingEngineRestart`（与 max turns 相同的“turn 结束后重载”语义）。
 - 不需要新增 preload API；`engine:call` 已经覆盖。
 

@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.media.reference.ManagedReferenceProvider;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -91,7 +92,8 @@ public class GetVideoStatusTool extends ToolCall {
                 }
             };
         } catch (RuntimeException e) {
-            var message = "Video status check failed: " + e.getMessage();
+            var message = "Video status check failed: " + e.getMessage()
+                    + GenerateImageTool.httpHint(e.getMessage(), provider instanceof ManagedReferenceProvider);
             if (videoId != null) message += "\nvideo_id: " + videoId + " — call get_video_status again to retry the download.";
             var failed = ToolCallResult.failed(message, e).withDuration(System.currentTimeMillis() - startTime);
             return videoId != null ? failed.withStats("video_id", videoId) : failed;

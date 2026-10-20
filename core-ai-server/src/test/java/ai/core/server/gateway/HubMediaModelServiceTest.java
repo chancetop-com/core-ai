@@ -16,13 +16,13 @@ class HubMediaModelServiceTest {
     @Test
     void mapsEachEndpointSeparatelyAndKeepsPriorityOrder() {
         var routing = mock(GatewayRoutingEngine.class);
-        when(routing.mediaModelHints(GatewayEndpointType.IMAGE_GENERATION)).thenReturn(List.of(
+        when(routing.explicitMediaModelHints(GatewayEndpointType.IMAGE_GENERATION)).thenReturn(List.of(
                 new MediaModelHint("gpt-image-2.5", "gpt-image-2.5", "azure-uat", "GPT Image 2.5"),
                 new MediaModelHint("seedream-5", "seedream/5-pro", "kie", "Seedream 5")));
-        when(routing.mediaModelHints(GatewayEndpointType.IMAGE_EDIT)).thenReturn(List.of(
+        when(routing.explicitMediaModelHints(GatewayEndpointType.IMAGE_EDIT)).thenReturn(List.of(
                 new MediaModelHint("gpt-image-2.5", "gpt-image-2.5", "azure-uat", "GPT Image 2.5"),
                 new MediaModelHint("seedream-5-edit", "seedream/5-pro-image-to-image", "kie", "Seedream 5 Edit")));
-        when(routing.mediaModelHints(GatewayEndpointType.VIDEO_GENERATION)).thenReturn(List.of(
+        when(routing.explicitMediaModelHints(GatewayEndpointType.VIDEO_GENERATION)).thenReturn(List.of(
                 new MediaModelHint("seedance-2.5", "doubao-seedance-2-5", "volcengine", "Seedance 2.5")));
         var service = new HubMediaModelService();
         service.gatewayRoutingEngine = routing;
@@ -43,7 +43,7 @@ class HubMediaModelServiceTest {
     @Test
     void dedupesFailoverRegistrationsInsideOneEndpoint() {
         var routing = mock(GatewayRoutingEngine.class);
-        when(routing.mediaModelHints(GatewayEndpointType.IMAGE_GENERATION)).thenReturn(List.of(
+        when(routing.explicitMediaModelHints(GatewayEndpointType.IMAGE_GENERATION)).thenReturn(List.of(
                 new MediaModelHint("gpt-image-2.5", "gpt-image-2.5", "azure-uat", "GPT Image 2.5"),
                 new MediaModelHint("gpt-image-2.5", "gpt-image-2.5", "azure-backup", "GPT Image 2.5"),
                 new MediaModelHint("seedream-5", "seedream/5-pro", "kie", null)));

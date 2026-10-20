@@ -154,14 +154,28 @@ public class CliAppHelper {
      * credentials so the server's CLI LLM endpoint is used without manual configuration. The same login
      * also derives the media gateway base: the chat proxy path has no image/video routes, while the
      * gateway owns routing, reference resolution and media job records.
+     * <p>
+     * An explicit base is respected unless it points at the same CLI proxy the fallback would derive
+     * (a common copy-paste of the old derived value). That base still has no media routes, so the media
+     * gateway is derived as well.
      */
     public static void injectLiteLLMFallback(PropertiesFileSource props) {
-        if (props.property("litellm.api.base").isPresent()) return;
-        var auth = AuthConfig.load();
+        injectLiteLLMFallback(props, AuthConfig.load());
+    }
+
+    static void injectLiteLLMFallback(PropertiesFileSource props, AuthConfig auth) {
         if (auth == null || auth.apiKey() == null) return;
         var serverBase = stripTrailingSlashes(auth.serverUrl());
-        props.putProperty("litellm.api.base", serverBase + RuntimeAuthConfig.LLM_PROXY_PATH);
-        props.putProperty("litellm.api.key", auth.apiKey());
+        var proxyBase = serverBase + RuntimeAuthConfig.LLM_PROXY_PATH;
+        var configuredBase = props.property("litellm.api.base").orElse(null);
+        if (configuredBase == null) {
+            props.putProperty("litellm.api.base", proxyBase);
+            props.putProperty("litellm.api.key", auth.apiKey());
+        } else {
+            if (!stripTrailingSlashes(configuredBase).equals(proxyBase)) return;
+            props.putProperty("litellm.api.base", proxyBase);
+            if (props.property("litellm.api.key").isEmpty()) props.putProperty("litellm.api.key", auth.apiKey());
+        }
         if (props.property(MEDIA_GATEWAY_BASE_PROPERTY).isEmpty()) {
             props.putProperty(MEDIA_GATEWAY_BASE_PROPERTY, serverBase + MEDIA_GATEWAY_PATH);
             props.putProperty(MEDIA_GATEWAY_KEY_PROPERTY, auth.apiKey());
@@ -170,13 +184,14 @@ public class CliAppHelper {
 
     public static MediaProvider imageMediaProvider(PropertiesFileSource props) {
         var baseUrl = imageMediaBase(props);
-        return mediaProvider(baseUrl, mediaKey(props, "media.image.api.key"));
+        return mediaProvider(baseUrl, mediaKey(props, "media.image.api.key", baseUrl));
     }
 
     public static MediaProvider videoMediaProvider(PropertiesFileSource props) {
         var protocol = props.property("media.video.protocol").orElseGet(() -> props.property("media.protocol").orElse(null));
         if (!"VERTEX_GEMINI_INTERACTIONS".equalsIgnoreCase(protocol)) {
-            return mediaProvider(videoMediaBase(props), mediaKey(props, "media.video.api.key"));
+            var baseUrl = videoMediaBase(props);
+            return mediaProvider(baseUrl, mediaKey(props, "media.video.api.key", baseUrl));
         }
         return new VertexGeminiOmniMediaProvider(
                 props.property("media.vertex.api.base").orElse(null),
@@ -193,7 +208,7 @@ public class CliAppHelper {
     public static MediaProvider sharedMediaProvider(PropertiesFileSource props) {
         var baseUrl = props.property("media.api.base").orElse(null);
         if (baseUrl == null || baseUrl.isBlank()) return null;
-        return mediaProvider(baseUrl, mediaKey(props, "media.api.key"));
+        return mediaProvider(baseUrl, mediaKey(props, "media.api.key", baseUrl));
     }
 
     /** The URL a modality would call, or null when the modality has no endpoint configured. */
@@ -239,11 +254,20 @@ public class CliAppHelper {
         return provider;
     }
 
-    private static String mediaKey(PropertiesFileSource props, String specificKey) {
-        return props.property(specificKey)
-                .orElseGet(() -> props.property("media.api.key")
-                        .orElseGet(() -> props.property(MEDIA_GATEWAY_KEY_PROPERTY)
-                                .orElseGet(() -> props.property("litellm.api.key").orElse(null))));
+    /**
+     * Keys are paired with the endpoint that was chosen: the login-derived gateway key must never be sent
+     * to a user-configured third-party endpoint that happens to omit its own key. A custom endpoint keeps
+     * the historical {@code litellm.api.key} fallback (its own proxy key).
+     */
+    private static String mediaKey(PropertiesFileSource props, String specificKey, String baseUrl) {
+        var specific = props.property(specificKey).orElse(null);
+        if (specific != null) return specific;
+        if (isGatewayBase(baseUrl)) {
+            return props.property(MEDIA_GATEWAY_KEY_PROPERTY)
+                    .orElseGet(() -> props.property("litellm.api.key").orElse(null));
+        }
+        return props.property("media.api.key")
+                .orElseGet(() -> props.property("litellm.api.key").orElse(null));
     }
 
     private static MediaProvider mediaProvider(String baseUrl, String apiKey) {

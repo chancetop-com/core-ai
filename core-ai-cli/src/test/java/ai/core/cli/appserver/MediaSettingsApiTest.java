@@ -85,7 +85,7 @@ class MediaSettingsApiTest {
     @Test
     void rejectsAModelTheManagedGatewayDoesNotEnable() {
         var catalog = mock(MediaModelCatalog.class);
-        when(catalog.hasSnapshot()).thenReturn(true);
+        when(catalog.hasSnapshot()).thenReturn(Boolean.TRUE);
         when(catalog.imageModels()).thenReturn(List.of(new MediaModelHint("allowed", "allowed-upstream", "p")));
         when(catalog.defaultImageModel()).thenReturn("allowed");
         var provider = new CoreAiGatewayMediaProvider("https://core-ai.example.com/api/gateway/v1", "key");
@@ -100,7 +100,7 @@ class MediaSettingsApiTest {
     @Test
     void acceptsAModelTheManagedGatewayEnables() {
         var catalog = mock(MediaModelCatalog.class);
-        when(catalog.hasSnapshot()).thenReturn(true);
+        when(catalog.hasSnapshot()).thenReturn(Boolean.TRUE);
         when(catalog.imageModels()).thenReturn(List.of(new MediaModelHint("allowed", "allowed-upstream", "p")));
         var provider = new CoreAiGatewayMediaProvider("https://core-ai.example.com/api/gateway/v1", "key");
         var api = new MediaSettingsApi(new PropertiesFileSource(new Properties()), workspace, provider, null, catalog, global);
@@ -108,6 +108,19 @@ class MediaSettingsApiTest {
         var result = api.set(params("imageModel", "allowed"));
 
         assertEquals("allowed", result.path("imageModel").asText());
+    }
+
+    @Test
+    void acceptsAManuallyEnteredModelWhenTheCatalogIsEmpty() {
+        var catalog = mock(MediaModelCatalog.class);
+        when(catalog.hasSnapshot()).thenReturn(Boolean.TRUE);
+        when(catalog.imageModels()).thenReturn(List.of());
+        var provider = new CoreAiGatewayMediaProvider("https://core-ai.example.com/api/gateway/v1", "key");
+        var api = new MediaSettingsApi(new PropertiesFileSource(new Properties()), workspace, provider, null, catalog, global);
+
+        var result = api.set(params("imageModel", "manually-entered"));
+
+        assertEquals("manually-entered", result.path("imageModel").asText());
     }
 
     private ObjectNode params(String... keyValues) {

@@ -30,7 +30,7 @@ public class HubMediaModelService {
     private List<HubMediaModelView> hints(GatewayEndpointType endpoint) {
         var seen = new HashSet<String>();
         var views = new ArrayList<HubMediaModelView>();
-        for (var hint : gatewayRoutingEngine.mediaModelHints(endpoint)) {
+        for (var hint : gatewayRoutingEngine.explicitMediaModelHints(endpoint)) {
             if (hint.modelId() == null || !seen.add(hint.modelId())) continue;
             var view = new HubMediaModelView();
             view.modelId = hint.modelId();

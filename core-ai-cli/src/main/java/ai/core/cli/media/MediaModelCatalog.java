@@ -13,7 +13,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * The media models the logged-in server enables, cached so session creation and tool descriptions do not
@@ -37,7 +36,7 @@ public class MediaModelCatalog {
     private final long successTtlMs;
     private final long failureBackoffMs;
     private final Object refreshLock = new Object();
-    private final AtomicBoolean refreshing = new AtomicBoolean();
+    private volatile CompletableFuture<Void> refreshInFlight;
     private volatile Snapshot snapshot;
     private volatile long nextAttemptAt;
 
@@ -62,7 +61,7 @@ public class MediaModelCatalog {
      */
     public void ensureLoaded(long timeoutMs) {
         if (snapshot != null) return;
-        var task = CompletableFuture.runAsync(this::refresh);
+        var task = refreshFuture();
         try {
             task.get(timeoutMs, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -123,14 +122,31 @@ public class MediaModelCatalog {
     }
 
     private void refreshAsync() {
-        if (!refreshing.compareAndSet(false, true)) return;
-        CompletableFuture.runAsync(() -> {
-            try {
-                refresh();
-            } finally {
-                refreshing.set(false);
-            }
-        });
+        refreshFuture();
+    }
+
+    /**
+     * One refresh at a time: callers that arrive while a fetch is in flight join it instead of spawning
+     * another task that would only block on the same lock. This keeps a slow or unreachable server from
+     * accumulating one stalled thread per settings read or session build.
+     */
+    private CompletableFuture<Void> refreshFuture() {
+        var current = refreshInFlight;
+        if (current != null) return current;
+        synchronized (refreshLock) {
+            current = refreshInFlight;
+            if (current != null) return current;
+            var task = CompletableFuture.runAsync(this::refresh);
+            refreshInFlight = task;
+            task.whenComplete((ignored, error) -> clearRefresh(task));
+            return task;
+        }
+    }
+
+    private void clearRefresh(CompletableFuture<Void> task) {
+        synchronized (refreshLock) {
+            if (task.equals(refreshInFlight)) refreshInFlight = null;
+        }
     }
 
     void refresh() {
@@ -145,11 +161,16 @@ public class MediaModelCatalog {
                 LOGGER.info("media model catalog loaded: image={}, imageEdit={}, video={}",
                         snapshot.imageModels().size(), snapshot.imageEditModels().size(), snapshot.videoModels().size());
             } catch (RemoteApiException e) {
-                failed(e.statusCode == 404, "HTTP " + e.statusCode + ": " + e.getMessage(), now);
+                failed(e.statusCode == 404, catalogError(e), now);
             } catch (RuntimeException e) {
                 failed(false, e.getMessage(), now);
             }
         }
+    }
+
+    private String catalogError(RemoteApiException e) {
+        if (e.statusCode == 401) return "Authentication failed. Sign in again from Hub.";
+        return "HTTP " + e.statusCode + ": " + e.getMessage();
     }
 
     private void failed(boolean unavailable, String error, long now) {

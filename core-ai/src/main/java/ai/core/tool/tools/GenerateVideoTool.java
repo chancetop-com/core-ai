@@ -219,8 +219,9 @@ public final class GenerateVideoTool extends ToolCall {
 
     private String failureMessage(Exception e, ExecutionContext context) {
         var count = incrementFailCount(context);
+        var provider = context.getVideoMediaProvider();
         var message = "Video generation failed: " + sanitize(e.getMessage() != null ? e.getMessage() : e.toString())
-                + GenerateImageTool.httpHint(e.getMessage());
+                + GenerateImageTool.httpHint(e.getMessage(), provider instanceof ManagedReferenceProvider);
         if (count >= 2) {
             message += "\n\nYou have now failed " + count + " times in a row. Do NOT keep guessing. "
                     + "Re-read the generate_video tool description: an input_references item must name one of "

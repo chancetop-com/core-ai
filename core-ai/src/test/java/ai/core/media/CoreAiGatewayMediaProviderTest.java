@@ -5,7 +5,6 @@ import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoStatusResponse;
-import ai.core.media.reference.ManagedReferenceProvider;
 import ai.core.media.reference.MediaModality;
 import ai.core.media.reference.MediaReferenceRole;
 import ai.core.utils.JsonUtil;
@@ -107,7 +106,7 @@ class CoreAiGatewayMediaProviderTest {
         assertEquals("gpt-image-2.5", body.get("model"));
         assertEquals(90, body.get("output_compression"));
         assertFalse(body.containsKey("provider_extra"), "provider_extra is merged into the top level");
-        assertEquals(false, ((Map<?, ?>) body.get("input")).get("watermark"));
+        assertEquals(Boolean.FALSE, ((Map<?, ?>) body.get("input")).get("watermark"));
         var images = (List<?>) body.get("input_images");
         var reference = (Map<?, ?>) images.getFirst();
         assertEquals("gateway-media-v1.img.source", reference.get("media_id"));
@@ -128,7 +127,6 @@ class CoreAiGatewayMediaProviderTest {
         var body = imageBody.get();
         assertFalse(body.containsKey("input_images"));
         assertFalse(body.containsKey("mask"));
-        assertTrue(provider instanceof ManagedReferenceProvider);
         assertTrue(provider.acceptsImageReferences());
         assertTrue(provider.withSessionId("s").acceptsImageReferences());
     }
@@ -148,7 +146,7 @@ class CoreAiGatewayMediaProviderTest {
         var references = (List<?>) body.get("input_references");
         assertEquals("first_frame", ((Map<?, ?>) references.getFirst()).get("role"));
         assertEquals("gateway-media-v1.vid.previous", body.get("previous_video_id"));
-        assertEquals(true, ((Map<?, ?>) body.get("input")).get("generate_audio"));
+        assertEquals(Boolean.TRUE, ((Map<?, ?>) body.get("input")).get("generate_audio"));
 
         VideoStatusResponse status = provider.getVideoStatus("gateway-media-v1.vid.abc");
         assertEquals("completed", status.status());

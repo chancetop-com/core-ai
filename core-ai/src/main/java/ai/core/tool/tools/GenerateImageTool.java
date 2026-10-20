@@ -76,10 +76,11 @@ public final class GenerateImageTool extends ToolCall {
     /**
      * A status code alone gives the agent no next step. Login expiry and a missing gateway route are the
      * two failures a desktop user can actually fix; model and reference errors already carry the server's
-     * own explanation.
+     * own explanation. A custom endpoint (not a managed gateway) gets none of these hints: its 401 means
+     * its own key, and its 404 does not mean a missing media gateway.
      */
-    static String httpHint(String message) {
-        if (message == null) return "";
+    static String httpHint(String message, boolean managedGateway) {
+        if (message == null || !managedGateway) return "";
         if (message.contains("HTTP 401")) {
             return "\n\nAuthentication failed. Sign in again from Hub, then retry.";
         }
@@ -181,7 +182,8 @@ public final class GenerateImageTool extends ToolCall {
             return imagesResult(context, response, getStringValue(args, "output_format"), startTime);
         } catch (Exception e) {
             return ToolCallResult.failed("Image generation failed: " + e.getMessage()
-                            + httpHint(e.getMessage()) + unreadableImageHint(e.getMessage())
+                            + httpHint(e.getMessage(), provider instanceof ManagedReferenceProvider)
+                            + unreadableImageHint(e.getMessage())
                             + maskSizeHint(e.getMessage(), request), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }

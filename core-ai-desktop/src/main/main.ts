@@ -7,6 +7,7 @@ import https from 'node:https';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { removeStaged, stageAttachments, stageBuffers, sweepStaging, type StagedAttachment, type StagedBufferInput } from './attachments/AttachmentStager';
 import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
 import {
@@ -437,6 +438,20 @@ function createWindow(): void {
     flushWindowStateSave();
   });
   void mainWindow.loadFile(rendererPath);
+  // Model output is rendered as sanitized markdown, and the sanitizer allows unknown protocols so
+  // absolute paths (`C:\…`, `/home/…`) survive. Only the transcript rewrites anchors through
+  // shell:openExternal, so the window itself must refuse every other top-level navigation: a
+  // `file:`/custom-protocol link in an artifact or memory preview must not replace the app.
+  const appUrl = pathToFileURL(rendererPath).toString();
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (url === appUrl || url.startsWith(`${appUrl}#`)) return;
+    event.preventDefault();
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+  });
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
+    return { action: 'deny' };
+  });
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type === 'keyDown' && input.key === 'F12') {
       mainWindow?.webContents.toggleDevTools();

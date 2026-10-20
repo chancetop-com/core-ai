@@ -149,7 +149,22 @@ public class GatewayRoutingEngine {
      * hints into the generate_image / generate_video tool descriptions.
      */
     public List<MediaModelHint> mediaModelHints(GatewayEndpointType endpoint) {
-        return registeredModels(snapshot(), endpoint).stream()
+        return hints(registeredModels(snapshot(), endpoint));
+    }
+
+    /**
+     * Catalog view: only models that explicitly declare this endpoint. A model with no endpoint types
+     * stays routable on every endpoint for backwards compatibility, but a chat model must not be offered
+     * as an image/video choice in the desktop settings or in a tool description.
+     */
+    public List<MediaModelHint> explicitMediaModelHints(GatewayEndpointType endpoint) {
+        return hints(registeredModels(snapshot(), endpoint).stream()
+                .filter(route -> route.model.endpointTypes != null && !route.model.endpointTypes.isEmpty())
+                .toList());
+    }
+
+    private List<MediaModelHint> hints(List<RegisteredGatewayModel> routes) {
+        return routes.stream()
                 .map(route -> new MediaModelHint(route.model.modelId, route.model.upstreamModel,
                         route.provider.name == null ? null : route.provider.name, route.model.displayName))
                 .toList();

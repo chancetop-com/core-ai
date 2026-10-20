@@ -9,11 +9,15 @@ import ai.core.media.MediaProvider;
 import ai.core.tool.tools.MediaModelHint;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -26,6 +30,8 @@ import java.util.Properties;
  * @author stephen
  */
 public class MediaSettingsApi {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MediaSettingsApi.class);
+
     private final PropertiesFileSource props;
     private final Path workspace;
     private final MediaProvider imageMediaProvider;
@@ -100,6 +106,9 @@ public class MediaSettingsApi {
         if (!(provider instanceof CoreAiGatewayMediaProvider)) return;
         if (catalog == null || !catalog.hasSnapshot() || catalog.error() != null) return;
         var models = "image".equals(modality) ? catalog.imageModels() : catalog.videoModels();
+        // an empty catalog usually means an older/incomplete server; the explicit model is the escape
+        // hatch (the tool registration rule follows the same precedence), so do not reject it here
+        if (models.isEmpty()) return;
         if (models.stream().noneMatch(hint -> model.equals(hint.modelId()))) {
             throw RpcException.business("UNKNOWN_MODEL",
                     "model is not enabled on this server: " + model, "model", model);
@@ -112,15 +121,15 @@ public class MediaSettingsApi {
     }
 
     private List<MediaModelHint> imageModels(String source) {
-        return "server".equals(source) && catalog != null ? catalog.imageModels() : List.of();
+        return catalog != null && "server".equals(source) ? catalog.imageModels() : List.of();
     }
 
     private List<MediaModelHint> imageEditModels(String source) {
-        return "server".equals(source) && catalog != null ? catalog.imageEditModels() : List.of();
+        return catalog != null && "server".equals(source) ? catalog.imageEditModels() : List.of();
     }
 
     private List<MediaModelHint> videoModels(String source) {
-        return "server".equals(source) && catalog != null ? catalog.videoModels() : List.of();
+        return catalog != null && "server".equals(source) ? catalog.videoModels() : List.of();
     }
 
     private String effectiveModel(Properties global, Properties workspaceProps, String property,
@@ -179,14 +188,52 @@ public class MediaSettingsApi {
     }
 
     private void store(Path file, Properties props) {
+        var target = file.toAbsolutePath();
+        var parent = target.getParent();
+        var fileName = target.getFileName();
+        if (parent == null || fileName == null) {
+            throw RpcException.business("CONFIG_WRITE_FAILED", "invalid config path: " + target);
+        }
+        Path temp = null;
         try {
-            var parent = file.getParent();
-            if (parent != null) Files.createDirectories(parent);
+            Files.createDirectories(parent);
             var buffer = new ByteArrayOutputStream();
             props.store(buffer, null);
-            Files.write(file, buffer.toByteArray());
+            // write-then-move: a reader (or a crash) never observes a half-written properties file
+            temp = writeTemp(parent, fileName.toString(), buffer.toByteArray());
+            moveIntoPlace(temp, target);
         } catch (IOException e) {
             throw RpcException.business("CONFIG_WRITE_FAILED", "failed to write " + file + ": " + e.getMessage(), e);
+        } finally {
+            deleteTemp(temp);
+        }
+    }
+
+    private Path writeTemp(Path directory, String name, byte[] content) throws IOException {
+        var temp = Files.createTempFile(directory, name, ".tmp");
+        try {
+            Files.write(temp, content);
+            return temp;
+        } catch (IOException e) {
+            Files.deleteIfExists(temp);
+            throw e;
+        }
+    }
+
+    private void moveIntoPlace(Path temp, Path target) throws IOException {
+        try {
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private void deleteTemp(Path temp) {
+        if (temp == null) return;
+        try {
+            Files.deleteIfExists(temp);
+        } catch (IOException e) {
+            LOGGER.debug("failed to remove temporary properties file: {}", temp, e);
         }
     }
 }
