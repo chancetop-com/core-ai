@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+from clean_logs import clean_file
+
 
 @dataclass
 class TrialRow:
@@ -273,10 +275,19 @@ def main() -> int:
     _write_csv(csv_path, rows)
     _write_markdown(report_path, job_dir, rows, agent_name, model)
 
+    cleaned = 0
+    for log_path in sorted(job_dir.glob("*/agent/core-ai-cli.txt")):
+        try:
+            clean_file(log_path)
+        except OSError:
+            continue
+        cleaned += 1
+
     passed = sum(1 for row in rows if row.state == "pass")
     errors = sum(1 for row in rows if row.state == "error")
     print(f"Report: {report_path}")
     print(f"CSV:    {csv_path}")
+    print(f"Clean logs: {cleaned}")
     print(f"Passed: {passed}/{len(rows)} (infra errors: {errors})")
     return 0
 

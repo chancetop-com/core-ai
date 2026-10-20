@@ -95,7 +95,8 @@ Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 5. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
    `--ak binary_path=...`.
 6. Writes results to `.harbor-jobs/<timestamp>/`.
-7. Summarizes the job into `<job>/report.md` and `<job>/summary.csv`.
+7. Summarizes the job into `<job>/report.md` and `<job>/summary.csv`, and
+   writes readable `<trial>/agent/core-ai-cli.clean.txt` logs.
 
 The report includes pass/fail/error counts, pass rates, mean reward, token
 totals, and a per-task table. Infra errors are listed separately from model
@@ -116,6 +117,7 @@ Useful files:
 
 - `report.md` — human-readable summary with pass rate, tokens, and a per-task table.
 - `summary.csv` — the same per-task data in machine-readable form.
+- `<task>__<id>/agent/core-ai-cli.clean.txt` — spinner/ANSI-free copy of the agent log.
 - `result.json` — job summary, `stats.evals.*.metrics[0].mean` is the mean reward.
 - `<task>__<id>/verifier/reward.txt` — per-trial reward.
 - `<task>__<id>/verifier/ctrf.json` — verifier test details.
@@ -138,6 +140,11 @@ Useful files:
 - **Dataset pinning.** The 10-task pilot used dataset commit
   `7131e4375048a0e408a8fb404b5f499d726b695b`. Set
   `--dataset-ref 7131e4375048a0e408a8fb404b5f499d726b695b` to reproduce it.
+- **Logs.** The pinned v2.0.52 binary still emits the interactive spinner when
+  stdout is a pipe; `summarize.py` writes a spinner-free
+  `core-ai-cli.clean.txt` next to each raw log. The CLI source now disables the
+  spinner/ANSI when there is no console, so a future release will produce clean
+  logs directly.
 - **Infra failures.** `git-multibranch` once failed with
   `Docker daemon is not running` during a Docker Desktop restart, then passed
   on retry. Treat Harbor exceptions/unfinished trials separately from model
