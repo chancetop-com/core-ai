@@ -28,7 +28,7 @@
 - **Artifacts**：会话生成的文件出现在右侧产物面板，支持 Markdown、图片与视频预览，并可定位到文件管理器。
 - **Scheduled tasks**：会话级定时任务；开启后台运行后，窗口关闭、应用驻留托盘时任务照常执行。
 - **Skills / Memory / Hub**：内置 `core-ai-cli-manual`、`browser-use`、`gui-automation` 与 `ocg` 技能，首次启动即安装到 `~/.core-ai/skills`，不登录也能用；登录 Server 后还可以在 Hub 只读浏览能力目录，注册与管理仍在 Web 控制台。
-- **更新**：Settings → About 检查 `desktop-v*` 更新；Windows 静默安装并重启，macOS 打开下载的安装包。
+- **更新**：Settings → About 检查 `desktop-v*` 更新；Windows 静默安装并重启，macOS 打开下载的安装包。更新后首次启动时，桌面端还会把独立安装的 `core-ai-cli`（`--upgrade` 写入 `~/.core-ai/bin` 的那份，以及 `PATH` 上的副本）刷新为本次内置的引擎版本——如果现有 CLI 更新则不做降级。Settings → About 会显示内置引擎版本。
 
 ![工具调用折叠在 Tool use 芯片里，展开后可查看每次调用的耗时与结果](../imgs/desktop/desktop-tools.png)
 

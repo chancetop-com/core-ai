@@ -5990,11 +5990,14 @@ function renderAboutSection(): HTMLElement {
   section.append(el('h2', undefined, 'About'));
   section.append(el('div', 'hint', 'Version and updates. The release feed is checked on startup — a newer release shows an '
     + '"Update" badge on the Settings row in the sidebar. Upgrading downloads the installer (sha512-verified) first and asks '
-    + 'before installing, so running sessions are never interrupted without your consent.'));
+    + 'before installing, so running sessions are never interrupted without your consent. A separately installed '
+    + 'core-ai-cli is refreshed to the bundled engine version on the first start after an update.'));
   const grid = el('dl', 'settings-grid');
   const info = state.info;
   grid.append(el('dt', undefined, 'Version'));
   grid.append(el('dd', undefined, `v${info?.desktopVersion ?? '?'} (electron ${info?.electron ?? '?'}, node ${info?.node ?? '?'})`));
+  grid.append(el('dt', undefined, 'Engine'));
+  grid.append(el('dd', undefined, info?.engineVersion ? `core-ai-cli v${info.engineVersion}` : 'not bundled (development build)'));
   section.append(grid);
 
   const status = el('div', 'notice');

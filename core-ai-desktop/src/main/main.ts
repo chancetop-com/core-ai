@@ -30,6 +30,7 @@ import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExec
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
+import { readEngineManifest, standaloneCliTargets, syncStandaloneClis } from './update/CliUpdate';
 import { installArgs, UpdateService } from './update/UpdateService';
 
 for (const stream of [process.stdout, process.stderr]) stream.on('error', () => undefined);
@@ -50,6 +51,8 @@ interface DesktopSettings {
   browserSkillEnabled?: boolean;
   channelsSkillEnabled?: boolean;
   backgroundScheduling?: boolean;
+  /** Bundled engine version whose standalone CLI copies this install has already refreshed. */
+  cliSyncedEngineVersion?: string;
 }
 interface CallEnvelope { ok: boolean; result?: unknown; error?: { code: number; message: string; data?: Record<string, unknown> } }
 interface WorkspaceSessionSummary { path: string; count: number; latestSessionId: string | null; latestTitle: string | null; latestUpdatedAt: number }
@@ -74,6 +77,7 @@ const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
 const WINDOW_MIN = { width: 960, height: 600 };
 const UPDATE_CHECK_DELAY_MS = 3_000;
+const CLI_SYNC_DELAY_MS = 4_000;
 type ColorScheme = 'system' | 'light' | 'dark';
 function normalizeColorScheme(value: unknown): ColorScheme {
   return value === 'light' || value === 'dark' ? value : 'system';
@@ -393,6 +397,38 @@ function installConfiguredBuiltins(): void {
     if (!item.result.ok) console.error(`[skills] ${item.name}: ${item.result.detail}`);
   }
 }
+/**
+ * Keeps a separately installed CLI in step with the engine this app now bundles: a desktop
+ * update swaps resources/engine, but the CLI `--upgrade` writes into ~/.core-ai/bin would
+ * otherwise keep the version it was installed with. Runs once per bundled engine version and
+ * never downgrades a CLI that is already newer.
+ */
+async function syncBundledCli(): Promise<void> {
+  if (!app.isPackaged) return;
+  const enginePath = resolveEnginePath();
+  const manifest = readEngineManifest(enginePath);
+  if (!manifest || settings.cliSyncedEngineVersion === manifest.version) return;
+  const targets = standaloneCliTargets({
+    homeDir: os.homedir(),
+    searchPath: process.env.PATH ?? '',
+    excludeDirs: [path.dirname(enginePath)],
+  });
+  const outcomes = await syncStandaloneClis({
+    bundledBinary: enginePath,
+    bundledVersion: manifest.version,
+    bundledSha256: manifest.sha256,
+    targets,
+  });
+  for (const outcome of outcomes) {
+    if (outcome.status === 'updated') console.log(`[cli] updated ${outcome.path} ${outcome.from} → ${outcome.to}`);
+    else if (outcome.status === 'failed') console.error(`[cli] could not update ${outcome.path}: ${outcome.reason}`);
+    else if (outcome.status === 'skipped') console.log(`[cli] left ${outcome.path} alone: ${outcome.reason}`);
+  }
+  // A locked binary (the CLI is still running) is retried on the next launch.
+  if (outcomes.some((outcome) => outcome.status === 'failed')) return;
+  settings.cliSyncedEngineVersion = manifest.version;
+  saveSettings();
+}
 async function runDesktopInstaller(installerPath: string): Promise<void> {
   await browserManager?.stop();
   await supervisor?.shutdownAll();
@@ -547,6 +583,7 @@ function configureBackgroundScheduling(): void {
 function registerIpc(): void {
   ipcMain.handle('app:info', () => ({
     enginePath: resolveEnginePath(), engineExists: existsSync(resolveEnginePath()), desktopVersion: clientVersion,
+    engineVersion: readEngineManifest(resolveEnginePath())?.version ?? null,
     electron: process.versions.electron, node: process.versions.node, userData: app.getPath('userData'), homedir: os.homedir(),
     defaultWorkspacePath: defaultWorkspacePath(), defaultExists: existsSync(defaultWorkspacePath()), startupWorkspace: resolveStartupWorkspace(),
     schedulesFile: path.join(os.homedir(), '.core-ai', 'schedules.json'),
@@ -871,6 +908,11 @@ else {
     setTimeout(() => {
       if (updateService?.snapshot().phase === 'idle') void updateService.check();
     }, UPDATE_CHECK_DELAY_MS);
+    // A desktop update also brings a new bundled engine; refresh the standalone CLI after the
+    // window and engine start-up have had the disk to themselves.
+    setTimeout(() => {
+      void syncBundledCli().catch((error: Error) => console.error(`[cli] sync failed: ${error.message}`));
+    }, CLI_SYNC_DELAY_MS);
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,

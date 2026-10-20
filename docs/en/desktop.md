@@ -28,7 +28,7 @@ Each desktop version pins one CLI engine version (the engine ships with the matc
 - **Artifacts**: files a session generates appear in the right-hand dock with Markdown, image and video previews, plus reveal-in-file-manager.
 - **Scheduled tasks**: session-bound tasks; with background running enabled they still execute when the window is closed and the app stays in the tray.
 - **Skills / Memory / Hub**: built-in `core-ai-cli-manual`, `browser-use`, `gui-automation` and `ocg` skills are installed under `~/.core-ai/skills` on first launch and work without a server login; after signing in, Hub adds read-only server capability discovery (registration and management stay in the web console).
-- **Updates**: Settings → About checks the `desktop-v*` stream; Windows installs silently and relaunches, macOS opens the downloaded package.
+- **Updates**: Settings → About checks the `desktop-v*` stream; Windows installs silently and relaunches, macOS opens the downloaded package. On the first start after an update the app also refreshes a separately installed `core-ai-cli` (the copy `--upgrade` puts in `~/.core-ai/bin`, and any copy on `PATH`) to the engine version it now bundles — it never downgrades a CLI that is already newer. Settings → About shows the bundled engine version.
 
 ![Tool calls collapse behind the Tool use chip; expand it for each call's duration and result](../imgs/desktop/desktop-tools.png)
 
