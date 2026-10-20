@@ -100,7 +100,9 @@ Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 
 The report includes pass/fail/error counts, pass rates, mean reward, token
 totals, and a per-task table. Infra errors are listed separately from model
-failures.
+failures. A `pass*` row means the verifier returned reward >= 1.0 but the
+agent phase raised an exception (usually a timeout); it is counted separately
+from a clean pass.
 
 The adapter lives in `cli.py`. It installs the native binary into the task
 container, writes `~/.core-ai/agent.properties` with the resolved provider and

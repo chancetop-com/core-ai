@@ -102,12 +102,19 @@ def _load_trials(job_dir: Path) -> list[TrialRow]:
                 reward = float(value)
 
         error = _error_text(payload.get("exception_info"))
-        if reward is not None and reward >= 1.0:
-            state = "pass"
-        elif error:
-            state = "error"
+        if error:
+            if reward is not None and reward >= 1.0:
+                state = (
+                    "pass_timeout"
+                    if "timeout" in error.lower()
+                    else "pass_exception"
+                )
+            else:
+                state = "error"
         elif reward is None:
             state = "unknown"
+        elif reward >= 1.0:
+            state = "pass"
         else:
             state = "fail"
 
@@ -199,12 +206,15 @@ def _write_markdown(
     model: str,
 ) -> None:
     passed = sum(1 for row in rows if row.state == "pass")
+    timeout_passes = sum(
+        1 for row in rows if row.state in ("pass_timeout", "pass_exception")
+    )
     failed = sum(1 for row in rows if row.state == "fail")
     unknown = sum(1 for row in rows if row.state == "unknown")
     errors = sum(1 for row in rows if row.state == "error")
-    scored = passed + failed
-    scored_rate = (passed / scored * 100.0) if scored else 0.0
-    total_rate = (passed / len(rows) * 100.0) if rows else 0.0
+    total = len(rows)
+    clean_rate = (passed / total * 100.0) if total else 0.0
+    verifier_rate = ((passed + timeout_passes) / total * 100.0) if total else 0.0
     rewarded = [row.reward for row in rows if row.reward is not None]
     mean_reward = (sum(rewarded) / len(rewarded)) if rewarded else 0.0
     input_tokens = sum(row.input_tokens or 0 for row in rows)
@@ -217,14 +227,16 @@ def _write_markdown(
         f"- Job: `{job_dir.name}`",
         f"- Agent: `{agent_name}`",
         f"- Model: `{model}`",
-        f"- Trials: {len(rows)}",
-        f"- Passed: {passed}",
+        f"- Trials: {total}",
+        f"- Passed (clean): {passed}",
+        f"- Passed with agent exception: {timeout_passes}",
         f"- Failed: {failed}",
         f"- Unknown: {unknown}",
         f"- Infra errors: {errors}",
-        f"- Pass rate (scored): {scored_rate:.1f}% ({passed}/{scored})",
-        f"- Pass rate (all trials): {total_rate:.1f}% ({passed}/{len(rows)})",
-        f"- Mean reward: {mean_reward:.3f}",
+        f"- Clean pass rate: {clean_rate:.1f}% ({passed}/{total})",
+        f"- Verifier pass rate: {verifier_rate:.1f}% "
+        f"({passed + timeout_passes}/{total})",
+        f"- Mean verifier reward: {mean_reward:.3f}",
         f"- Tokens: input {input_tokens:,}, output {output_tokens:,}, cache {cache_tokens:,}",
         "",
         "## Tasks",
@@ -232,12 +244,21 @@ def _write_markdown(
         "| Task | State | Reward | Duration | Agent | Input | Output | Cache |",
         "|---|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for row in sorted(rows, key=lambda item: (item.state != "pass", item.task)):
+    state_order = {
+        "pass": 0,
+        "pass_timeout": 1,
+        "pass_exception": 2,
+        "fail": 3,
+        "error": 4,
+        "unknown": 5,
+    }
+    for row in sorted(rows, key=lambda item: (state_order.get(item.state, 9), item.task)):
+        state = "pass*" if row.state in ("pass_timeout", "pass_exception") else row.state
         lines.append(
             "| {task} | {state} | {reward} | {duration}s | {agent}s | "
             "{input_tokens} | {output_tokens} | {cache_tokens} |".format(
                 task=row.task,
-                state=row.state,
+                state=state,
                 reward=_fmt(row.reward, 3),
                 duration=_fmt(row.duration_sec, 1),
                 agent=_fmt(row.agent_sec, 1),
@@ -246,6 +267,22 @@ def _write_markdown(
                 cache_tokens=_fmt(row.cache_tokens),
             )
         )
+
+    lines.extend(
+        [
+            "",
+            "`pass*` = verifier reward >= 1.0, but the agent phase raised an "
+            "exception (usually a timeout).",
+        ]
+    )
+
+    exception_rows = [
+        row for row in rows if row.state in ("pass_timeout", "pass_exception")
+    ]
+    if exception_rows:
+        lines.extend(["", "## Passed with agent exception", ""])
+        for row in exception_rows:
+            lines.append(f"- `{row.task}`: {row.error}")
 
     error_rows = [row for row in rows if row.state == "error"]
     if error_rows:
@@ -284,11 +321,18 @@ def main() -> int:
         cleaned += 1
 
     passed = sum(1 for row in rows if row.state == "pass")
+    timeout_passes = sum(
+        1 for row in rows if row.state in ("pass_timeout", "pass_exception")
+    )
     errors = sum(1 for row in rows if row.state == "error")
     print(f"Report: {report_path}")
     print(f"CSV:    {csv_path}")
     print(f"Clean logs: {cleaned}")
-    print(f"Passed: {passed}/{len(rows)} (infra errors: {errors})")
+    print(
+        f"Clean passes: {passed}/{len(rows)}; "
+        f"verifier passes: {passed + timeout_passes}/{len(rows)}; "
+        f"errors: {errors}"
+    )
     return 0
 
 
