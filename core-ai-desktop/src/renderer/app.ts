@@ -1470,8 +1470,13 @@ function buildSessionRow(session: SessionRow): HTMLElement {
   if (session.status === 'running') {
     item.append(el('span', 'session-spin'));
   }
-  item.append(el('span', 'session-title', session.title || session.sessionId));
-  item.title = `${session.sessionId}\n${fmtTime(session.updatedAt)}${session.status === 'running' ? '\nrunning' : ''}`;
+  const fullTitle = session.title || session.sessionId;
+  item.append(el('span', 'session-title', fullTitle));
+  const tooltip = [fullTitle];
+  const updatedAt = fmtTime(session.updatedAt);
+  if (updatedAt) tooltip.push(updatedAt);
+  if (session.status === 'running') tooltip.push('running');
+  item.title = tooltip.join('\n');
   item.onclick = () => {
     if (session.sessionId !== state.sessionId) void openSession(session.sessionId);
     else void showConversationView();
