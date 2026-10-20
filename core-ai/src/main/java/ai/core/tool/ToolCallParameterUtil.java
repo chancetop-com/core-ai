@@ -1,10 +1,13 @@
 package ai.core.tool;
 
+import ai.core.agent.ExecutionContext;
+
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -72,5 +75,31 @@ public class ToolCallParameterUtil {
                 && !clazz.getName().startsWith("java.util")
                 && !clazz.getName().startsWith("java.time")
                 && !clazz.isEnum();
+    }
+
+    /**
+     * Applies execution-context values to declared tool parameters. A non-blank custom variable
+     * whose name matches a parameter overrides the value supplied by the model; internal
+     * ({@code __}-prefixed) variables, blank values and the platform-managed {@code save_to_file}
+     * parameter are ignored.
+     *
+     * @return true when at least one argument was overridden
+     */
+    public static boolean applyContextArguments(List<ToolCallParameter> parameters, Map<String, Object> args, ExecutionContext context) {
+        if (context == null || parameters == null || parameters.isEmpty()) return false;
+        var variables = context.getCustomVariables();
+        if (variables == null || variables.isEmpty()) return false;
+        var applied = false;
+        for (var param : parameters) {
+            var name = param.getName();
+            if (name == null || ToolCall.SAVE_TO_FILE_PARAM.equals(name) || name.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX)) {
+                continue;
+            }
+            var value = variables.get(name);
+            if (value == null || value instanceof String string && string.isBlank()) continue;
+            args.put(name, value);
+            applied = true;
+        }
+        return applied;
     }
 }

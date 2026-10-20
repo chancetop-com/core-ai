@@ -35,7 +35,7 @@ public class Function extends ToolCall {
         if (context != null && context.getCustomVariables() != null) {
             context.getCustomVariables().forEach((key, customValue) -> {
                 // skip internal runtime objects (e.g. the URL resolver); they are not serializable tool arguments
-                if (key.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX)) {
+                if (key.startsWith(ExecutionContext.INTERNAL_VARIABLE_PREFIX) || SAVE_TO_FILE_PARAM.equals(key)) {
                     return;
                 }
                 // skip null/blank values so empty agent variables do not overwrite arguments provided by the model

@@ -238,6 +238,10 @@ public abstract class ToolCall {
         return stillMissing;
     }
 
+    public boolean applyContextArguments(Map<String, Object> args, ExecutionContext context) {
+        return ToolCallParameterUtil.applyContextArguments(parameters, args, context);
+    }
+
     public List<String> findMissingRequiredParams(String arguments) {
         if (parameters == null || parameters.isEmpty()) return List.of();
         try {

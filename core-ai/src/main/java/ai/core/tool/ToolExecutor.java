@@ -93,6 +93,7 @@ public class ToolExecutor {
         } catch (RuntimeException e) {
             return malformedArgumentsResult(tool, e);
         }
+        tool.applyContextArguments(args, context);
         tool.normalizeArguments(args);
         functionCall.function.arguments = JsonUtil.toJson(args);
 
@@ -105,6 +106,7 @@ public class ToolExecutor {
     public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         try {
             var args = tool.parseArguments(functionCall.function.arguments);
+            applyContextArguments(tool, functionCall, args, context);
             return doExecute(tool, functionCall, args, context);
         } catch (RuntimeException e) {
             return malformedArgumentsResult(tool, e);
@@ -112,7 +114,14 @@ public class ToolExecutor {
     }
 
     public ToolCallResult executeWithoutLifecycle(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
+        applyContextArguments(tool, functionCall, args, context);
         return doExecute(tool, functionCall, args, context);
+    }
+
+    private void applyContextArguments(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
+        if (tool.applyContextArguments(args, context)) {
+            functionCall.function.arguments = JsonUtil.toJson(args);
+        }
     }
 
     private ToolCallResult malformedArgumentsResult(ToolCall tool, RuntimeException error) {

@@ -15,6 +15,7 @@ import ai.core.tool.tools.WriteTodosTool;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.telemetry.AgentTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
+import ai.core.utils.JsonUtil;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
@@ -39,6 +40,17 @@ class ToolExecutorTest {
 
     private static Sandbox fakeSandbox(String interceptedToolName) {
         return new FakeSandbox(interceptedToolName);
+    }
+
+    private static ToolCall echoTool(String toolName, String parameterName) {
+        var tool = new FakeToolCall(toolName, false) {
+            @Override
+            public ToolCallResult execute(String arguments) {
+                return ToolCallResult.completed(arguments);
+            }
+        };
+        tool.setParameters(List.of(ToolCallParameter.builder().name(parameterName).required(true).build()));
+        return tool;
     }
 
     @Test
@@ -128,6 +140,69 @@ class ToolExecutorTest {
 
         assertTrue(result.isFailed());
         assertEquals("Tool arguments are not valid JSON. Fix the arguments and retry this tool call.", result.getResult());
+    }
+
+    @Test
+    void appliesContextArgumentsToToolParametersBeforeValidation() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = echoTool("ctx_tool", "userId");
+        var context = ExecutionContext.builder().customVariable("userId", "ctx-user").build();
+        var functionCall = FunctionCall.of("call_1", "function", "ctx_tool", "{}");
+
+        var result = executor.executeWithoutLifecycle(tool, functionCall, context);
+
+        assertTrue(result.isCompleted(), result.getResult());
+        assertEquals("ctx-user", JsonUtil.fromJson(Map.class, result.getResult()).get("userId"));
+        assertTrue(functionCall.function.arguments.contains("ctx-user"));
+    }
+
+    @Test
+    void contextArgumentsOverrideModelArguments() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = echoTool("ctx_tool", "userId");
+        var context = ExecutionContext.builder().customVariable("userId", "ctx-user").build();
+        var functionCall = FunctionCall.of("call_1", "function", "ctx_tool", "{\"userId\":\"model-user\"}");
+
+        var result = executor.execute(tool, functionCall, context);
+
+        assertTrue(result.isCompleted(), result.getResult());
+        assertEquals("ctx-user", JsonUtil.fromJson(Map.class, result.getResult()).get("userId"));
+    }
+
+    @Test
+    void blankContextArgumentDoesNotOverrideModelArgument() {
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = echoTool("ctx_tool", "userId");
+        var context = ExecutionContext.builder().customVariable("userId", " ").build();
+        var functionCall = FunctionCall.of("call_1", "function", "ctx_tool", "{\"userId\":\"model-user\"}");
+
+        var result = executor.execute(tool, functionCall, context);
+
+        assertTrue(result.isCompleted(), result.getResult());
+        assertEquals("model-user", JsonUtil.fromJson(Map.class, result.getResult()).get("userId"));
+    }
+
+    @Test
+    void appliesContextArgumentsToSandboxInterceptedTools() {
+        var capturedArguments = new AtomicReference<String>();
+        var sandbox = new FakeSandbox("run_bash_command") {
+            @Override
+            public ToolCallResult execute(String toolName, String arguments, ExecutionContext context) {
+                capturedArguments.set(arguments);
+                return ToolCallResult.completed("ok");
+            }
+        };
+        var executor = new ToolExecutor(List.of(), null, status -> { }, () -> null);
+        var tool = echoTool("run_bash_command", "command");
+        var context = ExecutionContext.builder()
+                .sandbox(sandbox)
+                .customVariable("command", "ctx-command")
+                .build();
+        var functionCall = FunctionCall.of("call_1", "function", "run_bash_command", "{\"command\":\"model-command\"}");
+
+        executor.execute(tool, functionCall, context);
+
+        assertEquals("ctx-command", JsonUtil.fromJson(Map.class, capturedArguments.get()).get("command"));
     }
 
     @Test
