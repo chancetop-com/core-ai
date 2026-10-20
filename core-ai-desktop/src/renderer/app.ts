@@ -451,6 +451,11 @@ interface AssistToggle {
   panel: HTMLElement;
   body: HTMLElement;
   setLabel(label: string): void;
+  setOpen(open: boolean): void;
+  /** Fires when the panel becomes visible; used to reset a sealed block to its first line. */
+  onOpen(listener: () => void): void;
+  /** True once the user clicked the chip or its collapse footer — auto-collapse must respect that. */
+  userToggled(): boolean;
 }
 
 interface MemoryRun {
@@ -487,9 +492,9 @@ interface StreamingState {
   text: string;
   bubble: HTMLElement;
   body: HTMLElement;
-  reasoning: string;
-  reasoningPre: HTMLElement | null;
-  reasoningToggle: AssistToggle | null;
+  /** One block per model round; a turn with tool calls reasons more than once. */
+  reasoningBlocks: ReasoningBlock[];
+  activeReasoning: ReasoningBlock | null;
   reasoningTick: ReturnType<typeof setInterval> | null;
   reasoningLiveStart: number | null;
   chips: HTMLElement | null;
@@ -498,6 +503,18 @@ interface StreamingState {
   toolsToggle: AssistToggle | null;
   taskToggle: AssistToggle | null;
   toolUses: Map<ToolUseKind, ToolUseChip> | null;
+}
+
+/**
+ * One reasoning block behind its own chip. Chunks append to `text`; `rendered` tracks how much of
+ * it reached the DOM, so a long thought is not rewritten from scratch on every frame.
+ */
+interface ReasoningBlock {
+  toggle: AssistToggle;
+  body: HTMLElement;
+  text: string;
+  rendered: string;
+  renderQueued: boolean;
 }
 
 /**
@@ -628,12 +645,12 @@ function sweepIdleViews(keep: SessionView): void {
 /** Live-only ticking while the model reasons; the final label is frozen from the engine duration. */
 function startReasoningTick(current: StreamingState): void {
   if (current.reasoningTick != null) return;
-  current.reasoningToggle?.chip.classList.add('busy');
+  current.activeReasoning?.toggle.chip.classList.add('busy');
   current.reasoningTick = setInterval(() => {
-    if (current.reasoningLiveStart == null || !current.reasoningToggle) return;
-    current.reasoningToggle.chip.classList.add('busy');
+    if (current.reasoningLiveStart == null || !current.activeReasoning) return;
+    current.activeReasoning.toggle.chip.classList.add('busy');
     const seconds = Math.max(1, Math.round((Date.now() - current.reasoningLiveStart) / 1000));
-    current.reasoningToggle.setLabel(`Thinking · ${seconds}s`);
+    current.activeReasoning.toggle.setLabel(`Thinking · ${seconds}s`);
   }, 1000);
 }
 
@@ -642,13 +659,75 @@ function stopReasoningTick(current: StreamingState): void {
     clearInterval(current.reasoningTick);
     current.reasoningTick = null;
   }
-  current.reasoningToggle?.chip.classList.remove('busy');
+  current.activeReasoning?.toggle.chip.classList.remove('busy');
   current.reasoningLiveStart = null;
 }
 
+/** Closes the block a turn never sealed (cancel, error, or an engine that skipped the complete). */
+function sealActiveReasoning(current: StreamingState): void {
+  const block = current.activeReasoning;
+  if (!block) return;
+  flushReasoningRender(block);
+  block.toggle.setLabel('Thought');
+  if (!block.toggle.userToggled()) block.toggle.setOpen(false);
+  current.activeReasoning = null;
+}
+
 function resetStreaming(view: SessionView): void {
-  if (view.streaming) stopReasoningTick(view.streaming);
+  if (view.streaming) {
+    stopReasoningTick(view.streaming);
+    sealActiveReasoning(view.streaming);
+  }
   view.streaming = null;
+}
+
+/**
+ * A new reasoning block gets its own chip and panel: thinking before a tool call stays readable
+ * while the model reasons again, instead of being overwritten by the next round.
+ */
+function createReasoningBlock(current: StreamingState): ReasoningBlock {
+  const { chips, panels } = ensureAssistBlock(current);
+  const toggle = createAssistToggle('Thinking…');
+  toggle.chip.classList.add('reasoning-chip');
+  const body = el('div', 'reasoning');
+  toggle.body.append(body);
+  const previous = current.reasoningBlocks[current.reasoningBlocks.length - 1]?.toggle.chip;
+  if (previous) previous.after(toggle.chip);
+  else {
+    const statusChip = chips.querySelector('.turn-status');
+    if (statusChip) statusChip.after(toggle.chip);
+    else chips.prepend(toggle.chip);
+  }
+  panels.append(toggle.panel);
+  // The live block stays open so its thought can be watched; completion folds it away.
+  toggle.setOpen(true);
+  const block: ReasoningBlock = { toggle, body, text: '', rendered: '', renderQueued: false };
+  toggle.onOpen(() => {
+    // A sealed block is read from its first line; the live block stays pinned to the newest one.
+    if (current.activeReasoning !== block) body.scrollTop = 0;
+  });
+  current.reasoningBlocks.push(block);
+  return block;
+}
+
+/** One text append per frame: rewriting the whole block per chunk is quadratic in its length. */
+function queueReasoningRender(block: ReasoningBlock): void {
+  if (block.renderQueued) return;
+  block.renderQueued = true;
+  requestAnimationFrame(() => {
+    block.renderQueued = false;
+    flushReasoningRender(block);
+  });
+}
+
+function flushReasoningRender(block: ReasoningBlock): void {
+  if (block.rendered.length >= block.text.length) return;
+  // Follow the newest line only while the reader is at the bottom; scrolling up to re-read an
+  // earlier part of a long thought must not be yanked back on every chunk.
+  const follow = block.body.scrollHeight - block.body.scrollTop - block.body.clientHeight < 24;
+  block.body.append(document.createTextNode(block.text.slice(block.rendered.length)));
+  block.rendered = block.text;
+  if (follow) block.body.scrollTop = block.body.scrollHeight;
 }
 
 /**
@@ -660,7 +739,7 @@ function hasAssistantContent(wrapper: HTMLElement | null, current: StreamingStat
   if (!wrapper) return false;
   if (wrapper.querySelector('.assist-chips .assist-chip:not(.turn-status)')) return true;
   if (wrapper.querySelector('.tool-entry')) return true;
-  if (current && (current.text.trim() || current.reasoning.trim())) return true;
+  if (current && (current.text.trim() || current.reasoningBlocks.length > 0)) return true;
   const body = wrapper.querySelector('.md-body');
   return Boolean(body && (body.textContent ?? '').trim());
 }
@@ -3315,7 +3394,7 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', bubble, body, reasoning: '', reasoningPre: null, reasoningToggle: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
+    view.streaming = { view, text: '', bubble, body, reasoningBlocks: [], activeReasoning: null, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     scrollTranscript(view);
   }
@@ -3390,24 +3469,34 @@ function createAssistToggle(label: string): AssistToggle {
   const collapse = el('button', 'assist-collapse', 'Collapse') as HTMLButtonElement;
   let base = label;
   let open = false;
+  let touched = false;
+  let openListener: (() => void) | null = null;
   const render = () => {
     group.hidden = !open;
     chip.textContent = `${open ? '▾' : '▸'} ${base}`;
     chip.classList.toggle('active', open);
   };
   const setOpen = (next: boolean) => {
+    const wasOpen = open;
     open = next;
     render();
+    if (!wasOpen && open) openListener?.();
   };
-  chip.onclick = () => setOpen(!open);
-  collapse.onclick = () => setOpen(false);
+  chip.onclick = () => {
+    touched = true;
+    setOpen(!open);
+  };
+  collapse.onclick = () => {
+    touched = true;
+    setOpen(false);
+  };
   group.append(body, collapse);
   const setLabel = (next: string) => {
     base = next;
     render();
   };
   setLabel(label);
-  return { chip, panel: group, body, setLabel };
+  return { chip, panel: group, body, setLabel, setOpen, onOpen: (listener) => { openListener = listener; }, userToggled: () => touched };
 }
 
 function formatSeconds(ms: number): string {
@@ -4029,36 +4118,35 @@ function applySessionEvent(view: SessionView, event: any): void {
     }
     case 'reasoning_chunk': {
       const current = ensureStreaming(view);
-      current.reasoning += event.chunk ?? '';
-      if (current.reasoningLiveStart === null) current.reasoningLiveStart = Date.now();
-      if (!current.reasoningPre) {
-        const { chips, panels } = ensureAssistBlock(current);
-        const toggle = createAssistToggle('Thinking…');
-        current.reasoningToggle = toggle;
-        current.reasoningPre = el('div', 'reasoning');
-        toggle.body.append(current.reasoningPre);
-        // the status chip stays first in the row; the thinking chip slots in right after it
-        const statusChip = chips.querySelector('.turn-status');
-        if (statusChip) chips.insertBefore(toggle.chip, statusChip.nextSibling);
-        else chips.prepend(toggle.chip);
-        panels.prepend(toggle.panel);
+      let block = current.activeReasoning;
+      if (!block) {
+        block = createReasoningBlock(current);
+        current.activeReasoning = block;
+        current.reasoningLiveStart = Date.now();
+        startReasoningTick(current);
       }
-      startReasoningTick(current);
-      current.reasoningPre.textContent = current.reasoning;
+      block.text += event.chunk ?? '';
+      queueReasoningRender(block);
       scrollTranscript(view);
       break;
     }
     case 'reasoning_complete': {
       const current = view.streaming;
       if (!current) break;
+      const block = current.activeReasoning;
       stopReasoningTick(current);
-      if (typeof event.durationMs === 'number') {
-        current.reasoningToggle?.setLabel(`Thinking · ${formatSeconds(event.durationMs)}`);
+      current.activeReasoning = null;
+      if (!block) break;
+      // The complete event carries the whole block; use it only to fill text that never streamed
+      // (non-streaming providers). It must never replace an earlier block of the same turn.
+      const complete = typeof event.reasoning === 'string' ? event.reasoning : '';
+      if (complete && block.text.length < complete.length && complete.startsWith(block.text)) {
+        block.text = complete;
       }
-      if (typeof event.reasoning === 'string' && event.reasoning && current.reasoningPre) {
-        current.reasoning = event.reasoning;
-        current.reasoningPre.textContent = current.reasoning;
-      }
+      flushReasoningRender(block);
+      block.toggle.setLabel(typeof event.durationMs === 'number' ? `Thought · ${formatSeconds(event.durationMs)}` : 'Thought');
+      if (!block.toggle.userToggled()) block.toggle.setOpen(false);
+      scrollTranscript(view);
       break;
     }
     case 'tool_start':

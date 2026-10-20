@@ -769,7 +769,16 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .assist-panel { border: 1px dashed var(--border); border-radius: 7px; padding: 6px 10px; margin: 4px 0 6px; }
 .assist-panel[hidden] { display: none; }
-.assist-panel .reasoning { white-space: pre-wrap; font-size: 12.5px; color: var(--muted); }
+.assist-panel .reasoning {
+  white-space: pre-wrap;
+  font-size: 12.5px;
+  color: var(--muted);
+  /* A long thought scrolls in place; it must not push the whole transcript off screen. */
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
 .assist-collapse {
   display: block;
   width: 100%;
