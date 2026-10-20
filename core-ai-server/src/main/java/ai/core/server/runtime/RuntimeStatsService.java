@@ -1,16 +1,21 @@
 package ai.core.server.runtime;
 
+import ai.core.agent.AgentFootprint;
 import ai.core.api.server.runtime.RuntimeStatsView;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.sandbox.SandboxManager;
 import ai.core.server.sandbox.agentsandbox.AgentSandbox;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.SessionSnapshot;
 import ai.core.server.trace.spi.LocalSpanProcessor;
 import core.framework.inject.Inject;
 
 import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -22,6 +27,30 @@ import java.util.Map;
  * @author stephen
  */
 public class RuntimeStatsService {
+    private static final String[] TURN_BUCKETS = {"1", "2-3", "4-10", "11-20", "21+"};
+
+    private static String turnBucket(int turns) {
+        if (turns <= 1) return "1";
+        if (turns <= 3) return "2-3";
+        if (turns <= 10) return "4-10";
+        if (turns <= 20) return "11-20";
+        return "21+";
+    }
+
+    private static Long percentile(List<Long> values, double percentile) {
+        if (values.isEmpty()) return null;
+        var sorted = new ArrayList<>(values);
+        Collections.sort(sorted);
+        return percentileSorted(sorted, percentile);
+    }
+
+    private static long percentileSorted(List<Long> sorted, double percentile) {
+        int index = (int) Math.ceil(percentile * sorted.size()) - 1;
+        if (index < 0) index = 0;
+        if (index >= sorted.size()) index = sorted.size() - 1;
+        return sorted.get(index);
+    }
+
     @Inject
     RuntimeCapacityGuard guard;
     @Inject
@@ -33,10 +62,11 @@ public class RuntimeStatsService {
 
     public RuntimeStatsView stats() {
         var limits = guard.limits();
+        var memory = JvmMemoryMetrics.snapshot();
         var view = new RuntimeStatsView();
         view.pod = podName();
         view.uptimeSeconds = ManagementFactory.getRuntimeMXBean().getUptime() / 1000;
-        view.memory = memoryStats();
+        view.memory = memoryStats(memory);
         view.sessions = sessionStats(limits);
         view.turns = turnStats(limits);
         view.runs = runStats(limits);
@@ -54,18 +84,39 @@ public class RuntimeStatsService {
         return stats;
     }
 
-    private RuntimeStatsView.MemoryStats memoryStats() {
+    private RuntimeStatsView.MemoryStats memoryStats(JvmMemoryMetrics.Snapshot memory) {
         var stats = new RuntimeStatsView.MemoryStats();
-        stats.heapUsed = guard.heapUsedBytes();
-        stats.heapMax = guard.heapMaxBytes();
-        stats.heapUsedPercent = guard.heapUsedPercent();
+        stats.heapUsed = memory.heapUsed();
+        stats.heapMax = memory.heapMax();
+        stats.heapUsedPercent = memory.heapUsedPercent();
+        stats.heapBeforeGc = memory.heapBeforeGc();
+        stats.heapBeforeGcPercent = memory.heapBeforeGcPercent();
+        stats.heapAfterGc = memory.heapAfterGc();
+        stats.heapAfterGcPercent = memory.heapAfterGcPercent();
+        stats.gcId = memory.gcId();
+        stats.gcAgeMs = memory.gcAgeMs();
+        stats.containerMemory = memory.containerMemory();
+        stats.containerMemoryMax = memory.containerMemoryMax();
+        stats.containerMemoryPercent = memory.containerMemoryPercent();
+        stats.rss = memory.rss();
         return stats;
     }
 
     private RuntimeStatsView.SessionStats sessionStats(RuntimeLimits limits) {
+        var runtimeStats = sessionManager.runtimeStats;
+        var snapshots = runtimeStats.snapshots();
+        var aggregate = new SessionAggregate();
+        for (var snapshot : snapshots) {
+            aggregate.accept(snapshot);
+        }
         var stats = new RuntimeStatsView.SessionStats();
-        stats.active = sessionManager.activeSessionCount();
+        stats.active = snapshots.size();
         stats.max = limits.maxSessionsPerPod;
+        stats.estimateVersion = AgentFootprint.ESTIMATE_VERSION;
+        stats.createdTotal = runtimeStats.createdTotal();
+        stats.closedTotal = runtimeStats.closedTotal();
+        stats.idleEvictedTotal = runtimeStats.idleEvictedTotal();
+        aggregate.applyTo(stats);
         return stats;
     }
 
@@ -127,6 +178,69 @@ public class RuntimeStatsService {
             return InetAddress.getLocalHost().getHostName();
         } catch (Exception e) {
             return "unknown";
+        }
+    }
+
+    private static final class SessionAggregate {
+        private final List<Long> estimatedBytes = new ArrayList<>(16);
+        private final List<Long> contextTokens = new ArrayList<>(16);
+        private final List<Long> idleSeconds = new ArrayList<>(16);
+        private final Map<String, Integer> bucketCounts = new LinkedHashMap<>(TURN_BUCKETS.length);
+        private final Map<String, Long> bucketEstimatedBytes = new LinkedHashMap<>(TURN_BUCKETS.length);
+        private final Map<String, Long> bucketContextTokens = new LinkedHashMap<>(TURN_BUCKETS.length);
+        private final Map<String, List<Long>> bucketEstimatedValues = new LinkedHashMap<>(TURN_BUCKETS.length);
+        private long estimatedBytesTotal;
+        private long contextTokensTotal;
+        private long inlineImageBytesTotal;
+
+        private SessionAggregate() {
+            for (var bucket : TURN_BUCKETS) {
+                bucketCounts.put(bucket, 0);
+            }
+        }
+
+        private void accept(SessionSnapshot snapshot) {
+            var footprint = snapshot.footprint();
+            if (footprint == null) return;
+            long bytes = footprint.estimatedBytes();
+            long tokens = footprint.contextTokens();
+            estimatedBytes.add(bytes);
+            contextTokens.add(tokens);
+            idleSeconds.add(snapshot.idleMillis() / 1000);
+            estimatedBytesTotal += bytes;
+            contextTokensTotal += tokens;
+            inlineImageBytesTotal += footprint.inlineImageBytes();
+            var bucket = turnBucket(footprint.turnCount());
+            bucketCounts.merge(bucket, 1, Integer::sum);
+            bucketEstimatedBytes.merge(bucket, bytes, Long::sum);
+            bucketContextTokens.merge(bucket, tokens, Long::sum);
+            bucketEstimatedValues.computeIfAbsent(bucket, key -> new ArrayList<>(4)).add(bytes);
+        }
+
+        private void applyTo(RuntimeStatsView.SessionStats stats) {
+            stats.estimatedBytesTotal = estimatedBytesTotal;
+            stats.estimatedBytesP50 = percentile(estimatedBytes, 0.50);
+            stats.estimatedBytesP90 = percentile(estimatedBytes, 0.90);
+            stats.estimatedBytesP99 = percentile(estimatedBytes, 0.99);
+            stats.estimatedBytesMax = estimatedBytes.isEmpty() ? null : Collections.max(estimatedBytes);
+            stats.contextTokensTotal = contextTokensTotal;
+            stats.contextTokensP50 = percentile(contextTokens, 0.50);
+            stats.contextTokensP90 = percentile(contextTokens, 0.90);
+            stats.inlineImageBytesTotal = inlineImageBytesTotal;
+            stats.idleSecondsP50 = percentile(idleSeconds, 0.50);
+            stats.idleSecondsP90 = percentile(idleSeconds, 0.90);
+            stats.turnBucketCounts = bucketCounts;
+            stats.turnBucketEstimatedBytes = bucketEstimatedBytes;
+            stats.turnBucketContextTokens = bucketContextTokens;
+            var bucketP50 = new LinkedHashMap<String, Long>();
+            var bucketP90 = new LinkedHashMap<String, Long>();
+            for (var entry : bucketEstimatedValues.entrySet()) {
+                Collections.sort(entry.getValue());
+                bucketP50.put(entry.getKey(), percentileSorted(entry.getValue(), 0.50));
+                bucketP90.put(entry.getKey(), percentileSorted(entry.getValue(), 0.90));
+            }
+            stats.turnBucketEstimatedBytesP50 = bucketP50;
+            stats.turnBucketEstimatedBytesP90 = bucketP90;
         }
     }
 }

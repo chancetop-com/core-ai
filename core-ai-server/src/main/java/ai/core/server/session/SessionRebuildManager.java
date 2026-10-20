@@ -369,6 +369,7 @@ public class SessionRebuildManager {
             session.onEvent(new SseEventBridge(params.sessionId, eventPublisher));
         }
         restoreHelper.restoreAgentHistory(agent, params.sessionId);
+        session.footprint.refresh();
         skillManager.restoreDefinitionSkills(session, params.state != null && params.state.agentConfig != null
                 ? params.state.agentConfig.skillIds : null);
         restoreHelper.restoreDynamicallyLoaded(params.state, params.sessionId, session, params.userId);

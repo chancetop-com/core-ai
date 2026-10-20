@@ -47,6 +47,36 @@ public class RuntimeStatsView {
 
         @Property(name = "heap_used_percent")
         public Double heapUsedPercent;
+
+        @Property(name = "heap_before_gc")
+        public Long heapBeforeGc;
+
+        @Property(name = "heap_before_gc_percent")
+        public Double heapBeforeGcPercent;
+
+        @Property(name = "heap_after_gc")
+        public Long heapAfterGc;
+
+        @Property(name = "heap_after_gc_percent")
+        public Double heapAfterGcPercent;
+
+        @Property(name = "gc_id")
+        public Long gcId;
+
+        @Property(name = "gc_age_ms")
+        public Long gcAgeMs;
+
+        @Property(name = "container_memory")
+        public Long containerMemory;
+
+        @Property(name = "container_memory_max")
+        public Long containerMemoryMax;
+
+        @Property(name = "container_memory_percent")
+        public Double containerMemoryPercent;
+
+        @Property(name = "rss")
+        public Long rss;
     }
 
     public static class SessionStats {
@@ -55,6 +85,66 @@ public class RuntimeStatsView {
 
         @Property(name = "max")
         public Integer max;
+
+        @Property(name = "estimate_version")
+        public Integer estimateVersion;
+
+        @Property(name = "estimated_bytes_total")
+        public Long estimatedBytesTotal;
+
+        @Property(name = "estimated_bytes_p50")
+        public Long estimatedBytesP50;
+
+        @Property(name = "estimated_bytes_p90")
+        public Long estimatedBytesP90;
+
+        @Property(name = "estimated_bytes_p99")
+        public Long estimatedBytesP99;
+
+        @Property(name = "estimated_bytes_max")
+        public Long estimatedBytesMax;
+
+        @Property(name = "context_tokens_total")
+        public Long contextTokensTotal;
+
+        @Property(name = "context_tokens_p50")
+        public Long contextTokensP50;
+
+        @Property(name = "context_tokens_p90")
+        public Long contextTokensP90;
+
+        @Property(name = "inline_image_bytes_total")
+        public Long inlineImageBytesTotal;
+
+        @Property(name = "idle_seconds_p50")
+        public Long idleSecondsP50;
+
+        @Property(name = "idle_seconds_p90")
+        public Long idleSecondsP90;
+
+        @Property(name = "turn_bucket_counts")
+        public Map<String, Integer> turnBucketCounts;
+
+        @Property(name = "turn_bucket_estimated_bytes")
+        public Map<String, Long> turnBucketEstimatedBytes;
+
+        @Property(name = "turn_bucket_estimated_bytes_p50")
+        public Map<String, Long> turnBucketEstimatedBytesP50;
+
+        @Property(name = "turn_bucket_estimated_bytes_p90")
+        public Map<String, Long> turnBucketEstimatedBytesP90;
+
+        @Property(name = "turn_bucket_context_tokens")
+        public Map<String, Long> turnBucketContextTokens;
+
+        @Property(name = "created_total")
+        public Long createdTotal;
+
+        @Property(name = "closed_total")
+        public Long closedTotal;
+
+        @Property(name = "idle_evicted_total")
+        public Long idleEvictedTotal;
     }
 
     public static class TurnStats {

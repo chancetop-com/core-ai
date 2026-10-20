@@ -56,6 +56,7 @@ public class AgentSessionManager {
     private final Logger logger = LoggerFactory.getLogger(AgentSessionManager.class);
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
+    public final SessionRuntimeStats runtimeStats = new SessionRuntimeStats(sessions, sessionLastActivity);
 
     @Inject
     ToolRegistryService toolRegistryService;
@@ -250,7 +251,8 @@ public class AgentSessionManager {
 
     private void initializeSession(InProcessAgentSession session, SessionRegistry.SessionRegistration registration) {
         var sessionId = registration.sessionId();
-        sessions.put(sessionId, session);
+        var previous = sessions.put(sessionId, session);
+        if (previous == null) runtimeStats.onCreated(sessionId);
         boolean claimed;
         try {
             touchActivity(sessionId);
@@ -318,6 +320,7 @@ public class AgentSessionManager {
                     rebuilt.close();
                     return null;
                 }
+                runtimeStats.onCreated(id);
                 logger.info("session rebuilt successfully, sessionId={}", id);
             }
             return rebuilt;
@@ -351,6 +354,7 @@ public class AgentSessionManager {
     public int activeSessionCount() {
         return sessions.size();
     }
+
     public void touchSession(String sessionId) {
         if (ownershipRegistry != null) ownershipRegistry.claimOrRenew(sessionId);
     }
@@ -364,7 +368,8 @@ public class AgentSessionManager {
 
     private void cleanupRuntime(String sessionId) {
         var session = sessions.remove(sessionId);
-        if (userSessionBudget != null && session != null) userSessionBudget.release(session.agent().getExecutionContext().getUserId());
+        runtimeStats.onClosed(sessionId, session != null);
+        if (session != null && userSessionBudget != null) userSessionBudget.release(session.agent().getExecutionContext().getUserId());
         // close() aborts an in-flight turn and lets its terminal event flush first, so the listeners
         // below still see the reply and the turn state before their buffers are discarded.
         if (session != null) session.close();
@@ -398,6 +403,7 @@ public class AgentSessionManager {
             } else try {
                     logger.info("closing idle session, sessionId={}, idleMs={}", sessionId, System.currentTimeMillis() - entry.getValue());
                     closeSession(sessionId);
+                    runtimeStats.onIdleEvicted();
                     closed++;
                 } catch (Exception e) {
                     logger.warn("failed to close idle session, sessionId={}", sessionId, e);

@@ -3,6 +3,7 @@ package ai.core.api.server.runtime;
 import core.framework.api.json.Property;
 
 import java.time.ZonedDateTime;
+import java.util.Map;
 
 /**
  * The latest watermark sample of one replica: every pod writes its own, so the dashboard can show the
@@ -30,8 +31,50 @@ public class RuntimePodView {
     @Property(name = "heap_max")
     public Long heapMax;
 
+    @Property(name = "heap_before_gc_percent")
+    public Double heapBeforeGcPercent;
+
+    @Property(name = "heap_after_gc_percent")
+    public Double heapAfterGcPercent;
+
+    @Property(name = "gc_age_ms")
+    public Long gcAgeMs;
+
+    @Property(name = "container_memory_percent")
+    public Double containerMemoryPercent;
+
     @Property(name = "sessions_active")
     public Integer sessionsActive;
+
+    @Property(name = "session_estimate_version")
+    public Integer sessionEstimateVersion;
+
+    @Property(name = "sessions_estimated_bytes_total")
+    public Long sessionsEstimatedBytesTotal;
+
+    @Property(name = "sessions_estimated_bytes_p50")
+    public Long sessionsEstimatedBytesP50;
+
+    @Property(name = "sessions_estimated_bytes_p90")
+    public Long sessionsEstimatedBytesP90;
+
+    @Property(name = "sessions_context_tokens_p50")
+    public Long sessionsContextTokensP50;
+
+    @Property(name = "sessions_inline_image_bytes_total")
+    public Long sessionsInlineImageBytesTotal;
+
+    @Property(name = "sessions_idle_seconds_p50")
+    public Long sessionsIdleSecondsP50;
+
+    @Property(name = "sessions_created_total")
+    public Long sessionsCreatedTotal;
+
+    @Property(name = "sessions_closed_total")
+    public Long sessionsClosedTotal;
+
+    @Property(name = "session_turn_bucket_counts")
+    public Map<String, Integer> sessionTurnBucketCounts;
 
     @Property(name = "in_flight_turns")
     public Integer inFlightTurns;

@@ -39,6 +39,7 @@ import java.util.function.Function;
 /**
  * @author stephen
  */
+@SuppressWarnings("this-escape")
 public class InProcessAgentSession implements AgentSession {
     private final Logger logger = LoggerFactory.getLogger(InProcessAgentSession.class);
 
@@ -53,10 +54,11 @@ public class InProcessAgentSession implements AgentSession {
     private final AtomicBoolean turnActive = new AtomicBoolean();
     private volatile long turnStartedAtMs;
     private final SessionCustomEventEmitter customEventEmitter;
-
+    public final SessionFootprintTracker footprint;
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this.sessionId = sessionId;
         this.agent = agent;
+        this.footprint = new SessionFootprintTracker(agent);
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
@@ -80,6 +82,7 @@ public class InProcessAgentSession implements AgentSession {
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore, boolean skipLoad) {
         this.sessionId = sessionId;
         this.agent = agent;
+        this.footprint = new SessionFootprintTracker(agent);
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
@@ -102,11 +105,9 @@ public class InProcessAgentSession implements AgentSession {
     public String id() {
         return sessionId;
     }
-
     public Agent agent() {
         return agent;
     }
-
     @Override
     public void sendMessage(String message) {
         sendMessage(message, null);
@@ -169,6 +170,7 @@ public class InProcessAgentSession implements AgentSession {
             turnDeadline.cancel(false);
             threadUnbind.run();
             turnToken.disconnect();
+            footprint.refresh();
         }
     }
 

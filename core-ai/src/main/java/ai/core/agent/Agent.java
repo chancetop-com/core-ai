@@ -358,6 +358,10 @@ public class Agent extends Node<Agent> {
         addMessages(messages);
     }
 
+    public AgentFootprint footprint() {
+        return AgentFootprintCalculator.calculate(getMessages(), getHistory());
+    }
+
     /**
      * Resumes the turn loop for a message injected by the runtime — an async task notification or a
      * background completion — traced as a turn of its own: without the agent span the continuation's LLM
