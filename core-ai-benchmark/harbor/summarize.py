@@ -102,12 +102,12 @@ def _load_trials(job_dir: Path) -> list[TrialRow]:
                 reward = float(value)
 
         error = _error_text(payload.get("exception_info"))
-        if error:
+        if reward is not None and reward >= 1.0:
+            state = "pass"
+        elif error:
             state = "error"
         elif reward is None:
             state = "unknown"
-        elif reward >= 1.0:
-            state = "pass"
         else:
             state = "fail"
 
