@@ -27,10 +27,11 @@ import java.util.Map;
  * @author stephen
  */
 public class RuntimeStatsService {
-    private static final String[] TURN_BUCKETS = {"1", "2-3", "4-10", "11-20", "21+"};
+    private static final String[] TURN_BUCKETS = {"0", "1", "2-3", "4-10", "11-20", "21+"};
 
     private static String turnBucket(int turns) {
-        if (turns <= 1) return "1";
+        if (turns <= 0) return "0";
+        if (turns == 1) return "1";
         if (turns <= 3) return "2-3";
         if (turns <= 10) return "4-10";
         if (turns <= 20) return "11-20";
