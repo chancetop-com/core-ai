@@ -134,6 +134,7 @@ public class OutputPanel {
     private final DiffRenderer diffRenderer;
     private final AtomicBoolean spinnerActive = new AtomicBoolean(false);
     private final IntSupplier terminalWidth;
+    private final boolean interactive;
 
     private volatile boolean textStarted;
     private volatile boolean reasoningShown;
@@ -141,13 +142,14 @@ public class OutputPanel {
     private int toolOutputLineCount;
     private boolean toolOutputStreaming;
 
-    public OutputPanel(PrintWriter writer, boolean smartTerminal, IntSupplier terminalWidth) {
+    public OutputPanel(PrintWriter writer, boolean smartTerminal, boolean interactive, IntSupplier terminalWidth) {
         this.writer = writer;
         this.mdRenderer = new StreamingMarkdownRenderer(writer, smartTerminal, terminalWidth);
         this.spinner = new ThinkingSpinner(writer, terminalWidth);
         this.planRenderer = new PlanTableRenderer(writer, terminalWidth);
         this.diffRenderer = new DiffRenderer(writer);
         this.terminalWidth = terminalWidth;
+        this.interactive = interactive;
     }
 
     public void beginTurn() {
@@ -253,7 +255,7 @@ public class OutputPanel {
         String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
 
         if (toolOutputStreaming && toolOutputLineCount > 5) {
-            clearStatusLine();
+            if (interactive) clearStatusLine();
         }
 
         if (toolOutputStreaming && toolOutputLineCount > 0) {
@@ -301,7 +303,7 @@ public class OutputPanel {
             int maxWidth = Math.max(40, terminalWidth.getAsInt() - INDENT.length());
             String displayLine = truncateToWidth(line, maxWidth);
             writer.println(INDENT + AnsiTheme.MUTED + displayLine + AnsiTheme.RESET);
-        } else {
+        } else if (interactive) {
             String counter = "\u231B Running... Read " + toolOutputLineCount + " lines";
             writer.print("\r" + INDENT + AnsiTheme.MUTED + counter + AnsiTheme.RESET);
         }
@@ -409,6 +411,10 @@ public class OutputPanel {
     }
 
     public void startSpinner(boolean wasReasoningShown) {
+        if (!interactive) {
+            mdRenderer.flush();
+            return;
+        }
         if (spinnerActive.compareAndSet(false, true)) {
             mdRenderer.flush();
             if (wasReasoningShown && !textStarted) {

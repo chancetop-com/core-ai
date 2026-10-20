@@ -85,17 +85,22 @@ public class TerminalUI {
 
     public TerminalUI() {
         initDebugLogging();
+        boolean noConsole = System.console() == null;
         boolean isDumb;
-        try {
-            this.terminal = buildTerminal();
-            isDumb = isDumbTerminal(terminal);
-            LOGGER.debug("terminal built: type={}, class={}", terminal.getType(), terminal.getClass().getName());
-        } catch (IOException e) {
-            LOGGER.warn("terminal build failed: {}", e.getMessage());
+        if (noConsole) {
             isDumb = true;
-        }
-        if (isDumb) {
-            isDumb = !tryTtyTerminal();
+        } else {
+            try {
+                this.terminal = buildTerminal();
+                isDumb = isDumbTerminal(terminal);
+                LOGGER.debug("terminal built: type={}, class={}", terminal.getType(), terminal.getClass().getName());
+            } catch (IOException e) {
+                LOGGER.warn("terminal build failed: {}", e.getMessage());
+                isDumb = true;
+            }
+            if (isDumb) {
+                isDumb = !tryTtyTerminal();
+            }
         }
         if (isDumb) {
             this.writer = terminal != null ? terminal.writer() : new PrintWriter(System.out, true, StandardCharsets.UTF_8);
@@ -244,18 +249,15 @@ public class TerminalUI {
         return jlineReader != null;
     }
 
+    public boolean isInteractive() {
+        return jlineReader != null && System.console() != null;
+    }
+
     public Terminal getTerminal() {
         return terminal;
     }
 
     public boolean isAnsiSupported() {
-        String term = System.getenv("TERM");
-        if (term != null && (term.contains("color") || term.contains("xterm") || term.contains("screen"))) {
-            return true;
-        }
-        if (terminal != null && !Terminal.TYPE_DUMB.equals(terminal.getType())) {
-            return true;
-        }
         return System.console() != null;
     }
 
@@ -357,6 +359,7 @@ public class TerminalUI {
     }
 
     private boolean tryTtyTerminal() {
+        if (System.console() == null) return false;
         var ttyPath = Path.of("/dev/tty");
         if (!Files.exists(ttyPath)) return false;
         try {

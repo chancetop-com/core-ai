@@ -8,7 +8,8 @@ import java.util.Map;
  */
 public final class AnsiTheme {
 
-    private static final boolean COLOR_ENABLED = System.getenv("NO_COLOR") == null;
+    private static final boolean COLOR_ENABLED = System.getenv("NO_COLOR") == null
+            && System.console() != null;
 
     private static final boolean WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 

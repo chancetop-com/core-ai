@@ -49,7 +49,7 @@ public class BaseEventListener implements AgentEventListener {
     protected BaseEventListener(TerminalUI ui, AgentSession session) {
         this.ui = ui;
         this.session = session;
-        this.panel = new OutputPanel(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
+        this.panel = new OutputPanel(ui.getWriter(), ui.isAnsiSupported(), ui.isInteractive(), ui::getTerminalWidth);
     }
 
     public OutputPanel getPanel() {
