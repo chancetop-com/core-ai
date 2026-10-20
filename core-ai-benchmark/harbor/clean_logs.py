@@ -76,7 +76,7 @@ def main() -> int:
 
     paths = sorted(args.path.glob("*/agent/core-ai-cli.txt"))
     if not paths:
-        paths = sorted(args.path.glob("*.txt"))
+        paths = sorted(args.path.glob("*/*/agent/core-ai-cli.txt"))
     if not paths:
         raise SystemExit(f"No core-ai-cli.txt logs found under {args.path}")
 
