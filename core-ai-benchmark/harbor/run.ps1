@@ -6,6 +6,7 @@
     [string]$Task = "",
     [int]$NTasks = 0,
     [string]$JobsDir = "",
+    [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
     [string]$CliVersion = "2.0.52",
@@ -17,6 +18,7 @@
 
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
+$env:PYTHONUTF8 = "1"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 if ($Help) {
@@ -35,6 +37,7 @@ Options:
   -Task NAME           Run one task only
   -NTasks N            Run the first N tasks only
   -JobsDir DIR         Harbor jobs directory (default: .harbor-jobs)
+  -JobName NAME        Reuse an existing job name to resume an interrupted run
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
@@ -153,6 +156,7 @@ $HarborArgs = @(
 )
 if ($ThinkingEffort) { $HarborArgs += @("--ak", "reasoning_effort=$ThinkingEffort") }
 if ($Model) { $HarborArgs += @("-m", $Model) }
+if ($JobName) { $HarborArgs += @("--job-name", $JobName) }
 if ($Task) { $HarborArgs += @("-i", $Task) }
 if ($NTasks -gt 0) { $HarborArgs += @("-l", "$NTasks") }
 

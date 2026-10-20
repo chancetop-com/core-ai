@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Run the full Terminal-Bench 2.1 benchmark against core-ai-cli.
 set -euo pipefail
+export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -12,6 +13,7 @@ THINKING_EFFORT="${THINKING_EFFORT-max}"
 TASK="${TASK:-}"
 N_TASKS="${N_TASKS:-}"
 JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
+JOB_NAME="${JOB_NAME:-}"
 DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
 CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.52}"
@@ -34,6 +36,7 @@ Options:
   --task NAME           Run one task only (repeatable flag not required)
   --n-tasks N           Run the first N tasks only
   --jobs-dir DIR        Harbor jobs directory (default: .harbor-jobs)
+  --job-name NAME       Reuse an existing job name to resume an interrupted run
   --dataset-dir DIR     Local Terminal-Bench 2.1 checkout (default: .datasets/terminal-bench-2-1)
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
@@ -61,6 +64,7 @@ while [ $# -gt 0 ]; do
         --task) TASK="$2"; shift 2 ;;
         --n-tasks) N_TASKS="$2"; shift 2 ;;
         --jobs-dir) JOBS_DIR="$2"; shift 2 ;;
+        --job-name) JOB_NAME="$2"; shift 2 ;;
         --dataset-dir) DATASET_DIR="$2"; shift 2 ;;
         --dataset-ref) DATASET_REF="$2"; shift 2 ;;
         --cli-binary) CLI_BINARY="$2"; shift 2 ;;
@@ -237,6 +241,9 @@ if [ -n "$THINKING_EFFORT" ]; then
 fi
 if [ -n "$MODEL" ]; then
     HARBOR_ARGS+=(-m "$MODEL")
+fi
+if [ -n "$JOB_NAME" ]; then
+    HARBOR_ARGS+=(--job-name "$JOB_NAME")
 fi
 if [ -n "$TASK" ]; then
     HARBOR_ARGS+=(-i "$TASK")

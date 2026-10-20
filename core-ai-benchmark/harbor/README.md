@@ -127,6 +127,17 @@ Useful files:
 
 ## Notes
 
+- **Windows console encoding.** Harbor reads each task's `instruction.md` with
+  the locale default encoding. On Chinese (GBK/cp936) Windows the UTF-8 tasks
+  (`distribution-search`, `llm-inference-batching-scheduler`) raise
+  `UnicodeDecodeError`, which aborts the job's task group and surfaces as
+  `CancelledError` on every in-flight trial. Both runners export
+  `PYTHONUTF8=1` to force UTF-8; keep that env var set when invoking Harbor
+  directly. Harbor's rich spinner also needs it, otherwise it fails with
+  `UnicodeEncodeError: 'gbk' codec can't encode character '\u280b'`.
+- **Resume.** Pass `--job-name <job-dir-name>` (PowerShell: `-JobName`) to
+  re-enter an existing job directory; completed trials are skipped and the rest
+  run again. Delete a cancelled trial directory first if it should be retried.
 - **Docker memory.** The benchmark task containers request ~2 GB each. The
   runner defaults to `--concurrency 1` so it also works on small Docker Desktop
   VMs. Increase Docker Desktop memory to 8–12 GB before raising concurrency.
