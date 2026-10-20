@@ -779,6 +779,12 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
   overscroll-behavior: contain;
   scrollbar-width: thin;
 }
+.reasoning-block + .reasoning-block {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+}
+.reasoning-block-head { margin-bottom: 2px; color: var(--faint); font-size: 11px; }
 .assist-collapse {
   display: block;
   width: 100%;
