@@ -45,6 +45,7 @@ class BackgroundTaskSpinnerTest {
         var ui = mock(TerminalUI.class);
         when(ui.getWriter()).thenReturn(new PrintWriter(output, true));
         when(ui.isAnsiSupported()).thenReturn(Boolean.TRUE);
+        when(ui.isInteractive()).thenReturn(Boolean.TRUE);
         when(ui.getTerminalWidth()).thenReturn(120);
         var agent = mock(Agent.class);
         when(agent.getCurrentTokenUsage()).thenReturn(new Usage(0, 0, 0));

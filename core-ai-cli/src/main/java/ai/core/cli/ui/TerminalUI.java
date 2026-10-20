@@ -82,6 +82,7 @@ public class TerminalUI {
     private final PasteBuffer pasteBuffer = new PasteBuffer();
     private final TerminalPasteHandler pasteHandler;
     private Terminal terminal;
+    private boolean promptMode;
 
     public TerminalUI() {
         initDebugLogging();
@@ -250,7 +251,11 @@ public class TerminalUI {
     }
 
     public boolean isInteractive() {
-        return jlineReader != null && System.console() != null;
+        return !promptMode && jlineReader != null && System.console() != null;
+    }
+
+    public void setPromptMode(boolean promptMode) {
+        this.promptMode = promptMode;
     }
 
     public Terminal getTerminal() {

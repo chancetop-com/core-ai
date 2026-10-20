@@ -179,6 +179,7 @@ public class CliApp {
         Path configDir = configFile.getParent();
         PluginManager.getInstance(configDir).initializeIfNeeded(jarPath);
         var ui = new TerminalUI();
+        ui.setPromptMode(prompt != null);
         InteractiveConfigSetup.setupIfNeeded(ui);
         ManagedSkillProvisioner.provision();
         var sessionContext = initializeSession(ui);

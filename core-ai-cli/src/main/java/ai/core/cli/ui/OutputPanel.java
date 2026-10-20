@@ -254,8 +254,8 @@ public class OutputPanel {
         stopSpinnerIfActive();
         String icon = "success".equals(status) ? AnsiTheme.SUCCESS : AnsiTheme.ERROR;
 
-        if (toolOutputStreaming && toolOutputLineCount > 5) {
-            if (interactive) clearStatusLine();
+        if (interactive && toolOutputStreaming && toolOutputLineCount > 5) {
+            clearStatusLine();
         }
 
         if (toolOutputStreaming && toolOutputLineCount > 0) {
