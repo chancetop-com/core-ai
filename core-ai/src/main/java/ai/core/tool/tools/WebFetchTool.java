@@ -97,6 +97,10 @@ public class WebFetchTool extends ToolCall {
         }
     }
 
+    private static String methodOrDefault(String method) {
+        return Strings.isBlank(method) ? "GET" : method;
+    }
+
     private final HttpClient client = HttpClient.newBuilder()
             .followRedirects(HttpClient.Redirect.NORMAL)
             .connectTimeout(Duration.ofSeconds(30))
@@ -108,7 +112,7 @@ public class WebFetchTool extends ToolCall {
         try {
             var argsMap = parseArguments(text);
             var url = getStringValue(argsMap, "url");
-            var method = getStringValue(argsMap, "method");
+            var method = methodOrDefault(getStringValue(argsMap, "method"));
             var contentType = getStringValue(argsMap, "content_type");
             var body = getStringValue(argsMap, "body");
             var format = argsMap.get("format") instanceof String s ? s : "markdown";
@@ -138,8 +142,8 @@ public class WebFetchTool extends ToolCall {
         try {
             var argsMap = parseArguments(arguments);
             var url = getStringValue(argsMap, "url");
-            var method = getStringValue(argsMap, "method");
-            if (url == null || method == null) return null;
+            var method = methodOrDefault(getStringValue(argsMap, "method"));
+            if (url == null) return null;
 
             var resolved = resolver.resolve(url, method.toUpperCase(Locale.ROOT));
             if (resolved == null) return null;
@@ -158,9 +162,8 @@ public class WebFetchTool extends ToolCall {
 
     private String executeRequest(String url, String method, String contentType, String body, String format) {
         if (Strings.isBlank(url)) return "Error: URL parameter is required";
-        if (Strings.isBlank(method)) return "Error: HTTP method parameter is required";
 
-        String httpMethod = method.toUpperCase(Locale.ROOT);
+        String httpMethod = methodOrDefault(method).toUpperCase(Locale.ROOT);
         if (!SUPPORTED_METHODS.contains(httpMethod)) {
             return "Error: Invalid HTTP method '" + method + "'. Supported methods: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS";
         }
