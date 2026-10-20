@@ -29,7 +29,7 @@ class TraceWebServiceImplTest {
     void traceReadableViaAccessControl() {
         var service = service("viewer-1");
         var trace = trace("trace-1", "runner-1");
-        when(service.traceService.get("trace-1")).thenReturn(trace);
+        when(service.traceService.getWithPayload("trace-1")).thenReturn(trace);
         when(service.traceAccessControl.canRead(trace, "viewer-1", false)).thenReturn(Boolean.TRUE);
 
         assertDoesNotThrow(() -> service.get("trace-1"));
@@ -39,7 +39,7 @@ class TraceWebServiceImplTest {
     void traceHiddenWhenAccessControlDenies() {
         var service = service("viewer-1");
         var trace = trace("trace-1", "runner-1");
-        when(service.traceService.get("trace-1")).thenReturn(trace);
+        when(service.traceService.getWithPayload("trace-1")).thenReturn(trace);
         when(service.traceAccessControl.canRead(trace, "viewer-1", false)).thenReturn(Boolean.FALSE);
 
         assertThrows(NotFoundException.class, () -> service.get("trace-1"));
@@ -50,11 +50,11 @@ class TraceWebServiceImplTest {
         var service = service("viewer-1");
         var derived = trace("trace-1", "runner-1");
         derived.sessionId = "fp1-0123456789abcdef0123456789abcdef";
-        when(service.traceService.get("trace-1")).thenReturn(derived);
+        when(service.traceService.getWithPayload("trace-1")).thenReturn(derived);
         when(service.traceAccessControl.canRead(derived, "viewer-1", false)).thenReturn(Boolean.TRUE);
         var clientProvided = trace("trace-2", "runner-1");
         clientProvided.sessionId = "claude-session-1";
-        when(service.traceService.get("trace-2")).thenReturn(clientProvided);
+        when(service.traceService.getWithPayload("trace-2")).thenReturn(clientProvided);
         when(service.traceAccessControl.canRead(clientProvided, "viewer-1", false)).thenReturn(Boolean.TRUE);
 
         assertEquals(Boolean.TRUE, service.get("trace-1").sessionIdDerived);

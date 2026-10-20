@@ -43,15 +43,20 @@ final class TraceServiceHelper {
 
     static void stripDuplicatedPayloadAttributes(Span span) {
         if (span.attributes == null) return;
-        stripIfDuplicate(span, LANGFUSE_OBSERVATION_INPUT, span.input);
-        stripIfDuplicate(span, LANGFUSE_OBSERVATION_OUTPUT, span.output);
-        stripIfDuplicate(span, GEN_AI_PROMPT, span.input);
-        stripIfDuplicate(span, GEN_AI_COMPLETION, span.output);
+        stripDuplicatedPayloadAttributes(span.attributes, span.input, span.output);
     }
 
-    private static void stripIfDuplicate(Span span, String attributeKey, String payload) {
-        if (payload != null && payload.equals(span.attributes.get(attributeKey))) {
-            span.attributes.remove(attributeKey);
+    static void stripDuplicatedPayloadAttributes(Map<String, String> attributes, String input, String output) {
+        if (attributes == null) return;
+        removeIfEqual(attributes, LANGFUSE_OBSERVATION_INPUT, input);
+        removeIfEqual(attributes, LANGFUSE_OBSERVATION_OUTPUT, output);
+        removeIfEqual(attributes, GEN_AI_PROMPT, input);
+        removeIfEqual(attributes, GEN_AI_COMPLETION, output);
+    }
+
+    private static void removeIfEqual(Map<String, String> attributes, String key, String payload) {
+        if (payload != null && payload.equals(attributes.get(key))) {
+            attributes.remove(key);
         }
     }
 

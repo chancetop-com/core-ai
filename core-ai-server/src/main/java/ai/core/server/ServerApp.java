@@ -78,6 +78,7 @@ import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceFacetRow;
+import ai.core.server.trace.domain.TracePayloadBlob;
 import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.rbac.RbacModule;
 import ai.core.server.replay.ReplayModule;
@@ -221,11 +222,7 @@ public class ServerApp extends App {
         mongo.collection(UserChannelTarget.class);
         mongo.collection(SessionNotice.class);
 
-        mongo.collection(Trace.class);
-        mongo.collection(Span.class);
-        mongo.view(TraceFacetRow.class);
-        mongo.view(ai.core.server.apiuser.ApiUserDailyUsageRow.class);
-        mongo.collection(PromptTemplate.class);
+        registerTraceCollections(mongo);
 
         mongo.collection(ServiceApi.class);
         mongo.collection(Trigger.class);
@@ -287,6 +284,15 @@ public class ServerApp extends App {
         mongo.collection(ai.core.server.runtime.RuntimeSample.class);
         mongo.collection(ai.core.server.replay.domain.ReplayExperiment.class);
         mongo.collection(ai.core.server.replay.domain.ReplayRun.class);
+    }
+
+    private void registerTraceCollections(MongoConfig mongo) {
+        mongo.collection(Trace.class);
+        mongo.collection(Span.class);
+        mongo.collection(TracePayloadBlob.class);
+        mongo.view(TraceFacetRow.class);
+        mongo.view(ai.core.server.apiuser.ApiUserDailyUsageRow.class);
+        mongo.collection(PromptTemplate.class);
     }
 
     private void registerWorkflowCollections(MongoConfig mongo) {

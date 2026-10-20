@@ -347,7 +347,7 @@ public class SelfHarnessDispatcher {
             }
             case "get_trace" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield traceService.get((String) params.get("trace_id"));
+                yield traceService.getWithPayload((String) params.get("trace_id"));
             }
             case "get_trace_spans" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);

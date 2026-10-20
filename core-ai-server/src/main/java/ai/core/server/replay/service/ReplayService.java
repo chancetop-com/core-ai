@@ -11,6 +11,7 @@ import ai.core.server.replay.domain.ReplayUsage;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.service.TraceAccessControl;
+import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
@@ -110,6 +111,8 @@ public class ReplayService {
     @Inject
     TraceAccessControl traceAccessControl;
     @Inject
+    TracePayloadStore payloadStore;
+    @Inject
     ReplayExecutor replayExecutor;
 
     public ReplayExperiment create(String userId, boolean admin, String traceId, String spanId) {
@@ -139,6 +142,7 @@ public class ReplayService {
         if (!traceAccessControl.canRead(trace, userId, admin)) throw new NotFoundException("trace not found: " + traceId);
         var span = traceService.span(trace.traceId, spanId);
         if (span == null) throw new NotFoundException("span not found: " + spanId);
+        if (payloadStore != null) payloadStore.hydrate(span, true);
         if (span.type != SpanType.LLM) throw new BadRequestException("replay requires an LLM span, got type=" + span.type);
         if (span.input == null || span.input.isBlank() || !isChatML(span.input)) {
             throw new BadRequestException("span input is not a ChatML request, replay unsupported");

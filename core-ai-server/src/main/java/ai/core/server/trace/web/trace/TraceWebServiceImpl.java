@@ -176,7 +176,7 @@ public class TraceWebServiceImpl implements TraceWebService {
     public TraceView get(String traceId) {
         var scope = traceScope();
         if (scope.userId == null) throw new UnauthorizedException("unauthorized");
-        var trace = traceService.get(traceId);
+        var trace = traceService.getWithPayload(traceId);
         if (!canRead(trace, scope)) throw new NotFoundException("trace not found");
         return toTraceView(trace, new HashMap<>(), false);
     }

@@ -38,11 +38,6 @@ import java.util.concurrent.TimeUnit;
  */
 public class OTLPIngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(OTLPIngestService.class);
-    private static final String CORE_AI_RUN_ID = "core_ai.run_id";
-    private static final String CORE_AI_WORKFLOW_ID = "core_ai.workflow_id";
-    private static final String CORE_AI_WORKFLOW_RUN_ID = "core_ai.workflow_run_id";
-    private static final String CORE_AI_WORKFLOW_NODE_ID = "core_ai.workflow_node_id";
-    private static final String CORE_AI_WORKFLOW_NODE_TYPE = "core_ai.workflow_node_type";
     private static final Set<String> SYSTEM_OPERATIONS = Set.of("memory-consolidator", "memory-compressor", "memory-extractor");
 
     @Inject
@@ -55,42 +50,47 @@ public class OTLPIngestService {
     MongoCollection<Span> spanCollection;
     @Inject
     ModelPricingService modelPricingService;
+    @Inject
+    TracePayloadStore payloadStore;
 
     public void ingest(ExportTraceServiceRequest request) {
+        var compactor = payloadStore != null ? payloadStore.newCompactor() : null;
         int spanCount = 0;
         for (ResourceSpans resourceSpans : request.getResourceSpansList()) {
             var resourceAttrs = OTLPParseHelper.extractAttributes(resourceSpans.getResource().getAttributesList());
-            spanCount += processResourceSpans(resourceSpans, resourceAttrs);
+            spanCount += processResourceSpans(resourceSpans, resourceAttrs, compactor);
         }
         LOGGER.debug("ingested {} spans via OTLP", spanCount);
     }
 
-    private int processResourceSpans(ResourceSpans resourceSpans, Map<String, String> resourceAttrs) {
+    private int processResourceSpans(ResourceSpans resourceSpans, Map<String, String> resourceAttrs,
+                                     TracePayloadStore.Compactor compactor) {
         int count = 0;
         for (ScopeSpans scopeSpans : resourceSpans.getScopeSpansList()) {
             for (io.opentelemetry.proto.trace.v1.Span protoSpan : scopeSpans.getSpansList()) {
-                processSpan(protoSpan, resourceAttrs);
+                processSpan(protoSpan, resourceAttrs, compactor);
                 count++;
             }
         }
         return count;
     }
 
-    private void processSpan(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> resourceAttrs) {
+    private void processSpan(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> resourceAttrs,
+                             TracePayloadStore.Compactor compactor) {
         var spanId = OTLPParseHelper.bytesToHex(protoSpan.getSpanId().toByteArray());
         var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : OTLPParseHelper.bytesToHex(protoSpan.getParentSpanId().toByteArray());
         var attrs = OTLPParseHelper.extractAttributes(protoSpan.getAttributesList());
         var traceId = OTLPParseHelper.resolveTraceId(protoSpan, attrs);
         linkAgentRun(traceId, attrs);
         ensureTraceExists(traceId, protoSpan.getName(), TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano()), attrs, resourceAttrs);
-        saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs);
+        saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs, compactor);
         if (parentSpanId == null) {
-            upsertTrace(protoSpan, traceId, attrs, resourceAttrs);
+            upsertTrace(protoSpan, traceId, attrs, resourceAttrs, compactor);
         }
     }
 
     private void linkAgentRun(String traceId, Map<String, String> attrs) {
-        var runId = attrs.get(CORE_AI_RUN_ID);
+        var runId = attrs.get(OTLPTraceMetadata.CORE_AI_RUN_ID);
         if (runId == null || runId.isBlank()) return;
         agentRunCollection.update(
             Filters.and(
@@ -130,7 +130,7 @@ public class OTLPIngestService {
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
         trace.input = OTLPParseHelper.resolveInput(attrs);
-        trace.metadata = traceMetadata(attrs, resourceAttrs);
+        trace.metadata = OTLPTraceMetadata.traceMetadata(attrs, resourceAttrs);
         trace.durationMs = 0L;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         trace.createdAt = ZonedDateTime.now();
@@ -151,7 +151,7 @@ public class OTLPIngestService {
 
     private void saveSpan(io.opentelemetry.proto.trace.v1.Span protoSpan,
                           String traceId, String spanId, String parentSpanId,
-                          Map<String, String> attrs) {
+                          Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
         if (!spanCollection.find(Filters.eq("span_id", spanId)).isEmpty()) return;
         var toolCallId = attrs.get("tool.call_id");
         if (toolCallId != null && !toolCallId.isEmpty()
@@ -195,6 +195,10 @@ public class OTLPIngestService {
         // The langfuse/gen_ai payload attributes were copied to span.input/output above; drop the
         // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
+        if (compactor != null) {
+            span.input = compactor.compact(traceId, span.input);
+            span.output = compactor.compact(traceId, span.output);
+        }
         spanCollection.insert(span);
 
         // Back-fill model onto trace if not yet set
@@ -211,20 +215,18 @@ public class OTLPIngestService {
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
                              String traceId, Map<String, String> attrs,
-                             Map<String, String> resourceAttrs) {
-        long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
-        long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
-
+                             Map<String, String> resourceAttrs, TracePayloadStore.Compactor compactor) {
         var existing = traceCollection.find(Filters.eq("trace_id", traceId));
         if (!existing.isEmpty()) {
-            updateExistingTrace(existing.getFirst(), protoSpan, attrs, endMs);
+            long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
+            updateExistingTrace(existing.getFirst(), protoSpan, attrs, endMs, compactor);
             return;
         }
-        createNewTrace(protoSpan, traceId, attrs, resourceAttrs, startMs, endMs);
+        createNewTrace(protoSpan, traceId, attrs, resourceAttrs, compactor);
     }
 
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
-                                     Map<String, String> attrs, long endMs) {
+                                     Map<String, String> attrs, long endMs, TracePayloadStore.Compactor compactor) {
         // Targeted $set updates instead of full document replace: a merged gateway session trace
         // has many root spans that can be ingested concurrently, and a replace would overwrite
         // the atomic $inc token/cost counters with a stale snapshot.
@@ -233,6 +235,7 @@ public class OTLPIngestService {
         updates.add(Updates.set("status", status));
         updates.add(Updates.set("error_message", status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null));
         var output = OTLPParseHelper.resolveOutput(attrs);
+        if (compactor != null && output != null) output = compactor.compact(trace.traceId, output);
         if (output != null) updates.add(Updates.set("output", output));
         updates.add(Updates.set("duration_ms", endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano())));
         updates.add(Updates.set("completed_at", OTLPParseHelper.toZonedDateTime(endMs)));
@@ -247,9 +250,9 @@ public class OTLPIngestService {
         // span was an external one without context)
         var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
         if (hasRichContext) {
-            upgradeTraceWithSpanInfo(updates, trace, protoSpan, attrs);
+            upgradeTraceWithSpanInfo(updates, trace, protoSpan, attrs, compactor);
         }
-        var workflow = workflowMetadata(attrs);
+        var workflow = OTLPTraceMetadata.workflowMetadata(attrs);
         if (!workflow.isEmpty()) {
             var merged = new LinkedHashMap<String, String>();
             if (trace.metadata != null) merged.putAll(trace.metadata);
@@ -260,7 +263,7 @@ public class OTLPIngestService {
     }
 
     private void upgradeTraceWithSpanInfo(List<Bson> updates, Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
-                                          Map<String, String> attrs) {
+                                          Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
         updates.add(Updates.set("name", IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"))));
         updates.add(Updates.set("session_id", attrs.get("session.id")));
         updates.add(Updates.set("user_id", attrs.get("user.id")));
@@ -273,6 +276,7 @@ public class OTLPIngestService {
         // is the full request (messages + tools). The run/turn root span carries the real input (the user
         // message), so it replaces that provisional payload instead of only filling an empty field.
         var input = OTLPParseHelper.resolveInput(attrs);
+        if (compactor != null && input != null) input = compactor.compact(trace.traceId, input);
         var agentRootInput = attrs.get("gen_ai.agent.name") != null;
         if (input != null && (agentRootInput || trace.input == null || trace.input.isEmpty())) {
             updates.add(Updates.set("input", input));
@@ -281,7 +285,9 @@ public class OTLPIngestService {
 
     private void createNewTrace(io.opentelemetry.proto.trace.v1.Span protoSpan, String traceId,
                                 Map<String, String> attrs, Map<String, String> resourceAttrs,
-                                long startMs, long endMs) {
+                                TracePayloadStore.Compactor compactor) {
+        long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
+        long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
         trace.traceId = traceId;
@@ -297,7 +303,11 @@ public class OTLPIngestService {
         trace.errorMessage = trace.status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         trace.input = OTLPParseHelper.resolveInput(attrs);
         trace.output = OTLPParseHelper.resolveOutput(attrs);
-        trace.metadata = traceMetadata(attrs, resourceAttrs);
+        if (compactor != null) {
+            trace.input = compactor.compact(traceId, trace.input);
+            trace.output = compactor.compact(traceId, trace.output);
+        }
+        trace.metadata = OTLPTraceMetadata.traceMetadata(attrs, resourceAttrs);
         trace.durationMs = endMs - startMs;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         trace.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
@@ -320,30 +330,6 @@ public class OTLPIngestService {
             trace.updatedAt = ZonedDateTime.now();
             traceCollection.replace(trace);
         }
-    }
-
-    private Map<String, String> traceMetadata(Map<String, String> attrs, Map<String, String> resourceAttrs) {
-        var metadata = new LinkedHashMap<String, String>();
-        metadata.put("service", resourceAttrs.getOrDefault("service.name", "unknown"));
-        metadata.put("version", resourceAttrs.getOrDefault("service.version", "unknown"));
-        metadata.put("environment", resourceAttrs.getOrDefault("deployment.environment", "unknown"));
-        metadata.putAll(workflowMetadata(attrs));
-        return metadata;
-    }
-
-    private Map<String, String> workflowMetadata(Map<String, String> attrs) {
-        var metadata = new LinkedHashMap<String, String>();
-        putAttr(metadata, "agent_run_id", attrs, CORE_AI_RUN_ID);
-        putAttr(metadata, "workflow_id", attrs, CORE_AI_WORKFLOW_ID);
-        putAttr(metadata, "workflow_run_id", attrs, CORE_AI_WORKFLOW_RUN_ID);
-        putAttr(metadata, "workflow_node_id", attrs, CORE_AI_WORKFLOW_NODE_ID);
-        putAttr(metadata, "workflow_node_type", attrs, CORE_AI_WORKFLOW_NODE_TYPE);
-        return metadata;
-    }
-
-    private void putAttr(Map<String, String> target, String targetKey, Map<String, String> attrs, String attrKey) {
-        var value = attrs.get(attrKey);
-        if (value != null && !value.isBlank()) target.put(targetKey, value);
     }
 
     private void incrementTraceTokens(String traceId, Span span) {

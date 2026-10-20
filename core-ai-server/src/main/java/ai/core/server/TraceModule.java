@@ -17,6 +17,7 @@ import ai.core.server.trace.service.ModelPricingService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceAccessControl;
+import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
@@ -41,6 +42,7 @@ public class TraceModule extends Module {
 
     @Override
     protected void initialize() {
+        bind(TracePayloadStore.class);
         bind(TraceDailyMaintenanceService.class);
         var configuredContainer = property("trace.archive.container").orElse(null);
         var archiveService = new TraceArchiveService(bean(ObjectStorageServiceResolver.class), configuredContainer, resolveArchivePrefix());

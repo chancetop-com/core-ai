@@ -51,6 +51,8 @@ public class TraceService {
     MongoCollection<Span> spanCollection;
     @Inject
     MongoCollection<User> userCollection;
+    @Inject
+    TracePayloadStore payloadStore;
 
     public List<Trace> list(TraceListFilter filter) {
         if (requiresSearch(filter)) {
@@ -308,6 +310,12 @@ public class TraceService {
         return trace;
     }
 
+    public Trace getWithPayload(String traceId) {
+        var trace = get(traceId);
+        if (trace != null && payloadStore != null) payloadStore.hydrate(trace, false);
+        return trace;
+    }
+
     public List<Span> spans(String traceId) {
         var query = new Query();
         query.filter = Filters.eq("trace_id", traceId);
@@ -327,6 +335,7 @@ public class TraceService {
         if (results.isEmpty()) return null;
         var span = results.getFirst();
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
+        if (payloadStore != null) payloadStore.hydrate(span, false);
         return span;
     }
 

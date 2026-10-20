@@ -67,6 +67,8 @@ public class IngestService {
     MongoCollection<Span> spanCollection;
     @Inject
     ModelPricingService modelPricingService;
+    @Inject
+    TracePayloadStore payloadStore;
 
     public void ingest(IngestRequest request) {
         ingest(request, null, null);
@@ -76,6 +78,15 @@ public class IngestService {
     // source: when non-null, stamps Trace.source (e.g. "cli"); legacy anonymous path passes null.
     public void ingest(IngestRequest request, String authUserId, String source) {
         if (request.spans == null || request.spans.isEmpty()) return;
+
+        if (payloadStore != null) {
+            var compactor = payloadStore.newCompactor();
+            for (var spanReq : request.spans) {
+                TraceServiceHelper.stripDuplicatedPayloadAttributes(spanReq.attributes, spanReq.input, spanReq.output);
+                spanReq.input = compactor.compact(spanReq.traceId, spanReq.input);
+                spanReq.output = compactor.compact(spanReq.traceId, spanReq.output);
+            }
+        }
 
         // Prefer root spans for trace metadata initialization (parentSpanId == null).
         Map<String, IngestSpanRequest> rootByTrace = new LinkedHashMap<>();
