@@ -31,6 +31,7 @@
   --amber: #f0b45f;
   --red: #f27d7d;
   --mono: 'Cascadia Code', 'JetBrains Mono', Consolas, monospace;
+  --composer-bottom-gap: 12px;
 }
 
 * { box-sizing: border-box; }
@@ -652,6 +653,9 @@ select:hover, .btn:hover { border-color: var(--accent); }
 
 .artifact-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .artifact-panel[hidden] { display: none; }
+/* Closes the artifacts column at the composer card's bottom edge, so both columns end on the same line. */
+.artifact-panel::after { content: ""; flex: 0 0 auto; height: var(--composer-bottom-gap); border-top: 1px solid var(--border); background: var(--bg-panel); }
+#app.dock-fullscreen .artifact-panel::after { display: none; }
 .artifact-head { display: flex; align-items: center; gap: 6px; padding: 0 10px; min-height: 40px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
 .artifact-title { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .artifact-meta { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
@@ -945,7 +949,7 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 /* ---------- composer ---------- */
 
-.composer { padding: 10px 14px 12px; background: var(--bg-panel); border-top: 1px solid var(--border); }
+.composer { padding: 10px 14px var(--composer-bottom-gap); background: var(--bg-panel); border-top: 1px solid var(--border); }
 
 .composer-card {
   display: flex;
