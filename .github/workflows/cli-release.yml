@@ -57,7 +57,36 @@ jobs:
       - name: Run CLI release checks
         run: ${{ matrix.gradlew }} :core-ai-cli:releaseCheck
 
+      - name: Native compile CLI (Linux, glibc 2.31)
+        if: matrix.target == 'linux'
+        shell: bash
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/workspace" \
+            -w /workspace \
+            -e GRADLE_USER_HOME=/tmp/gradle \
+            -e HOST_UID="$(id -u)" \
+            -e HOST_GID="$(id -g)" \
+            ubuntu:20.04 \
+            bash -c '
+              set -e
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                build-essential coreutils findutils zlib1g-dev libc6-dev curl ca-certificates git
+              curl -fsSL -o /tmp/graalvm.tar.gz \
+                https://github.com/graalvm/graalvm-ce-builds/releases/download/jdk-25.0.0/graalvm-community-jdk-25.0.0_linux-x64_bin.tar.gz
+              mkdir -p /opt/graalvm
+              tar -xzf /tmp/graalvm.tar.gz -C /opt/graalvm --strip-components=1
+              export JAVA_HOME=/opt/graalvm
+              export PATH="$JAVA_HOME/bin:$PATH"
+              java -version
+              ./gradlew :core-ai-cli:nativeCompile --no-daemon --console=plain
+              chown -R "$HOST_UID:$HOST_GID" build
+            '
+
       - name: Native compile CLI
+        if: matrix.target != 'linux'
         run: ${{ matrix.gradlew }} :core-ai-cli:nativeCompile
 
       - name: Rename binary with platform suffix
