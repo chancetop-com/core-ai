@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AgentSessionRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
     private static final String POISON_PILL = "\0__EXIT__";
+    private static final int DEFAULT_BACKGROUND_WAIT_SECONDS = 600;
 
     private final TerminalUI ui;
     private final Agent agent;
@@ -57,6 +58,7 @@ public class AgentSessionRunner {
     private final boolean dailyLogsEnabled;
     private final boolean promptExtractionEnabled;
     private final Integer timeLimitSeconds;
+    private final int backgroundWaitSeconds;
     private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final SessionUpgradeHandler upgradeHandler;
@@ -83,6 +85,8 @@ public class AgentSessionRunner {
         this.dailyLogsEnabled = config.dailyLogsEnabled;
         this.promptExtractionEnabled = config.promptExtractionEnabled;
         this.timeLimitSeconds = config.timeLimitSeconds;
+        this.backgroundWaitSeconds = config.backgroundWaitSeconds != null
+                ? config.backgroundWaitSeconds : DEFAULT_BACKGROUND_WAIT_SECONDS;
         if (config.timeLimitSeconds != null && config.timeLimitSeconds > 0) {
             agent.getExecutionContext().getCustomVariables().put("time_limit_seconds", config.timeLimitSeconds);
         }
@@ -141,6 +145,7 @@ public class AgentSessionRunner {
         } else {
             sendPrompt(listener, session, prompt);
         }
+        awaitBackgroundWork(session);
         if (memoryEnabled && promptExtractionEnabled) {
             MemoryTriggerService.getInstance(workspace).runIncrementalExtractionAndWait();
         }
@@ -157,6 +162,38 @@ public class AgentSessionRunner {
             agent.save(sessionId);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to save session, sessionId={}", sessionId, e);
+        }
+    }
+
+    /**
+     * One-shot mode must not exit while work launched during the turn is still running. Background
+     * task completion is queued as a notification turn, so waiting here both keeps the process
+     * alive and lets the turn driver deliver the result to the model instead of dropping it at JVM
+     * exit. The wait is bounded so a stuck task can never hang the CLI forever.
+     */
+    private void awaitBackgroundWork(InProcessAgentSession session) {
+        if (backgroundWaitSeconds <= 0 || !session.hasPendingWork()) return;
+        var deadline = System.currentTimeMillis() + backgroundWaitSeconds * 1000L;
+        var announced = false;
+        while (session.hasPendingWork()) {
+            if (!announced) {
+                ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Waiting for background tasks..." + AnsiTheme.RESET + "\n");
+                announced = true;
+            }
+            if (System.currentTimeMillis() >= deadline) {
+                LOGGER.warn("background wait timed out after {}s, cancelling remaining tasks", backgroundWaitSeconds);
+                ui.printStreamingChunk("  " + AnsiTheme.WARNING
+                        + "Background tasks are still running; cancelling them before exit." + AnsiTheme.RESET + "\n");
+                session.cancelBackgroundTasks();
+                return;
+            }
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                session.cancelBackgroundTasks();
+                return;
+            }
         }
     }
 
@@ -369,6 +406,7 @@ public class AgentSessionRunner {
                          SessionPersistence sessionPersistence,
                          boolean memoryEnabled, boolean dailyLogsEnabled,
                          boolean promptExtractionEnabled, Integer timeLimitSeconds,
-                         String defaultServerUrl, ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {
+                         String defaultServerUrl, ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
+                         Integer backgroundWaitSeconds) {
     }
 }

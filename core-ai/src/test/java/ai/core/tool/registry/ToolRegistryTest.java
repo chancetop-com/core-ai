@@ -255,6 +255,16 @@ class ToolRegistryTest {
             assertTrue(names.contains("read_file"));
             assertTrue(names.contains("write_file"));
         }
+
+        @Test
+        void shouldExposeReadFileAndAsyncTaskOutputOnLinux() {
+            var factoryRegistry = ToolRegistryFactory.create(new FactoryContext(Platform.LINUX_X64, null, false));
+
+            var names = factoryRegistry.materialize().definitions().stream().map(t -> t.function.name).toList();
+
+            assertTrue(names.contains("read_file"));
+            assertTrue(names.contains("async_task_output"));
+        }
     }
 
     // -- inner types --

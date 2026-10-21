@@ -2,6 +2,7 @@ package ai.core.tool.registry;
 
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
+import ai.core.tool.tools.AsyncTaskOutputTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,8 @@ public final class ToolRegistryFactory {
         registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_MULTIMODAL, BuiltinTools.MULTIMODAL));
         registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_WEB, BuiltinTools.WEB));
         registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_BASH, executableTools(context)));
+        registry.registerProvider(ListToolProvider.of("async-task-output",
+                List.of(AsyncTaskOutputTool.builder().build())));
         return registry;
     }
 

@@ -265,7 +265,9 @@ public class CliApp {
             ui.setAgentProfiles(registry.listAll().stream().map(AgentProfile::name).toList());
         }
         var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
-        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore);
+        var backgroundWaitSeconds = ctx.props().property("agent.background.wait.seconds")
+                .map(Integer::parseInt).orElse(null);
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore, backgroundWaitSeconds);
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
 

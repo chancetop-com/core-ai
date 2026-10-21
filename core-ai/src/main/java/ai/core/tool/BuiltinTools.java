@@ -111,6 +111,7 @@ public final class BuiltinTools {
             PowershellCommandTool.builder().build()
     );
     public static final List<ToolCall> FILE_RW = List.of(
+            ReadFileTool.builder().build(),
             WriteFileTool.builder().build(),
             EditFileTool.builder().build()
     );

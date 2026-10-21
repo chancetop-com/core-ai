@@ -217,6 +217,30 @@ class BackgroundTaskManagerTest {
         }
     }
 
+    @Test
+    void runningTasksAreVisibleUntilTerminal() throws Exception {
+        try (var executor = Executors.newSingleThreadExecutor()) {
+            var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> new InMemorySink(taskId), "test-session", event -> { }, executor);
+            var started = new CountDownLatch(1);
+            var gate = new CountDownLatch(1);
+            manager.submit("slow", () -> {
+                started.countDown();
+                awaitQuietly(gate);
+                return "done";
+            }, null);
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+
+            assertTrue(manager.hasRunningTasks());
+            assertEquals(1, manager.runningTaskCount());
+
+            gate.countDown();
+            manager.awaitTask("slow", 5000);
+
+            assertFalse(manager.hasRunningTasks());
+            assertEquals(0, manager.runningTaskCount());
+        }
+    }
+
     private static final class InMemorySink implements SubagentOutputSink {
         private final String taskId;
 

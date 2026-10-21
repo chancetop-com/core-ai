@@ -275,6 +275,9 @@ public class BaseEventListener implements AgentEventListener {
     @Override
     public void onStatusChange(StatusChangeEvent event) {
         if (event.status == SessionStatus.RUNNING) {
+            // A task notification can start a turn without a preceding prepareTurn() from the
+            // interactive sender thread; reset the panel per turn instead of per user message.
+            panel.beginTurn();
             panel.startSpinner();
         }
     }

@@ -189,6 +189,14 @@ public class BackgroundTaskManager {
         return runningTasks.containsKey(taskId);
     }
 
+    public boolean hasRunningTasks() {
+        return !runningTasks.isEmpty();
+    }
+
+    public int runningTaskCount() {
+        return runningTasks.size();
+    }
+
     public boolean hasTask(String taskId) {
         return runningTasks.containsKey(taskId) || terminalTasks.containsKey(taskId);
     }
@@ -306,6 +314,14 @@ public class BackgroundTaskManager {
     public void cancelAll() {
         LOGGER.debug("cancelling all tasks, count={}", tasks.size());
         tasks.forEach(Task::cancel);
+    }
+
+    public void cancelAllRunning() {
+        LOGGER.debug("cancelling all running tasks, count={}", runningTasks.size());
+        for (var taskId : List.copyOf(runningTasks.keySet())) {
+            var running = runningTasks.get(taskId);
+            if (running != null) cancelRunning(taskId, running);
+        }
     }
 
     public BackgroundTaskManager createChild() {
