@@ -24,6 +24,7 @@ const targets = [
   { entryPoints: ['src/main/engine/EngineSupervisor.ts'], outfile: 'dist/test/engineSupervisor.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/schedule/ScheduleWaker.ts'], outfile: 'dist/test/scheduleWaker.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/browser/CdpBridge.ts'], outfile: 'dist/test/cdpBridge.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/browser/BrowserManager.ts'], outfile: 'dist/test/browserManager.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/computer/managedSkill.ts'], outfile: 'dist/test/managedSkill.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/skills/BuiltinSkills.ts'], outfile: 'dist/test/builtinSkills.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/skills/RuntimeTools.ts'], outfile: 'dist/test/runtimeTools.js', platform: 'node', target: 'node20', format: 'cjs' },
@@ -34,6 +35,7 @@ const targets = [
   { entryPoints: ['src/main/update/UpdateService.ts'], outfile: 'dist/test/updateService.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/update/CliUpdate.ts'], outfile: 'dist/test/cliUpdate.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/composerKeyboard.ts'], outfile: 'dist/test/composerKeyboard.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/renderer/sessionSurfaces.ts'], outfile: 'dist/test/sessionSurfaces.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', target: 'chrome120', format: 'iife' },
 ];
 

@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { handleComposerKeyDown } from './composerKeyboard';
+import { SessionSurfaces, type SessionSurface, type DockKind } from './sessionSurfaces';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -266,7 +267,6 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   updateInstall(): Promise<UpdateState | null>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
-  onBrowserNeedPanel(callback: (force: boolean) => void): () => void;
   info(): Promise<any>;
   getSettings(): Promise<any>;
   setSettings(patch: Record<string, unknown>): Promise<any>;
@@ -346,15 +346,9 @@ const state: {
   thinkingLevel: string;
   pendingEngineRestart: boolean;
   browserStatus: BrowserStatus | null;
-  rightDock: 'none' | 'browser' | 'artifacts';
-  dockFullscreen: boolean;
   browserStarting: boolean;
   artifactBase: string | null;
   artifacts: ArtifactEntry[];
-  activeArtifactPath: string | null;
-  artifactSource: boolean;
-  artifactUnread: boolean;
-  artifactDismissedForTurn: boolean;
   sidebarCollapsed: boolean;
   sidebarAutoCollapsed: boolean;
   colorScheme: string;
@@ -384,15 +378,9 @@ const state: {
   thinkingLevel: 'off',
   pendingEngineRestart: false,
   browserStatus: null,
-  rightDock: 'none',
-  dockFullscreen: false,
   browserStarting: false,
   artifactBase: null,
   artifacts: [],
-  activeArtifactPath: null,
-  artifactSource: false,
-  artifactUnread: false,
-  artifactDismissedForTurn: false,
   sidebarCollapsed: false,
   sidebarAutoCollapsed: false,
   colorScheme: 'system',
@@ -411,6 +399,14 @@ let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
 let composerAttachEl: HTMLElement | null = null;
 let composerAutoGrow: (() => void) | null = null;
+/** Per-session view state: composer draft, right-dock tab, artifact selection/unread. */
+const surfaces = new SessionSurfaces();
+/** The mounted session's surface; the blank +New window uses the store's draft surface. */
+let surface: SessionSurface = surfaces.get(null);
+/** Sessions whose background turn is driving the shared browser right now (sidebar badge). */
+const browserBusy = new Set<string>();
+/** browser-use tool call per session: CDP has no session id, so results are matched by callId. */
+const browserCalls = new Map<string, string | null>();
 /** Attachments staged for the open session and not yet sent; cleared when the session changes. */
 let pendingAttachments: PendingAttachment[] = [];
 let chatTitleEl: HTMLElement | null = null;
@@ -437,6 +433,8 @@ let settingsNavEl: HTMLButtonElement | null = null;
 let settingsBadgeEl: HTMLElement | null = null;
 let rightDockEl: HTMLElement | null = null;
 let rightDockWasOpen = false;
+/** The window-level fullscreen class follows the mounted surface but is applied once. */
+let appliedDockFullscreen = false;
 let browserTabEl: HTMLButtonElement | null = null;
 let artifactsTabEl: HTMLButtonElement | null = null;
 let artifactsToggleEl: HTMLButtonElement | null = null;
@@ -608,16 +606,31 @@ function ensureSessionView(sessionId: string | null): SessionView {
   return findSessionView(sessionId) ?? createSessionView(sessionId);
 }
 
+/** Applies the mounted session's surface: composer draft, dock tab, fullscreen and artifact view. */
+function applySurface(): void {
+  if (composerInput) {
+    composerInput.value = surface.draft;
+    composerAutoGrow?.();
+  }
+  setDockFullscreen(surface.dockFullscreen);
+  renderDock();
+  renderArtifactPanel();
+  if (surface.dock === 'artifacts') void refreshArtifactBaseline();
+}
+
 /** Mounts a view (unmounting the previous one) and freezes idle off-screen views. */
 function showSessionView(view: SessionView): void {
-  if (mountedView !== view) {
+  const switched = mountedView !== view;
+  if (switched) {
     if (mountedView) {
       mountedView.savedScrollTop = mountedView.transcript.scrollTop;
       mountedView.root.remove();
     }
     mountedView = view;
+    surface = surfaces.get(view.sessionId);
   }
   if (sessionStackEl && view.root.parentElement !== sessionStackEl) sessionStackEl.append(view.root);
+  if (switched) applySurface();
   applyComposerStatus(view.status);
   if (view.stick) view.transcript.scrollTop = view.transcript.scrollHeight;
   else if (view.savedScrollTop != null) view.transcript.scrollTop = view.savedScrollTop;
@@ -828,6 +841,7 @@ function stopTurnClock(view: SessionView): void {
  */
 function finalizeInterruptedTurn(view: SessionView): void {
   const clock = view.turnClock;
+  clearBrowserUse(view);
   resolveStaleToolStatuses(view.streaming?.bubble.parentElement ?? null);
   resolveStaleTaskStatuses(view);
   stopTurnClock(view);
@@ -843,6 +857,12 @@ function finalizeInterruptedTurn(view: SessionView): void {
 
 /** A fresh engine process serves no live turns: every previously running one died with the old one. */
 function finalizeTurnsForEngineRestart(): void {
+  browserBusy.clear();
+  browserCalls.clear();
+  sessionStatus.clear();
+  for (const row of state.sessions) {
+    if (row.status === 'running') row.status = 'idle';
+  }
   for (const view of [...views.values()]) {
     // Background tasks die with the engine and they outlive their turn, so the view holding one is
     // usually idle — sweep every view, not only the ones with a live turn (an idle view's Tasks
@@ -850,6 +870,7 @@ function finalizeTurnsForEngineRestart(): void {
     resolveStaleTaskStatuses(view);
     if (view.turnClock || view.streaming || view.status === 'running') finalizeInterruptedTurn(view);
   }
+  renderSessionItems();
 }
 
 // ---------- small helpers ----------
@@ -1576,6 +1597,17 @@ function buildSessionRow(session: SessionRow): HTMLElement {
   }
   const fullTitle = session.title || session.sessionId;
   item.append(el('span', 'session-title', fullTitle));
+  const sessionSurface = surfaces.peek(session.sessionId);
+  if (sessionSurface?.artifactUnread) {
+    const dot = el('span', 'session-dot artifact');
+    dot.title = 'New artifacts while you were away';
+    item.append(dot);
+  }
+  if (browserBusy.has(session.sessionId)) {
+    const dot = el('span', 'session-dot browser');
+    dot.title = 'This session is using the browser';
+    item.append(dot);
+  }
   const tooltip = [fullTitle];
   const updatedAt = fmtTime(session.updatedAt);
   if (updatedAt) tooltip.push(updatedAt);
@@ -1690,6 +1722,10 @@ async function deleteSession(session: SessionRow): Promise<void> {
   const wasOpen = state.sessionId === session.sessionId;
   state.sessions = state.sessions.filter((row) => row.sessionId !== session.sessionId);
   state.pendingSessionIds.delete(session.sessionId);
+  surfaces.delete(session.sessionId);
+  browserBusy.delete(session.sessionId);
+  browserCalls.delete(session.sessionId);
+  sessionStatus.delete(session.sessionId);
   const view = findSessionView(session.sessionId);
   if (view) disposeSessionView(view);
   renderSessionItems();
@@ -1949,6 +1985,8 @@ async function connect(workspace: string): Promise<void> {
   state.hasMoreSessions = false;
   clearPendingAttachments();
   disposeAllSessionViews();
+  surfaces.resetDraft();
+  sessionStatus.clear();
   chatView = null;
   sessionStackEl = null;
   chatTitleEl = null;
@@ -1965,9 +2003,6 @@ async function connect(workspace: string): Promise<void> {
   await loadSessions(true);
   await refreshModelState();
   state.artifacts = [];
-  state.activeArtifactPath = null;
-  state.artifactUnread = false;
-  state.artifactDismissedForTurn = false;
   await refreshArtifactBase();
   void refreshArtifactBaseline();
   renderContent();
@@ -1986,15 +2021,14 @@ async function enterDefaultMode(): Promise<void> {
   state.hasMoreSessions = false;
   clearPendingAttachments();
   disposeAllSessionViews();
+  surfaces.resetDraft();
+  sessionStatus.clear();
   chatView = null;
   sessionStackEl = null;
   chatTitleEl = null;
   applyComposerStatus('idle');
   state.artifacts = [];
-  state.activeArtifactPath = null;
   state.artifactBase = null;
-  state.artifactUnread = false;
-  state.artifactDismissedForTurn = false;
   renderSidebar();
   renderComposerControls();
   await renderContent();
@@ -2009,17 +2043,29 @@ async function materializeDefaultWorkspace(): Promise<void> {
 
 // ---------- sessions ----------
 
+/** A listing started earlier must not overwrite a newer one: statuses change while it is in flight. */
+let sessionListToken = 0;
+/** Live statuses from status_change events win over a listing that was computed before they arrived. */
+const sessionStatus = new Map<string, string>();
+
 async function loadSessions(reset: boolean): Promise<void> {
+  const token = ++sessionListToken;
   const params: Record<string, unknown> = { limit: SECTION_PAGE_SIZE };
   if (!reset && state.sessionCursor) params.cursor = state.sessionCursor;
   const listed = await call('session/list', params);
-  if (!listed) return;
+  if (!listed || token !== sessionListToken) return;
   const rows: SessionRow[] = listed.sessions ?? [];
   if (reset) {
-    state.sessions = [...(await pendingSessionRows(rows)), ...rows];
+    const pending = await pendingSessionRows(rows);
+    if (token !== sessionListToken) return;
+    state.sessions = [...pending, ...rows];
   } else {
     const known = new Set(state.sessions.map((session) => session.sessionId));
     state.sessions = [...state.sessions, ...rows.filter((row) => !known.has(row.sessionId))];
+  }
+  for (const row of state.sessions) {
+    const live = sessionStatus.get(row.sessionId);
+    if (live) row.status = live;
   }
   state.sessionCursor = listed.nextCursor ?? null;
   state.hasMoreSessions = Boolean(listed.nextCursor);
@@ -2068,6 +2114,7 @@ async function startNewConversation(): Promise<void> {
   state.sessionTitle = '';
   state.pendingModel = null;
   clearPendingAttachments();
+  surfaces.resetDraft();
   const previousDraft = findSessionView(null);
   if (previousDraft) disposeSessionView(previousDraft);
   renderSessionItems();
@@ -2109,6 +2156,10 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   state.sessionTitle = state.sessions.find((session) => session.sessionId === createdId)?.title ?? firstMessage;
   const view = ensureSessionView(createdId);
   view.historyLoaded = true;
+  // The blank window becomes this session: its draft text, dock and artifact selection move over.
+  // sendCurrent clears the text right after it reads the message; attaching a file keeps it.
+  if (composerInput) surfaces.get(null).draft = composerInput.value;
+  surfaces.adopt(createdId);
   renderSessionItems();
   updateChatHeader();
   showSessionView(view);
@@ -2225,7 +2276,10 @@ function buildComposer(): HTMLElement {
     composerInput.style.height = 'auto';
     composerInput.style.height = `${Math.min(composerInput.scrollHeight, 360)}px`;
   };
-  composerInput.oninput = () => composerAutoGrow?.();
+  composerInput.oninput = () => {
+    surface.draft = composerInput?.value ?? '';
+    composerAutoGrow?.();
+  };
   composerInput.addEventListener('paste', (event) => void handleComposerPaste(event));
   // The + sits at the top-left corner of the input box, before the text.
   const inputRow = el('div', 'composer-input-row');
@@ -2485,7 +2539,7 @@ function buildBrowserPanel(): HTMLElement {
   browserBodyEl = frame;
   const hint = el('div', 'browser-hint');
   const start = el('button', 'btn small', 'Start browser');
-  start.onclick = () => void startBrowser();
+  start.onclick = () => void startBrowser({ openPane: true });
   hint.append(el('div', undefined, 'No embedded browser running.'), start);
   browserHintEl = hint;
   body.append(frame, hint);
@@ -2518,7 +2572,7 @@ function buildRightDock(): HTMLElement {
   rightDockEl = dock;
   const tabs = el('div', 'right-dock-tabs');
   browserTabEl = el('button', 'right-dock-tab', 'Browser') as HTMLButtonElement;
-  browserTabEl.onclick = () => setRightDock(state.rightDock === 'browser' ? 'none' : 'browser');
+  browserTabEl.onclick = () => setRightDock(surface.dock === 'browser' ? 'none' : 'browser');
   artifactsTabEl = el('button', 'right-dock-tab', 'Artifacts') as HTMLButtonElement;
   artifactsTabEl.onclick = () => toggleArtifactsDock();
   tabs.append(browserTabEl, artifactsTabEl);
@@ -2527,18 +2581,18 @@ function buildRightDock(): HTMLElement {
   return dock;
 }
 
-function setRightDock(dock: 'none' | 'browser' | 'artifacts'): void {
-  if (state.rightDock === dock) return;
-  state.rightDock = dock;
+function setRightDock(dock: DockKind): void {
+  if (surface.dock === dock) return;
+  surface.dock = dock;
   if (dock === 'none') setDockFullscreen(false);
   renderDock();
 }
 
 function renderDock(): void {
-  const open = state.rightDock !== 'none';
+  const open = surface.dock !== 'none';
   if (rightDockEl) rightDockEl.hidden = !open;
-  if (browserPanelEl) browserPanelEl.hidden = state.rightDock !== 'browser';
-  if (artifactPaneEl) artifactPaneEl.hidden = state.rightDock !== 'artifacts';
+  if (browserPanelEl) browserPanelEl.hidden = surface.dock !== 'browser';
+  if (artifactPaneEl) artifactPaneEl.hidden = surface.dock !== 'artifacts';
   renderDockTabs();
   renderBrowserToggle(Boolean(state.browserStatus?.running));
   renderArtifactsToggle();
@@ -2548,30 +2602,31 @@ function renderDock(): void {
 }
 
 function renderDockTabs(): void {
-  browserTabEl?.classList.toggle('active', state.rightDock === 'browser');
-  artifactsTabEl?.classList.toggle('active', state.rightDock === 'artifacts');
-  artifactsTabEl?.classList.toggle('unread', state.artifactUnread && state.rightDock !== 'artifacts');
+  browserTabEl?.classList.toggle('active', surface.dock === 'browser');
+  artifactsTabEl?.classList.toggle('active', surface.dock === 'artifacts');
+  artifactsTabEl?.classList.toggle('unread', surface.artifactUnread && surface.dock !== 'artifacts');
 }
 
 function toggleArtifactsDock(): void {
-  if (state.rightDock === 'artifacts') {
-    state.artifactDismissedForTurn = true;
+  if (surface.dock === 'artifacts') {
+    surface.artifactDismissedForTurn = true;
     setRightDock('none');
     return;
   }
-  state.artifactUnread = false;
+  surface.artifactUnread = false;
   setRightDock('artifacts');
   void refreshArtifactBaseline();
+  renderSessionItems();
 }
 
 function renderArtifactsToggle(): void {
   if (!artifactsToggleEl) return;
-  const open = state.rightDock === 'artifacts';
+  const open = surface.dock === 'artifacts';
   artifactsToggleEl.title = open
     ? 'Collapse the artifacts pane'
     : 'Local artifacts — generated images/videos and workspace output';
   artifactsToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Artifacts'));
-  if (!open && state.artifactUnread) artifactsToggleEl.append(el('span', 'browser-dot on'));
+  if (!open && surface.artifactUnread) artifactsToggleEl.append(el('span', 'browser-dot on'));
   artifactsToggleEl.append(icon(open ? 'chevron-right' : 'chevron-left'));
 }
 
@@ -2589,8 +2644,8 @@ function buildArtifactPane(): HTMLElement {
 }
 
 function activeArtifact(): ArtifactEntry | null {
-  if (!state.activeArtifactPath) return state.artifacts[0] ?? null;
-  return state.artifacts.find((entry) => entry.path === state.activeArtifactPath) ?? state.artifacts[0] ?? null;
+  if (!surface.activeArtifactPath) return state.artifacts[0] ?? null;
+  return state.artifacts.find((entry) => entry.path === surface.activeArtifactPath) ?? state.artifacts[0] ?? null;
 }
 
 function artifactUrl(relativePath: string): string {
@@ -2619,8 +2674,8 @@ function renderArtifactHead(): void {
   artifactHeadEl.append(el('span', 'artifact-meta', `${entry.kind} · ${artifactContentType(entry)} · ${fmtBytes(entry.size)}`));
   const actions = el('div', 'artifact-actions');
   if (artifactSupportsSource(entry)) {
-    const toggle = el('button', 'btn small', state.artifactSource ? 'Preview' : 'Source');
-    toggle.onclick = () => { state.artifactSource = !state.artifactSource; renderArtifactPanel(); };
+    const toggle = el('button', 'btn small', surface.artifactSource ? 'Preview' : 'Source');
+    toggle.onclick = () => { surface.artifactSource = !surface.artifactSource; renderArtifactPanel(); };
     actions.append(toggle);
   }
   const reveal = el('button', 'btn small', 'Reveal');
@@ -2630,7 +2685,7 @@ function renderArtifactHead(): void {
   maximize.onclick = () => toggleDockFullscreen();
   renderArtifactFullscreenButton();
   const close = el('button', 'btn small', 'Close');
-  close.onclick = () => { state.artifactDismissedForTurn = true; setRightDock('none'); };
+  close.onclick = () => { surface.artifactDismissedForTurn = true; setRightDock('none'); };
   actions.append(reveal, maximize, close);
   artifactHeadEl.append(actions);
 }
@@ -2657,8 +2712,8 @@ function renderArtifactGallery(): void {
       item.append(el('span', 'artifact-thumb-icon', entry.kind === 'video' ? '▶' : '▤'));
     }
     item.onclick = () => {
-      state.activeArtifactPath = entry.path;
-      state.artifactSource = false;
+      surface.activeArtifactPath = entry.path;
+      surface.artifactSource = false;
       renderArtifactPanel();
     };
     artifactGalleryEl.append(item);
@@ -2674,7 +2729,7 @@ function renderArtifactBody(): void {
     return;
   }
   const url = artifactUrl(entry.path);
-  if (state.artifactSource) {
+  if (surface.artifactSource) {
     if (!artifactSupportsSource(entry)) {
       artifactBodyEl.append(el('div', 'notice', 'Source not available for this file type.'));
       return;
@@ -2798,13 +2853,17 @@ function openArtifactInDock(entry: ArtifactEntry): void {
   if (!state.artifacts.some((item) => item.path === entry.path)) {
     state.artifacts = [entry, ...state.artifacts];
   }
-  state.activeArtifactPath = entry.path;
-  state.artifactSource = false;
+  surface.activeArtifactPath = entry.path;
+  surface.artifactSource = false;
   setRightDock('artifacts');
   renderArtifactPanel();
 }
 
-/** A generated-media `artifact` custom event: newest first, auto-expanded only when the dock is idle (D9). */
+/**
+ * A generated-media `artifact` custom event. The file list is workspace-wide, but the session that
+ * produced the entry owns the selection and the unread marker: a background session must never
+ * change what the visible pane shows.
+ */
 function applyArtifactEvent(view: SessionView, event: any): void {
   let payload: any;
   try { payload = JSON.parse(event.data ?? '{}'); } catch { return; }
@@ -2819,17 +2878,23 @@ function applyArtifactEvent(view: SessionView, event: any): void {
     tool: typeof payload.tool === 'string' ? payload.tool : null,
   };
   state.artifacts = [entry, ...state.artifacts.filter((item) => item.path !== entry.path)];
-  state.activeArtifactPath = entry.path;
-  state.artifactSource = false;
   if (typeof event.callId === 'string' && event.callId) artifactByCallId.set(event.callId, entry);
+  const owner = surfaces.get(view.sessionId);
+  owner.activeArtifactPath = entry.path;
+  owner.artifactSource = false;
+  if (view !== mountedView) {
+    owner.artifactUnread = true;
+    renderSessionItems();
+    return;
+  }
   renderArtifactPanel();
-  const isCurrent = view === mountedView;
-  if (isCurrent && state.rightDock === 'none' && !state.artifactDismissedForTurn) {
+  if (surface.dock === 'none' && !surface.artifactDismissedForTurn) {
     setRightDock('artifacts');
-  } else if (isCurrent && state.rightDock !== 'artifacts') {
-    state.artifactUnread = true;
+  } else if (surface.dock !== 'artifacts') {
+    surface.artifactUnread = true;
     renderArtifactsToggle();
     renderDockTabs();
+    renderSessionItems();
   }
 }
 
@@ -2861,7 +2926,7 @@ async function refreshArtifactBaseline(): Promise<void> {
   const known = new Set(baseline.map((entry) => entry.path));
   const live = state.artifacts.filter((entry) => !known.has(entry.path));
   state.artifacts = [...live, ...baseline];
-  if (!state.activeArtifactPath && state.artifacts.length) state.activeArtifactPath = state.artifacts[0].path;
+  if (!surface.activeArtifactPath && state.artifacts.length) surface.activeArtifactPath = state.artifacts[0].path;
   renderArtifactPanel();
 }
 
@@ -2949,7 +3014,7 @@ function scheduleBrowserBounds(): void {
     const running = Boolean(state.browserStatus?.running);
     // The pane lives on the session page: any other page (skills, settings, …) hides the view
     // exactly like a collapsed dock does.
-    const onSessionPage = state.nav === 'sessions' && state.rightDock === 'browser';
+    const onSessionPage = state.nav === 'sessions' && surface.dock === 'browser';
     const rect = onSessionPage && running && frame ? frame.getBoundingClientRect() : null;
     // A detached or hidden placeholder reports a degenerate rect — hide instead of leaving the
     // view floating at its stale rect.
@@ -3038,7 +3103,7 @@ function renderBrowserToggle(running: boolean): void {
     browserToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Browser'));
     return;
   }
-  const open = state.rightDock === 'browser';
+  const open = surface.dock === 'browser';
   browserToggleEl.title = open
     ? 'Collapse the browser pane — the browser keeps running'
     : 'Expand the browser pane — the browser keeps running';
@@ -3055,8 +3120,9 @@ function renderBrowserToggle(running: boolean): void {
  * active; the browser and its tabs are untouched, and each tab carries its own maximize button.
  */
 function setDockFullscreen(fullscreen: boolean): void {
-  if (state.dockFullscreen === fullscreen) return;
-  state.dockFullscreen = fullscreen;
+  surface.dockFullscreen = fullscreen;
+  if (appliedDockFullscreen === fullscreen) return;
+  appliedDockFullscreen = fullscreen;
   document.getElementById('app')?.classList.toggle('dock-fullscreen', fullscreen);
   renderBrowserFullscreenButton();
   renderArtifactFullscreenButton();
@@ -3064,12 +3130,12 @@ function setDockFullscreen(fullscreen: boolean): void {
 }
 
 function toggleDockFullscreen(): void {
-  setDockFullscreen(!state.dockFullscreen);
+  setDockFullscreen(!surface.dockFullscreen);
 }
 
 function renderBrowserFullscreenButton(): void {
   if (!browserFullscreenEl) return;
-  const on = state.dockFullscreen;
+  const on = surface.dockFullscreen;
   browserFullscreenEl.title = on
     ? 'Exit full screen — bring the chat back'
     : 'Full screen — hide the chat and use the whole window';
@@ -3078,14 +3144,14 @@ function renderBrowserFullscreenButton(): void {
 
 function renderArtifactFullscreenButton(): void {
   if (!artifactFullscreenEl) return;
-  const on = state.dockFullscreen;
+  const on = surface.dockFullscreen;
   artifactFullscreenEl.title = on ? 'Restore — bring the chat back' : 'Maximize — use the whole window';
   artifactFullscreenEl.replaceChildren(icon(on ? 'minimize' : 'maximize'));
 }
 
 /** Opening either dock tab narrows the chat column, so the sidebar yields automatically. */
 function syncSidebarWithRightDock(): void {
-  const open = state.rightDock !== 'none';
+  const open = surface.dock !== 'none';
   if (open === rightDockWasOpen) return;
   rightDockWasOpen = open;
   if (open) {
@@ -3131,26 +3197,25 @@ function applyBrowserStatus(status: BrowserStatus | null): void {
 
 async function toggleBrowser(): Promise<void> {
   if (state.browserStatus?.running) {
-    setRightDock(state.rightDock === 'browser' ? 'none' : 'browser');
+    setRightDock(surface.dock === 'browser' ? 'none' : 'browser');
     return;
   }
-  await startBrowser();
+  await startBrowser({ openPane: true });
 }
 
-async function startBrowser(): Promise<void> {
+/** `openPane` is false when a background session starts the browser: it must not appear here. */
+async function startBrowser(options: { openPane: boolean }): Promise<void> {
   if (state.browserStarting) return;
   state.browserStarting = true;
-  toast('Starting the embedded browser…');
+  if (options.openPane) toast('Starting the embedded browser…');
   try {
     applyBrowserStatus(await window.coreai.browserStart());
     // The pane lives on the session page: a start triggered from elsewhere (an agent autostart
-    // while the user reads another page) must not open the dock under that page — the pane opens
-    // next time the session page is shown.
-    if (state.nav === 'sessions') {
-      state.rightDock = 'browser';
-      renderDock();
+    // while the user reads another page) must not open the dock under that page.
+    if (options.openPane) {
+      if (state.nav === 'sessions') setRightDock('browser');
+      toast('Browser ready — the agent attaches to this pane');
     }
-    toast('Browser ready — the agent attaches to this pane');
   } catch (error) {
     toast(`Browser start failed: ${cleanIpcError(error)}`);
   } finally {
@@ -3161,8 +3226,7 @@ async function startBrowser(): Promise<void> {
 async function stopBrowser(): Promise<void> {
   try {
     applyBrowserStatus(await window.coreai.browserStop());
-    if (state.rightDock === 'browser') state.rightDock = 'none';
-    renderDock();
+    if (surface.dock === 'browser') setRightDock('none');
     toast('Browser stopped');
   } catch (error) {
     toast(`Browser stop failed: ${cleanIpcError(error)}`);
@@ -3170,20 +3234,45 @@ async function stopBrowser(): Promise<void> {
 }
 
 /**
- * The harness retries BU_CDP_URL for 30s, so the bridge only needs to be listening by the time
- * a browser-use tool starts; starting the embedded browser here also opens the panel so the
- * user can watch (and take over) the pages the agent drives.
+ * The harness retries BU_CDP_URL for 30s, so the bridge only needs to be listening by the time a
+ * browser-use tool starts. Only the session on screen may surface the pane: a background session
+ * keeps the browser running invisibly (the parked tab still composites for input/screenshots).
  */
-function maybeAutoStartBrowser(event: Record<string, unknown>): void {
+function maybeAutoStartBrowser(view: SessionView, event: Record<string, unknown>): void {
   const args = typeof event.arguments === 'string' ? event.arguments : '';
   if (!args.includes('browser-use')) return;
+  const viewing = view === mountedView;
   if (state.browserStatus?.running) {
-    // Reopen the pane for the tool — but only on the session page it belongs to.
-    if (state.rightDock !== 'browser' && state.nav === 'sessions') setRightDock('browser');
+    if (viewing && surface.dock !== 'browser' && state.nav === 'sessions') setRightDock('browser');
     return;
   }
   if (state.browserStarting) return;
-  void startBrowser();
+  void startBrowser({ openPane: viewing });
+}
+
+/** CDP has no session id: the renderer maps the running browser-use call to its owning session. */
+function trackBrowserUse(view: SessionView, event: Record<string, unknown>): void {
+  if (!view.sessionId) return;
+  const callId = typeof event.callId === 'string' ? event.callId : null;
+  if (event.type === 'tool_start') {
+    const args = typeof event.arguments === 'string' ? event.arguments : '';
+    if (!args.includes('browser-use')) return;
+    browserBusy.add(view.sessionId);
+    browserCalls.set(view.sessionId, callId);
+    renderSessionItems();
+    return;
+  }
+  if (!browserCalls.has(view.sessionId)) return;
+  const expected = browserCalls.get(view.sessionId);
+  if (expected != null && callId != null && expected !== callId) return;
+  browserCalls.delete(view.sessionId);
+  if (browserBusy.delete(view.sessionId)) renderSessionItems();
+}
+
+function clearBrowserUse(view: SessionView): void {
+  if (!view.sessionId) return;
+  browserCalls.delete(view.sessionId);
+  if (browserBusy.delete(view.sessionId)) renderSessionItems();
 }
 
 /**
@@ -3387,6 +3476,7 @@ async function sendCurrent(): Promise<void> {
   const view = ensureSessionView(state.sessionId);
   composerInput!.value = '';
   composerAutoGrow?.();
+  surface.draft = '';
   addMessageBubble(view, 'user', text.trim(), attachments);
   scrollTranscript(view, true);
   resetStreaming(view);
@@ -4086,6 +4176,7 @@ function handleStatusEvent(event: any): void {
   const status = String(event.status ?? 'idle').toLowerCase();
   let rowChanged = false;
   if (event.sessionId) {
+    sessionStatus.set(event.sessionId, status);
     const row = state.sessions.find((session) => session.sessionId === event.sessionId);
     if (row && row.status !== status) {
       row.status = status;
@@ -4095,7 +4186,9 @@ function handleStatusEvent(event: any): void {
   const view = findSessionView(typeof event.sessionId === 'string' ? event.sessionId : state.sessionId);
   if (view) setViewStatus(view, status);
   // A fresh turn re-arms the artifact dock's auto-expand, even if the user collapsed it last turn.
-  if (status === 'running' && view === mountedView) state.artifactDismissedForTurn = false;
+  if (status === 'running' && typeof event.sessionId === 'string') {
+    surfaces.get(event.sessionId).artifactDismissedForTurn = false;
+  }
   if (rowChanged) {
     renderSessionItems();
   }
@@ -4173,10 +4266,12 @@ function applySessionEvent(view: SessionView, event: any): void {
     }
     case 'tool_start':
       if (view.pendingApproval) removeApprovalBar(view);
-      maybeAutoStartBrowser(event);
+      trackBrowserUse(view, event);
+      maybeAutoStartBrowser(view, event);
       appendToolStart(view, event);
       break;
     case 'tool_result':
+      trackBrowserUse(view, event);
       updateToolResult(view, event);
       break;
     case 'tool_approval_request':
@@ -4184,6 +4279,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       break;
     case 'turn_complete': {
       const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
+      clearBrowserUse(view);
       resolveStaleToolStatuses(assistantWrapper);
       const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
       finishTurnStatus(view, event);
@@ -4243,6 +4339,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       // A failed turn ends with an error event instead of a turn_complete: end its UI state here,
       // or the turn chip keeps spinning and its tools stay "running" for a turn that never resumes.
       const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
+      clearBrowserUse(view);
       resolveStaleToolStatuses(assistantWrapper);
       const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
       failTurnStatus(view);
@@ -6476,44 +6573,18 @@ async function bootstrap(): Promise<void> {
       finalizeTurnsForEngineRestart();
       // Artifact events are live-only: reload the baseline against the restarted engine.
       state.artifacts = [];
-      state.activeArtifactPath = null;
       void refreshArtifactBase();
       void refreshArtifactBaseline();
     }
   });
 
   window.coreai.onBrowserState((status: BrowserStatus) => {
-    const wasRunning = Boolean(state.browserStatus?.running);
     applyBrowserStatus(status);
-    // Covers a browser the main process started on its own (autostart): when it becomes
-    // running, open the pane so the view gets laid out (bounds) and the user can watch — but
-    // only on the session page the pane lives on.
-    if (status?.running && !wasRunning && state.rightDock === 'none' && state.nav === 'sessions') {
-      setRightDock('browser');
-    }
-  });
-  window.coreai.onBrowserNeedPanel((force: boolean) => {
-    // The agent attached to a tab the view tree cannot lay out while the panel is hidden.
-    if (!state.browserStatus?.running) return;
-    if (state.nav !== 'sessions') {
-      // The pane lives on the session page. A frame-dependent command about to dispatch (force)
-      // cannot run without a laid-out view — input and screenshots need a compositor frame — so
-      // the page must come back; a plain nudge must never pull the user off another page.
-      if (!force) return;
-      state.nav = 'sessions';
-      renderSidebar();
-      void renderContent();
-    }
-    if (state.rightDock !== 'browser') {
-      setRightDock('browser');
-    } else {
-      scheduleBrowserBounds();
-    }
   });
   void window.coreai.browserStatus().then((status) => {
     applyBrowserStatus(status);
-    // A browser that was already running when the window loaded (e.g. autostart) opens the pane.
-    if (status?.running && state.rightDock === 'none' && state.nav === 'sessions') {
+    // A browser already running when the window loaded (the dev autostart flag) opens its pane.
+    if (status?.running && surface.dock === 'none' && state.nav === 'sessions') {
       setRightDock('browser');
     }
   }).catch(() => undefined);

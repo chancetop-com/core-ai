@@ -859,7 +859,6 @@ else {
     nativeTheme.on('updated', () => mainWindow?.setBackgroundColor(windowBackground()));
     browserManager = new BrowserManager({
       onState: (status) => send('browser:state', status),
-      onNeedsPanel: (force: boolean) => send('browser:needPanel', { force }),
     });
     cuaManager = new CuaManager({
       skillSourceDir: resolveSkillSourceDir(),

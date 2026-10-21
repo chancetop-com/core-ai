@@ -65,14 +65,6 @@ contextBridge.exposeInMainWorld('coreai', {
       ipcRenderer.removeListener('browser:state', listener);
     };
   },
-  onBrowserNeedPanel: (callback: (force: boolean) => void) => {
-    const listener = (_event: unknown, payload: unknown) =>
-      callback((payload as { force?: unknown } | null)?.force === true);
-    ipcRenderer.on('browser:needPanel', listener);
-    return () => {
-      ipcRenderer.removeListener('browser:needPanel', listener);
-    };
-  },
   info: () => ipcRenderer.invoke('app:info'),
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),

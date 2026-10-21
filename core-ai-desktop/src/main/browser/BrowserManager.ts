@@ -5,7 +5,7 @@
 // working unchanged via BU_CDP_URL. Engine env is a constant for the whole run: the bridge only
 // listens while the browser is running, and the harness retries the endpoint for 30s while the
 // desktop auto-starts it.
-import { app, BrowserWindow, session, WebContentsView } from 'electron';
+import { app, BrowserWindow, screen, session, WebContentsView } from 'electron';
 import type { WebContents } from 'electron';
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -40,19 +40,14 @@ export interface BrowserBounds {
 
 export interface BrowserManagerOptions {
   onState: (status: BrowserStatus) => void;
-  /**
-   * A tab needs the panel: it is not reporting bounds (hidden/never opened) and the view tree
-   * cannot lay the tab out. `force` marks a frame-dependent command about to dispatch — the pane
-   * must come back then, even if the user is on another page; a plain nudge may only open the
-   * pane where it lives.
-   */
-  onNeedsPanel: (force: boolean) => void;
 }
 
-/** Kept at the port the manual SOP and BU_CDP_URL conventions already use. */
-const CDP_PORT = 9222;
+/** Fixed by the manual SOP and BU_CDP_URL convention; overridable so a second instance can run. */
+const CDP_PORT = Number(process.env.COREAI_BROWSER_CDP_PORT) || 9222;
 const PARTITION = 'persist:coreai-browser';
 const START_URL = 'about:blank';
+/** Where the active tab lives while the pane is hidden: one on-window pixel keeps it compositing. */
+const PARKED_BOUNDS: BrowserBounds = { x: 0, y: 0, width: 1, height: 1 };
 
 interface Tab {
   id: string;
@@ -66,6 +61,13 @@ export class BrowserManager implements BrowserHost {
   private activeId: string | null = null;
   private bounds: BrowserBounds | null = null;
   private panelVisible = false;
+  /**
+   * A view only composites while it is visible at an on-window position. With the pane hidden the
+   * active tab is parked at one pixel and given the pane-sized viewport through CDP emulation, so
+   * the agent keeps clicking/screenshotting and the user sees nothing.
+   */
+  private viewport = { width: 960, height: 720 };
+  private emulatedSignature: string | null = null;
   private readonly attachedContents = new Set<number>();
   private readonly zeroSizeWarned = new Set<string>();
   private targetGoneListener: ((targetId: string) => void) | null = null;
@@ -177,9 +179,11 @@ export class BrowserManager implements BrowserHost {
         height: Math.round(bounds.height),
       };
       this.panelVisible = true;
+      // The pane's real size becomes the viewport the parked tab keeps while it is hidden.
+      this.viewport = { width: this.bounds.width, height: this.bounds.height };
     } else {
-      // The panel hid: keep the last rect so hidden views stay sized (a 0x0 viewport breaks
-      // agent input and screenshots while the user has the pane closed).
+      // The panel hid: keep the last rect and park the active tab instead of hiding it, so agent
+      // input/screenshots keep working without the pane being on screen.
       this.panelVisible = false;
     }
     this.applyViewBounds();
@@ -275,20 +279,14 @@ export class BrowserManager implements BrowserHost {
     const tab = this.requireTab(targetId);
     this.warnOnZeroSize(tab);
     this.ensureDebugger(tab);
-    // Input and screenshots need a compositor frame, and a collapsed pane stops producing them
-    // (input is dropped, capture never returns). Nudge the renderer to reopen the pane first, then
-    // give it the beat to lay out before dispatching; reads and navigations work while collapsed.
-    const restoring = needsSurface(method) && this.restorePaneForAgent();
-    const dispatch = (): Promise<unknown> => {
-      let forwarded = params;
-      if (method === 'Page.captureScreenshot' && !this.isShown(tab)) {
-        // A hidden view has no compositor surface: the default surface capture waits for one that
-        // never comes and hangs the caller; capturing from the renderer view returns the same pixels.
-        forwarded = { ...params, fromSurface: false };
-      }
-      return tab.view.webContents.debugger.sendCommand(method, forwarded);
-    };
-    return restoring ? this.waitForPane().then(dispatch) : dispatch();
+    // The active tab always has a compositor surface — the pane rect when shown, the parked pixel
+    // with an emulated viewport when hidden — so input and capture need no pane interaction. A
+    // background tab that was never shown has no surface: capture from the renderer view instead.
+    let forwarded = params;
+    if (method === 'Page.captureScreenshot' && !this.isShown(tab)) {
+      forwarded = { ...params, fromSurface: false };
+    }
+    return tab.view.webContents.debugger.sendCommand(method, forwarded);
   }
 
   subscribe(targetId: string, listener: (method: string, params: unknown) => void): () => void {
@@ -309,35 +307,14 @@ export class BrowserManager implements BrowserHost {
     };
   }
 
-  /** A tab whose view was never laid out has a 0x0 viewport: input lands nowhere. */
+  /** A tab that is neither the active (shown or parked) one nor previously laid out has no viewport. */
   private warnOnZeroSize(tab: Tab): void {
+    if (this.running && tab.id === this.activeId) return;
     const bounds = tab.view.getBounds();
     if (bounds.width > 1 && bounds.height > 1) return;
-    // Nudge the renderer to (re)open the panel so bounds arrive; only log the first time.
-    this.options.onNeedsPanel(false);
     if (this.zeroSizeWarned.has(tab.id)) return;
     this.zeroSizeWarned.add(tab.id);
-    console.error(`[browser] tab ${tab.id} has a zero-size view — the panel has not reported bounds yet; `
-      + 'clicks/typing will not land until it does');
-  }
-
-  /**
-   * A frame-dependent agent call while the user has the pane collapsed (design §4.9): a hidden
-   * view stops producing frames, so the pane must come back for input/screenshots to work at all.
-   */
-  private restorePaneForAgent(): boolean {
-    if (this.panelVisible) return false;
-    this.options.onNeedsPanel(true);
-    return true;
-  }
-
-  /** Bounded wait for the renderer to hand the pane back, plus one beat for the first frame. */
-  private async waitForPane(): Promise<void> {
-    const deadline = Date.now() + 2_500;
-    while (!this.panelVisible && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    if (this.panelVisible) await new Promise((resolve) => setTimeout(resolve, 200));
+    console.error(`[browser] tab ${tab.id} has a zero-size view — the agent should activate this tab before driving it`);
   }
 
   // ---------- internals ----------
@@ -466,29 +443,92 @@ export class BrowserManager implements BrowserHost {
 
   private setActive(targetId: string): void {
     const tab = this.tabById(targetId);
-    if (!tab || this.activeId === targetId) {
-      if (tab && (!this.panelVisible || this.bounds === null)) this.options.onNeedsPanel(false);
-      return;
-    }
+    if (!tab || this.activeId === targetId) return;
     this.activeId = targetId;
     this.applyViewBounds();
-    if (!this.panelVisible || this.bounds === null) this.options.onNeedsPanel(false);
     this.emitState();
   }
 
   private applyViewBounds(): void {
-    // Only a view that is visible at an on-window position gets laid out by Chromium; hidden
-    // views that were shown once keep their viewport size. Tabs never shown rely on the renderer
-    // opening the panel (onNeedsPanel) before the agent drives them.
+    // The active tab is always visible at an on-window position: the pane rect while the panel is
+    // shown, a one-pixel park while it is hidden. Chromium only composites views that are visible
+    // inside the window, and the parked pixel keeps the page's surface alive (its real viewport is
+    // restored through CDP emulation below) so agent input/screenshots work without the pane.
+    const active = this.activeTab();
     for (const tab of this.tabs) {
-      const shown = this.running && tab.id === this.activeId && this.panelVisible && this.bounds !== null;
-      tab.view.setVisible(shown);
-      if (this.bounds) tab.view.setBounds(this.bounds);
+      const parked = this.running && tab === active && !this.panelVisible;
+      tab.view.setVisible(this.running && tab === active);
+      if (parked) {
+        tab.view.setBounds(PARKED_BOUNDS);
+      } else if (this.bounds) {
+        tab.view.setBounds(this.bounds);
+      }
+    }
+    this.syncEmulatedViewport();
+  }
+
+  /**
+   * While parked, the page keeps the last pane-sized viewport via CDP emulation: a 1x1 widget with
+   * the real viewport still yields full-size screenshots and lands input at the right coordinates.
+   */
+  private syncEmulatedViewport(): void {
+    const active = this.running && !this.panelVisible ? this.activeTab() : null;
+    const width = Math.max(1, Math.round(this.viewport.width));
+    const height = Math.max(1, Math.round(this.viewport.height));
+    const signature = active ? `${active.id}:${width}x${height}` : null;
+    if (signature === this.emulatedSignature) return;
+    const previousId = this.emulatedSignature?.split(':')[0] ?? null;
+    this.emulatedSignature = signature;
+    if (previousId && previousId !== active?.id) {
+      const previous = this.tabById(previousId);
+      if (previous) this.clearEmulatedViewport(previous);
+    }
+    if (active) this.setEmulatedViewport(active, width, height);
+  }
+
+  private setEmulatedViewport(tab: Tab, width: number, height: number): void {
+    try {
+      this.ensureDebugger(tab);
+      const wc = this.webContentsOf(tab);
+      if (!wc || wc.isDestroyed()) return;
+      void wc.debugger.sendCommand('Emulation.setDeviceMetricsOverride', {
+        width,
+        height,
+        // Match the display scale so a screenshot keeps the same pixel dimensions whether the
+        // pane is shown or parked (coordinates the agent derives from it stay comparable).
+        deviceScaleFactor: this.displayScale(),
+        mobile: false,
+      }).catch((error: unknown) => {
+        console.error(`[browser] emulation override failed on tab ${tab.id}: ${error instanceof Error ? error.message : String(error)}`);
+      });
+    } catch (error) {
+      console.error(`[browser] could not attach the parked tab ${tab.id}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  private displayScale(): number {
+    if (!this.window) return 1;
+    try {
+      return screen.getDisplayMatching(this.window.getBounds()).scaleFactor * this.window.webContents.getZoomFactor();
+    } catch {
+      return 1;
+    }
+  }
+
+  private clearEmulatedViewport(tab: Tab): void {
+    try {
+      const wc = this.webContentsOf(tab);
+      if (!wc || wc.isDestroyed() || !wc.debugger.isAttached()) return;
+      void wc.debugger.sendCommand('Emulation.clearDeviceMetricsOverride').catch(() => undefined);
+    } catch {
+      // the tab is gone
     }
   }
 
   private isShown(tab: Tab): boolean {
-    return this.running && tab.id === this.activeId && this.panelVisible && this.bounds !== null;
+    // The active tab has a surface whether the pane is shown or parked; a background tab that was
+    // laid out once also keeps its viewport, but newly created ones are 0x0 until activated.
+    return this.running && tab.id === this.activeId;
   }
 
   private ensureDebugger(tab: Tab): void {
@@ -581,11 +621,6 @@ export function isAllowedNavigation(url: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** CDP calls that need a compositor frame: without one, input is dropped and screenshots never return. */
-function needsSurface(method: string): boolean {
-  return method === 'Page.captureScreenshot' || method === 'Page.captureSnapshot' || method.startsWith('Input.');
 }
 
 /** Address-bar input: URL as typed, http(s) upgrade heuristics, otherwise a web search. */

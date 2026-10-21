@@ -455,6 +455,16 @@ select:hover, .btn:hover { border-color: var(--accent); }
   animation: spin-ring 0.9s linear infinite;
 }
 
+.session-sub-item .session-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+}
+.session-sub-item .session-dot.artifact { background: var(--accent, #4c8dff); }
+.session-sub-item .session-dot.browser { background: var(--green, #4caf7d); }
+
 .session-more {
   flex: 0 0 auto;
   display: flex;
