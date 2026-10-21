@@ -59,6 +59,7 @@ public class AgentSessionRunner {
     private final boolean promptExtractionEnabled;
     private final Integer timeLimitSeconds;
     private final int backgroundWaitSeconds;
+    private final ai.core.agent.budget.RunBudget runBudget;
     private final Path workspace;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final SessionUpgradeHandler upgradeHandler;
@@ -87,6 +88,7 @@ public class AgentSessionRunner {
         this.timeLimitSeconds = config.timeLimitSeconds;
         this.backgroundWaitSeconds = config.backgroundWaitSeconds != null
                 ? config.backgroundWaitSeconds : DEFAULT_BACKGROUND_WAIT_SECONDS;
+        this.runBudget = config.runBudget();
         if (config.timeLimitSeconds != null && config.timeLimitSeconds > 0) {
             agent.getExecutionContext().getCustomVariables().put("time_limit_seconds", config.timeLimitSeconds);
         }
@@ -140,13 +142,22 @@ public class AgentSessionRunner {
             ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + prompt.strip() + "\n");
         }
         if (timeLimitSeconds != null && timeLimitSeconds > 0) {
-            LOGGER.info("Agent time limit: {}s", timeLimitSeconds);
-            runPromptWithTimeLimit(listener, session, prompt, timeLimitSeconds);
+            agent.getExecutionContext().getCustomVariables().put("time_limit_seconds", timeLimitSeconds);
+        }
+        var timeoutMillis = resolvePromptTimeoutMillis();
+        if (timeoutMillis != null) {
+            if (timeoutMillis <= 0) {
+                LOGGER.info("Run budget expired before the prompt was sent");
+                ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "[Cancelled] The run budget is exhausted." + AnsiTheme.RESET + "\n");
+            } else {
+                LOGGER.info("Agent time limit: {}ms", timeoutMillis);
+                runPromptWithTimeLimit(listener, session, prompt, timeoutMillis);
+            }
         } else {
             sendPrompt(listener, session, prompt);
         }
         awaitBackgroundWork(session);
-        if (memoryEnabled && promptExtractionEnabled) {
+        if (memoryEnabled && promptExtractionEnabled && shouldExtractMemory()) {
             MemoryTriggerService.getInstance(workspace).runIncrementalExtractionAndWait();
         }
         listener.getPanel().stopSpinnerIfActive();
@@ -197,9 +208,28 @@ public class AgentSessionRunner {
         }
     }
 
+    private Long resolvePromptTimeoutMillis() {
+        Long budgetTimeout = null;
+        if (runBudget != null && runBudget.time() != null) {
+            long remaining = runBudget.time().remainingMillis() - runBudget.time().reserveMillis();
+            budgetTimeout = Math.max(0, remaining);
+        }
+        if (timeLimitSeconds != null && timeLimitSeconds > 0) {
+            long legacyTimeout = timeLimitSeconds * 1000L;
+            return budgetTimeout == null ? legacyTimeout : Math.min(budgetTimeout, legacyTimeout);
+        }
+        return budgetTimeout;
+    }
+
+    private boolean shouldExtractMemory() {
+        if (runBudget == null || runBudget.tokens() == null) return true;
+        long reserve = Math.max(10_000L, runBudget.tokens().limitTokens() / 10);
+        return runBudget.tokens().remainingTokens() > reserve;
+    }
+
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     private void runPromptWithTimeLimit(CliEventListener listener, InProcessAgentSession session,
-                                         String prompt, int timeLimitSeconds) {
+                                         String prompt, long timeoutMillis) {
         ExecutorService executor = Executors.newSingleThreadExecutor(r -> {
             var t = new Thread(r, "prompt-time-limit");
             t.setDaemon(true);
@@ -210,9 +240,9 @@ public class AgentSessionRunner {
             return null;
         });
         try {
-            future.get(timeLimitSeconds, TimeUnit.SECONDS);
+            future.get(timeoutMillis, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
-            LOGGER.info("Time limit ({}s) reached", timeLimitSeconds);
+            LOGGER.info("Time limit ({}ms) reached", timeoutMillis);
             future.cancel(true);
             session.cancelTurn();
         } catch (InterruptedException e) {
@@ -407,6 +437,6 @@ public class AgentSessionRunner {
                          boolean memoryEnabled, boolean dailyLogsEnabled,
                          boolean promptExtractionEnabled, Integer timeLimitSeconds,
                          String defaultServerUrl, ai.core.schedule.ScheduledTaskStore scheduledTaskStore,
-                         Integer backgroundWaitSeconds) {
+                         Integer backgroundWaitSeconds, ai.core.agent.budget.RunBudget runBudget) {
     }
 }

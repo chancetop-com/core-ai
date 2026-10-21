@@ -20,6 +20,8 @@ import picocli.CommandLine.Option;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.concurrent.Callable;
 
 /**
@@ -91,6 +93,37 @@ public class Main implements Callable<Integer> {
     @Option(names = "--time-limit-seconds", description = "Wall-clock time limit for agent execution. Extraction and cleanup run after the agent returns.")
     Integer timeLimitSeconds;
 
+    @Option(names = "--time-budget-seconds", description = "Run budget in wall-clock seconds (0 disables)")
+    Integer timeBudgetSeconds;
+
+    @Option(names = "--time-budget-reserve-seconds", description = "Seconds kept in reserve by the time budget")
+    Long timeBudgetReserveSeconds;
+
+    @Option(names = "--deadline", converter = InstantConverter.class,
+            description = "Absolute deadline (ISO-8601, e.g. 2026-10-20T10:34:00Z)")
+    Instant deadline;
+
+    @Option(names = "--token-budget", description = "Run budget in prompt+completion tokens (0 disables)")
+    Integer tokenBudget;
+
+    @Option(names = "--output-token-budget", description = "Optional cap on completion tokens within the token budget")
+    Integer outputTokenBudget;
+
+    @Option(names = "--cost-budget-usd", description = "Run budget in USD (0 disables)")
+    Double costBudgetUsd;
+
+    @Option(names = "--budget-reserve-percent", description = "Percentage of the token/cost budget kept in reserve")
+    Double budgetReservePercent;
+
+    @Option(names = "--budget-reserve-tokens", description = "Tokens kept in reserve by the token budget")
+    Long budgetReserveTokens;
+
+    @Option(names = "--budget-reserve-cost-usd", description = "USD kept in reserve by the cost budget")
+    Double budgetReserveCostUsd;
+
+    @Option(names = "--budget-estimate-safety-factor", description = "Prompt-token estimate safety factor (default 1.10)")
+    Double budgetEstimateSafetyFactor;
+
     @Override
     public Integer call() {
         if (upgrade) {
@@ -104,7 +137,12 @@ public class Main implements Callable<Integer> {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
-        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace, timeLimitSeconds);
+        var startedAt = Instant.now();
+        var startedAtNanos = System.nanoTime();
+        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace,
+                timeLimitSeconds, timeBudgetSeconds, timeBudgetReserveSeconds, deadline, tokenBudget, outputTokenBudget,
+                costBudgetUsd, budgetReserveTokens, budgetReserveCostUsd, budgetReservePercent,
+                budgetEstimateSafetyFactor, startedAt, startedAtNanos);
         if (acpAgent) {
             new CliApp(options).startAcpAgent();
         } else {
@@ -159,6 +197,18 @@ public class Main implements Callable<Integer> {
         } catch (UpgradeDownloader.UpgradeException e) {
             System.err.println("Upgrade failed: " + e.getMessage());
             System.exit(1);
+        }
+    }
+
+    public static class InstantConverter implements CommandLine.ITypeConverter<Instant> {
+        @Override
+        public Instant convert(String value) {
+            try {
+                return Instant.parse(value);
+            } catch (DateTimeParseException e) {
+                throw new IllegalArgumentException("invalid deadline '" + value
+                        + "'; use ISO-8601, e.g. 2026-10-20T10:34:00Z", e);
+            }
         }
     }
 }

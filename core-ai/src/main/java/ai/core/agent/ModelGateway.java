@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.budget.BudgetCall;
 import ai.core.agent.internal.AgentHelper;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
@@ -49,10 +50,33 @@ final class ModelGateway {
     }
 
     static CompletionResponse callLLM(Agent agent, Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
-        var resp = func.apply(request);
-        agent.addTokenCost(resp.usage);
-        agent.agentLifecycles.forEach(alc -> alc.afterModel(request, resp, agent.getExecutionContext()));
-        return resp;
+        var budget = agent.getExecutionContext().getRunBudget();
+        BudgetCall budgetCall = null;
+        if (budget != null && budget.needsModelAdmission()) {
+            var model = request.model != null ? request.model : agent.getModel();
+            budgetCall = budget.admitModel(request, model);
+        }
+        if (budgetCall != null && !budgetCall.allowed()) {
+            var token = agent.getExecutionContext().getCancellationToken();
+            if (token != null) token.cancel(CancelReason.BUDGET_LIMITED);
+            throw new CancellationException(CancelReason.BUDGET_LIMITED);
+        }
+        try {
+            var resp = func.apply(request);
+            // Main-loop cost was previously ignored; addLlmUsage keeps token and estimated cost in one place.
+            var model = request.model != null ? request.model : agent.getModel();
+            agent.addLlmUsage(model, resp.usage);
+            if (budgetCall != null) budget.settleModel(budgetCall, request, resp);
+            agent.agentLifecycles.forEach(alc -> alc.afterModel(request, resp, agent.getExecutionContext()));
+            if (budgetCall != null && budget.isHardLimitReached()) {
+                var token = agent.getExecutionContext().getCancellationToken();
+                if (token != null) token.cancel(CancelReason.BUDGET_LIMITED);
+            }
+            return resp;
+        } catch (RuntimeException e) {
+            if (budgetCall != null && !budgetCall.settled()) budget.release(budgetCall);
+            throw e;
+        }
     }
 
     private ModelGateway() {

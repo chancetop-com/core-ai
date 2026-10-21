@@ -210,7 +210,7 @@ public class AcpAgentRunner {
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
-                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog);
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -254,7 +254,7 @@ public class AcpAgentRunner {
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
-                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog);
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null);
 
 
         Agent coreAgent = CliAgent.of(agentConfig);

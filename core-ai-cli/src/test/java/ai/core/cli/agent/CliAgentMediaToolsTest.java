@@ -93,6 +93,6 @@ class CliAgentMediaToolsTest {
                                    String imageModel, String videoModel, MediaModelCatalog catalog) {
         return new CliAgent.Config(null, null, 0, null, Path.of("."), null, false, false, false, false,
                 "session-1", List.of(), List.of(), Map.of(), false, null, imageProvider, videoProvider,
-                imageModel, videoModel, null, null, null, "cli", List.of(), catalog);
+                imageModel, videoModel, null, null, null, "cli", List.of(), catalog, null);
     }
 }

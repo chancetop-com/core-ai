@@ -127,26 +127,24 @@ public class InProcessAgentSession implements AgentSession {
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
         var usageBefore = agent.getCurrentTokenUsage();
-        long inputBefore = usageBefore.getPromptTokens();
-        long outputBefore = usageBefore.getCompletionTokens();
-        double costBefore = agent.getCurrentCostUsd();
-        var detailsBefore = usageBefore.getPromptTokensDetails();
-        long cachedBefore = detailsBefore != null ? detailsBefore.cachedTokens : 0;
+        var before = new SessionTurnUsage.Before(usageBefore.getPromptTokens(), usageBefore.getCompletionTokens(),
+                agent.getCurrentCostUsd(),
+                usageBefore.getPromptTokensDetails() != null ? usageBefore.getPromptTokensDetails().cachedTokens : 0);
 
         try {
             if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
-                executeUserInput(batch.values(), inputBefore, outputBefore, costBefore, cachedBefore);
+                executeUserInput(batch.values(), before);
             } else if (batch.mode() == SessionCommandQueue.CommandMode.TASK_NOTIFICATION) {
-                executeTaskNotifications(batch.values(), inputBefore, outputBefore, costBefore, cachedBefore);
+                executeTaskNotifications(batch.values(), before);
             }
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
-            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId), SessionStatus.IDLE);
+            dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, "", before), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
         } catch (Throwable e) {
             if (agent.isCancelled()) {
                 debug("agent run cancelled");
-                dispatchTerminal(TurnCompleteEvent.cancelled(sessionId), SessionStatus.IDLE);
+                dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, "", before), SessionStatus.IDLE);
                 commandQueue.drainTaskNotifications();
                 return;
             }
@@ -170,7 +168,7 @@ public class InProcessAgentSession implements AgentSession {
         TurnPersistence.save(agent, sessionId, logger, "cancelled turn");
     }
 
-    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
+    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, SessionTurnUsage.Before before) {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
@@ -184,7 +182,7 @@ public class InProcessAgentSession implements AgentSession {
         try {
             result = agent.run(combined, context);
         } catch (RuntimeException e) {
-            if (!dispatchMaxTurns(e, inputBefore, outputBefore, costBefore, cachedBefore)) throw e;
+            if (!dispatchMaxTurns(e, before)) throw e;
             return;
         } finally {
             context.setAttachedContents(null);
@@ -193,7 +191,7 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run cancelled");
             persistCancelledTurn();
             // carry partial output so server chat history records what was produced before ESC
-            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
+            dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, agent.getOutput(), before), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
             return;
         }
@@ -202,11 +200,11 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("agent run completed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
-        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
+        populateTokenUsage(turnComplete, before);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
-    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
+    private void executeTaskNotifications(List<SessionCommandQueue.QueuedMessage> values, SessionTurnUsage.Before before) {
         var xml = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("injecting task notifications");
         String result;
@@ -214,14 +212,14 @@ public class InProcessAgentSession implements AgentSession {
             agent.injectUserMessage(xml);
             result = agent.continueWithInjectedMessage();
         } catch (RuntimeException e) {
-            if (!dispatchMaxTurns(e, inputBefore, outputBefore, costBefore, cachedBefore)) throw e;
+            if (!dispatchMaxTurns(e, before)) throw e;
             return;
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");
             persistCancelledTurn();
             // carry partial output so server chat history records what was produced before ESC
-            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
+            dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, agent.getOutput(), before), SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
             return;
         }
@@ -230,12 +228,12 @@ public class InProcessAgentSession implements AgentSession {
         }
         debug("task notifications processed");
         var turnComplete = TurnCompleteEvent.of(sessionId, result);
-        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
+        populateTokenUsage(turnComplete, before);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
 
     /** Consumes a max-turns failure (Node.run wraps it one cause level down) and completes the turn; false = keep propagating. */
-    private boolean dispatchMaxTurns(RuntimeException failure, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
+    private boolean dispatchMaxTurns(RuntimeException failure, SessionTurnUsage.Before before) {
         MaxTurnsExceededException maxTurns = null;
         if (failure instanceof MaxTurnsExceededException direct) maxTurns = direct;
         else if (failure.getCause() instanceof MaxTurnsExceededException cause) maxTurns = cause;
@@ -245,20 +243,14 @@ public class InProcessAgentSession implements AgentSession {
             agent.save(sessionId);
         }
         var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
-        populateTokenUsage(turnComplete, inputBefore, outputBefore, costBefore, cachedBefore);
+        populateTokenUsage(turnComplete, before);
         turnComplete.maxTurnsReached = Boolean.TRUE;
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
         return true;
     }
 
-    private void populateTokenUsage(TurnCompleteEvent event, long inputBefore, long outputBefore, double costBefore, long cachedBefore) {
-        var usageAfter = agent.getCurrentTokenUsage();
-        event.inputTokens = usageAfter.getPromptTokens() - inputBefore;
-        event.outputTokens = usageAfter.getCompletionTokens() - outputBefore;
-        var detailsAfter = usageAfter.getPromptTokensDetails();
-        event.cachedTokens = detailsAfter != null ? detailsAfter.cachedTokens - cachedBefore : null;
-        var costAfter = agent.getCurrentCostUsd();
-        event.costUsd = costAfter - costBefore;
+    private void populateTokenUsage(TurnCompleteEvent event, SessionTurnUsage.Before before) {
+        SessionTurnUsage.populate(agent, event, before);
     }
 
     @Override

@@ -105,7 +105,25 @@ public class CliEventListener extends BaseEventListener {
         var details = agent.getCurrentTokenUsage().getPromptTokensDetails();
         Long cachedTokens = details != null ? (long) details.cachedTokens : null;
         Double costUsd = event != null ? event.costUsd : null;
-        panel.turnSummary(elapsed, inputTokens, outputTokens, cachedTokens, costUsd);
+        panel.turnSummary(elapsed, inputTokens, outputTokens, cachedTokens, costUsd, budgetSummary());
+    }
+
+    private String budgetSummary() {
+        var context = agent.getExecutionContext();
+        var budget = context == null ? null : context.getRunBudget();
+        if (budget == null) return null;
+        var parts = new StringBuilder(48);
+        if (budget.tokens() != null && budget.tokens().limitTokens() > 0) {
+            long percent = Math.round(100.0 * budget.tokens().spentTokens() / budget.tokens().limitTokens());
+            parts.append(percent).append("% tokens");
+        }
+        if (budget.cost() != null && budget.cost().limitMicros() > 0) {
+            if (!parts.isEmpty()) parts.append(" | ");
+            parts.append(String.format("$%.4f/$%.2f",
+                    budget.cost().spentMicros() / (double) ai.core.agent.budget.CostBudget.MICROS_PER_USD,
+                    budget.cost().limitMicros() / (double) ai.core.agent.budget.CostBudget.MICROS_PER_USD));
+        }
+        return parts.isEmpty() ? null : "budget " + parts;
     }
 
     @Override

@@ -5,6 +5,7 @@ import ai.core.agent.AgentBuilder;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.budget.RunBudget;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.agent.profile.BuiltinAgentProfileProvider;
 import ai.core.cli.agent.profile.FilesystemAgentProfileProvider;
@@ -127,6 +128,7 @@ public class CliAgent {
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
                 .promptSections(constructPromptSection(config, hookOutput))
+                .runBudget(config.runBudget())
                 .build();
         execCtx.setMediaProvider(config.mediaProvider);
         execCtx.setImageMediaProvider(config.imageMediaProvider);
@@ -184,6 +186,7 @@ public class CliAgent {
     }
 
     private static void configureLifecycles(AgentBuilder builder, Config config, ScriptHookLifecycle hookLifecycle) {
+        builder.addAgentLifecycle(new RunBudgetLifecycle(config.runBudget()));
         if (hookLifecycle != null) builder.addAgentLifecycle(hookLifecycle);
         if (config.memoryEnabled) {
             builder.addAgentLifecycle(new CliMemoryLifecycle(MemoryTriggerService.getInstance(config.workspace), config.dailyLogsEnabled));
@@ -295,6 +298,9 @@ public class CliAgent {
         sections.add(config.coding ? new CliAgentCodeBasePrompt() : new CliAgentBasePrompt());
         sections.add(new CliAgentPersonalityPrompt());
         sections.add(new CliAgentEnvironmentPrompt(config.workspace, config.clientType));
+        if (config.runBudget() != null) {
+            sections.add(new RunBudgetPrompt(config.runBudget()));
+        }
         if (managedBrowser()) {
             sections.add(new CliAgentManagedBrowserPrompt());
         }
@@ -360,6 +366,7 @@ public class CliAgent {
                              ai.core.context.CompressionConfig compressionConfig,
                              String clientType,
                              List<HelperEntry> helpers,
-                             MediaModelCatalog mediaCatalog) {
+                             MediaModelCatalog mediaCatalog,
+                             RunBudget runBudget) {
     }
 }

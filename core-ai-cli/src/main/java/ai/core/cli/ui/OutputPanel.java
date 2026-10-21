@@ -363,6 +363,11 @@ public class OutputPanel {
     }
 
     public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens, Long cachedTokens, Double costUsd) {
+        turnSummary(elapsedMs, inputTokens, outputTokens, cachedTokens, costUsd, null);
+    }
+
+    public void turnSummary(long elapsedMs, Long inputTokens, Long outputTokens, Long cachedTokens, Double costUsd,
+                            String budget) {
         String tokens;
         if (inputTokens != null && outputTokens != null) {
             long total = inputTokens + outputTokens;
@@ -375,7 +380,8 @@ public class OutputPanel {
             tokens = "";
         }
         String cost = costUsd != null && costUsd > 0 ? " | " + ThinkingSpinner.formatCostUsd(costUsd) : "";
-        writer.println("\n" + AnsiTheme.MUTED + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + cost + AnsiTheme.RESET);
+        String budgetText = budget == null || budget.isBlank() ? "" : " | " + budget;
+        writer.println("\n" + AnsiTheme.MUTED + INDENT + "\u2726 " + ThinkingSpinner.formatElapsed(elapsedMs) + tokens + cost + budgetText + AnsiTheme.RESET);
         writer.flush();
     }
 

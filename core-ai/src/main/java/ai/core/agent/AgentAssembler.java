@@ -51,7 +51,13 @@ final class AgentAssembler {
         agent.agentLifecycles = new ArrayList<>(builder.agentLifecycles);
         agent.compression = builder.compression;
         if (agent.compression != null) {
-            agent.compression.onLlmUsage(agent::addLlmUsage);
+            agent.compression.onLlmUsage((model, usage) -> {
+                agent.addLlmUsage(model, usage);
+                var budget = agent.getExecutionContext().getRunBudget();
+                if (budget != null) {
+                    budget.recordExternalUsage("compression", model, usage);
+                }
+            });
         }
         agent.reasoningEffort = builder.reasoningEffort;
         if (builder.reflectionConfig == null && Boolean.TRUE.equals(builder.enableReflection)) {

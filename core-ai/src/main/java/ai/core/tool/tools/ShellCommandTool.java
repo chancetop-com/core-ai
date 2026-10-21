@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.AgentRuntimeException;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.Task;
+import ai.core.agent.budget.BudgetProfile;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -36,6 +37,7 @@ public class ShellCommandTool extends ToolCall {
     public static final String TOOL_NAME = "run_bash_command";
 
     protected static final int DEFAULT_TIMEOUT_MILLISECONDS = 2 * 60 * 1000;
+    protected static final int MAX_TIMEOUT_MILLISECONDS = 10 * 60 * 1000;
     private static final Logger LOGGER = LoggerFactory.getLogger(ShellCommandTool.class);
     private static final String TOOL_DESC_TEMPLATE = """
             Executes a given bash command in a persistent shell session with optional timeout, ensuring proper handling and security measures.
@@ -287,14 +289,59 @@ public class ShellCommandTool extends ToolCall {
         throw new AgentRuntimeException("SHELL_TOOL_FAILED", "run bash  requires ExecutionContext");
     }
 
+    @Override
+    public long getTimeoutMs() {
+        return MAX_TIMEOUT_MILLISECONDS;
+    }
+
+    @Override
+    public long getRequestedTimeoutMs(String arguments) {
+        try {
+            var argsMap = parseArguments(arguments);
+            var requested = argsMap.get("timeout");
+            if (requested instanceof Number number) {
+                return Math.min(MAX_TIMEOUT_MILLISECONDS, Math.max(1, number.longValue()));
+            }
+        } catch (RuntimeException ignored) {
+            // malformed arguments are rejected by the normal validation path
+        }
+        return DEFAULT_TIMEOUT_MILLISECONDS;
+    }
+
+    @Override
+    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
+        var requested = getRequestedTimeoutMs(arguments);
+        try {
+            var command = getStringValue(parseArguments(arguments), "command");
+            if (command != null && BashReadOnlyChecker.isReadOnly(command)) {
+                return BudgetProfile.cheap(requested);
+            }
+        } catch (RuntimeException ignored) {
+            // malformed arguments are rejected by the normal validation path
+        }
+        return BudgetProfile.expensive(requested);
+    }
+
     protected ToolCallResult doExecute(String text, ExecutionContext context) {
         Consumer<String> onChunk = getOnOutPutConsumer(context);
         long startTime = System.currentTimeMillis();
         try {
             var argsMap = parseArguments(text);
             var command = getStringValue(argsMap, "command");
-            var timeMilliseconds = argsMap.get("timeout") == null ? DEFAULT_TIMEOUT_MILLISECONDS : (Integer) argsMap.get("timeout");
-            var timeoutSeconds = timeMilliseconds / 1000;
+            var requested = argsMap.get("timeout");
+            long timeMilliseconds = requested instanceof Number number
+                    ? number.longValue()
+                    : DEFAULT_TIMEOUT_MILLISECONDS;
+            var budget = context.getRunBudget();
+            if (budget != null) {
+                var decision = budget.admitToolCall(budgetProfile(text, context), timeMilliseconds);
+                if (!decision.allowed()) {
+                    return ToolCallResult.failed(decision.reason())
+                            .withDuration(System.currentTimeMillis() - startTime);
+                }
+                timeMilliseconds = decision.effectiveTimeoutMs();
+            }
+            var timeoutSeconds = Math.max(1, (int) (timeMilliseconds / 1000));
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
             var workspaceDir = context.getCustomVariable("workspace") == null ? getStringValue(argsMap, "workspace") : (String) context.getCustomVariable("workspace");
             var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();

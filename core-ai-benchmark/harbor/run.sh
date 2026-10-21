@@ -18,6 +18,13 @@ DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
 CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.56}"
 CLI_BINARY="${CORE_AI_CLI_BINARY:-$SCRIPT_DIR/.cache/core-ai-cli-linux}"
+TIME_BUDGET_SECONDS="${TIME_BUDGET_SECONDS:--1}"
+BUDGET_MARGIN_SECONDS="${BUDGET_MARGIN_SECONDS:-15}"
+TOKEN_BUDGET="${TOKEN_BUDGET:--1}"
+COST_BUDGET_USD="${COST_BUDGET_USD:-0}"
+RESERVE_TOKENS="${RESERVE_TOKENS:-0}"
+RESERVE_COST_USD="${RESERVE_COST_USD:-0}"
+AUTO_TIME_BUDGET="${AUTO_TIME_BUDGET:-1}"
 UPDATE_DATASET=0
 
 usage() {
@@ -41,6 +48,13 @@ Options:
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
   --cli-version VER     core-ai-cli release version to download (default: 2.0.56)
+  --time-budget-seconds N   -1=auto from task.toml, 0=disable, >0=explicit
+  --budget-margin-seconds N Safety margin for auto budget (default: 15)
+  --token-budget N      Total token budget; -1=disable
+  --cost-budget-usd N   Total USD budget; 0=disable
+  --reserve-tokens N    Tokens kept in reserve
+  --reserve-cost-usd N  USD kept in reserve
+  --no-auto-time-budget Disable task.toml budget derivation
   --update-dataset      git pull the local dataset before running
   -h, --help            Show this help
 
@@ -69,6 +83,13 @@ while [ $# -gt 0 ]; do
         --dataset-ref) DATASET_REF="$2"; shift 2 ;;
         --cli-binary) CLI_BINARY="$2"; shift 2 ;;
         --cli-version) CLI_VERSION="$2"; shift 2 ;;
+        --time-budget-seconds) TIME_BUDGET_SECONDS="$2"; shift 2 ;;
+        --budget-margin-seconds) BUDGET_MARGIN_SECONDS="$2"; shift 2 ;;
+        --token-budget) TOKEN_BUDGET="$2"; shift 2 ;;
+        --cost-budget-usd) COST_BUDGET_USD="$2"; shift 2 ;;
+        --reserve-tokens) RESERVE_TOKENS="$2"; shift 2 ;;
+        --reserve-cost-usd) RESERVE_COST_USD="$2"; shift 2 ;;
+        --no-auto-time-budget) AUTO_TIME_BUDGET=0; shift ;;
         --update-dataset) UPDATE_DATASET=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
@@ -247,6 +268,27 @@ HARBOR_ARGS=(
 )
 if [ -n "$THINKING_EFFORT" ]; then
     HARBOR_ARGS+=(--ak "reasoning_effort=$THINKING_EFFORT")
+fi
+if [ "$TIME_BUDGET_SECONDS" -ge 0 ]; then
+    HARBOR_ARGS+=(--ak "time_budget_seconds=$TIME_BUDGET_SECONDS")
+fi
+if [ "$BUDGET_MARGIN_SECONDS" -gt 0 ]; then
+    HARBOR_ARGS+=(--ak "budget_margin_seconds=$BUDGET_MARGIN_SECONDS")
+fi
+if [ "$AUTO_TIME_BUDGET" = "0" ]; then
+    HARBOR_ARGS+=(--ak "auto_time_budget=false")
+fi
+if [ "$TOKEN_BUDGET" -gt 0 ]; then
+    HARBOR_ARGS+=(--ak "token_budget=$TOKEN_BUDGET")
+fi
+if awk "BEGIN {exit !($COST_BUDGET_USD > 0)}"; then
+    HARBOR_ARGS+=(--ak "cost_budget_usd=$COST_BUDGET_USD")
+fi
+if [ "$RESERVE_TOKENS" -gt 0 ]; then
+    HARBOR_ARGS+=(--ak "budget_reserve_tokens=$RESERVE_TOKENS")
+fi
+if awk "BEGIN {exit !($RESERVE_COST_USD > 0)}"; then
+    HARBOR_ARGS+=(--ak "budget_reserve_cost_usd=$RESERVE_COST_USD")
 fi
 if [ -n "$MODEL" ]; then
     HARBOR_ARGS+=(-m "$MODEL")

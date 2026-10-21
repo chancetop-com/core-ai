@@ -63,6 +63,25 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "cost_usd")
     public Double costUsd;
 
+    @NotNull
+    @Property(name = "budget_exhausted")
+    public Boolean budgetExhausted = Boolean.FALSE;
+
+    @Property(name = "budget_level")
+    public String budgetLevel;
+
+    @Property(name = "budget_binding")
+    public String budgetBinding;
+
+    @Property(name = "budget_tokens_spent")
+    public Long budgetTokensSpent;
+
+    @Property(name = "budget_cost_spent")
+    public Double budgetCostSpent;
+
+    @Property(name = "budget_cost_estimated")
+    public Boolean budgetCostEstimated;
+
     @Override
     public String sessionId() {
         return sessionId;

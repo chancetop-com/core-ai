@@ -36,6 +36,26 @@ _REMOTE_BIN = "/usr/local/bin/core-ai-cli"
 _OUTPUT_FILENAME = "core-ai-cli.txt"
 
 
+def _int_or_none(value):
+    if value is None or value == "":
+        return None
+    return int(value)
+
+
+def _float_or_none(value):
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _bool_or_default(value, default):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _active_auth_entry() -> dict | None:
     """Return the active entry from ~/.core-ai/auth.json, if present."""
     path = Path.home() / ".core-ai" / "auth.json"
@@ -86,6 +106,15 @@ class CoreAiCli(BaseInstalledAgent):
         api_base: str | None = None,
         max_turns: int | None = None,
         time_limit_seconds: int | None = None,
+        time_budget_seconds: int | None = None,
+        budget_margin_seconds: int = 15,
+        auto_time_budget: bool = True,
+        subagent_concurrency: int | None = None,
+        token_budget: int | None = None,
+        cost_budget_usd: float | None = None,
+        budget_reserve_tokens: int | None = None,
+        budget_reserve_cost_usd: float | None = None,
+        budget_reserve_percent: int | None = None,
         coding: bool = True,
         todo_v2: bool = True,
         memory: bool = False,
@@ -96,8 +125,18 @@ class CoreAiCli(BaseInstalledAgent):
         self._binary_path = binary_path
         self._api_key = api_key
         self._api_base = api_base
-        self._max_turns = max_turns
-        self._time_limit_seconds = time_limit_seconds
+        self._max_turns = _int_or_none(max_turns)
+        self._time_limit_seconds = _int_or_none(time_limit_seconds)
+        self._time_budget_seconds = _int_or_none(time_budget_seconds)
+        self._budget_margin_seconds = int(budget_margin_seconds)
+        self._auto_time_budget = _bool_or_default(auto_time_budget, True)
+        self._subagent_concurrency = _int_or_none(subagent_concurrency)
+        self._token_budget = _int_or_none(token_budget)
+        self._cost_budget_usd = _float_or_none(cost_budget_usd)
+        self._budget_reserve_tokens = _int_or_none(budget_reserve_tokens)
+        self._budget_reserve_cost_usd = _float_or_none(budget_reserve_cost_usd)
+        self._budget_reserve_percent = _int_or_none(budget_reserve_percent)
+        self._supports_time_budget = False
         self._coding = coding
         self._todo_v2 = todo_v2
         self._memory = memory
@@ -123,8 +162,19 @@ class CoreAiCli(BaseInstalledAgent):
         if self._binary_path:
             await environment.upload_file(self._binary_path, _REMOTE_BIN)
             await self.exec_as_root(environment, command=f"chmod +x {_REMOTE_BIN}")
-            return
-        await self._install_from_release(environment)
+        else:
+            await self._install_from_release(environment)
+        await self._probe_time_budget(environment)
+
+    async def _probe_time_budget(self, environment: BaseEnvironment) -> None:
+        try:
+            probe = await self.exec_as_root(
+                environment,
+                command=f"{_REMOTE_BIN} --help 2>&1 || true",
+            )
+            self._supports_time_budget = "--time-budget-seconds" in (probe.stdout or "")
+        except Exception:
+            self._supports_time_budget = False
 
     async def _install_from_release(self, environment: BaseEnvironment) -> None:
         version = self._version or "latest"
@@ -220,7 +270,66 @@ class CoreAiCli(BaseInstalledAgent):
                     separators=(",", ":"),
                 )
             )
+        if self._subagent_concurrency:
+            lines.append(f"agent.subagent.max-concurrent={int(self._subagent_concurrency)}")
+        if self._token_budget is not None and self._token_budget > 0:
+            lines.append(f"agent.budget.tokens={int(self._token_budget)}")
+        if self._cost_budget_usd is not None and self._cost_budget_usd > 0:
+            lines.append(f"agent.budget.cost.usd={float(self._cost_budget_usd)}")
+        if self._budget_reserve_tokens is not None and self._budget_reserve_tokens > 0:
+            lines.append(f"agent.budget.reserve.tokens={int(self._budget_reserve_tokens)}")
+        if self._budget_reserve_cost_usd is not None and self._budget_reserve_cost_usd > 0:
+            lines.append(f"agent.budget.reserve.cost.usd={float(self._budget_reserve_cost_usd)}")
+        if self._budget_reserve_percent:
+            lines.append(f"agent.budget.reserve.percent={int(self._budget_reserve_percent)}")
         return "\n".join(lines) + "\n"
+
+    def _trial_config(self) -> dict | None:
+        path = Path(self.logs_dir).parent / "config.json"
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _task_agent_timeout_sec(self) -> float | None:
+        cfg = self._trial_config()
+        if not cfg:
+            return None
+        task_path = (cfg.get("task") or {}).get("path")
+        if not task_path:
+            return None
+        task_toml = Path(task_path) / "task.toml"
+        try:
+            import tomllib
+            with task_toml.open("rb") as fh:
+                task = tomllib.load(fh)
+        except (OSError, ImportError):
+            return None
+
+        base = (task.get("agent") or {}).get("timeout_sec")
+        agent_cfg = cfg.get("agent") or {}
+        base = agent_cfg.get("override_timeout_sec") or base
+        if base is None:
+            return None
+        max_sec = agent_cfg.get("max_timeout_sec")
+        multiplier = cfg.get("agent_timeout_multiplier")
+        if multiplier is None:
+            multiplier = cfg.get("timeout_multiplier") or 1.0
+        return min(float(base), float(max_sec) if max_sec else float("inf")) * float(multiplier)
+
+    def _resolve_time_budget(self) -> int | None:
+        timeout = self._task_agent_timeout_sec() if self._auto_time_budget else None
+        margin = max(5, int(self._budget_margin_seconds))
+        if self._time_budget_seconds is not None:
+            explicit = int(self._time_budget_seconds)
+            if explicit <= 0:
+                return None
+            if timeout is not None:
+                explicit = min(explicit, max(1, int(timeout - margin)))
+            return explicit
+        if not self._auto_time_budget or timeout is None:
+            return None
+        return max(1, int(timeout - margin))
 
     def _build_auth_config(self, provider: str, api_key: str) -> str | None:
         if provider != "litellm":
@@ -285,8 +394,16 @@ class CoreAiCli(BaseInstalledAgent):
             f"--workspace {shlex.quote(workspace)}",
             f"--prompt {shlex.quote(instruction)}",
         ]
-        if self._time_limit_seconds:
-            flags.append(f"--time-limit-seconds {int(self._time_limit_seconds)}")
+        budget = self._resolve_time_budget()
+        hard_limit = self._time_limit_seconds
+        if budget and self._supports_time_budget:
+            flags.append(f"--time-budget-seconds {budget}")
+            hard_limit = budget if hard_limit is None else min(hard_limit, budget)
+        elif budget and not self._supports_time_budget:
+            hard_limit = budget if hard_limit is None else min(hard_limit, budget)
+            print(f"warning: this core-ai-cli does not support --time-budget-seconds; using time limit {hard_limit}")
+        if hard_limit:
+            flags.append(f"--time-limit-seconds {int(hard_limit)}")
 
         env: dict[str, str] = {}
         for key in _PROVIDER_ENV_KEYS.get(provider, []):

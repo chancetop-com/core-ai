@@ -11,6 +11,13 @@ param(
     [string]$DatasetRef = "main",
     [string]$CliVersion = "2.0.56",
     [string]$CliBinary = "",
+    [int]$TimeBudgetSeconds = -1,
+    [int]$BudgetMarginSeconds = 15,
+    [int]$TokenBudget = -1,
+    [double]$CostBudgetUsd = 0,
+    [int]$ReserveTokens = 0,
+    [double]$ReserveCostUsd = 0,
+    [switch]$AutoTimeBudget = $true,
     [string]$HarborExe = "",
     [switch]$UpdateDataset,
     [switch]$Help
@@ -42,6 +49,13 @@ Options:
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
   -CliVersion VER      core-ai-cli release version to download (default: 2.0.56)
+  -TimeBudgetSeconds N Agent wall-clock budget; -1=auto from task.toml, 0=disable
+  -BudgetMarginSeconds N Safety margin for auto budget (default: 15)
+  -TokenBudget N       Total token budget; -1=disable
+  -CostBudgetUsd N     Total USD budget; 0=disable
+  -ReserveTokens N     Tokens kept in reserve
+  -ReserveCostUsd N    USD kept in reserve
+  -AutoTimeBudget:$false  Disable task.toml budget derivation
   -UpdateDataset       git pull the local dataset before running
   -HarborExe PATH      Harbor executable (default: harbor on PATH)
   -Help                Show this help
@@ -163,6 +177,13 @@ $HarborArgs = @(
     "--jobs-dir", $JobsDir
 )
 if ($ThinkingEffort) { $HarborArgs += @("--ak", "reasoning_effort=$ThinkingEffort") }
+if ($TimeBudgetSeconds -ge 0) { $HarborArgs += @("--ak", "time_budget_seconds=$TimeBudgetSeconds") }
+if ($BudgetMarginSeconds -gt 0) { $HarborArgs += @("--ak", "budget_margin_seconds=$BudgetMarginSeconds") }
+if (-not $AutoTimeBudget) { $HarborArgs += @("--ak", "auto_time_budget=false") }
+if ($TokenBudget -gt 0) { $HarborArgs += @("--ak", "token_budget=$TokenBudget") }
+if ($CostBudgetUsd -gt 0) { $HarborArgs += @("--ak", "cost_budget_usd=$CostBudgetUsd") }
+if ($ReserveTokens -gt 0) { $HarborArgs += @("--ak", "budget_reserve_tokens=$ReserveTokens") }
+if ($ReserveCostUsd -gt 0) { $HarborArgs += @("--ak", "budget_reserve_cost_usd=$ReserveCostUsd") }
 if ($Model) { $HarborArgs += @("-m", $Model) }
 if ($JobName) { $HarborArgs += @("--job-name", $JobName) }
 if ($Task) { $HarborArgs += @("-i", $Task) }

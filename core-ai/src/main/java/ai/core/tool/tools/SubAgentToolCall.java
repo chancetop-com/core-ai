@@ -113,6 +113,10 @@ public class SubAgentToolCall extends ToolCall {
     }
 
     private ToolCallResult startAndAwait(Agent agent, String query, ExecutionContext context, Runnable onFinish) {
+        var parentBudget = context.getRunBudget();
+        if (parentBudget != null) {
+            context.setRunBudget(parentBudget.childScope());
+        }
         var handedToRun = false;
         try {
             // isolate: prevent message bubbling to parent
@@ -130,6 +134,9 @@ public class SubAgentToolCall extends ToolCall {
             handedToRun = true;
             return getAgentResult(future, childToken, parentToken, agent, context);
         } finally {
+            if (parentBudget != null) {
+                context.setRunBudget(parentBudget);
+            }
             // the run never started (or could not be submitted); the gate must not stay held
             if (!handedToRun) {
                 onFinish.run();
@@ -193,12 +200,23 @@ public class SubAgentToolCall extends ToolCall {
         }
     }
 
+    private long resolveTimeoutMs(ExecutionContext context) {
+        long timeoutMs = getTimeoutMs();
+        var budget = context.getRunBudget();
+        if (budget != null && budget.time() != null) {
+            long remaining = budget.time().remainingMillis() - budget.time().reserveMillis();
+            timeoutMs = Math.min(timeoutMs, Math.max(1, remaining));
+        }
+        return timeoutMs;
+    }
+
     private ToolCallResult getAgentResult(CompletableFuture<String> future, CancellationToken childToken,
                                            CancellationToken parentToken, Agent agent, ExecutionContext context) {
+        var timeoutMs = resolveTimeoutMs(context);
         try {
             var result = childToken != null
-                    ? childToken.orCancel(future, getTimeoutMs())
-                    : future.get(getTimeoutMs(), TimeUnit.MILLISECONDS);
+                    ? childToken.orCancel(future, timeoutMs)
+                    : future.get(timeoutMs, TimeUnit.MILLISECONDS);
 
             var subAgentStatus = agent.getNodeStatus();
 

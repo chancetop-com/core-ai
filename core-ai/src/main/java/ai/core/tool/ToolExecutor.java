@@ -184,12 +184,15 @@ public class ToolExecutor {
         }
 
         result.withToolName(tool.getName()).withDuration(System.currentTimeMillis() - startTime);
-        consumeLlmUsage(result);
+        consumeLlmUsage(result, context);
         handleAsyncResult(result, tool, functionCall, context);
         if (result.isCompleted()) markTaskOutputRead(tool, args, context);
 
         if (saveToFile != null && result.isCompleted()) {
             result = saveResultToFile(saveToFile, result, sandbox, tool.getName());
+        } else if (result.isCompleted()) {
+            result = ToolResultBudgetPolicy.autoSaveIfNeeded(result, tool, context,
+                    (path, savedResult, name) -> saveResultToFile(path, savedResult, sandbox, name));
         }
 
         LOGGER.debug("tool {} completed in {}ms, stats: {}", result.getToolName(), result.getDurationMs(), result.getStats());
@@ -273,6 +276,14 @@ public class ToolExecutor {
     // as soon as the token fires, while the abandoned call finishes on its own thread and is discarded.
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeInSandbox(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
+        var budget = context.getRunBudget();
+        if (budget != null) {
+            var requested = tool.getRequestedTimeoutMs(functionCall.function.arguments);
+            var decision = budget.admitToolCall(tool.budgetProfile(functionCall.function.arguments, context), requested);
+            if (!decision.allowed()) {
+                return ToolCallResult.failed(decision.reason());
+            }
+        }
         var token = context.getCancellationToken();
         if (token == null) {
             return callSandbox(tool, functionCall, args, context, sandbox);
@@ -315,7 +326,15 @@ public class ToolExecutor {
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
-        var timeoutMs = tool.getTimeoutMs();
+        long timeoutMs = tool.getRequestedTimeoutMs(functionCall.function.arguments);
+        var budget = context.getRunBudget();
+        if (budget != null) {
+            var decision = budget.admitToolCall(tool.budgetProfile(functionCall.function.arguments, context), timeoutMs);
+            if (!decision.allowed()) {
+                return ToolCallResult.failed(decision.reason());
+            }
+            timeoutMs = decision.effectiveTimeoutMs();
+        }
 
         var otelContext = Context.current();
 
@@ -356,9 +375,21 @@ public class ToolExecutor {
         return tracer.traceToolCall(functionCall.function.name, functionCall.function.arguments, llmSpanContext, isSubAgent, action);
     }
 
-    private void consumeLlmUsage(ToolCallResult result) {
-        if (result.getLlmUsage() == null || llmUsageConsumer == null) return;
-        llmUsageConsumer.accept(result.getLlmModel(), result.getLlmUsage());
+    private void consumeLlmUsage(ToolCallResult result, ExecutionContext context) {
+        if (result.getLlmUsage() != null) {
+            if (llmUsageConsumer != null) {
+                llmUsageConsumer.accept(result.getLlmModel(), result.getLlmUsage());
+            }
+            var budget = context.getRunBudget();
+            if (budget != null) {
+                budget.recordExternalUsage("tool", result.getLlmModel(), result.getLlmUsage());
+            }
+        } else if (result.getCostUsd() != null) {
+            var budget = context.getRunBudget();
+            if (budget != null) {
+                budget.settleToolCost(result.getCostUsd(), "tool");
+            }
+        }
     }
 
     private boolean isFreshTask(ToolCallAsyncTaskManager asyncTaskManager, String taskId, ToolCall tool) {

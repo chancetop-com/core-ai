@@ -11,6 +11,7 @@ import ai.core.cli.agent.CliAgent;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.AuthManager;
 import ai.core.cli.auth.RuntimeAuthConfig;
+import ai.core.cli.budget.CliBudgetConfig;
 import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.helper.HelperConfigStore;
@@ -52,6 +53,7 @@ public class CliApp {
 
     private final Path configFile;
     private final String modelOverride;
+    private final CliAppOptions options;
     private final String prompt;
     private final boolean autoApproveAll;
     private final boolean continueSession;
@@ -60,6 +62,7 @@ public class CliApp {
     private final Integer timeLimitSeconds;
 
     public CliApp(CliAppOptions options) {
+        this.options = options;
         this.configFile = options.configFile() != null ? options.configFile() : PathUtils.DEFAULT_CONFIG;
         this.modelOverride = options.modelOverride();
         this.prompt = options.prompt();
@@ -210,6 +213,7 @@ public class CliApp {
     private SessionContext initializeSession(TerminalUI ui) {
         var bc = bootstrapCore();
         var modelName = modelOverride != null ? modelOverride : bc.result().llmProviders.getDefaultProvider().config.getModel();
+        var runBudget = CliBudgetConfig.create(options, bc.props(), modelName);
         String currentSessionId = resolveSessionId(bc.sessionManager(), ui);
         if (currentSessionId == null) currentSessionId = CliAppHelper.defaultSessionId("cli-");
         CliLogger.initialize(workspace, currentSessionId);
@@ -220,7 +224,7 @@ public class CliApp {
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),
                 bc.coding(), bc.todoV2Enabled(), bc.remoteAgents(), bc.remoteServers(), bc.subAgentConfigs(), promptExtraction, timeLimitSeconds, bc.a2aAutoDiscover(),
                 bc.mediaProvider(), bc.imageMediaProvider(), bc.videoMediaProvider(), bc.defaultImageModel(), bc.defaultVideoModel(),
-                bc.defaultImageEditModel(), bc.helpers(), bc.mediaCatalog());
+                bc.defaultImageEditModel(), bc.helpers(), bc.mediaCatalog(), runBudget);
     }
 
     private void runSessionLoop(TerminalUI ui, SessionContext ctx) {
@@ -258,7 +262,7 @@ public class CliApp {
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
                 ctx.mediaProvider(), imageMediaProvider, videoMediaProvider, ctx.defaultImageModel(), ctx.defaultVideoModel(),
                 ctx.defaultImageEditModel(), scheduledTaskStore,
-                CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers(), ctx.mediaCatalog());
+                CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers(), ctx.mediaCatalog(), ctx.runBudget());
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {
@@ -267,7 +271,7 @@ public class CliApp {
         var defaultServerUrl = ctx.props().property("core.server.url").orElse(null);
         var backgroundWaitSeconds = ctx.props().property("agent.background.wait.seconds")
                 .map(Integer::parseInt).orElse(null);
-        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore, backgroundWaitSeconds);
+        var config = new AgentSessionRunner.Config(ctx.modelName(), autoApproveAll, sessionId, ctx.sessionManager(), ctx.permissionStore(), ctx.noteMemory(), ctx.modelRegistry(), ctx.sessionPersistence(), ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.promptExtractionEnabled(), ctx.timeLimitSeconds(), defaultServerUrl, scheduledTaskStore, backgroundWaitSeconds, ctx.runBudget());
         return new AgentSessionRunner(ui, agent, ctx.result().llmProviders, config);
     }
 

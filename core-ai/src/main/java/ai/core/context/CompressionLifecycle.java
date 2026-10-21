@@ -29,6 +29,12 @@ public class CompressionLifecycle extends AbstractLifecycle {
         if (request == null || request.messages == null) {
             return;
         }
+        var budget = executionContext == null ? null : executionContext.getRunBudget();
+        if (budget != null && budget.tokens() != null
+                && budget.tokens().remainingTokens() <= budget.tokens().reserveTokens()) {
+            LOGGER.debug("Skipping compression: token budget is in its reserve");
+            return;
+        }
 
         List<Message> compressed = compression.compress(request.messages);
         if (compressed != request.messages) {

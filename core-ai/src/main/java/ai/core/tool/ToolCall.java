@@ -1,6 +1,7 @@
 package ai.core.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.budget.BudgetProfile;
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.Function;
 import ai.core.llm.domain.Tool;
@@ -57,6 +58,14 @@ public abstract class ToolCall {
     }
 
     public abstract ToolCallResult execute(String arguments);
+
+    public long getRequestedTimeoutMs(String arguments) {
+        return getTimeoutMs();
+    }
+
+    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
+        return BudgetProfile.normal(getRequestedTimeoutMs(arguments));
+    }
 
     public ToolCallResult poll(String taskId) {
         throw new UnsupportedOperationException("Tool '" + name + "' does not support polling");

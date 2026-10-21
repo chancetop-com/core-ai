@@ -221,6 +221,15 @@ public final class ToolCallResult {
         return llmCostUsd;
     }
 
+    public ToolCallResult withCostUsd(double costUsd) {
+        this.llmCostUsd = costUsd;
+        return this;
+    }
+
+    public Double getCostUsd() {
+        return llmCostUsd;
+    }
+
     public ContentType getType() {
         return type;
     }

@@ -1,6 +1,7 @@
 package ai.core.cli;
 
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.budget.RunBudget;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.config.ModelRegistry;
@@ -30,5 +31,5 @@ record SessionContext(BootstrapResult result, PropertiesFileSource props, int ma
         boolean promptExtractionEnabled, Integer timeLimitSeconds, boolean a2aAutoDiscover,
         MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
         String defaultImageModel, String defaultVideoModel, String defaultImageEditModel,
-        List<HelperEntry> helpers, MediaModelCatalog mediaCatalog) {
+        List<HelperEntry> helpers, MediaModelCatalog mediaCatalog, RunBudget runBudget) {
 }

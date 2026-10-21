@@ -1,5 +1,6 @@
 package ai.core.agent;
 
+import ai.core.agent.budget.RunBudget;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.subagent.SubagentThreadRegistry;
 import ai.core.llm.streaming.StreamingCallback;
@@ -29,11 +30,12 @@ import java.util.function.Consumer;
 public final class ExecutionContext {
     // custom variables with this prefix carry internal runtime objects, never serialized into tool argument payloads
     public static final String INTERNAL_VARIABLE_PREFIX = "__";
-    public static Builder builder() {
-        return new Builder();
+    public static ExecutionContextBuilder builder() {
+        return new ExecutionContextBuilder();
     }
+
     public static ExecutionContext empty() {
-        return new Builder().build();
+        return new ExecutionContextBuilder().build();
     }
 
     private final String sessionId;
@@ -65,9 +67,10 @@ public final class ExecutionContext {
     private Map<String, SubAgentConfig> subAgentConfigs;
     private ToolRegistry toolRegistry;
     private AgentProfileRegistry agentProfileRegistry;
+    private RunBudget runBudget;
     private volatile SubagentThreadRegistry subagentThreads;
 
-    private ExecutionContext(Builder builder) {
+    ExecutionContext(ExecutionContextBuilder builder) {
         this.sessionId = builder.sessionId;
         this.userId = builder.userId;
         this.caller = builder.caller;
@@ -84,6 +87,7 @@ public final class ExecutionContext {
         this.sandbox = builder.sandbox;
         this.backgroundTaskManager = builder.backgroundTaskManager;
         this.cancellationToken = builder.cancellationToken;
+        this.runBudget = builder.runBudget;
     }
 
     public String getSessionId() {
@@ -343,108 +347,11 @@ public final class ExecutionContext {
         return subagentThreads != null;
     }
 
-    public static class Builder {
-        private String sessionId;
-        private String userId;
-        private Caller caller;
-        private String taskId;
-        private String taskName;
-        private ToolCallAsyncTaskManager asyncTaskManager;
-        private AttachedContent attachedContent;
-        private PersistenceProvider persistenceProvider;
-        private SubagentOutputSinkFactory subagentOutputSinkFactory;
-        private TodoStoreFactory todoStoreFactory;
-        private final List<PromptInject> promptSections = new ArrayList<>();
-        private Sandbox sandbox;
-        private BackgroundTaskManager backgroundTaskManager;
-        private CancellationToken cancellationToken;
-        private final Map<String, Object> customVariables = Maps.newHashMap();
+    public RunBudget getRunBudget() {
+        return runBudget;
+    }
 
-        public Builder sessionId(String sessionId) {
-            this.sessionId = sessionId;
-            return this;
-        }
-
-        public Builder userId(String userId) {
-            this.userId = userId;
-            return this;
-        }
-
-        public Builder caller(Caller caller) {
-            this.caller = caller;
-            return this;
-        }
-
-        public Builder taskId(String taskId) {
-            this.taskId = taskId;
-            return this;
-        }
-
-        public Builder taskName(String taskName) {
-            this.taskName = taskName;
-            return this;
-        }
-
-        public Builder customVariables(Map<String, Object> customVariables) {
-            if (customVariables != null) {
-                this.customVariables.putAll(customVariables);
-            }
-            return this;
-        }
-
-        public Builder customVariable(String key, Object value) {
-            this.customVariables.put(key, value);
-            return this;
-        }
-
-        public Builder asyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
-            this.asyncTaskManager = asyncTaskManager;
-            return this;
-        }
-
-        public Builder attachedContent(AttachedContent attachedContent) {
-            this.attachedContent = attachedContent;
-            return this;
-        }
-
-        public Builder persistenceProvider(PersistenceProvider persistenceProvider) {
-            this.persistenceProvider = persistenceProvider;
-            return this;
-        }
-
-        public Builder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
-            this.subagentOutputSinkFactory = subagentOutputSinkFactory;
-            return this;
-        }
-
-        public Builder todoStoreFactory(TodoStoreFactory todoStoreFactory) {
-            this.todoStoreFactory = todoStoreFactory;
-            return this;
-        }
-
-        public Builder promptSections(List<PromptInject> sections) {
-            this.promptSections.clear();
-            this.promptSections.addAll(sections);
-            return this;
-        }
-
-        public Builder sandbox(Sandbox sandbox) {
-            this.sandbox = sandbox;
-            return this;
-        }
-
-        public Builder taskManager(BackgroundTaskManager backgroundTaskManager) {
-            this.backgroundTaskManager = backgroundTaskManager;
-            return this;
-        }
-
-        public Builder cancellationToken(CancellationToken cancellationToken) {
-            this.cancellationToken = cancellationToken;
-            return this;
-        }
-
-        public ExecutionContext build() {
-            return new ExecutionContext(this);
-        }
+    public void setRunBudget(RunBudget runBudget) {
+        this.runBudget = runBudget;
     }
 }
