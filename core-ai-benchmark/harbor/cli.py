@@ -222,16 +222,39 @@ class CoreAiCli(BaseInstalledAgent):
             )
         return "\n".join(lines) + "\n"
 
+    def _build_auth_config(self, provider: str, api_key: str) -> str | None:
+        if provider != "litellm":
+            return None
+        entry = _active_auth_entry()
+        if not entry or not entry.get("server_url") or not entry.get("user_id"):
+            return None
+        auth = {
+            "server_url": str(entry["server_url"]).rstrip("/"),
+            "api_key": api_key or str(entry.get("api_key") or ""),
+            "user_id": str(entry["user_id"]),
+            "name": str(entry.get("name") or ""),
+            "role": str(entry.get("role") or ""),
+            "login_at": str(entry.get("login_at") or ""),
+            "active": True,
+            "insecure": bool(entry.get("insecure", False)),
+        }
+        return json.dumps([auth], separators=(",", ":"))
+
     async def _prepare_config(
-        self, environment: BaseEnvironment, config: str
+        self,
+        environment: BaseEnvironment,
+        config: str,
+        auth_config: str | None,
     ) -> None:
-        await self.exec_as_agent(
-            environment,
-            command=(
-                "mkdir -p ~/.core-ai && "
-                f"printf %s {shlex.quote(config)} > ~/.core-ai/agent.properties"
-            ),
+        command = (
+            "mkdir -p ~/.core-ai && "
+            f"printf %s {shlex.quote(config)} > ~/.core-ai/agent.properties"
         )
+        if auth_config:
+            command += (
+                f" && printf %s {shlex.quote(auth_config)} > ~/.core-ai/auth.json"
+            )
+        await self.exec_as_agent(environment, command=command)
 
     # ------------------------------------------------------------------
     # run
@@ -247,7 +270,8 @@ class CoreAiCli(BaseInstalledAgent):
         provider, model = self._resolve_provider_and_model()
         api_key = self._resolve_api_key(provider)
         config = self._build_config(provider, model, api_key)
-        await self._prepare_config(environment, config)
+        auth_config = self._build_auth_config(provider, api_key)
+        await self._prepare_config(environment, config, auth_config)
 
         workspace = environment.task_env_config.workdir
         if not workspace:
