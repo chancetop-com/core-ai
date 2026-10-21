@@ -78,7 +78,7 @@ PowerShell:
 | `--dataset-dir` / `-DatasetDir` | `.datasets/terminal-bench-2-1` | Local dataset checkout. |
 | `--dataset-ref` / `-DatasetRef` | `main`                         | Pin a commit or branch. |
 | `--cli-binary` / `-CliBinary` | auto-download                  | Prebuilt Linux `core-ai-cli` binary. |
-| `--cli-version` / `-CliVersion` | `2.0.54`                       | Release version to download. |
+| `--cli-version` / `-CliVersion` | `2.0.55`                       | Release version to download. |
 | `--update-dataset` / `-UpdateDataset` | off                            | `git pull` the local dataset first. |
 
 Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
@@ -139,6 +139,13 @@ Useful files:
 - **Resume.** Pass `--job-name <job-dir-name>` (PowerShell: `-JobName`) to
   re-enter an existing job directory; completed trials are skipped and the rest
   run again. Delete a cancelled trial directory first if it should be retried.
+- **Old-glibc tasks.** `qemu-alpine-ssh` and `qemu-startup` run on Debian
+  bullseye (glibc 2.31), while CLI builds up to v2.0.53 link against a newer
+  glibc and die with `GLIBC_2.32 not found`. Keep the default v2.0.55 (or newer)
+  when running them. Their verifiers also pin bullseye-security package versions
+  that Debian has since deleted from the pool, so `apt-get install` returns 404;
+  install with `-t bullseye` in `tests/test.sh` to read from the main suite
+  instead.
 - **Docker memory.** The benchmark task containers request ~2 GB each. The
   runner defaults to `--concurrency 1` so it also works on small Docker Desktop
   VMs. Increase Docker Desktop memory to 8–12 GB before raising concurrency.
@@ -154,7 +161,7 @@ Useful files:
 - **Dataset pinning.** The 10-task pilot used dataset commit
   `7131e4375048a0e408a8fb404b5f499d726b695b`. Set
   `--dataset-ref 7131e4375048a0e408a8fb404b5f499d726b695b` to reproduce it.
-- **Logs.** v2.0.54 suppresses the interactive spinner and cursor-control output
+- **Logs.** v2.0.54+ suppresses the interactive spinner and cursor-control output
   in `--prompt` mode and when there is no console, so raw logs are already
   readable. `summarize.py` still writes a spinner-free
   `core-ai-cli.clean.txt` next to each raw log for older binaries. The cached

@@ -9,7 +9,7 @@
     [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
-    [string]$CliVersion = "2.0.54",
+    [string]$CliVersion = "2.0.55",
     [string]$CliBinary = "",
     [string]$HarborExe = "",
     [switch]$UpdateDataset,
@@ -41,7 +41,7 @@ Options:
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
-  -CliVersion VER      core-ai-cli release version to download (default: 2.0.54)
+  -CliVersion VER      core-ai-cli release version to download (default: 2.0.55)
   -UpdateDataset       git pull the local dataset before running
   -HarborExe PATH      Harbor executable (default: harbor on PATH)
   -Help                Show this help
