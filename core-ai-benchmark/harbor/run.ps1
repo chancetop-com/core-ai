@@ -9,7 +9,7 @@ param(
     [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
-    [string]$CliVersion = "2.0.56",
+    [string]$CliVersion = "2.0.57",
     [string]$CliBinary = "",
     [int]$TimeBudgetSeconds = -1,
     [int]$BudgetMarginSeconds = 15,
@@ -48,7 +48,7 @@ Options:
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
-  -CliVersion VER      core-ai-cli release version to download (default: 2.0.56)
+  -CliVersion VER      core-ai-cli release version to download (default: 2.0.57)
   -TimeBudgetSeconds N Agent wall-clock budget; -1=auto from task.toml, 0=disable
   -BudgetMarginSeconds N Safety margin for auto budget (default: 15)
   -TokenBudget N       Total token budget; -1=disable

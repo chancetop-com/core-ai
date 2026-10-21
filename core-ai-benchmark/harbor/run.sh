@@ -16,7 +16,7 @@ JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
 JOB_NAME="${JOB_NAME:-}"
 DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
-CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.56}"
+CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.57}"
 CLI_BINARY="${CORE_AI_CLI_BINARY:-$SCRIPT_DIR/.cache/core-ai-cli-linux}"
 TIME_BUDGET_SECONDS="${TIME_BUDGET_SECONDS:--1}"
 BUDGET_MARGIN_SECONDS="${BUDGET_MARGIN_SECONDS:-15}"
@@ -47,7 +47,7 @@ Options:
   --dataset-dir DIR     Local Terminal-Bench 2.1 checkout (default: .datasets/terminal-bench-2-1)
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
-  --cli-version VER     core-ai-cli release version to download (default: 2.0.56)
+  --cli-version VER     core-ai-cli release version to download (default: 2.0.57)
   --time-budget-seconds N   -1=auto from task.toml, 0=disable, >0=explicit
   --budget-margin-seconds N Safety margin for auto budget (default: 15)
   --token-budget N      Total token budget; -1=disable
