@@ -773,8 +773,9 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
   white-space: pre-wrap;
   font-size: 12.5px;
   color: var(--muted);
-  /* A long thought scrolls in place; it must not push the whole transcript off screen. */
-  max-height: 220px;
+  /* A long thought scrolls in place: the panel grows with the window, but leaves the transcript
+     around it readable. A fixed 220px meant scrolling through every longer thought. */
+  max-height: min(60vh, 640px);
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
