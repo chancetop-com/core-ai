@@ -66,20 +66,20 @@ PowerShell:
 .\core-ai-benchmark\harbor\run.ps1 -Trials 1 -Concurrency 2 -NTasks 10
 ```
 
-| Option | Default | Description |
-|---|---|---|
-| `--trials` / `-Trials` | `1` | Trials per task. Official leaderboard runs use 5. |
-| `--concurrency` / `-Concurrency` | `1` | Concurrent trials. Raise only after increasing Docker memory. |
-| `--model` / `-Model` | `litellm/deepseek-flash` | Model in `provider/model` form. |
-| `--thinking-effort` / `-ThinkingEffort` | `max` | Reasoning effort: `none`, `low`, `medium`, `high`, `max`. |
-| `--task` / `-Task` | all | Run one task by name. |
-| `--n-tasks` / `-NTasks` | all | Run the first N tasks. |
-| `--jobs-dir` / `-JobsDir` | `.harbor-jobs` | Harbor results directory. |
+| Option | Default                        | Description |
+|---|--------------------------------|---|
+| `--trials` / `-Trials` | `1`                            | Trials per task. Official leaderboard runs use 5. |
+| `--concurrency` / `-Concurrency` | `1`                            | Concurrent trials. Raise only after increasing Docker memory. |
+| `--model` / `-Model` | `litellm/deepseek-flash`       | Model in `provider/model` form. |
+| `--thinking-effort` / `-ThinkingEffort` | `max`                          | Reasoning effort: `none`, `low`, `medium`, `high`, `max`. |
+| `--task` / `-Task` | all                            | Run one task by name. |
+| `--n-tasks` / `-NTasks` | all                            | Run the first N tasks. |
+| `--jobs-dir` / `-JobsDir` | `.harbor-jobs`                 | Harbor results directory. |
 | `--dataset-dir` / `-DatasetDir` | `.datasets/terminal-bench-2-1` | Local dataset checkout. |
-| `--dataset-ref` / `-DatasetRef` | `main` | Pin a commit or branch. |
-| `--cli-binary` / `-CliBinary` | auto-download | Prebuilt Linux `core-ai-cli` binary. |
-| `--cli-version` / `-CliVersion` | `2.0.52` | Release version to download. |
-| `--update-dataset` / `-UpdateDataset` | off | `git pull` the local dataset first. |
+| `--dataset-ref` / `-DatasetRef` | `main`                         | Pin a commit or branch. |
+| `--cli-binary` / `-CliBinary` | auto-download                  | Prebuilt Linux `core-ai-cli` binary. |
+| `--cli-version` / `-CliVersion` | `2.0.54`                       | Release version to download. |
+| `--update-dataset` / `-UpdateDataset` | off                            | `git pull` the local dataset first. |
 
 Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 `TASK`, `N_TASKS`, `HARBOR_JOBS_DIR`, `TB21_DATASET_DIR`,
@@ -90,7 +90,8 @@ Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 1. Reads the active `~/.core-ai/auth.json` entry (or `LITELLM_API_*` overrides).
 2. Ensures Harbor 0.24+ is available.
 3. Downloads `core-ai-cli-linux.tar.gz` from the pinned GitHub release when the
-   local `.cache/core-ai-cli-linux` is missing.
+   local `.cache/core-ai-cli-linux` is missing or was cached for another
+   `--cli-version`.
 4. Clones `harbor-framework/terminal-bench-2-1` when `.datasets/` is missing.
 5. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
    `--ak binary_path=...`.
@@ -153,11 +154,12 @@ Useful files:
 - **Dataset pinning.** The 10-task pilot used dataset commit
   `7131e4375048a0e408a8fb404b5f499d726b695b`. Set
   `--dataset-ref 7131e4375048a0e408a8fb404b5f499d726b695b` to reproduce it.
-- **Logs.** The pinned v2.0.52 binary still emits the interactive spinner when
-  stdout is a pipe; `summarize.py` writes a spinner-free
-  `core-ai-cli.clean.txt` next to each raw log. The CLI source now disables the
-  spinner/ANSI when there is no console, so a future release will produce clean
-  logs directly.
+- **Logs.** v2.0.54 suppresses the interactive spinner and cursor-control output
+  in `--prompt` mode and when there is no console, so raw logs are already
+  readable. `summarize.py` still writes a spinner-free
+  `core-ai-cli.clean.txt` next to each raw log for older binaries. The cached
+  binary is re-downloaded whenever the requested `--cli-version` changes; delete
+  `.cache/` to force a refresh.
 - **Infra failures.** `git-multibranch` once failed with
   `Docker daemon is not running` during a Docker Desktop restart, then passed
   on retry. Treat Harbor exceptions/unfinished trials separately from model

@@ -16,7 +16,7 @@ JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
 JOB_NAME="${JOB_NAME:-}"
 DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
-CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.52}"
+CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.54}"
 CLI_BINARY="${CORE_AI_CLI_BINARY:-$SCRIPT_DIR/.cache/core-ai-cli-linux}"
 UPDATE_DATASET=0
 
@@ -40,7 +40,7 @@ Options:
   --dataset-dir DIR     Local Terminal-Bench 2.1 checkout (default: .datasets/terminal-bench-2-1)
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
-  --cli-version VER     core-ai-cli release version to download (default: 2.0.52)
+  --cli-version VER     core-ai-cli release version to download (default: 2.0.54)
   --update-dataset      git pull the local dataset before running
   -h, --help            Show this help
 
@@ -168,7 +168,13 @@ ensure_cli() {
         return
     fi
     if [ -x "$CLI_BINARY" ]; then
-        return
+        if [ "$CLI_VERSION" = "latest" ]; then
+            return
+        fi
+        local stamp_file="${CLI_BINARY}.version"
+        if [ -f "$stamp_file" ] && [ "$(cat "$stamp_file")" = "$CLI_VERSION" ]; then
+            return
+        fi
     fi
     mkdir -p "$(dirname "$CLI_BINARY")"
     local tmp_dir
@@ -192,6 +198,9 @@ ensure_cli() {
     tar -xzf "$tmp_dir/core-ai-cli-linux.tar.gz" -C "$tmp_dir"
     mv "$tmp_dir/core-ai-cli-linux" "$CLI_BINARY"
     chmod +x "$CLI_BINARY"
+    if [ "$CLI_VERSION" != "latest" ]; then
+        printf '%s' "$CLI_VERSION" > "${CLI_BINARY}.version"
+    fi
 }
 ensure_cli
 

@@ -9,7 +9,7 @@
     [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
-    [string]$CliVersion = "2.0.52",
+    [string]$CliVersion = "2.0.54",
     [string]$CliBinary = "",
     [string]$HarborExe = "",
     [switch]$UpdateDataset,
@@ -41,7 +41,7 @@ Options:
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
-  -CliVersion VER      core-ai-cli release version to download (default: 2.0.52)
+  -CliVersion VER      core-ai-cli release version to download (default: 2.0.54)
   -UpdateDataset       git pull the local dataset before running
   -HarborExe PATH      Harbor executable (default: harbor on PATH)
   -Help                Show this help
@@ -59,6 +59,7 @@ if ($Concurrency -lt 1) { throw "-Concurrency must be a positive integer" }
 if (-not $HarborExe) { $HarborExe = "harbor" }
 if (-not $JobsDir) { $JobsDir = Join-Path $ScriptDir ".harbor-jobs" }
 if (-not $DatasetDir) { $DatasetDir = Join-Path $ScriptDir ".datasets\terminal-bench-2-1" }
+$ExplicitCliBinary = -not [string]::IsNullOrWhiteSpace($CliBinary)
 if (-not $CliBinary) { $CliBinary = Join-Path $ScriptDir ".cache\core-ai-cli-linux" }
 
 $EnvFile = Join-Path $ScriptDir ".env"
@@ -103,7 +104,11 @@ if ($HarborVersion -match '^(\d+)\.(\d+)') {
 }
 
 function Ensure-CliBinary {
-    if (Test-Path $CliBinary) { return }
+    $stampFile = "$CliBinary.version"
+    if (Test-Path $CliBinary) {
+        if ($ExplicitCliBinary -or $CliVersion -eq "latest") { return }
+        if ((Test-Path $stampFile) -and ((Get-Content -Raw $stampFile).Trim() -eq $CliVersion)) { return }
+    }
     $parent = Split-Path -Parent $CliBinary
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
     $url = if ($CliVersion -eq "latest") {
@@ -119,6 +124,9 @@ function Ensure-CliBinary {
         Invoke-WebRequest -Uri $url -OutFile (Join-Path $tmp "core-ai-cli-linux.tar.gz")
         tar -xzf (Join-Path $tmp "core-ai-cli-linux.tar.gz") -C $tmp
         Move-Item (Join-Path $tmp "core-ai-cli-linux") $CliBinary -Force
+        if (-not $ExplicitCliBinary -and $CliVersion -ne "latest") {
+            Set-Content -Path $stampFile -Value $CliVersion -NoNewline
+        }
     }
     finally {
         Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
