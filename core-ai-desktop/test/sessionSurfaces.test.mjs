@@ -9,6 +9,7 @@ test('a surface starts blank, empty-docked and unflagged', () => {
     draft: '',
     dock: 'none',
     dockFullscreen: false,
+    artifactScope: 'session',
     activeArtifactPath: null,
     artifactSource: false,
     artifactUnread: false,

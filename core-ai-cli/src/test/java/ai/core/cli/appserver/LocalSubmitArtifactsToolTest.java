@@ -68,6 +68,7 @@ class LocalSubmitArtifactsToolTest {
         var manifest = Files.readAllLines(LocalArtifactManifest.file(workspace));
         assertEquals(1, manifest.size());
         assertTrue(manifest.getFirst().contains("\"path\":\"reports/weekly.html\""));
+        assertTrue(manifest.getFirst().contains("\"sessionId\":\"s-1\""));
 
         assertEquals(1, dispatched.size());
         var event = (CustomEvent) dispatched.getFirst();

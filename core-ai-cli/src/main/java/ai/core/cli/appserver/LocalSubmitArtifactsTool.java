@@ -223,7 +223,7 @@ public final class LocalSubmitArtifactsTool extends ToolCall {
                 return;
             }
             var relativePath = relative.toString().replace('\\', '/');
-            LocalArtifactManifest.append(workspace, relativePath);
+            LocalArtifactManifest.append(workspace, relativePath, context == null ? null : context.getSessionId());
             var fileName = real.getFileName();
             var name = fileName == null ? "" : fileName.toString();
             var size = Files.size(real);

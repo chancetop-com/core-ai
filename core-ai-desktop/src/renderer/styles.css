@@ -673,6 +673,11 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .artifact-icon-btn:hover { background: var(--bg-elev); color: var(--text); }
 .artifact-icon-btn .ic { width: 14px; height: 14px; }
 .artifact-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.artifact-scope { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 6px; overflow: hidden; }
+.artifact-scope-btn { border: 0; background: var(--bg-elev); color: var(--muted); font: inherit; font-size: 11.5px; padding: 2px 8px; cursor: default; }
+.artifact-scope-btn + .artifact-scope-btn { border-left: 1px solid var(--border-strong); }
+.artifact-scope-btn:hover { color: var(--text); }
+.artifact-scope-btn.active { background: #21406e; color: var(--text); }
 .artifact-gallery { display: flex; gap: 6px; padding: 8px 12px; overflow-x: auto; border-bottom: 1px solid var(--border); }
 .artifact-gallery[hidden] { display: none; }
 .artifact-thumb { display: inline-flex; align-items: center; justify-content: center; width: 56px; height: 56px; padding: 0; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-elev); color: var(--muted); overflow: hidden; cursor: default; flex: 0 0 auto; }

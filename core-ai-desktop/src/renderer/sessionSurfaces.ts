@@ -1,19 +1,25 @@
 /**
  * View state that belongs to one conversation rather than to the window: the unsent composer text,
- * which right-dock tab is open, and the artifact selection/unread marker. Resources with a single
- * physical instance (the embedded browser, the workspace artifact list) stay app-level.
+ * which right-dock tab is open, and the artifact selection/unread marker. The artifact list itself is
+ * also per conversation (the engine attributes each file to the session that produced it); only the
+ * bytes served through the artifact protocol stay a single workspace-level resource.
  *
  * @author stephen
  */
 
 export type DockKind = 'none' | 'browser' | 'artifacts';
 
+/** Whether the artifact pane shows the conversation's own files or the whole workspace. */
+export type ArtifactScope = 'session' | 'workspace';
+
 export interface SessionSurface {
   /** Composer text not sent yet. */
   draft: string;
   dock: DockKind;
   dockFullscreen: boolean;
-  /** Selection inside the workspace-wide artifact list. */
+  /** Session-scoped artifact list and what it shows; `session` is the default. */
+  artifactScope: ArtifactScope;
+  /** Selection inside the session's artifact list. */
   activeArtifactPath: string | null;
   artifactSource: boolean;
   artifactUnread: boolean;
@@ -26,6 +32,7 @@ export function createSurface(): SessionSurface {
     draft: '',
     dock: 'none',
     dockFullscreen: false,
+    artifactScope: 'session',
     activeArtifactPath: null,
     artifactSource: false,
     artifactUnread: false,

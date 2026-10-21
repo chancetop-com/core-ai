@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { handleComposerKeyDown } from './composerKeyboard';
-import { SessionSurfaces, type SessionSurface, type DockKind } from './sessionSurfaces';
+import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -399,8 +399,12 @@ let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
 let composerAttachEl: HTMLElement | null = null;
 let composerAutoGrow: (() => void) | null = null;
-/** Per-session view state: composer draft, right-dock tab, artifact selection/unread. */
+/** Per-session view state: composer draft, right-dock tab, artifact selection/unread/scope. */
 const surfaces = new SessionSurfaces();
+/** Artifacts attributed to each session; the workspace-wide list in `state.artifacts` stays separate. */
+const sessionArtifacts = new Map<string, ArtifactEntry[]>();
+/** Guards the two artifact-list responses against a later refresh (session switch, retoggle). */
+let artifactRefreshToken = 0;
 /** The mounted session's surface; the blank +New window uses the store's draft surface. */
 let surface: SessionSurface = surfaces.get(null);
 /** Sessions whose background turn is driving the shared browser right now (sidebar badge). */
@@ -1723,6 +1727,7 @@ async function deleteSession(session: SessionRow): Promise<void> {
   state.sessions = state.sessions.filter((row) => row.sessionId !== session.sessionId);
   state.pendingSessionIds.delete(session.sessionId);
   surfaces.delete(session.sessionId);
+  sessionArtifacts.delete(session.sessionId);
   browserBusy.delete(session.sessionId);
   browserCalls.delete(session.sessionId);
   sessionStatus.delete(session.sessionId);
@@ -2003,6 +2008,7 @@ async function connect(workspace: string): Promise<void> {
   await loadSessions(true);
   await refreshModelState();
   state.artifacts = [];
+  sessionArtifacts.clear();
   await refreshArtifactBase();
   void refreshArtifactBaseline();
   renderContent();
@@ -2028,6 +2034,7 @@ async function enterDefaultMode(): Promise<void> {
   chatTitleEl = null;
   applyComposerStatus('idle');
   state.artifacts = [];
+  sessionArtifacts.clear();
   state.artifactBase = null;
   renderSidebar();
   renderComposerControls();
@@ -2632,6 +2639,34 @@ function renderArtifactsToggle(): void {
 
 // --- artifacts pane (gallery + preview/source) ------------------------------------------------
 
+/** The blank +New window has no session to scope to, so it always shows the workspace list. */
+function artifactScope(): ArtifactScope {
+  return state.sessionId && surface.artifactScope === 'session' ? 'session' : 'workspace';
+}
+
+function currentArtifacts(): ArtifactEntry[] {
+  if (artifactScope() === 'workspace') return state.artifacts;
+  return sessionArtifacts.get(state.sessionId as string) ?? [];
+}
+
+function mergeArtifactEntries(existing: ArtifactEntry[], baseline: ArtifactEntry[]): ArtifactEntry[] {
+  const known = new Set(baseline.map((entry) => entry.path));
+  return [...existing.filter((entry) => !known.has(entry.path)), ...baseline];
+}
+
+function artifactEntriesFrom(listed: any): ArtifactEntry[] {
+  const files: any[] = listed?.files ?? [];
+  return files.map((file) => ({
+    path: String(file.path ?? ''),
+    name: String(file.name ?? baseName(String(file.path ?? ''))),
+    kind: typeof file.kind === 'string' ? file.kind : 'file',
+    size: Number(file.size ?? 0),
+    contentType: null,
+    createdAt: typeof file.createdAt === 'string' ? file.createdAt : null,
+    tool: null,
+  })).filter((entry) => entry.path);
+}
+
 function buildArtifactPane(): HTMLElement {
   const pane = el('div', 'artifact-panel');
   artifactPaneEl = pane;
@@ -2644,8 +2679,9 @@ function buildArtifactPane(): HTMLElement {
 }
 
 function activeArtifact(): ArtifactEntry | null {
-  if (!surface.activeArtifactPath) return state.artifacts[0] ?? null;
-  return state.artifacts.find((entry) => entry.path === surface.activeArtifactPath) ?? state.artifacts[0] ?? null;
+  const entries = currentArtifacts();
+  if (!surface.activeArtifactPath) return entries[0] ?? null;
+  return entries.find((entry) => entry.path === surface.activeArtifactPath) ?? entries[0] ?? null;
 }
 
 function artifactUrl(relativePath: string): string {
@@ -2660,12 +2696,39 @@ function renderArtifactPanel(): void {
   renderArtifactBody();
 }
 
+/** Session / All switch for the artifact list; only meaningful when a conversation exists. */
+function artifactScopeControl(): HTMLElement {
+  const control = el('div', 'artifact-scope');
+  const make = (scope: ArtifactScope, label: string, title: string): HTMLButtonElement => {
+    const button = el('button', `artifact-scope-btn${surface.artifactScope === scope ? ' active' : ''}`, label) as HTMLButtonElement;
+    button.title = title;
+    button.onclick = () => {
+      if (surface.artifactScope === scope) return;
+      surface.artifactScope = scope;
+      renderArtifactPanel();
+      void refreshArtifactBaseline();
+    };
+    return button;
+  };
+  control.append(
+    make('session', 'Session', 'Only artifacts produced in this conversation'),
+    make('workspace', 'All', 'Every artifact in this workspace'),
+  );
+  return control;
+}
+
 function renderArtifactHead(): void {
   if (!artifactHeadEl) return;
   artifactHeadEl.replaceChildren();
   const entry = activeArtifact();
   if (!entry) {
-    artifactHeadEl.append(el('span', 'artifact-title', state.artifacts.length ? 'Artifacts' : 'No artifacts yet'));
+    const entries = currentArtifacts();
+    artifactHeadEl.append(el('span', 'artifact-title', entries.length ? 'Artifacts' : 'No artifacts yet'));
+    if (state.sessionId) {
+      const actions = el('div', 'artifact-actions');
+      actions.append(artifactScopeControl());
+      artifactHeadEl.append(actions);
+    }
     return;
   }
   const title = el('span', 'artifact-title', entry.name);
@@ -2673,6 +2736,7 @@ function renderArtifactHead(): void {
   artifactHeadEl.append(title);
   artifactHeadEl.append(el('span', 'artifact-meta', `${entry.kind} · ${artifactContentType(entry)} · ${fmtBytes(entry.size)}`));
   const actions = el('div', 'artifact-actions');
+  if (state.sessionId) actions.append(artifactScopeControl());
   if (artifactSupportsSource(entry)) {
     const toggle = el('button', 'btn small', surface.artifactSource ? 'Preview' : 'Source');
     toggle.onclick = () => { surface.artifactSource = !surface.artifactSource; renderArtifactPanel(); };
@@ -2693,13 +2757,14 @@ function renderArtifactHead(): void {
 function renderArtifactGallery(): void {
   if (!artifactGalleryEl) return;
   artifactGalleryEl.replaceChildren();
-  if (!state.artifacts.length) {
+  const entries = currentArtifacts();
+  if (!entries.length) {
     artifactGalleryEl.hidden = true;
     return;
   }
   artifactGalleryEl.hidden = false;
   const current = activeArtifact();
-  for (const entry of state.artifacts) {
+  for (const entry of entries) {
     const item = el('button', `artifact-thumb${current?.path === entry.path ? ' active' : ''}`) as HTMLButtonElement;
     item.title = entry.name;
     if (artifactIsImage(entry)) {
@@ -2725,7 +2790,9 @@ function renderArtifactBody(): void {
   artifactBodyEl.replaceChildren();
   const entry = activeArtifact();
   if (!entry) {
-    artifactBodyEl.append(el('div', 'notice', 'Generated images and videos appear here as they are created.'));
+    artifactBodyEl.append(el('div', 'notice', artifactScope() === 'session'
+      ? 'No artifacts in this conversation yet.'
+      : 'Generated images and videos appear here as they are created.'));
     return;
   }
   const url = artifactUrl(entry.path);
@@ -2848,10 +2915,15 @@ function artifactEntryFromPath(path: string): ArtifactEntry {
   return { path, name, kind, size: 0, contentType: null, createdAt: null, tool: null };
 }
 
-/** Opens the artifacts dock on one entry, adding it to the gallery when it is not there yet. */
+/** Opens the artifacts dock on one entry, adding it to the visible gallery when it is not there yet. */
 function openArtifactInDock(entry: ArtifactEntry): void {
-  if (!state.artifacts.some((item) => item.path === entry.path)) {
-    state.artifacts = [entry, ...state.artifacts];
+  const entries = currentArtifacts();
+  if (!entries.some((item) => item.path === entry.path)) {
+    if (artifactScope() === 'workspace') {
+      state.artifacts = [entry, ...entries];
+    } else if (state.sessionId) {
+      sessionArtifacts.set(state.sessionId, [entry, ...entries]);
+    }
   }
   surface.activeArtifactPath = entry.path;
   surface.artifactSource = false;
@@ -2878,6 +2950,10 @@ function applyArtifactEvent(view: SessionView, event: any): void {
     tool: typeof payload.tool === 'string' ? payload.tool : null,
   };
   state.artifacts = [entry, ...state.artifacts.filter((item) => item.path !== entry.path)];
+  if (view.sessionId) {
+    const owned = sessionArtifacts.get(view.sessionId) ?? [];
+    sessionArtifacts.set(view.sessionId, [entry, ...owned.filter((item) => item.path !== entry.path)]);
+  }
   if (typeof event.callId === 'string' && event.callId) artifactByCallId.set(event.callId, entry);
   const owner = surfaces.get(view.sessionId);
   owner.activeArtifactPath = entry.path;
@@ -2910,23 +2986,30 @@ async function refreshArtifactBase(): Promise<void> {
 
 /** Baseline for the panel: realtime events are live-only, so a reopened panel re-reads the scan. */
 async function refreshArtifactBaseline(): Promise<void> {
-  if (!state.workspace) { state.artifacts = []; renderArtifactPanel(); return; }
-  const listed = await call('artifacts/list', { limit: 200 });
-  if (!listed) return;
-  const files: any[] = listed.files ?? [];
-  const baseline: ArtifactEntry[] = files.map((file) => ({
-    path: String(file.path ?? ''),
-    name: String(file.name ?? baseName(String(file.path ?? ''))),
-    kind: typeof file.kind === 'string' ? file.kind : 'file',
-    size: Number(file.size ?? 0),
-    contentType: null,
-    createdAt: typeof file.createdAt === 'string' ? file.createdAt : null,
-    tool: null,
-  })).filter((entry) => entry.path);
-  const known = new Set(baseline.map((entry) => entry.path));
-  const live = state.artifacts.filter((entry) => !known.has(entry.path));
-  state.artifacts = [...live, ...baseline];
-  if (!surface.activeArtifactPath && state.artifacts.length) surface.activeArtifactPath = state.artifacts[0].path;
+  const token = ++artifactRefreshToken;
+  const sessionId = state.sessionId;
+  if (!state.workspace) {
+    state.artifacts = [];
+    sessionArtifacts.clear();
+    renderArtifactPanel();
+    return;
+  }
+  const [workspaceList, sessionList] = await Promise.all([
+    call('artifacts/list', { limit: 200 }),
+    sessionId ? call('artifacts/list', { limit: 200, sessionId }) : Promise.resolve(null),
+  ]);
+  if (token !== artifactRefreshToken) return;
+  if (workspaceList) {
+    state.artifacts = mergeArtifactEntries(state.artifacts, artifactEntriesFrom(workspaceList));
+  }
+  if (sessionId && sessionList) {
+    const existing = sessionArtifacts.get(sessionId) ?? [];
+    sessionArtifacts.set(sessionId, mergeArtifactEntries(existing, artifactEntriesFrom(sessionList)));
+  }
+  if (sessionId === state.sessionId && !surface.activeArtifactPath) {
+    const entries = currentArtifacts();
+    if (entries.length) surface.activeArtifactPath = entries[0].path;
+  }
   renderArtifactPanel();
 }
 
@@ -6573,6 +6656,7 @@ async function bootstrap(): Promise<void> {
       finalizeTurnsForEngineRestart();
       // Artifact events are live-only: reload the baseline against the restarted engine.
       state.artifacts = [];
+      sessionArtifacts.clear();
       void refreshArtifactBase();
       void refreshArtifactBaseline();
     }

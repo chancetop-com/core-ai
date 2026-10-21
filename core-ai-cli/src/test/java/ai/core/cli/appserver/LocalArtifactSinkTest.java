@@ -48,6 +48,8 @@ class LocalArtifactSinkTest {
         assertEquals(target, Path.of(returned));
         assertTrue(Files.exists(target));
         assertEquals(4, Files.readAllBytes(target).length);
+        assertEquals(List.of(new LocalArtifactManifest.Entry(".core-ai/media/images/image-x.png", "s-1")),
+                LocalArtifactManifest.entries(workspace));
 
         assertEquals(1, dispatched.size());
         var event = (CustomEvent) dispatched.getFirst();

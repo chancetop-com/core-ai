@@ -57,8 +57,19 @@ public class LocalArtifactSink implements GenerateImageTool.ImageOutputSink, Get
         } catch (IOException e) {
             throw new RuntimeException("failed to save artifact: " + target, e);
         }
-        publish(fileName, contentType, bytes.length, relative + "/" + fileName);
+        var relativePath = relative + "/" + fileName;
+        register(relativePath);
+        publish(fileName, contentType, bytes.length, relativePath);
         return target.toString();
+    }
+
+    /** The manifest is what a reopened panel reads; a failed append only loses the session attribution. */
+    private void register(String relativePath) {
+        try {
+            LocalArtifactManifest.append(workspace, relativePath, context.getSessionId());
+        } catch (IOException e) {
+            LOGGER.warn("failed to register artifact {}, error={}", relativePath, e.getMessage());
+        }
     }
 
     private void publish(String name, String contentType, int size, String relativePath) {

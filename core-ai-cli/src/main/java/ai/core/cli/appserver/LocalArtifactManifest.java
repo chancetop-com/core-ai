@@ -10,16 +10,17 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 
 /**
- * Append-only registry of files the agent registered through {@code submit_artifacts}: one JSON object
- * per line under {@code {workspace}/.core-ai/artifacts/manifest.jsonl}. {@link LocalArtifacts} merges the
- * entries into the panel list and the desktop serves registered paths outside {@code .core-ai} through
- * the artifact protocol — path and format are a cross-process contract with the desktop (see its
- * {@code artifactPath.ts}).
+ * Append-only registry of files that belong to the artifact panel: one JSON object per line under
+ * {@code {workspace}/.core-ai/artifacts/manifest.jsonl}. Media saved by {@link LocalArtifactSink} and files
+ * registered through {@code submit_artifacts} both land here with their owning session, so a reopened panel
+ * can scope itself to a conversation. {@link LocalArtifacts} merges the entries into the panel list and the
+ * desktop serves registered paths outside {@code .core-ai} through the artifact protocol — path and format
+ * are a cross-process contract with the desktop (see its {@code artifactPath.ts}).
  *
  * @author stephen
  */
@@ -32,53 +33,62 @@ final class LocalArtifactManifest {
         return workspace.resolve(".core-ai").resolve("artifacts").resolve("manifest.jsonl");
     }
 
-    /** Registered paths in registration order, duplicates collapsed; malformed lines are skipped. */
-    static List<String> paths(Path workspace) {
+    /** Registered paths with their sessions, duplicates collapsed (the last registration wins). */
+    static List<Entry> entries(Path workspace) {
         var file = file(workspace);
         if (!Files.isRegularFile(file)) {
             return List.of();
         }
-        Set<String> paths = new LinkedHashSet<>();
+        Map<String, Entry> entries = new LinkedHashMap<>();
         try {
             for (var line : Files.readAllLines(file)) {
-                var path = parsePath(line);
-                if (path != null) {
-                    paths.add(path);
+                var entry = parse(line);
+                if (entry != null) {
+                    entries.put(entry.path(), entry);
                 }
             }
         } catch (IOException e) {
             LOGGER.warn("failed to read the artifact manifest {}: {}", file, e.getMessage());
         }
-        return List.copyOf(paths);
+        return List.copyOf(entries.values());
     }
 
-    static void append(Path workspace, String path) throws IOException {
+    static void append(Path workspace, String path, String sessionId) throws IOException {
         var file = file(workspace);
         var parent = file.getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        var line = JsonUtil.OBJECT_MAPPER.createObjectNode()
-                .put("path", path)
-                .put("registeredAt", Instant.now().toString());
+        var line = JsonUtil.OBJECT_MAPPER.createObjectNode().put("path", path);
+        if (sessionId != null && !sessionId.isBlank()) {
+            line.put("sessionId", sessionId);
+        }
+        line.put("registeredAt", Instant.now().toString());
         synchronized (APPEND_LOCK) {
             Files.writeString(file, line + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND, StandardOpenOption.WRITE);
         }
     }
 
-    private static String parsePath(String line) {
+    private static Entry parse(String line) {
         try {
             var node = JsonUtil.OBJECT_MAPPER.readTree(line);
             var path = node == null ? null : node.get("path");
-            if (path != null && path.isTextual() && !path.asText().isBlank()) {
-                return path.asText();
+            if (path == null || !path.isTextual() || path.asText().isBlank()) {
+                return null;
             }
-            return null;
+            var session = node.get("sessionId");
+            var sessionId = session != null && session.isTextual() && !session.asText().isBlank()
+                    ? session.asText() : null;
+            return new Entry(path.asText(), sessionId);
         } catch (JsonProcessingException e) {
             return null;
         }
     }
 
     private LocalArtifactManifest() {
+    }
+
+    /** One registered artifact; a null session means the line predates session attribution. */
+    record Entry(String path, String sessionId) {
     }
 }
