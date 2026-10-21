@@ -13,8 +13,13 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Posts CLI traces to the authenticated server endpoint. Best-effort: all failures are swallowed
@@ -24,6 +29,9 @@ import java.util.concurrent.Executors;
  */
 public class HttpTraceUploader implements TraceUploader {
     private static final String PATH = "/api/traces/ingest";
+    // One-shot prompts exit right after the turn, so this wait is bounded rather than unbounded:
+    // it leaves the 10s request timeout room to finish while an unreachable server cannot hang exit.
+    private static final Duration FLUSH_TIMEOUT = Duration.ofSeconds(15);
 
     // Process-wide shared executor and HttpClient. A new uploader is created per CLI session
     // (ACP/A2A/session-manager modes), so per-instance daemon threads would leak unbounded.
@@ -33,8 +41,9 @@ public class HttpTraceUploader implements TraceUploader {
         t.setDaemon(true);
         return t;
     });
-    private static final HttpClient HTTP_CLIENT = client(false);
-    private static final HttpClient INSECURE_HTTP_CLIENT = client(true);
+    // Setting up HttpClient loads the default SSL context (seconds on Windows). Only pay that when a
+    // trace was actually uploaded: the CLI flushes unconditionally on exit, including never-logged-in runs.
+    private static final AtomicBoolean UPLOADED = new AtomicBoolean();
 
     private static HttpClient client(boolean insecure) {
         var builder = HttpClient.newBuilder().version(HttpClient.Version.HTTP_1_1);
@@ -88,6 +97,33 @@ public class HttpTraceUploader implements TraceUploader {
         return u;
     }
 
+    /**
+     * Waits for every upload submitted before this call to finish. The single-thread executor runs
+     * tasks in submission order, so a barrier task that has run proves the queue ahead of it drained.
+     * Best-effort: returns false when the timeout expires instead of delaying process exit further.
+     */
+    public static boolean flush() {
+        return flush(FLUSH_TIMEOUT);
+    }
+
+    public static boolean flush(Duration timeout) {
+        if (!UPLOADED.get()) return true;
+        return flush(EXECUTOR, timeout);
+    }
+
+    static boolean flush(ExecutorService executor, Duration timeout) {
+        try {
+            executor.submit(() -> null).get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+            return true;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        } catch (ExecutionException | TimeoutException | RejectedExecutionException e) {
+            DebugLog.log("trace upload flush did not finish", e);
+            return false;
+        }
+    }
+
     private final String endpoint;
     private final String apiKey;
     private final HttpClient httpClient;
@@ -100,11 +136,12 @@ public class HttpTraceUploader implements TraceUploader {
     public HttpTraceUploader(String serverUrl, String apiKey, boolean insecure) {
         this.endpoint = stripTrailingSlash(serverUrl) + PATH;
         this.apiKey = apiKey;
-        this.httpClient = insecure ? INSECURE_HTTP_CLIENT : HTTP_CLIENT;
+        this.httpClient = insecure ? Clients.INSECURE : Clients.SECURE;
     }
 
     @Override
     public void upload(CliTraceRequest request) {
+        UPLOADED.set(true);
         EXECUTOR.submit(() -> send(request));
     }
 
@@ -129,5 +166,11 @@ public class HttpTraceUploader implements TraceUploader {
         } catch (Exception e) {
             DebugLog.log("trace upload error", e);
         }
+    }
+
+    // Deferred so flush() on a never-logged-in exit does not build HttpClients (SSL context load).
+    private static final class Clients {
+        private static final HttpClient SECURE = client(false);
+        private static final HttpClient INSECURE = client(true);
     }
 }

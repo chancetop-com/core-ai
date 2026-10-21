@@ -20,6 +20,7 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.skill.ManagedSkillProvisioner;
+import ai.core.cli.trace.HttpTraceUploader;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
@@ -168,8 +169,12 @@ public class CliApp {
 
     public void startAcpAgent() {
         System.setProperty("core.appName", "core-ai-cli");
-        var runner = new AcpAgentRunner(configFile, modelOverride, autoApproveAll, workspace);
-        runner.run();
+        try {
+            var runner = new AcpAgentRunner(configFile, modelOverride, autoApproveAll, workspace);
+            runner.run();
+        } finally {
+            HttpTraceUploader.flush();
+        }
     }
 
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
@@ -185,9 +190,12 @@ public class CliApp {
         var sessionContext = initializeSession(ui);
         var shutdownResources = sessionContext.result().shutdownResources();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            CliAppHelper.closeQuietly(ui);
+            // Traces are uploaded asynchronously; the daemon worker dies with the JVM, so drain it
+            // before any other shutdown work can consume the remaining time budget.
+            HttpTraceUploader.flush();
             ScriptHookLifecycle.fireSessionStopHooks(workspace);
             closeShutdownResources(shutdownResources);
-            CliAppHelper.closeQuietly(ui);
         }, "cli-shutdown-hook"));
         if (prompt != null) {
             runSinglePrompt(ui, sessionContext, prompt);
@@ -195,6 +203,7 @@ public class CliApp {
             runSessionLoop(ui, sessionContext);
         }
         CliAppHelper.closeQuietly(ui);
+        HttpTraceUploader.flush();
         CliAppHelper.closeShutdownResources(sessionContext.result());
     }
 
