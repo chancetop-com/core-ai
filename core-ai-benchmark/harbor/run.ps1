@@ -1,4 +1,4 @@
-﻿param(
+param(
     [int]$Trials = 1,
     [int]$Concurrency = 1,
     [string]$Model = "litellm/deepseek-flash",
@@ -9,7 +9,7 @@
     [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
-    [string]$CliVersion = "2.0.55",
+    [string]$CliVersion = "2.0.56",
     [string]$CliBinary = "",
     [string]$HarborExe = "",
     [switch]$UpdateDataset,
@@ -41,7 +41,7 @@ Options:
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
-  -CliVersion VER      core-ai-cli release version to download (default: 2.0.55)
+  -CliVersion VER      core-ai-cli release version to download (default: 2.0.56)
   -UpdateDataset       git pull the local dataset before running
   -HarborExe PATH      Harbor executable (default: harbor on PATH)
   -Help                Show this help
@@ -193,3 +193,4 @@ Write-Host "Results: $JobsDir"
 Write-Host "Inspect: $HarborCommand view `"$JobsDir`""
 Write-Host "Official leaderboard note: Terminal-Bench 2.1 community submissions are closed."
 exit $exitCode
+

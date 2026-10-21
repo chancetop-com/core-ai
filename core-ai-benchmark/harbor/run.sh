@@ -16,7 +16,7 @@ JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
 JOB_NAME="${JOB_NAME:-}"
 DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
-CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.55}"
+CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.56}"
 CLI_BINARY="${CORE_AI_CLI_BINARY:-$SCRIPT_DIR/.cache/core-ai-cli-linux}"
 UPDATE_DATASET=0
 
@@ -40,7 +40,7 @@ Options:
   --dataset-dir DIR     Local Terminal-Bench 2.1 checkout (default: .datasets/terminal-bench-2-1)
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
-  --cli-version VER     core-ai-cli release version to download (default: 2.0.55)
+  --cli-version VER     core-ai-cli release version to download (default: 2.0.56)
   --update-dataset      git pull the local dataset before running
   -h, --help            Show this help
 
@@ -282,3 +282,4 @@ echo "Results: $JOBS_DIR"
 echo "Inspect: $HARBOR view \"$JOBS_DIR\""
 echo "Official leaderboard note: Terminal-Bench 2.1 community submissions are closed."
 exit "$HARBOR_EXIT"
+
