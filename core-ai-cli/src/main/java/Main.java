@@ -44,6 +44,16 @@ public class Main implements Callable<Integer> {
         System.setErr(stderr);
     }
 
+    private static Instant parseDeadline(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return Instant.parse(value);
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("invalid deadline '" + value
+                    + "'; use ISO-8601, e.g. 2026-10-20T10:34:00Z", e);
+        }
+    }
+
     @Option(names = {"-h", "--help"}, usageHelp = true, description = "Show help")
     boolean helpRequested;
 
@@ -99,9 +109,8 @@ public class Main implements Callable<Integer> {
     @Option(names = "--time-budget-reserve-seconds", description = "Seconds kept in reserve by the time budget")
     Long timeBudgetReserveSeconds;
 
-    @Option(names = "--deadline", converter = InstantConverter.class,
-            description = "Absolute deadline (ISO-8601, e.g. 2026-10-20T10:34:00Z)")
-    Instant deadline;
+    @Option(names = "--deadline", description = "Absolute deadline (ISO-8601, e.g. 2026-10-20T10:34:00Z)")
+    String deadline;
 
     @Option(names = "--token-budget", description = "Run budget in prompt+completion tokens (0 disables)")
     Integer tokenBudget;
@@ -139,8 +148,9 @@ public class Main implements Callable<Integer> {
         }
         var startedAt = Instant.now();
         var startedAtNanos = System.nanoTime();
+        var deadlineValue = parseDeadline(deadline);
         var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace,
-                timeLimitSeconds, timeBudgetSeconds, timeBudgetReserveSeconds, deadline, tokenBudget, outputTokenBudget,
+                timeLimitSeconds, timeBudgetSeconds, timeBudgetReserveSeconds, deadlineValue, tokenBudget, outputTokenBudget,
                 costBudgetUsd, budgetReserveTokens, budgetReserveCostUsd, budgetReservePercent,
                 budgetEstimateSafetyFactor, startedAt, startedAtNanos);
         if (acpAgent) {
@@ -197,18 +207,6 @@ public class Main implements Callable<Integer> {
         } catch (UpgradeDownloader.UpgradeException e) {
             System.err.println("Upgrade failed: " + e.getMessage());
             System.exit(1);
-        }
-    }
-
-    public static class InstantConverter implements CommandLine.ITypeConverter<Instant> {
-        @Override
-        public Instant convert(String value) {
-            try {
-                return Instant.parse(value);
-            } catch (DateTimeParseException e) {
-                throw new IllegalArgumentException("invalid deadline '" + value
-                        + "'; use ISO-8601, e.g. 2026-10-20T10:34:00Z", e);
-            }
         }
     }
 }
