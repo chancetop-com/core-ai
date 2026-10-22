@@ -31,6 +31,7 @@ final class AgentAssembler {
 
     static void assemble(AgentBuilder builder, Agent agent) {
         agent.systemPrompt = builder.systemPrompt;
+        agent.systemPromptAppendix = builder.systemPromptAppendix;
         agent.promptTemplate = builder.promptTemplate == null ? "" : builder.promptTemplate;
         agent.maxTurnNumber = builder.maxTurnNumber != null ? builder.maxTurnNumber : 100;
         agent.temperature = builder.temperature;

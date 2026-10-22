@@ -72,10 +72,11 @@ public class SessionNoticePrompt {
 
     /** True when the prompt changed — only then is it worth breaking the model's cached prefix. */
     static boolean applyBlock(Agent agent, String block) {
-        var current = agent.getSystemPrompt();
+        // notice titles and summaries are user data: they live in the appendix, which is never rendered as a template
+        var current = agent.getSystemPromptAppendix();
         var updated = replaceBlock(current, block);
         if (updated == null || updated.equals(current)) return false;
-        agent.setSystemPrompt(updated);
+        agent.setSystemPromptAppendix(updated);
         patchSystemMessage(agent.getMessages(), block);
         return true;
     }

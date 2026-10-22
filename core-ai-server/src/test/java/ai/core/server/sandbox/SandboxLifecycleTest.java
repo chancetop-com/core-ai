@@ -65,11 +65,11 @@ class SandboxLifecycleTest {
         agent = mock(Agent.class);
         tools = new ArrayList<>();
         var prompt = new AtomicReference<>("base prompt");
-        when(agent.getSystemPrompt()).thenAnswer(invocation -> prompt.get());
+        when(agent.getSystemPromptAppendix()).thenAnswer(invocation -> prompt.get());
         doAnswer(invocation -> {
             prompt.set(invocation.getArgument(0));
             return null;
-        }).when(agent).setSystemPrompt(anyString());
+        }).when(agent).setSystemPromptAppendix(anyString());
         when(agent.getToolCalls()).thenAnswer(invocation -> List.copyOf(tools));
         doAnswer(invocation -> {
             tools.addAll(invocation.getArgument(0));
@@ -82,7 +82,7 @@ class SandboxLifecycleTest {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"),
                 ExecutionContext.builder().userId("u1").build());
 
-        verify(agent, never()).setSystemPrompt(anyString());
+        verify(agent, never()).setSystemPromptAppendix(anyString());
         assertTrue(tools.isEmpty());
     }
 
@@ -90,7 +90,7 @@ class SandboxLifecycleTest {
     void sandboxSessionGetsHubInstructionsAndArtifactTools() {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
 
-        var prompt = agent.getSystemPrompt();
+        var prompt = agent.getSystemPromptAppendix();
         assertTrue(prompt.contains(HUB_MARKER));
         assertTrue(prompt.contains("core_ai_session"));
         assertTrue(prompt.contains("core-ai-sandbox catalog"));
@@ -104,7 +104,7 @@ class SandboxLifecycleTest {
     void hubInstructionsTeachTheSdkCallResultAndErrorContract() {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
 
-        var prompt = agent.getSystemPrompt();
+        var prompt = agent.getSystemPromptAppendix();
         assertTrue(prompt.contains("input_schema"), "arguments come from the tool's schema");
         assertTrue(prompt.contains("ToolError"), "a failed call must be known to raise");
         assertTrue(prompt.contains(".data"), "a script must know how to read a result");
@@ -117,7 +117,7 @@ class SandboxLifecycleTest {
     void hubInstructionsStayWithinPromptBudget() {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
 
-        assertTrue(agent.getSystemPrompt().length() < 6000,
+        assertTrue(agent.getSystemPromptAppendix().length() < 6000,
                 "hub instructions are appended to every sandbox session; keep them a reference, not a handbook");
     }
 
@@ -128,7 +128,7 @@ class SandboxLifecycleTest {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context);
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context);
 
-        assertEquals(1, occurrences(agent.getSystemPrompt(), HUB_MARKER));
+        assertEquals(1, occurrences(agent.getSystemPromptAppendix(), HUB_MARKER));
     }
 
     @Test
@@ -139,7 +139,7 @@ class SandboxLifecycleTest {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
 
         assertEquals(1, tools.size());
-        assertEquals(1, occurrences(agent.getSystemPrompt(), HUB_MARKER));
+        assertEquals(1, occurrences(agent.getSystemPromptAppendix(), HUB_MARKER));
     }
 
     @Test
@@ -147,7 +147,7 @@ class SandboxLifecycleTest {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"),
                 ExecutionContext.builder().sessionId("s1").sandbox(mock(Sandbox.class)).build());
 
-        assertTrue(agent.getSystemPrompt().contains(HUB_MARKER));
+        assertTrue(agent.getSystemPromptAppendix().contains(HUB_MARKER));
         assertTrue(tools.isEmpty());
     }
 }

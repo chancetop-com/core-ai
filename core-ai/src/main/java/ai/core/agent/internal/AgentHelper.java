@@ -53,6 +53,13 @@ public class AgentHelper {
         return RoleType.TOOL == messages.getLast().role;
     }
 
+    public static String lastUserMessageText(List<Message> messages) {
+        if (messages == null || messages.isEmpty()) return null;
+        var lastMessage = messages.getLast();
+        if (lastMessage == null || !RoleType.USER.equals(lastMessage.role)) return null;
+        return lastMessage.getTextContent();
+    }
+
     public static boolean isValidEvaluation(ReflectionEvaluation evaluation) {
         return evaluation.getScore() >= 1 && evaluation.getScore() <= 10;
     }

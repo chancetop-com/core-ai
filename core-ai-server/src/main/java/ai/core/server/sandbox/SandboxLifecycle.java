@@ -103,7 +103,7 @@ public final class SandboxLifecycle extends AbstractLifecycle {
     }
 
     private static boolean hasHubInstructions(Agent agent) {
-        var prompt = agent.getSystemPrompt();
+        var prompt = agent.getSystemPromptAppendix();
         return prompt != null && prompt.contains(HUB_MARKER);
     }
 
@@ -127,7 +127,7 @@ public final class SandboxLifecycle extends AbstractLifecycle {
         if (sandbox == null) return;
 
         if (!hasHubInstructions(agent)) {
-            agent.setSystemPrompt(appendHubInstructions(agent.getSystemPrompt()));
+            agent.setSystemPromptAppendix(appendHubInstructions(agent.getSystemPromptAppendix()));
         }
 
         injectSubmitArtifactsTool(agent, context);
@@ -145,7 +145,7 @@ public final class SandboxLifecycle extends AbstractLifecycle {
         var tool = SubmitArtifactsTool.create(userId, fileService, artifactSink, publicUrlConfiguration);
         agent.addTools(List.of(tool));
 
-        agent.setSystemPrompt(SubmitArtifactsTool.appendInstructions(agent.getSystemPrompt()));
+        agent.setSystemPromptAppendix(SubmitArtifactsTool.appendInstructions(agent.getSystemPromptAppendix()));
 
         LOGGER.debug("SandboxLifecycle: injected sandbox tools/instructions, sessionId={}", context.getSessionId());
     }

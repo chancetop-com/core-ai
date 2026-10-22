@@ -28,9 +28,10 @@ public final class MemorySectionManager {
     public static void reloadAgentMemorySection(Agent agent, MdMemoryProvider memoryProvider) {
         String fresh = memoryProvider.load();
         String replacement = "<memories>\n" + (fresh.isBlank() ? "(empty)" : fresh) + "\n</memories>";
-        String current = agent.getSystemPrompt();
+        // the memories section is injected as a prompt section, so it lives in the literal appendix
+        String current = agent.getSystemPromptAppendix();
         if (current != null) {
-            agent.setSystemPrompt(replaceMemoriesSection(current, replacement));
+            agent.setSystemPromptAppendix(replaceMemoriesSection(current, replacement));
         }
         if (!agent.getMessages().isEmpty()) {
             updateSystemMessage(agent.getMessages(), replacement);

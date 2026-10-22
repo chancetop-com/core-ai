@@ -79,14 +79,14 @@ class SessionNoticePromptTest {
     @Test
     void anUnchangedPromptIsLeftAlone() {
         var agent = mock(Agent.class);
-        when(agent.getSystemPrompt()).thenReturn("prompt without notices");
+        when(agent.getSystemPromptAppendix()).thenReturn("prompt without notices");
         when(agent.getMessages()).thenReturn(List.of());
 
         assertFalse(SessionNoticePrompt.applyBlock(agent, null));
-        verify(agent, never()).setSystemPrompt(anyString());
+        verify(agent, never()).setSystemPromptAppendix(anyString());
 
         assertTrue(SessionNoticePrompt.applyBlock(agent, "<!-- notices:start -->\n## x\n<!-- notices:end -->"));
-        verify(agent).setSystemPrompt(anyString());
+        verify(agent).setSystemPromptAppendix(anyString());
     }
 
     @Test
@@ -98,13 +98,13 @@ class SessionNoticePromptTest {
         var session = mock(InProcessAgentSession.class);
         var agent = mock(Agent.class);
         when(session.agent()).thenReturn(agent);
-        when(agent.getSystemPrompt()).thenReturn("base prompt");
+        when(agent.getSystemPromptAppendix()).thenReturn("base prompt");
         when(agent.getMessages()).thenReturn(List.of());
 
         prompt.answeredAndRefresh(session, "u-1", "chan-1", "qqbot:c2c:OPENID");
 
         var promptCaptor = ArgumentCaptor.forClass(String.class);
-        verify(agent).setSystemPrompt(promptCaptor.capture());
+        verify(agent).setSystemPromptAppendix(promptCaptor.capture());
         assertTrue(promptCaptor.getValue().contains("notices:start"), promptCaptor.getValue());
         // and the answer is remembered, so the next message sees nothing
         var order = inOrder(store);

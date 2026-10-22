@@ -358,16 +358,16 @@ public class EngineSessionRegistry {
     /**
      * Desktop deliverable flow: non-media files enter the artifact panel only when the agent registers
      * them through submit_artifacts (media files are captured by the sink automatically). The
-     * instructions go into the prompt template and, for a resumed session, into the already-sent
+     * instructions go into the literal prompt appendix and, for a resumed session, into the already-sent
      * messages[0] — the copy the model actually reads (same reason as MemorySectionManager).
      */
     private void installArtifactDelivery(Agent agent) {
         agent.addTools(List.of(LocalSubmitArtifactsTool.create(bootstrap.workspace)));
-        var prompt = agent.getSystemPrompt();
-        if (prompt == null || prompt.contains(LocalSubmitArtifactsTool.PROMPT_MARKER)) {
+        var prompt = agent.getSystemPromptAppendix();
+        if (prompt != null && prompt.contains(LocalSubmitArtifactsTool.PROMPT_MARKER)) {
             return;
         }
-        agent.setSystemPrompt(LocalSubmitArtifactsTool.appendInstructions(prompt));
+        agent.setSystemPromptAppendix(LocalSubmitArtifactsTool.appendInstructions(prompt));
         var messages = agent.getMessages();
         if (messages.isEmpty()) {
             return;

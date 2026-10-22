@@ -27,6 +27,7 @@ public final class AgentFork {
                 .llmProvider(source.getLLMProvider())
                 .model(source.getModel())
                 .systemPrompt(source.getSystemPrompt())
+                .systemPromptSection(source::getSystemPromptAppendix)
                 .toolCalls(tools)
                 .maxTurn(config.maxTurns)
                 .temperature(config.temperature)

@@ -40,6 +40,7 @@ import java.util.Set;
  */
 public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
     String systemPrompt;
+    String systemPromptAppendix;
     final List<PromptInject> systemPromptSections = new ArrayList<>();
     String promptTemplate;
     LLMProvider llmProvider;
@@ -394,16 +395,21 @@ public class AgentBuilder extends NodeBuilder<AgentBuilder, Agent> {
         }
     }
 
+    // sections carry runtime data (memory, identity, hook output) that must not be parsed as a Mustache
+    // template, so they are kept apart from the prompt and appended only after it is rendered
     private void configureSystemPrompt() {
-        var sb = new StringBuilder(this.systemPrompt != null ? this.systemPrompt : "");
+        var sections = new StringBuilder();
         for (var section : systemPromptSections) {
             var text = section.inject();
-            if (!text.isEmpty()) {
-                if (!sb.isEmpty()) sb.append("\n\n");
-                sb.append(text);
+            if (text != null && !text.isEmpty()) {
+                if (!sections.isEmpty()) sections.append("\n\n");
+                sections.append(text);
             }
         }
-        this.systemPrompt = !sb.isEmpty() ? sb.toString() : "you are a helpful assistant";
+        this.systemPromptAppendix = sections.toString();
+        if (this.systemPrompt == null || this.systemPrompt.isEmpty()) {
+            this.systemPrompt = sections.isEmpty() ? "you are a helpful assistant" : "";
+        }
     }
 
     private void configureResponseValidation() {

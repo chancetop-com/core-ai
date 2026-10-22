@@ -13,7 +13,6 @@ import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.prompt.Prompts;
-import ai.core.prompt.engines.MustachePromptTemplate;
 import ai.core.rag.RagConfig;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionListener;
@@ -26,7 +25,6 @@ import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolMaterialization;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.SubAgentToolCall;
-import core.framework.crypto.Hash;
 import core.framework.util.Maps;
 import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.Logger;
@@ -50,6 +48,7 @@ public class Agent extends Node<Agent> {
     final Logger logger = LoggerFactory.getLogger(Agent.class);
     CancellationToken rootToken;
     String systemPrompt;
+    String systemPromptAppendix;
     String promptTemplate;
     LLMProvider llmProvider;
     ToolRegistry toolRegistry;
@@ -92,14 +91,11 @@ public class Agent extends Node<Agent> {
     }
 
     private void chatLoops(String query, Map<String, Object> variables, boolean skipReflection) {
-        var prompt = promptTemplate + query;
         Map<String, Object> context = variables == null ? Maps.newConcurrentHashMap() : new HashMap<>(variables);
-        if (ragConfig.useRag()) {
-            rag(getInput(), context);
-            prompt += RagConfig.AGENT_RAG_CONTEXT_TEMPLATE;
-        }
-
-        prompt = new MustachePromptTemplate().execute(prompt, context, Hash.md5Hex(promptTemplate));
+        var ragTemplate = ragConfig.useRag() ? RagConfig.AGENT_RAG_CONTEXT_TEMPLATE : null;
+        if (ragTemplate != null) rag(getInput(), context);
+        // the query is user (or model) text: only the templates around it are rendered
+        var prompt = PromptRenderer.renderUserTurn(promptTemplate, query, ragTemplate, context);
 
         chatTurns(prompt, variables, (m, t) -> ModelGateway.handLLM(this, m, t));
 
@@ -245,16 +241,11 @@ public class Agent extends Node<Agent> {
     void setChildrenParentNode() {
     }
 
-    private Message buildSystemMessage(Map<String, Object> variables) {
-        var prompt = systemPrompt;
+    Message buildSystemMessage(Map<String, Object> variables) {
         if (getParentNode() != null && isUseGroupContext()) {
             this.putSystemVariable(getParentNode().getSystemVariables());
         }
-        Map<String, Object> var = Maps.newConcurrentHashMap();
-        if (variables != null) var.putAll(variables);
-        var.putAll(getSystemVariables());
-        prompt = new MustachePromptTemplate().execute(prompt, var, Hash.md5Hex(promptTemplate));
-        return Message.of(RoleType.SYSTEM, prompt);
+        return Message.of(RoleType.SYSTEM, PromptRenderer.renderSystem(systemPrompt, systemPromptAppendix, variables, getSystemVariables()));
     }
 
     private void rag(String query, Map<String, Object> variables) {
@@ -279,6 +270,15 @@ public class Agent extends Node<Agent> {
 
     public void setSystemPrompt(String systemPrompt) {
         this.systemPrompt = systemPrompt;
+    }
+
+    /** Text appended after the rendered prompt; it never goes through Mustache, so it may hold any characters. */
+    public String getSystemPromptAppendix() {
+        return systemPromptAppendix;
+    }
+
+    public void setSystemPromptAppendix(String systemPromptAppendix) {
+        this.systemPromptAppendix = systemPromptAppendix;
     }
 
     public Double getTemperature() {
@@ -373,21 +373,13 @@ public class Agent extends Node<Agent> {
         if (activeTracer == null) {
             return runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
         }
-        var context = AgentTurnTracing.start(this, injectedMessageText());
+        var context = AgentTurnTracing.start(this, AgentHelper.lastUserMessageText(getMessages()));
 
         return activeTracer.traceAgentExecution(context, () -> {
             var result = runTurnsLoop((m, t) -> ModelGateway.handLLM(this, m, t));
             AgentTurnTracing.complete(this, context);
             return result;
         }, this::isCancelled);
-    }
-
-    private String injectedMessageText() {
-        var messages = getMessages();
-        if (messages == null || messages.isEmpty()) return null;
-        var lastMessage = messages.getLast();
-        if (lastMessage == null || !RoleType.USER.equals(lastMessage.role)) return null;
-        return lastMessage.getTextContent();
     }
 
     public void cancel() {
