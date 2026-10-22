@@ -9,10 +9,10 @@ package ai.core.cli.agent;
 final class CliClientType {
     static final String DESKTOP = "desktop";
 
-    private CliClientType() {
-    }
-
     static boolean isDesktop(String clientType) {
         return DESKTOP.equalsIgnoreCase(clientType);
+    }
+
+    private CliClientType() {
     }
 }
