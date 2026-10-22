@@ -79,7 +79,8 @@ public final class RunBudgetLifecycle extends AbstractLifecycle {
 
         var state = states.computeIfAbsent(key(context), ignored -> new RefreshState());
         var current = system.getTextContent();
-        if (shouldRefresh(state) || (budget != null) != RunBudgetSection.containsBudgetBlock(current)) {
+        var hasBudget = budget != null;
+        if (shouldRefresh(state) || hasBudget != RunBudgetSection.containsBudgetBlock(current)) {
             refresh(request, state);
         }
         applyImageBudget(request, state);
