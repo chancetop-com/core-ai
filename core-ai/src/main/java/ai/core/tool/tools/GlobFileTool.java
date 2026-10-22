@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.AgentRuntimeException;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.budget.BudgetProfile;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -182,6 +183,11 @@ public class GlobFileTool extends ToolCall {
         }
 
         return result.toString().trim();
+    }
+
+    @Override
+    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
+        return BudgetProfile.cheap(getRequestedTimeoutMs(arguments));
     }
 
     private record FileMatch(String path, long mtime) {

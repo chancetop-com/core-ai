@@ -45,6 +45,20 @@ public class AgentSessionRunner {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunner.class);
     private static final String POISON_PILL = "\0__EXIT__";
     private static final int DEFAULT_BACKGROUND_WAIT_SECONDS = 600;
+    private static final long BUDGET_EXIT_BUFFER_MILLIS = 20_000;
+
+    static Long promptTimeoutMillis(ai.core.agent.budget.RunBudget runBudget, Integer timeLimitSeconds) {
+        Long budgetTimeout = null;
+        if (runBudget != null && runBudget.time() != null) {
+            // the reserve belongs to the model; only keep a small buffer for session save and trace flush
+            budgetTimeout = Math.max(0, runBudget.time().remainingMillis() - BUDGET_EXIT_BUFFER_MILLIS);
+        }
+        if (timeLimitSeconds != null && timeLimitSeconds > 0) {
+            long legacyTimeout = timeLimitSeconds * 1000L;
+            return budgetTimeout == null ? legacyTimeout : Math.min(budgetTimeout, legacyTimeout);
+        }
+        return budgetTimeout;
+    }
 
     private final TerminalUI ui;
     private final Agent agent;
@@ -209,16 +223,7 @@ public class AgentSessionRunner {
     }
 
     private Long resolvePromptTimeoutMillis() {
-        Long budgetTimeout = null;
-        if (runBudget != null && runBudget.time() != null) {
-            long remaining = runBudget.time().remainingMillis() - runBudget.time().reserveMillis();
-            budgetTimeout = Math.max(0, remaining);
-        }
-        if (timeLimitSeconds != null && timeLimitSeconds > 0) {
-            long legacyTimeout = timeLimitSeconds * 1000L;
-            return budgetTimeout == null ? legacyTimeout : Math.min(budgetTimeout, legacyTimeout);
-        }
-        return budgetTimeout;
+        return promptTimeoutMillis(runBudget, timeLimitSeconds);
     }
 
     private boolean shouldExtractMemory() {

@@ -51,6 +51,11 @@ final class ModelGateway {
 
     static CompletionResponse callLLM(Agent agent, Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         var budget = agent.getExecutionContext().getRunBudget();
+        if (budget != null && budget.time() != null && budget.time().remainingMillis() <= 0) {
+            var token = agent.getExecutionContext().getCancellationToken();
+            if (token != null) token.cancel(CancelReason.BUDGET_LIMITED);
+            throw new CancellationException(CancelReason.BUDGET_LIMITED);
+        }
         BudgetCall budgetCall = null;
         if (budget != null && budget.needsModelAdmission()) {
             var model = request.model != null ? request.model : agent.getModel();

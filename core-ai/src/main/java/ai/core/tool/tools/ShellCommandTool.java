@@ -332,6 +332,7 @@ public class ShellCommandTool extends ToolCall {
             long timeMilliseconds = requested instanceof Number number
                     ? number.longValue()
                     : DEFAULT_TIMEOUT_MILLISECONDS;
+            long requestedTimeout = timeMilliseconds;
             var budget = context.getRunBudget();
             if (budget != null) {
                 var decision = budget.admitToolCall(budgetProfile(text, context), timeMilliseconds);
@@ -355,18 +356,26 @@ public class ShellCommandTool extends ToolCall {
                 var notify = !Boolean.FALSE.equals(argsMap.get("notify"));
                 var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null), context.getCancellationToken(), null, notify);
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
-                return ToolCallResult.asyncLaunched(taskId, buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
-                        .withDuration(System.currentTimeMillis() - startTime);
+                return withTimeoutNotice(ToolCallResult.asyncLaunched(taskId,
+                                buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
+                        .withDuration(System.currentTimeMillis() - startTime), requestedTimeout, timeMilliseconds);
             } else {
-                return ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk))
+                return withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk))
                         .withDuration(System.currentTimeMillis() - startTime)
-                        .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null);
+                        .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null),
+                        requestedTimeout, timeMilliseconds);
             }
         } catch (RuntimeException e) {
             var error = "Failed to parse shell command arguments: " + e.getMessage();
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private ToolCallResult withTimeoutNotice(ToolCallResult result, long requested, long effective) {
+        if (effective >= requested) return result;
+        return result.withStats("budget.timeout.requested_ms", requested)
+                .withStats("budget.timeout.effective_ms", effective);
     }
 
     private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, boolean notify) {

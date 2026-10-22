@@ -4,7 +4,6 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.budget.BudgetBinding;
 import ai.core.agent.budget.BudgetLevel;
 import ai.core.agent.budget.RunBudget;
-import ai.core.agent.budget.TimeBudget;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.llm.InlineImagePruner;
 import ai.core.llm.domain.CompletionRequest;
@@ -14,7 +13,6 @@ import ai.core.llm.domain.RoleType;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Refreshes the dynamic budget header in messages[0] and applies the token-aware
@@ -25,39 +23,14 @@ import java.util.concurrent.TimeUnit;
  * @author stephen
  */
 public final class RunBudgetLifecycle extends AbstractLifecycle {
-    private static long intervalNanos(BudgetLevel level) {
-        return switch (level) {
-            case NORMAL -> TimeUnit.SECONDS.toNanos(180);
-            case CONSERVE -> TimeUnit.SECONDS.toNanos(60);
-            case URGENT -> TimeUnit.SECONDS.toNanos(30);
-            case FINAL -> TimeUnit.SECONDS.toNanos(15);
-            case EXPIRED -> 0;
-        };
-    }
-
     private static String bucket(RunBudget budget) {
         if (budget == null) return "";
-        var sb = new StringBuilder(12);
-        appendTimeBucket(sb, budget.time());
+        var sb = new StringBuilder(8);
         appendPercentBucket(sb, budget.tokens() == null ? -1 : percentRemaining(
                 budget.tokens().limitTokens(), budget.tokens().remainingTokens()));
         appendPercentBucket(sb, budget.cost() == null ? -1 : percentRemaining(
                 budget.cost().limitMicros(), budget.cost().remainingMicros()));
         return sb.toString();
-    }
-
-    private static void appendTimeBucket(StringBuilder sb, TimeBudget time) {
-        if (time == null) {
-            sb.append('-');
-            return;
-        }
-        long remaining = time.remainingSeconds();
-        char bucket;
-        if (remaining <= 10) bucket = '0';
-        else if (remaining <= 30) bucket = '1';
-        else if (remaining <= 60) bucket = '2';
-        else bucket = '3';
-        sb.append(bucket);
     }
 
     private static void appendPercentBucket(StringBuilder sb, int percent) {
@@ -105,37 +78,33 @@ public final class RunBudgetLifecycle extends AbstractLifecycle {
         if (system.role != RoleType.SYSTEM) return;
 
         var state = states.computeIfAbsent(key(context), ignored -> new RefreshState());
-        long now = System.nanoTime();
-        if (shouldRefresh(state, now)) {
-            refresh(request, state, now);
+        var current = system.getTextContent();
+        if (shouldRefresh(state) || (budget != null) != RunBudgetSection.containsBudgetBlock(current)) {
+            refresh(request, state);
         }
         applyImageBudget(request, state);
     }
 
-    private void refresh(CompletionRequest request, RefreshState state, long now) {
+    private void refresh(CompletionRequest request, RefreshState state) {
         var current = request.messages.getFirst().getTextContent();
         var block = RunBudgetSection.render(budget);
         var next = RunBudgetSection.replace(current, block);
         if (!next.equals(current)) {
             replaceSystemMessage(request, next);
         }
-        state.lastRenderedNanos = now;
+        state.initialized = true;
         state.lastLevel = budget == null ? null : budget.level();
         state.lastBinding = budget == null ? null : budget.binding();
         state.lastBucket = bucket(budget);
     }
 
-    private boolean shouldRefresh(RefreshState state, long now) {
-        if (state.lastRenderedNanos == 0) return true;
-        if (budget == null) {
-            return now - state.lastRenderedNanos >= TimeUnit.SECONDS.toNanos(180);
-        }
+    private boolean shouldRefresh(RefreshState state) {
+        if (!state.initialized) return true;
+        if (budget == null) return false;
         var level = budget.level();
         var binding = budget.binding();
         if (level != state.lastLevel || binding != state.lastBinding) return true;
-        var bucket = bucket(budget);
-        if (!bucket.equals(state.lastBucket)) return true;
-        return now - state.lastRenderedNanos >= intervalNanos(level);
+        return !bucket(budget).equals(state.lastBucket);
     }
 
     private void applyImageBudget(CompletionRequest request, RefreshState state) {
@@ -168,7 +137,7 @@ public final class RunBudgetLifecycle extends AbstractLifecycle {
     }
 
     private static final class RefreshState {
-        private long lastRenderedNanos;
+        private boolean initialized;
         private BudgetLevel lastLevel;
         private BudgetBinding lastBinding;
         private String lastBucket = "";

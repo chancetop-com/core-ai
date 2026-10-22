@@ -44,17 +44,21 @@ public final class CliBudgetConfig {
                                          Instant startedAt, long startedAtNanos) {
         var seconds = positive(intValue(options.timeBudgetSeconds(),
                 propertyInteger(props, "agent.time.budget.seconds")));
+        var deadline = options.deadline();
+        if (seconds == null && deadline == null) return null;
+        var legacySeconds = positive(options.timeLimitSeconds());
+        Integer budgetSeconds = seconds;
+        if (budgetSeconds != null && legacySeconds != null) budgetSeconds = Math.min(budgetSeconds, legacySeconds);
         var reserveSeconds = longValue(options.timeBudgetReserveSeconds(),
                 propertyLong(props, "agent.time.budget.reserve.seconds"), -1);
-        var deadline = options.deadline();
         if (deadline != null) {
             long totalMillis = Math.max(0, Duration.between(startedAt, deadline).toMillis());
-            if (seconds != null) totalMillis = Math.min(totalMillis, seconds * 1000L);
+            if (budgetSeconds != null) totalMillis = Math.min(totalMillis, budgetSeconds * 1000L);
+            if (legacySeconds != null) totalMillis = Math.min(totalMillis, legacySeconds * 1000L);
             return TimeBudget.ofMillis(totalMillis, reserveSeconds < 0 ? -1 : reserveSeconds * 1000,
                     startedAtNanos, startedAt, System::nanoTime);
         }
-        if (seconds == null) return null;
-        return TimeBudget.ofSeconds(seconds, reserveSeconds < 0 ? null : reserveSeconds,
+        return TimeBudget.ofSeconds(budgetSeconds, reserveSeconds < 0 ? null : reserveSeconds,
                 startedAtNanos, startedAt, System::nanoTime);
     }
 

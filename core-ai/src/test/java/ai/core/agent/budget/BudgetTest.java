@@ -133,6 +133,29 @@ class BudgetTest {
     }
 
     @Test
+    void finalBudgetAllowsCheapFileTools() {
+        var clock = new AtomicLong();
+        var time = TimeBudget.ofSeconds(100, 30L, 0, Instant.EPOCH, clock::get);
+        var budget = new RunBudget(time, null, null, new TokenEstimator(1.0), 8_000);
+        clock.set(80_000_000_000L);
+        assertEquals(BudgetLevel.FINAL, budget.level());
+        assertFalse(budget.admitToolCall(BudgetProfile.normal(1_000), 1_000).allowed());
+        assertTrue(budget.admitToolCall(BudgetProfile.cheap(1_000), 1_000).allowed());
+    }
+
+    @Test
+    void briefStatusShowsLiveBudget() {
+        var clock = new AtomicLong();
+        var budget = new RunBudget(TimeBudget.ofSeconds(900, 135L, 0, Instant.EPOCH, clock::get),
+                null, null, new TokenEstimator(1.0), 8_000);
+        clock.set(500_000_000_000L);
+        var status = budget.briefStatus();
+        assertTrue(status.contains("level CONSERVE"));
+        assertTrue(status.contains("400s left"));
+        assertTrue(status.contains("135s reserve"));
+    }
+
+    @Test
     void timeOnlyBudgetDoesNotNeedModelAdmission() {
         var clock = new AtomicLong();
         var budget = new RunBudget(TimeBudget.ofSeconds(60, 30L, 0, Instant.EPOCH, clock::get),

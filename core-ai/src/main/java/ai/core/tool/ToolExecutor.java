@@ -327,6 +327,7 @@ public class ToolExecutor {
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeWithTimeout(ToolCall tool, FunctionCall functionCall, ExecutionContext context) {
         long timeoutMs = tool.getRequestedTimeoutMs(functionCall.function.arguments);
+        long requestedTimeout = timeoutMs;
         var budget = context.getRunBudget();
         if (budget != null) {
             var decision = budget.admitToolCall(tool.budgetProfile(functionCall.function.arguments, context), timeoutMs);
@@ -347,7 +348,12 @@ public class ToolExecutor {
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
         try {
-            return future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            var result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+            if (timeoutMs < requestedTimeout) {
+                result.withStats("budget.timeout.requested_ms", requestedTimeout)
+                        .withStats("budget.timeout.effective_ms", timeoutMs);
+            }
+            return result;
         } catch (TimeoutException e) {
             LOGGER.warn("tool {} execution timed out after {}ms", functionCall.function.name, timeoutMs);
             future.cancel(true);

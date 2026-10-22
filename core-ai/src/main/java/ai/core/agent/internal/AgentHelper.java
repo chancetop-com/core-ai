@@ -26,6 +26,9 @@ import core.framework.util.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -88,7 +91,8 @@ public class AgentHelper {
 
     public static Message buildToolMessage(FunctionCall tool, ToolCallResult result, boolean isDirectReturn, ExecutionContext context) {
         return switch (result.getType()) {
-            case TEXT -> Message.of(RoleType.TOOL, buildTextContent(result, isDirectReturn), tool.function.name, tool.id, null);
+            case TEXT -> Message.of(RoleType.TOOL, buildTextContent(result, isDirectReturn, context),
+                    tool.function.name, tool.id, null);
             case IMAGE -> context != null && !context.isVisionNative()
                     ? Message.of(RoleType.TOOL, buildImageReference(tool, result, context), tool.function.name, tool.id, null)
                     : Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null));
@@ -133,12 +137,34 @@ public class AgentHelper {
         }
     }
 
-    private static String buildTextContent(ToolCallResult result, boolean isDirectReturn) {
-        if (isDirectReturn) {
-            return specialReminder(result.getToolName(), result.toResultForLLM());
-        } else {
-            return result.toResultForLLM();
+    private static String buildTextContent(ToolCallResult result, boolean isDirectReturn, ExecutionContext context) {
+        var text = isDirectReturn
+                ? specialReminder(result.getToolName(), result.toResultForLLM())
+                : result.toResultForLLM();
+        return appendBudgetStatus(text, result, context);
+    }
+
+    private static String appendBudgetStatus(String text, ToolCallResult result, ExecutionContext context) {
+        if (context == null) return text;
+        var budget = context.getRunBudget();
+        if (budget == null) return text;
+        var sb = new StringBuilder(text == null ? "" : text);
+        if (!sb.isEmpty()) sb.append("\n\n");
+        sb.append("[run budget @ ")
+                .append(DateTimeFormatter.ISO_INSTANT.format(Instant.now().truncatedTo(ChronoUnit.SECONDS)))
+                .append("] ").append(budget.briefStatus());
+        var requested = number(result.getStats().get("budget.timeout.requested_ms"));
+        var effective = number(result.getStats().get("budget.timeout.effective_ms"));
+        if (requested != null && effective != null && effective < requested) {
+            sb.append(", timeout reduced ").append(requested / 1000).append("s -> ")
+                    .append(effective / 1000).append('s');
         }
+        sb.append('.');
+        return sb.toString();
+    }
+
+    private static Long number(Object value) {
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private static List<Content> buildImageContent(ToolCallResult result) {

@@ -7,6 +7,9 @@ import ai.core.agent.budget.RunBudget;
 import ai.core.agent.budget.TimeBudget;
 import ai.core.agent.budget.TokenBudget;
 
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -29,35 +32,35 @@ public final class RunBudgetSection {
     public static String render(RunBudget budget) {
         if (budget == null) return null;
         var sb = new StringBuilder(384);
-        sb.append(BEGIN + "\n<run_budget>\n");
         var level = budget.level();
         var binding = budget.binding();
-        sb.append(String.format("Status: %s (binding: %s)%nDirective: %s%n", level,
-                binding == null ? "none" : binding.name().toLowerCase(Locale.ROOT), directive(level, binding)));
+        sb.append(String.format(Locale.ROOT, "%s%n<run_budget>%n", BEGIN))
+                .append(String.format(Locale.ROOT, "Status: %s (binding: %s)%n", level,
+                        binding == null ? "none" : binding.name().toLowerCase(Locale.ROOT)))
+                .append(String.format(Locale.ROOT, "Directive: %s%n", directive(level, binding)));
         appendTime(sb, budget.time());
         appendTokens(sb, budget.tokens());
         appendCost(sb, budget.cost());
         appendClock(sb, budget.time());
-        sb.append("</run_budget>\n" + END);
+        sb.append(String.format(Locale.ROOT, "</run_budget>%n%s", END));
         return sb.toString();
     }
 
     private static void appendTime(StringBuilder sb, TimeBudget time) {
         if (time == null) return;
-        sb.append(String.format("Time: %ds of %ds left. Verification reserve: %ds. Soft deadline: %ds from now.%n",
-                time.remainingSeconds(), time.totalMillis() / 1000, time.reserveMillis() / 1000,
-                time.softRemainingMillis() / 1000));
+        sb.append(String.format(Locale.ROOT, "Budget: %ds total. Final-answer reserve: %ds.%n",
+                time.totalMillis() / 1000, time.reserveMillis() / 1000));
     }
 
     private static void appendTokens(StringBuilder sb, TokenBudget tokens) {
         if (tokens == null) return;
-        sb.append(String.format("Tokens: %,d of %,d used; %,d left. Final-answer reserve: %,d tokens.%n",
+        sb.append(String.format(Locale.ROOT, "Tokens: %,d of %,d used; %,d left. Final-answer reserve: %,d tokens.%n",
                 tokens.spentTokens(), tokens.limitTokens(), tokens.remainingTokens(), tokens.reserveTokens()));
     }
 
     private static void appendCost(StringBuilder sb, CostBudget cost) {
         if (cost == null) return;
-        sb.append(String.format("Cost: $%.2f of $%.2f used; $%.2f left. Final-answer reserve: $%.2f.%n",
+        sb.append(String.format(Locale.ROOT, "Cost: $%.2f of $%.2f used; $%.2f left. Final-answer reserve: $%.2f.%n",
                 cost.spentMicros() / (double) CostBudget.MICROS_PER_USD,
                 cost.limitMicros() / (double) CostBudget.MICROS_PER_USD,
                 cost.remainingMicros() / (double) CostBudget.MICROS_PER_USD,
@@ -66,8 +69,12 @@ public final class RunBudgetSection {
 
     private static void appendClock(StringBuilder sb, TimeBudget time) {
         if (time == null) return;
-        sb.append(String.format("Started (UTC): %s.%nHard deadline (UTC): %s.%n",
-                time.startedAt(), time.deadline()));
+        sb.append(String.format(Locale.ROOT, "Started (UTC): %s. Hard stop (UTC): %s.%n",
+                iso(time.startedAt()), iso(time.deadline())));
+    }
+
+    private static String iso(Instant instant) {
+        return DateTimeFormatter.ISO_INSTANT.format(instant.truncatedTo(ChronoUnit.SECONDS));
     }
 
     private static String directive(BudgetLevel level, BudgetBinding binding) {
@@ -75,10 +82,10 @@ public final class RunBudgetSection {
         return switch (level) {
             case NORMAL -> "Work normally, but keep the deliverable ahead of polish.";
             case CONSERVE -> switch (binding) {
-                case TOKENS -> "Stop re-reading. Use save_to_file for large results and write the deliverable in one call.";
+                case TOKENS -> "Stop re-reading. Use save_to_file for large results.";
                 case COST -> "Stop non-essential calls; no new media generation unless it is the deliverable.";
-                case TIME -> "Stop exploring. Complete the required files and verify them now.";
-                case null -> "Stop exploring. Complete the required files and verify them now.";
+                case TIME -> "Start converging: complete the required files and verify them.";
+                case null -> "Start converging: complete the required files and verify them.";
             };
             case URGENT -> switch (binding) {
                 case TOKENS -> "Only finish the deliverable. Do not fetch/read more context unless it is required to write the file.";
@@ -89,8 +96,8 @@ public final class RunBudgetSection {
             case FINAL -> switch (binding) {
                 case TOKENS -> "Answer now; if a required file is still missing, write only that file, then answer.";
                 case COST -> "Answer now; no new paid calls.";
-                case TIME -> "Stop tool use after at most one short check. Answer now with the current state.";
-                case null -> "Stop tool use after at most one short check. Answer now with the current state.";
+                case TIME -> "Finish only a missing required file, then stop tool use and answer with the current state.";
+                case null -> "Finish only a missing required file, then stop tool use and answer with the current state.";
             };
             case EXPIRED -> "The budget is exhausted. Do not call tools. Answer with the current state.";
         };

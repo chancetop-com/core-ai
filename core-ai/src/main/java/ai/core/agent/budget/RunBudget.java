@@ -7,6 +7,7 @@ import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Usage;
 
 import java.time.Instant;
+import java.util.Locale;
 
 /**
  * Run-level budget composed of independent time, token and cost dimensions.
@@ -118,6 +119,23 @@ public final class RunBudget {
             }
         }
         return best;
+    }
+
+    public String briefStatus() {
+        var sb = new StringBuilder();
+        sb.append("level ").append(level());
+        if (time != null) {
+            sb.append(String.format(Locale.ROOT, ", %ds left (%ds reserve)",
+                    time.remainingSeconds(), time.reserveMillis() / 1000));
+        }
+        if (tokens != null) {
+            sb.append(String.format(Locale.ROOT, ", %,d tokens left", tokens.remainingTokens()));
+        }
+        if (cost != null) {
+            sb.append(String.format(Locale.ROOT, ", $%.2f left",
+                    cost.remainingMicros() / (double) CostBudget.MICROS_PER_USD));
+        }
+        return sb.toString();
     }
 
     public BudgetCall admitModel(CompletionRequest request, String model) {
