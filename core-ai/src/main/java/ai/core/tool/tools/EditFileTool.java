@@ -1,7 +1,5 @@
 package ai.core.tool.tools;
 
-import ai.core.agent.ExecutionContext;
-import ai.core.agent.budget.BudgetProfile;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -21,7 +19,7 @@ import java.security.NoSuchAlgorithmException;
 /**
  * @author stephen
  */
-public class EditFileTool extends ToolCall {
+public class EditFileTool extends CheapFileTool {
     public static final String TOOL_NAME = "edit_file";
     private static final long WARN_FILE_SIZE = 10L * 1024 * 1024;
     private static final long MAX_FILE_SIZE = 100L * 1024 * 1024;
@@ -250,11 +248,6 @@ public class EditFileTool extends ToolCall {
             index += substring.length();
         }
         return count;
-    }
-
-    @Override
-    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
-        return BudgetProfile.cheap(getRequestedTimeoutMs(arguments));
     }
 
     private record ReplaceResult(String content, int occurrences, String filePath) { }

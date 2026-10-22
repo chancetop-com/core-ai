@@ -1,7 +1,5 @@
 package ai.core.tool.tools;
 
-import ai.core.agent.ExecutionContext;
-import ai.core.agent.budget.BudgetProfile;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -21,7 +19,7 @@ import java.util.Set;
 /**
  * @author stephen
  */
-public class WriteFileTool extends ToolCall {
+public class WriteFileTool extends CheapFileTool {
     public static final String TOOL_NAME = "write_file";
     private static final Logger LOGGER = LoggerFactory.getLogger(WriteFileTool.class);
     private static final char BOM = '\uFEFF';
@@ -139,11 +137,6 @@ public class WriteFileTool extends ToolCall {
             LOGGER.error(error, e);
             return error;
         }
-    }
-
-    @Override
-    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
-        return BudgetProfile.cheap(getRequestedTimeoutMs(arguments));
     }
 
     public static class Builder extends ToolCall.Builder<Builder, WriteFileTool> {

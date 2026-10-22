@@ -2,7 +2,6 @@ package ai.core.tool.tools;
 
 import ai.core.AgentRuntimeException;
 import ai.core.agent.ExecutionContext;
-import ai.core.agent.budget.BudgetProfile;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -24,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author stephen
  */
-public class GrepFileTool extends ToolCall {
+public class GrepFileTool extends CheapFileTool {
     public static final String TOOL_NAME = "grep_file";
     private static final int MAX_MATCHES = 100;
     private static final int MAX_LINE_LENGTH = 2000;
@@ -268,11 +267,6 @@ public class GrepFileTool extends ToolCall {
         }
 
         return output.toString().trim();
-    }
-
-    @Override
-    public BudgetProfile budgetProfile(String arguments, ExecutionContext context) {
-        return BudgetProfile.cheap(getRequestedTimeoutMs(arguments));
     }
 
     private record SearchContext(File cwd, String file) {

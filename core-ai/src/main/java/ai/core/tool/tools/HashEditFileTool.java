@@ -34,7 +34,7 @@ import java.util.Map;
  *
  * @author lim chen
  */
-public class HashEditFileTool extends ToolCall {
+public class HashEditFileTool extends CheapFileTool {
     public static final String TOOL_NAME = "hash_edit_file";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HashEditFileTool.class);

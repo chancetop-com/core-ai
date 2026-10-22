@@ -23,7 +23,7 @@ import java.util.Map;
  *
  * @author lim chen
  */
-public class HashReadFileTool extends ToolCall {
+public class HashReadFileTool extends CheapFileTool {
     public static final String TOOL_NAME = "hash_read_file";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(HashReadFileTool.class);
