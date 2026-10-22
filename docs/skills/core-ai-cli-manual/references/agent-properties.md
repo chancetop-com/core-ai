@@ -27,7 +27,7 @@ Workspace values override global values. If a property is set in both files, the
 | `agent.memory.enabled` | `true` | `true` | Enable memory system |
 | `agent.memory.daily.logs.enabled` | `false` | `false` | Enable daily logs (session-close extraction) |
 | `agent.memory.prompt.extraction` | `false` | n/a | Enable prompt-level extraction triggers |
-| `agent.coding.enabled` | `false` | `false` | Enable coding mode |
+| `agent.coding.enabled` | `false` | `false` | Enable coding mode (CLI clients only; the desktop app always runs as a general assistant) |
 | `agent.todo.v2.enabled` | `false` | n/a | Enable todo v2 feature |
 
 ## Memory Properties

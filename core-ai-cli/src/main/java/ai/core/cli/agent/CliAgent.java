@@ -295,7 +295,7 @@ public class CliAgent {
 
     private static List<PromptInject> constructPromptSection(Config config, String hookOutput) {
         List<PromptInject> sections = new ArrayList<>();
-        sections.add(config.coding ? new CliAgentCodeBasePrompt() : new CliAgentBasePrompt());
+        sections.add(identityPrompt(config.coding, config.clientType));
         sections.add(new CliAgentPersonalityPrompt());
         sections.add(new CliAgentEnvironmentPrompt(config.workspace, config.clientType));
         if (config.runBudget() != null) {
@@ -315,6 +315,15 @@ public class CliAgent {
         }
         sections.add(new CliAgentHookPrompt(hookOutput));
         return sections;
+    }
+
+    /**
+     * The desktop app is a general assistant, so it gets its own identity and never the CLI coding prompt — even
+     * though it reads the same {@code agent.coding.enabled} flag from the config file the CLI uses.
+     */
+    static PromptInject identityPrompt(boolean coding, String clientType) {
+        if (CliClientType.isDesktop(clientType)) return new CliAgentAssistantPrompt();
+        return coding ? new CliAgentCodeBasePrompt() : new CliAgentBasePrompt();
     }
 
     /** The desktop app spawns the engine with this flag; its built-in browser pane is the only browser. */

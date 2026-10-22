@@ -115,6 +115,8 @@ core-ai-cli mcp search "jira" --json               # discover server-side tools 
 
 Interactive = `core-ai-cli`, Headless = `core-ai-cli --prompt`, ACP = `core-ai-cli --acp-agent`. Hub subcommands read none of these.
 
+`agent.coding.enabled` applies to CLI clients only. The desktop app shares this config file but always runs as a general assistant, so the flag does not change its identity.
+
 ## Writing Configuration
 
 When instructed to add or change a property, edit the appropriate file:

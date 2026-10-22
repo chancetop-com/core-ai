@@ -40,7 +40,7 @@ record CliAgentEnvironmentPrompt(Path workspace, String clientType) implements P
      * its own label here.
      */
     static String interfaceLabel(String clientType) {
-        if ("desktop".equalsIgnoreCase(clientType)) {
+        if (CliClientType.isDesktop(clientType)) {
             return "core-ai desktop app (GUI window, not a terminal; it manages the embedded "
                     + "browser pane used for web tasks)";
         }
