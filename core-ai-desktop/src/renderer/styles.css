@@ -1156,6 +1156,14 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .settings-input { background: var(--bg-input); color: var(--text); border: 1px solid var(--border-strong); border-radius: 7px; padding: 5px 8px; font: inherit; font-size: 13px; width: 120px; }
 .settings-input:focus { outline: none; border-color: var(--accent); }
 
+/* Sections with long content (permission rules) keep their heading + counts, body collapsed by default. */
+.settings-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; max-width: 820px; }
+.settings-section-head h2 { margin: 0; }
+.settings-section-head + .hint { margin-top: 4px; }
+.settings-section-toggle { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
+.settings-section-chevron { display: inline-flex; }
+.settings-section-chevron .ic { width: 12px; height: 12px; }
+
 .update-actions { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .update-bar { height: 6px; max-width: 420px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; background: var(--bg-elev); margin: 6px 0 10px; }
 .update-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }

@@ -5669,6 +5669,37 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
   return root;
 }
 
+/**
+ * A settings section whose body starts collapsed: long content (permission rules) would otherwise
+ * push every section below it off screen. The hint stays visible so the counts are readable closed.
+ */
+function collapsibleSettingsSection(title: string, hint: string): { root: HTMLElement; body: HTMLElement } {
+  const root = el('section', 'settings-section');
+  const head = el('div', 'settings-section-head');
+  head.append(el('h2', undefined, title));
+  const toggle = el('button', 'btn small settings-section-toggle') as HTMLButtonElement;
+  toggle.type = 'button';
+  toggle.setAttribute('aria-expanded', 'false');
+  const toggleLabel = el('span', undefined, 'Show');
+  toggle.append(el('span', 'settings-section-chevron'), toggleLabel);
+  const body = el('div');
+  body.hidden = true;
+  let open = false;
+  const setOpen = (next: boolean): void => {
+    open = next;
+    body.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.title = open ? `Collapse ${title}` : `Expand ${title}`;
+    toggleLabel.textContent = open ? 'Hide' : 'Show';
+    toggle.querySelector('.settings-section-chevron')?.replaceChildren(icon(open ? 'chevron-down' : 'chevron-right'));
+  };
+  toggle.onclick = () => setOpen(!open);
+  head.append(toggle);
+  root.append(head, el('div', 'hint', hint), body);
+  setOpen(false);
+  return { root, body };
+}
+
 async function renderSettingsPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Settings', state.workspace
     ? 'Engine, built-in skills, approval policy, scheduled tasks and permission rules'
@@ -5759,13 +5790,14 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
 
   const permissions = state.workspace ? await call('permissions/get', {}) : null;
   if (permissions) {
-    body.append(el('h2', undefined, 'Permission rules'));
-    body.append(el('div', 'hint', `allow ${(permissions.allow ?? []).length} · deny ${(permissions.deny ?? []).length} (editing comes in a later batch)`));
+    const section = collapsibleSettingsSection('Permission rules',
+      `allow ${(permissions.allow ?? []).length} · deny ${(permissions.deny ?? []).length} (editing comes in a later batch)`);
     const pre = el('pre');
     pre.style.fontFamily = 'var(--mono)';
     pre.style.fontSize = '12px';
     pre.textContent = `allow:\n${(permissions.allow ?? []).join('\n')}\n\ndeny:\n${(permissions.deny ?? []).join('\n')}`;
-    body.append(pre);
+    section.body.append(pre);
+    body.append(section.root);
   }
 
   if (state.workspace) body.append(await renderMediaGenerationSection());
