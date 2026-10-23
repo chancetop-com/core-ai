@@ -19,7 +19,7 @@ class DiscoverySandbox {
     private static SandboxConfig createConfig() {
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
-        config.memoryLimitMb = 512;
+        config.memoryLimitMb = SandboxConstants.DEFAULT_MEMORY_LIMIT_MB;
         config.cpuLimitMillicores = 500;
         config.networkEnabled = Boolean.FALSE;
         config.timeoutSeconds = 86_400; // 24 hours

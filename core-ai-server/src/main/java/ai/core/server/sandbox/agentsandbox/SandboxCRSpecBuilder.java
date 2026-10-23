@@ -105,7 +105,7 @@ public class SandboxCRSpecBuilder {
         container.put("ports", List.of(Map.of("containerPort", RUNTIME_PORT)));
 
         // Resources
-        var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : 512) + "Mi";
+        var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : SandboxConstants.DEFAULT_MEMORY_LIMIT_MB) + "Mi";
         var cpuLimit = (config.cpuLimitMillicores != null ? config.cpuLimitMillicores : 500) + "m";
         container.put("resources", Map.of(
                 "limits", Map.of("memory", memoryLimit, "cpu", cpuLimit),

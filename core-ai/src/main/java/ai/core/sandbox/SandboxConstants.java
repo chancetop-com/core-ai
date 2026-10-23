@@ -35,7 +35,8 @@ public final class SandboxConstants {
 
     public static final String DEFAULT_IMAGE = "chancetop/core-ai-sandbox-runtime:latest";
 
-    public static final int DEFAULT_MEMORY_LIMIT_MB = 512;
+    // Chromium-based tools (headless screenshots, PDF rendering) exceed the old 512 MiB default.
+    public static final int DEFAULT_MEMORY_LIMIT_MB = 2048;
 
     public static final int MAX_MEMORY_LIMIT_MB = 2048;
 

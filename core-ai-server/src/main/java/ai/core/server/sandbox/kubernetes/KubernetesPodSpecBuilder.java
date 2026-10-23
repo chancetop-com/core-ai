@@ -131,7 +131,7 @@ public class KubernetesPodSpecBuilder {
         var limits = new LinkedHashMap<String, Object>();
         var requests = new LinkedHashMap<String, Object>();
 
-        var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : 512) + "Mi";
+        var memoryLimit = (config.memoryLimitMb != null ? config.memoryLimitMb : SandboxConstants.DEFAULT_MEMORY_LIMIT_MB) + "Mi";
         var cpuLimit = config.cpuLimitMillicores != null ? config.cpuLimitMillicores : 500;
 
         limits.put("memory", memoryLimit);

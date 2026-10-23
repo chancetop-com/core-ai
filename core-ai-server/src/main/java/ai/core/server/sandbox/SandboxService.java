@@ -36,7 +36,6 @@ public class SandboxService {
     public static SandboxConfig createDefaultConfig() {
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
-        config.memoryLimitMb = 512;
         config.cpuLimitMillicores = 500;
         config.networkEnabled = Boolean.FALSE;
         config.timeoutSeconds = 3900;
