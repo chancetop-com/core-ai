@@ -30,6 +30,24 @@ Workspace values override global values. If a property is set in both files, the
 | `agent.coding.enabled` | `false` | `false` | Enable coding mode (CLI clients only; the desktop app always runs as a general assistant) |
 | `agent.todo.v2.enabled` | `false` | n/a | Enable todo v2 feature |
 
+## Tool Access
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `agent.tools.disabled` | CSV | — | Tools hidden from the agent, e.g. `web_search,web_fetch` |
+
+Disabled tools are filtered out when the registry materializes: they are neither advertised
+to the model nor dispatchable, and sub-agents inherit the same restriction. Builtin tool-set ids
+can disable a whole group (`builtin-web` expands to `web_search,web_fetch`; see
+`ToolProvider.BUILTIN_*` for the full list). The setting only hides these tools — other tools
+that can reach the network (e.g. `shell_command`) are unaffected.
+
+To run the CLI without web access:
+
+```properties
+agent.tools.disabled=web_search,web_fetch
+```
+
 ## Memory Properties
 
 | Property | Type | Default | Description |

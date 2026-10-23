@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -93,6 +94,6 @@ class CliAgentMediaToolsTest {
                                    String imageModel, String videoModel, MediaModelCatalog catalog) {
         return new CliAgent.Config(null, null, 0, null, Path.of("."), null, false, false, false, false,
                 "session-1", List.of(), List.of(), Map.of(), false, null, imageProvider, videoProvider,
-                imageModel, videoModel, null, null, null, "cli", List.of(), catalog, null);
+                imageModel, videoModel, null, null, null, "cli", List.of(), catalog, null, Set.of());
     }
 }

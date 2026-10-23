@@ -17,6 +17,7 @@ import ai.core.session.ToolPermissionStore;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author lim chen
@@ -31,5 +32,6 @@ record SessionContext(BootstrapResult result, PropertiesFileSource props, int ma
         boolean promptExtractionEnabled, Integer timeLimitSeconds, boolean a2aAutoDiscover,
         MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
         String defaultImageModel, String defaultVideoModel, String defaultImageEditModel,
-        List<HelperEntry> helpers, MediaModelCatalog mediaCatalog, RunBudget runBudget) {
+        List<HelperEntry> helpers, MediaModelCatalog mediaCatalog, RunBudget runBudget,
+        Set<String> disabledTools) {
 }

@@ -55,6 +55,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -212,7 +213,7 @@ public class CliAgent {
         var defaultProvider = config.providers().getDefaultProvider();
         var providerType = config.providers().getProviderType(defaultProvider);
         var modelProvider = providerType != null ? providerType.name() : null;
-        return FactoryContext.of(platform, modelProvider, config.todoV2Enabled());
+        return FactoryContext.of(platform, modelProvider, config.todoV2Enabled(), config.disabledTools());
     }
 
     private static List<ToolCall> cliUserTools(Config config) {
@@ -376,6 +377,7 @@ public class CliAgent {
                              String clientType,
                              List<HelperEntry> helpers,
                              MediaModelCatalog mediaCatalog,
-                             RunBudget runBudget) {
+                             RunBudget runBudget,
+                             Set<String> disabledTools) {
     }
 }

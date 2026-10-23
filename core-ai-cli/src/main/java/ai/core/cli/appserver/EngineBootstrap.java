@@ -8,6 +8,7 @@ import ai.core.cli.CliAppHelper;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
+import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.ModelRegistry;
@@ -32,6 +33,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 
 /**
  * One-time bootstrap for the app-server engine: the same config chain and wiring as {@code CliApp}
@@ -92,6 +94,7 @@ public class EngineBootstrap {
     public final CompressionConfig compressionConfig;
     public final ModelRegistry modelRegistry;
     public final ScheduledTaskStore scheduledTaskStore;
+    public final Set<String> disabledTools;
 
     public EngineBootstrap(Path workspace, Path configFile) {
         this.workspace = workspace.toAbsolutePath();
@@ -129,6 +132,7 @@ public class EngineBootstrap {
         this.modelRegistry = new ModelRegistry(result.llmProviders, props);
         this.scheduledTaskStore = new FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
+        this.disabledTools = CliToolPolicy.disabledTools(props);
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
     }
 

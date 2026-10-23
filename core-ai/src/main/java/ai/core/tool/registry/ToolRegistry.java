@@ -10,8 +10,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 /**
  * Central tool registry — the single source of truth for which tools exist
@@ -24,6 +28,24 @@ public class ToolRegistry {
 
     private final Map<String, ToolProvider> providers = new ConcurrentHashMap<>();
     private final Map<String, Map<String, ToolCall>> providerCache = new ConcurrentHashMap<>();
+    private volatile Set<String> excludedToolNames = Set.of();
+
+    /**
+     * Hides the named tools from every materialization, including providers registered later and
+     * registries derived from this one. Names are matched case-insensitively.
+     */
+    public void excludeTools(Set<String> toolNames) {
+        this.excludedToolNames = toolNames == null ? Set.of() : toolNames.stream()
+                .filter(Objects::nonNull)
+                .map(name -> name.trim().toLowerCase(Locale.ROOT))
+                .filter(name -> !name.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+        LOGGER.debug("excluded tools, names={}", excludedToolNames);
+    }
+
+    public Set<String> excludedToolNames() {
+        return excludedToolNames;
+    }
 
     public void registerProvider(ToolProvider provider) {
         if (provider == null) {
@@ -85,6 +107,9 @@ public class ToolRegistry {
                 var toolMap = resolveToolMap(provider);
                 for (var entry : toolMap.entrySet()) {
                     var name = entry.getKey();
+                    if (isExcluded(name)) {
+                        continue;
+                    }
                     if (tools.putIfAbsent(name, entry.getValue()) == null) {
                         toolProviderIndex.put(name, provider.id());
                     }
@@ -105,6 +130,10 @@ public class ToolRegistry {
             return providerCache.computeIfAbsent(provider.id(), k -> provider.provide());
         }
         return provider.provide();
+    }
+
+    private boolean isExcluded(String toolName) {
+        return !excludedToolNames.isEmpty() && excludedToolNames.contains(toolName.toLowerCase(Locale.ROOT));
     }
 
     public ToolProvider getProvider(String providerId) {

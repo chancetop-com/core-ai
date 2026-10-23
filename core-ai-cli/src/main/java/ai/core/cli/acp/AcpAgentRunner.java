@@ -9,6 +9,7 @@ import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.helper.HelperConfigStore;
@@ -53,6 +54,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -140,7 +142,8 @@ public class AcpAgentRunner {
                 props.property("media.video.model").orElse(null),
                 props.property("media.image.edit.model").orElse(null),
                 CliAppHelper.compressionConfig(props),
-                CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider));
+                CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider),
+                CliToolPolicy.disabledTools(props));
         restoreActiveProvider(props, result.llmProviders);
 
         var agent = buildAgent(ctx);
@@ -210,7 +213,8 @@ public class AcpAgentRunner {
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
-                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null);
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null,
+                    ctx.disabledTools);
 
         Agent coreAgent = CliAgent.of(agentConfig);
         if (coreAgent.hasPersistenceProvider()) {
@@ -254,7 +258,8 @@ public class AcpAgentRunner {
                 ctx.memoryEnabled, ctx.dailyLogsEnabled, ctx.coding, false, sessionId, ctx.remoteAgents, ctx.remoteServers,
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
-                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null);
+                    ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null,
+                    ctx.disabledTools);
 
 
         Agent coreAgent = CliAgent.of(agentConfig);
@@ -426,6 +431,7 @@ public class AcpAgentRunner {
                                 String defaultVideoModel,
                                 String defaultImageEditModel,
                                 CompressionConfig compressionConfig,
-                                MediaModelCatalog mediaCatalog) {
+                                MediaModelCatalog mediaCatalog,
+                                Set<String> disabledTools) {
     }
 }

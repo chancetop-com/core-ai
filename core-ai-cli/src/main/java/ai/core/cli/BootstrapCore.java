@@ -14,6 +14,7 @@ import ai.core.session.ToolPermissionStore;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 record BootstrapCore(PropertiesFileSource props, BootstrapResult result, int maxTurn,
                      boolean memoryEnabled, boolean dailyLogsEnabled, boolean coding,
@@ -23,5 +24,5 @@ record BootstrapCore(PropertiesFileSource props, BootstrapResult result, int max
                       Map<String, SubAgentConfig> subAgentConfigs, boolean a2aAutoDiscover,
                        MediaProvider mediaProvider, MediaProvider imageMediaProvider, MediaProvider videoMediaProvider,
                        String defaultImageModel, String defaultVideoModel, String defaultImageEditModel,
-                      List<HelperEntry> helpers, MediaModelCatalog mediaCatalog) {
+                      List<HelperEntry> helpers, MediaModelCatalog mediaCatalog, Set<String> disabledTools) {
 }

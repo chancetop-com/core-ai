@@ -25,6 +25,7 @@ public final class ToolRegistryFactory {
 
     public static ToolRegistry create(FactoryContext context) {
         var registry = new ToolRegistry();
+        registry.excludeTools(context.disabledTools());
 
         registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_PLANNING, planningTools(context)));
         registry.registerProvider(new BuiltinToolProvider(ToolProvider.BUILTIN_FILES, fileTools(context)));
@@ -43,6 +44,7 @@ public final class ToolRegistryFactory {
 
     public static ToolRegistry derive(ToolRegistry source, Set<String> names) {
         var derived = new ToolRegistry();
+        derived.excludeTools(source.excludedToolNames());
         var mat = source.materialize();
         var dispatchMap = mat.getDispatchMap();
         var individualTools = new LinkedHashMap<String, ToolCall>();

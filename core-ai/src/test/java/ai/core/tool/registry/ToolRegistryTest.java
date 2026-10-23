@@ -12,9 +12,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -244,6 +246,47 @@ class ToolRegistryTest {
     }
 
     @Nested
+    class ExcludedTools {
+        @Test
+        void shouldHideExcludedToolFromDefinitionsAndDispatch() {
+            registry.excludeTools(Set.of("drop"));
+            registry.registerProvider(createProvider("test", 10, Map.of(
+                    "keep", newEchoTool("keep", "keep", ToolExposure.DIRECT),
+                    "drop", newEchoTool("drop", "drop", ToolExposure.DIRECT)
+            )));
+
+            var mat = registry.materialize();
+
+            assertEquals(List.of("keep"), mat.definitions().stream().map(t -> t.function.name).toList());
+            assertNull(mat.getDispatchMap().get("drop"));
+            assertEquals(List.of("keep"), registry.getToolCalls().stream().map(ToolCall::getName).toList());
+        }
+
+        @Test
+        void shouldMatchExcludedNamesCaseInsensitivelyAndTrimmed() {
+            registry.excludeTools(Set.of(" Web_Fetch "));
+            registry.registerProvider(createProvider("test", 10,
+                    Map.of("web_fetch", newEchoTool("web_fetch", "fetch", ToolExposure.DIRECT))));
+
+            assertNull(registry.materialize().getDispatchMap().get("web_fetch"));
+        }
+
+        @Test
+        void shouldKeepExclusionWhenDeriving() {
+            registry.registerProvider(createProvider("test", 10, Map.of(
+                    "keep", newEchoTool("keep", "keep", ToolExposure.DIRECT),
+                    "drop", newEchoTool("drop", "drop", ToolExposure.DIRECT)
+            )));
+            registry.excludeTools(Set.of("drop"));
+
+            var derived = ToolRegistryFactory.derive(registry, Set.of("keep", "drop"));
+
+            assertEquals(List.of("keep"), derived.getToolCalls().stream().map(ToolCall::getName).toList());
+            assertEquals(Set.of("drop"), derived.excludedToolNames());
+        }
+    }
+
+    @Nested
     class Factory {
         @Test
         void shouldCreateRegistryWithBuiltinTools() {
@@ -254,6 +297,18 @@ class ToolRegistryTest {
 
             assertTrue(names.contains("read_file"));
             assertTrue(names.contains("write_file"));
+        }
+
+        @Test
+        void shouldApplyDisabledToolsToFactoryRegistry() {
+            var factoryRegistry = ToolRegistryFactory.create(
+                    new FactoryContext(Platform.WINDOWS_X64, null, false, Set.of("web_fetch", "web_search")));
+
+            var names = factoryRegistry.materialize().getDispatchMap().keySet();
+
+            assertFalse(names.contains("web_fetch"));
+            assertFalse(names.contains("web_search"));
+            assertTrue(names.contains("read_file"));
         }
 
         @Test
