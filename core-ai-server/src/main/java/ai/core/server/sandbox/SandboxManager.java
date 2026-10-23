@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
@@ -187,6 +188,10 @@ public class SandboxManager {
     }
 
     public void cleanupExpired() {
+        cleanupExpired(null);
+    }
+
+    public void cleanupExpired(Consumer<SandboxEntry> beforeRelease) {
         var now = Instant.now();
         var expired = new ArrayList<SandboxEntry>();
 
@@ -202,6 +207,14 @@ public class SandboxManager {
         }
 
         for (var entry : expired) {
+            if (beforeRelease != null) {
+                try {
+                    beforeRelease.accept(entry);
+                } catch (Exception e) {
+                    LOGGER.warn("sandbox pre-release hook failed, releasing anyway: id={}, sessionId={}",
+                            entry.sandbox.getId(), entry.sessionId, e);
+                }
+            }
             LOGGER.info("cleaning up expired sandbox: id={}, sessionId={}, age={}s",
                     entry.sandbox.getId(), entry.sessionId,
                     Duration.between(entry.createdAt, now).getSeconds());
@@ -209,8 +222,7 @@ public class SandboxManager {
         }
 
         if (!expired.isEmpty()) {
-            LOGGER.info("cleaned up {} expired sandboxes, {} remaining",
-                    expired.size(), activeSandboxes.size());
+            LOGGER.info("cleaned up {} expired sandboxes, {} remaining", expired.size(), activeSandboxes.size());
         }
     }
 

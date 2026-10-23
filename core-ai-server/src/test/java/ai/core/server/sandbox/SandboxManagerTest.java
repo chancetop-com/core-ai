@@ -5,6 +5,11 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -62,5 +67,51 @@ class SandboxManagerTest {
         manager.renew("missing");
 
         verify(provider, never()).renew(any(), any());
+    }
+
+    @Test
+    void cleanupExpiredInvokesBeforeReleaseHook() {
+        var provider = mock(SandboxProvider.class);
+        var sandbox = mock(Sandbox.class);
+        when(sandbox.getId()).thenReturn("claim-3");
+        when(provider.acquire(any(), eq("s3"), eq("u3"))).thenReturn(sandbox);
+
+        var config = new SandboxConfig();
+        config.timeoutSeconds = 30;
+
+        var manager = new SandboxManager(provider);
+        manager.acquire(config, "s3", "u3");
+        manager.getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+
+        var hookCalled = new AtomicBoolean();
+        manager.cleanupExpired(entry -> {
+            hookCalled.set(true);
+            assertEquals("s3", entry.sessionId);
+            verify(provider, never()).release(sandbox);
+        });
+
+        assertTrue(hookCalled.get());
+        verify(provider).release(same(sandbox));
+    }
+
+    @Test
+    void cleanupExpiredReleasesSandboxEvenWhenHookFails() {
+        var provider = mock(SandboxProvider.class);
+        var sandbox = mock(Sandbox.class);
+        when(sandbox.getId()).thenReturn("claim-4");
+        when(provider.acquire(any(), eq("s4"), eq("u4"))).thenReturn(sandbox);
+
+        var config = new SandboxConfig();
+        config.timeoutSeconds = 30;
+
+        var manager = new SandboxManager(provider);
+        manager.acquire(config, "s4", "u4");
+        manager.getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+
+        manager.cleanupExpired(entry -> {
+            throw new IllegalStateException("capture failed");
+        });
+
+        verify(provider).release(same(sandbox));
     }
 }

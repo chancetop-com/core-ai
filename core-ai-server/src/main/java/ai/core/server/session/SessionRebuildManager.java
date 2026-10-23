@@ -257,7 +257,8 @@ public class SessionRebuildManager {
             config.datasetId = findOutputDatasetId(snapshot.datasetConfig);
             datasetConfig = snapshot.datasetConfig;
         }
-        var sandboxConfig = snapshot.sandboxConfig != null ? snapshot.sandboxConfig.toConfig() : null;
+        var sandboxConfig = snapshot.sandboxConfig != null
+                ? sandboxService.getEffectiveConfig(snapshot.sandboxConfig) : null;
         var params = new RebuildParams(sessionId, config, snapshot.tools, userId, snapshot.agentName, state,
                 snapshot.agentId, datasetConfig, snapshot.variables, sandboxConfig, allowSandboxReattach);
         return doRebuild(params);

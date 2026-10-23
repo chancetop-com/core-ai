@@ -39,7 +39,7 @@ class AgentSessionManagerSnapshotLifecycleTest {
         when(provider.acquire(any(), any(), any())).thenReturn(delegate);
         var sandboxService = new SandboxService(provider, enabledConfig(), null,
                 new SandboxServiceDependencies(null, snapshotService, null, null, null));
-        var manager = manager(sandboxService, snapshotService);
+        var manager = manager(sandboxService);
         try {
             var sandbox = (LazySandbox) sandboxService.createSessionSandbox(
                     enabledConfig(), "session-1", "user-1", null);
@@ -70,7 +70,7 @@ class AgentSessionManagerSnapshotLifecycleTest {
                 .thenReturn(java.util.Optional.of(delegate));
         var sandboxService = new SandboxService(provider, enabledConfig(), null,
                 new SandboxServiceDependencies(null, snapshotService, null, null, null));
-        var manager = manager(sandboxService, snapshotService);
+        var manager = manager(sandboxService);
         try {
             var sandbox = (LazySandbox) sandboxService.reattachOrCreateSandbox(
                     "sandbox-1", enabledConfig(), "session-1", "user-1", null);
@@ -86,10 +86,9 @@ class AgentSessionManagerSnapshotLifecycleTest {
         }
     }
 
-    private AgentSessionManager manager(SandboxService sandboxService, SandboxSnapshotService snapshotService) {
+    private AgentSessionManager manager(SandboxService sandboxService) {
         var manager = new AgentSessionManager();
         manager.sandboxService = sandboxService;
-        manager.sandboxSnapshotService = snapshotService;
         manager.skillService = mock(SkillService.class);
         manager.mongoSkillProvider = mock(MongoSkillProvider.class);
         manager.skillArchiveBuilder = mock(SkillArchiveBuilder.class);

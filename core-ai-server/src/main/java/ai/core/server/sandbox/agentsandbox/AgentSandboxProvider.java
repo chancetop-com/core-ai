@@ -24,6 +24,9 @@ import java.util.UUID;
 public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentSandboxProvider.class);
     private static final int DEFAULT_LIFETIME_SECONDS = 3600;
+    // Keep the K8s deadline beyond the manager TTL so the TTL cleanup job can capture a snapshot
+    // before Kubernetes deletes the sandbox; the cleanup job runs every five minutes.
+    private static final int LIFETIME_GRACE_SECONDS = 600;
 
     /**
      * Lifetime written as the sandbox deadline (K8s {@code shutdownTime}) when the agent config does
@@ -31,9 +34,10 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
      * sandbox that is still in use.
      */
     static int lifetimeSeconds(SandboxConfig config) {
-        return config != null && config.timeoutSeconds != null && config.timeoutSeconds > 0
+        var timeout = config != null && config.timeoutSeconds != null && config.timeoutSeconds > 0
                 ? config.timeoutSeconds
                 : DEFAULT_LIFETIME_SECONDS;
+        return timeout + LIFETIME_GRACE_SECONDS;
     }
 
     private final AgentSandboxClient client;

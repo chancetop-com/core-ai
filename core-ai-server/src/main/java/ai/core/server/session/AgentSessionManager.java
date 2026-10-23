@@ -20,7 +20,6 @@ import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
-import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
@@ -90,8 +89,6 @@ public class AgentSessionManager {
     FileService fileService;
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
-    @Inject
-    SandboxSnapshotService sandboxSnapshotService;
 
     @Inject EventPublisher eventPublisher;
     @Inject SessionOwnershipRegistry ownershipRegistry;
@@ -378,7 +375,7 @@ public class AgentSessionManager {
         chatMessageService.flushPendingTurn(sessionId);
         skillManager().removeSkillState(sessionId);
         sessionLastActivity.remove(sessionId);
-        SessionSandboxSnapshotHelper.captureBeforeRelease(sandboxService, sandboxSnapshotService, sessionId);
+        sandboxService.captureBeforeRelease(sessionId);
         sandboxService.releaseSandbox(sessionId);
         chatMessageService.onSessionClosed(sessionId);
         sessionChannelService.close(sessionId);

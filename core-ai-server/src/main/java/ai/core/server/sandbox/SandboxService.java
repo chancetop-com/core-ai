@@ -7,6 +7,7 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.file.FileService;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
@@ -103,6 +104,7 @@ public class SandboxService {
         }));
     }
 
+    @SuppressWarnings("this-escape")
     SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox,
                    SandboxServiceDependencies dependencies, ScheduledExecutorService cleanupScheduler) {
         this.sandboxManager = new SandboxManager(provider);
@@ -116,7 +118,10 @@ public class SandboxService {
         this.snapshotService = dependencies.snapshotService();
         this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
         this.cleanupScheduler = cleanupScheduler;
-        cleanupScheduler.scheduleAtFixedRate(new SandboxCleanupJob(sandboxManager, provider), 5, 5, TimeUnit.MINUTES);
+        cleanupScheduler.scheduleAtFixedRate(
+                new SandboxCleanupJob(sandboxManager, provider,
+                        entry -> captureBeforeRelease(entry.sessionId, entry.sandbox.getId())),
+                5, 5, TimeUnit.MINUTES);
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
@@ -279,6 +284,34 @@ public class SandboxService {
         }
     }
 
+    /**
+     * Best-effort snapshot capture before a session's sandbox is released. Used by both the
+     * idle-session close path and the sandbox TTL cleanup path; capture failures never block release.
+     */
+    public void captureBeforeRelease(String sessionId) {
+        captureBeforeRelease(sessionId, null);
+    }
+
+    void captureBeforeRelease(String sessionId, String sandboxId) {
+        if (snapshotService == null || !snapshotService.enabled()) return;
+        try {
+            var sandbox = sessionSandboxes.get(sessionId);
+            if (!(sandbox instanceof LazySandbox lazy)) return;
+            if (sandboxId != null && !sandboxId.equals(lazy.getId())) return;
+            if (!lazy.snapshotDirty()) return;
+            var ip = lazy.ip();
+            var port = lazy.port();
+            if (ip == null || port == 0) return; // sandbox never materialized
+            if (!lazy.isDelegateTracked()) {
+                LOGGER.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
+                return;
+            }
+            snapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
+        } catch (Exception e) {
+            LOGGER.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
+        }
+    }
+
     /** Returns the McpClientManager scoped to this session, creating it if needed. */
     public McpClientManager getOrCreateSessionMcpManager(String sessionId) {
         return sessionMcpProcesses.managerFor(sessionId);
@@ -409,8 +442,13 @@ public class SandboxService {
     // ---- Stats / lifecycle ----
 
     public SandboxConfig getEffectiveConfig(AgentDefinition definition) {
-        if (!enabled || definition == null || definition.sandboxConfig == null) return defaultConfig;
-        return definition.sandboxConfig.toConfig();
+        if (!enabled) return defaultConfig;
+        return getEffectiveConfig(definition == null ? null : definition.sandboxConfig);
+    }
+
+    public SandboxConfig getEffectiveConfig(AgentSandboxConfig config) {
+        if (config == null) return defaultConfig;
+        return config.applyTo(defaultConfig.copy());
     }
 
     public SandboxConfig getDefaultConfig() {

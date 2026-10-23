@@ -4,11 +4,16 @@ import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxStatus;
+import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -55,6 +60,68 @@ class SandboxServiceLifecycleTest {
         service.shutdown();
 
         assertFalse(service.isSandboxEnabled(enabledConfig()));
+    }
+
+    @Test
+    void agentSandboxConfigInheritsUnsetServiceDefaults() {
+        var provider = mock(SandboxProvider.class);
+        var scheduler = mock(ScheduledExecutorService.class);
+        when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
+        var defaultConfig = enabledConfig();
+        defaultConfig.timeoutSeconds = 3900;
+        defaultConfig.memoryLimitMb = 2048;
+        var service = new SandboxService(provider, defaultConfig, null, nullDependencies(), scheduler);
+
+        var definition = new AgentDefinition();
+        definition.sandboxConfig = new AgentSandboxConfig();
+        definition.sandboxConfig.enabled = Boolean.TRUE;
+        definition.sandboxConfig.image = "agent-image";
+        definition.sandboxConfig.memoryLimitMb = 1024;
+
+        var effective = service.getEffectiveConfig(definition);
+
+        assertEquals(3900, effective.timeoutSeconds);
+        assertEquals(1024, effective.memoryLimitMb);
+        assertEquals("agent-image", effective.image);
+        assertEquals(Boolean.TRUE, effective.enabled);
+    }
+
+    @Test
+    void ttlCleanupCapturesDirtySessionSandboxBeforeRelease() {
+        var provider = mock(SandboxProvider.class);
+        var delegate = mock(Sandbox.class);
+        when(delegate.getId()).thenReturn("sandbox-1");
+        when(delegate.getStatus()).thenReturn(SandboxStatus.READY);
+        when(delegate.ip()).thenReturn("10.0.0.1");
+        when(delegate.port()).thenReturn(8080);
+        when(delegate.image()).thenReturn("img:latest");
+        when(provider.acquire(any(), eq("session-1"), eq("user-1"))).thenReturn(delegate);
+
+        var snapshotService = mock(SandboxSnapshotService.class);
+        when(snapshotService.enabled()).thenReturn(true);
+        when(snapshotService.beginEpoch("session-1")).thenReturn(1L);
+        when(snapshotService.restoreLatestWithMetadata("session-1", "user-1", "10.0.0.1", 8080))
+                .thenReturn(new SandboxSnapshotService.RestoreResult(
+                        SandboxSnapshotService.RestoreOutcome.NONE, null));
+
+        var scheduler = mock(ScheduledExecutorService.class);
+        var jobCaptor = ArgumentCaptor.forClass(Runnable.class);
+        when(scheduler.scheduleAtFixedRate(jobCaptor.capture(), eq(5L), eq(5L), eq(TimeUnit.MINUTES)))
+                .thenReturn(null);
+        var config = enabledConfig();
+        config.timeoutSeconds = 30;
+        var service = new SandboxService(provider, config, null,
+                new SandboxServiceDependencies(null, snapshotService, null, null, null), scheduler);
+
+        var sandbox = (LazySandbox) service.createSessionSandbox(config, "session-1", "user-1", null);
+        sandbox.uploadFile("/tmp/changed.txt", "changed".getBytes(StandardCharsets.UTF_8));
+        service.sandboxManager().getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+
+        jobCaptor.getValue().run();
+
+        verify(snapshotService).captureBeforeRelease(
+                "session-1", "user-1", 1L, "10.0.0.1", 8080, "img:latest");
+        verify(provider).release(same(delegate));
     }
 
     @Test

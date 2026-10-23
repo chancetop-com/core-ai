@@ -163,6 +163,8 @@ class SessionRebuildManagerTest {
         });
         var sandboxService = mock(SandboxService.class);
         when(sandboxService.getSandboxId("session-1")).thenReturn("sandbox-1");
+        when(sandboxService.getEffectiveConfig(any(AgentSandboxConfig.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, AgentSandboxConfig.class).toConfig());
         var artifactSetup = mock(ChatArtifactSetup.class);
         var publicUrlConfiguration = mock(PublicUrlConfiguration.class);
         var systemSettingsService = mock(SystemSettingsService.class);
@@ -260,6 +262,8 @@ class SessionRebuildManagerTest {
         });
         var sandboxService = mock(SandboxService.class);
         when(sandboxService.getSandboxId("session-1")).thenReturn("legacy-sandbox");
+        when(sandboxService.getEffectiveConfig(any(AgentSandboxConfig.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, AgentSandboxConfig.class).toConfig());
         var toolRegistry = mock(ToolRegistryService.class);
         when(toolRegistry.resolveToolRefs(java.util.List.of(safeTool), "session-1", "viewer"))
                 .thenReturn(java.util.List.of());
@@ -512,6 +516,8 @@ class SessionRebuildManagerTest {
         var subAgentManager = mock(SessionSubAgentManager.class);
         var sandboxService = mock(SandboxService.class);
         when(sandboxService.getSandboxId("session-1")).thenReturn("legacy-sandbox");
+        when(sandboxService.getEffectiveConfig(any(AgentSandboxConfig.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0, AgentSandboxConfig.class).toConfig());
         @SuppressWarnings("unchecked")
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         var manager = runtimeRebuildManager(chatMessageService, agents, mock(SessionSkillManager.class),

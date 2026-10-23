@@ -50,7 +50,9 @@ Runtime（sandbox 镜像内，新增 2 个接口）：
 
 Server（新增 `SandboxSnapshotService` + 两个钩子）：
 
-- release 钩子：capture 只挂在 `AgentSessionManager.closeSession()`（60 分钟 idle 清理与用户显式 close 共用此路径）调用的 `releaseSandbox(sessionId, capture=true)` 上，且本 epoch 内存 dirty 为 true 才触发：`capture` → Blob 上传 → Mongo CAS 置 AVAILABLE → 异步删除上一代（文档 + blob）→ release。其余 release 路径一律不 capture：AgentRunner / WorkflowRunner / OCG 的 per-run release（session 不会 resume）、`SandboxManager.cleanupExpired()` 兜底、`ensureReady()` 换车（REPLACING，旧 sandbox 已损坏）、`shutdown()`（部署场景，termination grace 内装不下大包上传——**部署仍丢文件是 v1 已知限制，capture-on-shutdown 列为 v2 候选**）。
+- release 钩子：capture 挂在两条可能让 session 稍后恢复的 release 路径上：`AgentSessionManager.closeSession()`（60 分钟 idle 清理与用户显式 close 共用此路径）和 `SandboxManager.cleanupExpired()`（sandbox TTL 先到时，由 `SandboxService.captureBeforeRelease` 在 release 前捕获）。两条路径都要求本 epoch 内存 dirty 为 true 才触发：`capture` → Blob 上传 → Mongo CAS 置 AVAILABLE → 异步删除上一代（文档 + blob）→ release。其余 release 路径一律不 capture：AgentRunner / WorkflowRunner / OCG 的 per-run release（session 不会 resume）、`ensureReady()` 换车（REPLACING，旧 sandbox 已损坏）、`shutdown()`（部署场景，termination grace 内装不下大包上传——**部署仍丢文件是 v1 已知限制，capture-on-shutdown 列为 v2 候选**）。
+- sandbox 配置继承：agent 的 `sandbox_config` 只覆盖显式设置的字段，未设置的 `timeout_seconds` 必须继承服务默认值（`SandboxService.createDefaultConfig()`，默认 3900s）；否则 agent 配置会把默认 TTL 覆盖成 1800s，sandbox 在 60 分钟 session idle close 之前就被 TTL 清理，capture 来不及执行。
+- provider TTL grace：`AgentSandboxProvider` 写入 K8s 的 `shutdownTime` 必须比 manager TTL 多一个 cleanup 周期（当前 +600s）。cleanup job 每 5 分钟运行一次；如果 K8s deadline 与 manager TTL 相同，K8s 会在 cleanup 前删除 sandbox，capture 只能拿到连接超时。
 - `LazySandbox.ensureReady()` 钩子：acquire → epoch 自增 → 查该 session 最新 AVAILABLE 且 `runtime_major` 匹配的 snapshot → 下载 → restore（失败原地重试 1 次）→ 再执行原有 postAcquireHook（pending 文件上传，保证用户离开期间新上传的文件覆盖 snapshot 中的旧同名副本）→ 成功或无 snapshot 才发 `READY`；两次失败 → 空 sandbox 继续，warning 文案放进最终 `READY` 事件的 message 字段（前端对 sandbox 事件是单 segment 替换渲染，单独发 warning 事件会立刻被随后的 READY 覆盖，用户看不见）。
 - `ObjectStorageService` 需新增 `uploadObject` / `deleteObject` 两个方法（现接口只有 SAS 凭证生成 + download；Azure 实现沿用现有 SAS + JDK HttpClient 模式，SAS 权限加 write / delete）。
 

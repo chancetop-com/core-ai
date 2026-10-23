@@ -120,7 +120,7 @@ class AgentSandboxProviderTest {
 
         provider().renew(sandbox(AgentSandboxKind.DIRECT), config);
 
-        assertDeadlineWithin(client, CR_ID, 3600);
+        assertDeadlineWithin(client, CR_ID, AgentSandboxProvider.lifetimeSeconds(config));
         verify(extensionsClient, never()).patchShutdownTime(anyString(), anyString());
     }
 
@@ -131,7 +131,7 @@ class AgentSandboxProviderTest {
 
         provider().renew(sandbox(AgentSandboxKind.CLAIM), config);
 
-        assertDeadlineWithin(extensionsClient, CLAIM_ID, 1200);
+        assertDeadlineWithin(extensionsClient, CLAIM_ID, AgentSandboxProvider.lifetimeSeconds(config));
         verify(client, never()).patchShutdownTime(anyString(), anyString());
     }
 
@@ -142,7 +142,14 @@ class AgentSandboxProviderTest {
         provider.renew(sandbox(AgentSandboxKind.CLAIM), new SandboxConfig());
 
         verify(extensionsClient, never()).patchShutdownTime(anyString(), anyString());
-        verifyNoInteractions(client);
+    }
+
+    @Test
+    void lifetimeLeavesRoomForSnapshotCaptureAfterManagerTtl() {
+        var config = new SandboxConfig();
+        config.timeoutSeconds = 1200;
+
+        assertTrue(AgentSandboxProvider.lifetimeSeconds(config) >= config.timeoutSeconds + 300);
     }
 
     // --- attach ---

@@ -3,6 +3,7 @@ package ai.core.server.domain;
 import ai.core.sandbox.SandboxConfig;
 import core.framework.mongo.Field;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -61,18 +62,21 @@ public class AgentSandboxConfig {
     public Map<String, String> environmentVariables;
 
     public SandboxConfig toConfig() {
-        var config = new SandboxConfig();
-        config.enabled = enabled;
-        config.image = image;
-        config.memoryLimitMb = memoryLimitMb;
-        config.cpuLimitMillicores = cpuLimitMillicores;
-        config.timeoutSeconds = timeoutSeconds;
-        config.networkEnabled = networkEnabled;
-        config.gitRepoUrl = gitRepoUrl;
-        config.gitBranch = gitBranch;
-        config.tmpSizeLimit = tmpSizeLimit;
-        config.maxAsyncTasks = maxAsyncTasks;
-        config.env = environmentVariables;
+        return applyTo(new SandboxConfig());
+    }
+
+    public SandboxConfig applyTo(SandboxConfig config) {
+        if (enabled != null) config.enabled = enabled;
+        if (image != null) config.image = image;
+        if (memoryLimitMb != null) config.memoryLimitMb = memoryLimitMb;
+        if (cpuLimitMillicores != null) config.cpuLimitMillicores = cpuLimitMillicores;
+        if (timeoutSeconds != null) config.timeoutSeconds = timeoutSeconds;
+        if (networkEnabled != null) config.networkEnabled = networkEnabled;
+        if (gitRepoUrl != null) config.gitRepoUrl = gitRepoUrl;
+        if (gitBranch != null) config.gitBranch = gitBranch;
+        if (tmpSizeLimit != null) config.tmpSizeLimit = tmpSizeLimit;
+        if (maxAsyncTasks != null) config.maxAsyncTasks = maxAsyncTasks;
+        if (environmentVariables != null) config.env = new LinkedHashMap<>(environmentVariables);
         return config;
     }
 }

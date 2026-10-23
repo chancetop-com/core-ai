@@ -1,5 +1,6 @@
 package ai.core.sandbox;
 
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
@@ -40,6 +41,22 @@ public class SandboxConfig {
     public Integer maxAsyncTasks = SandboxConstants.DEFAULT_MAX_ASYNC_TASKS;
 
     public Map<String, String> env;
+
+    public SandboxConfig copy() {
+        var copy = new SandboxConfig();
+        copy.enabled = enabled;
+        copy.image = image;
+        copy.memoryLimitMb = memoryLimitMb;
+        copy.cpuLimitMillicores = cpuLimitMillicores;
+        copy.timeoutSeconds = timeoutSeconds;
+        copy.networkEnabled = networkEnabled;
+        copy.gitRepoUrl = gitRepoUrl;
+        copy.gitBranch = gitBranch;
+        copy.tmpSizeLimit = tmpSizeLimit;
+        copy.maxAsyncTasks = maxAsyncTasks;
+        copy.env = env == null ? null : new LinkedHashMap<>(env);
+        return copy;
+    }
 
     public void validate() {
         if (memoryLimitMb != null) {
