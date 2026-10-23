@@ -1,15 +1,15 @@
-import { act, createEvent, fireEvent, render, screen } from '@testing-library/react';
+import { act, createEvent, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRef } from 'react';
 import ChatComposer from './ChatComposer';
 import type { ChatComposerHandle } from './ChatComposer';
 
-function renderComposer(onSend = vi.fn()) {
+function renderComposer(onSend = vi.fn(), status: 'idle' | 'running' = 'idle') {
   const ref = createRef<ChatComposerHandle>();
   render(<ChatComposer
     ref={ref}
-    status="idle"
+    status={status}
     selectedAgentId="agent-1"
     messagesContainerRef={{ current: null }}
     loadedToolIds={new Set()}
@@ -186,5 +186,16 @@ describe('ChatComposer', () => {
     fireEvent.keyDown(textarea(), { key: 'Enter' });
 
     expect(onSend).toHaveBeenCalledWith('hello', []);
+  });
+
+  it('keeps the composer usable while a turn is running', async () => {
+    const onSend = vi.fn();
+    renderComposer(onSend, 'running');
+
+    expect(textarea().disabled).toBe(false);
+    typeInto('steer now');
+    fireEvent.keyDown(textarea(), { key: 'Enter' });
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('steer now', []));
   });
 });

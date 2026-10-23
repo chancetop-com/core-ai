@@ -46,6 +46,7 @@ public final class ExecutionContext {
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private List<AttachedContent> attachedContents;
+    private volatile PendingUserInputQueue pendingUserInput;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
     private final TodoStoreFactory todoStoreFactory;
@@ -198,6 +199,17 @@ public final class ExecutionContext {
 
     public void setAttachedContents(List<AttachedContent> attachedContents) {
         this.attachedContents = attachedContents == null || attachedContents.isEmpty() ? null : List.copyOf(attachedContents);
+    }
+
+    /**
+     * Set only while a session turn is executing; null for standalone runs and between turns.
+     */
+    public PendingUserInputQueue getPendingUserInput() {
+        return pendingUserInput;
+    }
+
+    public void setPendingUserInput(PendingUserInputQueue pendingUserInput) {
+        this.pendingUserInput = pendingUserInput;
     }
 
     public void setLlmProvider(LLMProvider llmProvider) {

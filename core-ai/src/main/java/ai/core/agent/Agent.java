@@ -148,6 +148,7 @@ public class Agent extends Node<Agent> {
         var agentOut = new StringBuilder();
         do {
             if (isCancelled()) break;
+            PendingUserInputInjector.inject(this);
             var mat = toolRegistry.materialize(getExecutionContext());
             var turnMsgList = turn(getMessages(), mat, constructionAssistantMsg);
             logger.debug("Agent[{}] turn {}: received {} messages", getName(), currentIteCount + 1, turnMsgList.size());
@@ -163,7 +164,7 @@ public class Agent extends Node<Agent> {
             }
             currentIteCount++;
         } while (!isCancelled()
-                && AgentHelper.lastIsToolMsg(getMessages())
+                && (AgentHelper.lastIsToolMsg(getMessages()) || PendingUserInputInjector.hasPending(this))
                 && currentIteCount < maxTurnNumber);
 
         setOutput(agentOut.toString());

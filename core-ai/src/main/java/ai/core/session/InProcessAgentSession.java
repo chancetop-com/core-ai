@@ -35,6 +35,7 @@ public class InProcessAgentSession implements AgentSession {
     private final Agent agent;
     private final PermissionGate permissionGate;
     private final SessionCommandQueue commandQueue;
+    private final SessionTurnInput turnInput;
     private final TurnDriver turnDriver;
     private final List<AgentEventListener> listeners = new CopyOnWriteArrayList<>();
     // Set when RUNNING is dispatched, cleared by whoever dispatches the turn's terminal event.
@@ -49,6 +50,7 @@ public class InProcessAgentSession implements AgentSession {
         this.footprint = new SessionFootprintTracker(agent);
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
+        this.turnInput = new SessionTurnInput(commandQueue, agent, sessionId);
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
@@ -73,6 +75,7 @@ public class InProcessAgentSession implements AgentSession {
         this.footprint = new SessionFootprintTracker(agent);
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
+        this.turnInput = new SessionTurnInput(commandQueue, agent, sessionId);
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
@@ -107,9 +110,16 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+        if (turnInput.offer(message, variables, attachedContents)) {
+            debug("message accepted for the running turn");
+            return;
+        }
         if (commandQueue.enqueueUserInput(message, variables, attachedContents)) return;
-        // the queue budget is a protection, not a silent drop: say so, and leave the session idle
         logger.warn("message refused, session queue is full, sessionId={}", sessionId);
+        // A terminal ErrorEvent would clear the running turn's SSE replay buffer and make the
+        // client treat the session as finished. Keep the turn alive; the rejection is logged.
+        if (turnActive.get()) return;
+        // The queue budget is a protection, not a silent drop: say so, and leave the session idle.
         dispatchEvent(ErrorEvent.of(sessionId,
                 "too many messages are queued for this session, wait for the running turn to finish", "QUEUE_FULL"));
         dispatchEvent(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
@@ -120,6 +130,7 @@ public class InProcessAgentSession implements AgentSession {
         var turnToken = agent.getCancellationToken().createChild();
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
+        var input = turnInput.begin();
         turnActive.set(true);
         turnStartedAtMs = System.currentTimeMillis();
         var turnDeadline = SessionTurnWatchdog.schedule(turnToken, sessionId, turnActive::get);
@@ -153,6 +164,7 @@ public class InProcessAgentSession implements AgentSession {
             persistOnFailure();
             dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), ""), SessionStatus.ERROR);
         } finally {
+            turnInput.end(input);
             turnDeadline.cancel(false);
             threadUnbind.run();
             turnToken.disconnect();
@@ -303,8 +315,13 @@ public class InProcessAgentSession implements AgentSession {
 
     public boolean hasPendingWork() {
         var taskManager = agent.getExecutionContext().getTaskManager();
-        return isTurnRunning() || !commandQueue.isEmpty()
+        return isTurnRunning() || turnInput.hasPending() || !commandQueue.isEmpty()
                 || taskManager != null && taskManager.hasRunningTasks();
+    }
+
+    /** Messages accepted for the running turn but not yet injected before a model call. */
+    public int pendingUserInputCount() {
+        return turnInput.pendingCount();
     }
 
     public void cancelBackgroundTasks() {

@@ -62,4 +62,20 @@ class SessionCommandQueueTest {
         assertEquals(1, batch.values().size());
         assertFalse(queue.isEmpty());
     }
+
+    @Test
+    void keepsFifoOrderWithinTheSamePriority() {
+        var queue = new SessionCommandQueue();
+        for (var i = 0; i < 20; i++) {
+            assertTrue(queue.enqueueUserInput("m" + i, null, null));
+        }
+        queue.enqueueTaskNotification("<task/>");
+
+        var batch = queue.drainSameMode();
+        assertEquals(SessionCommandQueue.CommandMode.USER_INPUT, batch.mode());
+        assertEquals(20, batch.values().size());
+        for (var i = 0; i < 20; i++) {
+            assertEquals("m" + i, batch.values().get(i).value());
+        }
+    }
 }

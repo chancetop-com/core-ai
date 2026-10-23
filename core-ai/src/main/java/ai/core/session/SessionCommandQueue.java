@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Predicate;
@@ -24,8 +25,10 @@ public class SessionCommandQueue {
     private static final Pattern TASK_ID_PATTERN = Pattern.compile("<task-id>\\s*([^<]+?)\\s*</task-id>");
 
     private final Queue<QueuedCommand> queue = new PriorityQueue<>(
-            Comparator.comparingInt(a -> a.mode().priority)
+            Comparator.comparingInt((QueuedCommand command) -> command.mode().priority)
+                    .thenComparingLong(QueuedCommand::sequence)
     );
+    private final AtomicLong sequence = new AtomicLong();
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
     private volatile Predicate<String> consumedTaskFilter;
@@ -48,19 +51,19 @@ public class SessionCommandQueue {
      *         visible error and idle status instead of silently growing an unbounded queue.
      */
     public boolean enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
-        return enqueue(new QueuedCommand(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents)));
+        return enqueue(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents));
     }
 
     public boolean enqueueTaskNotification(String value) {
-        return enqueue(new QueuedCommand(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null)));
+        return enqueue(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null));
     }
 
-    private boolean enqueue(QueuedCommand command) {
+    private boolean enqueue(CommandMode mode, QueuedMessage message) {
         lock.lock();
         try {
             var max = SessionRuntimeLimits.current().maxQueuedMessages;
             if (max > 0 && queue.size() >= max) return false;
-            queue.add(command);
+            queue.add(new QueuedCommand(mode, message, sequence.getAndIncrement()));
             notEmpty.signalAll();
             return true;
         } finally {
@@ -182,7 +185,7 @@ public class SessionCommandQueue {
 
     }
 
-    public record QueuedCommand(CommandMode mode, QueuedMessage value) {
+    public record QueuedCommand(CommandMode mode, QueuedMessage value, long sequence) {
 
     }
 

@@ -3562,9 +3562,17 @@ async function sendCurrent(): Promise<void> {
   surface.draft = '';
   addMessageBubble(view, 'user', text.trim(), attachments);
   scrollTranscript(view, true);
+  // A message typed while the turn runs steers it: seal the current assistant bubble and continue
+  // in a new one below the user message, but keep the turn's original start time.
+  const steering = view.status === 'running' || state.status === 'running';
+  const startedAt = steering && view.turnClock ? view.turnClock.startedAt : Date.now();
+  if (steering && view.turnClock?.chip) {
+    view.turnClock.chip.textContent = `Steered · ${formatElapsed(Date.now() - startedAt)}`;
+    view.turnClock.chip.classList.remove('busy');
+  }
   resetStreaming(view);
   stopTurnClock(view);
-  view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
+  view.turnClock = { startedAt, tick: null, chip: null };
   // Open the turn bubble right away: the first engine event can be a full model round trip away, and
   // until then the ticking "Running · Ns" chip is the only sign of life (the CLI spinner works the same way).
   ensureStreaming(view);

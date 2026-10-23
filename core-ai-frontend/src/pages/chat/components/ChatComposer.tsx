@@ -532,7 +532,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     const text = input.trim();
     const readyAttachments = pendingAttachments.filter(attachment => !attachment.uploading);
     const hasAttachments = readyAttachments.length > 0;
-    if ((!text && !hasAttachments) || status !== 'idle' || !selectedAgentId) return;
+    if ((!text && !hasAttachments) || !selectedAgentId) return;
 
     setInput('');
     setIsInputExpanded(false);
@@ -549,7 +549,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
       container: attachment.container,
       blob_name: attachment.blobName,
     })));
-  }, [input, onSend, pendingAttachments, selectedAgentId, status]);
+  }, [input, onSend, pendingAttachments, selectedAgentId]);
 
   const updateMention = useCallback((element: HTMLTextAreaElement) => {
     const trigger = findMentionTrigger(element.value, element.selectionStart ?? element.value.length);
@@ -730,7 +730,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
                 color: 'var(--color-text)',
                 ...(isInputExpanded ? { minHeight: '80px' } : {}),
               }}
-              disabled={status !== 'idle' || !selectedAgentId}
+              disabled={!selectedAgentId}
             />
           </span>
 
@@ -762,15 +762,15 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
             <Mic size={18} />
           </button>
 
-          {status === 'idle' ? (
-            <button
-              onClick={() => void handleSend()}
-              disabled={(!input.trim() && pendingAttachments.every(attachment => attachment.uploading)) || !selectedAgentId}
-              className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40"
-              style={{ background: 'var(--color-primary)', color: 'white' }}>
-              <Send size={18} />
-            </button>
-          ) : (
+          <button
+            onClick={() => void handleSend()}
+            disabled={(!input.trim() && pendingAttachments.every(attachment => attachment.uploading)) || !selectedAgentId}
+            className="p-3 rounded-xl cursor-pointer transition-colors disabled:opacity-40"
+            style={{ background: 'var(--color-primary)', color: 'white' }}>
+            <Send size={18} />
+          </button>
+
+          {status === 'running' && (
             <button
               onClick={onCancel}
               className="p-3 rounded-xl cursor-pointer transition-colors"

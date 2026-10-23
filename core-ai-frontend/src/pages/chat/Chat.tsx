@@ -980,36 +980,37 @@ export default function Chat() {
         }
         setMessages(prev => {
           const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last?.role === 'agent') {
-            const segments = [...(last.segments || [])];
+          // A steering message may sit after the agent bubble that owns the tool call,
+          // so search every agent bubble, newest first.
+          for (let mi = updated.length - 1; mi >= 0; mi--) {
+            const message = updated[mi];
+            if (message.role !== 'agent') continue;
+            const segments = [...(message.segments || [])];
             // Search all tools segments for this callId
             for (let si = 0; si < segments.length; si++) {
               const seg = segments[si];
-              if (seg.type === 'tools') {
-                const tools = [...seg.tools];
-                // Try to find at top level
-                const idx = tools.findIndex(t => t.callId === resultEvent.call_id);
-                if (idx >= 0) {
-                  tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
+              if (seg.type !== 'tools') continue;
+              const tools = [...seg.tools];
+              // Try to find at top level
+              const idx = tools.findIndex(t => t.callId === resultEvent.call_id);
+              if (idx >= 0) {
+                tools[idx] = { ...tools[idx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
+                segments[si] = { ...seg, tools };
+                updated[mi] = { ...message, segments };
+                return updated;
+              }
+              // Try to find in children
+              for (let i = 0; i < tools.length; i++) {
+                const parent = tools[i];
+                if (!parent.children) continue;
+                const childIdx = parent.children.findIndex(t => t.callId === resultEvent.call_id);
+                if (childIdx >= 0) {
+                  const children = [...parent.children];
+                  children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
+                  tools[i] = { ...parent, children };
                   segments[si] = { ...seg, tools };
-                  updated[updated.length - 1] = { ...last, segments };
+                  updated[mi] = { ...message, segments };
                   return updated;
-                }
-                // Try to find in children
-                for (let i = 0; i < tools.length; i++) {
-                  const parent = tools[i];
-                  if (parent.children) {
-                    const childIdx = parent.children.findIndex(t => t.callId === resultEvent.call_id);
-                    if (childIdx >= 0) {
-                      const children = [...parent.children];
-                      children[childIdx] = { ...children[childIdx], type: 'result', result: resultEvent.result, resultStatus: resultEvent.status || 'COMPLETED', toolType: resultEvent.tool_type };
-                      tools[i] = { ...parent, children };
-                      segments[si] = { ...seg, tools };
-                      updated[updated.length - 1] = { ...last, segments };
-                      return updated;
-                    }
-                  }
                 }
               }
             }
@@ -1030,8 +1031,11 @@ export default function Chat() {
         setAwaitInfo(info);
         setMessages(prev => {
           const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last?.role === 'agent') updated[updated.length - 1] = { ...last, approval: info };
+          for (let i = updated.length - 1; i >= 0; i--) {
+            if (updated[i].role !== 'agent') continue;
+            updated[i] = { ...updated[i], approval: info };
+            break;
+          }
           return updated;
         });
         break;
@@ -1612,7 +1616,41 @@ export default function Chat() {
   }, [availableTools, draftDatasetConfigs, preSkillIds, preSubAgentIds, preToolIds, promoteOptimisticSession, selectedAgentId, sessionId, showToast]);
 
   const handleSend = useCallback(async (text: string, attachments: ComposerAttachment[]) => {
-    if ((!text && attachments.length === 0) || status !== 'idle' || !selectedAgentId) return;
+    if ((!text && attachments.length === 0) || !selectedAgentId) return;
+
+    const apiAttachments = attachments.length > 0
+      ? attachments.map(a => ({
+        url: a.url,
+        type: a.type,
+        file_name: a.file_name,
+        content_type: a.content_type,
+        category: a.category,
+        container: a.container,
+        blob_name: a.blob_name,
+      }))
+      : undefined;
+
+    // A message typed while the turn is running steers the current turn; it must not open a
+    // second SSE stream (that would replace the stream carrying the running turn's events).
+    if (status === 'running') {
+      if (!sessionId || sessionId === DRAFT_CHAT_SESSION_ID) {
+        showToast('Session is still starting — try again in a moment.');
+        return;
+      }
+      setMessages(prev => [...prev, {
+        role: 'user',
+        segments: [{ type: 'text', content: text }],
+        attachments: attachments.length > 0 ? attachments : undefined,
+        timestamp: new Date().toISOString(),
+      }]);
+      try {
+        await sessionApi.sendMessage(sessionId, text, variableValues, apiAttachments);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        showToast(`Send failed: ${msg}. Please retry.`);
+      }
+      return;
+    }
 
     hydrateRequestSeqRef.current += 1;
     if (sessionId) cancelledSessionIdsRef.current.delete(sessionId);
@@ -1634,17 +1672,7 @@ export default function Chat() {
         sid,
         text,
         variableValues,
-        attachments.length > 0
-          ? attachments.map(a => ({
-            url: a.url,
-            type: a.type,
-            file_name: a.file_name,
-            content_type: a.content_type,
-            category: a.category,
-            container: a.container,
-            blob_name: a.blob_name,
-          }))
-          : undefined,
+        apiAttachments,
       );
       setSidebarRefreshKey(k => k + 1);
     } catch (err) {
@@ -1674,8 +1702,11 @@ export default function Chat() {
       setAwaitInfo(null);
       setMessages(prev => {
         const updated = [...prev];
-        const last = updated[updated.length - 1];
-        if (last?.role === 'agent') updated[updated.length - 1] = { ...last, approval: undefined };
+        for (let i = updated.length - 1; i >= 0; i--) {
+          if (updated[i].role !== 'agent') continue;
+          updated[i] = { ...updated[i], approval: undefined };
+          break;
+        }
         return updated;
       });
     } catch (err) {
