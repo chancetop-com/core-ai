@@ -3,7 +3,7 @@
 > 状态：**已实现（2026-10-23）**
 > 日期：2026-10-23
 > 目的：用户消息在 agent 正在执行工具链时也能被接收，并在**下一次 model call 之前**注入当前 turn，而不是等整个 turn 结束
-> 关联：[design-agent-runtime-governance.md](design-agent-runtime-governance.md)、[design-session-completion-notify.md](design-session-completion-notify.md)
+> 关联：Agent 运行时治理（design-agent-runtime-governance，待补充）、会话完成通知（design-session-completion-notify，待补充）
 
 ## 0. 决策摘要
 
