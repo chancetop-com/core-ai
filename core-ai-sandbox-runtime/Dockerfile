@@ -27,11 +27,12 @@ RUN curl -fsSL https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.gz -
     rm /tmp/node.tar.gz
 
 # Layer 3: python deps (changes occasionally)
+# Playwright drives the system Chromium (executable_path=/usr/bin/chromium); no browser download.
 RUN pip install --no-cache-dir \
     numpy pandas scipy sympy \
     matplotlib seaborn plotly kaleido \
     scikit-learn statsmodels \
-    pillow openpyxl nodriver weasyprint
+    pillow openpyxl nodriver weasyprint playwright==1.64.1
 
 # Layer 3.5: uv (fast Python package manager with uvx runner)
 # Using the official binary release instead of pip install to ensure both uv and uvx
