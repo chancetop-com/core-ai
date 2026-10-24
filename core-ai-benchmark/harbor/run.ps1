@@ -9,8 +9,11 @@ param(
     [string]$JobName = "",
     [string]$DatasetDir = "",
     [string]$DatasetRef = "main",
-    [string]$CliVersion = "2.0.58",
+    [string]$CliVersion = "2.0.61",
     [string]$CliBinary = "",
+    [string]$DisabledTools = "web_search,web_fetch",
+    [string]$NetworkMode = "",
+    [string[]]$AllowHost = @(),
     [int]$TimeBudgetSeconds = -1,
     [int]$BudgetMarginSeconds = 15,
     [int]$TokenBudget = -1,
@@ -48,7 +51,11 @@ Options:
   -DatasetDir DIR      Local Terminal-Bench 2.1 checkout
   -DatasetRef REF      Git ref for the dataset (default: main)
   -CliBinary PATH      Prebuilt Linux core-ai-cli binary
-  -CliVersion VER      core-ai-cli release version to download (default: 2.0.58)
+  -CliVersion VER      core-ai-cli release version to download (default: 2.0.61)
+  -DisabledTools CSV   Tools hidden from the agent (default: web_search,web_fetch)
+  -NetworkMode MODE    Pin the dataset network policy: allowlist|no-network|public
+                       (default: leave task.toml untouched; see network_policy.py)
+  -AllowHost HOST      Extra egress host for every task; repeatable
   -TimeBudgetSeconds N Agent wall-clock budget; -1=auto from task.toml, 0=disable
   -BudgetMarginSeconds N Safety margin for auto budget (default: 15)
   -TokenBudget N       Total token budget; -1=disable
@@ -165,6 +172,18 @@ if ($DatasetRef -ne "main") {
     git -C $DatasetDir checkout -q FETCH_HEAD
 }
 
+if ($NetworkMode) {
+    $PythonForPolicy = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $PythonForPolicy) { throw "Python is required for -NetworkMode" }
+    $PolicyArgs = @(
+        (Join-Path $ScriptDir "network_policy.py"),
+        "--dataset-dir", $DatasetDir,
+        "--mode", $NetworkMode
+    )
+    foreach ($host_ in $AllowHost) { $PolicyArgs += @("--extra-host", $host_) }
+    & $PythonForPolicy.Source @PolicyArgs
+}
+
 $env:PYTHONPATH = $ScriptDir
 $HarborArgs = @(
     "run",
@@ -177,6 +196,7 @@ $HarborArgs = @(
     "--jobs-dir", $JobsDir
 )
 if ($ThinkingEffort) { $HarborArgs += @("--ak", "reasoning_effort=$ThinkingEffort") }
+if ($DisabledTools) { $HarborArgs += @("--ak", "disabled_tools=$DisabledTools") }
 if ($TimeBudgetSeconds -ge 0) { $HarborArgs += @("--ak", "time_budget_seconds=$TimeBudgetSeconds") }
 if ($BudgetMarginSeconds -gt 0) { $HarborArgs += @("--ak", "budget_margin_seconds=$BudgetMarginSeconds") }
 if (-not $AutoTimeBudget) { $HarborArgs += @("--ak", "auto_time_budget=false") }
@@ -194,6 +214,8 @@ Write-Host "Dataset: $DatasetDir ($commit)"
 Write-Host "core-ai-cli: $CliBinary"
 Write-Host "Model: $Model"
 Write-Host "Thinking effort: $ThinkingEffort"
+Write-Host "Disabled tools: $DisabledTools"
+Write-Host "Network mode: $(if ($NetworkMode) { $NetworkMode } else { 'dataset default' })"
 Write-Host "Trials: $Trials, concurrency: $Concurrency"
 Write-Host "Jobs: $JobsDir"
 
@@ -206,6 +228,14 @@ if ($Python -and (Test-Path (Join-Path $ScriptDir "summarize.py"))) {
     }
     catch {
         Write-Warning "Failed to generate report: $_"
+    }
+}
+if ($Python -and (Test-Path (Join-Path $ScriptDir "contamination.py"))) {
+    try {
+        & $Python.Source (Join-Path $ScriptDir "contamination.py") $JobsDir
+    }
+    catch {
+        Write-Warning "Failed to scan for contamination: $_"
     }
 }
 

@@ -16,8 +16,12 @@ JOBS_DIR="${HARBOR_JOBS_DIR:-$SCRIPT_DIR/.harbor-jobs}"
 JOB_NAME="${JOB_NAME:-}"
 DATASET_DIR="${TB21_DATASET_DIR:-$SCRIPT_DIR/.datasets/terminal-bench-2-1}"
 DATASET_REF="${TB21_DATASET_REF:-main}"
-CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.58}"
+CLI_VERSION="${CORE_AI_CLI_VERSION:-2.0.61}"
 CLI_BINARY="${CORE_AI_CLI_BINARY:-$SCRIPT_DIR/.cache/core-ai-cli-linux}"
+DISABLED_TOOLS="${DISABLED_TOOLS-web_search,web_fetch}"
+NETWORK_MODE="${NETWORK_MODE:-}"
+VERIFIER_MODE="${VERIFIER_MODE:-public}"
+EXTRA_HOSTS=()
 TIME_BUDGET_SECONDS="${TIME_BUDGET_SECONDS:--1}"
 BUDGET_MARGIN_SECONDS="${BUDGET_MARGIN_SECONDS:-15}"
 TOKEN_BUDGET="${TOKEN_BUDGET:--1}"
@@ -47,7 +51,11 @@ Options:
   --dataset-dir DIR     Local Terminal-Bench 2.1 checkout (default: .datasets/terminal-bench-2-1)
   --dataset-ref REF     Git ref for the dataset (default: main)
   --cli-binary PATH     Prebuilt Linux core-ai-cli binary
-  --cli-version VER     core-ai-cli release version to download (default: 2.0.58)
+  --cli-version VER     core-ai-cli release version to download (default: 2.0.61)
+  --disabled-tools CSV  Tools hidden from the agent (default: web_search,web_fetch)
+  --network-mode MODE   Pin the dataset network policy: allowlist|no-network|public
+                        (default: leave task.toml untouched; see network_policy.py)
+  --allow-host HOST     Extra egress host for every task; repeatable
   --time-budget-seconds N   -1=auto from task.toml, 0=disable, >0=explicit
   --budget-margin-seconds N Safety margin for auto budget (default: 15)
   --token-budget N      Total token budget; -1=disable
@@ -83,6 +91,9 @@ while [ $# -gt 0 ]; do
         --dataset-ref) DATASET_REF="$2"; shift 2 ;;
         --cli-binary) CLI_BINARY="$2"; shift 2 ;;
         --cli-version) CLI_VERSION="$2"; shift 2 ;;
+        --disabled-tools) DISABLED_TOOLS="$2"; shift 2 ;;
+        --network-mode) NETWORK_MODE="$2"; shift 2 ;;
+        --allow-host) EXTRA_HOSTS+=("$2"); shift 2 ;;
         --time-budget-seconds) TIME_BUDGET_SECONDS="$2"; shift 2 ;;
         --budget-margin-seconds) BUDGET_MARGIN_SECONDS="$2"; shift 2 ;;
         --token-budget) TOKEN_BUDGET="$2"; shift 2 ;;
@@ -245,6 +256,14 @@ ensure_dataset() {
 }
 ensure_dataset
 
+if [ -n "$NETWORK_MODE" ]; then
+    NETWORK_ARGS=(--dataset-dir "$DATASET_DIR" --mode "$NETWORK_MODE" --verifier-mode "$VERIFIER_MODE")
+    for host in ${EXTRA_HOSTS[@]+"${EXTRA_HOSTS[@]}"}; do
+        NETWORK_ARGS+=(--extra-host "$host")
+    done
+    "$PYTHON_BIN" "$SCRIPT_DIR/network_policy.py" "${NETWORK_ARGS[@]}"
+fi
+
 if ! [[ "$TRIALS" =~ ^[0-9]+$ ]] || [ "$TRIALS" -lt 1 ]; then
     echo "--trials must be a positive integer" >&2
     exit 2
@@ -268,6 +287,9 @@ HARBOR_ARGS=(
 )
 if [ -n "$THINKING_EFFORT" ]; then
     HARBOR_ARGS+=(--ak "reasoning_effort=$THINKING_EFFORT")
+fi
+if [ -n "$DISABLED_TOOLS" ]; then
+    HARBOR_ARGS+=(--ak "disabled_tools=$DISABLED_TOOLS")
 fi
 if [ "$TIME_BUDGET_SECONDS" -ge 0 ]; then
     HARBOR_ARGS+=(--ak "time_budget_seconds=$TIME_BUDGET_SECONDS")
@@ -307,6 +329,8 @@ echo "Dataset: $DATASET_DIR ($(git -C "$DATASET_DIR" rev-parse --short HEAD))"
 echo "core-ai-cli: $CLI_BINARY"
 echo "Model: $MODEL"
 echo "Thinking effort: ${THINKING_EFFORT:-none}"
+echo "Disabled tools: ${DISABLED_TOOLS:-none}"
+echo "Network mode: ${NETWORK_MODE:-dataset default}"
 echo "Trials: $TRIALS, concurrency: $CONCURRENCY"
 echo "Jobs: $JOBS_DIR"
 
@@ -317,6 +341,9 @@ set -e
 
 if [ -f "$SCRIPT_DIR/summarize.py" ]; then
     "$PYTHON_BIN" "$SCRIPT_DIR/summarize.py" "$JOBS_DIR" || true
+fi
+if [ -f "$SCRIPT_DIR/contamination.py" ]; then
+    "$PYTHON_BIN" "$SCRIPT_DIR/contamination.py" "$JOBS_DIR" || true
 fi
 
 echo

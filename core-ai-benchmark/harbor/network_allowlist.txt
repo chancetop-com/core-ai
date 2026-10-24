@@ -1,0 +1,49 @@
+# Base egress allowlist for Terminal-Bench runs (Harbor network_mode="allowlist").
+#
+# Only hosts required to provision toolchains belong here. Task-specific hosts
+# go into network_hosts.json so that a task can reach what it legitimately
+# needs without opening the same hosts for every other task.
+#
+# Never add github.com, raw.githubusercontent.com, api.github.com,
+# hub.harborframework.com, marginlab.ai or r.jina.ai: they serve the benchmark's
+# own tests, reference solutions and published expectations.
+#
+# Hosts are matched by SNI, so a CDN served from many IPs still works. Use
+# "*.example.com" for subdomains (the apex needs its own entry).
+
+# Debian / Ubuntu / Alpine package mirrors
+deb.debian.org
+security.debian.org
+archive.ubuntu.com
+security.ubuntu.com
+ports.ubuntu.com
+dl-cdn.alpinelinux.org
+
+# Python
+pypi.org
+files.pythonhosted.org
+
+# Node
+registry.npmjs.org
+nodejs.org
+
+# Rust
+crates.io
+index.crates.io
+static.crates.io
+sh.rustup.rs
+static.rust-lang.org
+
+# Go
+proxy.golang.org
+sum.golang.org
+storage.googleapis.com
+
+# R / CRAN
+cloud.r-project.org
+cran.r-project.org
+packagemanager.posit.co
+
+# GNU sources and general source mirrors
+ftp.gnu.org
+ftpmirror.gnu.org

@@ -119,6 +119,9 @@ class CoreAiCli(BaseInstalledAgent):
         todo_v2: bool = True,
         memory: bool = False,
         reasoning_effort: str | None = "max",
+        temperature: float | None = None,
+        top_p: float | None = None,
+        disabled_tools: str | None = "web_search,web_fetch",
         *args,
         **kwargs,
     ):
@@ -141,6 +144,9 @@ class CoreAiCli(BaseInstalledAgent):
         self._todo_v2 = todo_v2
         self._memory = memory
         self._reasoning_effort = reasoning_effort
+        self._temperature = _float_or_none(temperature)
+        self._top_p = _float_or_none(top_p)
+        self._disabled_tools = (disabled_tools or "").strip()
         super().__init__(logs_dir, *args, **kwargs)
 
     @staticmethod
@@ -260,15 +266,26 @@ class CoreAiCli(BaseInstalledAgent):
                 f"agent.todo.v2.enabled={str(self._todo_v2).lower()}",
                 f"agent.memory.enabled={str(self._memory).lower()}",
                 "agent.memory.prompt.extraction=false",
+                *(
+                    [f"agent.tools.disabled={self._disabled_tools}"]
+                    if self._disabled_tools
+                    else []
+                ),
             ]
         )
+        if self._temperature is not None:
+            lines.append(f"llm.temperature={self._temperature}")
+        extra_body = {}
         if self._reasoning_effort:
+            extra_body["reasoning_effort"] = self._reasoning_effort
+        if self._top_p is not None:
+            extra_body["top_p"] = self._top_p
+        if self._temperature is not None:
+            extra_body["temperature"] = self._temperature
+        if extra_body:
             lines.append(
                 "llm.request.extra_body="
-                + json.dumps(
-                    {"reasoning_effort": self._reasoning_effort},
-                    separators=(",", ":"),
-                )
+                + json.dumps(extra_body, separators=(",", ":"))
             )
         if self._subagent_concurrency:
             lines.append(f"agent.subagent.max-concurrent={int(self._subagent_concurrency)}")

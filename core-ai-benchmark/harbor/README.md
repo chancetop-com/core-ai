@@ -78,12 +78,16 @@ PowerShell:
 | `--dataset-dir` / `-DatasetDir` | `.datasets/terminal-bench-2-1` | Local dataset checkout. |
 | `--dataset-ref` / `-DatasetRef` | `main`                         | Pin a commit or branch. |
 | `--cli-binary` / `-CliBinary` | auto-download                  | Prebuilt Linux `core-ai-cli` binary. |
-| `--cli-version` / `-CliVersion` | `2.0.55`                       | Release version to download. |
+| `--cli-version` / `-CliVersion` | `2.0.61`                       | Release version to download. `2.0.61` is the first release that honours `agent.tools.disabled`. |
+| `--disabled-tools` / `-DisabledTools` | `web_search,web_fetch`         | Tools hidden from the agent (written to `agent.tools.disabled`). Empty disables nothing. |
+| `--network-mode` / `-NetworkMode` | dataset default (`public`)      | Pin the dataset network policy: `allowlist`, `no-network`, or `public`. See below. |
+| `--allow-host` / `-AllowHost` | none                           | Extra egress host for every task; repeatable. |
 | `--update-dataset` / `-UpdateDataset` | off                            | `git pull` the local dataset first. |
 
 Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
 `TASK`, `N_TASKS`, `HARBOR_JOBS_DIR`, `TB21_DATASET_DIR`,
-`TB21_DATASET_REF`, `CORE_AI_CLI_VERSION`, `CORE_AI_CLI_BINARY`, `HARBOR`.
+`TB21_DATASET_REF`, `CORE_AI_CLI_VERSION`, `CORE_AI_CLI_BINARY`, `HARBOR`,
+`DISABLED_TOOLS`, `NETWORK_MODE`.
 
 ## What the runner does
 
@@ -93,11 +97,14 @@ Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
    local `.cache/core-ai-cli-linux` is missing or was cached for another
    `--cli-version`.
 4. Clones `harbor-framework/terminal-bench-2-1` when `.datasets/` is missing.
-5. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
+6. Applies the network policy to the dataset when `--network-mode` is set (see
+   below), rewriting `[environment]` in every `task.toml`.
+7. Runs Harbor with `-a cli:CoreAiCli` and the binary path passed through
    `--ak binary_path=...`.
-6. Writes results to `.harbor-jobs/<timestamp>/`.
-7. Summarizes the job into `<job>/report.md` and `<job>/summary.csv`, and
-   writes readable `<trial>/agent/core-ai-cli.clean.txt` logs.
+8. Writes results to `.harbor-jobs/<timestamp>/`.
+9. Summarizes the job into `<job>/report.md` and `<job>/summary.csv`, writes
+   readable `<trial>/agent/core-ai-cli.clean.txt` logs, and scans the
+   transcripts into `<job>/contamination.md`.
 
 The report includes pass/fail/error counts, pass rates, mean reward, token
 totals, and a per-task table. Infra errors are listed separately from model
@@ -110,6 +117,52 @@ container, writes `~/.core-ai/agent.properties` with the resolved provider and
 model, runs one `--prompt` turn with `--dangerously-skip-permissions`, and
 parses the final token usage line into Harbor's result statistics.
 
+## Network access and contamination
+
+Terminal-Bench tasks are published with their tests and reference solution in
+`harbor-framework/terminal-bench-2-1`, so a container with public network access
+can read its own answer key. The 2026-10-23 run did exactly that: 7 tasks fetched
+`tasks/<task>/solution.sh` or `tests/test.sh` from GitHub, and all 7 passed.
+
+Two independent layers keep that out of a score:
+
+1. **Tools.** `agent.tools.disabled=web_search,web_fetch` removes the web tools
+   from the registry: they are neither advertised to the model nor dispatchable,
+   and sub-agents inherit the restriction. This needs CLI **2.0.61+** — earlier
+   binaries ignore the property without a warning.
+2. **Container egress.** Tools alone are not enough, because the agent still has
+   a shell and `curl` reaches the same URLs. `--network-mode allowlist` (or
+   `no-network`) makes Harbor's egress sidecar enforce the policy below the
+   shell.
+
+Allowlist mode is default-deny, so the hosts a task legitimately needs must be
+listed:
+
+- `network_allowlist.txt` — hosts every task may reach (package mirrors, CRAN,
+  PyPI, npm, crates, Go). Keep the benchmark repositories out of it.
+- `network_hosts.json` — per-task extras, e.g. `huggingface.co` for the MTEB
+  tasks or `www.rcsb.org` for `protein-assembly`.
+- The agent's LLM endpoint is added automatically from `LITELLM_API_BASE` or the
+  active `~/.core-ai/auth.json` entry (override with `--api-base`).
+
+A task that fails with a DNS or TLS error under `allowlist` is missing a host:
+add it to `network_hosts.json` and rerun. The rewrite is recorded in
+`.datasets/terminal-bench-2-1/.network-policy.json`; `python
+core-ai-benchmark/harbor/network_policy.py --revert` restores the upstream
+`task.toml` files.
+
+`contamination.py` audits a finished job no matter which layers were active:
+
+```shell
+python core-ai-benchmark/harbor/contamination.py .harbor-jobs/<job>
+```
+
+It writes `<job>/contamination.md` and `contamination.csv`, and reports the raw
+pass rate next to the clean-trial pass rate. Verdicts: `answer_key` (a tool call
+referenced its own task path), `benchmark_repo`, `web_external` (used a web
+tool), `clean`. `--strict` exits 2 when any trial read its own answer key, so a
+pipeline can refuse to publish a contaminated score.
+
 ## Results
 
 ```shell
@@ -120,6 +173,8 @@ Useful files:
 
 - `report.md` — human-readable summary with pass rate, tokens, and a per-task table.
 - `summary.csv` — the same per-task data in machine-readable form.
+- `contamination.md` / `contamination.csv` — which trials reached the network or
+  the benchmark repositories, plus the raw vs clean pass rate.
 - `<task>__<id>/agent/core-ai-cli.clean.txt` — spinner/ANSI-free copy of the agent log.
 - `result.json` — job summary, `stats.evals.*.metrics[0].mean` is the mean reward.
 - `<task>__<id>/verifier/reward.txt` — per-trial reward.
@@ -128,6 +183,11 @@ Useful files:
 
 ## Notes
 
+- **Disabled tools need 2.0.61+.** v2.0.60 and older ignore
+  `agent.tools.disabled` silently, so `job.log` can show the property while the
+  web tools are still live. Native binaries keep property names as plain
+  strings, so the binary itself can be checked:
+  `strings .cache/core-ai-cli-linux | grep agent.tools.disabled`.
 - **Windows console encoding.** Harbor reads each task's `instruction.md` with
   the locale default encoding. On Chinese (GBK/cp936) Windows the UTF-8 tasks
   (`distribution-search`, `llm-inference-batching-scheduler`) raise
