@@ -140,8 +140,11 @@ listed:
 
 - `network_allowlist.txt` — hosts every task may reach (package mirrors, CRAN,
   PyPI, npm, crates, Go). Keep the benchmark repositories out of it.
-- `network_hosts.json` — per-task extras, e.g. `huggingface.co` for the MTEB
-  tasks or `www.rcsb.org` for `protein-assembly`.
+- `network_hosts.json` — per-task extras for the inputs a task cannot run
+  without, e.g. a model checkpoint or a dataset mirror. Do not add documentation
+  sites, walkthroughs, leaderboards or anything that states the expected result;
+  a task that needs one of those to pass is a task this baseline cannot measure
+  cleanly.
 - The agent's LLM endpoint is added automatically from `LITELLM_API_BASE` or the
   active `~/.core-ai/auth.json` entry (override with `--api-base`).
 
