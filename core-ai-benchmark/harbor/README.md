@@ -82,6 +82,7 @@ PowerShell:
 | `--disabled-tools` / `-DisabledTools` | `web_search,web_fetch`         | Tools hidden from the agent (written to `agent.tools.disabled`). Empty disables nothing. |
 | `--network-mode` / `-NetworkMode` | dataset default (`public`)      | Pin the dataset network policy: `allowlist`, `no-network`, or `public`. See below. |
 | `--allow-host` / `-AllowHost` | none                           | Extra egress host for every task; repeatable. |
+| `--verifier-mode` (`VERIFIER_MODE`) | `public`                    | Network policy for the verifier phase: `public`, `allowlist`, `no-network`, or `same`. |
 | `--update-dataset` / `-UpdateDataset` | off                            | `git pull` the local dataset first. |
 
 Environment equivalents: `TRIALS`, `CONCURRENCY`, `MODEL`, `THINKING_EFFORT`,
