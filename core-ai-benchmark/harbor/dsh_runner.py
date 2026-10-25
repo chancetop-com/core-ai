@@ -46,7 +46,12 @@ def main() -> int:
     print(result.final_response or "")
     print(f"DSH_FINISH {result.finish_reason}")
     print(f"DSH_USAGE {input_tokens} {output_tokens} {cache_tokens}")
+    print(f"DSH_STEPS {_count(result.events, 'step/start')}")
     return 0
+
+
+def _count(events, kind: str) -> int:
+    return sum(1 for event in events if event.get("type") == kind)
 
 
 def _walk_usage(payload) -> tuple[int, int, int]:
