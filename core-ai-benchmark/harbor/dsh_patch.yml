@@ -1,0 +1,26 @@
+# Route the dsh provider at the local normalizing proxy, which forwards to the
+# core-ai LiteLLM gateway. One million tokens of context matches the official
+# Terminal-Bench 2.1 configuration.
+- insert:
+    - id: llm-pi-ai
+      name: '@deepseek-ai/dsh-llm-pi-ai'
+      config:
+        providers:
+          core-ai:
+            apiKeyEnv: DEEPSEEK_API_KEY
+            api: openai-completions
+            baseURL: http://127.0.0.1:18080/api/cli/v1
+            compat:
+              supportsDeveloperRole: false
+              maxTokensField: max_tokens
+              thinkingFormat: deepseek
+              supportsReasoningEffort: true
+            models:
+              - id: deepseek-flash
+                contextWindow: 1000000
+                maxTokens: 384000
+                reasoningEfforts:
+                  off:
+                  low: low
+                  high: high
+                  max: max

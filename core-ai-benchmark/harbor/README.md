@@ -167,6 +167,28 @@ referenced its own task path), `benchmark_repo`, `web_external` (used a web
 tool), `clean`. `--strict` exits 2 when any trial read its own answer key, so a
 pipeline can refuse to publish a contaminated score.
 
+## DeepSeek Harness (dsh) comparison
+
+`dsh.py` runs DeepSeek's official harness inside the task container:
+
+```shell
+harbor run -p .datasets/terminal-bench-2-1/tasks -a dsh:DshAgent \
+  -m deepseek-flash -i fix-git -y \
+  --ak api_key=<key> --ak api_base=https://<server>/api/cli/v1
+```
+
+It installs `deepseek-harness-sdk` from PyPI (the bundled runtime is a ~300 MB
+wheel), boots the `sdk-minimal` profile (bash + str_replace_editor), and runs at
+max reasoning effort with a 1M-token context. Requests go through
+`dsh_proxy.py`, because the gateway deserializes `content` as parts while dsh
+sends plain strings. The SDK exposes no sampling controls, so temperature and
+top_p are left at the provider defaults.
+
+DeepSeek's published Terminal-Bench 2.1 numbers, for reference: DeepSeek V4.1
+Flash 90.6 with DSH Minimal (max effort, temperature 1.0, top_p 0.95, 3 samples
+per task, no network), DeepSeek V4 Flash 82.7, V4 Pro 87.9. Which model the
+`deepseek-flash` gateway id resolves to decides which row is comparable.
+
 ## Results
 
 ```shell
