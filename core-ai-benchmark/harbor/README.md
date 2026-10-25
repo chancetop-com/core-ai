@@ -192,6 +192,12 @@ Useful files:
   web tools are still live. Native binaries keep property names as plain
   strings, so the binary itself can be checked:
   `strings .cache/core-ai-cli-linux | grep agent.tools.disabled`.
+- **Verifier CA bundle.** Several `tests/test.sh` install `curl` and then rely on
+  `ca-certificates` arriving as a recommend. If the agent already installed curl
+  with `--no-install-recommends`, the verifier's curl exits with `error 77`
+  (missing `/etc/ssl/certs/ca-certificates.crt`), `uv` never installs, and the
+  trial fails for an environment reason. Add `ca-certificates` to the verifier's
+  apt line when this bites.
 - **Windows console encoding.** Harbor reads each task's `instruction.md` with
   the locale default encoding. On Chinese (GBK/cp936) Windows the UTF-8 tasks
   (`distribution-search`, `llm-inference-batching-scheduler`) raise
