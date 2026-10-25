@@ -12,6 +12,9 @@ import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope
 
 marked.setOptions({ gfm: true, breaks: true });
 
+/** Streaming markdown repaints at most this often; one whole-body render per chunk is wasteful. */
+const STREAM_RENDER_INTERVAL_MS = 50;
+
 /**
  * Assistant output is markdown; sanitize before it touches innerHTML. Unknown protocols are allowed only
  * because tool results link generated images/videos by absolute path (`C:\…`, `/home/…`), which DOMPurify
@@ -492,6 +495,10 @@ interface ToolUseChip {
 interface StreamingState {
   view: SessionView;
   text: string;
+  /** Text already handed to the markdown renderer; a flush only pays for what changed. */
+  renderedText: string;
+  /** Coalesces streaming renders on a timer, never a frame: occluded windows produce no frames. */
+  renderTimer: ReturnType<typeof setTimeout> | null;
   bubble: HTMLElement;
   body: HTMLElement;
   /** One panel per turn; each model round adds a numbered section inside it. */
@@ -512,12 +519,13 @@ interface StreamingState {
 
 /**
  * One reasoning block inside the turn's thinking panel. Chunks append to `text`; `rendered`
- * tracks how much of it reached the DOM, so a long thought is not rewritten every frame.
+ * tracks how much of it reached the DOM, so a long thought is not rewritten on every tick.
  */
 interface ReasoningBlock {
   text: string;
   rendered: string;
   renderQueued: boolean;
+  renderTimer: ReturnType<typeof setTimeout> | null;
   body: HTMLElement;
   scroller: HTMLElement;
   head: HTMLElement;
@@ -709,6 +717,9 @@ function resetStreaming(view: SessionView): void {
   if (current) {
     stopReasoningTick(current);
     sealActiveReasoning(current);
+    // The turn is over: paint whatever the last chunks added before the state is dropped. A frame may
+    // never come for this window (occluded/backgrounded), so the final render cannot be left queued.
+    flushStreamingMarkdown(current);
     if (current.reasoningToggle && !current.reasoningToggle.userToggled()) current.reasoningToggle.setOpen(false);
   }
   view.streaming = null;
@@ -747,22 +758,32 @@ function beginReasoningBlock(current: StreamingState): ReasoningBlock {
   const body = el('div', 'reasoning-text');
   section.append(head, body);
   scroller.append(section);
-  const block: ReasoningBlock = { text: '', rendered: '', renderQueued: false, body, scroller, head };
+  const block: ReasoningBlock = { text: '', rendered: '', renderQueued: false, renderTimer: null, body, scroller, head };
   current.reasoningBlocks.push(block);
   return block;
 }
 
-/** One text append per frame: rewriting the whole block per chunk is quadratic in its length. */
+/**
+ * One text append per tick: rewriting the whole block per chunk is quadratic in its length. Timers,
+ * not frames — a window Chromium considers occluded produces no animation frames, and the thought
+ * would then stop updating until the window is focused again.
+ */
 function queueReasoningRender(block: ReasoningBlock): void {
   if (block.renderQueued) return;
   block.renderQueued = true;
-  requestAnimationFrame(() => {
+  block.renderTimer = setTimeout(() => {
     block.renderQueued = false;
+    block.renderTimer = null;
     flushReasoningRender(block);
-  });
+  }, STREAM_RENDER_INTERVAL_MS);
 }
 
 function flushReasoningRender(block: ReasoningBlock): void {
+  if (block.renderTimer != null) {
+    clearTimeout(block.renderTimer);
+    block.renderTimer = null;
+  }
+  block.renderQueued = false;
   if (block.rendered.length >= block.text.length) return;
   // Follow the newest line only while the reader is at the bottom; scrolling up to re-read an
   // earlier part of a long thought must not be yanked back on every chunk.
@@ -774,8 +795,8 @@ function flushReasoningRender(block: ReasoningBlock): void {
 
 /**
  * True once the turn holds engine output: any chip beyond the turn status, a tool row, or text.
- * Text may still be queued in the streaming buffers — it reaches the DOM on the next animation
- * frame, which can lag behind a turn that ends within the same frame as its last chunk.
+ * Text may still sit in the streaming buffers — it reaches the DOM on the next render tick, and the
+ * turn-end flush repaints it before the state is dropped.
  */
 function hasAssistantContent(wrapper: HTMLElement | null, current: StreamingState | null): boolean {
   if (!wrapper) return false;
@@ -3600,24 +3621,48 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
+    view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     scrollTranscript(view);
   }
   return view.streaming;
 }
 
-let streamingRenderQueued = false;
-
-/** Re-render the markdown body at most once per frame while text streams in. */
+/**
+ * Re-renders the markdown body on a coalescing timer while text streams in. Deliberately not
+ * requestAnimationFrame: Chromium produces no frames for a window it treats as occluded (Windows
+ * native occlusion tracking can flag even a visible window), so a frame-gated render strands the tail
+ * of a reply until the window is switched away and back. Timers keep running in that state and the
+ * turn-end flush repaints the final text synchronously.
+ */
 function renderStreamingMarkdown(current: StreamingState): void {
-  if (streamingRenderQueued) return;
-  streamingRenderQueued = true;
-  requestAnimationFrame(() => {
-    streamingRenderQueued = false;
-    renderMarkdownInto(current.body, current.text);
-    scrollTranscript(current.view);
-  });
+  if (current.renderTimer != null) return;
+  current.renderTimer = setTimeout(() => {
+    current.renderTimer = null;
+    flushStreamingMarkdown(current);
+  }, STREAM_RENDER_INTERVAL_MS);
+}
+
+/** Paints all accumulated text now; also the end-of-turn path, so the last chunks can never be lost. */
+function flushStreamingMarkdown(current: StreamingState): void {
+  if (current.renderTimer != null) {
+    clearTimeout(current.renderTimer);
+    current.renderTimer = null;
+  }
+  if (current.renderedText === current.text) return;
+  renderMarkdownInto(current.body, current.text);
+  current.renderedText = current.text;
+  scrollTranscript(current.view);
+}
+
+/** Focus/visibility is where Chromium resumes producing frames — repaint anything still buffered. */
+function flushLiveRenders(): void {
+  for (const view of views.values()) {
+    const current = view.streaming;
+    if (!current) continue;
+    for (const block of current.reasoningBlocks) flushReasoningRender(block);
+    flushStreamingMarkdown(current);
+  }
 }
 
 /**
@@ -6664,7 +6709,11 @@ async function bootstrap(): Promise<void> {
   renderComposerControls();
 
   window.addEventListener('focus', () => {
+    flushLiveRenders();
     void refreshAuth();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) flushLiveRenders();
   });
   window.addEventListener('coreai-nav-go', (event) => {
     const nav = (event as CustomEvent<string>).detail;
