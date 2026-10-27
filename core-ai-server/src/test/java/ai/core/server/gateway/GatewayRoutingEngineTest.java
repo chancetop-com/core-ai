@@ -46,6 +46,14 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void defaultChatModelIdAcceptsResponsesOnlyModel() {
+        var responsesOnly = model("gpt-6.1-sol", false, 100);
+        responsesOnly.endpointTypes = List.of("responses");
+
+        assertEquals("gpt-6.1-sol", engine(List.of(responsesOnly)).defaultChatModelId());
+    }
+
+    @Test
     void defaultChatModelIdReturnsNullWhenNoChatModel() {
         var videoOnly = model("video-only", false, 100);
         videoOnly.endpointTypes = List.of("video.generations");

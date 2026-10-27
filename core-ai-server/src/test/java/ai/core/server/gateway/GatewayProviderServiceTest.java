@@ -52,6 +52,21 @@ class GatewayProviderServiceTest {
     }
 
     @Test
+    void createAcceptsKieTypeAndDerivesPrefix() {
+        var service = serviceWithUser(admin("admin-1"));
+        var request = new GatewayProviderRequest();
+        request.name = "KIE";
+        request.type = "KIE";
+        request.baseUrl = "https://api.kie.ai";
+        request.apiKey = "sk-kie-test";
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("kie", view.type);
+        assertEquals("kie/", view.modelPrefix);
+    }
+
+    @Test
     void updateKeepsExistingApiKeyWhenBlank() {
         var service = serviceWithUser(admin("admin-1"));
         var existing = new GatewayProviderConfig();

@@ -11,6 +11,7 @@ const PROVIDER_TYPES = [
   { value: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', prefix: 'openrouter/' },
   { value: 'openai-compatible', label: 'OpenAI Compatible', baseUrl: '', prefix: '' },
   { value: 'gemini', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', prefix: 'google/' },
+  { value: 'kie', label: 'KIE', baseUrl: 'https://api.kie.ai', prefix: 'kie/' },
 ];
 
 const MEDIA_PROTOCOLS = [

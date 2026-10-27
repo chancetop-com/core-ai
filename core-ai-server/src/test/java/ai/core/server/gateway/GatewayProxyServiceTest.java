@@ -132,6 +132,40 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void routesKieResponsesToOpenAiPrefix() throws Exception {
+        var provider = provider("KIE", "kie", "https://api.kie.ai", "kie/", "gpt-6.1-sol");
+        var service = service(provider, model("gpt-6.1-sol", provider.id, "gpt-6.1-sol", List.of("responses")));
+
+        service.proxyResponses(json(Map.of("model", "gpt-6.1-sol", "input", "hi")), "user-1", null, null);
+
+        assertEquals("https://api.kie.ai/openai/v1/responses", service.captured.uri);
+        assertEquals("Bearer sk-test", service.captured.headers.get("Authorization"));
+    }
+
+    @Test
+    void routesKieChatToOpenAiPrefix() throws Exception {
+        var provider = provider("KIE", "kie", "https://api.kie.ai/", "kie/", "gpt-5.2");
+        var service = service(provider, model("gpt-5.2", provider.id, "gpt-5.2", List.of("chat.completions")));
+
+        service.proxyChatCompletions(json(Map.of(
+                "model", "gpt-5.2",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null);
+
+        assertEquals("https://api.kie.ai/openai/v1/chat/completions", service.captured.uri);
+    }
+
+    @Test
+    void keepsConfiguredKieVersionedRoot() throws Exception {
+        var provider = provider("KIE Codex", "kie", "https://api.kie.ai/codex/v1", "kie/", "gpt-6.1-sol");
+        var service = service(provider, model("gpt-6.1-sol", provider.id, "gpt-6.1-sol", List.of("responses")));
+
+        service.proxyResponses(json(Map.of("model", "gpt-6.1-sol", "input", "hi")), "user-1", null, null);
+
+        assertEquals("https://api.kie.ai/codex/v1/responses", service.captured.uri);
+    }
+
+    @Test
     void publishedModelsUseSamePrioritySelectionAsRouting() {
         var slow = provider("Slow", "openai", "https://slow.example.com/v1", "", "slow-default");
         var fast = provider("Fast", "openai", "https://fast.example.com/v1", "", "fast-default");

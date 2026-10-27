@@ -336,6 +336,9 @@ public class GatewayLLMProvider extends LLMProvider {
         if ("gemini".equals(provider.type)) {
             return createGeminiProvider(provider, endpoint, upstreamConfig);
         }
+        if ("kie".equals(provider.type)) {
+            return new LiteLLMProvider(upstreamConfig, GatewaySupport.kieChatBaseUrl(provider), key);
+        }
         return new LiteLLMProvider(upstreamConfig, provider.baseUrl, key);
     }
 

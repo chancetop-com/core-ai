@@ -63,6 +63,31 @@ class GatewayModelDiscoveryServiceTest {
         assertEquals(2D, model.outputPricePer1MTokens);
     }
 
+    @Test
+    void discoversKieChatModelsFromTheOpenAiListing() {
+        var provider = provider("provider-1", "kie", "https://api.kie.ai");
+        var service = service(provider, """
+                {
+                  "data":[{"id":"gpt-6.1-sol","object":"model"}],
+                  "models":[
+                    {"slug":"gpt-6.1-sol","display_name":"GPT 6.1 Sol","context_window":272000,
+                     "default_reasoning_level":"medium","supported_reasoning_levels":[{"effort":"low"},{"effort":"max"}]},
+                    {"slug":"gpt-5.6-luna","display_name":"GPT 5.6 Luna","context_window":272000}
+                  ]
+                }
+                """);
+
+        var response = service.discover("provider-1", "admin-1");
+
+        assertEquals(2, response.models.size());
+        var model = response.models.get(1);
+        assertEquals("gpt-6.1-sol", model.id);
+        assertEquals("GPT 6.1 Sol", model.displayName);
+        assertEquals(272000L, model.contextWindow);
+        assertEquals(List.of("responses"), model.endpointTypes);
+        assertEquals("https://api.kie.ai/openai/v1/models", service.captured.uri);
+    }
+
     @SuppressWarnings("unchecked")
     private CapturingGatewayModelDiscoveryService service(GatewayProviderConfig provider, String responseBody) {
         var service = new CapturingGatewayModelDiscoveryService(responseBody);
@@ -93,6 +118,7 @@ class GatewayModelDiscoveryServiceTest {
 
     private static final class CapturingGatewayModelDiscoveryService extends GatewayModelDiscoveryService {
         final String responseBody;
+        HTTPRequest captured;
 
         CapturingGatewayModelDiscoveryService(String responseBody) {
             this.responseBody = responseBody;
@@ -100,6 +126,7 @@ class GatewayModelDiscoveryServiceTest {
 
         @Override
         HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
+            captured = request;
             return new HTTPResponse(200, Map.of("Content-Type", "application/json"), responseBody.getBytes(StandardCharsets.UTF_8));
         }
     }

@@ -217,7 +217,12 @@ public class GatewayRoutingEngine {
      * routable chat model, so callers can fall back to their own configuration.
      */
     public String defaultChatModelId() {
-        var models = registeredModels(snapshot(), GatewayEndpointType.CHAT_COMPLETIONS);
+        // both chat.completions and responses serve chat turns; a responses-only model (e.g. KIE
+        // gpt-6.1-sol) is still a valid default for agents that leave the model unset
+        var models = registeredModels(snapshot(), null).stream()
+                .filter(route -> supportsEndpoint(route.model, GatewayEndpointType.CHAT_COMPLETIONS)
+                        || supportsEndpoint(route.model, GatewayEndpointType.RESPONSES))
+                .toList();
         if (models.isEmpty()) return null;
         return models.stream()
                 .filter(route -> Boolean.TRUE.equals(route.model.isDefault))

@@ -12,9 +12,13 @@ import core.framework.inject.Inject;
  * @author stephen
  */
 public class HubModelService {
+    // the responses endpoint is a chat surface too: the gateway falls back to it for models that
+    // only serve responses (e.g. KIE gpt-6.1-sol, Azure gpt-6.1-sol), so those models must stay
+    // selectable in the CLI/desktop model pickers
     private static boolean supportsChat(GatewayAvailableModelView view) {
         return view.endpointTypes == null || view.endpointTypes.isEmpty()
-                || view.endpointTypes.contains(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
+                || view.endpointTypes.contains(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS)
+                || view.endpointTypes.contains(GatewayModelService.ENDPOINT_RESPONSES);
     }
 
     @Inject

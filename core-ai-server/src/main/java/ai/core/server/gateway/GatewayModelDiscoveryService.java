@@ -76,7 +76,12 @@ public class GatewayModelDiscoveryService {
         } else {
             models.addAll(fetch(provider, modelsUrl(provider)));
         }
+        var kie = "kie".equals(provider.type);
         return models.stream()
+                // KIE's OpenAI listing is the Responses protocol surface (the same one Codex CLI
+                // appends /responses to); its chat-only models are served on per-model paths and
+                // are registered by hand instead
+                .map(model -> kie ? withEndpointTypes(model, List.of(GatewayModelService.ENDPOINT_RESPONSES)) : model)
                 .map(GatewayModelCatalog::enrich)
                 .filter(model -> model.id() != null && !model.id().isBlank())
                 .collect(Collectors.collectingAndThen(
@@ -85,6 +90,12 @@ public class GatewayModelDiscoveryService {
                                 .sorted(Comparator.comparing(GatewayModelMetadata::id))
                                 .toList()
                 ));
+    }
+
+    private GatewayModelMetadata withEndpointTypes(GatewayModelMetadata model, List<String> endpointTypes) {
+        return new GatewayModelMetadata(model.id(), model.displayName(), endpointTypes, model.contextWindow(),
+                model.supportsStream(), model.supportsTools(), model.supportsVision(), model.supportsFile(),
+                model.inputPricePer1MTokens(), model.outputPricePer1MTokens());
     }
 
     private List<GatewayModelMetadata> fetch(GatewayProviderConfig provider, String url) {
@@ -127,7 +138,11 @@ public class GatewayModelDiscoveryService {
     private List<JsonNode> rows(JsonNode root) {
         var rows = new ArrayList<JsonNode>();
         if (root == null || root.isNull()) return rows;
-        var data = root.has("data") ? root.get("data") : root;
+        // KIE's OpenAI listing repeats the ids in two shapes: data[] is the bare OpenAI shape and
+        // models[] adds slug, display name, context window and reasoning levels
+        var data = root.has("models") && root.get("models").isArray()
+                ? root.get("models")
+                : root.has("data") ? root.get("data") : root;
         if (data.isArray()) {
             data.forEach(rows::add);
             return rows;
@@ -142,7 +157,7 @@ public class GatewayModelDiscoveryService {
         var modelInfo = object(row, "model_info");
         var litellmParams = object(row, "litellm_params");
         var pricing = object(row, "pricing");
-        var id = firstText(row, modelInfo, litellmParams, "id", "model_id", "model", "model_name", "deployment", "deployment_name");
+        var id = firstText(row, modelInfo, litellmParams, "id", "model_id", "model", "model_name", "deployment", "deployment_name", "slug");
         if (id == null || id.isBlank()) return null;
         var displayName = firstText(row, modelInfo, litellmParams, "display_name", "name", "model_name");
         var source = merge(row, modelInfo, litellmParams, pricing);
@@ -220,6 +235,7 @@ public class GatewayModelDiscoveryService {
 
     private String modelsUrl(GatewayProviderConfig provider) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
+        if ("kie".equals(provider.type)) return GatewaySupport.kieChatBaseUrl(provider) + "/models";
         if ("azure".equals(provider.type)) {
             // azure provider baseUrl typically ends with /openai/v1 (the chat API root),
             // but the deployments list lives under /openai without /v1

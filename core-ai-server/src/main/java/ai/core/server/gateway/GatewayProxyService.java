@@ -237,6 +237,10 @@ public class GatewayProxyService {
 
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
+        if ("kie".equals(provider.type)
+                && (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES)) {
+            return GatewaySupport.kieChatBaseUrl(provider) + endpoint.path;
+        }
         if (!"azure".equals(provider.type)) return baseUrl + endpoint.path;
         // tolerate a base url that already includes the openai api path (e.g. https://xxx.openai.azure.com/openai/v1)
         if (baseUrl.endsWith("/openai/v1")) baseUrl = baseUrl.substring(0, baseUrl.length() - "/openai/v1".length());

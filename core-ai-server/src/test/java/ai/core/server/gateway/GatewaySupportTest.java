@@ -274,6 +274,32 @@ class GatewaySupportTest {
         assertEquals("https://generativelanguage.googleapis.com/v1beta/openai", GatewaySupport.geminiOpenAiCompatibleUrl(provider));
     }
 
+    @Test
+    void kieChatBaseUrlAppendsOpenAiPrefix() {
+        var provider = new ai.core.server.domain.GatewayProviderConfig();
+        provider.name = "kie";
+        provider.baseUrl = "https://api.kie.ai/";
+
+        assertEquals("https://api.kie.ai/openai/v1", GatewaySupport.kieChatBaseUrl(provider));
+    }
+
+    @Test
+    void kieChatBaseUrlKeepsVersionedRoot() {
+        var provider = new ai.core.server.domain.GatewayProviderConfig();
+        provider.name = "kie";
+        provider.baseUrl = "https://api.kie.ai/codex/v1";
+
+        assertEquals("https://api.kie.ai/codex/v1", GatewaySupport.kieChatBaseUrl(provider));
+    }
+
+    @Test
+    void kieChatBaseUrlRejectsBlankBaseUrl() {
+        var provider = new ai.core.server.domain.GatewayProviderConfig();
+        provider.name = "kie";
+
+        assertThrows(core.framework.web.exception.BadRequestException.class, () -> GatewaySupport.kieChatBaseUrl(provider));
+    }
+
     private Map<String, Object> bodyOf(String key, Object value) {
         return Map.of(key, value);
     }

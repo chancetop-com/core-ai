@@ -209,6 +209,7 @@ public class GatewayProviderService {
 
     private String testUrl(GatewayProviderConfig entity) {
         var baseUrl = stripTrailingSlash(entity.baseUrl);
+        if ("kie".equals(entity.type)) return GatewaySupport.kieChatBaseUrl(entity) + "/models";
         if ("azure".equals(entity.type)) {
             var version = isBlank(entity.apiVersion) ? "2024-10-21" : entity.apiVersion;
             return baseUrl + "/openai/deployments?api-version=" + urlEncode(version);
@@ -349,7 +350,7 @@ public class GatewayProviderService {
     private String normalizeType(String type) {
         var value = type.trim().toLowerCase(Locale.ROOT);
         return switch (value) {
-            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini" -> value;
+            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini", "kie" -> value;
             default -> throw new BadRequestException("unsupported provider type: " + type);
         };
     }
@@ -393,6 +394,7 @@ public class GatewayProviderService {
             case "deepseek" -> "deepseek/";
             case "qwen" -> "qwen/";
             case "openrouter" -> "openrouter/";
+            case "kie" -> "kie/";
             default -> null;
         };
     }

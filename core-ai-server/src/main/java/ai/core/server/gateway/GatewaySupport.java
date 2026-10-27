@@ -251,6 +251,16 @@ final class GatewaySupport {
         return baseUrl.endsWith("/openai") ? baseUrl : baseUrl + "/openai";
     }
 
+    // KIE serves chat models over the OpenAI protocol under the /openai/v1 prefix
+    // (GET /openai/v1/models, POST /openai/v1/chat/completions|responses). A baseUrl that already
+    // names a /v1 root (e.g. https://api.kie.ai/codex/v1) is used as-is, so a provider can also be
+    // pointed at one of KIE's per-model legacy paths.
+    static String kieChatBaseUrl(GatewayProviderConfig provider) {
+        if (isBlank(provider.baseUrl)) throw new BadRequestException("kie provider requires a baseUrl: " + provider.name);
+        var baseUrl = stripTrailingSlash(provider.baseUrl);
+        return baseUrl.endsWith("/v1") ? baseUrl : baseUrl + "/openai/v1";
+    }
+
     static void validateProviderEndpointCompatibility(GatewayProviderConfig provider, List<String> endpointTypes) {
         if (endpointTypes == null || endpointTypes.isEmpty() || !"gemini".equals(provider.type)) return;
         if (endpointTypes.contains(GatewayModelService.ENDPOINT_RESPONSES)) {

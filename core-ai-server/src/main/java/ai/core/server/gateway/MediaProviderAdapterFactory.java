@@ -21,6 +21,7 @@ public class MediaProviderAdapterFactory {
         return switch (provider.type) {
             case "openai" -> "OPENAI_IMAGES";
             case "litellm", "openai-compatible" -> "OPENAI_COMPATIBLE";
+            case "kie" -> "KIE";
             default -> throw new BadRequestException("mediaProtocol is required for provider type: " + provider.type);
         };
     }
