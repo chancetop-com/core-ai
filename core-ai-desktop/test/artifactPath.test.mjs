@@ -14,6 +14,7 @@ const {
   isInside,
   resolveInsideArtifacts,
   resolveInsideWorkspace,
+  isArtifactPathAllowed,
   registeredArtifactPaths,
   artifactManifestPath,
   parseRange,
@@ -100,6 +101,21 @@ test('resolveInsideWorkspace serves registered files inside the workspace only',
   mkdirSync(sibling, { recursive: true });
   writeFileSync(path.join(sibling, 'x.txt'), 'x');
   assert.equal(resolveInsideWorkspace(root, '../' + path.basename(sibling) + '/x.txt'), null);
+});
+
+test('isArtifactPathAllowed tells a deleted artifact from a foreign path', () => {
+  const root = workspace();
+  const manifest = artifactManifestPath(root);
+  mkdirSync(path.dirname(manifest), { recursive: true });
+  writeFileSync(manifest, `${JSON.stringify({ path: 'reports/gone.html' })}\n`);
+
+  // Would have been served, but the file is gone: the handler answers 404, not 403.
+  assert.equal(isArtifactPathAllowed(root, '.core-ai/media/images/missing.png'), true);
+  assert.equal(isArtifactPathAllowed(root, 'reports/gone.html'), true);
+
+  assert.equal(isArtifactPathAllowed(root, 'outside.txt'), false);
+  assert.equal(isArtifactPathAllowed(root, '../outside.txt'), false);
+  assert.equal(isArtifactPathAllowed(root, '.core-ai/../outside.txt'), false);
 });
 
 test('parseRange handles closed, open, suffix and invalid ranges', () => {

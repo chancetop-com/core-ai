@@ -70,8 +70,10 @@ contextBridge.exposeInMainWorld('coreai', {
   setSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
   openPath: (workspace: string, relativePath: string) => ipcRenderer.invoke('shell:openPath', workspace, relativePath),
   revealPath: (workspace: string, relativePath: string) => ipcRenderer.invoke('shell:revealPath', workspace, relativePath),
+  copyPath: (workspace: string, relativePath: string) => ipcRenderer.invoke('shell:copyPath', workspace, relativePath),
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   artifactBase: (workspace: string) => ipcRenderer.invoke('artifacts:base', workspace),
+  existingArtifacts: (workspace: string, relativePaths: string[]) => ipcRenderer.invoke('artifacts:existing', workspace, relativePaths),
   onEvent: (callback: (payload: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('engine:event', listener);

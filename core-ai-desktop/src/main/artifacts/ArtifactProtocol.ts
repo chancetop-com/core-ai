@@ -13,6 +13,7 @@ import { Readable } from 'node:stream';
 import {
   contentTypeFor,
   decodeRelativePath,
+  isArtifactPathAllowed,
   parseRange,
   registeredArtifactPaths,
   resolveInsideArtifacts,
@@ -74,7 +75,11 @@ async function serve(request: Request): Promise<Response> {
   if (!target && registeredArtifactPaths(workspace).has(relativePath)) {
     target = resolveInsideWorkspace(workspace, relativePath);
   }
-  if (!target) return new Response('forbidden', { status: 403, headers: CORS_HEADERS });
+  if (!target) {
+    // An artifact deleted after it was listed is gone (404); a path this workspace never served is not ours (403).
+    const allowed = isArtifactPathAllowed(workspace, relativePath);
+    return new Response(allowed ? 'not found' : 'forbidden', { status: allowed ? 404 : 403, headers: CORS_HEADERS });
+  }
 
   let size: number;
   try {

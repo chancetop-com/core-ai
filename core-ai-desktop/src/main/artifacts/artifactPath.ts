@@ -76,6 +76,17 @@ export function resolveInsideWorkspace(workspace: string, relativePath: string):
   return isInside(root, target) ? target : null;
 }
 
+/**
+ * Whether a path that no longer resolves was one this protocol would have served had the file still
+ * existed. A deleted artifact answers 404, not 403: the renderer reads the status to tell "gone" from
+ * "not ours". Nothing is served here — this only classifies the failure, so the lexical check is all
+ * that is needed (a missing target has no realpath left to follow).
+ */
+export function isArtifactPathAllowed(workspace: string, relativePath: string): boolean {
+  if (registeredArtifactPaths(workspace).has(relativePath)) return true;
+  return isInside(path.resolve(workspace, '.core-ai'), path.resolve(workspace, relativePath));
+}
+
 /** Manifest written by the engine's submit_artifacts tool (LocalArtifactManifest on the Java side). */
 export function artifactManifestPath(workspace: string): string {
   return path.join(workspace, '.core-ai', 'artifacts', 'manifest.jsonl');

@@ -7,6 +7,7 @@
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
+import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
@@ -240,6 +241,7 @@ interface CoreAiBridge {
 stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: ArrayBuffer }>): Promise<StagedAttachmentResult>;
   removeAttachment(stagedPath: string): Promise<void>;
   artifactBase(workspace: string): Promise<{ baseUrl: string }>;
+  existingArtifacts(workspace: string, relativePaths: string[]): Promise<string[]>;
   browserStart(): Promise<BrowserStatus | null>;
   browserStop(): Promise<BrowserStatus | null>;
   browserStatus(): Promise<BrowserStatus | null>;
@@ -276,6 +278,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   setSettings(patch: Record<string, unknown>): Promise<any>;
   openPath(workspace: string, relativePath: string): Promise<string | null>;
   revealPath(workspace: string, relativePath: string): Promise<void>;
+  copyPath(workspace: string, relativePath: string): Promise<string | null>;
   openExternal(url: string): Promise<void>;
   onEvent(callback: (payload: any) => void): () => void;
   onLog(callback: (payload: any) => void): () => void;
@@ -2671,9 +2674,15 @@ function currentArtifacts(): ArtifactEntry[] {
   return sessionArtifacts.get(state.sessionId as string) ?? [];
 }
 
-function mergeArtifactEntries(existing: ArtifactEntry[], baseline: ArtifactEntry[]): ArtifactEntry[] {
-  const known = new Set(baseline.map((entry) => entry.path));
-  return [...existing.filter((entry) => !known.has(entry.path)), ...baseline];
+/** Live entries the scan did not return and the workspace no longer has: deleted or moved on disk. */
+async function goneArtifactPaths(workspace: string, candidates: string[]): Promise<Set<string>> {
+  if (!candidates.length) return new Set();
+  try {
+    const alive = new Set(await window.coreai.existingArtifacts(workspace, candidates));
+    return new Set(candidates.filter((path) => !alive.has(path)));
+  } catch {
+    return new Set();
+  }
 }
 
 function artifactEntriesFrom(listed: any): ArtifactEntry[] {
@@ -2764,6 +2773,13 @@ function renderArtifactHead(): void {
     toggle.onclick = () => { surface.artifactSource = !surface.artifactSource; renderArtifactPanel(); };
     actions.append(toggle);
   }
+  const copy = el('button', 'btn small', 'Copy');
+  copy.title = 'Copy the file path';
+  copy.onclick = async () => {
+    const copied = await window.coreai.copyPath(state.workspace as string, entry.path);
+    if (copied) toast('Path copied');
+    else toast('Could not copy the path', 'error');
+  };
   const reveal = el('button', 'btn small', 'Reveal');
   reveal.onclick = () => window.coreai.revealPath(state.workspace as string, entry.path);
   const maximize = el('button', 'artifact-icon-btn') as HTMLButtonElement;
@@ -2772,7 +2788,7 @@ function renderArtifactHead(): void {
   renderArtifactFullscreenButton();
   const close = el('button', 'btn small', 'Close');
   close.onclick = () => { surface.artifactDismissedForTurn = true; setRightDock('none'); };
-  actions.append(reveal, maximize, close);
+  actions.append(copy, reveal, maximize, close);
   artifactHeadEl.append(actions);
 }
 
@@ -2794,6 +2810,9 @@ function renderArtifactGallery(): void {
       img.src = artifactUrl(entry.path);
       img.alt = entry.name;
       img.loading = 'lazy';
+      img.onerror = () => {
+        if (img.isConnected) img.replaceWith(el('span', 'artifact-thumb-icon', '▤'));
+      };
       item.append(img);
     } else {
       item.append(el('span', 'artifact-thumb-icon', entry.kind === 'video' ? '▶' : '▤'));
@@ -2832,6 +2851,9 @@ function renderArtifactBody(): void {
     const img = el('img', 'artifact-image') as HTMLImageElement;
     img.src = url;
     img.alt = entry.name;
+    img.onerror = () => {
+      if (img.isConnected) artifactBodyEl?.replaceChildren(artifactUnavailable(entry));
+    };
     artifactBodyEl.append(img);
     return;
   }
@@ -2840,16 +2862,36 @@ function renderArtifactBody(): void {
     video.src = url;
     video.controls = true;
     video.preload = 'metadata';
+    video.onerror = () => {
+      if (video.isConnected) artifactBodyEl?.replaceChildren(artifactUnavailable(entry));
+    };
     artifactBodyEl.append(video);
     return;
   }
-  if (artifactIsHtml(entry)) { artifactBodyEl.append(artifactFrame(url, 'allow-scripts')); return; }
+  if (artifactIsHtml(entry)) { void renderArtifactFrame(entry, url, 'allow-scripts'); return; }
   if (artifactIsMarkdown(entry)) { void renderArtifactMarkdown(url); return; }
-  if (artifactIsPdf(entry)) { artifactBodyEl.append(artifactFrame(url, null)); return; }
+  if (artifactIsPdf(entry)) { void renderArtifactFrame(entry, url, null); return; }
   artifactBodyEl.append(el('div', 'notice', 'Preview not available for this file type.'));
 }
 
-/** A sandbox value of null omits the attribute (the PDF viewer refuses to run inside a sandbox). */
+/**
+ * A sandbox value of null omits the attribute (the PDF viewer refuses to run inside a sandbox). The
+ * HEAD preflight catches a file deleted after it was listed: an iframe would otherwise render the
+ * protocol's "not found" body as if it were the artifact.
+ */
+async function renderArtifactFrame(entry: ArtifactEntry, url: string, sandbox: string | null): Promise<void> {
+  const target = artifactBodyEl;
+  if (!target) return;
+  let ok = false;
+  try {
+    ok = (await fetch(url, { method: 'HEAD' })).ok;
+  } catch {
+    ok = false;
+  }
+  if (target !== artifactBodyEl) return;
+  target.replaceChildren(ok ? artifactFrame(url, sandbox) : artifactUnavailable(entry));
+}
+
 function artifactFrame(url: string, sandbox: string | null): HTMLIFrameElement {
   const frame = el('iframe', 'artifact-frame') as HTMLIFrameElement;
   if (sandbox !== null) frame.setAttribute('sandbox', sandbox);
@@ -2857,13 +2899,31 @@ function artifactFrame(url: string, sandbox: string | null): HTMLIFrameElement {
   return frame;
 }
 
+/** A preview whose bytes cannot be loaded must not leave a broken element or an error body behind. */
+function artifactUnavailable(entry: ArtifactEntry): HTMLElement {
+  const notice = el('div', 'notice error');
+  notice.append(el('div', undefined, `${entry.name} could not be loaded — it may have been deleted or moved.`));
+  const refresh = el('button', 'btn small', 'Refresh');
+  refresh.onclick = () => void refreshArtifactBaseline();
+  notice.append(refresh);
+  return notice;
+}
+
+/** The protocol answers 404 for an artifact that was deleted after it was listed. */
+async function readArtifactText(url: string): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(response.status === 404 ? 'the file is no longer in the workspace' : `HTTP ${response.status}`);
+  }
+  return response.text();
+}
+
 async function renderArtifactSourceText(url: string, mode: 'json' | 'text'): Promise<void> {
   const target = artifactBodyEl;
   if (!target) return;
   target.replaceChildren(el('div', 'notice', 'Loading…'));
   try {
-    const response = await fetch(url);
-    const text = await response.text();
+    const text = await readArtifactText(url);
     if (target !== artifactBodyEl) return;
     let body = text;
     if (mode === 'json') {
@@ -2879,8 +2939,7 @@ async function renderArtifactMarkdown(url: string): Promise<void> {
   const target = artifactBodyEl;
   if (!target) return;
   try {
-    const response = await fetch(url);
-    const text = await response.text();
+    const text = await readArtifactText(url);
     if (target !== artifactBodyEl) return;
     const container = el('div', 'artifact-markdown');
     target.replaceChildren(container);
@@ -3006,6 +3065,11 @@ async function refreshArtifactBase(): Promise<void> {
   }
 }
 
+/** Identity of the visible list; a refresh that changes nothing must not re-render (it reloads previews). */
+function artifactListSignature(): string {
+  return currentArtifacts().map((entry) => `${entry.path}\u0000${entry.size}\u0000${entry.createdAt}`).join('\u0001');
+}
+
 /** Baseline for the panel: realtime events are live-only, so a reopened panel re-reads the scan. */
 async function refreshArtifactBaseline(): Promise<void> {
   const token = ++artifactRefreshToken;
@@ -3016,23 +3080,36 @@ async function refreshArtifactBaseline(): Promise<void> {
     renderArtifactPanel();
     return;
   }
+  const workspace = state.workspace;
+  const before = artifactListSignature();
   const [workspaceList, sessionList] = await Promise.all([
     call('artifacts/list', { limit: 200 }),
     sessionId ? call('artifacts/list', { limit: 200, sessionId }) : Promise.resolve(null),
   ]);
-  if (token !== artifactRefreshToken) return;
+  if (token !== artifactRefreshToken || workspace !== state.workspace) return;
   if (workspaceList) {
-    state.artifacts = mergeArtifactEntries(state.artifacts, artifactEntriesFrom(workspaceList));
+    const baseline = artifactEntriesFrom(workspaceList);
+    const gone = await goneArtifactPaths(workspace, unscannedArtifactPaths(state.artifacts, baseline));
+    if (token !== artifactRefreshToken || workspace !== state.workspace) return;
+    state.artifacts = mergeArtifactEntries(state.artifacts, baseline, gone);
   }
   if (sessionId && sessionList) {
+    const baseline = artifactEntriesFrom(sessionList);
     const existing = sessionArtifacts.get(sessionId) ?? [];
-    sessionArtifacts.set(sessionId, mergeArtifactEntries(existing, artifactEntriesFrom(sessionList)));
+    const gone = await goneArtifactPaths(workspace, unscannedArtifactPaths(existing, baseline));
+    if (token !== artifactRefreshToken || workspace !== state.workspace) return;
+    sessionArtifacts.set(sessionId, mergeArtifactEntries(existing, baseline, gone));
   }
-  if (sessionId === state.sessionId && !surface.activeArtifactPath) {
-    const entries = currentArtifacts();
-    if (entries.length) surface.activeArtifactPath = entries[0].path;
+  // A deleted artifact must not stay the panel's selection: the preview would keep asking for its bytes.
+  if (sessionId === state.sessionId) {
+    const selection = surface.activeArtifactPath;
+    if (selection && !currentArtifacts().some((entry) => entry.path === selection)) surface.activeArtifactPath = null;
+    if (!surface.activeArtifactPath) {
+      const entries = currentArtifacts();
+      if (entries.length) surface.activeArtifactPath = entries[0].path;
+    }
   }
-  renderArtifactPanel();
+  if (artifactListSignature() !== before) renderArtifactPanel();
 }
 
 /** Rewrites `<img>` links that point at workspace files to the in-app protocol so generated images render. */
@@ -4235,6 +4312,9 @@ function appendToolThumbnail(tool: UiTool, entry: ArtifactEntry): void {
     img.src = artifactUrl(entry.path);
     img.alt = entry.name;
     img.loading = 'lazy';
+    img.onerror = () => {
+      if (img.isConnected) img.replaceWith(el('span', 'tool-artifact-icon', '▤'));
+    };
     thumb.append(img);
   } else {
     thumb.append(el('span', 'tool-artifact-icon', entry.kind === 'video' ? '▶' : '▤'), el('span', undefined, entry.name));
@@ -6698,6 +6778,8 @@ async function bootstrap(): Promise<void> {
   window.addEventListener('focus', () => {
     flushLiveRenders();
     void refreshAuth();
+    // Coming back from Explorer after deleting an artifact should drop it from an open panel.
+    if (surface.dock === 'artifacts') void refreshArtifactBaseline();
   });
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) flushLiveRenders();

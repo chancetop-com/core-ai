@@ -1,6 +1,6 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } from 'electron';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
@@ -817,6 +817,21 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle('artifacts:base', (_event, workspace: string) => artifactBase(String(workspace ?? '')));
+  // The renderer keeps live artifact entries the engine's scan does not cover yet; this tells it which
+  // of those still exist, so a file deleted from the workspace drops out instead of leaving a broken preview.
+  ipcMain.handle('artifacts:existing', (_event, workspace: string, relativePaths: string[]) => {
+    if (typeof workspace !== 'string' || !workspace || !Array.isArray(relativePaths)) return [];
+    return relativePaths.filter((relativePath) => {
+      if (typeof relativePath !== 'string' || !relativePath) return false;
+      const absolute = resolveInsideWorkspace(workspace, relativePath);
+      if (!absolute) return false;
+      try {
+        return statSync(absolute).isFile();
+      } catch {
+        return false;
+      }
+    });
+  });
   ipcMain.handle('shell:openPath', async (_event, workspace: string, relativePath: string) => {
     const absolute = resolveInsideWorkspace(workspace, relativePath);
     if (!absolute) return 'path escapes the workspace';
@@ -826,6 +841,18 @@ function registerIpc(): void {
     const absolute = resolveInsideWorkspace(workspace, relativePath);
     if (absolute) shell.showItemInFolder(absolute);
   });
+  // The artifact panel's Copy action: the OS path is what the user pastes into a terminal or another app.
+  ipcMain.handle('shell:copyPath', (_event, workspace: string, relativePath: string) => {
+    const absolute = resolveInsideWorkspace(workspace, relativePath);
+    if (!absolute) return null;
+    try {
+      if (!statSync(absolute).isFile()) return null;
+    } catch {
+      return null;
+    }
+    clipboard.writeText(absolute);
+    return absolute;
+  });
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) await shell.openExternal(url);
   });
@@ -833,7 +860,8 @@ function registerIpc(): void {
 function resolveInsideWorkspace(workspace: string, relativePath: string): string | null {
   const root = path.resolve(workspace);
   const absolute = path.resolve(root, relativePath);
-  return absolute.startsWith(root) ? absolute : null;
+  const relative = path.relative(root, absolute);
+  return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? absolute : null;
 }
 
 interface BoundsPayload { x: number; y: number; width: number; height: number }
