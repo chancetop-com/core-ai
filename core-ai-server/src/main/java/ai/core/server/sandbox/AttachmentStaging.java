@@ -7,6 +7,10 @@ import ai.core.server.domain.SessionAttachmentRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -49,14 +53,16 @@ final class AttachmentStaging {
     private final Set<String> usedTargets;
     /** the running sandbox of this session, or null while it has not been acquired yet */
     private final Sandbox sandbox;
+    private final long attachmentLimit;
 
     AttachmentStaging(SandboxService sandboxService, String sessionId, String userId, ObjectStorageService storage,
-                      List<SessionAttachmentRef> references) {
+                      List<SessionAttachmentRef> references, long attachmentLimit) {
         this.sandboxService = sandboxService;
         this.sessionId = sessionId;
         this.userId = userId;
         this.storage = storage;
         this.references = references;
+        this.attachmentLimit = attachmentLimit;
         this.usedTargets = references.stream().map(reference -> reference.targetPath)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         var attached = sandboxService.sessionSandbox(sessionId);
@@ -76,9 +82,9 @@ final class AttachmentStaging {
             if (existing != null) return existing.targetPath;
             var metadata = storage.headObject(file.container(), file.blobName());
             var size = metadata.sizeBytes();
-            if (size != null && size > sandboxService.attachmentMaxBytes) {
+            if (size != null && size > attachmentLimit) {
                 LOGGER.info("attachment over the staging limit, skipped: session={}, file={}, size={}, limit={}",
-                        sessionId, fileName, size, sandboxService.attachmentMaxBytes);
+                        sessionId, fileName, size, attachmentLimit);
                 return null;
             }
             var unique = uniqueFileName(fileName);
@@ -95,17 +101,42 @@ final class AttachmentStaging {
     private String upload(String fileName, PendingFile file) {
         var root = SandboxAttachmentPath.root(sandboxService.workspaceWritable());
         if (sandbox == null) return SandboxAttachmentPath.targetPath(root, fileName);
-        var data = storage.downloadObject(file.container(), file.blobName());
+        var targetPath = SandboxAttachmentPath.targetPath(root, fileName);
+        var tempFile = createTempFile();
         try {
-            var targetPath = SandboxAttachmentPath.targetPath(root, fileName);
-            sandbox.uploadFile(targetPath, data);
+            storage.downloadObjectToFile(file.container(), file.blobName(), tempFile);
+            return uploadToSandbox(targetPath, tempFile, root, fileName);
+        } finally {
+            deleteTempFile(tempFile);
+        }
+    }
+
+    private String uploadToSandbox(String targetPath, Path tempFile, String root, String fileName) {
+        try {
+            sandbox.uploadFile(targetPath, tempFile);
             return targetPath;
         } catch (RuntimeException e) {
             var fallback = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.ATTACHMENT_TMP_ROOT, fileName);
             LOGGER.warn("staging into {} failed, falling back to {}: session={}, error={}",
                     root, fallback, sessionId, e.getMessage());
-            sandbox.uploadFile(fallback, data);
+            sandbox.uploadFile(fallback, tempFile);
             return fallback;
+        }
+    }
+
+    private Path createTempFile() {
+        try {
+            return Files.createTempFile("attachment-", ".bin");
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to create a temp file for attachment staging", e);
+        }
+    }
+
+    private void deleteTempFile(Path tempFile) {
+        try {
+            Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete temp file, path={}", tempFile, e);
         }
     }
 

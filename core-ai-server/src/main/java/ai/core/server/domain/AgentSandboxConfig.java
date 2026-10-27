@@ -62,10 +62,12 @@ public class AgentSandboxConfig {
     public Map<String, String> environmentVariables;
 
     public SandboxConfig toConfig() {
-        return applyTo(new SandboxConfig());
+        var config = new SandboxConfig();
+        applyTo(config);
+        return config;
     }
 
-    public SandboxConfig applyTo(SandboxConfig config) {
+    public void applyTo(SandboxConfig config) {
         if (enabled != null) config.enabled = enabled;
         if (image != null) config.image = image;
         if (memoryLimitMb != null) config.memoryLimitMb = memoryLimitMb;
@@ -77,7 +79,6 @@ public class AgentSandboxConfig {
         if (tmpSizeLimit != null) config.tmpSizeLimit = tmpSizeLimit;
         if (maxAsyncTasks != null) config.maxAsyncTasks = maxAsyncTasks;
         if (environmentVariables != null) config.env = new LinkedHashMap<>(environmentVariables);
-        return config;
     }
 }
 

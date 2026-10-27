@@ -19,6 +19,8 @@ import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.sandbox.kubernetes.KubernetesSandboxProvider;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.sandboxhub.SessionTokenService;
+import ai.core.server.settings.SandboxAttachmentLimit;
+import ai.core.server.settings.SystemSettingsService;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -49,12 +51,9 @@ class SandboxModule extends Module {
         property("sys.sandbox.server.url");
         property("sys.sandbox.attachments.maxBytes");
         if (providerName == null || providerName.isBlank()) {
-            sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
+            bindSandboxService(new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                    bean(SessionAttachmentRefRepository.class));
-            bind(sandboxService);
-            bindSandboxManager(sandboxService);
-            sandboxService.sessionTokens(sessionTokenService);
+                    bean(SessionAttachmentRefRepository.class)), sessionTokenService);
             return;
         }
 
@@ -74,24 +73,25 @@ class SandboxModule extends Module {
             provider = new DockerSandboxProvider(dockerSocket, workspaceBase, null);
             serverUrlFromSandbox = resolveServerUrlFromSandbox(DOCKER_SERVER_HOST);
         } else {
-            sandboxService = new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
+            bindSandboxService(new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                    bean(SessionAttachmentRefRepository.class));
-            bind(sandboxService);
-            bindSandboxManager(sandboxService);
-            sandboxService.sessionTokens(sessionTokenService);
+                    bean(SessionAttachmentRefRepository.class)), sessionTokenService);
             return;
         }
-        sandboxService = new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
+        bindSandboxService(new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
                 new SandboxServiceDependencies(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                         bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                        bean(SessionAttachmentRefRepository.class)));
-        sandboxService.attachmentMaxBytes = attachmentMaxBytes();
-        bind(sandboxService);
-        bindSandboxManager(sandboxService);
-        sandboxService.sessionTokens(sessionTokenService);
+                        bean(SessionAttachmentRefRepository.class))), sessionTokenService);
 
         onShutdown(sandboxService::shutdown);
+    }
+
+    private void bindSandboxService(SandboxService service, SessionTokenService sessionTokenService) {
+        sandboxService = service;
+        configureAttachmentLimit(service);
+        bind(service);
+        bindSandboxManager(service);
+        service.sessionTokens(sessionTokenService);
     }
 
     /**
@@ -128,13 +128,20 @@ class SandboxModule extends Module {
         return config;
     }
 
-    // Cap for copying chat attachments into a sandbox, overridable via SYS_SANDBOX_ATTACHMENTS_MAXBYTES.
+    // Deployment fallback for copying chat attachments into a sandbox; the live value comes from
+    // Admin → System Configuration (sandbox_attachment_max_bytes) and is read on every staging decision.
     private long attachmentMaxBytes() {
         return property("sys.sandbox.attachments.maxBytes")
                 .map(String::trim)
                 .filter(value -> !value.isEmpty())
                 .map(Long::valueOf)
-                .orElse(32L * 1024 * 1024);
+                .orElse(SandboxAttachmentLimit.DEFAULT_BYTES);
+    }
+
+    private void configureAttachmentLimit(SandboxService service) {
+        var fallback = attachmentMaxBytes();
+        service.attachmentMaxBytes = fallback;
+        service.attachmentMaxBytesSupplier = SandboxAttachmentLimit.liveLimit(bean(SystemSettingsService.class), fallback);
     }
 
     private String resolveNamespace() {

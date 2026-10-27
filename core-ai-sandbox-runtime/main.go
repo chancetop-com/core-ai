@@ -27,12 +27,16 @@ const maxOutputSize = 30 * 1024              // 30KB
 const skillBaseDir = "/skill"                // sandbox-side mount target for materialized skills
 const maxSkillArchiveSize = 5 << 20          // 5 MB
 const defaultMaxDownloadFileSize = 100 << 20 // 100 MB
+const defaultMaxUploadFileSize = 256 << 20   // 256 MB, beyond any attachment limit the platform configures
 
 // raisable per deployment via MAX_DOWNLOAD_FILE_SIZE (bytes): an assembled episode collected by the
 // drama dispatcher is far bigger than anything an agent hands back (design §9.4)
 var maxDownloadFileSize int64 = defaultMaxDownloadFileSize
 
-const maxUploadFileSize = 20 << 20 // 20 MB
+// raisable per deployment via MAX_UPLOAD_FILE_SIZE (bytes). The platform never stages more than its
+// System Configuration attachment limit; the upload is streamed straight to disk, so this cap only has
+// to stay above that limit, not below what one request can spend in memory.
+var maxUploadFileSize int64 = defaultMaxUploadFileSize
 
 // ---- Request / Response ----
 
@@ -189,6 +193,9 @@ func main() {
 	if capBytes, err := strconv.ParseInt(envOrDefault("MAX_DOWNLOAD_FILE_SIZE", strconv.Itoa(defaultMaxDownloadFileSize)), 10, 64); err == nil && capBytes > 0 {
 		maxDownloadFileSize = capBytes
 	}
+	if capBytes, err := strconv.ParseInt(envOrDefault("MAX_UPLOAD_FILE_SIZE", strconv.Itoa(defaultMaxUploadFileSize)), 10, 64); err == nil && capBytes > 0 {
+		maxUploadFileSize = capBytes
+	}
 	taskRegistry = NewTaskRegistry(maxAsync)
 
 	// Periodic cleanup of completed tasks older than 30 minutes
@@ -237,8 +244,8 @@ func main() {
 	probeFfmpeg()
 
 	log.Printf("runtime version: %s", runtimeVersion)
-	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d, maxBashTimeout=%s, maxDownload=%dMB",
-		port, workspaceDir, maxAsync, maxBashTimeout, maxDownloadFileSize>>20)
+	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d, maxBashTimeout=%s, maxDownload=%dMB, maxUpload=%dMB",
+		port, workspaceDir, maxAsync, maxBashTimeout, maxDownloadFileSize>>20, maxUploadFileSize>>20)
 	if err := http.ListenAndServe(":"+port, loggingMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
@@ -533,35 +540,59 @@ func handleFileUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxUploadFileSize+1))
-	if err != nil {
-		writeFileUploadError(w, http.StatusBadRequest, "failed to read body: "+err.Error())
-		return
-	}
-	if int64(len(body)) > maxUploadFileSize {
+	if r.ContentLength > maxUploadFileSize {
 		writeFileUploadError(w, http.StatusRequestEntityTooLarge,
 			fmt.Sprintf("file exceeds max size (%d bytes)", maxUploadFileSize))
 		return
 	}
-
 	if err := os.MkdirAll(filepath.Dir(safePath), 0755); err != nil {
 		writeFileUploadError(w, http.StatusInternalServerError,
 			"failed to create directory: "+err.Error())
 		return
 	}
 
-	if err := os.WriteFile(safePath, body, 0644); err != nil {
+	// Stream to a sibling temp file and rename, so a 100MB+ attachment never sits in the runtime's
+	// heap and a failed upload cannot leave a truncated file under the target path.
+	temp, err := os.CreateTemp(filepath.Dir(safePath), ".upload-*")
+	if err != nil {
 		writeFileUploadError(w, http.StatusInternalServerError,
-			"failed to write file: "+err.Error())
+			"failed to create temp file: "+err.Error())
+		return
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+
+	written, err := io.Copy(temp, io.LimitReader(r.Body, maxUploadFileSize+1))
+	if err != nil {
+		temp.Close()
+		writeFileUploadError(w, http.StatusBadRequest, "failed to read body: "+err.Error())
+		return
+	}
+	if written > maxUploadFileSize {
+		temp.Close()
+		writeFileUploadError(w, http.StatusRequestEntityTooLarge,
+			fmt.Sprintf("file exceeds max size (%d bytes)", maxUploadFileSize))
+		return
+	}
+	if err := temp.Close(); err != nil {
+		writeFileUploadError(w, http.StatusInternalServerError, "failed to close temp file: "+err.Error())
+		return
+	}
+	if err := os.Chmod(tempPath, 0644); err != nil {
+		writeFileUploadError(w, http.StatusInternalServerError, "failed to set file mode: "+err.Error())
+		return
+	}
+	if err := os.Rename(tempPath, safePath); err != nil {
+		writeFileUploadError(w, http.StatusInternalServerError, "failed to store file: "+err.Error())
 		return
 	}
 
-	log.Printf("file uploaded: path=%s, size=%d", safePath, len(body))
+	log.Printf("file uploaded: path=%s, size=%d", safePath, written)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(FileUploadResponse{
 		Status: "ok",
 		Path:   safePath,
-		Size:   int64(len(body)),
+		Size:   written,
 	})
 }
 

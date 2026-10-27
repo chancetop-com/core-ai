@@ -30,6 +30,9 @@ public class SystemSettingsRequest {
     @Property(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 
+    @Property(name = "sandbox_attachment_max_bytes")
+    public Long sandboxAttachmentMaxBytes;
+
     @Property(name = "skill_repo_sync_enabled")
     public Boolean skillRepoSyncEnabled;
 

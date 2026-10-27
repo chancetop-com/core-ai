@@ -50,6 +50,12 @@ public class SystemSettingsView {
     @Property(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 
+    @Property(name = "sandbox_attachment_max_bytes")
+    public Long sandboxAttachmentMaxBytes;
+
+    @Property(name = "default_sandbox_attachment_max_bytes")
+    public Long defaultSandboxAttachmentMaxBytes;
+
     @Property(name = "sandbox_snapshot_deployment_allowed")
     public Boolean sandboxSnapshotDeploymentAllowed;
 

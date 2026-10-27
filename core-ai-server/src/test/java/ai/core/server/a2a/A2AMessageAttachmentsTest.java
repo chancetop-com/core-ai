@@ -26,8 +26,9 @@ import static org.mockito.Mockito.when;
 
 /**
  * What an inbound A2A message does with its file parts: a foreign URL is handed to the agent, a file in
- * the platform's storage is staged and hinted, an image reaches the model, and a video is referenced
- * without leaking its URL into the text — the chat message treatment, applied to a hub run.
+ * the platform's storage is staged and hinted, an image reaches the model, and a video is referenced for
+ * understand_video plus given a fetchable URL behind an explicit download hint (never as a bare URL line) —
+ * the chat message treatment, applied to a hub run.
  *
  * @author stephen
  */
@@ -101,7 +102,7 @@ class A2AMessageAttachmentsTest {
     }
 
     @Test
-    void aVideoIsReferencedWithoutSerializingItsUrlIntoTheText() {
+    void aVideoIsReferencedAndKeepsAFetchableUrlBehindADownloadHint() {
         var blobName = "ai/uploads/clip.mp4";
         when(storage.headObject("static", blobName))
                 .thenReturn(new ObjectStorageService.ObjectMetadata(10L, "etag-1", "video/mp4", null));
@@ -110,7 +111,8 @@ class A2AMessageAttachmentsTest {
                 message(filePart("clip.mp4", "video/mp4", "https://cdn/" + blobName, "static", blobName)), "watch this");
 
         assertEquals(1, delivered.contents().size());
-        assertFalse(delivered.text().contains("https://cdn/"), delivered.text());
+        assertFalse(delivered.text().contains("watch this\n\nhttps://cdn/"), delivered.text());
+        assertTrue(delivered.text().contains("[Video download] clip.mp4: https://cdn/" + blobName), delivered.text());
         verify(repository).insert(any());
     }
 

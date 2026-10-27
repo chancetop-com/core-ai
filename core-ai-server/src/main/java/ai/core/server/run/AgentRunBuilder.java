@@ -27,6 +27,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.TranscriptEntry;
@@ -112,6 +113,8 @@ public class AgentRunBuilder {
     @Inject
     PublicUrlConfiguration publicUrlConfiguration;
     @Inject
+    SessionAttachmentRefRepository attachmentRepository;
+    @Inject
     DatasetService datasetService;
     @Inject
     DatasetRecordService datasetRecordService;
@@ -189,7 +192,8 @@ public class AgentRunBuilder {
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
-                    new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration));
+                    new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration,
+                    attachmentRepository));
         }
         var agent = builder.build();
         agent.setAuthenticated(true);

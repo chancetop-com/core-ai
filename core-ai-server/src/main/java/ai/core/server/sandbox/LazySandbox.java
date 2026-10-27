@@ -14,6 +14,7 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
@@ -104,6 +105,13 @@ public class LazySandbox implements Sandbox {
         ensureReady();
         snapshotDirty = true;
         delegate.uploadFile(path, content);
+    }
+
+    @Override
+    public void uploadFile(String path, Path file) {
+        ensureReady();
+        snapshotDirty = true;
+        delegate.uploadFile(path, file);
     }
 
     @Override

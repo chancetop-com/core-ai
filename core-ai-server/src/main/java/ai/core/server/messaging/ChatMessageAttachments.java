@@ -121,13 +121,56 @@ public class ChatMessageAttachments {
         return message == null || message.isBlank() ? hint.strip() : message + hint;
     }
 
+    /**
+     * Hands the agent a fetchable URL for each video attachment. Staging is best effort — an oversized clip is
+     * only recorded, and a rejected upload is dropped — so without this the model has no way to fetch the bytes
+     * itself. The message's own URL is preferred (it is what the browser uploaded to and never expires); a
+     * short-lived signed URL is minted when the client did not send one.
+     */
+    public String appendVideoDownloadHints(String message, Map<String, Object> payload) {
+        var attachments = attachments(payload);
+        if (attachments.isEmpty()) return message;
+        var hints = new ArrayList<String>();
+        for (var attachment : attachments) {
+            if (!"VIDEO".equals(attachment.get("type"))) continue;
+            var url = videoDownloadUrl(attachment);
+            if (url == null) continue;
+            var name = (String) attachment.get("fileName");
+            hints.add("[Video download] " + (name != null ? name : "video") + ": " + url
+                    + " — use it with curl when the staged copy is missing");
+        }
+        if (hints.isEmpty()) return message;
+        var text = String.join("\n", hints);
+        return message == null || message.isBlank() ? text : message + "\n\n" + text;
+    }
+
+    private String videoDownloadUrl(Map<String, Object> attachment) {
+        var url = (String) attachment.get("url");
+        if (url != null && !url.isBlank()) return url;
+        var storageService = objectStorageResolver == null ? null : objectStorageResolver.resolve();
+        if (storageService == null) return null;
+        var container = (String) attachment.get("container");
+        var blobName = (String) attachment.get("blobName");
+        if (container == null || blobName == null) return null;
+        try {
+            return storageService.generateDownloadCredential(container, blobName).downloadUrl();
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to sign a video attachment url: container={}, blobName={}", container, blobName, e);
+            return null;
+        }
+    }
+
     public String appendVideoHints(String message, List<AttachedContent> attachedContents) {
         if (attachedContents == null || attachedContents.isEmpty()) return message;
         var hints = new ArrayList<String>();
         for (var content : attachedContents) {
             if (content.type != AttachedContent.AttachedContentType.VIDEO) continue;
             var name = content.filename != null ? content.filename : "video";
-            hints.add("[Video attachment: " + name + "]\nreference: " + content.url);
+            // the same reference also publishes the clip: a video over the staging limit never reaches the
+            // sandbox, so submit_artifacts must be able to take the platform reference instead of a path
+            hints.add("[Video attachment: " + name + "]\nreference: " + content.url
+                    + "\n(if the video must be reachable outside the platform, publish it with submit_artifacts:"
+                    + " {\"source\": \"" + content.url + "\", \"public\": true})");
         }
         if (hints.isEmpty()) return message;
         var text = String.join("\n", hints);

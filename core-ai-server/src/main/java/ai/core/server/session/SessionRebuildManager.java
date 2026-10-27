@@ -351,7 +351,7 @@ public class SessionRebuildManager {
         var agent = subAgentManager.buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry,
                 sandbox.context, params.agentName, extraVars, agentId,
-                sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration)) : null,
+                sandbox.sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(params.sessionId), publicUrlConfiguration, sandboxService.attachmentRepository())) : null,
                 memoryInject, SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;

@@ -2,10 +2,16 @@ package ai.core.server.sandbox;
 
 import ai.core.sandbox.Sandbox;
 import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.SessionAttachmentRef;
+import ai.core.server.file.FileService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -116,7 +122,7 @@ class SandboxFileService {
             LOGGER.warn("failed to read staged attachments, staging is skipped: session={}", sessionId, e);
             return Map.of();
         }
-        var staging = new AttachmentStaging(sandboxService, sessionId, userId, storage, references);
+        var staging = new AttachmentStaging(sandboxService, sessionId, userId, storage, references, attachmentLimit());
         var staged = new LinkedHashMap<String, String>();
         for (var file : files) {
             var targetPath = staging.stage(file);
@@ -135,11 +141,13 @@ class SandboxFileService {
         var storageService = resolver.resolve();
         if (storageService == null) throw new IllegalStateException("object storage is not configured");
         var targetPath = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.CHAT_FILE_ROOT, file.fileName());
+        var tempFile = createTempFile();
         try {
             var metadata = storageService.headObject(file.container(), file.blobName());
-            var data = storageService.downloadObject(file.container(), file.blobName());
-            verifyDownloadedSize(metadata.sizeBytes(), data.length);
-            sandbox.uploadFile(targetPath, data);
+            storageService.downloadObjectToFile(file.container(), file.blobName(), tempFile);
+            var size = Files.size(tempFile);
+            verifyDownloadedSize(metadata.sizeBytes(), size);
+            sandbox.uploadFile(targetPath, tempFile);
 
             var reference = new SessionAttachmentRef();
             reference.id = "sandbox_" + UUID.randomUUID();
@@ -149,18 +157,20 @@ class SandboxFileService {
             reference.container = file.container();
             reference.blobName = file.blobName();
             reference.sourceETag = metadata.etag();
-            reference.sourceSizeBytes = metadata.sizeBytes() != null ? metadata.sizeBytes() : (long) data.length;
+            reference.sourceSizeBytes = metadata.sizeBytes() != null ? metadata.sizeBytes() : size;
             reference.contentType = AttachmentStaging.effectiveContentType(metadata.contentType(), file.contentType());
             reference.fileName = file.fileName();
             reference.targetPath = targetPath;
             reference.createdAt = ZonedDateTime.now();
             repository.insert(reference);
             LOGGER.info("sandbox attachment uploaded and persisted: session={}, reference={}, target={}, size={}",
-                    sessionId, reference.id, targetPath, data.length);
+                    sessionId, reference.id, targetPath, size);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (Exception e) {
             throw new IllegalStateException("failed to upload sandbox attachment " + file.fileName(), e);
+        } finally {
+            deleteTempFile(tempFile);
         }
     }
 
@@ -220,22 +230,34 @@ class SandboxFileService {
                     sessionId, reference.id, reference.targetPath);
             return false;
         }
-        return reference.sourceSizeBytes == null || reference.sourceSizeBytes <= sandboxService.attachmentMaxBytes;
+        return reference.sourceSizeBytes == null || reference.sourceSizeBytes <= attachmentLimit();
+    }
+
+    /** Attachments over this limit stay in platform storage; the System Configuration value wins when set. */
+    long attachmentLimit() {
+        var supplier = sandboxService.attachmentMaxBytesSupplier;
+        if (supplier != null) {
+            var configured = supplier.getAsLong();
+            if (configured > 0) return configured;
+        }
+        return sandboxService.attachmentMaxBytes;
     }
 
     private boolean restore(Sandbox sandbox, ObjectStorageService storage, String sessionId,
                             SessionAttachmentRef reference) {
+        var tempFile = createTempFile();
         try {
             var metadata = storage.headObject(reference.container, reference.blobName);
             verifySourceVersion(reference, metadata.etag(), metadata.sizeBytes());
-            var data = storage.downloadObject(reference.container, reference.blobName);
-            verifyDownloadedSize(reference.sourceSizeBytes, data.length);
-            sandbox.uploadFile(reference.targetPath, data);
+            storage.downloadObjectToFile(reference.container, reference.blobName, tempFile);
+            verifyDownloadedSize(reference.sourceSizeBytes, Files.size(tempFile));
+            sandbox.uploadFile(reference.targetPath, tempFile);
             return true;
         } catch (Exception e) {
-            LOGGER.warn("failed to restore sandbox attachment: session={}, reference={}, target={}",
-                    sessionId, reference.id, reference.targetPath, e);
+            LOGGER.warn("failed to restore sandbox attachment: session={}, reference={}, target={}", sessionId, reference.id, reference.targetPath, e);
             return false;
+        } finally {
+            deleteTempFile(tempFile);
         }
     }
 
@@ -248,8 +270,8 @@ class SandboxFileService {
         }
     }
 
-    private void verifyDownloadedSize(Long expectedSize, int actualSize) {
-        if (expectedSize != null && expectedSize != actualSize) {
+    private void verifyDownloadedSize(Long expectedSize, long actualSize) {
+        if (expectedSize != null && !expectedSize.equals(actualSize)) {
             throw new IllegalStateException("sandbox attachment download size changed");
         }
     }
@@ -288,13 +310,35 @@ class SandboxFileService {
         if (fileService == null) {
             throw new IllegalStateException("fileService not configured, cannot stage input file " + file.fileName());
         }
+        var tempFile = createTempFile();
         try {
-            var data = fileService.getBytes(fileService.get(file.fileId()));
-            sandbox.uploadFile(file.targetPath(), data);
-            LOGGER.info("staged file uploaded: session={}, target={}, size={}", sessionId, file.targetPath(), data.length);
-        } catch (RuntimeException e) {
+            var record = fileService.get(file.fileId());
+            downloadRecord(fileService, record, tempFile);
+            var size = Files.size(tempFile);
+            sandbox.uploadFile(file.targetPath(), tempFile);
+            LOGGER.info("staged file uploaded: session={}, target={}, size={}", sessionId, file.targetPath(), size);
+        } catch (RuntimeException | IOException e) {
             throw new IllegalStateException("failed to stage input file " + file.fileName() + " into sandbox: " + e.getMessage(), e);
+        } finally {
+            deleteTempFile(tempFile);
         }
+    }
+
+    private void downloadRecord(FileService fileService, FileRecord record, Path tempFile) throws IOException {
+        var storage = sandboxService.storageResolver == null ? null : sandboxService.storageResolver.resolve();
+        if (record.storagePath != null && storage != null) {
+            storage.downloadObjectToFile(containerOf(record.storagePath), blobOf(record.storagePath), tempFile);
+            return;
+        }
+        Files.write(tempFile, fileService.getBytes(record));
+    }
+
+    private String containerOf(String storagePath) {
+        return storagePath.substring(0, storagePath.indexOf('/'));
+    }
+
+    private String blobOf(String storagePath) {
+        return storagePath.substring(storagePath.indexOf('/') + 1);
     }
 
     private boolean uploadBlobFile(Sandbox sandbox, String sessionId, PendingFile file) {
@@ -306,15 +350,40 @@ class SandboxFileService {
             return false;
         }
         try {
-            LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container(), file.blobName());
-            var data = storageService.downloadObject(file.container(), file.blobName());
-            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", data.length, file.fileName());
-            sandbox.uploadFile("/tmp/" + file.fileName(), data);
+            uploadToSandbox(sandbox, storageService, file);
             LOGGER.info("pending file uploaded: session={}, file={}", sessionId, file.fileName());
             return true;
         } catch (Exception e) {
             LOGGER.error("failed to upload pending file to sandbox: session={}, file={}", sessionId, file.fileName(), e);
             return false;
+        }
+    }
+
+    private void uploadToSandbox(Sandbox sandbox, ObjectStorageService storageService, PendingFile file) throws IOException {
+        LOGGER.info("[UPLOAD] downloading blob: container={}, blobName={}", file.container(), file.blobName());
+        var tempFile = createTempFile();
+        try {
+            storageService.downloadObjectToFile(file.container(), file.blobName(), tempFile);
+            LOGGER.info("[UPLOAD] blob downloaded: size={} bytes, uploading to /tmp/{}", Files.size(tempFile), file.fileName());
+            sandbox.uploadFile("/tmp/" + file.fileName(), tempFile);
+        } finally {
+            deleteTempFile(tempFile);
+        }
+    }
+
+    private Path createTempFile() {
+        try {
+            return Files.createTempFile("sandbox-upload-", ".bin");
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to create a temp file for a sandbox upload", e);
+        }
+    }
+
+    private void deleteTempFile(Path tempFile) {
+        try {
+            Files.deleteIfExists(tempFile);
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete temp file, path={}", tempFile, e);
         }
     }
 

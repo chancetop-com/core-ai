@@ -19,9 +19,14 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.net.URI;
 import java.net.URLEncoder;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -37,6 +42,7 @@ public class SandboxClient {
     private final int port;
     private final HTTPClient httpClient;
     private final HTTPClient probeClient;
+    private final HttpClient fileClient;
 
     public SandboxClient(String ip, int port, int timeoutSeconds) {
         this.ip = ip;
@@ -51,6 +57,9 @@ public class SandboxClient {
         this.probeClient = HTTPClient.builder()
                 .connectTimeout(Duration.ofSeconds(2))
                 .timeout(Duration.ofSeconds(3))
+                .build();
+        this.fileClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(3))
                 .build();
     }
 
@@ -182,7 +191,7 @@ public class SandboxClient {
             Files.write(tempFile, response.body);
             var fileName = header(response, "X-File-Name");
             if (fileName == null || fileName.isBlank()) {
-                var f = java.nio.file.Path.of(path).getFileName();
+                var f = Path.of(path).getFileName();
                 fileName = f != null ? f.toString() : "unknown";
             }
             var contentType = response.contentType != null ? response.contentType.toString() : header(response, "Content-Type");
@@ -205,6 +214,31 @@ public class SandboxClient {
                     + ", body=" + response.text());
         }
         LOGGER.info("uploaded file to sandbox: path={}, size={}bytes", path, content.length);
+    }
+
+    /**
+     * Streams a local file to the runtime. Attachment staging goes through here: the runtime writes the body
+     * straight to disk, so a large upload costs neither side a full copy on the heap.
+     */
+    public void uploadFile(String path, Path file) {
+        var url = baseUrl + "/files/upload?path=" + URLEncoder.encode(path, StandardCharsets.UTF_8);
+        try {
+            var request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofMinutes(10))
+                    .POST(HttpRequest.BodyPublishers.ofFile(file))
+                    .build();
+            var response = fileClient.send(request, HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                throw new RuntimeException("sandbox file upload failed: status=" + response.statusCode()
+                        + ", body=" + response.body());
+            }
+            LOGGER.info("uploaded file to sandbox: path={}, size={}bytes", path, Files.size(file));
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to stream file to sandbox: " + path, e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("interrupted while uploading file to sandbox: " + path, e);
+        }
     }
 
     private String header(HTTPResponse response, String name) {

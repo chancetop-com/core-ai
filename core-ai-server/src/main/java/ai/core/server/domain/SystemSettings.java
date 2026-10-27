@@ -38,6 +38,9 @@ public class SystemSettings {
     @Field(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 
+    @Field(name = "sandbox_attachment_max_bytes")
+    public Long sandboxAttachmentMaxBytes;
+
     @Field(name = "sandbox_snapshot_retention_days")
     public Integer sandboxSnapshotRetentionDays;
 

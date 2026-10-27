@@ -253,6 +253,53 @@ class SystemSettingsServiceTest {
         assertThrows(BadRequestException.class, () -> service.update(tooLarge, "admin"));
     }
 
+    @Test
+    void sandboxAttachmentLimitFallsBackToTheDeploymentDefault() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+
+        var view = service.get("admin");
+        assertNull(view.sandboxAttachmentMaxBytes);
+        assertEquals(SandboxAttachmentLimit.DEFAULT_BYTES, view.defaultSandboxAttachmentMaxBytes.longValue());
+        assertEquals(SandboxAttachmentLimit.DEFAULT_BYTES, SandboxAttachmentLimit.liveLimit(service, SandboxAttachmentLimit.DEFAULT_BYTES).getAsLong());
+    }
+
+    @Test
+    void liveLimitPrefersTheConfiguredValueOverTheDeploymentDefault() {
+        var stored = new SystemSettings();
+        stored.id = "default";
+        stored.sandboxAttachmentMaxBytes = 64L * 1024 * 1024;
+        when(settings.get("default")).thenReturn(Optional.of(stored));
+
+        var limit = SandboxAttachmentLimit.liveLimit(service, SandboxAttachmentLimit.DEFAULT_BYTES);
+
+        assertEquals(64L * 1024 * 1024, limit.getAsLong());
+    }
+
+    @Test
+    void updatePersistsAndReturnsSandboxAttachmentLimit() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var request = new SystemSettingsRequest();
+        request.sandboxAttachmentMaxBytes = 64L * 1024 * 1024;
+
+        var view = service.update(request, "admin");
+
+        var entity = ArgumentCaptor.forClass(SystemSettings.class);
+        verify(settings).insert(entity.capture());
+        assertEquals(64L * 1024 * 1024, entity.getValue().sandboxAttachmentMaxBytes.longValue());
+        assertEquals(64L * 1024 * 1024, view.sandboxAttachmentMaxBytes.longValue());
+    }
+
+    @Test
+    void rejectsOutOfRangeSandboxAttachmentLimit() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var tooSmall = new SystemSettingsRequest();
+        tooSmall.sandboxAttachmentMaxBytes = 512L * 1024;
+        assertThrows(BadRequestException.class, () -> service.update(tooSmall, "admin"));
+        var tooLarge = new SystemSettingsRequest();
+        tooLarge.sandboxAttachmentMaxBytes = SandboxAttachmentLimit.MAX_BYTES + 1;
+        assertThrows(BadRequestException.class, () -> service.update(tooLarge, "admin"));
+    }
+
     private GatewayModelConfig mediaModel(String modelId) {
         var config = new GatewayModelConfig();
         config.modelId = modelId;

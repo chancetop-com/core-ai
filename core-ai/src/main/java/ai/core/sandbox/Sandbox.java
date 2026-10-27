@@ -3,6 +3,10 @@ package ai.core.sandbox;
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCallResult;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +40,18 @@ public interface Sandbox extends AutoCloseable {
 
     /** Upload file content to the sandbox at the specified path. */
     void uploadFile(String path, byte[] content);
+
+    /**
+     * Upload a local file without materializing it on the heap; providers that can stream should override
+     * this, the default keeps byte[]-only implementations working for small content.
+     */
+    default void uploadFile(String path, Path file) {
+        try {
+            uploadFile(path, Files.readAllBytes(file));
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to read file for sandbox upload: " + path, e);
+        }
+    }
 
     String ip();
 

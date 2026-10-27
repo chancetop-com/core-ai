@@ -1,9 +1,14 @@
 package ai.core.server.run;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.ArtifactSink;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.domain.AgentRunArtifact;
+import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.SessionAttachmentRef;
+import ai.core.server.domain.SessionAttachmentRefRepository;
+import ai.core.server.file.ArtifactPublisher;
 import ai.core.server.file.FileService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
@@ -13,12 +18,15 @@ import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import core.framework.api.json.Property;
 import core.framework.util.Strings;
+import core.framework.web.exception.NotFoundException;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * @author xander
@@ -48,6 +56,10 @@ public final class SubmitArtifactsTool extends ToolCall {
         permanent URL that anyone holding it can open — so never mark confidential or user-private files public.
         Artifacts without the flag stay private and are delivered through the platform's share link.
 
+        A file the platform already stores needs no sandbox copy: pass its `source` (the reference shown for an
+        uploaded video, or a platform file URL) or its `file_id` instead of `path` — long videos are never staged.
+        Use exactly one per item.
+
         This is a platform delivery requirement. It does not change the user's requested final response format:
         after submitting artifacts, still answer exactly as the task instructions require.
         """;
@@ -64,7 +76,13 @@ public final class SubmitArtifactsTool extends ToolCall {
             such as a URL handed to a third-party API or embedded in a page served elsewhere. Those are stored in
             public object storage and their download_url is permanent and open to anyone who has it, so leave the
             flag off for anything confidential or meant only for this conversation's user.
+
+            A file the platform already stores — an uploaded video or another file the user attached, or a file
+            the platform produced earlier — can be published without a sandbox copy by passing its `source`
+            (the reference shown in the user message) or its `file_id` instead of a `path`.
             """;
+
+    private static final int MIN_REFERENCE_PREFIX_LENGTH = "video_".length() + 8;
 
     public static String appendInstructions(String systemPrompt) {
         if (systemPrompt == null || systemPrompt.isBlank()) return SYSTEM_INSTRUCTIONS.strip();
@@ -72,8 +90,9 @@ public final class SubmitArtifactsTool extends ToolCall {
     }
 
     public static SubmitArtifactsTool create(String userId, FileService fileService, ArtifactSink sink,
-                                             PublicUrlConfiguration publicUrlConfiguration) {
-        var tool = new SubmitArtifactsTool(userId, fileService, sink, publicUrlConfiguration);
+                                             PublicUrlConfiguration publicUrlConfiguration,
+                                             SessionAttachmentRefRepository attachmentRepository) {
+        var tool = new SubmitArtifactsTool(userId, fileService, sink, publicUrlConfiguration, attachmentRepository);
         tool.setName(TOOL_NAME);
         tool.setDescription(TOOL_DESC);
         tool.setParameters(parameters());
@@ -87,11 +106,14 @@ public final class SubmitArtifactsTool extends ToolCall {
     private static List<ToolCallParameter> parameters() {
         return ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(List.class, "artifacts", """
-                Array of artifact objects. Each item MUST be a JSON object (not a bare string) with a required
-                `path` field — the sandbox file path to submit. Optional object fields: name, title, description,
-                content_type, public (set true only when an external system must fetch the file; it is then served
-                from public object storage and the returned download_url is open to anyone who has it).
+                Array of artifact objects. Each item MUST be a JSON object (not a bare string) with exactly one
+                source selector: `path` (a sandbox file path), `file_id` (a platform file id), or `source`
+                (a platform reference such as the `video_<uuid>` shown for an uploaded video, or a platform file
+                URL). Optional object fields: name, title, description, content_type, public (set true only when
+                an external system must fetch the file; it is then served from public object storage and the
+                returned download_url is open to anyone who has it).
                 Correct example: [{"path":"/tmp/report.pdf","name":"report.pdf","title":"Analysis","content_type":"application/pdf"}]
+                Correct example for an uploaded video: [{"source":"video_1a2b3c4d-...","public":true}]
                 Do NOT pass an array of strings like ["/tmp/report.pdf"].
                 """).required()
         );
@@ -130,15 +152,20 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     private final String userId;
     private final FileService fileService;
+    private final ArtifactPublisher publisher;
     private final ArtifactSink sink;
     private final PublicUrlConfiguration publicUrlConfiguration;
+    private final SessionAttachmentRefRepository attachmentRepository;
 
     private SubmitArtifactsTool(String userId, FileService fileService, ArtifactSink sink,
-                                PublicUrlConfiguration publicUrlConfiguration) {
+                                PublicUrlConfiguration publicUrlConfiguration,
+                                SessionAttachmentRefRepository attachmentRepository) {
         this.userId = userId;
         this.fileService = fileService;
+        this.publisher = fileService.publisher();
         this.sink = sink;
         this.publicUrlConfiguration = publicUrlConfiguration;
+        this.attachmentRepository = attachmentRepository;
     }
 
     @Override
@@ -148,9 +175,8 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
-        var sandbox = context != null ? context.getSandbox() : null;
-        if (sandbox == null) {
-            return ToolCallResult.failed("submit_artifacts requires an active sandbox");
+        if (context == null) {
+            return ToolCallResult.failed("submit_artifacts requires ExecutionContext; direct execute is not supported");
         }
 
         Request request;
@@ -167,7 +193,7 @@ public final class SubmitArtifactsTool extends ToolCall {
         var submitted = new ArrayList<Map<String, Object>>();
         var failed = new ArrayList<Map<String, Object>>();
         for (var item : request.artifacts) {
-            processArtifact(item, sandbox, submitted, failed);
+            processArtifact(item, context, submitted, failed);
         }
 
         var result = Map.of("submitted", submitted, "failed", failed);
@@ -177,20 +203,14 @@ public final class SubmitArtifactsTool extends ToolCall {
         return ToolCallResult.completed(JsonUtil.toJson(result));
     }
 
-    private void processArtifact(ArtifactRequest item, ai.core.sandbox.Sandbox sandbox,
+    private void processArtifact(ArtifactRequest item, ExecutionContext context,
                                  List<Map<String, Object>> submitted, List<Map<String, Object>> failed) {
-        if (item == null || Strings.isBlank(item.path)) {
-            failed.add(Map.of("path", "", "error", "path is required"));
+        if (item == null) {
+            failed.add(Map.of("error", "artifact item is required"));
             return;
         }
         try {
-            var sandboxFile = sandbox.downloadFile(item.path);
-            var fileName = !Strings.isBlank(item.name) ? item.name : sandboxFile.fileName();
-            var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
-            // Reuse an existing record when the user already has a file with identical content,
-            // so platform-saved media (e.g. get_video_status auto-save) is not duplicated as artifacts.
-            var record = fileService.uploadIfAbsent(userId, fileName, contentType, sandboxFile.path(),
-                Boolean.TRUE.equals(item.publicAccess));
+            var record = resolveRecord(item, context);
 
             var artifact = new AgentRunArtifact();
             artifact.fileId = record.id;
@@ -205,15 +225,128 @@ public final class SubmitArtifactsTool extends ToolCall {
 
             var shared = fileService.share(record.id, userId);
             var publicUrl = fileService.publicUrl(record);
-            submitted.add(Map.of(
-                "path", item.path,
-                "file_id", record.id,
-                "file_name", record.fileName,
-                "download_url", publicUrl != null ? publicUrl : publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken)
-            ));
+            var entry = new LinkedHashMap<String, Object>();
+            if (!Strings.isBlank(item.path)) entry.put("path", item.path);
+            if (!Strings.isBlank(item.source)) entry.put("source", item.source);
+            entry.put("file_id", record.id);
+            entry.put("file_name", record.fileName);
+            entry.put("download_url", publicUrl != null ? publicUrl : publicUrlConfiguration.sharedArtifactDownloadUrl(shared.shareToken));
+            submitted.add(entry);
         } catch (Exception e) {
-            failed.add(Map.of("path", item.path, "error", errorMessage(e)));
+            var failure = new LinkedHashMap<String, Object>();
+            if (!Strings.isBlank(item.path)) failure.put("path", item.path);
+            if (!Strings.isBlank(item.fileId)) failure.put("file_id", item.fileId);
+            if (!Strings.isBlank(item.source)) failure.put("source", item.source);
+            failure.put("error", errorMessage(e));
+            failed.add(failure);
         }
+    }
+
+    private FileRecord resolveRecord(ArtifactRequest item, ExecutionContext context) {
+        var selectors = (Strings.isBlank(item.path) ? 0 : 1)
+                + (Strings.isBlank(item.fileId) ? 0 : 1)
+                + (Strings.isBlank(item.source) ? 0 : 1);
+        if (selectors != 1) {
+            throw new IllegalArgumentException("exactly one of path, file_id or source is required");
+        }
+
+        var publicAccess = Boolean.TRUE.equals(item.publicAccess);
+        if (!Strings.isBlank(item.path)) {
+            var sandbox = context.getSandbox();
+            if (sandbox == null) throw new IllegalStateException("submit_artifacts requires an active sandbox to submit a path");
+            return uploadSandboxFile(item, sandbox, publicAccess);
+        }
+        if (!Strings.isBlank(item.fileId)) {
+            return publisher.publish(fileService.getOwned(item.fileId, userId), publicAccess);
+        }
+        return publishSource(item, context, publicAccess);
+    }
+
+    private FileRecord uploadSandboxFile(ArtifactRequest item, Sandbox sandbox, boolean publicAccess) {
+        var sandboxFile = sandbox.downloadFile(item.path);
+        var fileName = !Strings.isBlank(item.name) ? item.name : sandboxFile.fileName();
+        var contentType = !Strings.isBlank(item.contentType) ? item.contentType : sandboxFile.contentType();
+        // Reuse an existing record when the user already has a file with identical content,
+        // so platform-saved media (e.g. get_video_status auto-save) is not duplicated as artifacts.
+        return fileService.uploadIfAbsent(userId, fileName, contentType, sandboxFile.path(), publicAccess);
+    }
+
+    /**
+     * Publishes a file that is already in platform storage: an attachment of this session (the reference the
+     * message shows for an uploaded video, which is never staged when the file is large) or a platform file URL
+     * the agent was handed. The blob is copied into an artifact container rather than downloaded through the
+     * sandbox, so the size of the staging limit does not matter here.
+     */
+    private FileRecord publishSource(ArtifactRequest item, ExecutionContext context, boolean publicAccess) {
+        var reference = findAttachmentReference(item.source, context);
+        if (reference != null) {
+            var fileName = !Strings.isBlank(item.name) ? item.name : reference.fileName;
+            var contentType = !Strings.isBlank(item.contentType) ? item.contentType : reference.contentType;
+            return publisher.copyToArtifact(userId, fileName, contentType,
+                    reference.container, reference.blobName, publicAccess);
+        }
+
+        var record = findPlatformFile(item.source);
+        if (record != null) {
+            return publisher.publish(record, publicAccess);
+        }
+        throw new IllegalArgumentException("source is not a file of this platform: " + item.source);
+    }
+
+    private SessionAttachmentRef findAttachmentReference(String source, ExecutionContext context) {
+        if (attachmentRepository == null || context.getSessionId() == null || userId == null) return null;
+        var exact = attachmentRepository.findOwned(source, context.getSessionId(), userId);
+        if (usable(exact)) return exact;
+        if (source.length() < MIN_REFERENCE_PREFIX_LENGTH) return null;
+        // models routinely abbreviate video_<uuid> to its first hex group; a unique prefix still resolves
+        var matches = attachmentRepository.findOwnedByPrefix(source, context.getSessionId(), userId).stream()
+                .filter(this::usable).toList();
+        return matches.size() == 1 ? matches.getFirst() : null;
+    }
+
+    private boolean usable(SessionAttachmentRef reference) {
+        return reference != null && !Strings.isBlank(reference.container) && !Strings.isBlank(reference.blobName);
+    }
+
+    private FileRecord findPlatformFile(String source) {
+        var path = platformPath(source);
+        if (path == null) return null;
+        try {
+            if (path.startsWith("/api/files/")) {
+                var id = path.substring("/api/files/".length());
+                var slash = id.indexOf('/');
+                if (slash <= 0 || !"content".equals(id.substring(slash + 1))) return null;
+                return fileService.getOwned(id.substring(0, slash), userId);
+            }
+            if (path.startsWith("/api/public/artifacts/")) {
+                var token = path.substring("/api/public/artifacts/".length());
+                var slash = token.indexOf('/');
+                if (slash <= 0 || !"content".equals(token.substring(slash + 1))) return null;
+                var record = fileService.getShared(token.substring(0, slash));
+                return Objects.equals(record.userId, userId) ? record : null;
+            }
+        } catch (NotFoundException e) {
+            return null;
+        }
+        return null;
+    }
+
+    /** The path part of a platform URL (absolute or relative), without query or fragment. */
+    private String platformPath(String source) {
+        var path = source;
+        var scheme = source.indexOf("://");
+        if (scheme >= 0) {
+            var start = source.indexOf('/', scheme + 3);
+            if (start < 0) return null;
+            path = source.substring(start);
+        }
+        var end = path.length();
+        var query = path.indexOf('?');
+        if (query >= 0) end = query;
+        var fragment = path.indexOf('#');
+        if (fragment >= 0 && fragment < end) end = fragment;
+        path = path.substring(0, end);
+        return path.startsWith("/") ? path : null;
     }
 
     private String errorMessage(Exception e) {
@@ -226,6 +359,9 @@ public final class SubmitArtifactsTool extends ToolCall {
 
     public static class ArtifactRequest {
         public String path;
+        @Property(name = "file_id")
+        public String fileId;
+        public String source;
         public String name;
         public String title;
         public String description;

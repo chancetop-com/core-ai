@@ -11,6 +11,7 @@ import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -76,6 +77,11 @@ public class DockerSandbox implements Sandbox {
     @Override
     public void uploadFile(String path, byte[] content) {
         runtimeClient.uploadFile(path, content);
+    }
+
+    @Override
+    public void uploadFile(String path, Path file) {
+        runtimeClient.uploadFile(path, file);
     }
 
     @Override

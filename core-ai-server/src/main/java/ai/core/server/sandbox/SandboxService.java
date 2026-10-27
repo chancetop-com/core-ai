@@ -27,6 +27,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.function.LongSupplier;
 
 /**
  * @author stephen
@@ -44,21 +45,23 @@ public class SandboxService {
     }
     private final SandboxManager sandboxManager;
     private final SandboxConfig defaultConfig;
-    private final ScheduledExecutorService cleanupScheduler;
+    final ScheduledExecutorService cleanupScheduler;
     private final String serverUrlFromSandbox;
-    private final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
-    private final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
+    final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
+    final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
     @SuppressWarnings("this-escape")
-    private final SandboxFileService sandboxFileService = new SandboxFileService(this);
-    private final SessionMcpProcesses sessionMcpProcesses = new SessionMcpProcesses();
-    private final DiscoverySandbox discoverySandbox;
+    final SandboxFileService sandboxFileService = new SandboxFileService(this);
+    final SessionMcpProcesses sessionMcpProcesses = new SessionMcpProcesses();
+    final DiscoverySandbox discoverySandbox;
     @SuppressFBWarnings("PME_POOR_MANS_ENUM")
-    private final boolean enabled;
+    final boolean enabled;
     ObjectStorageServiceResolver storageResolver;
     final FileService fileService;
     final SessionAttachmentRefRepository attachmentRepository;
     public volatile long attachmentMaxBytes = 32L * 1024 * 1024;   // attachments over this stay URL-only
-    private final SandboxSnapshotService snapshotService;
+    /** Reads the System Configuration override on every call, so a changed limit applies without a restart. */
+    public volatile LongSupplier attachmentMaxBytesSupplier;
+    final SandboxSnapshotService snapshotService;
     private SandboxRedisStore redisStore;
     private volatile SandboxHubBinding hubBinding;
 
@@ -124,9 +127,15 @@ public class SandboxService {
                 5, 5, TimeUnit.MINUTES);
     }
 
+    /** Attachment references this session staged, so tools outside the sandbox package can resolve one. */
+    public SessionAttachmentRefRepository attachmentRepository() {
+        return attachmentRepository;
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
         return createSandbox(config, sessionId, userId, null);
     }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId, Consumer<SandboxEvent> eventDispatcher) {
         return create(config, sessionId, userId, eventDispatcher, null);
     }
@@ -191,15 +200,7 @@ public class SandboxService {
 
     /** Releases a sandbox instance regardless of whether it is still lazy (never acquired / tracked). */
     private void closeSandbox(Sandbox sandbox) {
-        try {
-            if (sandbox instanceof LazySandbox) {
-                sandbox.close();
-            } else {
-                sandboxManager.release(sandbox);
-            }
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to release replaced sandbox: id={}", sandbox.getId(), e);
-        }
+        SandboxReleaseSupport.close(this, sandbox);
     }
 
     public void addStagedFile(String sessionId, StagedFile file) {
@@ -293,23 +294,7 @@ public class SandboxService {
     }
 
     void captureBeforeRelease(String sessionId, String sandboxId) {
-        if (snapshotService == null || !snapshotService.enabled()) return;
-        try {
-            var sandbox = sessionSandboxes.get(sessionId);
-            if (!(sandbox instanceof LazySandbox lazy)) return;
-            if (sandboxId != null && !sandboxId.equals(lazy.getId())) return;
-            if (!lazy.snapshotDirty()) return;
-            var ip = lazy.ip();
-            var port = lazy.port();
-            if (ip == null || port == 0) return; // sandbox never materialized
-            if (!lazy.isDelegateTracked()) {
-                LOGGER.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
-                return;
-            }
-            snapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
-        } catch (Exception e) {
-            LOGGER.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
-        }
+        SandboxReleaseSupport.capture(this, sessionId, sandboxId);
     }
 
     /** Returns the McpClientManager scoped to this session, creating it if needed. */
@@ -448,7 +433,9 @@ public class SandboxService {
 
     public SandboxConfig getEffectiveConfig(AgentSandboxConfig config) {
         if (config == null) return defaultConfig;
-        return config.applyTo(defaultConfig.copy());
+        var effective = defaultConfig.copy();
+        config.applyTo(effective);
+        return effective;
     }
 
     public SandboxConfig getDefaultConfig() {
@@ -456,32 +443,6 @@ public class SandboxService {
     }
 
     public void shutdown() {
-        if (!enabled) return;
-        LOGGER.info("shutting down sandbox service");
-
-        for (var entry : sessionSandboxes.entrySet()) {
-            if (persistentSessionIds.contains(entry.getKey())) continue;
-            try {
-                entry.getValue().close();
-            } catch (Exception e) {
-                LOGGER.warn("failed to close sandbox for session: {}", entry.getKey(), e);
-            }
-        }
-        sessionSandboxes.clear();
-        persistentSessionIds.clear();
-        sandboxFileService.clearAll();
-        sessionMcpProcesses.closeAll();
-        discoverySandbox.close();
-        cleanupScheduler.shutdown();
-        try {
-            if (!cleanupScheduler.awaitTermination(5, TimeUnit.SECONDS)) {
-                cleanupScheduler.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            cleanupScheduler.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-
-        LOGGER.info("sandbox service shutdown complete");
+        SandboxReleaseSupport.shutdown(this);
     }
 }

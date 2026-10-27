@@ -15,6 +15,7 @@ import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.Base64;
@@ -110,6 +111,8 @@ public class SystemSettingsService {
         if (request.sandboxSnapshotEnabled != null) {
             entity.sandboxSnapshotEnabled = request.sandboxSnapshotEnabled;
         }
+        // null clears the override, so the deployment default applies again
+        entity.sandboxAttachmentMaxBytes = request.sandboxAttachmentMaxBytes;
         entity.storageProvider = normalizeModel(request.storageProvider);
         entity.azureBlobArtifactContainer = normalizeModel(request.azureBlobArtifactContainer);
         entity.azureBlobPublicArtifactContainer = normalizeModel(request.azureBlobPublicArtifactContainer);
@@ -156,6 +159,7 @@ public class SystemSettingsService {
         validateNumeric(request.githubAppId, "githubAppId");
         validateNumeric(request.githubAppInstallationId, "githubAppInstallationId");
         validateSkillRepoSyncInterval(request.skillRepoSyncIntervalMinutes);
+        SandboxAttachmentLimit.validate(request.sandboxAttachmentMaxBytes);
         TraceArchiveSettings.validate(request);
     }
 
@@ -355,43 +359,35 @@ public class SystemSettingsService {
 
     private void validateMemoryExtractionModel(String model) {
         if (model == null) return;
-        var query = new Query();
-        query.filter = Filters.and(
+        requireModel(Filters.and(
                 Filters.eq("model_id", model),
                 Filters.ne("enabled", Boolean.FALSE),
                 Filters.eq("endpoint_types", "chat.completions")
-        );
-        query.limit = 1;
-        if (gatewayModelCollection.find(query).isEmpty()) {
-            throw new BadRequestException("memoryExtractionModel must be an enabled chat gateway model: " + model);
-        }
+        ), "memoryExtractionModel must be an enabled chat gateway model: " + model);
     }
 
     private void validateChatModel(String model) {
         if (model == null) return;
-        var query = new Query();
-        query.filter = Filters.and(
+        requireModel(Filters.and(
                 Filters.eq("model_id", model),
                 Filters.ne("enabled", Boolean.FALSE),
                 Filters.eq("endpoint_types", "chat.completions")
-        );
-        query.limit = 1;
-        if (gatewayModelCollection.find(query).isEmpty()) {
-            throw new BadRequestException("llm model must be an enabled gateway model with chat.completions: " + model);
-        }
+        ), "llm model must be an enabled gateway model with chat.completions: " + model);
     }
 
     private void validateModelExists(String model, String field) {
         if (model == null) return;
-        var query = new Query();
-        query.filter = Filters.and(
+        requireModel(Filters.and(
                 Filters.eq("model_id", model),
                 Filters.ne("enabled", Boolean.FALSE)
-        );
+        ), field + " must be an enabled gateway model: " + model);
+    }
+
+    private void requireModel(Bson filter, String message) {
+        var query = new Query();
+        query.filter = filter;
         query.limit = 1;
-        if (gatewayModelCollection.find(query).isEmpty()) {
-            throw new BadRequestException(field + " must be an enabled gateway model: " + model);
-        }
+        if (gatewayModelCollection.find(query).isEmpty()) throw new BadRequestException(message);
     }
 
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
@@ -407,6 +403,8 @@ public class SystemSettingsService {
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
         view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
+        view.sandboxAttachmentMaxBytes = entity == null ? null : entity.sandboxAttachmentMaxBytes;
+        view.defaultSandboxAttachmentMaxBytes = SandboxAttachmentLimit.DEFAULT_BYTES;
         view.skillRepoSyncEnabled = skillRepoSyncEnabled(entity);
         view.skillRepoSyncIntervalMinutes = skillRepoSyncIntervalMinutes(entity);
         view.traceArchiveIntervalMinutes = TraceArchiveSettings.resolveIntervalMinutes(entity);

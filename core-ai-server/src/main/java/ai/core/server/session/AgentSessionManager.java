@@ -162,7 +162,7 @@ public class AgentSessionManager {
         var extraVars = datasetHelper().buildExtraVars(effectiveConfig, sessionDatasetConfig);
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry, context, null, extraVars, null,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration, sandboxService.attachmentRepository())) : null,
                 null, SessionSubAgentManager.channelInject(effectiveConfig)));
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
@@ -241,7 +241,7 @@ public class AgentSessionManager {
 
         var agent = subAgentManager().buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
-                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration)) : null,
+                sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration, sandboxService.attachmentRepository())) : null,
                 memoryInject, SessionSubAgentManager.channelInject(config)));
         return new AgentBuildResult(agent, sessionRef);
     }

@@ -98,7 +98,7 @@ class SandboxServiceLifecycleTest {
         when(provider.acquire(any(), eq("session-1"), eq("user-1"))).thenReturn(delegate);
 
         var snapshotService = mock(SandboxSnapshotService.class);
-        when(snapshotService.enabled()).thenReturn(true);
+        when(snapshotService.enabled()).thenReturn(Boolean.TRUE);
         when(snapshotService.beginEpoch("session-1")).thenReturn(1L);
         when(snapshotService.restoreLatestWithMetadata("session-1", "user-1", "10.0.0.1", 8080))
                 .thenReturn(new SandboxSnapshotService.RestoreResult(

@@ -53,8 +53,10 @@ public class A2AMessageAttachments {
 
         var chatAttachments = new ChatMessageAttachments(sandboxService, objectStorageResolver, attachmentRepository);
         var contents = inline.isEmpty() ? null : contents(chatAttachments, inline, sessionId, userId);
-        var staged = chatAttachments.stageInto(sessionId, userId, payload(stageable));
+        var payload = payload(stageable);
+        var staged = chatAttachments.stageInto(sessionId, userId, payload);
         var delivered = chatAttachments.appendSandboxPaths(text.toString(), staged);
+        delivered = chatAttachments.appendVideoDownloadHints(delivered, payload);
         return new Delivered(chatAttachments.appendVideoHints(delivered, contents), contents);
     }
 

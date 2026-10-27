@@ -15,14 +15,19 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.ZonedDateTime;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.time.ZonedDateTime;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,7 +54,7 @@ class SandboxFileServiceTest {
                 "metrics.xlsx", "sandbox", "uploads/object.xlsx",
                 "application/octet-stream")));
 
-        verify(fixture.sandbox).uploadFile("/tmp/metrics.xlsx", bytes);
+        assertArrayEquals(bytes, fixture.uploads.get("/tmp/metrics.xlsx"));
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
         var reference = captor.getValue();
@@ -114,7 +119,7 @@ class SandboxFileServiceTest {
 
         service.ensureSandboxReady("session-1");
 
-        verify(fixture.sandbox).uploadFile("/tmp/report.xlsx", bytes);
+        assertEquals("new", new String(fixture.uploads.get("/tmp/report.xlsx"), StandardCharsets.UTF_8));
         verify(fixture.storage, never()).downloadObject("sandbox", "uploads/old.xlsx");
         verify(fixture.storage).downloadObject("sandbox", "uploads/missing.csv");
     }
@@ -141,7 +146,7 @@ class SandboxFileServiceTest {
         service.ensureSandboxReady("session-1");
 
         verify(fixture.storage, never()).downloadObject("sandbox", "uploads/covered.xlsx");
-        verify(fixture.sandbox).uploadFile("/tmp/newer.xlsx", "new".getBytes(StandardCharsets.UTF_8));
+        assertEquals("new", new String(fixture.uploads.get("/tmp/newer.xlsx"), StandardCharsets.UTF_8));
     }
 
     @Test
@@ -155,7 +160,7 @@ class SandboxFileServiceTest {
         service.ensureSandboxReady("session-1");
 
         verify(fixture.storage, never()).downloadObject("sandbox", "uploads/report.xlsx");
-        verify(fixture.sandbox, never()).uploadFile(eq("/tmp/report.xlsx"), any());
+        verify(fixture.sandbox, never()).uploadFile(eq("/tmp/report.xlsx"), any(Path.class));
     }
 
     @Test
@@ -171,7 +176,7 @@ class SandboxFileServiceTest {
                 "IMG_0001.JPG", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
         assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/IMG_0001.JPG"), staged);
-        verify(fixture.sandbox).uploadFile("/workspace/attachments/IMG_0001.JPG", bytes);
+        assertArrayEquals(bytes, fixture.uploads.get("/workspace/attachments/IMG_0001.JPG"));
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
         var reference = captor.getValue();
@@ -195,7 +200,7 @@ class SandboxFileServiceTest {
 
         assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/photo.jpg"), staged);
         verify(fixture.provider, never()).acquire(any(), any(), any());
-        verify(fixture.sandbox, never()).uploadFile(any(), any());
+        verify(fixture.sandbox, never()).uploadFile(any(), any(Path.class));
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
         assertEquals("/workspace/attachments/photo.jpg", captor.getValue().targetPath);
@@ -215,7 +220,7 @@ class SandboxFileServiceTest {
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
         assertEquals(Map.of("ai/uploads/photo.jpg", "/tmp/attachments/photo.jpg"), staged);
-        verify(fixture.sandbox).uploadFile("/tmp/attachments/photo.jpg", bytes);
+        assertArrayEquals(bytes, fixture.uploads.get("/tmp/attachments/photo.jpg"));
     }
 
     @Test
@@ -230,7 +235,7 @@ class SandboxFileServiceTest {
                 "huge.mp4", "uploads", "ai/uploads/huge.mp4", "video/mp4")));
 
         assertEquals(Map.of(), staged);
-        verify(fixture.storage, never()).downloadObject(any(), any());
+        verify(fixture.storage, never()).downloadObjectToFile(any(), any(), any());
         verify(fixture.repository, never()).insert(any());
     }
 
@@ -259,7 +264,18 @@ class SandboxFileServiceTest {
         assertEquals(Map.of(), staged);
         verify(fixture.storage, never()).headObject(any(), any());
         verify(fixture.repository, never()).insert(any());
-        verify(fixture.sandbox, never()).uploadFile(any(), any());
+        verify(fixture.sandbox, never()).uploadFile(any(), any(Path.class));
+    }
+
+    @Test
+    void attachmentLimitPrefersTheLiveSystemSettingOverTheDeploymentDefault() {
+        fixture();
+        service.attachmentMaxBytes = 1024L;
+        service.attachmentMaxBytesSupplier = () -> 4096L;
+        assertEquals(4096L, service.sandboxFileService.attachmentLimit());
+
+        service.attachmentMaxBytesSupplier = () -> 0L;
+        assertEquals(1024L, service.sandboxFileService.attachmentLimit());
     }
 
     @Test
@@ -275,7 +291,7 @@ class SandboxFileServiceTest {
 
         service.ensureSandboxReady("session-1");
 
-        verify(fixture.sandbox).uploadFile("/workspace/attachments/photo.jpg", bytes);
+        assertEquals("img", new String(fixture.uploads.get("/workspace/attachments/photo.jpg"), StandardCharsets.UTF_8));
     }
 
     private Fixture fixture() {
@@ -294,6 +310,25 @@ class SandboxFileServiceTest {
         when(resolver.resolve()).thenReturn(storage);
         when(resolver.sandboxContainer()).thenReturn("sandbox");
         when(resolver.multimodalContainer()).thenReturn("uploads");
+        // the production path downloads to a temp file and streams it to the sandbox; keep the old
+        // downloadObject stubs meaningful by serving the same bytes through both entry points
+        doAnswer(invocation -> {
+            var container = invocation.getArgument(0, String.class);
+            var blobName = invocation.getArgument(1, String.class);
+            var content = storage.downloadObject(container, blobName);
+            if (content != null) {
+                Path target = invocation.getArgument(2);
+                Files.write(target, content);
+            }
+            return null;
+        }).when(storage).downloadObjectToFile(any(), any(), any());
+        var uploads = new LinkedHashMap<String, byte[]>();
+        doAnswer(invocation -> {
+            var path = invocation.getArgument(0, String.class);
+            Path file = invocation.getArgument(1);
+            uploads.put(path, Files.readAllBytes(file));
+            return null;
+        }).when(sandbox).uploadFile(any(), any(Path.class));
         var repository = mock(SessionAttachmentRefRepository.class);
         when(repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of());
         var config = new SandboxConfig();
@@ -301,7 +336,7 @@ class SandboxFileServiceTest {
         service = new SandboxService(provider, config, null,
                 new SandboxServiceDependencies(null, snapshotService, resolver, null, repository));
         service.createSessionSandbox(config, "session-1", "user-1", null);
-        return new Fixture(provider, sandbox, storage, repository);
+        return new Fixture(provider, sandbox, storage, repository, uploads);
     }
 
     private SessionAttachmentRef reference(String id, String fileName, String targetPath, String blobName, int age) {
@@ -321,6 +356,6 @@ class SandboxFileServiceTest {
     }
 
     private record Fixture(SandboxProvider provider, Sandbox sandbox, ObjectStorageService storage,
-                           SessionAttachmentRefRepository repository) {
+                           SessionAttachmentRefRepository repository, Map<String, byte[]> uploads) {
     }
 }

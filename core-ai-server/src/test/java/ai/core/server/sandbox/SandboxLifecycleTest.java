@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.artifact.ArtifactSink;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.file.FileService;
 import ai.core.server.run.SubmitArtifactsTool;
 import ai.core.tool.ToolCall;
@@ -41,7 +42,7 @@ class SandboxLifecycleTest {
 
     private static ToolCall artifactTool() {
         return SubmitArtifactsTool.create("u1", mock(FileService.class), mock(ArtifactSink.class),
-                mock(PublicUrlConfiguration.class));
+                mock(PublicUrlConfiguration.class), mock(SessionAttachmentRefRepository.class));
     }
 
     private static int occurrences(String text, String needle) {
@@ -61,7 +62,7 @@ class SandboxLifecycleTest {
     @BeforeEach
     void setUp() {
         lifecycle = new SandboxLifecycle(mock(FileService.class), mock(ArtifactSink.class),
-                mock(PublicUrlConfiguration.class));
+                mock(PublicUrlConfiguration.class), mock(SessionAttachmentRefRepository.class));
         agent = mock(Agent.class);
         tools = new ArrayList<>();
         var prompt = new AtomicReference<>("base prompt");
@@ -117,8 +118,9 @@ class SandboxLifecycleTest {
     void hubInstructionsStayWithinPromptBudget() {
         lifecycle.beforeAgentRun(agent, new AtomicReference<>("q"), context("u1"));
 
-        assertTrue(agent.getSystemPromptAppendix().length() < 6000,
-                "hub instructions are appended to every sandbox session; keep them a reference, not a handbook");
+        var prompt = agent.getSystemPromptAppendix();
+        assertTrue(prompt.length() < 6000,
+                "hub instructions are appended to every sandbox session; keep them a reference, not a handbook, len=" + prompt.length());
     }
 
     @Test

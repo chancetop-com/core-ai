@@ -19,6 +19,11 @@ const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'integrations', label: 'Integrations', icon: <PlugZap size={14} /> },
 ];
 
+function megabytes(bytes?: number | null): string {
+  if (!bytes || bytes <= 0) return '';
+  return String(Math.round(bytes / (1024 * 1024)));
+}
+
 export default function SystemSettings() {
   const { user } = useAuth();
   const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
@@ -57,6 +62,7 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
   const [githubAppInstallationId, setGithubAppInstallationId] = useState('');
   const [githubAppPrivateKey, setGithubAppPrivateKey] = useState('');
   const [sandboxSnapshotEnabled, setSandboxSnapshotEnabled] = useState(false);
+  const [sandboxAttachmentMaxMb, setSandboxAttachmentMaxMb] = useState('');
   const [skillRepoSyncEnabled, setSkillRepoSyncEnabled] = useState(true);
   const [skillRepoSyncIntervalMinutes, setSkillRepoSyncIntervalMinutes] = useState('30');
   const [traceArchiveIntervalMinutes, setTraceArchiveIntervalMinutes] = useState('1440');
@@ -133,6 +139,7 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setGithubAppInstallationId(settingsResponse.github_app_installation_id || '');
       setGithubAppPrivateKey('');
       setSandboxSnapshotEnabled(settingsResponse.sandbox_snapshot_enabled === true);
+      setSandboxAttachmentMaxMb(megabytes(settingsResponse.sandbox_attachment_max_bytes));
       setSkillRepoSyncEnabled(settingsResponse.skill_repo_sync_enabled !== false);
       setSkillRepoSyncIntervalMinutes(String(settingsResponse.skill_repo_sync_interval_minutes ?? 30));
       setTraceArchiveIntervalMinutes(String(settingsResponse.trace_archive_interval_minutes ?? 1440));
@@ -163,6 +170,14 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setMessage('');
       return;
     }
+    const attachmentMaxMb = Number(sandboxAttachmentMaxMb.trim());
+    const attachmentMaxValid = !sandboxAttachmentMaxMb.trim()
+      || (Number.isInteger(attachmentMaxMb) && attachmentMaxMb >= 1 && attachmentMaxMb <= 256);
+    if (!attachmentMaxValid) {
+      setError('Sandbox attachment limit must be between 1 and 256 MB, or blank for the deployment default.');
+      setMessage('');
+      return;
+    }
     setSaving(true);
     setError('');
     setMessage('');
@@ -190,6 +205,7 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
         github_app_installation_id: githubAppInstallationId.trim() || null,
         github_app_private_key: githubAppPrivateKey.trim() || null,
         sandbox_snapshot_enabled: sandboxSnapshotEnabled,
+        sandbox_attachment_max_bytes: sandboxAttachmentMaxMb.trim() ? Math.round(attachmentMaxMb * 1024 * 1024) : null,
         skill_repo_sync_enabled: skillRepoSyncEnabled,
         skill_repo_sync_interval_minutes: syncIntervalValid ? syncInterval : null,
         trace_archive_interval_minutes: traceInterval,
@@ -217,6 +233,7 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setGithubAppInstallationId(response.github_app_installation_id || '');
       setGithubAppPrivateKey('');
       setSandboxSnapshotEnabled(response.sandbox_snapshot_enabled === true);
+      setSandboxAttachmentMaxMb(megabytes(response.sandbox_attachment_max_bytes));
       setSkillRepoSyncEnabled(response.skill_repo_sync_enabled !== false);
       setSkillRepoSyncIntervalMinutes(String(response.skill_repo_sync_interval_minutes ?? 30));
       setTraceArchiveIntervalMinutes(String(response.trace_archive_interval_minutes ?? 1440));
@@ -557,6 +574,34 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
 
       {activeTab === 'sandbox' && (
         <>
+          {canManageSystem && <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">File Attachments</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Files up to this size are copied into the sandbox before the agent's first turn. Larger files stay
+                in platform storage: the agent gets the attachment reference and, for videos, the direct URL.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Maximum attachment size (MB)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={256}
+                  value={sandboxAttachmentMaxMb}
+                  onChange={event => setSandboxAttachmentMaxMb(event.target.value)}
+                  placeholder={`${megabytes(settings?.default_sandbox_attachment_max_bytes) || '32'} (deployment default)`}
+                  className="w-full h-10 px-3 py-2 rounded-lg text-sm border outline-none"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Leave blank for the deployment default. The sandbox runtime must allow at least this size
+                  (MAX_UPLOAD_FILE_SIZE, default 256 MB).
+                </span>
+              </label>
+            </div>
+          </section>}
           {canManageSystem && <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
             <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
               <h2 className="font-semibold">Sandbox Resume</h2>

@@ -6,6 +6,7 @@ import ai.core.agent.Node;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.server.artifact.ArtifactSink;
 import ai.core.server.artifact.PublicUrlConfiguration;
+import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.file.FileService;
 import ai.core.server.run.SubmitArtifactsTool;
 import org.slf4j.Logger;
@@ -84,12 +85,11 @@ public final class SandboxLifecycle extends AbstractLifecycle {
 
             # Files the user uploads
 
-            Every file the user attaches to a message is copied into this sandbox before your first turn —
-            `/workspace/attachments/<original name>`, or `/tmp/attachments/<original name>` when the sandbox
-            mounts `/workspace` read-only. The message also carries the path. Work on the uploaded bytes here
-            (ffmpeg, python, …) whenever a model cannot take the file as it arrived — a camera's multi-picture
-            JPEG, a HEIC photo, a frame to pull out of a video, a crop — and hand the result back to a media
-            tool with `{"sandbox_path": "/workspace/attachments/fixed.jpg"}` instead of minting a URL.
+            Attachments are copied into this sandbox before your first turn — `/workspace/attachments/<name>`, or
+            `/tmp/attachments/<name>` when `/workspace` is read-only — with the path in the message. A file too
+            large to stage (a long video) stays in platform storage: publish it with `submit_artifacts` `source`.
+            Work on the uploaded bytes here (ffmpeg, python, …) when a model cannot take the file as it arrived,
+            and hand the result back to a media tool with `{"sandbox_path": "..."}` instead of minting a URL.
             """;
 
     public static String appendHubInstructions(String systemPrompt) {
@@ -110,12 +110,15 @@ public final class SandboxLifecycle extends AbstractLifecycle {
     private final FileService fileService;
     private final ArtifactSink artifactSink;
     private final PublicUrlConfiguration publicUrlConfiguration;
+    private final SessionAttachmentRefRepository attachmentRepository;
 
     public SandboxLifecycle(FileService fileService, ArtifactSink artifactSink,
-                            PublicUrlConfiguration publicUrlConfiguration) {
+                            PublicUrlConfiguration publicUrlConfiguration,
+                            SessionAttachmentRefRepository attachmentRepository) {
         this.fileService = fileService;
         this.artifactSink = artifactSink;
         this.publicUrlConfiguration = publicUrlConfiguration;
+        this.attachmentRepository = attachmentRepository;
     }
 
     @Override
@@ -142,7 +145,7 @@ public final class SandboxLifecycle extends AbstractLifecycle {
             return;
         }
 
-        var tool = SubmitArtifactsTool.create(userId, fileService, artifactSink, publicUrlConfiguration);
+        var tool = SubmitArtifactsTool.create(userId, fileService, artifactSink, publicUrlConfiguration, attachmentRepository);
         agent.addTools(List.of(tool));
 
         agent.setSystemPromptAppendix(SubmitArtifactsTool.appendInstructions(agent.getSystemPromptAppendix()));

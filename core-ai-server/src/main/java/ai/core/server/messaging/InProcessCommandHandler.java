@@ -141,6 +141,7 @@ public class InProcessCommandHandler {
         var attachedContents = attachments.contents(payload, command.sessionId(), command.userId());
         var stagedPaths = attachments.stageInto(command.sessionId(), command.userId(), payload);
         var agentMessage = attachments.appendSandboxPaths(message, stagedPaths);
+        agentMessage = attachments.appendVideoDownloadHints(agentMessage, payload);
         chatMessageService.writeUserMessage(command.sessionId(), attachments.appendVideoHints(agentMessage, attachedContents));
         var channelId = (String) payload.get("channelId");
         var noticeRecipient = (String) payload.get("noticeRecipient");

@@ -93,7 +93,7 @@ public class FileService {
         return upload(userId, fileName, contentType, tempFile, computeContentHash(tempFile), publicAccess);
     }
 
-    private FileRecord upload(String userId, String fileName, String contentType, Path tempFile, String contentHash, boolean publicAccess) {
+    FileRecord upload(String userId, String fileName, String contentType, Path tempFile, String contentHash, boolean publicAccess) {
         var id = UUID.randomUUID().toString();
         var record = new FileRecord();
         record.id = id;
@@ -153,6 +153,11 @@ public class FileService {
         return upload(userId, fileName, contentType, tempFile, contentHash, publicAccess);
     }
 
+    /** Copies platform-stored blobs into artifact records; see {@link ArtifactPublisher}. */
+    public ArtifactPublisher publisher() {
+        return new ArtifactPublisher(this);
+    }
+
     public Optional<FileRecord> findByContentHash(String userId, String contentHash) {
         if (contentHash == null || contentHash.isBlank()) return Optional.empty();
         // stored hashes are upper-case hex (Encodings.hex); callers that computed the digest themselves usually
@@ -173,7 +178,7 @@ public class FileService {
         return fileRecordCollection.find(query).stream().findFirst();
     }
 
-    private String computeContentHash(Path tempFile) {
+    String computeContentHash(Path tempFile) {
         try (var input = Files.newInputStream(tempFile)) {
             var digest = MessageDigest.getInstance("MD5");
             var buffer = new byte[8192];
