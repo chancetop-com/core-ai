@@ -117,7 +117,7 @@ public class CliApp {
 
         // Register listener so LiteLLM provider is updated on login / server-switch.
         registerAuthListener(result);
-        CliAppHelper.configureInlineImages(result.liteLLMProvider);
+        CliAppHelper.configureInlineImages(result, props);
         props.property("active.provider").ifPresent(name -> {
             var type = LLMProviderType.fromName(name);
             if (type != null && result.llmProviders.getProvider(type) != null) {

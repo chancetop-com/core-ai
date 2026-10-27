@@ -124,7 +124,7 @@ public class AcpAgentRunner {
         LOGGER.info("ACP agent bootstrap initialized");
 
         registerAuthListener(result);
-        CliAppHelper.configureInlineImages(result.liteLLMProvider);
+        CliAppHelper.configureInlineImages(result, props);
 
         var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         var videoMediaProvider = CliAppHelper.videoMediaProvider(props);

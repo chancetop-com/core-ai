@@ -12,7 +12,6 @@ import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.providers.LiteLLMMediaProvider;
-import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.media.CoreAiGatewayMediaProvider;
 import ai.core.media.GoogleAccessTokenProvider;
 import ai.core.media.MediaProvider;
@@ -47,6 +46,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
@@ -65,16 +65,63 @@ public class CliAppHelper {
     private static final DateTimeFormatter SESSION_ID_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss");
     /** the CLI proxy rejects a request body over 10MB and the whole history is resent on every turn */
     private static final long CLI_MAX_INLINE_IMAGE_BYTES = 4L * 1024 * 1024;
+    private static final String INLINE_IMAGE_MAX_COUNT = "agent.inline.image.max.count";
+    private static final String INLINE_IMAGE_MAX_BYTES = "agent.inline.image.max.bytes";
 
     /**
-     * The native CLI has no AWT, so inline images are shrunk by the vendored ffmpeg, and the inline image
-     * budget is tightened to fit the CLI proxy's request body limit.
+     * The native CLI has no AWT, so inline images are shrunk by the vendored ffmpeg, and the default
+     * inline image budget is tightened to fit the CLI proxy's request body limit. Both limits can be
+     * overridden in agent.properties; a configured value also applies to the other providers, while
+     * the LiteLLM proxy keeps its 4MB default when nothing is configured.
      */
-    public static void configureInlineImages(LiteLLMProvider provider) {
+    public static void configureInlineImages(BootstrapResult result, PropertiesFileSource props) {
         ImageDownscaler.register(new FfmpegImageShrinker());
-        if (provider != null) {
-            provider.config.setMaxInlineImageBytes(CLI_MAX_INLINE_IMAGE_BYTES);
+        applyInlineImageLimits(result, props);
+    }
+
+    static void applyInlineImageLimits(BootstrapResult result, PropertiesFileSource props) {
+        var maxImages = props.property(INLINE_IMAGE_MAX_COUNT).map(Integer::parseInt).orElse(null);
+        var maxBytes = props.property(INLINE_IMAGE_MAX_BYTES).map(CliAppHelper::parseByteSize).orElse(null);
+        if (result.liteLLMProvider != null) {
+            applyToProvider(result.liteLLMProvider, maxImages, maxBytes != null ? maxBytes : CLI_MAX_INLINE_IMAGE_BYTES);
         }
+        if (result.llmProviders == null || (maxImages == null && maxBytes == null)) return;
+        for (var type : result.llmProviders.getProviderTypes()) {
+            var provider = result.llmProviders.getProvider(type);
+            if (provider == null || provider == result.liteLLMProvider) continue;
+            applyToProvider(provider, maxImages, maxBytes);
+        }
+    }
+
+    private static void applyToProvider(LLMProvider provider, Integer maxImages, Long maxBytes) {
+        if (maxImages != null) provider.config.setMaxInlineImages(maxImages);
+        if (maxBytes != null) provider.config.setMaxInlineImageBytes(maxBytes);
+    }
+
+    /** Accepts a plain byte count or a KB/MB/GB suffix, e.g. {@code 4194304}, {@code 4MB}, {@code 2m}. */
+    static long parseByteSize(String value) {
+        var text = value == null ? "" : value.strip().toLowerCase(Locale.ROOT);
+        long multiplier = 1;
+        if (text.endsWith("kb") || text.endsWith("mb") || text.endsWith("gb")) {
+            multiplier = switch (text.charAt(text.length() - 2)) {
+                case 'k' -> 1024L;
+                case 'm' -> 1024L * 1024;
+                default -> 1024L * 1024 * 1024;
+            };
+            text = text.substring(0, text.length() - 2);
+        } else if (text.endsWith("k") || text.endsWith("m") || text.endsWith("g")) {
+            multiplier = switch (text.charAt(text.length() - 1)) {
+                case 'k' -> 1024L;
+                case 'm' -> 1024L * 1024;
+                default -> 1024L * 1024 * 1024;
+            };
+            text = text.substring(0, text.length() - 1);
+        }
+        var bytes = Math.multiplyExact(Long.parseLong(text.strip()), multiplier);
+        if (bytes == 0) {
+            throw new IllegalArgumentException(INLINE_IMAGE_MAX_BYTES + " must not be zero; use -1 for no byte limit");
+        }
+        return bytes;
     }
 
     public static CompressionConfig compressionConfig(PropertiesFileSource props) {

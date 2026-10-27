@@ -83,6 +83,17 @@ Compression summarizes older turns once the conversation approaches the model's 
 
 Summarization shares the main model by default, and its token usage is counted into the session (`/stats`) like any other call.
 
+## Inline Image Budget
+
+Chat completions are stateless, so inline images stay in the history and are resent on every LLM call. The request budget keeps the live user attachment set whole — the latest user message or the one immediately after it, so a message that carried several images is never split by the count budget — then older attachment sets newest-first, then tool images (screenshots, rendered files) one by one. An image that does not fit is replaced by a text placeholder that names the source path or the attachment label, so the agent can read or attach it again.
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `agent.inline.image.max.count` | int | `16` | Inline images kept per request. `0` drops every inline image (text-only requests); `-1` disables the count limit. The live attachment set is exempt, so a message with more images than this keeps all of them; older sets are kept or dropped whole. |
+| `agent.inline.image.max.bytes` | long | `4MB` for the LiteLLM proxy, `12MB` for a direct provider | Decoded byte budget per request. Accepts a byte count or a `KB`/`MB`/`GB` suffix (e.g. `4194304`, `4MB`, `2m`); `-1` disables the byte limit. |
+
+The 4MB default fits the CLI proxy's 10MB request-body limit; a direct provider keeps the core 12MB default. Raise the byte budget only if the upstream accepts the larger request.
+
 ## LLM Provider Configuration
 
 Providers are auto-detected when their `<provider>.api.key` is set. For `litellm`, `openai`, and `azure`, `<provider>.api.base` is also required.

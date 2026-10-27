@@ -106,7 +106,7 @@ public class EngineBootstrap {
         CliAppHelper.registerMcpLoadingListener();
         this.result = bootstrap.initialize();
         registerAuthListener(result);
-        CliAppHelper.configureInlineImages(result.liteLLMProvider);
+        CliAppHelper.configureInlineImages(result, props);
         applyActiveProvider();
         this.maxTurn = intFlag("agent.max.turn", 100);
         this.memoryEnabled = boolFlag("agent.memory.enabled", true);
