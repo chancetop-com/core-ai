@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { handleComposerKeyDown } from './composerKeyboard';
+import { decodePathRef, workspaceRelativePath } from './localPaths';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -3034,25 +3035,13 @@ async function refreshArtifactBaseline(): Promise<void> {
   renderArtifactPanel();
 }
 
-/** Maps an absolute local path (as it appears in generated-image markdown) to a workspace-relative one. */
-function workspaceRelativePath(value: string | null): string | null {
-  if (!value || !state.workspace) return null;
-  const normalized = value.replace(/\\/g, '/');
-  const root = state.workspace.replace(/\\/g, '/').replace(/\/+$/, '');
-  if (!normalized.toLowerCase().startsWith(`${root.toLowerCase()}/`)) return null;
-  return normalized.slice(root.length + 1);
-}
-
 /** Rewrites `<img>` links that point at workspace files to the in-app protocol so generated images render. */
 function rewriteLocalImageSources(root: HTMLElement): void {
   if (!state.workspace || !state.artifactBase) return;
   for (const img of Array.from(root.querySelectorAll('img'))) {
     const src = img.getAttribute('src');
     if (!src) continue;
-    // marked percent-encodes a Windows path's backslashes (C:\… becomes C:%5C…)
-    let decoded = src;
-    try { decoded = decodeURIComponent(src); } catch { /* keep the raw src */ }
-    const relative = workspaceRelativePath(decoded);
+    const relative = workspaceRelativePath(state.workspace, decodePathRef(src));
     if (!relative) continue;
     img.src = artifactUrl(relative);
     img.loading = 'lazy';
@@ -3071,9 +3060,7 @@ function rewriteLocalVideoLinks(root: HTMLElement): void {
   for (const anchor of Array.from(root.querySelectorAll('a'))) {
     const href = anchor.getAttribute('href');
     if (!href) continue;
-    let decoded = href;
-    try { decoded = decodeURIComponent(href); } catch { /* keep the raw href */ }
-    const relative = workspaceRelativePath(decoded);
+    const relative = workspaceRelativePath(state.workspace, decodePathRef(href));
     if (!relative || !/\.(mp4|webm|mov)$/i.test(relative)) continue;
     const wrapper = el('div', 'inline-video');
     const video = el('video') as HTMLVideoElement;
