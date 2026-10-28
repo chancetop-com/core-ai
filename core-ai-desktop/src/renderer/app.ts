@@ -2865,8 +2865,10 @@ function renderArtifactGallery(): void {
   }
   artifactGalleryEl.hidden = false;
   const current = activeArtifact();
+  let selected: HTMLButtonElement | null = null;
   for (const entry of entries) {
-    const item = el('button', `artifact-thumb${current?.path === entry.path ? ' active' : ''}`) as HTMLButtonElement;
+    const active = current?.path === entry.path;
+    const item = el('button', `artifact-thumb${active ? ' active' : ''}`) as HTMLButtonElement;
     item.title = entry.name;
     if (artifactIsImage(entry)) {
       const img = el('img') as HTMLImageElement;
@@ -2886,7 +2888,12 @@ function renderArtifactGallery(): void {
       renderArtifactPanel();
     };
     artifactGalleryEl.append(item);
+    if (active) selected = item;
   }
+  // The row is one line and overflows once a session has enough artifacts; a new artifact is
+  // prepended at the left, so without this the browser keeps the old visible range (scroll
+  // anchoring) and the only thing that changed is off-screen — it reads as "not added".
+  selected?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 }
 
 function renderArtifactBody(): void {
@@ -3145,6 +3152,10 @@ async function refreshArtifactBaseline(): Promise<void> {
   }
   const workspace = state.workspace;
   const before = artifactListSignature();
+  // Every path the panel already knows, from both lists: a scan that brings in an entry neither
+  // list had is a new artifact this window only learns about now (its live event never arrived).
+  const known = new Set([...state.artifacts, ...(sessionId ? sessionArtifacts.get(sessionId) ?? [] : [])]
+    .map((entry) => entry.path));
   const [workspaceList, sessionList] = await Promise.all([
     call('artifacts/list', { limit: 200 }),
     sessionId ? call('artifacts/list', { limit: 200, sessionId }) : Promise.resolve(null),
@@ -3163,12 +3174,17 @@ async function refreshArtifactBaseline(): Promise<void> {
     if (token !== artifactRefreshToken || workspace !== state.workspace) return;
     sessionArtifacts.set(sessionId, mergeArtifactEntries(existing, baseline, gone));
   }
-  // A deleted artifact must not stay the panel's selection: the preview would keep asking for its bytes.
   if (sessionId === state.sessionId) {
+    const entries = currentArtifacts();
+    // Selecting a newly scanned artifact is what the live path does. Without it a refresh leaves
+    // the preview on the old file and, once the gallery row overflows, the new entry sits off
+    // screen — the pane looks like it ignored the submission.
+    const added = entries.find((entry) => !known.has(entry.path));
+    if (added) surface.activeArtifactPath = added.path;
+    // A deleted artifact must not stay the panel's selection: the preview would keep asking for its bytes.
     const selection = surface.activeArtifactPath;
-    if (selection && !currentArtifacts().some((entry) => entry.path === selection)) surface.activeArtifactPath = null;
+    if (selection && !entries.some((entry) => entry.path === selection)) surface.activeArtifactPath = null;
     if (!surface.activeArtifactPath) {
-      const entries = currentArtifacts();
       if (entries.length) surface.activeArtifactPath = entries[0].path;
     }
   }
@@ -4575,6 +4591,10 @@ function applySessionEvent(view: SessionView, event: any): void {
       }
       void refreshSessionList();
       void loadSummaries();
+      // Artifact events are live-only; a turn can register files whose event never reached this
+      // window (subagent run, rejected emission). Re-read the scan at the end of the visible turn
+      // so the pane cannot stay one submission behind; an unchanged list does not re-render.
+      if (view === mountedView && surface.dock === 'artifacts') void refreshArtifactBaseline();
       maybeApplyPendingEngineRestart(view);
       break;
     }
