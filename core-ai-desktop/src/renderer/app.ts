@@ -126,6 +126,60 @@ interface RuntimeStatus {
   daemon?: string | null;
 }
 
+interface ChannelBridgeState {
+  enabled: boolean;
+  running: boolean;
+  consumer: string;
+  lastMessageAt: number | null;
+  lastReplyAt: number | null;
+  lastError: string | null;
+  lastPeer: string | null;
+  activeSessionId: string | null;
+}
+
+interface ChannelSessionEvent {
+  kind: 'created' | 'replied';
+  sessionId: string;
+  workspace: string;
+  title: string;
+  sessionKey: string;
+}
+
+interface OcgChannelAccount {
+  accountId: string;
+  running: boolean;
+}
+
+interface OcgChannel {
+  channelId: string;
+  enabled: boolean;
+  agentType: string;
+  accounts: OcgChannelAccount[];
+}
+
+interface OcgAdminOverview {
+  ok: boolean;
+  channels?: OcgChannel[];
+  error?: string;
+}
+
+interface OcgLoginStart {
+  ok: boolean;
+  loginId?: string;
+  qrDataUrl?: string;
+  qrImage?: string;
+  expiresAt?: number;
+  error?: string;
+}
+
+interface OcgLoginStatus {
+  ok: boolean;
+  status?: string;
+  accountId?: string;
+  message?: string;
+  error?: string;
+}
+
 interface BuiltinSkillEntry {
   name: string;
   title: string;
@@ -267,6 +321,13 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   channelsStatus(): Promise<RuntimeStatus>;
   channelsSetEnabled(enabled: boolean): Promise<{ enabled: boolean; status: RuntimeStatus; skill: { ok: boolean; detail: string } | null }>;
   channelsInstallTool(): Promise<{ ok: boolean; detail: string; status: RuntimeStatus }>;
+  channelsBridgeStatus(): Promise<ChannelBridgeState | null>;
+  channelsBridgeSetEnabled(enabled: boolean): Promise<ChannelBridgeState | null>;
+  channelsAdminOverview(): Promise<OcgAdminOverview>;
+  channelsAdminOp(channelId: string, op: 'start' | 'stop' | 'restart', accountId?: string): Promise<{ ok: boolean; error?: string }>;
+  channelsLoginStart(channelId: string, accountId?: string): Promise<OcgLoginStart>;
+  channelsLoginStatus(channelId: string, loginId: string): Promise<OcgLoginStatus>;
+  channelsLoginCancel(channelId: string, loginId: string): Promise<OcgLoginStatus>;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
   updateDownload(): Promise<UpdateState | null>;
@@ -282,6 +343,8 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   openExternal(url: string): Promise<void>;
   onEvent(callback: (payload: any) => void): () => void;
   onLog(callback: (payload: any) => void): () => void;
+  onChannelState(callback: (state: ChannelBridgeState) => void): () => void;
+  onChannelSession(callback: (event: ChannelSessionEvent) => void): () => void;
 }
 
 declare global {
@@ -6184,10 +6247,12 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   const section = el('div');
   section.append(el('h2', undefined, 'IM channels'));
   section.append(el('div', 'hint', 'Read and reply to QQ, WeChat, Telegram, DingTalk or Discord through a local OpenClaw Channel Gateway. Credentials, channel configuration and QR login stay on this machine; the app does not store them.'));
-  const [status, envelope, settings] = await Promise.all([
+  const [status, envelope, settings, bridge, admin] = await Promise.all([
     window.coreai.channelsStatus(),
     window.coreai.builtinSkills(),
     window.coreai.getSettings(),
+    window.coreai.channelsBridgeStatus(),
+    window.coreai.channelsAdminOverview(),
   ]);
   const skill = envelope.skills.find((entry) => entry.name === 'ocg') ?? null;
   const grid = el('dl', 'settings-grid');
@@ -6198,6 +6263,10 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   row('OCG CLI', status.present ? `${status.version ? `v${status.version}` : 'installed'} - ${status.path ?? ''}` : 'not installed');
   row('OCG daemon', status.daemon ?? (status.present ? 'status unknown' : 'not available'));
   row('ocg skill', skill ? `${builtinStatusLabel(skill)} - ${skill.targetDir}` : 'not in the built-in catalog');
+  row('Desktop bridge', bridge?.running ? `running · consumer ${bridge.consumer}` : bridge?.enabled ? 'starting…' : 'stopped');
+  row('Last IM message', bridge?.lastMessageAt ? `${new Date(bridge.lastMessageAt).toLocaleTimeString()} · ${bridge.lastPeer ?? ''}` : 'none');
+  row('Last IM reply', bridge?.lastReplyAt ? new Date(bridge.lastReplyAt).toLocaleTimeString() : 'none');
+  row('Bridge error', bridge?.lastError ?? 'none');
   section.append(grid);
   const rerender = async (): Promise<void> => {
     const fresh = await renderChannelsSection();
@@ -6219,6 +6288,244 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   };
   enableLabel.append(toggle, document.createTextNode('Enable the ocg skill for this desktop'));
   section.append(enableLabel);
+
+  const bridgeLabel = el('label', 'schedule-filter');
+  const bridgeToggle = el('input') as HTMLInputElement;
+  bridgeToggle.type = 'checkbox';
+  bridgeToggle.checked = bridge?.enabled === true || settings?.channelsBridgeEnabled === true;
+  bridgeToggle.onchange = async () => {
+    if (bridgeToggle.checked && !window.confirm('Enable the desktop IM bridge?\n\nIncoming messages run through an agent in the current workspace and are replied to on your behalf. P0 supports text only and has no sender allowlist in OCG yet — only use it with a bot you control.')) {
+      bridgeToggle.checked = false;
+      return;
+    }
+    bridgeToggle.disabled = true;
+    const state = await window.coreai.channelsBridgeSetEnabled(bridgeToggle.checked);
+    toast(state?.running ? 'Desktop IM bridge started' : 'Desktop IM bridge stopped');
+    await rerender();
+  };
+  bridgeLabel.append(bridgeToggle, document.createTextNode('Route incoming IM messages into desktop sessions (P0)'));
+  section.append(bridgeLabel);
+  section.append(el('div', 'hint', 'P0: text only; direct messages and group @mentions. Requires the OCG daemon and a mailbox channel (WeChat). While the bridge runs, do not also poll the same channel with the ocg skill.'));
+
+  const setup = el('pre', undefined, [
+    'ocg config set channels.openclaw-weixin.agentType mailbox',
+    'ocg daemon start    # P0: temporarily disable qqbot first',
+    'ocg channels login --channel openclaw-weixin',
+  ].join('\n'));
+  setup.style.margin = '8px 0 12px';
+  setup.style.padding = '10px 12px';
+  setup.style.borderRadius = '6px';
+  setup.style.background = 'var(--color-bg-tertiary)';
+  setup.style.fontSize = '11px';
+  setup.style.whiteSpace = 'pre-wrap';
+  section.append(setup);
+
+  section.append(el('h3', undefined, 'Channels'));
+
+  const openLogin = async (channelId: string, accountId: string): Promise<void> => {
+    const started = await window.coreai.channelsLoginStart(channelId, accountId);
+    if (!started.ok || !started.loginId || !started.qrImage) {
+      toast(started.error ?? 'Login start failed (QR image unavailable)', 'error');
+      return;
+    }
+    const overlay = el('div');
+    Object.assign(overlay.style, {
+      position: 'fixed', inset: '0', background: 'rgba(0,0,0,.65)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: '9999',
+    });
+    const box = el('div');
+    Object.assign(box.style, {
+      background: 'var(--color-bg-secondary)', padding: '20px', borderRadius: '10px',
+      width: '320px', textAlign: 'center',
+    });
+    const title = el('div', undefined, `Login · ${channelId}`);
+    title.style.fontWeight = '600';
+    title.style.marginBottom = '10px';
+    const image = el('img') as HTMLImageElement;
+    image.src = started.qrImage;
+    image.width = 260;
+    image.height = 260;
+    image.style.background = '#fff';
+    image.style.padding = '8px';
+    image.style.borderRadius = '6px';
+    const status = el('div', 'hint', '等待扫码…');
+    status.style.margin = '10px 0';
+    let timer: number | null = null;
+    const close = async (cancel: boolean): Promise<void> => {
+      if (timer !== null) window.clearInterval(timer);
+      timer = null;
+      overlay.remove();
+      if (cancel && started.loginId) await window.coreai.channelsLoginCancel(channelId, started.loginId);
+    };
+    const cancel = el('button', 'btn small', 'Cancel');
+    cancel.onclick = () => void close(true);
+    box.append(title, image, status, cancel);
+    overlay.append(box);
+    document.body.append(overlay);
+    timer = window.setInterval(async () => {
+      if (!started.loginId) return;
+      const result = await window.coreai.channelsLoginStatus(channelId, started.loginId);
+      if (!result.ok) {
+        status.textContent = result.error ?? 'status failed';
+        return;
+      }
+      status.textContent = result.status === 'pending'
+        ? '等待扫码…'
+        : result.status === 'confirmed'
+          ? `已连接：${result.accountId ?? ''}`
+          : result.message ?? result.status ?? 'failed';
+      if (result.status === 'confirmed') {
+        await close(false);
+        toast(`${channelId} 已登录`);
+        await rerender();
+      } else if (result.status === 'expired' || result.status === 'failed' || result.status === 'cancelled') {
+        if (timer !== null) window.clearInterval(timer);
+        timer = null;
+      }
+    }, 2_000);
+  };
+
+  if (!admin.ok) {
+    section.append(el('div', 'hint', admin.error ?? 'OCG channel admin unavailable'));
+  } else if (!admin.channels?.length) {
+    section.append(el('div', 'hint', 'No channels configured in OCG.'));
+  } else {
+    for (const channel of admin.channels) {
+      const card = el('div');
+      Object.assign(card.style, {
+        border: '1px solid var(--color-border)', borderRadius: '8px',
+        padding: '10px 12px', margin: '0 0 10px',
+      });
+      const heading = el('div');
+      heading.append(el('strong', undefined, channel.channelId));
+      heading.append(el('span', 'hint', ` · ${channel.agentType}${channel.enabled ? '' : ' · disabled'}`));
+      card.append(heading);
+      for (const account of channel.accounts) {
+        const row = el('div');
+        Object.assign(row.style, {
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '8px', marginTop: '6px',
+        });
+        row.append(el('span', undefined, `${account.running ? '● running' : '○ stopped'} · ${account.accountId}`));
+        const accountButtons = el('div');
+        Object.assign(accountButtons.style, { display: 'flex', gap: '6px' });
+        const toggleAccount = el('button', 'btn small', account.running ? 'Stop' : 'Start');
+        toggleAccount.onclick = async () => {
+          const result = await window.coreai.channelsAdminOp(
+            channel.channelId,
+            account.running ? 'stop' : 'start',
+            account.accountId,
+          );
+          toast(result.ok
+            ? `${channel.channelId}/${account.accountId}: ${account.running ? 'stopped' : 'started'}`
+            : result.error ?? 'operation failed', result.ok ? '' : 'error');
+          await rerender();
+        };
+        const relink = el('button', 'btn small', 'Relink');
+        relink.onclick = () => void openLogin(channel.channelId, account.accountId);
+        accountButtons.append(toggleAccount, relink);
+        row.append(accountButtons);
+        card.append(row);
+      }
+      const operations = el('div');
+      Object.assign(operations.style, { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '10px' });
+      const add = el('button', 'btn small', 'Login / Add account');
+      add.onclick = () => void openLogin(channel.channelId, 'default');
+      const run = async (op: 'start' | 'stop' | 'restart'): Promise<void> => {
+        const result = await window.coreai.channelsAdminOp(channel.channelId, op);
+        toast(result.ok ? `${channel.channelId}: ${op}` : result.error ?? `${op} failed`, result.ok ? '' : 'error');
+        await rerender();
+      };
+      const start = el('button', 'btn small', 'Start');
+      start.onclick = () => void run('start');
+      const stop = el('button', 'btn small', 'Stop');
+      stop.onclick = () => void run('stop');
+      const restart = el('button', 'btn small', 'Restart');
+      restart.onclick = () => void run('restart');
+      operations.append(add, start, stop, restart);
+      card.append(operations);
+      section.append(card);
+    }
+  }
+
+  section.append(el('h3', undefined, 'Routing bindings'));
+  section.append(el('div', 'hint', 'Most specific match wins: peer > account > channel. Leave account/peer blank to match any; use * as an explicit wildcard.'));
+
+  const bindings = (settings?.channelBindings ?? []) as Array<{
+    match?: { channel?: string; accountId?: string; peer?: { kind?: string; id?: string } };
+    workspace?: string;
+  }>;
+  const saveBindings = async (next: typeof bindings): Promise<void> => {
+    await window.coreai.setSettings({ channelBindings: next });
+    toast('Routing bindings saved');
+    await rerender();
+  };
+  for (let index = 0; index < bindings.length; index += 1) {
+    const binding = bindings[index];
+    const row = el('div');
+    Object.assign(row.style, {
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      gap: '8px', borderBottom: '1px solid var(--color-border)', padding: '6px 0',
+    });
+    const match = binding.match ?? {};
+    const parts = [
+      match.channel ?? '*',
+      match.accountId ? `account=${match.accountId}` : 'account=*',
+      match.peer?.kind ? `peer=${match.peer.kind}${match.peer.id ? `:${match.peer.id}` : ':*'}` : 'peer=*',
+    ];
+    row.append(el('span', undefined, `${parts.join(' · ')} → ${binding.workspace ?? ''}`));
+    const remove = el('button', 'btn small', 'Remove');
+    remove.onclick = () => void saveBindings(bindings.filter((_, position) => position !== index));
+    row.append(remove);
+    section.append(row);
+  }
+
+  const addForm = el('div');
+  Object.assign(addForm.style, { display: 'flex', flexWrap: 'wrap', gap: '6px', margin: '10px 0' });
+  const channelInput = el('input') as HTMLInputElement;
+  channelInput.placeholder = 'channel';
+  channelInput.value = 'openclaw-weixin';
+  channelInput.style.width = '150px';
+  const accountInput = el('input') as HTMLInputElement;
+  accountInput.placeholder = 'account (optional)';
+  accountInput.style.width = '150px';
+  const kindSelect = el('select') as HTMLSelectElement;
+  for (const [value, label] of [['', 'any peer'], ['direct', 'direct'], ['group', 'group'], ['channel', 'channel']]) {
+    const option = el('option', undefined, label) as HTMLOptionElement;
+    option.value = value;
+    kindSelect.append(option);
+  }
+  const peerInput = el('input') as HTMLInputElement;
+  peerInput.placeholder = 'peer id (optional)';
+  peerInput.style.width = '170px';
+  const workspaceInput = el('input') as HTMLInputElement;
+  workspaceInput.placeholder = 'workspace';
+  workspaceInput.style.flex = '1';
+  workspaceInput.style.minWidth = '180px';
+  const choose = el('button', 'btn small', 'Choose');
+  choose.onclick = async () => {
+    const workspace = await window.coreai.chooseWorkspace();
+    if (workspace) workspaceInput.value = workspace;
+  };
+  const add = el('button', 'btn small primary', 'Add binding');
+  add.onclick = async () => {
+    const channel = channelInput.value.trim();
+    const workspace = workspaceInput.value.trim();
+    if (!channel || !workspace) {
+      toast('channel and workspace are required', 'error');
+      return;
+    }
+    const match: { channel: string; accountId?: string; peer?: { kind?: string; id?: string } } = { channel };
+    const account = accountInput.value.trim();
+    if (account) match.accountId = account;
+    const kind = kindSelect.value;
+    const peerId = peerInput.value.trim();
+    if (kind || peerId) match.peer = { ...(kind ? { kind } : {}), ...(peerId ? { id: peerId } : {}) };
+    await saveBindings([...bindings, { match, workspace }]);
+  };
+  addForm.append(channelInput, accountInput, kindSelect, peerInput, workspaceInput, choose, add);
+  section.append(addForm);
+
   const actions = el('div');
   actions.style.display = 'flex';
   actions.style.flexWrap = 'wrap';
@@ -6252,6 +6559,9 @@ async function renderChannelsSection(): Promise<HTMLElement> {
     docs.onclick = () => void window.coreai.openExternal(skill.docsUrl);
     actions.append(docs);
   }
+  const refresh = el('button', 'btn small', 'Refresh');
+  refresh.onclick = () => void rerender();
+  actions.append(refresh);
   section.append(actions);
   return section;
 }
@@ -6818,6 +7128,12 @@ async function bootstrap(): Promise<void> {
       void refreshArtifactBase();
       void refreshArtifactBaseline();
     }
+  });
+
+  window.coreai.onChannelSession((payload) => {
+    if (!payload || payload.workspace !== state.workspace) return;
+    void refreshSessionList();
+    if (payload.kind === 'replied') toast(`${payload.title} · replied`);
   });
 
   window.coreai.onBrowserState((status: BrowserStatus) => {

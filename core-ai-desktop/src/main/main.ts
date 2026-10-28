@@ -1,6 +1,7 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } from 'electron';
+import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
@@ -24,6 +25,10 @@ import {
   writeAuthEntries,
 } from './auth/AuthStore';
 import { BrowserManager } from './browser/BrowserManager';
+import { ChannelBridge, type ChannelBridgeState } from './channels/ChannelBridge';
+import { type ChannelBinding, resolveBindingWorkspace } from './channels/Bindings';
+import { createOcgPort, OcgHttpPort } from './channels/OcgClient';
+import { ocgAck, ocgReply, ocgSend, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, withExecutableOnPath } from './skills/RuntimeTools';
@@ -50,6 +55,10 @@ interface DesktopSettings {
   computerUse?: boolean;
   browserSkillEnabled?: boolean;
   channelsSkillEnabled?: boolean;
+  /** P0: route incoming IM messages from the local OCG mailbox into desktop sessions. */
+  channelsBridgeEnabled?: boolean;
+  /** IM bindings: channel/account/peer -> workspace. */
+  channelBindings?: ChannelBinding[];
   backgroundScheduling?: boolean;
   /** Bundled engine version whose standalone CLI copies this install has already refreshed. */
   cliSyncedEngineVersion?: string;
@@ -66,6 +75,8 @@ let cuaManager: CuaManager | null = null;
 let builtinSkills: BuiltinSkills | null = null;
 let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
+let channelBridge: ChannelBridge | null = null;
+let ocgAdmin: OcgHttpPort | null = null;
 let tray: Tray | null = null;
 let settings: DesktopSettings = {};
 let quitting = false;
@@ -150,8 +161,20 @@ function defaultWorkspace(): string {
   return workspace;
 }
 function resolveStartupWorkspace(): string | null {
+  const last = settings.lastWorkspace;
+  if (last && existsSync(last)) return last;
   const workspace = defaultWorkspacePath();
   return existsSync(workspace) ? workspace : null;
+}
+/** Workspace for IM-created sessions: a binding first, else the last workspace, else today's default. */
+function resolveBridgeWorkspace(message?: OcgInboundMessage): string {
+  if (message) {
+    const bound = resolveBindingWorkspace(settings.channelBindings, message);
+    if (bound && existsSync(bound)) return bound;
+  }
+  const last = settings.lastWorkspace;
+  if (last && existsSync(last)) return last;
+  return defaultWorkspace();
 }
 function sessionsDirOf(workspace: string): string { return path.join(os.homedir(), '.core-ai', 'sessions', path.basename(workspace) || 'root'); }
 function firstTextPart(content: unknown): string | null {
@@ -802,6 +825,50 @@ function registerIpc(): void {
     }
     return { ...result, status: await ocgStatus() };
   });
+  ipcMain.handle('channels:adminOverview', async () => {
+    ocgAdmin ??= new OcgHttpPort();
+    const health = await ocgAdmin.health();
+    if (!health.ok || (health.apiVersion ?? 0) < 1) {
+      return { ok: false, error: health.error ?? 'OCG daemon does not advertise /ocg/v1' };
+    }
+    const result = await ocgAdmin.channels();
+    return result.ok ? { ok: true, channels: result.data?.channels ?? [] } : result;
+  });
+  ipcMain.handle('channels:adminOp', async (_event, channelId: string, op: string, accountId?: string) => {
+    ocgAdmin ??= new OcgHttpPort();
+    if (op === 'start') return ocgAdmin.startChannel(channelId, accountId);
+    if (op === 'stop') return ocgAdmin.stopChannel(channelId, accountId);
+    if (op === 'restart') return ocgAdmin.restartChannel(channelId, accountId);
+    return { ok: false, error: `unknown channel operation: ${op}` };
+  });
+  ipcMain.handle('channels:loginStart', async (_event, channelId: string, accountId?: string) => {
+    ocgAdmin ??= new OcgHttpPort();
+    const result = await ocgAdmin.startLogin(channelId, accountId ?? 'default');
+    if (!result.ok || !result.data) return result;
+    let qrImage: string | undefined;
+    try {
+      qrImage = await QRCode.toDataURL(result.data.qrDataUrl, { width: 280, margin: 1 });
+    } catch { /* the caller can still show the raw QR payload */ }
+    return { ok: true, ...result.data, ...(qrImage ? { qrImage } : {}) };
+  });
+  ipcMain.handle('channels:loginStatus', async (_event, channelId: string, loginId: string) => {
+    ocgAdmin ??= new OcgHttpPort();
+    const result = await ocgAdmin.loginStatus(channelId, loginId);
+    return result.ok ? { ok: true, ...result.data } : result;
+  });
+  ipcMain.handle('channels:loginCancel', async (_event, channelId: string, loginId: string) => {
+    ocgAdmin ??= new OcgHttpPort();
+    const result = await ocgAdmin.cancelLogin(channelId, loginId);
+    return result.ok ? { ok: true, ...result.data } : result;
+  });
+  ipcMain.handle('channels:bridgeStatus', (): ChannelBridgeState | null => channelBridge?.snapshot() ?? null);
+  ipcMain.handle('channels:bridgeSetEnabled', (_event, enabled: boolean): ChannelBridgeState | null => {
+    const value = enabled === true;
+    settings.channelsBridgeEnabled = value;
+    saveSettings();
+    if (value) channelBridge?.start(); else channelBridge?.stop();
+    return channelBridge?.snapshot() ?? null;
+  });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
   ipcMain.handle('update:download', async () => updateService?.download() ?? null);
@@ -960,12 +1027,29 @@ else {
         }
         return env;
       },
-      onEvent: (workspace, method, params) => send('engine:event', { workspace, method, params }),
+      onEvent: (workspace, method, params) => {
+        channelBridge?.onEngineEvent(workspace, method, params);
+        send('engine:event', { workspace, method, params });
+      },
       onLog: (workspace, line) => {
         console.error(`[engine ${workspace}] ${line}`);
         send('engine:log', { workspace, line });
       },
     });
+    channelBridge = new ChannelBridge({
+      workspace: (message) => resolveBridgeWorkspace(message),
+      callEngine: (workspace, method, params) => {
+        if (!supervisor) return Promise.reject(new Error('engine supervisor not ready'));
+        return supervisor.call(workspace, method, params, settings.approvalPolicy ?? 'ask');
+      },
+      ocg: createOcgPort({ wait: ocgWait, reply: ocgReply, ack: ocgAck, send: ocgSend }),
+      storeFile: path.join(app.getPath('userData'), 'channels', 'bridge.json'),
+      consumer: 'core-ai-desktop',
+      onState: (state) => send('channels:state', state),
+      onSession: (event) => send('channels:session', event),
+      log: (line) => console.log(`[channels] ${line}`),
+    });
+    if (settings.channelsBridgeEnabled) channelBridge.start();
     registerIpc();
     registerArtifactProtocol();
     configureBackgroundScheduling();
@@ -992,6 +1076,7 @@ else {
     quitting = true;
     void browserManager?.stop();
     scheduleWaker?.stop();
+    channelBridge?.stop();
     const failsafe = setTimeout(() => app.exit(0), 8_000);
     void supervisor.shutdownAll().finally(() => {
       clearTimeout(failsafe);

@@ -6,7 +6,7 @@
   "author": "Chancetop",
   "main": "dist/main.js",
   "coreAi": {
-    "pinnedEngine": "2.0.60"
+    "pinnedEngine": "2.0.62"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.4",
+    "@types/qrcode": "^1.5.6",
     "dompurify": "^3.4.16",
     "electron": "^44.7.0",
     "electron-builder": "^26.15.3",
@@ -28,5 +29,8 @@
     "highlight.js": "^11.12.0",
     "marked": "^18.1.0",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "qrcode": "^1.5.4"
   }
 }

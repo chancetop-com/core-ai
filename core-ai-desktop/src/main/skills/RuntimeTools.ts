@@ -22,7 +22,7 @@ const SHORT_TIMEOUT = 20_000;
 const DAEMON_TIMEOUT = 5_000;
 const INSTALL_TIMEOUT = 10 * 60 * 1000;
 
-interface CommandResult {
+export interface CommandResult {
   code: number;
   stdout: string;
   stderr: string;
@@ -166,6 +166,13 @@ export async function installBrowserUse(): Promise<InstallOutcome> {
     ok: false,
     detail: 'uv/pipx/python not found. Install uv first, then run: uv tool install --python 3.12 browser-use',
   };
+}
+
+/** Runs the OCG CLI with the same .cmd handling as the other runtime probes. */
+export function runOcg(args: string[], timeoutMs = 30_000): Promise<CommandResult> {
+  const file = resolveExecutable('ocg');
+  if (!file) return Promise.resolve({ code: 127, stdout: '', stderr: 'ocg is not installed' });
+  return runCommand(file, args, timeoutMs);
 }
 
 /** Installs the OCG CLI globally with npm (Node >= 22.12 is a package requirement). */

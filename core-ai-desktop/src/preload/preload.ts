@@ -47,6 +47,14 @@ contextBridge.exposeInMainWorld('coreai', {
   channelsStatus: () => ipcRenderer.invoke('channels:status'),
   channelsSetEnabled: (enabled: boolean) => ipcRenderer.invoke('channels:setEnabled', enabled),
   channelsInstallTool: () => ipcRenderer.invoke('channels:installTool'),
+  channelsBridgeStatus: () => ipcRenderer.invoke('channels:bridgeStatus'),
+  channelsBridgeSetEnabled: (enabled: boolean) => ipcRenderer.invoke('channels:bridgeSetEnabled', enabled),
+  channelsAdminOverview: () => ipcRenderer.invoke('channels:adminOverview'),
+  channelsAdminOp: (channelId: string, op: 'start' | 'stop' | 'restart', accountId?: string) =>
+    ipcRenderer.invoke('channels:adminOp', channelId, op, accountId),
+  channelsLoginStart: (channelId: string, accountId?: string) => ipcRenderer.invoke('channels:loginStart', channelId, accountId),
+  channelsLoginStatus: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginStatus', channelId, loginId),
+  channelsLoginCancel: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginCancel', channelId, loginId),
   updateStatus: () => ipcRenderer.invoke('update:status'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
@@ -86,6 +94,20 @@ contextBridge.exposeInMainWorld('coreai', {
     ipcRenderer.on('engine:log', listener);
     return () => {
       ipcRenderer.removeListener('engine:log', listener);
+    };
+  },
+  onChannelState: (callback: (state: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => callback(payload);
+    ipcRenderer.on('channels:state', listener);
+    return () => {
+      ipcRenderer.removeListener('channels:state', listener);
+    };
+  },
+  onChannelSession: (callback: (event: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => callback(payload);
+    ipcRenderer.on('channels:session', listener);
+    return () => {
+      ipcRenderer.removeListener('channels:session', listener);
     };
   },
 });
