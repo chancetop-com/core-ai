@@ -166,7 +166,7 @@ function resolveFileType(file: File): string {
   return file.type;
 }
 
-const MAX_ATTACHMENT_SIZE = 20 * 1024 * 1024;
+const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024;
 const MAX_VIDEO_ATTACHMENT_SIZE = 2000 * 1024 * 1024;
 const COLLAPSE_THRESHOLD = 8;
 
@@ -419,7 +419,7 @@ const ChatComposer = memo(forwardRef<ChatComposerHandle, ChatComposerProps>(func
     const isVideo = contentType.startsWith('video/');
     const maxSize = isVideo ? MAX_VIDEO_ATTACHMENT_SIZE : MAX_ATTACHMENT_SIZE;
     if (file.size > maxSize) {
-      const limit = isVideo ? '2GB' : '20MB';
+      const limit = isVideo ? '2GB' : `${MAX_ATTACHMENT_SIZE / (1024 * 1024)}MB`;
       onToast(`File too large: ${file.name}. Maximum size is ${limit}.`);
       return;
     }

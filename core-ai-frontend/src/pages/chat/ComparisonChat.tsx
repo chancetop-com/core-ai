@@ -17,6 +17,8 @@ import AuthedImage from './components/AuthedImage';
 type ArmKey = 'a' | 'b';
 type VoteChoice = 'A' | 'B' | 'TIE' | 'NEITHER';
 
+const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024;
+
 interface ArmState {
   sessionId: string;
   messages: ChatMessage[];
@@ -503,6 +505,10 @@ export default function ComparisonChat({ context, agentName, onExit }: Compariso
   }, [commentDrafts, comparisonId, primarySessionId, votes]);
 
   const uploadFile = useCallback(async (file: File) => {
+    if (file.size > MAX_ATTACHMENT_SIZE) {
+      setActionError(`File too large: ${file.name}. Maximum size is ${MAX_ATTACHMENT_SIZE / (1024 * 1024)}MB.`);
+      return;
+    }
     const contentType = file.type || 'application/octet-stream';
     const isMultimodal = contentType.startsWith('image/') || contentType === 'application/pdf';
     const category = isMultimodal ? 'multimodal' : 'sandbox';

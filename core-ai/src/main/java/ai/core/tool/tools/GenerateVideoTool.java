@@ -13,6 +13,7 @@ import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -271,7 +272,7 @@ public final class GenerateVideoTool extends ToolCall {
         if (reference.url() != null && !reference.url().isBlank()) {
             var loaded = referenceImageLoader.load(reference.url());
             var mimeType = loaded.contentType() != null && !loaded.contentType().isBlank() ? loaded.contentType() : "image/png";
-            return new MediaReference(null, "data:" + mimeType + ";base64," + java.util.Base64.getEncoder().encodeToString(loaded.data()));
+            return new MediaReference(null, ImageDownscaler.shrinkDataUri(java.util.Base64.getEncoder().encodeToString(loaded.data()), mimeType));
         }
         return reference;
     }
@@ -279,7 +280,7 @@ public final class GenerateVideoTool extends ToolCall {
     private MediaReference mediaReference(AttachedContent content) {
         if (content.isBase64()) {
             var mimeType = Strings.isBlank(content.mediaType) ? "image/png" : content.mediaType;
-            return new MediaReference(null, "data:" + mimeType + ";base64," + content.data);
+            return new MediaReference(null, ImageDownscaler.shrinkDataUri(content.data, mimeType));
         }
         return new MediaReference(content.url, null);
     }

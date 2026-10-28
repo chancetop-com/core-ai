@@ -14,6 +14,7 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.ImageDimensions;
+import ai.core.utils.ImageDownscaler;
 import core.framework.util.Strings;
 
 import java.util.ArrayList;
@@ -302,20 +303,22 @@ public final class GenerateImageTool extends ToolCall {
     private MediaReference attachedReference(AttachedContent content) {
         if (content.isBase64()) {
             var mimeType = Strings.isBlank(content.mediaType) ? "image/png" : content.mediaType;
-            return new MediaReference(null, "data:" + mimeType + ";base64," + content.data);
+            return new MediaReference(null, ImageDownscaler.shrinkDataUri(content.data, mimeType));
         }
-        return download(new MediaReference(content.url, null));
+        return download(new MediaReference(content.url, null), true);
     }
 
-    private MediaReference download(MediaReference reference) {
+    private MediaReference download(MediaReference reference, boolean shrinkImage) {
         var loaded = referenceImageLoader.load(reference.url());
         var mimeType = loaded.contentType() != null && !loaded.contentType().isBlank() ? loaded.contentType() : "image/png";
-        return new MediaReference(null, "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(loaded.data()));
+        var data = Base64.getEncoder().encodeToString(loaded.data());
+        return new MediaReference(null,
+                shrinkImage ? ImageDownscaler.shrinkDataUri(data, mimeType) : "data:" + mimeType + ";base64," + data);
     }
 
     private MediaReference mask(Map<String, Object> args, MediaProvider provider, ExecutionContext context) {
         var value = SandboxMediaReferences.expand(getStringValue(args, "mask"), "mask", context);
-        return Strings.isBlank(value) ? null : resolve(MediaReferenceParser.parseItem(value, "mask"), provider);
+        return Strings.isBlank(value) ? null : resolve(MediaReferenceParser.parseItem(value, "mask"), provider, false);
     }
 
     /**
@@ -325,6 +328,10 @@ public final class GenerateImageTool extends ToolCall {
      * a media_id cannot be honoured at all.
      */
     private MediaReference resolve(MediaReference reference, MediaProvider provider) {
+        return resolve(reference, provider, true);
+    }
+
+    private MediaReference resolve(MediaReference reference, MediaProvider provider, boolean shrinkImage) {
         if (provider instanceof ManagedReferenceProvider) return reference;
         if (reference.isSymbolic()) {
             throw new IllegalArgumentException("media_id references need the gateway media provider; pass a url or b64Json instead");
@@ -333,7 +340,7 @@ public final class GenerateImageTool extends ToolCall {
         if (reference.url() == null || reference.url().isBlank()) {
             throw new IllegalArgumentException("input image requires a media_id, URL or base64 data");
         }
-        return download(reference);
+        return download(reference, shrinkImage);
     }
 
     /**

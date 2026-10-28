@@ -43,8 +43,8 @@ const TEXT_EXTENSIONS = new Set([
   'php', 'pl', 'lua', 'r', 'dart', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'gradle',
   'groovy', 'vue', 'svelte', 'tf',
 ]);
-const MAX_IMAGE_BYTES = 16 * 1024 * 1024;
-const MAX_PDF_BYTES = 16 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
+export const MAX_PDF_BYTES = 16 * 1024 * 1024;
 const MAX_TEXT_BYTES = 100 * 1024;
 
 export function classifyAttachment(fileName: string): AttachmentKind | null {
@@ -184,7 +184,7 @@ function maxBytesOf(kind: AttachmentKind): number {
 
 function sizeReasonOf(kind: AttachmentKind): string {
   if (kind === 'file') return 'larger than 100 KB — mention its path in the message instead';
-  return 'larger than 16 MB';
+  return kind === 'pdf' ? 'larger than 16 MB' : 'larger than 50 MB';
 }
 
 /** Reuses an identical-size copy from an earlier pick; otherwise appends -2, -3… to the name. */

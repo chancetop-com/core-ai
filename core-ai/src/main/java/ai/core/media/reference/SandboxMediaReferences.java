@@ -1,6 +1,7 @@
 package ai.core.media.reference;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.utils.ImageDownscaler;
 import ai.core.utils.ImageFormats;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -32,6 +33,7 @@ public final class SandboxMediaReferences {
 
     /** Azure image edits accept a 50MB part; base64 costs a third more, so the bytes are capped well below it. */
     private static final long MAX_BYTES = 32L * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
     private static final List<String> ROOTS = List.of("/tmp/", "/workspace/");
 
     /**
@@ -163,12 +165,14 @@ public final class SandboxMediaReferences {
         }
         var file = sandbox.downloadFile(path);
         try {
-            if (file.size() > MAX_BYTES) {
+            var image = isImage(file.contentType(), null);
+            var limit = image ? MAX_IMAGE_BYTES : MAX_BYTES;
+            if (file.size() > limit) {
                 throw new IllegalArgumentException(argumentName + " item " + SANDBOX_PATH + " is " + file.size()
-                        + " bytes, over the " + MAX_BYTES / (1024 * 1024) + "MB limit; downscale or compress it first: " + path);
+                        + " bytes, over the " + limit / (1024 * 1024) + "MB limit; downscale or compress it first: " + path);
             }
             var bytes = Files.readAllBytes(file.path());
-            return "data:" + mimeType(file.contentType(), null, bytes) + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            return dataUri(mimeType(file.contentType(), null, bytes), bytes, argumentName);
         } catch (IOException e) {
             throw new IllegalArgumentException(argumentName + " item " + SANDBOX_PATH + " could not be read: " + path, e);
         } finally {
@@ -191,12 +195,14 @@ public final class SandboxMediaReferences {
         }
         try {
             var size = Files.size(file);
-            if (size > MAX_BYTES) {
+            var image = isImage(null, file);
+            var limit = image ? MAX_IMAGE_BYTES : MAX_BYTES;
+            if (size > limit) {
                 throw new IllegalArgumentException(argumentName + " item " + SANDBOX_PATH + " is " + size
-                        + " bytes, over the " + MAX_BYTES / (1024 * 1024) + "MB limit; downscale or compress it first: " + path);
+                        + " bytes, over the " + limit / (1024 * 1024) + "MB limit; downscale or compress it first: " + path);
             }
             var bytes = Files.readAllBytes(file);
-            return "data:" + mimeType(null, file, bytes) + ";base64," + Base64.getEncoder().encodeToString(bytes);
+            return dataUri(mimeType(null, file, bytes), bytes, argumentName);
         } catch (IOException e) {
             throw new IllegalArgumentException(argumentName + " item " + SANDBOX_PATH + " could not be read: " + path, e);
         }
@@ -211,6 +217,22 @@ public final class SandboxMediaReferences {
             // an invalid path is as unreadable as a missing one, and the caller reports it the same way
             return null;
         }
+    }
+
+    private static boolean isImage(String contentType, Path file) {
+        if (contentType != null && contentType.toLowerCase(Locale.ROOT).startsWith("image/")) return true;
+        var extension = extensionOf(file);
+        var inferred = extension == null ? null : EXTENSION_TYPES.get(extension);
+        return inferred != null && inferred.startsWith("image/");
+    }
+
+    private static String dataUri(String mimeType, byte[] bytes, String argumentName) {
+        var base64 = Base64.getEncoder().encodeToString(bytes);
+        if (!mimeType.startsWith("image/") || "mask".equals(argumentName)) {
+            return "data:" + mimeType + ";base64," + base64;
+        }
+        var image = ImageDownscaler.shrink(base64, mimeType);
+        return "data:" + image.format() + ";base64," + image.data();
     }
 
     private static String mimeType(String declared, Path file, byte[] bytes) {

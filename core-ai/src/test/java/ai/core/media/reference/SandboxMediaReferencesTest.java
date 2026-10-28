@@ -2,6 +2,7 @@ package ai.core.media.reference;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
+import ai.core.utils.ImageDownscaler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -63,6 +64,22 @@ class SandboxMediaReferencesTest {
 
         assertTrue(failure.getMessage().contains("no sandbox"), failure.getMessage());
         assertTrue(failure.getMessage().contains("media_id"), "the forms that do work must be named: " + failure.getMessage());
+    }
+
+    @Test
+    void maskPathsAreNotReencoded(@TempDir Path dir) throws IOException {
+        var file = dir.resolve("mask.png");
+        Files.write(file, PNG_MAGIC);
+        ImageDownscaler.register(base64 -> Base64.getEncoder().encodeToString(new byte[]{1}));
+        try {
+            var expanded = SandboxMediaReferences.expand(
+                    "[{\"sandbox_path\":\"" + jsonPath(file) + "\"}]", "mask", CONTEXT);
+
+            var expected = "data:image/png;base64," + Base64.getEncoder().encodeToString(PNG_MAGIC);
+            assertTrue(expanded.contains("\"b64Json\":\"" + expected + "\""), expanded);
+        } finally {
+            ImageDownscaler.register(null);
+        }
     }
 
     @Test

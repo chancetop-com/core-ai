@@ -43,6 +43,15 @@ class ImageDownscalerTest {
     }
 
     @Test
+    void dataUriCarriesTheShrunkPayload() {
+        ImageDownscaler.register(base64 -> Base64.getEncoder().encodeToString(new byte[2]));
+
+        var dataUri = ImageDownscaler.shrinkDataUri(ORIGINAL, "image/png");
+
+        assertTrue(dataUri.startsWith("data:image/jpeg;base64,"));
+    }
+
+    @Test
     void payloadThatWouldNotShrinkIsKeptAsIs() {
         ImageDownscaler.register(base64 -> ORIGINAL + "A");
 
@@ -80,5 +89,6 @@ class ImageDownscalerTest {
 
         assertNull(ImageDownscaler.shrink(null, "image/png").data());
         assertEquals("", ImageDownscaler.shrink("", "image/png").data());
+        assertNull(ImageDownscaler.shrinkDataUri(null, "image/png"));
     }
 }

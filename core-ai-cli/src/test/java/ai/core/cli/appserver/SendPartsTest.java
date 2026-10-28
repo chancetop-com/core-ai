@@ -1,6 +1,7 @@
 package ai.core.cli.appserver;
 
 import ai.core.agent.AttachedContent;
+import ai.core.utils.ImageDownscaler;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -8,8 +9,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -51,6 +54,32 @@ class SendPartsTest {
         assertEquals("image/png", attachment.mediaType);
         assertEquals("img.png", attachment.filename);
         assertTrue(attachment.isBase64());
+    }
+
+    @Test
+    void imagePartIsShrunkBeforeItBecomesAnAttachment() throws Exception {
+        Files.write(workspace.resolve("img.png"), new byte[4096]);
+        ImageDownscaler.register(base64 -> Base64.getEncoder().encodeToString(new byte[]{1}));
+        try {
+            var parsed = SendParts.parse(parts("{\"type\":\"image\",\"path\":\"img.png\"}"), workspace, staging);
+            var attachment = parsed.attachments().getFirst();
+            assertEquals("AQ==", attachment.data);
+            assertEquals("image/jpeg", attachment.mediaType);
+        } finally {
+            ImageDownscaler.register(null);
+        }
+    }
+
+    @Test
+    void oversizedImageIsRejectedBeforeItIsRead() throws Exception {
+        try (var file = new RandomAccessFile(workspace.resolve("huge.png").toFile(), "rw")) {
+            file.setLength(50L * 1024 * 1024 + 1);
+        }
+
+        var error = assertThrows(RpcException.class,
+                () -> SendParts.parse(parts("{\"type\":\"image\",\"path\":\"huge.png\"}"), workspace, staging));
+
+        assertEquals("PART_TOO_LARGE", error.data().path("code").asText());
     }
 
     @Test

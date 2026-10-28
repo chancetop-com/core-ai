@@ -9,6 +9,8 @@ import ai.core.llm.domain.RoleType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.ImageDownscaler;
+import ai.core.utils.ImageFormats;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -118,7 +120,7 @@ public class CaptionImageTool extends ToolCall {
             return Content.ImageUrl.of(url, null);
         }
         if (url.startsWith("data:")) {
-            return Content.ImageUrl.of(url, null);
+            return shrinkDataUri(url);
         }
         // If a sandbox is available, try to download the file from the sandbox first.
         // The file may reside in the sandbox filesystem (e.g., /tmp/screenshot.png) rather than
@@ -136,7 +138,7 @@ public class CaptionImageTool extends ToolCall {
             var mimeType = result.contentType() == null ? "image/png" : result.contentType();
             var dataUri = "data:" + mimeType + ";base64," + Base64.getEncoder().encodeToString(result.body());
             LOGGER.info("caption_image resolved internal url [{}] to data uri, mimeType=[{}], size=[{}] bytes", url, mimeType, result.body().length);
-            return Content.ImageUrl.of(dataUri, mimeType);
+            return shrinkDataUri(dataUri);
         } catch (RuntimeException e) {
             LOGGER.warn("caption_image internal url resolution failed, passing through: url={}, error={}", url, e.getMessage());
             return null;
@@ -155,7 +157,7 @@ public class CaptionImageTool extends ToolCall {
                     String dataUri = "data:" + mimeType + ";base64," + base64;
                     LOGGER.info("caption_image resolved sandbox file [{}] with mimeType=[{}], size=[{}] bytes",
                             url, mimeType, bytes.length);
-                    return Content.ImageUrl.of(dataUri, mimeType);
+                    return shrinkDataUri(dataUri);
                 }
             } catch (Exception e) {
                 LOGGER.warn("caption_image failed to download from sandbox, falling back to local filesystem: url={}, error={}",
@@ -173,11 +175,20 @@ public class CaptionImageTool extends ToolCall {
             String mimeType = detectMimeType(path);
             String dataUri = "data:" + mimeType + ";base64," + base64;
             LOGGER.info("caption_image resolved local file [{}] with mimeType=[{}], size=[{}] bytes", url, mimeType, bytes.length);
-            return Content.ImageUrl.of(dataUri, mimeType);
+            return shrinkDataUri(dataUri);
         } catch (IOException e) {
             throw new AgentRuntimeException("CAPTION_IMAGE_TOOL_FAILED",
                     "Failed to read image file: " + url + " - " + e.getMessage(), e);
         }
+    }
+
+    private Content.ImageUrl shrinkDataUri(String dataUri) {
+        var format = ImageFormats.detectBase64(dataUri);
+        if (!ImageFormats.isModelReadable(format)) return Content.ImageUrl.of(dataUri, null);
+        var comma = dataUri.indexOf(',');
+        if (comma < 0) return Content.ImageUrl.of(dataUri, format);
+        var image = ImageDownscaler.shrink(dataUri.substring(comma + 1), ImageFormats.mimeType(format));
+        return Content.ImageUrl.of("data:" + image.format() + ";base64," + image.data(), image.format());
     }
 
     private String detectMimeType(Path path) {

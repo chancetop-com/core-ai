@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import stagerModule from '../dist/test/attachmentStager.js';
 
-const { classifyAttachment, stagingDirOf, stageAttachments, stageBuffers, removeStaged, sweepStaging } = stagerModule;
+const { classifyAttachment, stagingDirOf, stageAttachments, stageBuffers, removeStaged, sweepStaging, MAX_IMAGE_BYTES } = stagerModule;
 
 function tempDir() {
   return mkdtempSync(path.join(os.tmpdir(), 'attachment-stager-'));
@@ -51,7 +51,7 @@ test('unsupported, missing and oversize files are skipped with reasons', async (
   writeFileSync(bigText, 'x'.repeat(100 * 1024 + 1));
   const bigImage = path.join(root, 'huge.png');
   writeFileSync(bigImage, 'x');
-  truncateSync(bigImage, 16 * 1024 * 1024 + 1);
+  truncateSync(bigImage, MAX_IMAGE_BYTES + 1);
 
   const result = await stageAttachments(path.join(root, 'staging'), 'session-1', [
     exe, bigText, bigImage, path.join(root, 'missing.pdf'),
@@ -60,7 +60,7 @@ test('unsupported, missing and oversize files are skipped with reasons', async (
   assert.equal(result.skipped.length, 4);
   assert.equal(result.skipped[0].reason, 'unsupported file type');
   assert.match(result.skipped[1].reason, /100 KB/);
-  assert.match(result.skipped[2].reason, /16 MB/);
+  assert.match(result.skipped[2].reason, /50 MB/);
   assert.match(result.skipped[3].reason, /could not be read/);
 });
 
@@ -105,7 +105,7 @@ test('stageBuffers strips directories from names and applies the pick gates', as
   const root = tempDir();
   const staging = path.join(root, 'staging');
   const png = new Uint8Array([1, 2, 3]);
-  const big = new Uint8Array(16 * 1024 * 1024 + 1);
+  const big = new Uint8Array(MAX_IMAGE_BYTES + 1);
 
   const result = await stageBuffers(staging, 's', [
     { name: 'C:\\shots\\..\\deep\\screenshot.png', data: png.buffer },
@@ -120,7 +120,7 @@ test('stageBuffers strips directories from names and applies the pick gates', as
   assert.equal(result.skipped.length, 4);
   assert.equal(result.skipped[0].reason, 'not a file');
   assert.equal(result.skipped[1].reason, 'unsupported file type');
-  assert.match(result.skipped[2].reason, /16 MB/);
+  assert.match(result.skipped[2].reason, /50 MB/);
   assert.match(result.skipped[3].reason, /missing data/);
 });
 

@@ -7,6 +7,8 @@ import ai.core.server.domain.SessionAttachmentRef;
 import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.sandbox.PendingFile;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.utils.ImageDownscaler;
+import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,6 +28,7 @@ import java.util.UUID;
  */
 public class ChatMessageAttachments {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatMessageAttachments.class);
+    static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
     private static final String SANDBOX_HINT = "\n\n[Attachments are also staged in the sandbox at ";
 
     private final SandboxService sandboxService;
@@ -215,8 +218,13 @@ public class ChatMessageAttachments {
         var contentType = (String) attachment.get("contentType");
         if (!validImageAttachment(container, blobName, contentType)) throw new IllegalArgumentException("invalid image attachment");
 
+        var metadata = storageService.headObject(container, blobName);
+        if (metadata != null && metadata.sizeBytes() != null && metadata.sizeBytes() > MAX_IMAGE_BYTES) {
+            throw new BadRequestException("image attachment is larger than 50MB");
+        }
         var bytes = storageService.downloadObject(container, blobName);
-        var content = AttachedContent.ofBase64(Base64.getEncoder().encodeToString(bytes), contentType,
+        var image = ImageDownscaler.shrink(Base64.getEncoder().encodeToString(bytes), contentType);
+        var content = AttachedContent.ofBase64(image.data(), image.format(),
                 AttachedContent.AttachedContentType.IMAGE, (String) attachment.get("fileName"));
         content.url = (String) attachment.get("url");
         return content;

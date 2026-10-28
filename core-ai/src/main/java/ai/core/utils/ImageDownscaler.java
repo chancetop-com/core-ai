@@ -51,6 +51,16 @@ public final class ImageDownscaler {
         }
     }
 
+    /**
+     * @return a complete data URI carrying the shrunk payload, so a media/model call can hand the image
+     *         on without rebuilding the prefix
+     */
+    public static String shrinkDataUri(String base64, String format) {
+        if (base64 == null) return null;
+        var image = shrink(base64, format);
+        return "data:" + image.format() + ";base64," + image.data();
+    }
+
     private ImageDownscaler() {
     }
 

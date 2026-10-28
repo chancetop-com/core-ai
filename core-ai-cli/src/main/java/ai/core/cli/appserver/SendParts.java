@@ -1,6 +1,7 @@
 package ai.core.cli.appserver;
 
 import ai.core.agent.AttachedContent;
+import ai.core.utils.ImageDownscaler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -23,7 +24,8 @@ import java.util.Locale;
  */
 public final class SendParts {
     private static final long MAX_TEXT_BYTES = 100 * 1024;
-    private static final long MAX_BINARY_BYTES = 16 * 1024 * 1024;
+    private static final long MAX_IMAGE_BYTES = 50 * 1024 * 1024;
+    private static final long MAX_PDF_BYTES = 16 * 1024 * 1024;
 
     public static Parsed parse(ObjectNode params, Path workspace, Path stagingDir) {
         var parts = params.get("parts");
@@ -47,9 +49,9 @@ public final class SendParts {
             case "text" -> text.append(part.path("text").asText("")).append('\n');
             case "file" -> text.append(inlineFile(part, workspaceRoot, stagingRoot));
             case "image" -> attachments.add(binaryAttachment(part, workspaceRoot, stagingRoot,
-                    AttachedContent.AttachedContentType.IMAGE));
+                    AttachedContent.AttachedContentType.IMAGE, true));
             case "pdf" -> attachments.add(binaryAttachment(part, workspaceRoot, stagingRoot,
-                    AttachedContent.AttachedContentType.PDF));
+                    AttachedContent.AttachedContentType.PDF, false));
             default -> throw RpcException.invalidParams("unsupported part type: " + type);
         }
     }
@@ -69,16 +71,23 @@ public final class SendParts {
     }
 
     private static AttachedContent binaryAttachment(JsonNode part, Path workspaceRoot, Path stagingRoot,
-                                                    AttachedContent.AttachedContentType contentType) {
+                                                    AttachedContent.AttachedContentType contentType, boolean image) {
         var path = resolvePath(part, workspaceRoot, stagingRoot);
         try {
             long size = Files.size(path);
-            if (size > MAX_BINARY_BYTES) {
-                throw RpcException.business("PART_TOO_LARGE", "attachment is larger than 16MB");
+            var maxBytes = image ? MAX_IMAGE_BYTES : MAX_PDF_BYTES;
+            if (size > maxBytes) {
+                throw RpcException.business("PART_TOO_LARGE", "attachment is larger than " + maxBytes / (1024 * 1024) + "MB");
             }
             var data = Base64.getEncoder().encodeToString(Files.readAllBytes(path));
+            var mediaType = mediaType(path);
+            if (image) {
+                var shrunk = ImageDownscaler.shrink(data, mediaType);
+                data = shrunk.data();
+                mediaType = shrunk.format();
+            }
             var fileName = path.getFileName();
-            return AttachedContent.ofBase64(data, mediaType(path), contentType, fileName == null ? "" : fileName.toString());
+            return AttachedContent.ofBase64(data, mediaType, contentType, fileName == null ? "" : fileName.toString());
         } catch (IOException e) {
             throw RpcException.business("PART_READ_FAILED", "failed to read attachment: " + e.getMessage(), e);
         }

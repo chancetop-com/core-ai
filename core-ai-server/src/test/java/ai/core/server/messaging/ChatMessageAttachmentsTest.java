@@ -3,13 +3,17 @@ package ai.core.server.messaging;
 import ai.core.agent.AttachedContent;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatMessageAttachmentsTest {
@@ -57,5 +61,25 @@ class ChatMessageAttachmentsTest {
         var message = attachments.appendVideoDownloadHints("make a google post", payload);
 
         assertTrue(message.contains("https://signed.example.com/promo.mp4"));
+    }
+
+    @Test
+    void oversizedImageIsRejectedBeforeDownload() {
+        var storage = mock(ObjectStorageService.class);
+        when(storage.headObject("multimodal", "ai/uploads/big.png")).thenReturn(
+                new ObjectStorageService.ObjectMetadata(ChatMessageAttachments.MAX_IMAGE_BYTES + 1, null, "image/png", null));
+        var resolver = mock(ObjectStorageServiceResolver.class);
+        when(resolver.resolve()).thenReturn(storage);
+        when(resolver.multimodalContainer()).thenReturn("multimodal");
+        var attachments = new ChatMessageAttachments(null, resolver, null);
+        var payload = Map.<String, Object>of("multimodalAttachments", List.of(Map.of(
+                "type", "IMAGE",
+                "fileName", "big.png",
+                "contentType", "image/png",
+                "container", "multimodal",
+                "blobName", "ai/uploads/big.png")));
+
+        assertThrows(BadRequestException.class, () -> attachments.contents(payload, "s", "u"));
+        verify(storage, never()).downloadObject("multimodal", "ai/uploads/big.png");
     }
 }

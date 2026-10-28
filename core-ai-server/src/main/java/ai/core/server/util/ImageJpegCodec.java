@@ -22,19 +22,47 @@ import java.io.IOException;
  * @author stephen
  */
 public final class ImageJpegCodec {
+    // a full decode of a huge camera image is what would exhaust the heap; decoding it subsampled
+    // keeps the pixel buffer around 96 MB (24 MP, 4 bytes per pixel) whatever the source dimensions
+    static final long MAX_DECODE_PIXELS = 24_000_000L;
+    private static final int MAX_SUBSAMPLING = 16;
 
     /**
      * @return the re-encoded jpeg, downscaled to keep the longest edge within maxEdge, or null when
      *         the bytes are not a decodable image
      */
     public static byte[] downscale(byte[] source, int maxEdge, float quality) {
-        try {
-            var image = ImageIO.read(new ByteArrayInputStream(source));
-            if (image == null) return null;
-            return encode(scale(image, maxEdge), quality);
+        try (var input = ImageIO.createImageInputStream(new ByteArrayInputStream(source))) {
+            return input == null ? null : downscale(input, maxEdge, quality);
         } catch (IOException | RuntimeException e) {
             return null;
         }
+    }
+
+    private static byte[] downscale(ImageInputStream input, int maxEdge, float quality) throws IOException {
+        var readers = ImageIO.getImageReaders(input);
+        if (!readers.hasNext()) return null;
+        var reader = readers.next();
+        try {
+            reader.setInput(input, true, true);
+            var param = reader.getDefaultReadParam();
+            var subsampling = subsampling(reader.getWidth(0), reader.getHeight(0));
+            if (subsampling > 1) param.setSourceSubsampling(subsampling, subsampling, 0, 0);
+            var image = reader.read(0, param);
+            return image == null ? null : encode(scale(image, maxEdge), quality);
+        } finally {
+            reader.dispose();
+        }
+    }
+
+    /**
+     * @return the integer subsampling factor that keeps the decoded pixel count within
+     *         {@link #MAX_DECODE_PIXELS}; 1 when the image can be decoded whole
+     */
+    static int subsampling(int width, int height) {
+        var pixels = (long) width * height;
+        if (pixels <= MAX_DECODE_PIXELS) return 1;
+        return Math.min(MAX_SUBSAMPLING, (int) Math.ceil(Math.sqrt((double) pixels / MAX_DECODE_PIXELS)));
     }
 
     /**
