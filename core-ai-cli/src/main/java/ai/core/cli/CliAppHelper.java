@@ -33,9 +33,6 @@ import ai.core.tool.tools.WriteTodoTaskTool;
 import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.FfmpegImageShrinker;
 import ai.core.utils.ImageDownscaler;
-import ai.core.utils.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -56,7 +53,6 @@ import java.util.function.Supplier;
  * @author stephen
  */
 public class CliAppHelper {
-    private static final Logger LOGGER = LoggerFactory.getLogger(CliAppHelper.class);
     /** Media gateway base derived from the login; chat keeps using {@link RuntimeAuthConfig#LLM_PROXY_PATH}. */
     private static final String MEDIA_GATEWAY_PATH = "/api/gateway/v1";
     private static final String MEDIA_GATEWAY_BASE_PROPERTY = "media.gateway.api.base";
@@ -85,10 +81,11 @@ public class CliAppHelper {
         if (result.liteLLMProvider != null) {
             applyToProvider(result.liteLLMProvider, maxImages, maxBytes != null ? maxBytes : CLI_MAX_INLINE_IMAGE_BYTES);
         }
-        if (result.llmProviders == null || (maxImages == null && maxBytes == null)) return;
+        boolean hasNoLimits = maxImages == null && maxBytes == null;
+        if (result.llmProviders == null || hasNoLimits) return;
         for (var type : result.llmProviders.getProviderTypes()) {
             var provider = result.llmProviders.getProvider(type);
-            if (provider == null || provider == result.liteLLMProvider) continue;
+            if (provider == null || provider.equals(result.liteLLMProvider)) continue;
             applyToProvider(provider, maxImages, maxBytes);
         }
     }
@@ -148,52 +145,7 @@ public class CliAppHelper {
 
         // Merge workspace MCP.json into mcp.servers.json so both
         // STDIO and HTTP MCP servers are auto-loaded on startup.
-        mergeWorkspaceMcpConfig(global, workspace);
-    }
-
-    private static void mergeWorkspaceMcpConfig(PropertiesFileSource props, Path workspace) {
-        Path mcpFile = resolveWorkspaceMcpFile(workspace);
-        if (!Files.exists(mcpFile)) return;
-        try {
-            String localJson = Files.readString(mcpFile);
-            @SuppressWarnings("unchecked")
-            var parsedLocal = (Map<String, Object>) JsonUtil.fromJson(Map.class, localJson);
-            var localServers = normalizeMcpServers(parsedLocal);
-            if (localServers == null || localServers.isEmpty()) return;
-
-            var globalJson = props.property("mcp.servers.json");
-            Map<String, Object> merged;
-            if (globalJson.isPresent()) {
-                @SuppressWarnings("unchecked")
-                var parsedGlobal = (Map<String, Object>) JsonUtil.fromJson(Map.class, globalJson.get());
-                var globalServers = normalizeMcpServers(parsedGlobal);
-                merged = globalServers;
-                merged.putAll(localServers);
-            } else {
-                merged = localServers;
-            }
-            props.putProperty("mcp.servers.json", JsonUtil.toJson(merged));
-            LOGGER.info("merged workspace MCP config from {}: {} server(s)", mcpFile, merged.size());
-        } catch (Exception e) {
-            LOGGER.warn("failed to merge workspace MCP config from {}: {}", mcpFile, e.getMessage());
-        }
-    }
-
-    private static Path resolveWorkspaceMcpFile(Path workspace) {
-        var coreAiDir = workspace.resolve(".core-ai");
-        var canonical = coreAiDir.resolve("MCP.json");
-        if (Files.exists(canonical)) return canonical;
-        return coreAiDir.resolve("mcp.json");
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Map<String, Object> normalizeMcpServers(Map<String, Object> config) {
-        if (config == null || config.isEmpty()) return config;
-        var mcpServers = config.get("mcpServers");
-        if (mcpServers instanceof Map<?, ?> servers) {
-            return (Map<String, Object>) servers;
-        }
-        return config;
+        CliMcpConfig.mergeWorkspaceMcpConfig(global, workspace);
     }
 
     /**
