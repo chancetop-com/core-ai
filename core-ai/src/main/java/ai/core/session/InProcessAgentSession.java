@@ -41,6 +41,7 @@ public class InProcessAgentSession implements AgentSession {
     // Set when RUNNING is dispatched, cleared by whoever dispatches the turn's terminal event.
     // close() races the turn thread for it so a force-closed turn still terminates exactly once.
     private final AtomicBoolean turnActive = new AtomicBoolean();
+    private volatile String currentTurnId;
     private volatile long turnStartedAtMs;
     private final SessionCustomEventEmitter customEventEmitter;
     public final SessionFootprintTracker footprint;
@@ -110,11 +111,15 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+        sendMessage(message, variables, attachedContents, null);
+    }
+
+    public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
         if (turnInput.offer(message, variables, attachedContents)) {
             debug("message accepted for the running turn");
             return;
         }
-        if (commandQueue.enqueueUserInput(message, variables, attachedContents)) return;
+        if (commandQueue.enqueueUserInput(message, variables, attachedContents, turnId)) return;
         logger.warn("message refused, session queue is full, sessionId={}", sessionId);
         // A terminal ErrorEvent would clear the running turn's SSE replay buffer and make the
         // client treat the session as finished. Keep the turn alive; the rejection is logged.
@@ -131,6 +136,10 @@ public class InProcessAgentSession implements AgentSession {
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
         var input = turnInput.begin();
+        var turnId = batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT && !batch.values().isEmpty()
+                ? batch.values().getFirst().turnId()
+                : null;
+        currentTurnId = turnId;
         turnActive.set(true);
         turnStartedAtMs = System.currentTimeMillis();
         var turnDeadline = SessionTurnWatchdog.schedule(turnToken, sessionId, turnActive::get);
@@ -144,30 +153,35 @@ public class InProcessAgentSession implements AgentSession {
 
         try {
             if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
-                executeUserInput(batch.values(), before);
+                executeUserInput(batch.values(), before, turnId);
             } else if (batch.mode() == SessionCommandQueue.CommandMode.TASK_NOTIFICATION) {
                 executeTaskNotifications(batch.values(), before);
             }
         } catch (ToolCallDeniedException e) {
             debug("tool call denied: " + e.getMessage());
-            dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, "", before), SessionStatus.IDLE);
+            var cancelled = SessionTurnUsage.cancelled(agent, sessionId, "", before);
+            cancelled.turnId = turnId;
+            dispatchTerminal(cancelled, SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
         } catch (Throwable e) {
             if (agent.isCancelled()) {
                 debug("agent run cancelled");
-                dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, "", before), SessionStatus.IDLE);
+                var cancelled = SessionTurnUsage.cancelled(agent, sessionId, "", before);
+                cancelled.turnId = turnId;
+                dispatchTerminal(cancelled, SessionStatus.IDLE);
                 commandQueue.drainTaskNotifications();
                 return;
             }
             debug("agent run failed: " + e);
             logger.warn("agent session run failed, sessionId={}", sessionId, e);
             persistOnFailure();
-            dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), ""), SessionStatus.ERROR);
+            dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), "", turnId), SessionStatus.ERROR);
         } finally {
             turnInput.end(input);
             turnDeadline.cancel(false);
             threadUnbind.run();
             turnToken.disconnect();
+            currentTurnId = null;
             footprint.refresh();
         }
     }
@@ -180,7 +194,7 @@ public class InProcessAgentSession implements AgentSession {
         TurnPersistence.save(agent, sessionId, logger, "cancelled turn");
     }
 
-    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, SessionTurnUsage.Before before) {
+    private void executeUserInput(List<SessionCommandQueue.QueuedMessage> values, SessionTurnUsage.Before before, String turnId) {
         var combined = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("agent run starting");
         String result;
@@ -194,7 +208,7 @@ public class InProcessAgentSession implements AgentSession {
         try {
             result = agent.run(combined, context);
         } catch (RuntimeException e) {
-            if (!dispatchMaxTurns(e, before)) throw e;
+            if (!dispatchMaxTurns(e, before, turnId)) throw e;
             return;
         } finally {
             context.setAttachedContents(null);
@@ -203,7 +217,9 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run cancelled");
             persistCancelledTurn();
             // carry partial output so server chat history records what was produced before ESC
-            dispatchTerminal(SessionTurnUsage.cancelled(agent, sessionId, agent.getOutput(), before), SessionStatus.IDLE);
+            var cancelled = SessionTurnUsage.cancelled(agent, sessionId, agent.getOutput(), before);
+            cancelled.turnId = turnId;
+            dispatchTerminal(cancelled, SessionStatus.IDLE);
             commandQueue.drainTaskNotifications();
             return;
         }
@@ -211,7 +227,7 @@ public class InProcessAgentSession implements AgentSession {
             agent.save(sessionId);
         }
         debug("agent run completed");
-        var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "");
+        var turnComplete = TurnCompleteEvent.of(sessionId, result != null ? result : "", turnId);
         populateTokenUsage(turnComplete, before);
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
     }
@@ -224,7 +240,7 @@ public class InProcessAgentSession implements AgentSession {
             agent.injectUserMessage(xml);
             result = agent.continueWithInjectedMessage();
         } catch (RuntimeException e) {
-            if (!dispatchMaxTurns(e, before)) throw e;
+            if (!dispatchMaxTurns(e, before, null)) throw e;
             return;
         }
         if (agent.isCancelled()) {
@@ -245,7 +261,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     /** Consumes a max-turns failure (Node.run wraps it one cause level down) and completes the turn; false = keep propagating. */
-    private boolean dispatchMaxTurns(RuntimeException failure, SessionTurnUsage.Before before) {
+    private boolean dispatchMaxTurns(RuntimeException failure, SessionTurnUsage.Before before, String turnId) {
         MaxTurnsExceededException maxTurns = null;
         if (failure instanceof MaxTurnsExceededException direct) maxTurns = direct;
         else if (failure.getCause() instanceof MaxTurnsExceededException cause) maxTurns = cause;
@@ -254,7 +270,7 @@ public class InProcessAgentSession implements AgentSession {
         if (agent.hasPersistenceProvider()) {
             agent.save(sessionId);
         }
-        var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "");
+        var turnComplete = TurnCompleteEvent.of(sessionId, agent.getOutput() != null ? agent.getOutput() : "", turnId);
         populateTokenUsage(turnComplete, before);
         turnComplete.maxTurnsReached = Boolean.TRUE;
         dispatchTerminal(turnComplete, SessionStatus.IDLE);
@@ -342,7 +358,9 @@ public class InProcessAgentSession implements AgentSession {
         // dispatchTerminal is a CAS, so whichever side gets there first is the only one that fires.
         if (turnActive.get()) {
             logger.warn("session closed while a turn was still running, aborting it, sessionId={}", sessionId);
-            dispatchTerminal(TurnCompleteEvent.cancelled(sessionId, agent.getOutput()), SessionStatus.IDLE);
+            var cancelled = TurnCompleteEvent.cancelled(sessionId, agent.getOutput());
+            cancelled.turnId = currentTurnId;
+            dispatchTerminal(cancelled, SessionStatus.IDLE);
         }
     }
 

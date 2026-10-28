@@ -51,11 +51,15 @@ public class SessionCommandQueue {
      *         visible error and idle status instead of silently growing an unbounded queue.
      */
     public boolean enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
-        return enqueue(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents));
+        return enqueueUserInput(value, variables, attachedContents, null);
+    }
+
+    public boolean enqueueUserInput(String value, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
+        return enqueue(CommandMode.USER_INPUT, new QueuedMessage(value, variables, attachedContents, turnId));
     }
 
     public boolean enqueueTaskNotification(String value) {
-        return enqueue(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null));
+        return enqueue(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null, null));
     }
 
     private boolean enqueue(CommandMode mode, QueuedMessage message) {
@@ -181,7 +185,7 @@ public class SessionCommandQueue {
         }
     }
 
-    public record QueuedMessage(String value, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+    public record QueuedMessage(String value, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
 
     }
 

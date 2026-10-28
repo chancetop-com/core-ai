@@ -8,9 +8,14 @@ import core.framework.api.validate.NotNull;
  */
 public class TurnCompleteEvent implements AgentEvent {
     public static TurnCompleteEvent of(String sessionId, String output) {
+        return of(sessionId, output, null);
+    }
+
+    public static TurnCompleteEvent of(String sessionId, String output, String turnId) {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
         event.output = output;
+        event.turnId = turnId;
         event.cancelled = Boolean.FALSE;
         return event;
     }
@@ -24,9 +29,14 @@ public class TurnCompleteEvent implements AgentEvent {
      * so persistence listeners can record what was produced before the interruption.
      */
     public static TurnCompleteEvent cancelled(String sessionId, String output) {
+        return cancelled(sessionId, output, null);
+    }
+
+    public static TurnCompleteEvent cancelled(String sessionId, String output, String turnId) {
         var event = new TurnCompleteEvent();
         event.sessionId = sessionId;
         event.output = output != null ? output : "";
+        event.turnId = turnId;
         event.cancelled = Boolean.TRUE;
         return event;
     }
@@ -37,6 +47,10 @@ public class TurnCompleteEvent implements AgentEvent {
 
     @Property(name = "output")
     public String output;
+
+    /** Caller-supplied correlation id (e.g. an OCG mailbox message id); null for older clients. */
+    @Property(name = "turn_id")
+    public String turnId;
 
     @NotNull
     @Property(name = "cancelled")

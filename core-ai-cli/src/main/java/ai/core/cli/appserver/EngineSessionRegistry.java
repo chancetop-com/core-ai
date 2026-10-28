@@ -179,7 +179,7 @@ public class EngineSessionRegistry {
         }
         boolean queued = session.running();
         List<AttachedContent> attachments = parsed.attachments().isEmpty() ? null : parsed.attachments();
-        session.inProcess().sendMessage(parsed.text(), null, attachments);
+        session.inProcess().sendMessage(parsed.text(), null, attachments, Params.optionalText(params, "turnId"));
         var node = Params.object();
         node.put("accepted", true);
         node.put("queued", queued);
