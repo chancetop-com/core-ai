@@ -2778,9 +2778,19 @@ function activeArtifact(): ArtifactEntry | null {
   return entries.find((entry) => entry.path === surface.activeArtifactPath) ?? entries[0] ?? null;
 }
 
-function artifactUrl(relativePath: string): string {
+function artifactUrl(relativePath: string, version?: string | null): string {
   const encoded = relativePath.split('/').map((segment) => encodeURIComponent(segment)).join('/');
-  return `${state.artifactBase ?? ''}/${encoded}`;
+  const url = `${state.artifactBase ?? ''}/${encoded}`;
+  return version ? `${url}?v=${encodeURIComponent(version)}` : url;
+}
+
+/**
+ * Cache key for an artifact's bytes. A file rewritten under the same path (the agent re-renders a
+ * poster and submits it again) keeps its URL, so without this the `<img>` is served from Chromium's
+ * image cache and the pane keeps showing the previous render.
+ */
+function artifactVersion(entry: ArtifactEntry): string {
+  return `${entry.size}-${entry.createdAt ?? ''}`;
 }
 
 function renderArtifactPanel(): void {
@@ -2872,7 +2882,7 @@ function renderArtifactGallery(): void {
     item.title = entry.name;
     if (artifactIsImage(entry)) {
       const img = el('img') as HTMLImageElement;
-      img.src = artifactUrl(entry.path);
+      img.src = artifactUrl(entry.path, artifactVersion(entry));
       img.alt = entry.name;
       img.loading = 'lazy';
       img.onerror = () => {
@@ -2906,7 +2916,7 @@ function renderArtifactBody(): void {
       : 'Generated images and videos appear here as they are created.'));
     return;
   }
-  const url = artifactUrl(entry.path);
+  const url = artifactUrl(entry.path, artifactVersion(entry));
   if (surface.artifactSource) {
     if (!artifactSupportsSource(entry)) {
       artifactBodyEl.append(el('div', 'notice', 'Source not available for this file type.'));
@@ -4388,7 +4398,7 @@ function appendToolThumbnail(tool: UiTool, entry: ArtifactEntry): void {
   const type = artifactContentType(entry);
   if (type.startsWith('image/') && type !== 'image/svg+xml') {
     const img = el('img') as HTMLImageElement;
-    img.src = artifactUrl(entry.path);
+    img.src = artifactUrl(entry.path, artifactVersion(entry));
     img.alt = entry.name;
     img.loading = 'lazy';
     img.onerror = () => {
