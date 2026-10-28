@@ -5,6 +5,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +13,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Request-time size guard for stateless chat completion calls: the whole history is resent on every
@@ -89,6 +91,8 @@ public final class InlineImagePruner {
      * kept even when it alone exceeds the budget. Tool images stay individually budgeted — a turn
      * that read twenty screenshots must not pin all twenty.
      */
+    @SuppressFBWarnings(value = "SUA_SUSPICIOUS_UNINITIALIZED_ARRAY",
+            justification = "boolean flags default to false, which is the intended initial state")
     private static boolean[] selectKept(List<Message> messages, List<ImageSlot> slots, int maxImages, long maxBytes) {
         var kept = new boolean[slots.size()];
         if (maxImages == 0) return kept;
@@ -136,7 +140,7 @@ public final class InlineImagePruner {
         return kept;
     }
 
-    private static List<Integer> freshSlots(List<Integer> group, List<ImageSlot> slots, HashSet<String> keptPayloads) {
+    private static List<Integer> freshSlots(List<Integer> group, List<ImageSlot> slots, Set<String> keptPayloads) {
         var fresh = new ArrayList<Integer>();
         var freshPayloads = new HashSet<String>();
         for (var i = group.size() - 1; i >= 0; i--) {
@@ -156,7 +160,7 @@ public final class InlineImagePruner {
         return bytes;
     }
 
-    private static void keep(int slotIndex, List<ImageSlot> slots, boolean[] kept, HashSet<String> keptPayloads) {
+    private static void keep(int slotIndex, List<ImageSlot> slots, boolean[] kept, Set<String> keptPayloads) {
         kept[slotIndex] = true;
         keptPayloads.add(slots.get(slotIndex).payload());
     }
@@ -261,8 +265,9 @@ public final class InlineImagePruner {
             var message = messages.get(i);
             if (message.role != RoleType.ASSISTANT || message.toolCalls == null) continue;
             for (var call : message.toolCalls) {
-                if (call == null || call.function == null || !toolCallId.equals(call.id)) continue;
-                return argumentSource(call.function.arguments);
+                if (call != null && call.function != null && toolCallId.equals(call.id)) {
+                    return argumentSource(call.function.arguments);
+                }
             }
         }
         return null;
@@ -282,6 +287,7 @@ public final class InlineImagePruner {
             }
         } catch (RuntimeException e) {
             // arguments are not a JSON object, no recoverable source to show
+            return null;
         }
         return null;
     }

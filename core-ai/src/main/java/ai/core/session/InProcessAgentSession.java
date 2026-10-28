@@ -46,25 +46,7 @@ public class InProcessAgentSession implements AgentSession {
     private final SessionCustomEventEmitter customEventEmitter;
     public final SessionFootprintTracker footprint;
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
-        this.sessionId = sessionId;
-        this.agent = agent;
-        this.footprint = new SessionFootprintTracker(agent);
-        this.permissionGate = new PermissionGate();
-        this.commandQueue = new SessionCommandQueue();
-        this.turnInput = new SessionTurnInput(commandQueue, agent, sessionId);
-        this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
-        var context = agent.getExecutionContext();
-        if (context.getSubagentOutputSinkFactory() != null) {
-            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch));
-        }
-        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
-        var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
-        agent.addLifecycle(permissionLifecycle);
-        agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
-        agent.setAuthenticated(true);
-        this.customEventEmitter = new SessionCustomEventEmitter(sessionId, this::dispatch, turnActive::get);
-        context.getCustomVariables().put(CustomEventEmitter.CONTEXT_KEY, customEventEmitter);
-        setupCompressionListener();
+        this(sessionId, agent, autoApproveAll, permissionStore, false);
     }
 
     /**
@@ -146,11 +128,7 @@ public class InProcessAgentSession implements AgentSession {
         customEventEmitter.resetTurn();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
 
-        var usageBefore = agent.getCurrentTokenUsage();
-        var before = new SessionTurnUsage.Before(usageBefore.getPromptTokens(), usageBefore.getCompletionTokens(),
-                agent.getCurrentCostUsd(),
-                usageBefore.getPromptTokensDetails() != null ? usageBefore.getPromptTokensDetails().cachedTokens : 0);
-
+        var before = turnUsageBefore();
         try {
             if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT) {
                 executeUserInput(batch.values(), before, turnId);
@@ -184,6 +162,13 @@ public class InProcessAgentSession implements AgentSession {
             currentTurnId = null;
             footprint.refresh();
         }
+    }
+
+    private SessionTurnUsage.Before turnUsageBefore() {
+        var usage = agent.getCurrentTokenUsage();
+        return new SessionTurnUsage.Before(usage.getPromptTokens(), usage.getCompletionTokens(),
+                agent.getCurrentCostUsd(),
+                usage.getPromptTokensDetails() != null ? usage.getPromptTokensDetails().cachedTokens : 0);
     }
 
     private void persistOnFailure() {
