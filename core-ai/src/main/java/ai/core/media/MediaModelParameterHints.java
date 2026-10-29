@@ -9,6 +9,18 @@ package ai.core.media;
  */
 public final class MediaModelParameterHints {
 
+    /**
+     * The official gpt-image frame presets. Every surface that names image sizes (tool schema, tool
+     * description, compare UI) lists exactly these, so callers do not get a preset the model rejects.
+     */
+    public static final String IMAGE_SIZE_PRESETS = "1024x1024, 1536x1024, 1024x1536";
+
+    // gpt-image-2/2.5 take an arbitrary frame on the 16-pixel grid, unlike the fixed-preset gpt-image-1
+    private static final String GPT_IMAGE_SIZE_HINT =
+            "size (WxH, multiples of 16, longest edge 3840, e.g. " + IMAGE_SIZE_PRESETS + ")";
+    private static final String OPENAI_IMAGE_OPTIONS_HINT =
+            "output_format (png/jpeg), output_compression (jpeg only, 0-100), background (transparent, png only)";
+
     // KIE market slugs (seedream/5-pro-*, seedream/5-lite-*, seedream/4-5-*) take an aspect_ratio +
     // quality enum, unlike the OpenAI-style n/size parameters the hosted seedream endpoints expose
     private static final String KIE_SEEDREAM_HINT = "aspect_ratio (1:1/4:3/3:4/16:9/9:16/2:3/3:2/21:9, required); "
@@ -157,11 +169,14 @@ public final class MediaModelParameterHints {
     public static String imageHint(String upstreamModel) {
         if (upstreamModel == null) return null;
         if (upstreamModel.startsWith("gpt-image-2.5")) {
-            return "quality (low/medium/high/auto, or xhigh/max which cost many more output tokens), size (WxH, multiples of 16, "
-                + "longest edge 3840), output_format (png/jpeg), output_compression (jpeg only, 0-100), background (transparent, png only)";
+            return "quality (low/medium/high/auto, or xhigh/max which cost many more output tokens), "
+                + GPT_IMAGE_SIZE_HINT + ", " + OPENAI_IMAGE_OPTIONS_HINT;
+        }
+        if (upstreamModel.startsWith("gpt-image-2")) {
+            return "quality (low/medium/high/auto), " + GPT_IMAGE_SIZE_HINT + ", " + OPENAI_IMAGE_OPTIONS_HINT;
         }
         if (upstreamModel.startsWith("gpt-image") || upstreamModel.startsWith("dall-e")) {
-            return "quality (low/medium/high/auto), output_format (png/jpeg), output_compression (jpeg only, 0-100), background (transparent, png only)";
+            return "quality (low/medium/high/auto), " + OPENAI_IMAGE_OPTIONS_HINT;
         }
         if (upstreamModel.startsWith("seedream/")) return KIE_SEEDREAM_HINT;
         if (upstreamModel.startsWith("seedream")) {

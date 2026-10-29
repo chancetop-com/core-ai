@@ -3,6 +3,7 @@ package ai.core.media;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -71,5 +72,17 @@ class MediaModelParameterHintsTest {
         assertEquals(MediaModelParameterHints.videoHint("gpt-image-2"), null);
         assertNotNull(MediaModelParameterHints.imageHint("gpt-image-2"));
         assertNull(MediaModelParameterHints.imageHint("unknown"));
+    }
+
+    @Test
+    void gptImageTwoFamilySharesTheOfficialSizeContract() {
+        var gptImage2 = MediaModelParameterHints.imageHint("gpt-image-2");
+        var gptImage25 = MediaModelParameterHints.imageHint("gpt-image-2.5-flare");
+        var expectedSize = "size (WxH, multiples of 16, longest edge 3840, e.g. " + MediaModelParameterHints.IMAGE_SIZE_PRESETS + ")";
+
+        assertTrue(gptImage2.contains(expectedSize), gptImage2);
+        assertTrue(gptImage25.contains(expectedSize), gptImage25);
+        assertTrue(gptImage25.contains("xhigh"), "2.5-only quality tiers must stay on the 2.5 hint");
+        assertFalse(gptImage2.contains("xhigh"), gptImage2);
     }
 }

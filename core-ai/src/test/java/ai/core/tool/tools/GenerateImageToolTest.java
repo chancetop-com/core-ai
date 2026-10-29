@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
+import ai.core.media.MediaModelParameterHints;
 import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -63,6 +65,19 @@ class GenerateImageToolTest {
         assertTrue(description.contains("Configured image models"));
         assertTrue(description.contains("seedream-5-pro (KIE)"));
         assertTrue(description.contains("aspect_ratio"), "model-specific hint must be appended");
+    }
+
+    @Test
+    void documentsTheSameSizePresetsInTheSchemaAndTheDescription() {
+        var tool = GenerateImageTool.builder().build();
+        var size = tool.getParameters().stream()
+                .filter(parameter -> "size".equals(parameter.getName()))
+                .findFirst()
+                .orElseThrow();
+
+        assertTrue(size.getDescription().contains(MediaModelParameterHints.IMAGE_SIZE_PRESETS), size.getDescription());
+        assertTrue(tool.getDescription().contains(MediaModelParameterHints.IMAGE_SIZE_PRESETS));
+        assertFalse(tool.getDescription().contains("1792x1024"), "dall-e-only presets must not be offered for gpt-image");
     }
 
     @Test

@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.AttachedContent;
 import ai.core.agent.ExecutionContext;
+import ai.core.media.MediaModelParameterHints;
 import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
@@ -420,7 +421,9 @@ public final class GenerateImageTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "model", "The image generation model to use (uses the default if omitted); must be a model configured in the gateway — do not guess"),
                     ToolCallParameters.ParamSpec.of(String.class, "model_scope", "once (default) or session; session sets the model as the conversation default for subsequent calls, empty model clears it"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "n", "Number of images to generate (1-10, default 1)"),
-                    ToolCallParameters.ParamSpec.of(String.class, "size", "Image dimensions, e.g. 1024x1024, 1792x1024, 1024x1792"),
+                    ToolCallParameters.ParamSpec.of(String.class, "size", "Image dimensions as WxH, e.g. "
+                            + MediaModelParameterHints.IMAGE_SIZE_PRESETS
+                            + "; gpt-image-2/2.5 take custom frames on the 16-pixel grid (longest edge 3840)"),
                     ToolCallParameters.ParamSpec.of(String.class, "quality", "Optional output quality. For gpt-image-2 use only low, medium, high, or auto; gpt-image-2.5 also accepts xhigh and max, which cost many more output tokens. Omit it when no quality preference was requested; do not use standard or hd."),
                     ToolCallParameters.ParamSpec.of(String.class, "output_format", "Image format — png or jpeg"),
                     ToolCallParameters.ParamSpec.of(Integer.class, "output_compression", "Optional JPEG compression level 0-100; only valid with output_format jpeg"),

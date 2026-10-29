@@ -5,7 +5,7 @@ import { formatCostUsd, formatDuration } from '../traces/traceViewModel';
 
 const MAX_MODELS = 4;
 const CONCURRENCY = 2;
-const SIZE_PRESETS = ['1024x1024', '1024x1536', '1536x1024', '1792x1024', '1024x1792'];
+const SIZE_PRESETS = ['1024x1024', '1536x1024', '1024x1536'];
 const QUALITY_PRESETS = ['low', 'medium', 'high', 'xhigh', 'max', 'auto'];
 
 interface CompareTile {

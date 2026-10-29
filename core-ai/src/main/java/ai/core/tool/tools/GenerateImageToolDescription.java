@@ -82,7 +82,7 @@ final class GenerateImageToolDescription {
                   the default for the rest of the conversation; pass model="" with
                   model_scope="session" to clear the session default and fall back to the system default.
                 - n: Number of images to generate (1-10, default 1)
-                - size: Image dimensions, e.g. "1024x1024", "1792x1024", "1024x1792"
+                - size: Image dimensions as "WxH", e.g. %s. gpt-image-2 and gpt-image-2.5 take custom frames on the 16-pixel grid (longest edge 3840); on OpenAI/Azure models a side that is not a multiple of 16 is snapped to the nearest one. Omit it to use the model default.
                 - quality: Optional output quality. For gpt-image-2, use only "low", "medium", "high", or "auto"; gpt-image-2.5 also accepts "xhigh" and "max", which cost many more output tokens. Omit it unless the user requests a quality preference. Never use "standard" or "hd".
                 - output_format: Image format — "png" or "jpeg" (default depends on model)
                 - output_compression: Optional JPEG compression level 0–100; only valid together with output_format "jpeg"
@@ -111,7 +111,7 @@ final class GenerateImageToolDescription {
                 - provider_extra: JSON string with provider-specific parameters forwarded as-is
 
                 The result provides a display-ready Markdown image link. In your final response, you MUST include that exact Markdown image link unchanged so the generated image is rendered inline. Do not merely say that the image was generated.
-                """.stripIndent();
+                """.stripIndent().formatted(MediaModelParameterHints.IMAGE_SIZE_PRESETS);
     }
 
     /**
