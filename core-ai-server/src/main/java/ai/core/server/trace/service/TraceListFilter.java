@@ -1,6 +1,7 @@
 package ai.core.server.trace.service;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author stephen
@@ -17,6 +18,8 @@ public class TraceListFilter {
     public String status;
     public String sessionId;
     public String userId;
+    // set by the caller's trace visibility: null = not scoped, empty = match nothing
+    public List<String> userIds;
     public ZonedDateTime startFrom;
     public ZonedDateTime startTo;
 }

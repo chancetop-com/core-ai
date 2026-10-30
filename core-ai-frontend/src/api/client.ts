@@ -52,11 +52,13 @@ export interface UserProfile {
   name: string;
   role?: string;
   permissions?: string[];
+  trace_scope?: string;
 }
 
 export interface RoleConfig {
   roles: Record<string, string[]>;
   catalog?: string[];
+  trace_scopes?: Record<string, string>;
 }
 
 export const authApi = {
@@ -92,8 +94,11 @@ export const userApi = {
 export const rbacApi = {
   listRoles: () =>
     requestWithAuth<RoleConfig>('/api/admin/rbac/roles'),
-  updateRoles: (roles: Record<string, string[]>) =>
-    requestWithAuth<void>('/api/admin/rbac/roles', { method: 'PUT', body: JSON.stringify({ roles }) }),
+  updateRoles: (roles: Record<string, string[]>, traceScopes?: Record<string, string>) =>
+    requestWithAuth<void>('/api/admin/rbac/roles', {
+      method: 'PUT',
+      body: JSON.stringify(traceScopes ? { roles, trace_scopes: traceScopes } : { roles }),
+    }),
 };
 
 export interface UserStatus {
@@ -124,6 +129,7 @@ export interface TraceAccount {
   name?: string;
   email?: string;
   role?: string;
+  userType?: string;
   status?: string;
 }
 
@@ -2047,6 +2053,8 @@ export const api = {
       }
       return (await request<{ facets: TraceFacet[] }>(`/api/traces/facets?${params}`)).facets;
     },
+    scopeUsers: async () =>
+      (await request<{ users: TraceAccount[] }>('/api/traces/scope-users')).users,
   },
   mediaJobs: {
     list: async (offset = 0, limit = 20, filters?: { mediaType?: string; costSource?: string; userId?: string }) => {

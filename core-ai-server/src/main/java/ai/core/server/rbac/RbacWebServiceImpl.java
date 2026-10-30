@@ -31,6 +31,7 @@ public class RbacWebServiceImpl implements RbacWebService {
         var view = new RoleConfigView();
         view.roles = roleRegistry.effectiveRoles();
         view.catalog = PermissionCodes.ALL;
+        view.traceScopes = roleRegistry.traceScopes();
         return view;
     }
 
@@ -39,7 +40,7 @@ public class RbacWebServiceImpl implements RbacWebService {
     public void updateRoles(RoleConfigView request) {
         var userId = AuthContext.userId(webContext);
         requireAdmin(userId);   // hard admin check so roles cannot self-escalate via rbac.manage
-        roleRegistry.updateRoles(request.roles);
+        roleRegistry.updateRoles(request.roles, request.traceScopes);
     }
 
     private void requireAdmin(String userId) {

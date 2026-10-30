@@ -24,8 +24,12 @@ import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.service.TraceVisibility;
+import ai.core.server.trace.service.TraceVisibilityResolver;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -76,6 +80,10 @@ public class SelfHarnessDispatcher {
     ChatMessageService chatMessageService;
     @Inject
     TraceService traceService;
+    @Inject
+    TraceAccessControl traceAccessControl;
+    @Inject
+    TraceVisibilityResolver traceVisibilityResolver;
     @Inject
     GatewayRoutingEngine gatewayRoutingEngine;
     @Inject
@@ -327,6 +335,7 @@ public class SelfHarnessDispatcher {
 
     @SuppressWarnings("unchecked")
     private Object dispatchSessionTrace(String name, String args, String userId) {
+        var visibility = traceVisibilityResolver.resolve(userId);
         return switch (name) {
             case "get_session_history" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
@@ -341,23 +350,31 @@ public class SelfHarnessDispatcher {
                 filter.source = (String) params.get("source");
                 if (params.get("limit") != null) filter.limit = ((Number) params.get("limit")).intValue();
                 if (params.get("offset") != null) filter.offset = ((Number) params.get("offset")).intValue();
+                visibility.applyTo(filter, null);
                 var traces = traceService.list(filter);
                 var total = traceService.count(filter);
                 yield Map.of("traces", traces, "total", total);
             }
             case "get_trace" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield traceService.getWithPayload((String) params.get("trace_id"));
+                yield readableTrace((String) params.get("trace_id"), userId, visibility);
             }
             case "get_trace_spans" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield traceService.spans((String) params.get("trace_id"));
+                var trace = readableTrace((String) params.get("trace_id"), userId, visibility);
+                yield trace != null ? traceService.spans(trace.traceId) : null;
             }
             case "get_session_trace_summary" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                yield traceService.sessionSummary((String) params.get("session_id"), userId);
+                yield traceService.sessionSummary((String) params.get("session_id"), visibility.scopedUserIdsOrNull());
             }
             default -> throw new IllegalArgumentException("Unknown session/trace operation: " + name);
         };
+    }
+
+    // deny by looking absent, so a caller cannot probe which trace ids exist outside its scope
+    private Trace readableTrace(String traceId, String userId, TraceVisibility visibility) {
+        var trace = traceService.getWithPayload(traceId);
+        return trace != null && traceAccessControl.canRead(trace, userId, visibility) ? trace : null;
     }
 }

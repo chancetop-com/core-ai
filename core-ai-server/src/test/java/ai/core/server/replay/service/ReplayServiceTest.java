@@ -12,6 +12,8 @@ import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.service.TraceVisibility;
+import ai.core.server.trace.service.TraceVisibilityResolver;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -28,7 +31,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -102,12 +104,15 @@ class ReplayServiceTest {
     private final ReplayService service;
 
     ReplayServiceTest() {
+        var traceVisibilityResolver = mock(TraceVisibilityResolver.class);
         service = new ReplayService();
         service.experimentCollection = experimentCollection;
         service.runCollection = runCollection;
         service.traceService = traceService;
         service.traceAccessControl = traceAccessControl;
+        service.traceVisibilityResolver = traceVisibilityResolver;
         service.replayExecutor = replayExecutor;
+        when(traceVisibilityResolver.resolve(any())).thenReturn(TraceVisibility.of(Set.of("user-1")));
     }
 
     @Test
@@ -117,9 +122,9 @@ class ReplayServiceTest {
         when(traceService.get("trace-1")).thenReturn(trace);
         when(traceService.span("trace-1", "span-1")).thenReturn(span);
         when(traceService.spans("trace-1")).thenReturn(List.of(span));
-        when(traceAccessControl.canRead(any(Trace.class), any(), anyBoolean())).thenReturn(Boolean.TRUE);
+        when(traceAccessControl.canRead(any(Trace.class), any(), any(TraceVisibility.class))).thenReturn(Boolean.TRUE);
 
-        var experiment = service.create("user-1", false, "trace-1", "span-1");
+        var experiment = service.create("user-1", "trace-1", "span-1");
 
         assertEquals("user-1", experiment.userId);
         assertEquals(ReplayExperimentOrigin.SPAN, experiment.origin);
@@ -148,9 +153,9 @@ class ReplayServiceTest {
         span.type = SpanType.TOOL;
         when(traceService.get("trace-1")).thenReturn(trace);
         when(traceService.span("trace-1", "span-1")).thenReturn(span);
-        when(traceAccessControl.canRead(any(Trace.class), any(), anyBoolean())).thenReturn(Boolean.TRUE);
+        when(traceAccessControl.canRead(any(Trace.class), any(), any(TraceVisibility.class))).thenReturn(Boolean.TRUE);
 
-        assertThrows(BadRequestException.class, () -> service.create("user-1", false, "trace-1", "span-1"));
+        assertThrows(BadRequestException.class, () -> service.create("user-1", "trace-1", "span-1"));
         verify(experimentCollection, never()).insert(any(ReplayExperiment.class));
     }
 
@@ -161,9 +166,9 @@ class ReplayServiceTest {
         span.input = "plain text, not json";
         when(traceService.get("trace-1")).thenReturn(trace);
         when(traceService.span("trace-1", "span-1")).thenReturn(span);
-        when(traceAccessControl.canRead(any(Trace.class), any(), anyBoolean())).thenReturn(Boolean.TRUE);
+        when(traceAccessControl.canRead(any(Trace.class), any(), any(TraceVisibility.class))).thenReturn(Boolean.TRUE);
 
-        assertThrows(BadRequestException.class, () -> service.create("user-1", false, "trace-1", "span-1"));
+        assertThrows(BadRequestException.class, () -> service.create("user-1", "trace-1", "span-1"));
     }
 
     @Test
@@ -173,14 +178,14 @@ class ReplayServiceTest {
         span.input = "{\"messages\":[" + "x".repeat(ReplayService.MAX_REQUEST_BYTES) + "]}";
         when(traceService.get("trace-1")).thenReturn(trace);
         when(traceService.span("trace-1", "span-1")).thenReturn(span);
-        when(traceAccessControl.canRead(any(Trace.class), any(), anyBoolean())).thenReturn(Boolean.TRUE);
+        when(traceAccessControl.canRead(any(Trace.class), any(), any(TraceVisibility.class))).thenReturn(Boolean.TRUE);
 
-        assertThrows(BadRequestException.class, () -> service.create("user-1", false, "trace-1", "span-1"));
+        assertThrows(BadRequestException.class, () -> service.create("user-1", "trace-1", "span-1"));
     }
 
     @Test
     void createBlankExperimentWithoutSpan() {
-        var experiment = service.create("user-1", false, null, null);
+        var experiment = service.create("user-1", null, null);
 
         assertEquals("user-1", experiment.userId);
         assertEquals(ReplayExperimentOrigin.BLANK, experiment.origin);
@@ -206,8 +211,8 @@ class ReplayServiceTest {
 
     @Test
     void createRejectsPartialSpanReference() {
-        assertThrows(BadRequestException.class, () -> service.create("user-1", false, "trace-1", null));
-        assertThrows(BadRequestException.class, () -> service.create("user-1", false, null, "span-1"));
+        assertThrows(BadRequestException.class, () -> service.create("user-1", "trace-1", null));
+        assertThrows(BadRequestException.class, () -> service.create("user-1", null, "span-1"));
         verify(experimentCollection, never()).insert(any(ReplayExperiment.class));
     }
 
@@ -215,9 +220,9 @@ class ReplayServiceTest {
     void createRequiresTraceReadAccess() {
         var trace = trace("trace-1", "user-1", "agent-1", "My Agent", "chat");
         when(traceService.get("trace-1")).thenReturn(trace);
-        when(traceAccessControl.canRead(any(Trace.class), any(), anyBoolean())).thenReturn(Boolean.FALSE);
+        when(traceAccessControl.canRead(any(Trace.class), any(), any(TraceVisibility.class))).thenReturn(Boolean.FALSE);
 
-        assertThrows(NotFoundException.class, () -> service.create("user-2", false, "trace-1", "span-1"));
+        assertThrows(NotFoundException.class, () -> service.create("user-2", "trace-1", "span-1"));
         verify(traceService, never()).span(any(), any());
     }
 

@@ -8,6 +8,12 @@ interface RolesTabProps {
 
 const BUILTIN_ROLES = ['admin', 'user', 'member'];
 
+const TRACE_SCOPE_OPTIONS = [
+  { value: 'self', label: 'Own traces only', description: 'Default — everyone always keeps access to their own traces.' },
+  { value: 'api', label: 'All API users', description: 'Traces of every API user (manager and sub users), plus own.' },
+  { value: 'all', label: 'All users', description: 'Every trace in the workspace.' },
+];
+
 function groupByDomain(catalog: string[]): { domain: string; permissions: string[] }[] {
   const groups = new Map<string, string[]>();
   for (const code of catalog) {
@@ -22,6 +28,7 @@ function groupByDomain(catalog: string[]): { domain: string; permissions: string
 /** RBAC role editor: role list table + slide-in detail drawer, matching the users page layout. */
 export default function RolesTab({ onRolesChanged }: RolesTabProps) {
   const [roles, setRoles] = useState<Record<string, string[]>>({});
+  const [traceScopes, setTraceScopes] = useState<Record<string, string>>({});
   const [catalog, setCatalog] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
@@ -36,6 +43,7 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
     rbacApi.listRoles()
       .then(res => {
         setRoles(res.roles || {});
+        setTraceScopes(res.trace_scopes || {});
         setCatalog(res.catalog || []);
         setLoading(false);
       })
@@ -65,7 +73,11 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
     setSaving(true);
     setError('');
     try {
-      await rbacApi.updateRoles(roles);
+      // only send scopes of existing roles; the server drops "self" entries and keeps them implicit
+      const scopesForRoles = Object.fromEntries(
+        Object.keys(roles).map(name => [name, traceScopes[name] || 'self']),
+      );
+      await rbacApi.updateRoles(roles, scopesForRoles);
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2500);
       onRolesChanged?.(Object.keys(roles));
@@ -92,6 +104,12 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
     next[trimmed] = next[oldName];
     delete next[oldName];
     setRoles(next);
+    const nextScopes = { ...traceScopes };
+    if (nextScopes[oldName]) {
+      nextScopes[trimmed] = nextScopes[oldName];
+      delete nextScopes[oldName];
+      setTraceScopes(nextScopes);
+    }
     setSelected(trimmed);
     setEditingName(trimmed);
   };
@@ -101,6 +119,9 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
     const next = { ...roles };
     delete next[name];
     setRoles(next);
+    const nextScopes = { ...traceScopes };
+    delete nextScopes[name];
+    setTraceScopes(nextScopes);
     closePanel();
   };
 
@@ -280,6 +301,39 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
                         </div>
                       );
                     })}
+                  </div>
+                </section>
+              )}
+
+              {/* Trace data scope */}
+              {selected !== 'admin' && (
+                <section>
+                  <h3 className="text-xs font-medium uppercase tracking-wider mb-3"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                    Trace Data Scope
+                  </h3>
+                  <p className="text-xs mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    Which traces this role may read. Requires trace.view; scope only widens access — everyone keeps their own traces.
+                  </p>
+                  <div className="space-y-2">
+                    {TRACE_SCOPE_OPTIONS.map(option => (
+                      <label key={option.value} className="flex items-start gap-2 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`trace-scope-${selected}`}
+                          checked={(traceScopes[selected] || 'self') === option.value}
+                          onChange={() => {
+                            setTraceScopes({ ...traceScopes, [selected]: option.value });
+                            setSaved(false);
+                          }}
+                          className="mt-0.5"
+                        />
+                        <span className="text-xs" style={{ color: 'var(--color-text)' }}>
+                          <span className="font-medium">{option.label}</span>
+                          <span className="block" style={{ color: 'var(--color-text-secondary)' }}>{option.description}</span>
+                        </span>
+                      </label>
+                    ))}
                   </div>
                 </section>
               )}

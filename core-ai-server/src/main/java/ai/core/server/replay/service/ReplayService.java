@@ -13,6 +13,7 @@ import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.service.TraceVisibilityResolver;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
@@ -111,11 +112,13 @@ public class ReplayService {
     @Inject
     TraceAccessControl traceAccessControl;
     @Inject
+    TraceVisibilityResolver traceVisibilityResolver;
+    @Inject
     TracePayloadStore payloadStore;
     @Inject
     ReplayExecutor replayExecutor;
 
-    public ReplayExperiment create(String userId, boolean admin, String traceId, String spanId) {
+    public ReplayExperiment create(String userId, String traceId, String spanId) {
         var now = ZonedDateTime.now();
         var experiment = new ReplayExperiment();
         experiment.id = UUID.randomUUID().toString();
@@ -139,7 +142,7 @@ public class ReplayService {
 
         var trace = traceService.get(traceId);
         if (trace == null) throw new NotFoundException("trace not found: " + traceId);
-        if (!traceAccessControl.canRead(trace, userId, admin)) throw new NotFoundException("trace not found: " + traceId);
+        if (!traceAccessControl.canRead(trace, userId, traceVisibilityResolver.resolve(userId))) throw new NotFoundException("trace not found: " + traceId);
         var span = traceService.span(trace.traceId, spanId);
         if (span == null) throw new NotFoundException("span not found: " + spanId);
         if (payloadStore != null) payloadStore.hydrate(span, true);

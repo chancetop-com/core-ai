@@ -9,7 +9,9 @@ import core.framework.web.exception.BadRequestException;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -17,6 +19,10 @@ import java.util.Map;
  * Role definitions: built-in defaults overridable via {@code system_settings.rbac_roles}
  * (JSON map of role name -> permission codes). The {@code admin} role is an implicit
  * wildcard and never part of the map. Effective roles are cached for 5 seconds.
+ * <p>
+ * The same snapshot also carries {@code system_settings.rbac_trace_scopes}
+ * (JSON map of role name -> trace data scope), so permissions and trace visibility
+ * always resolve from one consistent read.
  *
  * @author stephen
  */
@@ -59,7 +65,7 @@ public class RoleRegistry {
     @Inject
     MongoCollection<SystemSettings> systemSettingsCollection;
 
-    private volatile Map<String, List<String>> cached;
+    private volatile Snapshot cached;
     private volatile long cachedAt;
 
     public List<String> permissionsOf(String role) {
@@ -68,42 +74,99 @@ public class RoleRegistry {
     }
 
     public Map<String, List<String>> effectiveRoles() {
-        var now = System.currentTimeMillis();
-        var current = cached;
-        if (current != null && now - cachedAt < CACHE_TTL.toMillis()) return current;
-        synchronized (this) {
-            current = cached;
-            if (current != null && System.currentTimeMillis() - cachedAt < CACHE_TTL.toMillis()) return current;
-            var merged = new HashMap<>(DEFAULT_ROLES);
-            var entity = systemSettingsCollection.get(SETTINGS_ID).orElse(null);
-            if (entity != null && entity.rbacRoles != null && !entity.rbacRoles.isBlank()) {
-                for (var entry : JsonUtil.toMap(entity.rbacRoles).entrySet()) {
-                    if (ROLE_ADMIN.equals(entry.getKey())) continue;   // admin is an implicit wildcard
-                    merged.put(entry.getKey(), toPermissionList(entry.getValue()));
-                }
-            }
-            cached = merged;
-            cachedAt = System.currentTimeMillis();
-            return merged;
+        return snapshot().roles();
+    }
+
+    /**
+     * Effective trace data scope for a role: {@code admin} is always ALL, unconfigured roles are SELF.
+     */
+    public TraceScopeMode traceScope(String role) {
+        if (ROLE_ADMIN.equals(role)) return TraceScopeMode.ALL;
+        return TraceScopeMode.fromStringOrSelf(snapshot().traceScopes().get(role));
+    }
+
+    /**
+     * Effective scope of every configured role, including unconfigured ones at {@code self}.
+     */
+    public Map<String, String> traceScopes() {
+        var scopes = new LinkedHashMap<String, String>();
+        for (var role : effectiveRoles().keySet()) {
+            scopes.put(role, traceScope(role).value());
         }
+        return scopes;
     }
 
     public void updateRoles(Map<String, List<String>> roles) {
+        updateRoles(roles, null);
+    }
+
+    /**
+     * Saves role permissions and (optionally) trace scopes in one read-modify-replace, so two
+     * independent writes cannot overwrite each other. {@code traceScopes == null} keeps the current value.
+     */
+    public void updateRoles(Map<String, List<String>> roles, Map<String, String> traceScopes) {
         validate(roles);
+        var encodedScopes = traceScopes != null ? JsonUtil.toJson(storedTraceScopes(traceScopes)) : null;
         var entity = systemSettingsCollection.get(SETTINGS_ID).orElse(null);
         if (entity == null) {
             entity = new SystemSettings();
             entity.id = SETTINGS_ID;
             entity.createdAt = ZonedDateTime.now();
             entity.rbacRoles = JsonUtil.toJson(roles);
+            entity.rbacTraceScopes = encodedScopes;
             systemSettingsCollection.insert(entity);
         } else {
             entity.rbacRoles = JsonUtil.toJson(roles);
+            if (encodedScopes != null) entity.rbacTraceScopes = encodedScopes;
             entity.updatedAt = ZonedDateTime.now();
             systemSettingsCollection.replace(entity);
         }
         synchronized (this) {
             cached = null;
+        }
+    }
+
+    private Snapshot snapshot() {
+        var now = System.currentTimeMillis();
+        var current = cached;
+        if (current != null && now - cachedAt < CACHE_TTL.toMillis()) return current;
+        synchronized (this) {
+            current = cached;
+            if (current != null && System.currentTimeMillis() - cachedAt < CACHE_TTL.toMillis()) return current;
+            current = load();
+            cached = current;
+            cachedAt = System.currentTimeMillis();
+            return current;
+        }
+    }
+
+    private Snapshot load() {
+        var roles = new LinkedHashMap<>(DEFAULT_ROLES);
+        var traceScopes = new HashMap<String, String>();
+        var entity = systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        if (entity != null) {
+            mergeRoles(roles, entity.rbacRoles);
+            mergeTraceScopes(traceScopes, entity.rbacTraceScopes);
+        }
+        return new Snapshot(Collections.unmodifiableMap(roles), Collections.unmodifiableMap(traceScopes));
+    }
+
+    private void mergeRoles(Map<String, List<String>> roles, String encoded) {
+        if (encoded == null || encoded.isBlank()) return;
+        for (var entry : JsonUtil.toMap(encoded).entrySet()) {
+            if (ROLE_ADMIN.equals(entry.getKey())) continue;   // admin is an implicit wildcard
+            roles.put(entry.getKey(), toPermissionList(entry.getValue()));
+        }
+    }
+
+    private void mergeTraceScopes(Map<String, String> traceScopes, String encoded) {
+        if (encoded == null || encoded.isBlank()) return;
+        for (var entry : JsonUtil.toMap(encoded).entrySet()) {
+            if (ROLE_ADMIN.equals(entry.getKey())) continue;
+            var value = entry.getValue() instanceof String string ? string : null;
+            var mode = TraceScopeMode.fromStringOrSelf(value);
+            // self is the default and never persisted; unknown values degrade to self instead of failing reads
+            if (mode != TraceScopeMode.SELF) traceScopes.put(entry.getKey(), mode.value());
         }
     }
 
@@ -129,5 +192,23 @@ public class RoleRegistry {
                 }
             }
         }
+    }
+
+    /**
+     * Drops {@code self} entries (the implicit default) and rejects invalid modes or an admin override.
+     */
+    private Map<String, String> storedTraceScopes(Map<String, String> traceScopes) {
+        var stored = new LinkedHashMap<String, String>();
+        for (var entry : traceScopes.entrySet()) {
+            var role = entry.getKey();
+            if (role == null || role.isBlank()) throw new BadRequestException("role name must not be blank");
+            if (ROLE_ADMIN.equals(role)) throw new BadRequestException("admin trace scope is implicit and cannot be configured");
+            var mode = TraceScopeMode.fromString(entry.getValue());
+            if (mode != TraceScopeMode.SELF) stored.put(role, mode.value());
+        }
+        return stored;
+    }
+
+    private record Snapshot(Map<String, List<String>> roles, Map<String, String> traceScopes) {
     }
 }

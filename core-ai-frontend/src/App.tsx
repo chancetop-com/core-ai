@@ -85,6 +85,24 @@ export default function App() {
   const [user, setUser] = useState<AuthUser | null>(null);
   const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
 
+  // traceScope is not part of the login response / localStorage: refresh it from the session-backed
+  // /api/auth/me so a role scope change applies on the next page load without touching stored keys
+  const refreshProfile = useCallback((fallback: AuthUser) => {
+    authApi.me().then(profile => {
+      if (!profile) return;
+      const refreshed: AuthUser = {
+        apiKey: fallback.apiKey,
+        userId: profile.user_id || fallback.userId,
+        name: profile.name || fallback.name,
+        role: profile.role || fallback.role,
+        permissions: profile.permissions || fallback.permissions,
+        traceScope: profile.trace_scope,
+      };
+      storeUser(refreshed.apiKey, refreshed.userId, refreshed.name, refreshed.role, refreshed.permissions);
+      setUser(refreshed);
+    }).catch(() => { /* keep stored user on network errors */ });
+  }, []);
+
   useEffect(() => {
     fetchCapabilities().then(c => {
       setCaps(c);
@@ -99,28 +117,20 @@ export default function App() {
         if (stored) {
           setUser(stored);
           // Refresh profile/permissions from the session-backed /api/auth/me
-          authApi.me().then(profile => {
-            if (!profile) return;
-            const refreshed: AuthUser = {
-              apiKey: stored.apiKey,
-              userId: profile.user_id || stored.userId,
-              name: profile.name || stored.name,
-              role: profile.role || stored.role,
-              permissions: profile.permissions || stored.permissions,
-            };
-            storeUser(refreshed.apiKey, refreshed.userId, refreshed.name, refreshed.role, refreshed.permissions);
-            setUser(refreshed);
-          }).catch(() => { /* keep stored user on network errors */ });
+          refreshProfile(stored);
         }
       }
       setLoading(false);
     });
-  }, []);
+  }, [refreshProfile]);
 
   const login = useCallback((apiKey: string, userId: string, name: string, role?: string, permissions?: string[]) => {
     storeUser(apiKey, userId, name, role, permissions);
-    setUser({ apiKey, userId, name, role, permissions });
-  }, []);
+    const next: AuthUser = { apiKey, userId, name, role, permissions };
+    setUser(next);
+    // login response has no trace_scope; fetch it right away so the Traces filter is available
+    refreshProfile(next);
+  }, [refreshProfile]);
 
   const logout = useCallback(() => {
     // Invalidate the server session (cookie) so the browser can't resume it

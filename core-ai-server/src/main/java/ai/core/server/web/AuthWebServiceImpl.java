@@ -24,6 +24,7 @@ import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.rbac.PermissionsRequired;
+import ai.core.server.rbac.RoleRegistry;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.web.session.SessionIdentity;
 import core.framework.inject.Inject;
@@ -46,6 +47,8 @@ public class AuthWebServiceImpl implements AuthWebService {
     ApiUserQuotaService apiUserQuotaService;
     @Inject
     PermissionService permissionService;
+    @Inject
+    RoleRegistry roleRegistry;
     @Inject
     MongoCollection<User> userCollection;
     @Inject
@@ -81,6 +84,7 @@ public class AuthWebServiceImpl implements AuthWebService {
             view.name = identity.name;
             view.role = identity.role;
             view.permissions = identity.permissions;
+            view.traceScope = roleRegistry.traceScope(identity.role).value();
             return view;
         }
         var userId = AuthContext.userId(webContext);
@@ -91,6 +95,7 @@ public class AuthWebServiceImpl implements AuthWebService {
         view.name = user.name;
         view.role = user.role;
         view.permissions = permissionService.permissionsOf(userId);
+        view.traceScope = roleRegistry.traceScope(user.role).value();
         return view;
     }
 

@@ -18,6 +18,9 @@ public class TraceAccountView {
     @Property(name = "role")
     public String role;
 
+    @Property(name = "user_type")
+    public String userType;
+
     @Property(name = "status")
     public String status;
 }

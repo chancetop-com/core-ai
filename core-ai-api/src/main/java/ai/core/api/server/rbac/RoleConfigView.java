@@ -19,4 +19,11 @@ public class RoleConfigView {
 
     @Property(name = "catalog")
     public List<String> catalog;
+
+    /**
+     * role -> trace data scope (self | api | all); every configured role is echoed with its
+     * effective value, so callers see {@code self} for unconfigured roles.
+     */
+    @Property(name = "trace_scopes")
+    public Map<String, String> traceScopes;
 }

@@ -1,7 +1,7 @@
 import { Children, isValidElement, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, Loader2, MessageCircle, RotateCw, Search, UserCircle, X, Zap } from 'lucide-react';
-import { api, adminApi, type SessionSummary, type Trace, type TraceFacet, type TraceFilter, type UserStatus } from '../../api/client';
+import { api, type SessionSummary, type Trace, type TraceAccount, type TraceFacet, type TraceFilter } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 import TraceDetailPanel from './TraceDetailPanel';
@@ -101,14 +101,17 @@ export default function TraceList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
-  const [userList, setUserList] = useState<UserStatus[]>([]);
+  // admin, local mode (wildcard) and any role with a wider trace scope may filter by user
+  const canScopeUsers = user?.role === 'admin'
+    || Boolean(user?.permissions?.includes('*'))
+    || (user?.traceScope ?? 'self') !== 'self';
+  const [userList, setUserList] = useState<TraceAccount[]>([]);
 
   useEffect(() => {
-    if (isAdmin) {
-      adminApi.listUsers().then(res => setUserList(res.users)).catch(() => {});
+    if (canScopeUsers) {
+      api.traces.scopeUsers().then(setUserList).catch(() => {});
     }
-  }, [isAdmin]);
+  }, [canScopeUsers]);
 
   const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [], total: 0 });
   // manual refresh: bumping re-runs the current query with the same filters and page
@@ -116,8 +119,8 @@ export default function TraceList() {
   const [offset, setOffset] = useState(0);
   const [limit, setLimit] = useState(PAGE_SIZES[0]);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(scopeFiltersForRole(readFilters(searchParams), isAdmin), isAdmin));
-  const [filters, setFilters] = useState<TraceFilter>(() => scopeFiltersForRole(readFilters(searchParams), isAdmin));
+  const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(scopeFiltersForRole(readFilters(searchParams), canScopeUsers), canScopeUsers));
+  const [filters, setFilters] = useState<TraceFilter>(() => scopeFiltersForRole(readFilters(searchParams), canScopeUsers));
   const [searchInput, setSearchInput] = useState(() => filters.q || '');
   const lastPushedQ = useRef(filters.q || '');
   const [modelFacets, setModelFacets] = useState<TraceFacet[]>([]);
@@ -125,7 +128,7 @@ export default function TraceList() {
   const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
 
   const activeFilterCount = countActiveFilters(filters);
-  const advancedFilterCount = countAdvancedFilters(filters, isAdmin);
+  const advancedFilterCount = countAdvancedFilters(filters, canScopeUsers);
   const requestKey = JSON.stringify({ offset, limit, filters: normalizeFilters(filters), refresh: refreshKey });
 
   useEffect(() => {
@@ -186,7 +189,7 @@ export default function TraceList() {
   const filtersRef = useRef(filters);
   filtersRef.current = filters;
   const updateFilter = (patch: Partial<TraceFilter>) => {
-    const next = normalizeFilters(scopeFiltersForRole({ ...filtersRef.current, ...patch }, isAdmin));
+    const next = normalizeFilters(scopeFiltersForRole({ ...filtersRef.current, ...patch }, canScopeUsers));
     setFilters(next);
     setOffset(0);
     syncSearchParams(next, setSearchParams);
@@ -222,9 +225,9 @@ export default function TraceList() {
   const selectedKey = selectedTraceId || '';
   const searchKind = searchInput ? idMatchKind(searchInput.trim()) : 'none';
   const searchHint = searchInput
-    ? (searchKind === 'full' ? `Detected ID → ${isAdmin ? 'session/user/trace' : 'session/trace'} · all time`
+    ? (searchKind === 'full' ? `Detected ID → ${canScopeUsers ? 'session/user/trace' : 'session/trace'} · all time`
       : searchKind === 'prefix' ? 'Detected ID prefix → session/trace · all time'
-      : isAdmin ? 'user / recent name / agent' : 'recent name / agent')
+      : canScopeUsers ? 'user / recent name / agent' : 'recent name / agent')
     : '';
 
   const chips = activeChips(filters);
@@ -301,7 +304,7 @@ export default function TraceList() {
             <input
               value={searchInput}
               onChange={event => setSearchInput(event.target.value)}
-              placeholder={isAdmin ? 'Search user name/email, recent trace/agent, or paste a session/user ID...' : 'Search recent trace name/agent, or paste a session/trace ID...'}
+              placeholder={canScopeUsers ? 'Search user name/email, recent trace/agent, or paste a session/user ID...' : 'Search recent trace name/agent, or paste a session/trace ID...'}
               className="w-full pl-9 pr-32 py-2 rounded-md border text-sm"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               autoComplete="off"
@@ -357,7 +360,7 @@ export default function TraceList() {
                 className="px-3 py-2 rounded-md border text-sm"
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}
               />
-              {isAdmin && (
+              {canScopeUsers && (
                 <select
                   value={filters.userId || ''}
                   onChange={event => updateFilter({ userId: event.target.value })}
@@ -365,7 +368,9 @@ export default function TraceList() {
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
                   <option value="">All users</option>
                   {userList.map(u => (
-                    <option key={u.email} value={u.email}>{u.name || u.email} ({u.email})</option>
+                    <option key={u.userId} value={u.userId}>
+                      {(u.name || u.email || u.userId) + (u.userType === 'api' ? ' · API' : '')}
+                    </option>
                   ))}
                 </select>
               )}
@@ -839,8 +844,8 @@ function normalizeFilters(filters: TraceFilter): TraceFilter {
   };
 }
 
-function scopeFiltersForRole(filters: TraceFilter, isAdmin: boolean): TraceFilter {
-  if (isAdmin) return filters;
+function scopeFiltersForRole(filters: TraceFilter, canScopeUsers: boolean): TraceFilter {
+  if (canScopeUsers) return filters;
   return { ...filters, userId: '' };
 }
 
@@ -895,12 +900,12 @@ function countActiveFilters(filters: TraceFilter): number {
   return count;
 }
 
-function countAdvancedFilters(filters: TraceFilter, isAdmin: boolean): number {
-  return [filters.sessionId, isAdmin ? filters.userId : '', filters.name].filter(Boolean).length;
+function countAdvancedFilters(filters: TraceFilter, canScopeUsers: boolean): number {
+  return [filters.sessionId, canScopeUsers ? filters.userId : '', filters.name].filter(Boolean).length;
 }
 
-function hasAdvancedFilters(filters: TraceFilter, isAdmin: boolean): boolean {
-  return countAdvancedFilters(filters, isAdmin) > 0;
+function hasAdvancedFilters(filters: TraceFilter, canScopeUsers: boolean): boolean {
+  return countAdvancedFilters(filters, canScopeUsers) > 0;
 }
 
 function toDateTimeLocalValue(value?: string): string {

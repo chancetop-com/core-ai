@@ -3,17 +3,23 @@ package ai.core.server.trace.service;
 import ai.core.server.domain.User;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import com.mongodb.client.model.Filters;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -108,6 +114,34 @@ class TraceServiceTest {
 
         assertEquals(List.of(match), service.list(filter));
         verify(service.userCollection, never()).find(any(Query.class));
+    }
+
+    @Test
+    void userIdsFilterUsesInAndEmptySetMatchesNothing() {
+        var service = service();
+        var filter = new TraceListFilter();
+        filter.userIds = List.of("api:a", "api:b");
+        service.count(filter);
+
+        var captor = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection).count(captor.capture());
+        assertEquals(Filters.in("user_id", List.of("api:a", "api:b")), captor.getValue());
+
+        var emptyFilter = new TraceListFilter();
+        emptyFilter.userIds = List.of();
+        service.count(emptyFilter);
+
+        verify(service.traceCollection, times(2)).count(captor.capture());
+        assertEquals(Filters.in("user_id", List.of()), captor.getValue());
+    }
+
+    @Test
+    void scopedGenerationsAndSummaryShortCircuitOnEmptySet() {
+        var service = service();
+
+        assertTrue(service.generations(0, 20, null, List.of()).isEmpty());
+        assertNull(service.sessionSummary("session-1", List.of()));
+        verify(service.traceCollection, never()).find(any(Query.class));
     }
 
     private TraceService service() {

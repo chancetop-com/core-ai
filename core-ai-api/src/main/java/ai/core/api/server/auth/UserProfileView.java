@@ -21,4 +21,8 @@ public class UserProfileView {
 
     @Property(name = "permissions")
     public List<String> permissions;
+
+    /** Effective trace data scope of this user's role: self | api | all. */
+    @Property(name = "trace_scope")
+    public String traceScope;
 }

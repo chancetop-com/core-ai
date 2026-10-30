@@ -19,6 +19,7 @@ import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.service.TraceVisibilityResolver;
 import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
@@ -61,6 +62,7 @@ public class TraceModule extends Module {
 
     private void registerTrace() {
         bind(TraceService.class);
+        bind(TraceVisibilityResolver.class);
         bind(TraceAccessControl.class);
         bind(PromptService.class);
         bind(ModelPricingService.class);

@@ -6,6 +6,8 @@ export interface AuthUser {
   name: string;
   role?: string;
   permissions?: string[];
+  // resolved by /api/auth/me on every mount; never persisted (role scope changes must win)
+  traceScope?: string;
 }
 
 export const AuthContext = createContext<{

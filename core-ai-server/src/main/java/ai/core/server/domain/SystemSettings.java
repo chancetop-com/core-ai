@@ -98,6 +98,10 @@ public class SystemSettings {
     @Field(name = "rbac_roles")
     public String rbacRoles;
 
+    // role -> trace scope mode (self|api|all); non-self entries only, default is self
+    @Field(name = "rbac_trace_scopes")
+    public String rbacTraceScopes;
+
     @Field(name = "runtime_admission_enabled")
     public Boolean runtimeAdmissionEnabled;
 

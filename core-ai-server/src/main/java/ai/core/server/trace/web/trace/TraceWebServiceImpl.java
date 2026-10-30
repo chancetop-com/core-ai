@@ -4,6 +4,7 @@ import ai.core.api.server.trace.GenerationsRequest;
 import ai.core.api.server.trace.ListSpansResponse;
 import ai.core.api.server.trace.ListTraceFacetsRequest;
 import ai.core.api.server.trace.ListTraceFacetsResponse;
+import ai.core.api.server.trace.ListTraceScopeUsersResponse;
 import ai.core.api.server.trace.ListTracesRequest;
 import ai.core.api.server.trace.ListTracesResponse;
 import ai.core.api.server.trace.SessionSummaryView;
@@ -24,6 +25,8 @@ import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TracePreviewExtractor;
 import ai.core.server.trace.service.TraceService;
+import ai.core.server.trace.service.TraceVisibility;
+import ai.core.server.trace.service.TraceVisibilityResolver;
 import ai.core.server.util.SessionIds;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -86,16 +89,17 @@ public class TraceWebServiceImpl implements TraceWebService {
     @Inject
     TraceAccessControl traceAccessControl;
     @Inject
+    TraceVisibilityResolver traceVisibilityResolver;
+    @Inject
     MongoCollection<User> userCollection;
     @Inject
     WebContext webContext;
 
     @Override
     public ListTracesResponse list(ListTracesRequest request) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         var filter = parseFilter(request);
-        applyScope(filter, scope);
+        scope.visibility().applyTo(filter, filter.userId);
         filter.offset = Math.max(request.offset == null ? 0 : request.offset, 0);
         // lower bound matters: limit=0 means "no limit" at the Mongo driver and would bypass the cap
         filter.limit = Math.clamp(request.limit == null ? 20 : request.limit, 1, 200);
@@ -118,13 +122,12 @@ public class TraceWebServiceImpl implements TraceWebService {
 
     @Override
     public ListTraceFacetsResponse facets(ListTraceFacetsRequest request) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         if (request.field == null || request.field.isEmpty()) {
             throw new BadRequestException("missing field parameter");
         }
         var filter = parseFilter(request);
-        applyScope(filter, scope);
+        scope.visibility().applyTo(filter, filter.userId);
         var rows = traceService.facets(request.field, filter);
         var facets = rows.stream().map(row -> {
             var view = new TraceFacetView();
@@ -139,21 +142,37 @@ public class TraceWebServiceImpl implements TraceWebService {
 
     @Override
     public ListSpansResponse generations(GenerationsRequest request) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         int offset = request.offset == null ? 0 : request.offset;
         int limit = request.limit == null ? 20 : request.limit;
-        var spans = traceService.generations(offset, limit, request.model, scope.admin ? null : scope.userId);
+        var spans = traceService.generations(offset, limit, request.model, scope.visibility().scopedUserIdsOrNull());
         var response = new ListSpansResponse();
         response.spans = spans.stream().map(TraceWebServiceImpl::toSpanView).toList();
         return response;
     }
 
     @Override
+    public ListTraceScopeUsersResponse scopeUsers() {
+        var userId = AuthContext.userId(webContext);
+        if (userId == null) throw new UnauthorizedException("unauthorized");
+        var response = new ListTraceScopeUsersResponse();
+        response.users = traceVisibilityResolver.visibleUsers(userId).stream().map(user -> {
+            var view = new TraceAccountView();
+            view.userId = user.id;
+            view.name = user.name;
+            view.email = user.email;
+            view.role = user.role;
+            view.userType = user.userType;
+            view.status = user.status;
+            return view;
+        }).toList();
+        return response;
+    }
+
+    @Override
     public SessionSummaryView sessionSummary(String sessionId) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
-        var summary = traceService.sessionSummary(sessionId, scope.admin ? null : scope.userId);
+        var scope = callerScope();
+        var summary = traceService.sessionSummary(sessionId, scope.visibility().scopedUserIdsOrNull());
         if (summary == null) throw new NotFoundException("session summary not found");
         var view = new SessionSummaryView();
         view.sessionId = (String) summary.get("session_id");
@@ -174,8 +193,7 @@ public class TraceWebServiceImpl implements TraceWebService {
 
     @Override
     public TraceView get(String traceId) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         var trace = traceService.getWithPayload(traceId);
         if (!canRead(trace, scope)) throw new NotFoundException("trace not found");
         return toTraceView(trace, new HashMap<>(), false);
@@ -183,8 +201,7 @@ public class TraceWebServiceImpl implements TraceWebService {
 
     @Override
     public ListSpansResponse spans(String traceId) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         var trace = traceService.get(traceId);
         if (!canRead(trace, scope)) throw new NotFoundException("trace not found");
         var spans = traceService.spans(trace.traceId);
@@ -195,8 +212,7 @@ public class TraceWebServiceImpl implements TraceWebService {
 
     @Override
     public SpanView span(String traceId, String spanId) {
-        var scope = traceScope();
-        if (scope.userId == null) throw new UnauthorizedException("unauthorized");
+        var scope = callerScope();
         var trace = traceService.get(traceId);
         if (!canRead(trace, scope)) throw new NotFoundException("trace not found");
         var span = traceService.span(trace.traceId, spanId);
@@ -266,22 +282,14 @@ public class TraceWebServiceImpl implements TraceWebService {
         return ZonedDateTime.parse(value);
     }
 
-    private TraceScope traceScope() {
+    private CallerScope callerScope() {
         var userId = AuthContext.userId(webContext);
-        var admin = userId != null && userCollection.get(userId)
-            .map(user -> "admin".equals(user.role))
-            .orElse(Boolean.FALSE);
-        return new TraceScope(userId, admin);
+        if (userId == null) throw new UnauthorizedException("unauthorized");
+        return new CallerScope(userId, traceVisibilityResolver.resolve(userId));
     }
 
-    private void applyScope(TraceListFilter filter, TraceScope scope) {
-        if (!scope.admin) {
-            filter.userId = scope.userId;
-        }
-    }
-
-    private boolean canRead(Trace trace, TraceScope scope) {
-        return traceAccessControl.canRead(trace, scope.userId, scope.admin);
+    private boolean canRead(Trace trace, CallerScope scope) {
+        return traceAccessControl.canRead(trace, scope.userId(), scope.visibility());
     }
 
     private List<TraceView> toTraceViews(List<Trace> traces) {
@@ -335,12 +343,13 @@ public class TraceWebServiceImpl implements TraceWebService {
                 view.name = user.name;
                 view.email = user.email;
                 view.role = user.role;
+                view.userType = user.userType;
                 view.status = user.status;
             });
             return view;
         });
     }
 
-    private record TraceScope(String userId, boolean admin) {
+    private record CallerScope(String userId, TraceVisibility visibility) {
     }
 }

@@ -20,6 +20,11 @@ public interface TraceWebService {
     @Path("/api/traces/generations")
     ListSpansResponse generations(GenerationsRequest request);
 
+    // Users the caller may filter traces by; declared before :traceId so core-ng picks the static segment
+    @GET
+    @Path("/api/traces/scope-users")
+    ListTraceScopeUsersResponse scopeUsers();
+
     @GET
     @Path("/api/traces/sessions/:sessionId/summary")
     SessionSummaryView sessionSummary(@PathParam("sessionId") String sessionId);

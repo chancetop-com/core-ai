@@ -130,6 +130,9 @@ public class TraceService {
         }
         if (filter.userId != null && !filter.userId.isEmpty()) {
             bsonFilters.add(Filters.eq("user_id", filter.userId));
+        } else if (filter.userIds != null) {
+            // an empty list must stay $in: [] (match nothing); null means "not scoped" and is handled above
+            bsonFilters.add(Filters.in("user_id", filter.userIds));
         }
         if (filter.startFrom != null) {
             bsonFilters.add(Filters.gte("started_at", filter.startFrom));
@@ -339,7 +342,8 @@ public class TraceService {
         return span;
     }
 
-    public List<Span> generations(int offset, int limit, String model, String userId) {
+    public List<Span> generations(int offset, int limit, String model, List<String> userIds) {
+        if (userIds != null && userIds.isEmpty()) return List.of();
         var query = new Query();
         query.skip = offset;
         query.limit = limit;
@@ -350,13 +354,13 @@ public class TraceService {
         if (model != null && !model.isEmpty()) {
             filters.add(Filters.eq("model", model));
         }
-        if (userId != null && !userId.isEmpty()) {
-            var traceIds = traceIdsForUser(userId);
+        if (userIds != null) {
+            var traceIds = traceIdsForUsers(userIds);
             if (traceIds.isEmpty()) {
-                filters.add(Filters.eq("user_id", userId));
+                filters.add(Filters.in("user_id", userIds));
             } else {
                 filters.add(Filters.or(
-                    Filters.eq("user_id", userId),
+                    Filters.in("user_id", userIds),
                     Filters.in("trace_id", traceIds)));
             }
         }
@@ -364,9 +368,9 @@ public class TraceService {
         return spanCollection.find(query);
     }
 
-    private List<String> traceIdsForUser(String userId) {
+    private List<String> traceIdsForUsers(List<String> userIds) {
         var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
+        query.filter = Filters.in("user_id", userIds);
         query.sort = Sorts.descending("created_at");
         query.limit = SCOPED_TRACE_ID_LOOKUP_LIMIT;
         return traceCollection.find(query).stream()
@@ -376,11 +380,12 @@ public class TraceService {
     }
 
     // Aggregates one session's traces for the trace-page summary bar; walks the session_id index only
-    public Map<String, Object> sessionSummary(String sessionId, String userId) {
+    public Map<String, Object> sessionSummary(String sessionId, List<String> userIds) {
+        if (userIds != null && userIds.isEmpty()) return null;
         var filters = new ArrayList<Bson>();
         filters.add(Filters.eq("session_id", sessionId));
-        if (userId != null && !userId.isEmpty()) {
-            filters.add(Filters.eq("user_id", userId));
+        if (userIds != null) {
+            filters.add(Filters.in("user_id", userIds));
         }
         var sessionFilter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
 

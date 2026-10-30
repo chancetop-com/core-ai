@@ -159,7 +159,7 @@ public class ReplayWebServiceImpl implements ReplayWebService {
         if (!blank && (request.traceId == null || request.spanId == null)) {
             throw new BadRequestException("both trace_id and span_id are required, or neither for a blank experiment");
         }
-        var experiment = replayService.create(scope.userId, scope.admin, request.traceId, request.spanId);
+        var experiment = replayService.create(scope.userId, request.traceId, request.spanId);
         return toView(experiment, replayService.runSummaries(experiment.id));
     }
 
