@@ -1,3 +1,4 @@
+import { useId, useState, type ReactNode } from 'react';
 import { ExternalLink } from 'lucide-react';
 import { fetchBlob, needsAuthFetch } from '../../../api/authedBlob';
 import type { CardBlock, QuickReplyOption, RichCard } from '../types';
@@ -78,6 +79,360 @@ export function QuickReplyButtons({ question, options, disabled, onSelect }: {
         ))}
       </div>
     </div>
+  );
+}
+
+interface FormOption {
+  label: string;
+  value: string;
+}
+
+interface FormFieldSpec {
+  name: string;
+  label: string;
+  type: string;
+  required: boolean;
+  placeholder?: string;
+  hint?: string;
+  options: FormOption[];
+  min?: number;
+  max?: number;
+}
+
+type FormValue = string | boolean | string[];
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function formOptions(raw: unknown): FormOption[] {
+  if (!Array.isArray(raw)) return [];
+  const options: FormOption[] = [];
+  for (const item of raw) {
+    if (typeof item === 'string') {
+      if (item) options.push({ label: item, value: item });
+      continue;
+    }
+    const option = record(item);
+    const label = option ? str(option.label) : undefined;
+    if (!option || !label) continue;
+    options.push({ label, value: str(option.value) ?? label });
+  }
+  return options;
+}
+
+function formFieldSpecs(block: CardBlock): FormFieldSpec[] {
+  const fields = Array.isArray(block.fields) ? block.fields : [];
+  const specs: FormFieldSpec[] = [];
+  for (const raw of fields) {
+    const field = record(raw);
+    const name = field ? str(field.name) : undefined;
+    if (!field || !name) continue;
+    specs.push({
+      name,
+      label: str(field.label) ?? name,
+      type: str(field.type) ?? 'text',
+      required: field.required === true,
+      placeholder: str(field.placeholder),
+      hint: str(field.hint),
+      options: formOptions(field.options),
+      min: typeof field.min === 'number' ? field.min : undefined,
+      max: typeof field.max === 'number' ? field.max : undefined,
+    });
+  }
+  return specs;
+}
+
+function textValue(value: FormValue | undefined): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function listValue(value: FormValue | undefined): string[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Form block: collects values locally, then submits them the same way a quick-reply click does —
+ * as the next user message, whose text is the JSON object of field values.
+ */
+function FormBlockView({ block, disabled, onSubmit }: {
+  block: CardBlock;
+  disabled: boolean;
+  onSubmit: (value: string) => void;
+}) {
+  const fields = formFieldSpecs(block);
+  const idPrefix = useId();
+  const [values, setValues] = useState<Record<string, FormValue>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitted, setSubmitted] = useState(false);
+  const locked = disabled || submitted;
+
+  const setValue = (name: string, value: FormValue) => {
+    setValues(prev => ({ ...prev, [name]: value }));
+    setErrors(prev => {
+      if (!(name in prev)) return prev;
+      const next = { ...prev };
+      delete next[name];
+      return next;
+    });
+  };
+
+  const submit = () => {
+    const payload: Record<string, unknown> = {};
+    const nextErrors: Record<string, string> = {};
+    for (const field of fields) {
+      const raw = values[field.name];
+      const fail = (message: string) => { nextErrors[field.name] = message; };
+
+      if (field.type === 'checkbox') {
+        if (field.required && raw !== true) {
+          fail('Required');
+          continue;
+        }
+        payload[field.name] = raw === true;
+        continue;
+      }
+
+      if (field.type === 'multiselect' || field.type === 'checkboxes') {
+        const selected = listValue(raw).filter(value => field.options.some(option => option.value === value));
+        if (selected.length === 0) {
+          if (field.required) fail('Choose at least one');
+          continue;
+        }
+        payload[field.name] = selected;
+        continue;
+      }
+
+      const text = textValue(raw);
+      if (!text.trim()) {
+        if (field.required) fail('Required');
+        continue;
+      }
+
+      if (field.type === 'number') {
+        const number = Number(text);
+        if (!Number.isFinite(number)) {
+          fail('Enter a number');
+          continue;
+        }
+        if (field.min !== undefined && number < field.min) {
+          fail(`Must be at least ${field.min}`);
+          continue;
+        }
+        if (field.max !== undefined && number > field.max) {
+          fail(`Must be at most ${field.max}`);
+          continue;
+        }
+        payload[field.name] = number;
+        continue;
+      }
+
+      if (field.type === 'select' || field.type === 'radio') {
+        if (!field.options.some(option => option.value === text)) {
+          fail('Choose one of the options');
+          continue;
+        }
+        payload[field.name] = text;
+        continue;
+      }
+
+      if (field.type === 'email') {
+        if (!EMAIL_PATTERN.test(text.trim())) {
+          fail('Enter a valid email');
+          continue;
+        }
+        payload[field.name] = text.trim();
+        continue;
+      }
+
+      if (field.type === 'url') {
+        try {
+          const url = new URL(text.trim());
+          if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('unsupported protocol');
+        } catch {
+          fail('Enter a valid http(s) URL');
+          continue;
+        }
+        payload[field.name] = text.trim();
+        continue;
+      }
+
+      if (field.type === 'date') {
+        if (!DATE_PATTERN.test(text) || Number.isNaN(Date.parse(`${text}T00:00:00`))) {
+          fail('Enter a valid date');
+          continue;
+        }
+      }
+      if (field.type === 'time' && !TIME_PATTERN.test(text)) {
+        fail('Enter a valid time');
+        continue;
+      }
+      if (field.type === 'datetime' && Number.isNaN(Date.parse(text))) {
+        fail('Enter a valid date and time');
+        continue;
+      }
+      payload[field.name] = text;
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setErrors(nextErrors);
+      return;
+    }
+    setErrors({});
+    setSubmitted(true);
+    onSubmit(JSON.stringify(payload));
+  };
+
+  const inputStyle = {
+    background: 'var(--color-bg)',
+    borderColor: 'var(--color-border)',
+    color: 'var(--color-text)',
+  };
+
+  const renderControl = (field: FormFieldSpec, inputId: string): ReactNode => {
+    const raw = values[field.name];
+    const text = textValue(raw);
+    const selected = listValue(raw);
+
+    switch (field.type) {
+      case 'textarea':
+        return (
+          <textarea id={inputId} rows={3} value={text} placeholder={field.placeholder} disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm resize-y" style={inputStyle} />
+        );
+      case 'select':
+        return (
+          <select id={inputId} value={text} disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle}>
+            <option value="">— select —</option>
+            {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        );
+      case 'multiselect':
+        return (
+          <select id={inputId} multiple size={Math.min(Math.max(field.options.length, 2), 5)} value={selected} disabled={locked}
+            onChange={event => setValue(field.name, Array.from(event.target.selectedOptions, option => option.value))}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle}>
+            {field.options.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        );
+      case 'radio':
+        return (
+          <div className="flex flex-col gap-1" role="radiogroup" aria-label={field.label}>
+            {field.options.map(option => (
+              <label key={option.value} className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text)' }}>
+                <input type="radio" name={inputId} value={option.value} checked={text === option.value} disabled={locked}
+                  onChange={() => setValue(field.name, option.value)} />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        );
+      case 'checkbox':
+        return (
+          <input id={inputId} type="checkbox" checked={raw === true} disabled={locked}
+            onChange={event => setValue(field.name, event.target.checked)} />
+        );
+      case 'checkboxes':
+        return (
+          <div className="flex flex-col gap-1" role="group" aria-label={field.label}>
+            {field.options.map(option => (
+              <label key={option.value} className="flex items-center gap-2 text-sm" style={{ color: 'var(--color-text)' }}>
+                <input type="checkbox" checked={selected.includes(option.value)} disabled={locked}
+                  onChange={event => setValue(field.name, event.target.checked
+                    ? [...selected, option.value]
+                    : selected.filter(value => value !== option.value))} />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        );
+      case 'date':
+        return (
+          <input id={inputId} type="date" value={text} disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+        );
+      case 'time':
+        return (
+          <input id={inputId} type="time" value={text} disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+        );
+      case 'datetime':
+        return (
+          <input id={inputId} type="datetime-local" value={text} disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+        );
+      default: {
+        const inputType = field.type === 'number' ? 'number' : field.type === 'email' ? 'email' : field.type === 'url' ? 'url' : 'text';
+        return (
+          <input id={inputId} type={inputType} value={text} placeholder={field.placeholder}
+            min={field.type === 'number' ? field.min : undefined}
+            max={field.type === 'number' ? field.max : undefined}
+            step={field.type === 'number' ? 'any' : undefined}
+            disabled={locked}
+            onChange={event => setValue(field.name, event.target.value)}
+            className="rounded-lg border px-2 py-1.5 text-sm" style={inputStyle} />
+        );
+      }
+    }
+  };
+
+  return (
+    <form noValidate className="flex flex-col gap-2"
+      onSubmit={event => { event.preventDefault(); if (!locked) submit(); }}>
+      {fields.map(field => {
+        const inputId = `${idPrefix}-${field.name}`;
+        const labelText = (
+          <>
+            {field.label}
+            {field.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+          </>
+        );
+        const grouped = field.type === 'radio' || field.type === 'checkboxes';
+        const control = renderControl(field, inputId);
+        return (
+          <div key={field.name} className="flex flex-col gap-1">
+            {field.type === 'checkbox' ? (
+              <label htmlFor={inputId} className="flex items-center gap-2 text-xs"
+                style={{ color: 'var(--color-text-secondary)' }}>
+                {control}
+                <span>{labelText}</span>
+              </label>
+            ) : grouped ? (
+              <>
+                <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{labelText}</div>
+                {control}
+              </>
+            ) : (
+              <>
+                <label htmlFor={inputId} className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  {labelText}
+                </label>
+                {control}
+              </>
+            )}
+            {field.hint && (
+              <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{field.hint}</div>
+            )}
+            {errors[field.name] && (
+              <div className="text-xs" style={{ color: 'var(--color-danger)' }}>{errors[field.name]}</div>
+            )}
+          </div>
+        );
+      })}
+      <div className="flex items-center gap-2">
+        <button type="submit" disabled={locked}
+          className="px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: 'var(--color-primary)', border: 'none', color: 'white' }}>
+          {str(block.submit_label) ?? 'Submit'}
+        </button>
+        {submitted && <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Submitted</span>}
+      </div>
+    </form>
   );
 }
 
@@ -191,6 +546,8 @@ function CardBlockView({ block, disabled, onAction }: {
         </div>
       );
     }
+    case 'form':
+      return <FormBlockView block={block} disabled={disabled} onSubmit={onAction} />;
     case 'divider':
       return <hr className="border-0 border-t m-0" style={{ borderColor: 'var(--color-border)' }} />;
     default:

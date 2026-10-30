@@ -23,7 +23,9 @@ public final class SendCustomEventTool extends ToolCall {
 
             Optionally attach `card`: a platform-renderable card ({schema_version, title?, blocks:[{type,...}]})
             that any client can draw generically when it has no renderer for this event name. Block types:
-            text, key_values, table, image, actions, divider.
+            text, key_values, table, image, actions, divider, form. A `form` block collects values and submits
+            them as a normal user message whose text is the JSON object of field values (so the answer arrives
+            as the next turn, like a quick-reply click).
 
             Keep the payload structured and small: at most 256 KB per event and 1 MB per turn. For large
             content, publish a file and put its URL in the event instead. Events can only be sent while the
@@ -95,7 +97,11 @@ public final class SendCustomEventTool extends ToolCall {
                     "A JSON object carrying the event payload; its shape is defined by the product that renders the event.").required(),
                 ToolCallParameters.ParamSpec.of(Map.class, "card",
                     "Optional platform renderable card: {schema_version: 1, title?, blocks: [{type, ...}]}. "
-                        + "Block types: text, key_values, table, image, actions, divider. Follow the product's instructions for the exact shape.").optional()
+                        + "Block types: text, key_values, table, image, actions, divider, form. "
+                        + "A form block is {type:\"form\", submit_label?, fields:[{name, label, type, required?, placeholder?, hint?, options?, min?, max?}]}; "
+                        + "field type is one of text, textarea, number, email, url, select, multiselect, radio, checkbox, checkboxes, date, time, datetime. "
+                        + "select/multiselect/radio/checkboxes need options (strings or {label, value}). "
+                        + "Form submit sends the collected values as a JSON user message. Follow the product's instructions for the exact shape.").optional()
             ));
             this.needAuth(Boolean.FALSE);
             this.directReturn(Boolean.FALSE);
