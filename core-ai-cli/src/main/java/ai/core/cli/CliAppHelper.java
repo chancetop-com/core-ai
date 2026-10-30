@@ -25,7 +25,9 @@ import ai.core.session.SessionPersistence.SessionInfo;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.GlobFileTool;
 import ai.core.tool.tools.GrepFileTool;
+import ai.core.tool.tools.PresentChoicesTool;
 import ai.core.tool.tools.ReadFileTool;
+import ai.core.tool.tools.SendCustomEventTool;
 import ai.core.tool.tools.TaskTool;
 import ai.core.tool.tools.WebFetchTool;
 import ai.core.tool.tools.WebSearchTool;
@@ -352,6 +354,10 @@ public class CliAppHelper {
         permissionStore.allow(ReadFileTool.TOOL_NAME);
         permissionStore.allow(GlobFileTool.TOOL_NAME);
         permissionStore.allow(GrepFileTool.TOOL_NAME);
+        // Session UI events have no side effect outside the conversation; prompting for them would put
+        // an approval bar in front of a card that is already on screen.
+        permissionStore.allow(SendCustomEventTool.TOOL_NAME);
+        permissionStore.allow(PresentChoicesTool.TOOL_NAME);
         return permissionStore;
     }
     public static String defaultSessionId(String prefix) {
