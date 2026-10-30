@@ -1016,6 +1016,8 @@ const ICONS = {
   shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
   file: '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>',
   image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  copy: '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
 };
 
 function icon(name: keyof typeof ICONS): SVGElement {
@@ -3631,6 +3633,57 @@ function renderHistoryMessages(view: SessionView, messages: Array<{ role?: strin
   flushAssistant();
 }
 
+/** Clipboard write with the selection fallback for a renderer without the async clipboard API. */
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const area = el('textarea');
+  area.value = text;
+  area.style.position = 'fixed';
+  area.style.opacity = '0';
+  document.body.append(area);
+  area.select();
+  const copied = document.execCommand('copy');
+  area.remove();
+  if (!copied) throw new Error('copy rejected');
+}
+
+/**
+ * Copy action under a message bubble. The getter keeps the text current while a reply is still
+ * streaming; history and user bubbles capture a fixed string.
+ */
+function attachMessageCopy(wrapper: HTMLElement, getText: () => string): void {
+  if (wrapper.querySelector('.msg-actions')) return;
+  const actions = el('div', 'msg-actions');
+  const button = el('button', 'msg-action') as HTMLButtonElement;
+  button.type = 'button';
+  let reset: ReturnType<typeof setTimeout> | null = null;
+  const paint = (copied: boolean): void => {
+    button.replaceChildren(icon(copied ? 'check' : 'copy'), el('span', undefined, copied ? 'Copied' : 'Copy'));
+    button.classList.toggle('copied', copied);
+    button.title = copied ? 'Copied to clipboard' : 'Copy message';
+    button.setAttribute('aria-label', copied ? 'Copied to clipboard' : 'Copy message');
+  };
+  paint(false);
+  button.onclick = async () => {
+    const text = getText();
+    if (!text.trim()) return;
+    try {
+      await copyText(text);
+    } catch {
+      toast('Could not copy the message', 'error');
+      return;
+    }
+    paint(true);
+    if (reset != null) clearTimeout(reset);
+    reset = setTimeout(() => paint(false), 1600);
+  };
+  actions.append(button);
+  wrapper.append(actions);
+}
+
 function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
     const notifications = parseTaskNotifications(text);
@@ -3664,6 +3717,7 @@ function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: s
   }
   wrapper.append(bubble);
   view.transcript.append(wrapper);
+  if (text.trim()) attachMessageCopy(wrapper, () => text);
   return wrapper;
 }
 
@@ -3816,6 +3870,8 @@ function flushStreamingMarkdown(current: StreamingState): void {
   if (current.renderedText === current.text) return;
   renderMarkdownInto(current.body, current.text);
   current.renderedText = current.text;
+  const wrapper = current.bubble.parentElement;
+  if (wrapper && current.text.trim()) attachMessageCopy(wrapper, () => current.text);
   scrollTranscript(current.view);
 }
 

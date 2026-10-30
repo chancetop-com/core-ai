@@ -707,6 +707,27 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .msg.user .bubble { display: inline-block; max-width: 100%; background: #e4e7eb; color: #171a1f; border: 1px solid transparent; text-align: left; }
 .msg.assistant { margin-right: auto; }
 
+/* Copy action under each message; the label stays quiet until hovered, then confirms with a check. */
+.msg-actions { display: flex; align-items: center; gap: 8px; margin: 2px 0 0 2px; }
+.msg.user .msg-actions { justify-content: flex-end; margin: 2px 2px 0 0; }
+.msg-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1;
+  cursor: pointer;
+}
+.msg-action:hover { color: var(--text); }
+.msg-action.copied { color: var(--green); }
+.msg-action .ic { width: 12px; height: 12px; }
+
 /* ---------- markdown (assistant output, CLI terminal palette) ---------- */
 
 .bubble.md { white-space: normal; }
