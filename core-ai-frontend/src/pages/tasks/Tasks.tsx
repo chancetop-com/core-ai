@@ -125,17 +125,17 @@ export default function Tasks() {
         </div>
       )}
 
-      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ borderBottom: '1px solid var(--color-border)' }}>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Task</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Status</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Pod</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Started</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Duration</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Actions</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Task</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Status</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Pod</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Started</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Duration</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -152,26 +152,28 @@ export default function Tasks() {
                     className="cursor-pointer transition-colors hover:bg-opacity-50"
                     style={{ borderBottom: '1px solid var(--color-border)' }}
                     onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}>
-                    <td className="px-4 py-3 font-mono text-xs">{task.id}</td>
-                    <td className="px-4 py-3">
-                      <span className="px-1.5 py-0.5 rounded text-xs font-mono"
+                    <td className="px-3 py-3 font-mono text-xs max-w-[170px] 2xl:max-w-[260px]">
+                      <span className="block truncate" title={task.id}>{task.id}</span>
+                    </td>
+                    <td className="px-3 py-3 max-w-[130px] 2xl:max-w-[240px]">
+                      <span className="inline-block max-w-full truncate align-bottom px-1.5 py-0.5 rounded text-xs font-mono" title={task.type}
                         style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
                         {task.type}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{statusBadge(task.status)}</td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    <td className="px-3 py-3">{statusBadge(task.status)}</td>
+                    <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                       {task.claimed_by ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                       {formatTime(task.started_at)}
                     </td>
-                    <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                       {task.started_at && task.completed_at
                         ? `${Math.round((new Date(task.completed_at).getTime() - new Date(task.started_at).getTime()) / 1000)}s`
                         : '—'}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <div className="flex items-center gap-2">
                         {task.status === 'FAILED' && (
                           <button
@@ -188,7 +190,7 @@ export default function Tasks() {
                   </tr>
                   {expandedTask === task.id && (
                     <tr key={`${task.id}-detail`} style={{ borderBottom: '1px solid var(--color-border)' }}>
-                      <td colSpan={7} className="px-4 py-3">
+                      <td colSpan={7} className="px-3 py-3">
                         <div className="rounded-lg p-3 text-xs font-mono" style={{ background: 'var(--color-bg-hover, rgba(0,0,0,0.03))' }}>
                           {task.status_text && (
                             <div className="mb-2">

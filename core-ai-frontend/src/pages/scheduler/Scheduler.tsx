@@ -327,7 +327,7 @@ export default function Scheduler() {
         </button>
       </div>
 
-      <div className="rounded-xl border overflow-hidden"
+      <div className="rounded-xl border overflow-x-auto"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         {tab === 'agent' && (loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
@@ -339,22 +339,22 @@ export default function Scheduler() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                <th className="text-left px-4 py-3 font-medium">Agent</th>
-                <th className="text-left px-4 py-3 font-medium">Cron</th>
-                <th className="text-left px-4 py-3 font-medium">Timezone</th>
-                <th className="text-left px-4 py-3 font-medium">Channel</th>
-                <th className="text-left px-4 py-3 font-medium">Policy</th>
-                <th className="text-left px-4 py-3 font-medium">Next Run</th>
-                <th className="text-left px-4 py-3 font-medium">Enabled</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-3 py-3 font-medium">Agent</th>
+                <th className="text-left px-3 py-3 font-medium">Cron</th>
+                <th className="text-left px-3 py-3 font-medium">Timezone</th>
+                <th className="text-left px-3 py-3 font-medium">Channel</th>
+                <th className="text-left px-3 py-3 font-medium">Policy</th>
+                <th className="text-left px-3 py-3 font-medium">Next Run</th>
+                <th className="text-left px-3 py-3 font-medium">Enabled</th>
+                <th className="text-right px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map(s => (
                 <tr key={s.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar size={14} style={{ color: 'var(--color-primary)' }} />
+                  <td className="px-3 py-3 max-w-[270px] 2xl:max-w-[380px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Calendar size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
                       <div className="min-w-0">
                         <div className="font-medium truncate">{s.name?.trim() || (agentMap[s.agent_id]?.name ?? s.agent_id)}</div>
                         {s.name?.trim() && (
@@ -377,7 +377,7 @@ export default function Scheduler() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-xs">
+                  <td className="px-3 py-3 text-xs">
                     {isOnceCron(s.cron_expression) ? (
                       <div className="flex items-center gap-2">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-medium"
@@ -385,11 +385,11 @@ export default function Scheduler() {
                         <span>{describeCron(s.cron_expression).replace(/^Once on /, '')}</span>
                       </div>
                     ) : (
-                      <span className="font-mono">{s.cron_expression}</span>
+                      <span className="font-mono whitespace-nowrap">{s.cron_expression}</span>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {s.channel_id ? (
                       <span className="px-2 py-0.5 rounded text-xs"
                         style={{ background: 'rgba(59, 130, 246, 0.12)', color: '#1d4ed8' }}>
@@ -399,14 +399,14 @@ export default function Scheduler() {
                       <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="px-2 py-0.5 rounded text-xs"
                       style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                       {s.concurrency_policy}
                     </span>
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.next_run_at)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.next_run_at)}</td>
+                  <td className="px-3 py-3">
                     <button onClick={() => toggleEnabled(s)}
                       className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
                       style={{ background: s.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
@@ -414,7 +414,7 @@ export default function Scheduler() {
                         style={{ transform: s.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
                     <button onClick={() => triggerRun(s)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-primary)' }} title="Run Now">
@@ -447,42 +447,43 @@ export default function Scheduler() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-              <th className="text-left px-4 py-3 font-medium">Name</th>
-              <th className="text-left px-4 py-3 font-medium">Cron</th>
-              <th className="text-left px-4 py-3 font-medium">Timezone</th>
-              <th className="text-left px-4 py-3 font-medium">Session</th>
-              <th className="text-left px-4 py-3 font-medium">User</th>
-              <th className="text-left px-4 py-3 font-medium">Next Run</th>
-              <th className="text-left px-4 py-3 font-medium">Created</th>
-              <th className="text-left px-4 py-3 font-medium">Enabled</th>
-              <th className="text-left px-4 py-3 font-medium">Input</th>
+              <th className="text-left px-3 py-3 font-medium">Name</th>
+              <th className="text-left px-3 py-3 font-medium">Cron</th>
+              <th className="text-left px-3 py-3 font-medium">Timezone</th>
+              <th className="text-left px-3 py-3 font-medium">Session</th>
+              <th className="text-left px-3 py-3 font-medium">User</th>
+              <th className="text-left px-3 py-3 font-medium">Next Run</th>
+              <th className="text-left px-3 py-3 font-medium">Created</th>
+              <th className="text-left px-3 py-3 font-medium">Enabled</th>
+              <th className="text-left px-3 py-3 font-medium">Input</th>
             </tr>
           </thead>
           <tbody>
             {sessionSchedules.map(s => (
               <tr key={s.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={14} style={{ color: 'var(--color-primary)' }} />
-                    <div className="font-medium truncate max-w-[200px]" title={s.name}>
+                <td className="px-3 py-3 max-w-[160px] 2xl:max-w-[220px]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Calendar size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+                    <div className="font-medium truncate" title={s.name}>
                       {s.name || s.id.slice(0, 8)}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3"><span className="font-mono text-xs">{s.cron_expression}</span></td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs block truncate max-w-[180px]" title={s.session_id}>
+                <td className="px-3 py-3"><span className="font-mono text-xs whitespace-nowrap">{s.cron_expression}</span></td>
+                <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{s.timezone}</td>
+                <td className="px-3 py-3 max-w-[140px] 2xl:max-w-[180px]">
+                  <span className="font-mono text-xs block truncate" title={s.session_id}>
                     {s.session_id}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-xs truncate max-w-[160px]" title={s.user_id}
-                  style={{ color: 'var(--color-text-secondary)' }}>{s.user_id}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.next_run_at)}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                <td className="px-3 py-3 text-xs truncate max-w-[120px] 2xl:max-w-[150px]" style={{ color: 'var(--color-text-secondary)' }} title={s.user_id}>
+                  {s.user_id}
+                </td>
+                <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(s.next_run_at)}</td>
+                <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                   {new Date(s.created_at).toLocaleString()}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <button onClick={() => toggleSessionEnabled(s)}
                     className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
                     style={{ background: s.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
@@ -490,7 +491,7 @@ export default function Scheduler() {
                       style={{ transform: s.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                   </button>
                 </td>
-                <td className="px-4 py-3 text-xs truncate max-w-[240px]" title={s.input}
+                <td className="px-3 py-3 text-xs truncate max-w-[160px] 2xl:max-w-[220px]" title={s.input}
                   style={{ color: 'var(--color-text-secondary)' }}>{s.input || '—'}</td>
               </tr>
             ))}

@@ -254,7 +254,7 @@ export default function OpenClaw() {
         </div>
       )}
 
-      <div className="rounded-xl border overflow-hidden"
+      <div className="rounded-xl border overflow-x-auto"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
@@ -267,40 +267,40 @@ export default function OpenClaw() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                <th className="text-left px-4 py-3 font-medium">Config</th>
-                <th className="text-left px-4 py-3 font-medium">Channel</th>
-                <th className="text-left px-4 py-3 font-medium">Sandbox IP</th>
-                <th className="text-left px-4 py-3 font-medium">Status</th>
-                <th className="text-left px-4 py-3 font-medium">Updated</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-3 py-3 font-medium">Config</th>
+                <th className="text-left px-3 py-3 font-medium">Channel</th>
+                <th className="text-left px-3 py-3 font-medium">Sandbox IP</th>
+                <th className="text-left px-3 py-3 font-medium">Status</th>
+                <th className="text-left px-3 py-3 font-medium">Updated</th>
+                <th className="text-right px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {configs.map(config => (
                 <tr key={config.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Zap size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span className="font-medium">{config.id}</span>
+                  <td className="px-3 py-3 max-w-[240px] 2xl:max-w-[320px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Zap size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+                      <span className="font-medium truncate" title={config.id}>{config.id}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {channelMap[config.channelId]?.channelId ?? config.channelId}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {config.sandboxIp || '-'}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium" style={statusColor(config.sandboxStatus)}>
                       {config.sandboxStatus === 'running' && <CheckCircle2 size={12} />}
                       {config.sandboxStatus === 'starting' && <RotateCw size={12} className="animate-spin" />}
                       {config.sandboxStatus}
                     </span>
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {formatDate(config.updatedAt)}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
                     {(config.sandboxStatus === 'running' || config.sandboxStatus === 'starting') ? (
                       <button onClick={() => stop(config)} disabled={busyId === config.id}
                         className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1 disabled:opacity-40"

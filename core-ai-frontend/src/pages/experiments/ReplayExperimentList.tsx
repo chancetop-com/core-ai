@@ -93,7 +93,7 @@ export default function ReplayExperimentList({ origin = 'SPAN' }: { origin?: 'SP
         </div>
       </div>
 
-      <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs" style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}>

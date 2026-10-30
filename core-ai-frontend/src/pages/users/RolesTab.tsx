@@ -150,7 +150,7 @@ export default function RolesTab({ onRolesChanged }: RolesTabProps) {
       )}
 
       {/* Role list table */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+      <div className="rounded-xl border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         <table className="w-full">
           <thead>
             <tr style={{ background: 'var(--color-bg-secondary)' }}>

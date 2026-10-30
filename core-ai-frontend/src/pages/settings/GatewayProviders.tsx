@@ -684,17 +684,17 @@ function renderProvidersTable(props: {
 }) {
   const { providers, loading, testingId, testProvider, openEditProvider, removeProvider } = props;
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+    <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
       <table className="w-full text-sm">
         <thead style={{ background: 'var(--color-bg-secondary)' }}>
           <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-            <th className="px-4 py-3 font-medium">Provider</th>
-            <th className="px-4 py-3 font-medium">Route Prefix</th>
-            <th className="px-4 py-3 font-medium">Base URL</th>
-            <th className="px-4 py-3 font-medium">Key</th>
-            <th className="px-4 py-3 font-medium">Network</th>
-            <th className="px-4 py-3 font-medium">Status</th>
-            <th className="px-4 py-3 font-medium text-right">Actions</th>
+            <th className="px-3 py-3 font-medium">Provider</th>
+            <th className="px-3 py-3 font-medium">Route Prefix</th>
+            <th className="px-3 py-3 font-medium">Base URL</th>
+            <th className="px-3 py-3 font-medium">Key</th>
+            <th className="px-3 py-3 font-medium">Network</th>
+            <th className="px-3 py-3 font-medium">Status</th>
+            <th className="px-3 py-3 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -704,25 +704,25 @@ function renderProvidersTable(props: {
             <EmptyRow colSpan={7}>No providers configured</EmptyRow>
           ) : providers.map(provider => (
             <tr key={provider.id} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3">
                 <div className="font-medium">{provider.name}</div>
                 <div className="text-xs uppercase mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
                   {provider.type}
                   {provider.enabled === false && ' · disabled'}
                 </div>
               </td>
-              <td className="px-4 py-3 font-mono text-xs">{provider.modelPrefix || '-'}</td>
-              <td className="px-4 py-3 max-w-sm truncate" title={provider.baseUrl}>{provider.baseUrl}</td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3 font-mono text-xs">{provider.modelPrefix || '-'}</td>
+              <td className="px-3 py-3 max-w-[200px] 2xl:max-w-sm truncate" title={provider.baseUrl}>{provider.baseUrl}</td>
+              <td className="px-3 py-3">
                 <span className="inline-flex items-center gap-1.5">
                   <KeyRound size={14} style={{ color: provider.hasApiKey ? 'var(--color-success)' : 'var(--color-text-secondary)' }} />
                   {provider.apiKeyMasked || 'none'}
                 </span>
               </td>
-              <td className="px-4 py-3 text-xs" style={{ color: provider.allowPrivateNetwork ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
+              <td className="px-3 py-3 text-xs" style={{ color: provider.allowPrivateNetwork ? 'var(--color-warning)' : 'var(--color-text-secondary)' }}>
                 {provider.allowPrivateNetwork ? 'private' : 'public'}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3">
                 {provider.lastTestStatus === 'ok' ? (
                   <span className="inline-flex items-center gap-1.5 text-xs" style={{ color: 'var(--color-success)' }}>
                     <CheckCircle2 size={14} /> OK
@@ -735,7 +735,7 @@ function renderProvidersTable(props: {
                   <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Untested</span>
                 )}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-3 py-3">
                 <div className="flex items-center justify-end gap-1">
                   <IconButton title="Test" onClick={() => testProvider(provider)} disabled={testingId === provider.id}>
                     <RefreshCw size={15} className={testingId === provider.id ? 'animate-spin' : ''} />
@@ -767,18 +767,18 @@ function renderModelsTable(props: {
 }) {
   const { models, loading, providerById, openEditModel, removeModel, setDefaultModel, toggleModel } = props;
   return (
-    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+    <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
       <table className="w-full text-sm">
         <thead style={{ background: 'var(--color-bg-secondary)' }}>
           <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-            <th className="px-4 py-3 font-medium">Alias</th>
-            <th className="px-4 py-3 font-medium">Display Name</th>
-            <th className="px-4 py-3 font-medium">Provider</th>
-            <th className="px-4 py-3 font-medium">Official Model</th>
-            <th className="px-4 py-3 font-medium">Endpoints</th>
-            <th className="px-4 py-3 font-medium">Priority</th>
-            <th className="px-4 py-3 font-medium">Capabilities</th>
-            <th className="px-4 py-3 font-medium text-right">Actions</th>
+            <th className="px-3 py-3 font-medium">Alias</th>
+            <th className="px-3 py-3 font-medium hidden min-[1536px]:table-cell">Display Name</th>
+            <th className="px-3 py-3 font-medium">Provider</th>
+            <th className="px-3 py-3 font-medium">Official Model</th>
+            <th className="px-3 py-3 font-medium">Endpoints</th>
+            <th className="px-3 py-3 font-medium hidden min-[1650px]:table-cell">Priority</th>
+            <th className="px-3 py-3 font-medium">Capabilities</th>
+            <th className="px-3 py-3 font-medium text-right">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -790,23 +790,23 @@ function renderModelsTable(props: {
             const provider = providerById.get(model.providerId);
             return (
               <tr key={model.id} className="border-t" style={{ borderColor: 'var(--color-border)', opacity: model.enabled === false ? 0.55 : 1 }}>
-                <td className="px-4 py-3">
-                  <span className="font-medium font-mono">
+                <td className="px-3 py-3 max-w-[130px] 2xl:max-w-[160px]">
+                  <span className="font-medium font-mono block truncate" title={model.modelId}>
                     {model.modelId}
                   </span>
                   {model.enabled === false && <span className="text-xs ml-1" style={{ color: 'var(--color-warning)' }}>· disabled</span>}
                 </td>
-                <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                <td className="px-3 py-3 max-w-[100px] 2xl:max-w-[200px] truncate hidden min-[1536px]:table-cell" title={model.displayName || undefined} style={{ color: 'var(--color-text-secondary)' }}>
                   {model.displayName || '-'}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <div>{model.providerName || provider?.name || model.providerId}</div>
                   {provider?.enabled === false && <div className="text-xs" style={{ color: 'var(--color-warning)' }}>provider disabled</div>}
                 </td>
-                <td className="px-4 py-3 font-mono text-xs">{model.upstreamModel}</td>
-                <td className="px-4 py-3">{(model.endpointTypes || []).map(labelEndpoint).join(', ') || '-'}</td>
-                <td className="px-4 py-3">{model.priority ?? 100}</td>
-                <td className="px-4 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                <td className="px-3 py-3 font-mono text-xs max-w-[180px] 2xl:max-w-[220px] truncate" title={model.upstreamModel}>{model.upstreamModel}</td>
+                <td className="px-3 py-3">{(model.endpointTypes || []).map(labelEndpoint).join(', ') || '-'}</td>
+                <td className="px-3 py-3 hidden min-[1650px]:table-cell">{model.priority ?? 100}</td>
+                <td className="px-3 py-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                   {[
                     model.supportsStream ? 'stream' : null,
                     model.supportsTools ? 'tools' : null,
@@ -816,7 +816,7 @@ function renderModelsTable(props: {
                     model.contextWindow ? `${model.contextWindow} ctx` : null,
                   ].filter(Boolean).join(', ') || '-'}
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3">
                   <div className="flex items-center justify-end gap-1">
                     <IconButton title={model.isDefault ? 'Clear default' : 'Set as default'} onClick={() => setDefaultModel(model)}>
                       <Star size={15} style={model.isDefault ? { color: 'var(--color-warning)', fill: 'var(--color-warning)' } : undefined} />
@@ -1305,7 +1305,7 @@ function renderDiscoverModelsPanel(props: {
             </button>
           </div>
         )}
-        <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
           <table className="w-full text-sm">
             <thead style={{ background: 'var(--color-bg-secondary)' }}>
               <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>

@@ -185,17 +185,17 @@ export default function Generations() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Inputs</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Prompt</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>User</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>State</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Model</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Usage</th>
-              <th className="text-left px-4 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Source</th>
-              <th className="text-right px-4 py-3 font-medium sticky right-0"
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Output</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Inputs</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Prompt</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Time</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>User</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Type</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>State</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Model</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Usage</th>
+              <th className="text-left px-3 py-3 font-medium" style={{ color: 'var(--color-text-secondary)' }}>Source</th>
+              <th className="text-right px-3 py-3 font-medium sticky right-0"
                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 <span className="inline-flex items-center gap-1"><DollarSign size={14} /> Cost</span>
               </th>
@@ -213,7 +213,7 @@ export default function Generations() {
               return (
                 <tr key={job.id} className="group border-t hover:bg-[var(--color-bg-tertiary)]"
                   style={{ borderColor: 'var(--color-border)' }}>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     {isImage && job.fileId
                       ? <img src={`/api/files/${job.fileId}/thumbnail`} alt={job.fileName ?? 'generated'}
                           onClick={() => setPreview(job)} title="Click to view" loading="lazy"
@@ -224,15 +224,15 @@ export default function Generations() {
                           </div>
                         : job.state === 'completed'
                           ? <div onClick={() => setPreview(job)} title="Click to play"
-                              className="h-16 w-28 rounded border flex items-center justify-center cursor-pointer"
+                              className="h-16 w-[88px] rounded border flex items-center justify-center cursor-pointer"
                               style={{ borderColor: 'var(--color-border)', background: '#0f172a' }}>
                               <Play size={20} color="#f8fafc" fill="#f8fafc" />
                             </div>
-                          : <div className="h-16 w-28 rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
+                          : <div className="h-16 w-[88px] rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                               <Film size={14} style={{ color: 'var(--color-text-secondary)' }} />
                             </div>}
                   </td>
-                  <td className="px-4 py-2">
+                  <td className="px-3 py-2">
                     {job.inputs && job.inputs.length > 0
                       ? <div className="flex items-center gap-1 cursor-pointer" onClick={() => setPreview(job)}
                           title={job.inputs.map(input => `${inputLabel(input)} · ${inputDetail(input)}`).join('\n')}>
@@ -243,26 +243,26 @@ export default function Generations() {
                         </div>
                       : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     {job.prompt
                       ? <div className="truncate cursor-pointer hover:underline" title={job.prompt}
                           onClick={() => setPreview(job)} style={{ maxWidth: '260px' }}>{job.prompt}</div>
                       : <span style={{ color: 'var(--color-text-secondary)' }}>-</span>}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(job.createdAt)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>{formatTime(job.createdAt)}</td>
+                  <td className="px-3 py-3">
                     <div className="truncate" title={job.userId ?? ''} style={{ maxWidth: '140px' }}>
                       {job.userName || job.userId || '-'}
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
                       style={{ background: 'var(--color-bg-tertiary)' }}>
                       {isImage ? <ImageIcon size={12} /> : <Film size={12} />}
                       {isImage ? 'image' : 'video'}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                       title={job.error ?? ''}
                       style={{ background: stateColor.bg, color: stateColor.text }}>{job.state ?? '-'}</span>
@@ -271,23 +271,23 @@ export default function Generations() {
                         style={{ color: '#dc2626', maxWidth: '200px' }}>{job.error}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium truncate" style={{ maxWidth: '160px' }}>{job.requestedModel ?? '-'}</div>
+                  <td className="px-3 py-3">
+                    <div className="font-medium truncate" style={{ maxWidth: '150px' }}>{job.requestedModel ?? '-'}</div>
                     {job.resolvedModel && job.resolvedModel !== job.requestedModel && (
-                      <div className="text-xs mt-0.5 font-mono truncate" style={{ color: 'var(--color-text-secondary)', maxWidth: '160px' }}>
+                      <div className="text-xs mt-0.5 font-mono truncate" style={{ color: 'var(--color-text-secondary)', maxWidth: '150px' }}>
                         {job.resolvedModel}
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{unitsLabel(job)}</td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{unitsLabel(job)}</td>
+                  <td className="px-3 py-3">
                     <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-mono"
                       style={{ background: sourceColor.bg, color: sourceColor.text }}
                       title={job.pricingModelId ?? ''}>
                       {job.costSource ?? '-'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right font-medium whitespace-nowrap sticky right-0 z-10 bg-[var(--color-bg-secondary)] group-hover:bg-[var(--color-bg-tertiary)]">{formatCostUsd(job.costUsd)}</td>
+                  <td className="px-3 py-3 text-right font-medium whitespace-nowrap sticky right-0 z-10 bg-[var(--color-bg-secondary)] group-hover:bg-[var(--color-bg-tertiary)]">{formatCostUsd(job.costUsd)}</td>
                 </tr>
               );
             })}

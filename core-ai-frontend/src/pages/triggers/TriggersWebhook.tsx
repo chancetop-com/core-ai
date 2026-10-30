@@ -212,7 +212,7 @@ export default function TriggersWebhook() {
         </div>
       </div>
 
-      <div className="rounded-xl border overflow-hidden"
+      <div className="rounded-xl border overflow-x-auto"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
@@ -224,30 +224,32 @@ export default function TriggersWebhook() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                <th className="text-left px-4 py-3 font-medium">Name</th>
-                <th className="text-left px-4 py-3 font-medium">Agent</th>
-                <th className="text-left px-4 py-3 font-medium">Webhook URL</th>
-                <th className="text-left px-4 py-3 font-medium">Last Triggered</th>
-                <th className="text-left px-4 py-3 font-medium">Enabled</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-3 py-3 font-medium">Name</th>
+                <th className="text-left px-3 py-3 font-medium">Agent</th>
+                <th className="text-left px-3 py-3 font-medium">Webhook URL</th>
+                <th className="text-left px-3 py-3 font-medium">Last Triggered</th>
+                <th className="text-left px-3 py-3 font-medium">Enabled</th>
+                <th className="text-right px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {triggers.map(t => (
                 <tr key={t.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Webhook size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span className="font-medium">{t.name}</span>
+                  <td className="px-3 py-3 max-w-[240px] 2xl:max-w-[320px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Webhook size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+                      <span className="font-medium truncate" title={t.name}>{t.name}</span>
                     </div>
                     {t.description && (
-                      <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>{t.description}</div>
+                      <div className="text-xs mt-0.5 truncate" title={t.description} style={{ color: 'var(--color-text-secondary)' }}>{t.description}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
-                    {t.action_config?.agent_id ? (agentMap[t.action_config.agent_id]?.name ?? t.action_config.agent_id) : '-'}
+                  <td className="px-3 py-3 max-w-[180px] 2xl:max-w-[240px]" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span className="block truncate" title={t.action_config?.agent_id ? (agentMap[t.action_config.agent_id]?.name ?? t.action_config.agent_id) : undefined}>
+                      {t.action_config?.agent_id ? (agentMap[t.action_config.agent_id]?.name ?? t.action_config.agent_id) : '-'}
+                    </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     {t.webhook_url ? (
                       <div className="flex items-center gap-1">
                         <span className="text-xs font-mono truncate max-w-[220px]" title={t.webhook_url}>
@@ -264,10 +266,10 @@ export default function TriggersWebhook() {
                       <span style={{ color: 'var(--color-text-secondary)' }}>-</span>
                     )}
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {formatTime(t.last_triggered_at)}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <button onClick={() => toggleEnabled(t)}
                       className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
                       style={{ background: t.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
@@ -275,7 +277,7 @@ export default function TriggersWebhook() {
                         style={{ transform: t.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                     </button>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right whitespace-nowrap">
                     <button onClick={() => rotateSecret(t)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                       style={{ borderColor: 'var(--color-border)' }} title="Rotate Secret">

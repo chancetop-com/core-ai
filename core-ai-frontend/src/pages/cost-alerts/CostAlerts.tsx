@@ -233,7 +233,7 @@ export default function CostAlerts() {
       </div>
 
       {tab === 'rules' ? (
-        <div className="rounded-xl border overflow-hidden"
+        <div className="rounded-xl border overflow-x-auto"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
           {loading ? (
             <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
@@ -246,34 +246,34 @@ export default function CostAlerts() {
             <table className="w-full text-sm">
               <thead>
                 <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                  <th className="text-left px-4 py-3 font-medium">Name</th>
-                  <th className="text-left px-4 py-3 font-medium">Metric</th>
-                  <th className="text-left px-4 py-3 font-medium">Scope</th>
-                  <th className="text-left px-4 py-3 font-medium">Threshold</th>
-                  <th className="text-left px-4 py-3 font-medium">Targets</th>
-                  <th className="text-left px-4 py-3 font-medium">Enabled</th>
-                  <th className="text-right px-4 py-3 font-medium">Actions</th>
+                  <th className="text-left px-3 py-3 font-medium">Name</th>
+                  <th className="text-left px-3 py-3 font-medium">Metric</th>
+                  <th className="text-left px-3 py-3 font-medium">Scope</th>
+                  <th className="text-left px-3 py-3 font-medium">Threshold</th>
+                  <th className="text-left px-3 py-3 font-medium">Targets</th>
+                  <th className="text-left px-3 py-3 font-medium">Enabled</th>
+                  <th className="text-right px-3 py-3 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rules.map(r => (
                   <tr key={r.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <Bell size={14} style={{ color: 'var(--color-primary)' }} />
-                        <span className="font-medium">{r.name}</span>
+                    <td className="px-3 py-3 max-w-[170px] 2xl:max-w-[260px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Bell size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+                        <span className="font-medium block truncate" title={r.name}>{r.name}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                         style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
                         {METRIC_LABELS[r.metric] || r.metric}
                       </span>
                     </td>
-                    <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{scopeDisplay(r)}</td>
-                    <td className="px-4 py-3 font-medium">{formatValue(r.metric, r.threshold)}</td>
-                    <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
-                      <div className="flex items-center gap-1 max-w-xs">
+                    <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{scopeDisplay(r)}</td>
+                    <td className="px-3 py-3 font-medium">{formatValue(r.metric, r.threshold)}</td>
+                    <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                      <div className="flex items-center gap-1 max-w-[140px] 2xl:max-w-xs">
                         <span className="truncate block">{targetSummary(r)}</span>
                         <button
                           onClick={() => { navigator.clipboard.writeText(r.targets); setCopiedId(r.id); setTimeout(() => setCopiedId(null), 2000); }}
@@ -284,7 +284,7 @@ export default function CostAlerts() {
                         </button>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3">
                       <button onClick={() => toggleEnabled(r)}
                         className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
                         style={{ background: r.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
@@ -292,7 +292,7 @@ export default function CostAlerts() {
                           style={{ transform: r.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                       </button>
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
                       <button onClick={() => openEdit(r)}
                         className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                         style={{ borderColor: 'var(--color-border)' }} title="Edit">
@@ -324,7 +324,7 @@ export default function CostAlerts() {
               className="px-3 py-2 rounded-lg border text-sm"
               style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }} />
           </div>
-          <div className="rounded-xl border overflow-hidden"
+          <div className="rounded-xl border overflow-x-auto"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             {events.length === 0 ? (
               <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>
@@ -335,29 +335,29 @@ export default function CostAlerts() {
               <table className="w-full text-sm">
                 <thead>
                   <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                    <th className="text-left px-4 py-3 font-medium">Time</th>
-                    <th className="text-left px-4 py-3 font-medium">Date</th>
-                    <th className="text-left px-4 py-3 font-medium">Rule</th>
-                    <th className="text-left px-4 py-3 font-medium">Scope</th>
-                    <th className="text-left px-4 py-3 font-medium">Metric</th>
-                    <th className="text-left px-4 py-3 font-medium">Actual</th>
-                    <th className="text-left px-4 py-3 font-medium">Threshold</th>
-                    <th className="text-left px-4 py-3 font-medium">Status</th>
+                    <th className="text-left px-3 py-3 font-medium">Time</th>
+                    <th className="text-left px-3 py-3 font-medium">Date</th>
+                    <th className="text-left px-3 py-3 font-medium">Rule</th>
+                    <th className="text-left px-3 py-3 font-medium">Scope</th>
+                    <th className="text-left px-3 py-3 font-medium">Metric</th>
+                    <th className="text-left px-3 py-3 font-medium">Actual</th>
+                    <th className="text-left px-3 py-3 font-medium">Threshold</th>
+                    <th className="text-left px-3 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {events.map(e => (
                     <tr key={e.id} style={{ borderTop: '1px solid var(--color-border)' }}>
-                      <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDate(e.created_at)}</td>
-                      <td className="px-4 py-3">{String(e.date).slice(0, 10)}</td>
-                      <td className="px-4 py-3 font-medium">{e.rule_name}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                      <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatDate(e.created_at)}</td>
+                      <td className="px-3 py-3">{String(e.date).slice(0, 10)}</td>
+                      <td className="px-3 py-3 font-medium">{e.rule_name}</td>
+                      <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                         {e.scope === 'GLOBAL' ? 'Global' : `${e.scope}: ${e.scope_value}`}
                       </td>
-                      <td className="px-4 py-3">{METRIC_LABELS[e.metric] || e.metric}</td>
-                      <td className="px-4 py-3 font-medium">{formatValue(e.metric, e.actual_value)}</td>
-                      <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatValue(e.metric, e.threshold)}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">{METRIC_LABELS[e.metric] || e.metric}</td>
+                      <td className="px-3 py-3 font-medium">{formatValue(e.metric, e.actual_value)}</td>
+                      <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>{formatValue(e.metric, e.threshold)}</td>
+                      <td className="px-3 py-3">
                         <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                           style={{ background: '#e6f4ea', color: '#1a7f37' }}>
                           {e.status}

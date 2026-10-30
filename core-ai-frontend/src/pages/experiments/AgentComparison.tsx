@@ -277,7 +277,7 @@ export default function AgentComparison() {
             </select>
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="mt-3 overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs" style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}>
@@ -372,7 +372,7 @@ export default function AgentComparison() {
             </span>
           </div>
 
-          <div className="mt-3 overflow-hidden rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
+          <div className="mt-3 overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--color-border)' }}>
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs" style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}>

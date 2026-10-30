@@ -317,7 +317,7 @@ export default function HubCalls() {
 
       {error && <div className="mb-4 rounded border border-red-300 bg-red-50 p-2 text-sm text-red-700">{error}</div>}
 
-      <div className="rounded-xl border overflow-hidden" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+      <div className="rounded-xl border overflow-x-auto" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--color-bg-tertiary)' }}>

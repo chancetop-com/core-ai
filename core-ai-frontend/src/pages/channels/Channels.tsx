@@ -162,7 +162,7 @@ export default function Channels() {
         </div>
       </div>
 
-      <div className="rounded-xl border overflow-hidden"
+      <div className="rounded-xl border overflow-x-auto"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         {loading ? (
           <div className="text-center py-12" style={{ color: 'var(--color-text-secondary)' }}>Loading...</div>
@@ -175,29 +175,29 @@ export default function Channels() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-                <th className="text-left px-4 py-3 font-medium">Channel</th>
-                <th className="text-left px-4 py-3 font-medium">Webhook URL</th>
-                <th className="text-left px-4 py-3 font-medium">Type</th>
-                <th className="text-left px-4 py-3 font-medium">Mode</th>
-                <th className="text-left px-4 py-3 font-medium">Agent</th>
-                <th className="text-left px-4 py-3 font-medium">Session TTL</th>
-                <th className="text-left px-4 py-3 font-medium">Enabled</th>
-                <th className="text-left px-4 py-3 font-medium">Auth</th>
-                <th className="text-right px-4 py-3 font-medium">Actions</th>
+                <th className="text-left px-3 py-3 font-medium">Channel</th>
+                <th className="text-left px-3 py-3 font-medium">Webhook URL</th>
+                <th className="text-left px-3 py-3 font-medium">Type</th>
+                <th className="text-left px-3 py-3 font-medium">Mode</th>
+                <th className="text-left px-3 py-3 font-medium">Agent</th>
+                <th className="text-left px-3 py-3 font-medium">Session TTL</th>
+                <th className="text-left px-3 py-3 font-medium">Enabled</th>
+                <th className="text-left px-3 py-3 font-medium">Auth</th>
+                <th className="text-right px-3 py-3 font-medium">Actions</th>
               </tr>
             </thead>
             <tbody>
               {channels.map(c => (
                 <tr key={c.channelId} style={{ borderTop: '1px solid var(--color-border)' }}>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Radio size={14} style={{ color: 'var(--color-primary)' }} />
-                      <span className="font-medium">{c.channelId}</span>
+                  <td className="px-3 py-3 max-w-[180px] 2xl:max-w-[240px]">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Radio size={14} className="shrink-0" style={{ color: 'var(--color-primary)' }} />
+                      <span className="font-medium truncate" title={c.channelId}>{c.channelId}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-3" style={{ maxWidth: '280px' }}>
+                  <td className="px-3 py-3 max-w-[190px] 2xl:max-w-[360px]">
                     <div className="flex items-center gap-1 min-w-0">
-                      <code className="text-xs px-1.5 py-0.5 rounded block truncate"
+                      <code className="text-xs px-1.5 py-0.5 rounded block truncate" title={c.webhookUrl}
                         style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)', fontSize: '11px' }}>
                         {c.webhookUrl}
                       </code>
@@ -210,13 +210,13 @@ export default function Channels() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                       style={{ background: 'var(--color-primary-bg)', color: 'var(--color-primary)' }}>
                       {typeLabel(c.channelType)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                       style={(c.mode || 'conversation') === 'output'
                         ? { background: '#fef2cd', color: '#946800' }
@@ -224,13 +224,15 @@ export default function Channels() {
                       {(c.mode || 'conversation') === 'output' ? 'Output' : 'Conversation'}
                     </span>
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
-                    {c.agentId ? (agentMap[c.agentId]?.name ?? c.agentId) : '-'}
+                  <td className="px-3 py-3 max-w-[180px] 2xl:max-w-[220px]" style={{ color: 'var(--color-text-secondary)' }}>
+                    <span className="block truncate" title={c.agentId ? (agentMap[c.agentId]?.name ?? c.agentId) : undefined}>
+                      {c.agentId ? (agentMap[c.agentId]?.name ?? c.agentId) : '-'}
+                    </span>
                   </td>
-                  <td className="px-4 py-3" style={{ color: 'var(--color-text-secondary)' }}>
+                  <td className="px-3 py-3" style={{ color: 'var(--color-text-secondary)' }}>
                     {c.sessionTtlMinutes || 60}m
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <button onClick={() => toggleEnabled(c)}
                       className="relative inline-flex items-center w-10 h-5 rounded-full cursor-pointer transition-colors"
                       style={{ background: c.enabled ? 'var(--color-primary)' : 'var(--color-bg-tertiary)' }}>
@@ -238,13 +240,13 @@ export default function Channels() {
                         style={{ transform: c.enabled ? 'translateX(22px)' : 'translateX(2px)' }} />
                     </button>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     <span className="inline-block px-2 py-0.5 rounded text-xs font-medium"
                       style={{ background: c.requireAuth === false ? '#fef2cd' : 'var(--color-bg-tertiary)', color: c.requireAuth === false ? '#946800' : 'var(--color-text-secondary)' }}>
                       {c.requireAuth === false ? 'Off' : 'On'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right">
                     <button onClick={() => openEdit(c)}
                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg border cursor-pointer mr-1"
                       style={{ borderColor: 'var(--color-border)' }} title="Edit">
