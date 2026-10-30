@@ -10,6 +10,7 @@ import { marked } from 'marked';
 import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
+import { createRichCard, parseRichCard } from './richCard';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 
 marked.setOptions({ gfm: true, breaks: true });
@@ -618,6 +619,8 @@ interface SessionView {
   approvalBar: HTMLElement | null;
   pendingApproval: { callId: string; toolName: string } | null;
   planBlock: HTMLElement | null;
+  /** Quick replies and rich cards: both answer with the next user message and lock while a turn runs. */
+  cards: Array<{ setBusy: (busy: boolean) => void }>;
   pendingMemoryRun: { wrapper: HTMLElement; ui: MemoryUi; run: MemoryRun } | null;
   status: string;
   historyLoaded: boolean;
@@ -660,6 +663,7 @@ function createSessionView(sessionId: string | null): SessionView {
     approvalBar: null,
     pendingApproval: null,
     planBlock: null,
+    cards: [],
     pendingMemoryRun: null,
     status: 'idle',
     // A draft window has nothing on disk; a real session loads its history before events apply.
@@ -3725,15 +3729,18 @@ function renderPlanUpdate(view: SessionView, event: any): void {
   scrollTranscript(view);
 }
 
-async function sendCurrent(): Promise<void> {
-  const text = composerInput?.value ?? '';
-  const attachments = [...pendingAttachments];
+async function sendCurrent(override?: { text: string }): Promise<void> {
+  const text = override?.text ?? composerInput?.value ?? '';
+  // A card reply answers the card only: a draft and its staged attachments stay for the user's own message.
+  const attachments = override ? [] : [...pendingAttachments];
   if (!text.trim() && attachments.length === 0) return;
   if (!state.sessionId && !(await startNewSession(text.trim() || baseNameOf(attachments[0]?.path ?? '')))) return;
   const view = ensureSessionView(state.sessionId);
-  composerInput!.value = '';
-  composerAutoGrow?.();
-  surface.draft = '';
+  if (!override) {
+    composerInput!.value = '';
+    composerAutoGrow?.();
+    surface.draft = '';
+  }
   addMessageBubble(view, 'user', text.trim(), attachments);
   scrollTranscript(view, true);
   // A message typed while the turn runs steers it: seal the current assistant bubble and continue
@@ -3776,6 +3783,10 @@ function ensureStreaming(view: SessionView): StreamingState {
     view.transcript.append(wrapper);
     view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
+    // A rich card emitted mid-turn seals the bubble it arrived under; the turn clock chip rides along
+    // into this new bubble so "Running · Ns" keeps ticking next to the live output.
+    const clockChip = view.turnClock?.chip;
+    if (clockChip && !clockChip.isConnected && view.streaming.chips) view.streaming.chips.prepend(clockChip);
     scrollTranscript(view);
   }
   return view.streaming;
@@ -4460,6 +4471,10 @@ function applyComposerStatus(status: string): void {
 /** The composer mirrors whichever session window is on screen. */
 function setViewStatus(view: SessionView, status: string): void {
   view.status = status.toLowerCase();
+  // Cards answer with the next user message: a running turn must not accept them (the web renderer
+  // disables the same controls), and an idle view must give them back.
+  const busy = view.status === 'running';
+  for (const card of view.cards) card.setBusy(busy);
   if (view === mountedView) applyComposerStatus(view.status);
 }
 
@@ -4673,7 +4688,35 @@ function handleCustomEvent(view: SessionView, event: any): void {
     handleMemoryEvent(view, event);
     return;
   }
-  if (event.name !== 'quick_replies') return;
+  if (event.name === 'quick_replies') {
+    renderQuickReplies(view, event);
+    return;
+  }
+  // Any other event may carry the platform's generic card; without one it renders nothing here.
+  const card = parseRichCard(event.card);
+  if (!card) return;
+  const handle = createRichCard(card, {
+    openLink: (url) => void window.coreai.openExternal(url),
+    resolveImage: (url) => resolveCardImageUrl(url),
+    send: (value) => sendCardResponse(view, value),
+  }, view.status === 'running');
+  if (!handle) return;
+  // A card is a transcript block, not part of the reply: seal the bubble it interrupted so text that
+  // follows starts below the card, and drop that bubble when the card was the turn's first output.
+  const interrupted = view.streaming;
+  if (interrupted) {
+    const wrapper = interrupted.bubble.parentElement;
+    const empty = !hasAssistantContent(wrapper, interrupted);
+    resetStreaming(view);
+    if (wrapper && empty) wrapper.remove();
+  }
+  view.cards.push(handle);
+  view.transcript.append(handle.root);
+  scrollTranscript(view);
+}
+
+/** Standard quick-reply buttons: clicking one sends its value as the next user message. */
+function renderQuickReplies(view: SessionView, event: any): void {
   let payload: any;
   try {
     payload = JSON.parse(event.data ?? '{}');
@@ -4683,20 +4726,44 @@ function handleCustomEvent(view: SessionView, event: any): void {
   const options: any[] = Array.isArray(payload.options) ? payload.options : [];
   if (!options.length) return;
   const row = el('div', 'quick-replies');
+  const buttons: HTMLButtonElement[] = [];
   for (const option of options) {
     const label = typeof option === 'string' ? option : (option.label ?? option.text ?? option.value ?? '');
     const value = typeof option === 'string' ? option : (option.value ?? option.label ?? option.text ?? '');
     if (!label) continue;
     const button = el('button', 'btn small', String(label));
-    button.onclick = () => {
-      if (composerInput) {
-        composerInput.value = String(value);
-        void sendCurrent();
-      }
-    };
+    button.onclick = () => sendCardResponse(view, String(value));
+    buttons.push(button);
     row.append(button);
   }
+  if (!buttons.length) return;
+  const busy = view.status === 'running';
+  for (const button of buttons) button.disabled = busy;
+  view.cards.push({ setBusy: (value) => { for (const button of buttons) button.disabled = value; } });
   view.transcript.append(row);
+  scrollTranscript(view);
+}
+
+/** A card/quick-reply answer is the next user message — same send path as typed text, no attachments. */
+function sendCardResponse(view: SessionView, value: string): void {
+  if (!value.trim()) return;
+  if (view !== mountedView || view.status === 'running') return;
+  void sendCurrent({ text: value });
+}
+
+/**
+ * Only the in-app protocol and https can load under the renderer CSP. A workspace path is rewritten
+ * to the artifact protocol so an agent can point a card at an image it just generated.
+ */
+function resolveCardImageUrl(raw: string): string | null {
+  const url = raw.trim();
+  if (!url) return null;
+  if (/^coreai-artifact:/i.test(url)) return url;
+  if (/^data:image\//i.test(url)) return url;
+  if (/^https:\/\//i.test(url)) return url;
+  if (!state.workspace || !state.artifactBase) return null;
+  const relative = workspaceRelativePath(state.workspace, decodePathRef(url));
+  return relative ? artifactUrl(relative) : null;
 }
 
 // ---------- panels ----------

@@ -948,6 +948,94 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
 
+/* ---------- rich cards (the platform card companion field of a custom event) ---------- */
+
+.rich-card {
+  max-width: 900px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg-panel);
+  padding: 10px 12px 11px;
+  margin: 0 0 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rich-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.rich-card-text { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.rich-card-text.tone-info, .rich-card-kv-value.tone-info { color: var(--accent); }
+.rich-card-text.tone-success, .rich-card-kv-value.tone-success { color: var(--green); }
+.rich-card-text.tone-warning, .rich-card-kv-value.tone-warning { color: var(--amber); }
+.rich-card-text.tone-danger, .rich-card-kv-value.tone-danger { color: var(--red); }
+
+.rich-card-kv { display: flex; flex-direction: column; gap: 3px; }
+.rich-card-kv-row { display: flex; gap: 12px; font-size: 13px; }
+.rich-card-kv-label { flex: 0 0 auto; min-width: 96px; color: var(--muted); }
+.rich-card-kv-value { min-width: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+
+.rich-card-table { display: flex; flex-direction: column; gap: 4px; }
+.rich-card-table-scroll { overflow-x: auto; }
+.rich-card-table table { border-collapse: collapse; font-size: 12.5px; }
+.rich-card-table th, .rich-card-table td { border: 1px solid var(--border); padding: 4px 8px; text-align: left; vertical-align: top; }
+.rich-card-table th { background: var(--bg-elev); color: var(--muted); font-weight: 500; }
+.rich-card-more, .rich-card-caption { font-size: 11.5px; color: var(--faint); }
+
+.rich-card-image { display: flex; flex-direction: column; gap: 4px; }
+.rich-card-image img { max-width: 100%; max-height: 480px; object-fit: contain; border: 1px solid var(--border); border-radius: 7px; }
+
+.rich-card-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.rich-card-button {
+  --rc-tone: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  border: 1px solid var(--rc-tone);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--rc-tone) 14%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.rich-card-button:hover:not(:disabled) { background: color-mix(in srgb, var(--rc-tone) 24%, transparent); }
+.rich-card-button:disabled { opacity: 0.45; cursor: default; }
+.rich-card-button.external::after { content: "↗"; font-size: 10px; opacity: 0.8; }
+.rich-card-button.tone-neutral { --rc-tone: var(--border-strong); }
+.rich-card-button.tone-success { --rc-tone: var(--green); }
+.rich-card-button.tone-warning { --rc-tone: var(--amber); }
+.rich-card-button.tone-danger { --rc-tone: var(--red); }
+
+.rich-card-form { display: flex; flex-direction: column; gap: 9px; }
+.rich-card-field { display: flex; flex-direction: column; gap: 3px; }
+.rich-card-label { font-size: 11.5px; color: var(--muted); }
+.rich-card-label .required { color: var(--red); }
+.rich-card-input {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 8px;
+  outline: none;
+}
+.rich-card-input:focus { border-color: var(--border-strong); }
+.rich-card-input:disabled { opacity: 0.55; }
+textarea.rich-card-input { resize: vertical; min-height: 54px; }
+select.rich-card-input[multiple] { padding: 3px; }
+.rich-card-choice-group { display: flex; flex-direction: column; gap: 3px; }
+.rich-card-choice { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text); }
+.rich-card-hint { font-size: 11.5px; color: var(--faint); }
+.rich-card-error { font-size: 11.5px; color: var(--red); }
+.rich-card-error:empty { display: none; }
+.rich-card-form-footer { display: flex; align-items: center; gap: 8px; }
+.rich-card-submitted { font-size: 11.5px; color: var(--muted); }
+.rich-card-divider { border: 0; border-top: 1px solid var(--border); margin: 0; }
+
 /* ---------- approval bar ---------- */
 
 .approval-bar {
