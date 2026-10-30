@@ -31,7 +31,7 @@ import { createOcgPort, OcgHttpPort } from './channels/OcgClient';
 import { ocgAck, ocgReply, ocgSend, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
 import { BuiltinSkills } from './skills/BuiltinSkills';
-import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, withExecutableOnPath } from './skills/RuntimeTools';
+import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
@@ -175,6 +175,23 @@ function resolveBridgeWorkspace(message?: OcgInboundMessage): string {
   const last = settings.lastWorkspace;
   if (last && existsSync(last)) return last;
   return defaultWorkspace();
+}
+/** The bridge is only a client: OCG's daemon does not survive a reboot, so recover it before polling. */
+async function ensureOcgDaemon(): Promise<void> {
+  try {
+    ocgAdmin ??= new OcgHttpPort();
+    const health = await ocgAdmin.health();
+    if (health.ok) return;
+    console.log(`[channels] OCG daemon is not reachable (${health.error ?? 'unknown'}); starting it`);
+    const result = await runOcg(['daemon', 'start'], 150_000);
+    if (result.code === 0) {
+      console.log('[channels] OCG daemon started');
+    } else {
+      console.error(`[channels] OCG daemon start failed: ${result.stderr || result.stdout}`);
+    }
+  } catch (error) {
+    console.error(`[channels] OCG daemon start failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 function sessionsDirOf(workspace: string): string { return path.join(os.homedir(), '.core-ai', 'sessions', path.basename(workspace) || 'root'); }
 function firstTextPart(content: unknown): string | null {
@@ -866,7 +883,12 @@ function registerIpc(): void {
     const value = enabled === true;
     settings.channelsBridgeEnabled = value;
     saveSettings();
-    if (value) channelBridge?.start(); else channelBridge?.stop();
+    if (value) {
+      channelBridge?.start();
+      void ensureOcgDaemon();
+    } else {
+      channelBridge?.stop();
+    }
     return channelBridge?.snapshot() ?? null;
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
@@ -1049,7 +1071,10 @@ else {
       onSession: (event) => send('channels:session', event),
       log: (line) => console.log(`[channels] ${line}`),
     });
-    if (settings.channelsBridgeEnabled) channelBridge.start();
+    if (settings.channelsBridgeEnabled) {
+      channelBridge.start();
+      void ensureOcgDaemon();
+    }
     registerIpc();
     registerArtifactProtocol();
     configureBackgroundScheduling();
