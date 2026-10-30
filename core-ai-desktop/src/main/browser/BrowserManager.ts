@@ -194,7 +194,10 @@ export class BrowserManager implements BrowserHost {
     const url = resolveNavigationInput(input ?? '');
     if (!url) throw new Error(`blocked URL (the embedded browser only visits http/https): ${input}`);
     const wc = this.webContentsOf(tab);
-    if (wc) void wc.loadURL(url).catch(() => undefined);
+    if (wc) {
+      void wc.loadURL(url).catch(() => undefined);
+      this.focusPage(tab);
+    }
     return this.status();
   }
 
@@ -203,6 +206,7 @@ export class BrowserManager implements BrowserHost {
     const wc = this.webContentsOf(tab);
     if (wc?.navigationHistory.canGoBack()) {
       wc.navigationHistory.goBack();
+      this.focusPage(tab);
     }
     return this.status();
   }
@@ -212,13 +216,18 @@ export class BrowserManager implements BrowserHost {
     const wc = this.webContentsOf(tab);
     if (wc?.navigationHistory.canGoForward()) {
       wc.navigationHistory.goForward();
+      this.focusPage(tab);
     }
     return this.status();
   }
 
   reload(): BrowserStatus {
     const tab = this.requireActiveTab();
-    this.webContentsOf(tab)?.reload();
+    const wc = this.webContentsOf(tab);
+    if (wc) {
+      wc.reload();
+      this.focusPage(tab);
+    }
     return this.status();
   }
 
@@ -330,6 +339,10 @@ export class BrowserManager implements BrowserHost {
         sandbox: true,
         // Background tabs must keep rendering: the agent screenshots tabs the user is not on.
         backgroundThrottling: false,
+        // A child WebContentsView otherwise takes keyboard focus when its navigation commits, which
+        // pulls the caret out of the chat composer while an agent drives a tab. Only a click or a
+        // toolbar navigation may hand the page the keyboard.
+        focusOnNavigation: false,
       },
     });
     const wc = view.webContents;
@@ -582,6 +595,15 @@ export class BrowserManager implements BrowserHost {
     const tab = this.tabById(targetId);
     if (!tab) throw new Error('No target with given id found');
     return tab;
+  }
+
+  /**
+   * Toolbar navigation is the user's own action, so the page keeps the keyboard. Tab navigation
+   * itself never focuses the page (focusOnNavigation is off) — that is what stops an agent-driven
+   * load from pulling the caret out of the chat composer.
+   */
+  private focusPage(tab: Tab): void {
+    this.webContentsOf(tab)?.focus();
   }
 
   private titleOf(tab: Tab): string {

@@ -303,6 +303,12 @@ export class CdpBridge {
   }
 
   async runTargetCommand(targetId: string, method: string, params: Record<string, unknown>): Promise<unknown> {
+    // The pane is one window: "bring to front" means activating the tab, not moving keyboard focus
+    // into the page. Forwarding it to Chromium focuses the child view and blurs the chat composer.
+    if (method === 'Page.bringToFront') {
+      this.options.host.activateTarget(targetId);
+      return {};
+    }
     let timer: NodeJS.Timeout | null = null;
     try {
       return await Promise.race([

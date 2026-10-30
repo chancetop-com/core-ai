@@ -213,6 +213,27 @@ test('browser socket: targets, attach, session commands, events, unknown session
   }
 });
 
+test('Page.bringToFront activates the tab instead of focusing the page', async () => {
+  const host = createHost();
+  const bridge = await startBridge(host);
+  try {
+    const version = await (await fetch(`${bridge.endpointUrl()}/json/version`)).json();
+    const conn = connectWs(version.webSocketDebuggerUrl);
+    await conn.ready;
+
+    const attach = await conn.send('Target.attachToTarget', { targetId: '1', flatten: true });
+    const sessionId = attach.result.sessionId;
+    host.calls.length = 0;
+
+    const reply = await conn.send('Page.bringToFront', {}, sessionId);
+    assert.deepEqual(reply.result, {});
+    assert.deepEqual(host.calls, [['activate', '1']]);
+    conn.socket.close();
+  } finally {
+    await bridge.stop();
+  }
+});
+
 test('create/close target lifecycle drops the sessions bound to it', async () => {
   const host = createHost();
   const bridge = await startBridge(host);
