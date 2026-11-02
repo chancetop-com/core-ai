@@ -86,6 +86,18 @@ public class Usage {
         this.totalTokens = totalTokens;
     }
 
+    public void subtract(Usage usage) {
+        this.promptTokens -= usage.promptTokens;
+        this.completionTokens -= usage.completionTokens;
+        this.totalTokens -= usage.totalTokens;
+        if (usage.promptTokensDetails != null && this.promptTokensDetails != null) {
+            this.promptTokensDetails.cachedTokens -= usage.promptTokensDetails.cachedTokens;
+        }
+        if (usage.completionTokensDetails != null && this.completionTokensDetails != null) {
+            this.completionTokensDetails.reasoningTokens -= usage.completionTokensDetails.reasoningTokens;
+        }
+    }
+
     public void add(Usage usage) {
         this.promptTokens += usage.promptTokens;
         this.completionTokens += usage.completionTokens;

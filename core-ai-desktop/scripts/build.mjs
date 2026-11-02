@@ -42,6 +42,7 @@ const targets = [
   { entryPoints: ['src/renderer/localPaths.ts'], outfile: 'dist/test/localPaths.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/artifactList.ts'], outfile: 'dist/test/artifactList.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/richCard.ts'], outfile: 'dist/test/richCard.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/renderer/transcript/reducer.ts'], outfile: 'dist/test/transcript.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/app.ts'], outfile: 'dist/renderer/app.js', platform: 'browser', target: 'chrome120', format: 'iife' },
 ];
 

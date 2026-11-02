@@ -29,10 +29,15 @@ public final class PendingUserInputQueue {
      * to the session queue instead of losing the message.
      */
     public boolean offer(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+        return offer(message, variables, attachedContents, null, null);
+    }
+
+    public boolean offer(String message, Map<String, Object> variables, List<AttachedContent> attachedContents,
+                         String turnId, Long steerSeq) {
         lock.lock();
         try {
             if (closed || maxSize > 0 && inputs.size() >= maxSize) return false;
-            inputs.addLast(new PendingUserInput(message, variables, attachedContents));
+            inputs.addLast(new PendingUserInput(message, variables, attachedContents, turnId, steerSeq));
             return true;
         } finally {
             lock.unlock();
@@ -87,7 +92,8 @@ public final class PendingUserInputQueue {
         }
     }
 
-    public record PendingUserInput(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
+    public record PendingUserInput(String message, Map<String, Object> variables, List<AttachedContent> attachedContents,
+                                   String turnId, Long steerSeq) {
         public PendingUserInput {
             variables = variables == null ? null : new HashMap<>(variables);
             attachedContents = attachedContents == null ? null : new ArrayList<>(attachedContents);

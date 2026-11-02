@@ -1,6 +1,7 @@
 package ai.core.cli.agent;
 
 import ai.core.agent.Agent;
+import ai.core.cli.appserver.WorkspaceDirs;
 import ai.core.cli.command.HandlerContext;
 import ai.core.cli.command.MemoryCommandHandler;
 import ai.core.cli.command.ReplCommandHandler;
@@ -21,15 +22,30 @@ import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.schedule.CronExpression;
 import ai.core.session.InProcessAgentSession;
+import ai.core.session.SessionLoad;
+import ai.core.session.SessionLoads;
+import ai.core.session.SessionLock;
 import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
+import ai.core.session.TurnPersistence;
+import ai.core.session.transcript.TranscriptKinds;
+import ai.core.session.transcript.TranscriptMetadata;
+import ai.core.session.transcript.TranscriptReader;
+import ai.core.session.transcript.TranscriptRecord;
+import ai.core.session.transcript.TranscriptRecorder;
+import ai.core.session.transcript.TranscriptStore;
 import ai.core.tool.tools.ScheduledTaskTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -66,6 +82,7 @@ public class AgentSessionRunner {
     private final boolean autoApproveAll;
     private final String sessionId;
     private final SessionManager sessionManager;
+    private final SessionPersistence sessionPersistence;
     private final ToolPermissionStore permissionStore;
     private final MemoryCommandHandler memoryCommand;
     private final boolean memoryEnabled;
@@ -75,6 +92,8 @@ public class AgentSessionRunner {
     private final int backgroundWaitSeconds;
     private final ai.core.agent.budget.RunBudget runBudget;
     private final Path workspace;
+    private final Path sessionsDir;
+    private TranscriptRecorder recorder;
     private final AtomicReference<String> switchSessionId = new AtomicReference<>();
     private final SessionUpgradeHandler upgradeHandler;
     private final ModelPicker modelPicker;
@@ -90,9 +109,11 @@ public class AgentSessionRunner {
         this.autoApproveAll = config.autoApproveAll;
         this.sessionId = config.sessionId;
         this.sessionManager = config.sessionManager;
+        this.sessionPersistence = config.sessionPersistence;
         this.permissionStore = config.permissionStore;
         ModelRegistry modelRegistry = config.modelRegistry;
         this.workspace = Path.of((String) agent.getExecutionContext().getCustomVariables().get("workspace"));
+        this.sessionsDir = WorkspaceDirs.ensure(this.workspace);
         this.memoryCommand = config.memoryEnabled
                 ? new MemoryCommandHandler(ui, config.memory, MemoryTriggerService.getInstance(workspace))
                 : null;
@@ -113,14 +134,24 @@ public class AgentSessionRunner {
     }
 
     public String run() {
-        if (agent.hasPersistenceProvider()) {
-            agent.load(sessionId);
-            if (memoryEnabled && !agent.getHistory().isEmpty()) {
-                MemoryTriggerService.getInstance(workspace).resetCursorToEnd();
-            }
+        var lock = acquireLock();
+        if (lock == null) return null;
+        try {
+            return runLocked();
+        } finally {
+            lock.close();
         }
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+    }
+
+    private String runLocked() {
+        if (!loadSession()) return null;
+        if (agent.hasPersistenceProvider() && memoryEnabled && !agent.getHistory().isEmpty()) {
+            MemoryTriggerService.getInstance(workspace).resetCursorToEnd();
+        }
+        recorder = createRecorder();
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore, false, recorder);
         var listener = new CliEventListener(ui, session, agent);
+        session.onEvent(recorder);
         session.onEvent(listener);
         setupCompressionListener(listener);
         commands = new ReplCommandHandler(ui, workspace);
@@ -143,11 +174,21 @@ public class AgentSessionRunner {
     }
 
     public void runPrompt(String prompt) {
-        if (agent.hasPersistenceProvider()) {
-            agent.load(sessionId);
+        var lock = acquireLock();
+        if (lock == null) return;
+        try {
+            runPromptLocked(prompt);
+        } finally {
+            lock.close();
         }
-        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore);
+    }
+
+    private void runPromptLocked(String prompt) {
+        if (!loadSession()) return;
+        recorder = createRecorder();
+        var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore, false, recorder);
         var listener = new CliEventListener(ui, session, agent);
+        session.onEvent(recorder);
         session.onEvent(listener);
         setupCompressionListener(listener);
         printBanner();
@@ -180,14 +221,61 @@ public class AgentSessionRunner {
         ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
 
-    private void saveSessionIfPersistable() {
-        if (!agent.hasPersistenceProvider()) return;
-        if (!agent.hasUserMessage()) return;
-        try {
-            agent.save(sessionId);
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to save session, sessionId={}", sessionId, e);
+    private SessionLock acquireLock() {
+        var acquire = SessionLock.tryAcquire(sessionsDir, sessionId, "cli");
+        if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
+            var holder = busy.holder() == null ? "another process" : busy.holder().describe();
+            ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "Session is in use by " + holder + "."
+                    + AnsiTheme.RESET + "\n");
+            return null;
         }
+        return ((SessionLock.AcquireResult.Acquired) acquire).lock();
+    }
+
+    private TranscriptRecorder createRecorder() {
+        var store = TranscriptStore.open(sessionsDir, sessionId);
+        var metadata = new TranscriptMetadata(workspace.toString(), VersionUtil.getCurrentVersion(), "cli",
+            agent::getModel, this::thinkingLevel);
+        var transcript = new TranscriptRecorder(store, metadata, () -> agent.getMessages().size(), record -> {
+        });
+        var seed = transcript.sessionStart(agent.getMessages());
+        agent.seedTokenUsage(seed.toUsage(), seed.costUsd());
+        return transcript;
+    }
+
+    private String thinkingLevel() {
+        var effort = AgentSessionRunnerHelper.loadReasoningEffortFromExtraBody();
+        return effort == null ? "off" : effort.name().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean loadSession() {
+        if (!agent.hasPersistenceProvider()) return true;
+        var load = SessionLoads.load(sessionPersistence, sessionId);
+        switch (load) {
+            case SessionLoad.Ok ok -> agent.restore(sessionId, ok.domain());
+            case SessionLoad.Missing ignored -> {
+            }
+            case SessionLoad.Corrupt corrupt -> {
+                ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + "Session file is corrupted: " + sessionId
+                        + " (" + corrupt.reason() + ")." + AnsiTheme.RESET + "\n");
+                return false;
+            }
+            case SessionLoad.NewerVersion newer -> {
+                ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + "Session was written by a newer core-ai version: "
+                        + sessionId + " (version " + newer.version() + "). Upgrade core-ai first." + AnsiTheme.RESET + "\n");
+                return false;
+            }
+            case SessionLoad.IoError error -> {
+                ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + "Failed to read session " + sessionId + ": "
+                        + error.cause().getMessage() + AnsiTheme.RESET + "\n");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private void saveSessionIfPersistable() {
+        TurnPersistence.save(agent, sessionId, LOGGER, "session close");
     }
 
     /**
@@ -268,6 +356,189 @@ public class AgentSessionRunner {
     }
 
     private void printSessionHistory() {
+        if (printTranscriptHistory()) return;
+        printAgentHistory();
+    }
+
+    /**
+     * Restores the last turns from the transcript, so a resumed session shows thinking, tool calls and
+     * notices — not just the text the agent history kept. Falls back to history when no record exists.
+     */
+    private boolean printTranscriptHistory() {
+        if (recorder == null) return false;
+        var store = recorder.store();
+        var reader = new TranscriptReader(store);
+        var records = new ArrayList<TranscriptRecord>();
+        long before = store.maxSeq() + 1;
+        boolean truncated = false;
+        for (int pages = 0; pages < 100; pages++) {
+            var page = reader.page(before, 100, 2000);
+            if (page.records().isEmpty()) break;
+            records.addAll(0, page.records());
+            if (page.nextBeforeSeq() == null) break;
+            before = page.nextBeforeSeq();
+            if (pages == 99) truncated = true;
+        }
+        if (records.isEmpty()) return false;
+        var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
+        var cancelledSteers = cancelledSteerSeqs(records);
+        boolean printed = false;
+        for (var record : records) {
+            if (record.kind == null) continue;
+            switch (record.kind) {
+                case TranscriptKinds.TURN_START -> printed |= printTurnInputs(record);
+                case TranscriptKinds.STEER -> {
+                    if (TranscriptKinds.STEER_PENDING.equals(record.text("state"))
+                        && !cancelledSteers.contains(record.seq)) {
+                        printed |= printPrompt(recordText(record, "text"));
+                    }
+                }
+                case TranscriptKinds.ASSISTANT_TEXT -> {
+                    var text = recordText(record, "text");
+                    if (text != null && !text.isBlank()) {
+                        printAssistantText(renderer, text);
+                        printed = true;
+                    }
+                }
+                case TranscriptKinds.REASONING -> {
+                    var text = recordText(record, "reasoning");
+                    if (text != null && !text.isBlank()) {
+                        printReasoning(text);
+                        printed = true;
+                    }
+                }
+                case TranscriptKinds.TOOL_START -> {
+                    ui.printStreamingChunk("\n  " + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + ' '
+                        + record.text("toolName") + "\n");
+                    printPreview(record, "arguments");
+                    printed = true;
+                }
+                case TranscriptKinds.TOOL_RESULT -> {
+                    var status = record.text("status");
+                    var color = "success".equals(status) ? AnsiTheme.SEPARATOR : AnsiTheme.ERROR;
+                    ui.printStreamingChunk("  " + color + (status == null ? "done" : status) + AnsiTheme.RESET + "\n");
+                    printPreview(record, "result");
+                    printed = true;
+                }
+                case TranscriptKinds.NOTICE, TranscriptKinds.COMPRESSION, TranscriptKinds.SANDBOX -> {
+                    var text = firstText(record, "text", "message");
+                    if (text != null && !text.isBlank()) {
+                        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + text.strip() + AnsiTheme.RESET + "\n");
+                        printed = true;
+                    }
+                }
+                case TranscriptKinds.ERROR -> {
+                    var text = recordText(record, "message");
+                    if (text != null && !text.isBlank()) {
+                        ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + text.strip() + AnsiTheme.RESET + "\n");
+                        printed = true;
+                    }
+                }
+                case TranscriptKinds.TURN_COMPLETE -> {
+                    var summary = turnSummary(record);
+                    if (summary != null) {
+                        ui.printStreamingChunk("  " + AnsiTheme.MUTED + summary + AnsiTheme.RESET + "\n");
+                    }
+                }
+                default -> {
+                }
+            }
+        }
+        if (truncated) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  … earlier turns are in the transcript" + AnsiTheme.RESET + "\n");
+        }
+        if (printed) {
+            ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
+        }
+        return printed;
+    }
+
+    private Set<Long> cancelledSteerSeqs(List<TranscriptRecord> records) {
+        var cancelled = new HashSet<Long>();
+        for (var record : records) {
+            if (!TranscriptKinds.STEER.equals(record.kind)) continue;
+            if (!TranscriptKinds.STEER_CANCELLED.equals(record.text("state"))) continue;
+            var ref = record.number("ref_seq");
+            if (ref != null) cancelled.add(ref);
+        }
+        return cancelled;
+    }
+
+    private boolean printTurnInputs(TranscriptRecord record) {
+        var inputs = record.objects("inputs");
+        if (inputs == null) return false;
+        var source = record.text("source");
+        boolean printed = false;
+        for (var input : inputs) {
+            var value = input.get("text");
+            if (value == null) value = input.get("text_preview");
+            if (value == null) continue;
+            var prefix = TranscriptKinds.SOURCE_TASK_NOTE.equals(source)
+                ? AnsiTheme.MUTED + "[task] " + AnsiTheme.RESET : "";
+            printed |= printPrompt(prefix + value);
+        }
+        return printed;
+    }
+
+    private boolean printPrompt(String text) {
+        if (text == null || text.isBlank()) return false;
+        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + text.strip() + "\n");
+        return true;
+    }
+
+    private void printAssistantText(StreamingMarkdownRenderer renderer, String text) {
+        var writer = ui.getWriter();
+        writer.print("\n" + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + " ");
+        writer.flush();
+        renderer.setFirstLineOffset(AnsiTheme.displayWidth("● "));
+        renderer.processChunk(text.replace("\n", "\n  "));
+        renderer.flush();
+        renderer.reset();
+        writer.println();
+    }
+
+    private void printReasoning(String text) {
+        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "◌ thinking" + AnsiTheme.RESET + "\n");
+        var body = text.strip();
+        if (body.length() > 4000) body = body.substring(0, 4000) + "…";
+        for (var line : body.split("\n")) {
+            ui.printStreamingChunk("  " + AnsiTheme.MUTED + line + AnsiTheme.RESET + "\n");
+        }
+    }
+
+    private void printPreview(TranscriptRecord record, String field) {
+        var text = recordText(record, field);
+        if (text == null || text.isBlank()) return;
+        var line = text.strip().split("\n", 2)[0];
+        if (line.length() > 160) line = line.substring(0, 160) + "…";
+        ui.printStreamingChunk("    " + AnsiTheme.MUTED + line + AnsiTheme.RESET + "\n");
+    }
+
+    private String turnSummary(TranscriptRecord record) {
+        var parts = new java.util.ArrayList<String>();
+        var duration = record.number("duration_ms");
+        if (duration != null) parts.add(String.format(Locale.ROOT, "%.1fs", duration / 1000.0));
+        var input = record.number("input_tokens");
+        var output = record.number("output_tokens");
+        if (input != null || output != null) {
+            parts.add((input == null ? 0 : input) + " in / " + (output == null ? 0 : output) + " out");
+        }
+        var cost = record.decimal("cost_usd");
+        if (cost != null && cost > 0) parts.add(String.format(Locale.ROOT, "$%.4f", cost));
+        return parts.isEmpty() ? null : "✦ " + String.join(" · ", parts);
+    }
+
+    private String recordText(TranscriptRecord record, String field) {
+        var text = record.text(field);
+        return text != null ? text : record.text(field + "_preview");
+    }
+
+    private String firstText(TranscriptRecord record, String first, String second) {
+        var text = recordText(record, first);
+        return text != null ? text : recordText(record, second);
+    }
+
+    private void printAgentHistory() {
         var messages = agent.getHistory();
         boolean hasHistory = false;
         var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
@@ -378,7 +649,7 @@ public class AgentSessionRunner {
 
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
         var sessionHandler = new AgentSessionRunnerCommandHandler(
-                ui, agent, sessionId, sessionManager, modelPicker, memoryCommand);
+                ui, agent, sessionId, sessionManager, modelPicker, memoryCommand, recorder);
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId,
                 new HandlerContext(commands, memoryCommand, memoryEnabled), sessionHandler,

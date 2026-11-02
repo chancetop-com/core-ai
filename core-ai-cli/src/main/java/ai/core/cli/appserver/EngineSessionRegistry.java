@@ -10,22 +10,33 @@ import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemoryExtractionReport;
 import ai.core.cli.memory.MemoryTriggerService;
-import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProviderType;
 import ai.core.session.InProcessAgentSession;
+import ai.core.session.SessionLoad;
+import ai.core.session.SessionLoadState;
+import ai.core.session.SessionLoads;
+import ai.core.session.SessionLock;
 import ai.core.session.SessionPersistence;
+import ai.core.session.SessionTitle;
+import ai.core.cli.upgrade.VersionUtil;
 import ai.core.session.ToolPermissionStore;
+import ai.core.session.TurnPersistence;
+import ai.core.session.transcript.TranscriptMetadata;
+import ai.core.session.transcript.TranscriptRecord;
+import ai.core.session.transcript.TranscriptRecorder;
+import ai.core.session.transcript.TranscriptStore;
+import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
-import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -41,6 +52,7 @@ public class EngineSessionRegistry {
     private static final NotificationSink NOOP_SINK = (method, params) -> { };
     private static final Function<String, String> NO_INTERACTIVE_USER =
             question -> "(no interactive user is attached to this session; proceed with best judgment)";
+    private static final long IDLE_TIMEOUT_MILLIS = 30L * 60L * 1000L;
     private static final int DEFAULT_LIST_LIMIT = 50;
     private static final int MAX_LIST_LIMIT = 200;
     private static final int DEFAULT_HISTORY_LIMIT = 100;
@@ -54,6 +66,12 @@ public class EngineSessionRegistry {
 
     private static RpcException sessionNotFound(String id) {
         return RpcException.business("SESSION_NOT_FOUND", "session not found: " + id, "sessionId", id);
+    }
+
+    private static RpcException sessionBusy(SessionLock.AcquireResult.Busy busy) {
+        var holder = busy.holder();
+        var description = holder == null ? "another process" : holder.describe();
+        return RpcException.business("SESSION_BUSY", "session is in use by " + description);
     }
 
     private final EngineBootstrap bootstrap;
@@ -71,12 +89,48 @@ public class EngineSessionRegistry {
     public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier) {
         this.bootstrap = bootstrap;
         this.sinkSupplier = sinkSupplier;
-        this.titles = new SessionTitleStore(Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
-        this.models = new EngineSessionModels(bootstrap.result.llmProviders, Path.of(PathUtils.sessionsDir(bootstrap.workspace)));
+        this.titles = new SessionTitleStore(bootstrap.sessionsDir);
+        this.models = new EngineSessionModels(bootstrap.result.llmProviders, bootstrap.sessionsDir);
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
         if (bootstrap.memoryEnabled) {
             MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(this::publishMemoryActivity);
         }
+        retainSidecars();
+    }
+
+    /** Titles/models may outlive a crashed session file; keep only entries that still own a file or a live lock. */
+    private void retainSidecars() {
+        Set<String> liveIds = new HashSet<>();
+        for (var info : bootstrap.sessionManager.listSessions()) liveIds.add(info.id());
+        for (var id : titles.ids()) {
+            if (SessionLock.isHeld(bootstrap.sessionsDir, id)) liveIds.add(id);
+        }
+        for (var id : models.ids()) {
+            if (SessionLock.isHeld(bootstrap.sessionsDir, id)) liveIds.add(id);
+        }
+        titles.retainOnly(liveIds);
+        models.retainOnly(liveIds);
+        retainTranscripts();
+    }
+
+    /** Transcript sidecars without a snapshot or a live lock are leftovers of a crashed process. */
+    private void retainTranscripts() {
+        try (var stream = java.nio.file.Files.list(bootstrap.sessionsDir)) {
+            for (var path : stream.toList()) {
+                var id = transcriptId(path.getFileName().toString());
+                if (id == null) continue;
+                if (bootstrap.sessionPersistence.exists(id) || SessionLock.isHeld(bootstrap.sessionsDir, id)) continue;
+                TranscriptStore.delete(bootstrap.sessionsDir, id);
+            }
+        } catch (java.io.IOException e) {
+            LOGGER.warn("failed to clean transcript sidecars: {}", e.getMessage());
+        }
+    }
+
+    private static String transcriptId(String name) {
+        if (name.endsWith(".events.jsonl")) return name.substring(0, name.length() - ".events.jsonl".length());
+        if (name.endsWith(".blobs")) return name.substring(0, name.length() - ".blobs".length());
+        return null;
     }
 
     public void setApprovalPolicy(String policy) {
@@ -110,25 +164,35 @@ public class EngineSessionRegistry {
     }
 
     public ObjectNode create(ObjectNode params) {
-        var id = CliAppHelper.defaultSessionId("cli-");
         var title = Params.optionalText(params, "title");
-        if (title != null) {
-            titles.set(id, title.strip());
+        for (int attempt = 0; attempt < 3; attempt++) {
+            var id = CliAppHelper.defaultSessionId("cli-");
+            var acquire = SessionLock.tryAcquire(bootstrap.sessionsDir, id, "engine");
+            if (!(acquire instanceof SessionLock.AcquireResult.Acquired acquired)) continue;
+            var lock = acquired.lock();
+            EngineSession session;
+            try {
+                session = build(id, false, lock);
+            } catch (RuntimeException e) {
+                lock.close();
+                throw e;
+            }
+            if (sessions.putIfAbsent(id, session) == null) {
+                if (title != null) {
+                    titles.set(id, title.strip());
+                }
+                var node = Params.object();
+                node.put("sessionId", id);
+                return node;
+            }
+            session.close();
         }
-        sessions.put(id, build(id, false));
-        var node = Params.object();
-        node.put("sessionId", id);
-        return node;
+        throw RpcException.business("SESSION_ID_EXHAUSTED", "could not allocate a unique session id");
     }
 
     public ObjectNode resume(ObjectNode params) {
-        var id = Params.requiredText(params, "sessionId");
-        var session = sessions.computeIfAbsent(id, sessionId -> {
-            if (bootstrap.sessionPersistence.load(sessionId).isEmpty()) {
-                throw sessionNotFound(sessionId);
-            }
-            return build(sessionId, true);
-        });
+        var id = SessionIds.check(Params.requiredText(params, "sessionId"));
+        var session = resumeSession(id);
         var node = Params.object();
         node.put("sessionId", id);
         node.put("status", session.running() ? "running" : "idle");
@@ -136,9 +200,92 @@ public class EngineSessionRegistry {
         return node;
     }
 
+    public ObjectNode close(ObjectNode params) {
+        var id = SessionIds.check(Params.requiredText(params, "sessionId"));
+        var session = sessions.remove(id);
+        if (session != null) {
+            try {
+                session.save();
+            } finally {
+                session.close();
+            }
+        }
+        var node = Params.object();
+        node.put("sessionId", id);
+        node.put("closed", session != null);
+        return node;
+    }
+
+    private EngineSession resumeSession(String id) {
+        var existing = sessions.get(id);
+        if (existing != null) {
+            existing.touch();
+            return existing;
+        }
+        if (!bootstrap.sessionPersistence.exists(id)) throw sessionNotFound(id);
+        var acquire = SessionLock.tryAcquire(bootstrap.sessionsDir, id, "engine");
+        if (acquire instanceof SessionLock.AcquireResult.Busy busy) throw sessionBusy(busy);
+        var lock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
+        try {
+            var session = build(id, true, lock);
+            var raced = sessions.putIfAbsent(id, session);
+            if (raced != null) {
+                session.close();
+                raced.touch();
+                return raced;
+            }
+            return session;
+        } catch (RuntimeException e) {
+            lock.close();
+            throw e;
+        }
+    }
+
+    void evictIdle() {
+        long cutoff = System.currentTimeMillis() - IDLE_TIMEOUT_MILLIS;
+        for (var entry : sessions.entrySet()) {
+            var session = entry.getValue();
+            if (!session.idle(cutoff)) continue;
+            if (!sessions.remove(entry.getKey(), session)) continue;
+            try {
+                session.save();
+            } catch (RuntimeException e) {
+                LOGGER.warn("failed to save idle session {}: {}", session.id(), e.getMessage());
+            } finally {
+                try {
+                    session.close();
+                } catch (RuntimeException e) {
+                    LOGGER.warn("failed to close idle session {}: {}", session.id(), e.getMessage());
+                }
+            }
+        }
+    }
+
+    public ObjectNode save(ObjectNode params) {
+        var session = requireSession(params);
+        var node = Params.object();
+        node.put("sessionId", session.id());
+        node.put("persisted", session.save());
+        return node;
+    }
+
     /** Used by the scheduler: rebuild a persisted session quietly, never create a new one. */
     EngineSession resumeQuietly(String sessionId) {
-        return sessionFileExists(sessionId) ? sessions.computeIfAbsent(sessionId, id -> build(id, true)) : null;
+        if (!sessionFileExists(sessionId)) return null;
+        try {
+            return resumeSession(sessionId);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to resume session quietly, sessionId={}, error={}", sessionId, e.getMessage());
+            return null;
+        }
+    }
+
+    public ObjectNode records(ObjectNode params) {
+        return requireSession(params).records(params);
+    }
+
+    public ObjectNode recordPayload(ObjectNode params) {
+        return requireSession(params).recordPayload(params);
     }
 
     public ObjectNode history(ObjectNode params) {
@@ -206,8 +353,8 @@ public class EngineSessionRegistry {
     }
 
     public ObjectNode rename(ObjectNode params) {
-        var id = Params.requiredText(params, "sessionId");
-        if (!sessions.containsKey(id) && bootstrap.sessionPersistence.load(id).isEmpty()) {
+        var id = SessionIds.check(Params.requiredText(params, "sessionId"));
+        if (!sessions.containsKey(id) && !bootstrap.sessionPersistence.exists(id)) {
             throw sessionNotFound(id);
         }
         titles.set(id, Params.requiredText(params, "title").strip());
@@ -219,26 +366,38 @@ public class EngineSessionRegistry {
 
     public ObjectNode delete(ObjectNode params) {
         var ids = Params.stringArray(params, "sessionIds");
-        var toDelete = new ArrayList<String>();
-        for (var id : ids) {
+        for (var rawId : ids) {
+            var id = SessionIds.check(rawId);
             var live = sessions.remove(id);
             if (live != null) {
                 live.close();
             }
-            titles.remove(id);
-            models.remove(id);
-            titleCache.remove(id);
-            var removedTasks = bootstrap.scheduledTaskStore.list(id);
-            if (!removedTasks.isEmpty()) {
-                bootstrap.scheduledTaskStore.deleteBySession(id);
-                removedTasks.forEach(task -> EngineScheduler.sendChangedNotification(sinkSupplier.get(), task.id, "session_deleted"));
+            var acquire = SessionLock.tryAcquire(bootstrap.sessionsDir, id, "engine");
+            if (acquire instanceof SessionLock.AcquireResult.Busy busy) throw sessionBusy(busy);
+            var lock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
+            try {
+                titles.remove(id);
+                models.remove(id);
+                titleCache.remove(id);
+                TurnPersistence.clear(id);
+                var removedTasks = bootstrap.scheduledTaskStore.list(id);
+                if (!removedTasks.isEmpty()) {
+                    bootstrap.scheduledTaskStore.deleteBySession(id);
+                    removedTasks.forEach(task -> EngineScheduler.sendChangedNotification(sinkSupplier.get(), task.id, "session_deleted"));
+                }
+                if (sessionFileExists(id)) {
+                    bootstrap.sessionPersistence.delete(List.of(id));
+                }
+                TranscriptStore.delete(bootstrap.sessionsDir, id);
+                Housekeeping.deleteDir(stagingDir(id));
+            } finally {
+                lock.close();
+                try {
+                    java.nio.file.Files.deleteIfExists(bootstrap.sessionsDir.resolve(id + ".lock"));
+                } catch (java.io.IOException e) {
+                    LOGGER.debug("failed to remove session lock file: {}", id, e);
+                }
             }
-            if (sessionFileExists(id)) {
-                toDelete.add(id);
-            }
-        }
-        if (!toDelete.isEmpty()) {
-            bootstrap.sessionPersistence.delete(toDelete);
         }
         if (scheduler != null) scheduler.refreshSnapshot();
         return Params.object();
@@ -270,6 +429,7 @@ public class EngineSessionRegistry {
 
     /** Applies a model switch to one session (or all live sessions) and returns the affected ids. */
     public List<String> applyModel(String model, LLMProviderType type, String sessionId) {
+        if (sessionId != null) SessionIds.check(sessionId);
         List<EngineSession> targets;
         if (sessionId == null) {
             targets = List.copyOf(sessions.values());
@@ -292,9 +452,14 @@ public class EngineSessionRegistry {
         for (var session : sessions.values()) {
             try {
                 session.save();
-                session.close();
             } catch (RuntimeException e) {
-                LOGGER.warn("failed to close session {}: {}", session.id(), e.getMessage());
+                LOGGER.warn("failed to save session {}: {}", session.id(), e.getMessage());
+            } finally {
+                try {
+                    session.close();
+                } catch (RuntimeException e) {
+                    LOGGER.warn("failed to close session {}: {}", session.id(), e.getMessage());
+                }
             }
         }
         sessions.clear();
@@ -320,7 +485,7 @@ public class EngineSessionRegistry {
         }
     }
 
-    private EngineSession build(String sessionId, boolean load) {
+    private EngineSession build(String sessionId, boolean load, SessionLock lock) {
         // Helpers are re-read per session, not from the bootstrap snapshot: on a live engine a
         // helper change in helpers.json must apply to the next session (design-agent-helpers §4.1).
         var helpers = HelperConfigStore.defaultStore().list();
@@ -337,14 +502,41 @@ public class EngineSessionRegistry {
                 bootstrap.mediaModelCatalog, null, bootstrap.disabledTools);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
-            agent.load(sessionId);
+            switch (SessionLoads.load(bootstrap.sessionPersistence, sessionId)) {
+                case SessionLoad.Ok ok -> agent.restore(sessionId, ok.domain());
+                case SessionLoad.Missing ignored -> throw sessionNotFound(sessionId);
+                case SessionLoad.Corrupt corrupt -> throw RpcException.business("SESSION_CORRUPT",
+                        "session file is corrupted: " + sessionId, "reason", corrupt.reason());
+                case SessionLoad.NewerVersion newer -> throw RpcException.business("SESSION_NEWER_VERSION",
+                        "session was written by a newer core-ai version: " + sessionId,
+                        "version", String.valueOf(newer.version()));
+                case SessionLoad.IoError error -> throw new RpcException(RpcException.INTERNAL_ERROR,
+                        "failed to read session: " + sessionId, null, error.cause());
+            }
         }
         models.applyStored(sessionId, agent);
-        var inProcess = new InProcessAgentSession(sessionId, agent, "full".equals(approvalPolicy), permissionStore());
         var sink = sinkSupplier.get();
-        inProcess.onEvent(new EventBridge(sessionId, sink != null ? sink : NOOP_SINK));
+        var notification = sink != null ? sink : NOOP_SINK;
+        var store = TranscriptStore.open(bootstrap.sessionsDir, sessionId);
+        var metadata = new TranscriptMetadata(bootstrap.workspace.toString(), VersionUtil.getCurrentVersion(), clientType,
+            agent::getModel, null);
+        var recorder = new TranscriptRecorder(store, metadata, () -> agent.getMessages().size(),
+            record -> notifyRecord(notification, sessionId, record));
+        var seed = recorder.sessionStart(agent.getMessages());
+        agent.seedTokenUsage(seed.toUsage(), seed.costUsd());
+        var inProcess = new InProcessAgentSession(sessionId, agent, "full".equals(approvalPolicy), permissionStore(),
+            false, recorder);
+        inProcess.onEvent(new EventBridge(sessionId, notification));
+        inProcess.onEvent(recorder);
         DesktopSessionTools.install(bootstrap.workspace, agent);
-        return new EngineSession(sessionId, agent, inProcess, memoryProvider);
+        return new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
+    }
+
+    private static void notifyRecord(NotificationSink sink, String sessionId, TranscriptRecord record) {
+        var params = Params.object();
+        params.put("sessionId", sessionId);
+        params.set("record", JsonUtil.OBJECT_MAPPER.valueToTree(record));
+        sink.notify("session/record", params);
     }
 
     private ToolPermissionStore permissionStore() {
@@ -360,18 +552,22 @@ public class EngineSessionRegistry {
     }
 
     private EngineSession requireSession(ObjectNode params) {
-        var id = Params.requiredText(params, "sessionId");
+        var id = SessionIds.check(Params.requiredText(params, "sessionId"));
         var session = sessions.get(id);
         if (session == null) {
-            throw sessionNotFound(id);
+            if (!bootstrap.sessionPersistence.exists(id)) throw sessionNotFound(id);
+            session = resumeSession(id);
         }
+        session.touch();
         return session;
     }
 
     private ObjectNode summary(SessionPersistence.SessionInfo info) {
         var node = Params.object();
+        var title = resolvedTitle(info);
         node.put("sessionId", info.id());
-        node.put("title", title(info));
+        node.put("title", title.text());
+        node.put("state", stateName(title.state()));
         node.put("updatedAt", info.lastModified().toString());
         var live = sessions.get(info.id());
         node.put("status", live != null && live.running() ? "running" : "idle");
@@ -382,32 +578,42 @@ public class EngineSessionRegistry {
     String sessionTitle(String sessionId) {
         var renamed = titles.title(sessionId);
         if (renamed.isPresent()) return renamed.get();
-        var first = bootstrap.sessionManager.firstUserMessage(sessionId);
-        return first == null || first.isBlank() ? null : truncate(first.strip(), MAX_TITLE_CHARS);
+        var parsed = bootstrap.sessionManager.title(sessionId);
+        if (parsed.text() != null && !parsed.text().isBlank()) {
+            return truncate(parsed.text().strip(), MAX_TITLE_CHARS);
+        }
+        return parsed.state() == SessionLoadState.OK ? null : sessionId;
     }
 
-    private String title(SessionPersistence.SessionInfo info) {
-        var renamed = titles.title(info.id());
-        if (renamed.isPresent()) {
-            return renamed.get();
-        }
+    private SessionTitle resolvedTitle(SessionPersistence.SessionInfo info) {
         var cached = titleCache.get(info.id());
         if (cached != null && cached.updatedAt().equals(info.lastModified())) {
-            return cached.title();
+            return new SessionTitle(cached.text(), cached.state());
         }
-        var first = bootstrap.sessionManager.firstUserMessage(info.id());
-        var resolved = first == null || first.isBlank() ? info.id() : truncate(first.strip(), MAX_TITLE_CHARS);
-        titleCache.put(info.id(), new CachedTitle(info.lastModified(), resolved));
-        return resolved;
+        var renamed = titles.title(info.id());
+        var parsed = bootstrap.sessionManager.title(info.id());
+        var text = renamed.orElseGet(() -> parsed.text() == null || parsed.text().isBlank()
+                ? info.id()
+                : truncate(parsed.text().strip(), MAX_TITLE_CHARS));
+        titleCache.put(info.id(), new CachedTitle(info.lastModified(), text, parsed.state()));
+        return new SessionTitle(text, parsed.state());
+    }
+
+    private static String stateName(SessionLoadState state) {
+        return state.name().toLowerCase(Locale.ROOT);
     }
 
     private boolean sessionFileExists(String id) {
-        return Files.exists(Path.of(PathUtils.sessionsDir(bootstrap.workspace), id + ".data"));
+        return bootstrap.sessionPersistence.exists(id);
+    }
+
+    public boolean sessionExists(String id) {
+        return bootstrap.sessionPersistence.exists(id);
     }
 
     private Path stagingDir(String sessionId) {
         return Path.of(System.getProperty("user.home"), ".core-ai", "app-server", "staging", sessionId);
     }
 
-    private record CachedTitle(Instant updatedAt, String title) { }
+    private record CachedTitle(Instant updatedAt, String text, SessionLoadState state) { }
 }

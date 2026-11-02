@@ -1,6 +1,7 @@
 package ai.core.agent;
 
 import ai.core.agent.internal.AgentHelper;
+import ai.core.session.transcript.TranscriptRecorder;
 
 /**
  * Injects messages accepted while the turn was running. The agent loop calls this only at the top
@@ -16,7 +17,11 @@ final class PendingUserInputInjector {
         // A cancelled tool batch may leave an unanswered tool call; normalize before adding user text.
         MessageNormalizer.normalize(agent);
         var context = agent.getExecutionContext();
+        var recorder = context.getCustomVariables().get(TranscriptRecorder.CONTEXT_KEY);
         for (var input : queue.drain()) {
+            if (recorder instanceof TranscriptRecorder transcript && input.steerSeq() != null) {
+                transcript.steerCommit(input.steerSeq());
+            }
             if (input.variables() != null && !input.variables().isEmpty()) {
                 context.getCustomVariables().putAll(input.variables());
             }

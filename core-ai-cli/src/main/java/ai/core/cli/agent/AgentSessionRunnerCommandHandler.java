@@ -11,6 +11,11 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
 import ai.core.session.SessionManager;
+import ai.core.session.TurnPersistence;
+import ai.core.session.transcript.TranscriptReader;
+import ai.core.session.transcript.TranscriptRecorder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +31,7 @@ import java.util.Locale;
  * @author stephen
  */
 class AgentSessionRunnerCommandHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentSessionRunnerCommandHandler.class);
     private static final DateTimeFormatter DISPLAY_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     private final TerminalUI ui;
@@ -34,22 +40,32 @@ class AgentSessionRunnerCommandHandler {
     private final SessionManager sessionManager;
     private final ModelPicker modelPicker;
     private final MemoryCommandHandler memoryCommand;
+    private final TranscriptRecorder recorder;
 
     AgentSessionRunnerCommandHandler(TerminalUI ui, Agent agent, String sessionId,
                                       SessionManager sessionManager, ModelPicker modelPicker,
-                                      MemoryCommandHandler memoryCommand) {
+                                      MemoryCommandHandler memoryCommand, TranscriptRecorder recorder) {
         this.ui = ui;
         this.agent = agent;
         this.sessionId = sessionId;
         this.sessionManager = sessionManager;
         this.modelPicker = modelPicker;
         this.memoryCommand = memoryCommand;
+        this.recorder = recorder;
+    }
+
+    void handleSave() {
+        boolean persisted = TurnPersistence.save(agent, sessionId, LOGGER, "manual save");
+        ui.printStreamingChunk(persisted
+                ? "  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Session saved.\n"
+                : "  " + AnsiTheme.WARNING + "Session could not be saved; it will be retried on the next turn.\n" + AnsiTheme.RESET);
     }
 
     void handleStats() {
         var u = agent.getCurrentTokenUsage();
         String model = modelPicker.getCurrentModelName();
-        int turns = (int) agent.getHistory().stream().filter(m -> m.role == RoleType.USER).count();
+        int turns = recorder == null ? (int) agent.getHistory().stream().filter(m -> m.role == RoleType.USER).count()
+                : new TranscriptReader(recorder.store()).totalTurns();
         ui.printStreamingChunk(String.format("%n  %sSession Stats%s%n  Model:       %s%n  Session:     %s%n  Turns:       %d%n  Tokens:      %,d (prompt: %,d, completion: %,d)%n  Tools:       %d available%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET, model, sessionId, turns, (long) u.getTotalTokens(), (long) u.getPromptTokens(), (long) u.getCompletionTokens(), agent.getToolCalls().size()));
     }
@@ -189,12 +205,15 @@ class AgentSessionRunnerCommandHandler {
         }
         messages.clear();
         messages.addAll(compressed);
-        if (agent.hasPersistenceProvider()) agent.save(sessionId);
+        boolean persisted = TurnPersistence.save(agent, sessionId, LOGGER, "compact");
         if (memoryCommand != null) {
             MemorySectionManager.reloadAgentMemorySection(agent, memoryCommand.getMemoryProvider());
         }
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Compacted: "
                 + beforeCount + " → " + messages.size() + " messages\n\n");
+        if (!persisted) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Session not saved; it will be retried on the next turn.\n" + AnsiTheme.RESET);
+        }
     }
 
     private void printNothingToCompact(Compression compression) {
@@ -220,9 +239,22 @@ class AgentSessionRunnerCommandHandler {
             history.remove(message);
         }
         removedMessages.clear();
-        if (agent.hasPersistenceProvider()) agent.save(sessionId);
+        boolean persisted = TurnPersistence.save(agent, sessionId, LOGGER, "undo");
+        rewindTranscript(idx);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Undone " + removed
                 + " message(s): " + AnsiTheme.MUTED + preview + AnsiTheme.RESET + "\n\n");
+        if (!persisted) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  Session not saved; it will be retried on the next turn.\n" + AnsiTheme.RESET);
+        }
+    }
+
+    private void rewindTranscript(int lastUserIndex) {
+        if (recorder == null) return;
+        var start = recorder.lastTurnStartMessageCount();
+        if (start == null || lastUserIndex < start) return;
+        var usage = recorder.rewindLast();
+        if (usage == null || usage.isEmpty()) return;
+        agent.subtractTokenUsage(usage.toUsage(), usage.costUsd());
     }
 
     String showSessionPicker() {
@@ -239,7 +271,13 @@ class AgentSessionRunnerCommandHandler {
                 var s = sessions.get(i);
                 String marker = s.id().equals(sessionId) ? " (current)" : "";
                 String timeStr = LocalDateTime.ofInstant(s.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-                String title = sessionManager.firstUserMessage(s.id());
+                var parsed = sessionManager.title(s.id());
+                String title = switch (parsed.state()) {
+                    case CORRUPT -> "(unreadable)";
+                    case NEWER_VERSION -> "(needs newer core-ai)";
+                    case IO_ERROR -> "(unavailable)";
+                    default -> parsed.text();
+                };
                 String display = title != null && !title.isBlank() ? TextUtil.truncateByDisplayWidth(title.replaceAll("[\\r\\n]+", " "), 50) : s.id();
                 labels.add(display + " (" + timeStr + ")" + marker);
             }

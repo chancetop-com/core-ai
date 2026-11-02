@@ -15,9 +15,13 @@ import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.context.CompressionReport;
+import ai.core.session.transcript.TranscriptInput;
+import ai.core.session.transcript.TranscriptKinds;
+import ai.core.session.transcript.TranscriptRecorder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -44,21 +48,28 @@ public class InProcessAgentSession implements AgentSession {
     private volatile String currentTurnId;
     private volatile long turnStartedAtMs;
     private final SessionCustomEventEmitter customEventEmitter;
+    private final TranscriptRecorder recorder;
     public final SessionFootprintTracker footprint;
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
-        this(sessionId, agent, autoApproveAll, permissionStore, false);
+        this(sessionId, agent, autoApproveAll, permissionStore, false, null);
     }
 
     /**
      * Constructor that skips loading from persistence (used when session is already loaded).
      */
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore, boolean skipLoad) {
+        this(sessionId, agent, autoApproveAll, permissionStore, skipLoad, null);
+    }
+
+    public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore,
+                                 boolean skipLoad, TranscriptRecorder recorder) {
         this.sessionId = sessionId;
         this.agent = agent;
+        this.recorder = recorder;
         this.footprint = new SessionFootprintTracker(agent);
         this.permissionGate = new PermissionGate();
         this.commandQueue = new SessionCommandQueue();
-        this.turnInput = new SessionTurnInput(commandQueue, agent, sessionId);
+        this.turnInput = new SessionTurnInput(agent);
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
         if (context.getSubagentOutputSinkFactory() != null) {
@@ -71,8 +82,15 @@ public class InProcessAgentSession implements AgentSession {
         agent.setAuthenticated(true);
         this.customEventEmitter = new SessionCustomEventEmitter(sessionId, this::dispatch, turnActive::get);
         context.getCustomVariables().put(CustomEventEmitter.CONTEXT_KEY, customEventEmitter);
+        if (recorder != null) {
+            context.getCustomVariables().put(TranscriptRecorder.CONTEXT_KEY, recorder);
+        }
         setupCompressionListener();
         // Skip loading when skipLoad is true (session already loaded by caller)
+    }
+
+    public TranscriptRecorder recorder() {
+        return recorder;
     }
 
     @Override
@@ -97,9 +115,14 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
-        if (turnInput.offer(message, variables, attachedContents)) {
-            debug("message accepted for the running turn");
-            return;
+        if (turnInput.isActive() && (recorder == null || recorder.hasOpenTurn())) {
+            var input = new TranscriptInput(message, attachedContents, turnId);
+            var steerSeq = recorder == null ? null : recorder.steerPending(input);
+            if (turnInput.offer(message, variables, attachedContents, turnId, steerSeq)) {
+                debug("message accepted for the running turn");
+                return;
+            }
+            if (recorder != null && steerSeq != null) recorder.steerCancel(steerSeq);
         }
         if (commandQueue.enqueueUserInput(message, variables, attachedContents, turnId)) return;
         logger.warn("message refused, session queue is full, sessionId={}", sessionId);
@@ -153,9 +176,16 @@ public class InProcessAgentSession implements AgentSession {
             debug("agent run failed: " + e);
             logger.warn("agent session run failed, sessionId={}", sessionId, e);
             persistOnFailure();
-            dispatchTerminal(ErrorEvent.of(sessionId, e.getMessage(), "", turnId), SessionStatus.ERROR);
+            var error = ErrorEvent.of(sessionId, e.getMessage(), "", turnId);
+            if (recorder != null) recorder.failTurn(error, SessionTurnUsage.of(agent, before));
+            dispatchTerminal(error, SessionStatus.ERROR);
         } finally {
-            turnInput.end(input);
+            for (var pending : turnInput.end()) {
+                if (recorder != null && pending.steerSeq() != null) recorder.steerCancel(pending.steerSeq());
+                if (!commandQueue.enqueueUserInput(pending.message(), pending.variables(), pending.attachedContents(), pending.turnId())) {
+                    logger.warn("failed to requeue message accepted during the turn, sessionId={}", sessionId);
+                }
+            }
             turnDeadline.cancel(false);
             threadUnbind.run();
             turnToken.disconnect();
@@ -169,6 +199,24 @@ public class InProcessAgentSession implements AgentSession {
         return new SessionTurnUsage.Before(usage.getPromptTokens(), usage.getCompletionTokens(),
                 agent.getCurrentCostUsd(),
                 usage.getPromptTokensDetails() != null ? usage.getPromptTokensDetails().cachedTokens : 0);
+    }
+
+    private void beginUserTurn(List<SessionCommandQueue.QueuedMessage> values) {
+        if (recorder == null) return;
+        var inputs = new ArrayList<TranscriptInput>();
+        for (var value : values) {
+            inputs.add(new TranscriptInput(value.value(), value.attachedContents(), value.turnId()));
+        }
+        recorder.beginTurn(inputs, TranscriptKinds.SOURCE_USER, agent.getModel(), null);
+    }
+
+    private void beginTaskTurn(List<SessionCommandQueue.QueuedMessage> values) {
+        if (recorder == null) return;
+        var inputs = new ArrayList<TranscriptInput>();
+        for (var value : values) {
+            inputs.add(new TranscriptInput(value.value(), null, null));
+        }
+        recorder.beginTurn(inputs, TranscriptKinds.SOURCE_TASK_NOTE, agent.getModel(), null);
     }
 
     private void persistOnFailure() {
@@ -190,6 +238,7 @@ public class InProcessAgentSession implements AgentSession {
             context.getCustomVariables().putAll(newVariables);
         }
         context.setAttachedContents(lastMessage.attachedContents());
+        beginUserTurn(values);
         try {
             result = agent.run(combined, context);
         } catch (RuntimeException e) {
@@ -221,6 +270,7 @@ public class InProcessAgentSession implements AgentSession {
         var xml = String.join("\n", values.stream().map(SessionCommandQueue.QueuedMessage::value).toList());
         debug("injecting task notifications");
         String result;
+        beginTaskTurn(values);
         try {
             agent.injectUserMessage(xml);
             result = agent.continueWithInjectedMessage();
@@ -304,6 +354,7 @@ public class InProcessAgentSession implements AgentSession {
     public void approveToolCall(String callId, ApprovalDecision decision) {
         logger.debug("approveToolCall: callId={}, decision={}, sessionId={}", callId, decision, sessionId);
         permissionGate.respond(callId, decision);
+        if (recorder != null) recorder.approval(callId, decision);
     }
 
     /**
@@ -343,10 +394,12 @@ public class InProcessAgentSession implements AgentSession {
         // dispatchTerminal is a CAS, so whichever side gets there first is the only one that fires.
         if (turnActive.get()) {
             logger.warn("session closed while a turn was still running, aborting it, sessionId={}", sessionId);
+            TurnPersistence.save(agent, sessionId, logger, "forced close");
             var cancelled = TurnCompleteEvent.cancelled(sessionId, agent.getOutput());
             cancelled.turnId = currentTurnId;
             dispatchTerminal(cancelled, SessionStatus.IDLE);
         }
+        if (recorder != null) recorder.close();
     }
 
     public void setOnIdle(Runnable onIdle) {
@@ -404,6 +457,7 @@ public class InProcessAgentSession implements AgentSession {
         if (!turnActive.compareAndSet(true, false)) return;
         if (turnEnd instanceof TurnCompleteEvent turnComplete) {
             turnComplete.durationMs = System.currentTimeMillis() - turnStartedAtMs;
+            if (recorder != null) recorder.completeTurn(turnComplete);
         }
         dispatch(turnEnd);
         dispatch(StatusChangeEvent.of(sessionId, status));

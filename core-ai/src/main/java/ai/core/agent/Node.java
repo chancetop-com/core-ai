@@ -139,6 +139,16 @@ public abstract class Node<T extends Node<T>> {
         return this.currentCostUsd;
     }
 
+    public void seedTokenUsage(Usage usage, double costUsd) {
+        this.currentTokenUsage.add(usage);
+        this.currentCostUsd += costUsd;
+    }
+
+    public void subtractTokenUsage(Usage usage, double costUsd) {
+        this.currentTokenUsage.subtract(usage);
+        this.currentCostUsd -= costUsd;
+    }
+
     public Node<?> getParentNode() {
         return this.parent;
     }

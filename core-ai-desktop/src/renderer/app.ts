@@ -12,6 +12,20 @@ import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import { createRichCard, parseRichCard } from './richCard';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
+import type { TranscriptPage, TranscriptRecord } from './transcript/records';
+import {
+  emptyModel,
+  reduce,
+  reduceAll,
+  type CustomItem,
+  type InputItem,
+  type NoticeItem,
+  type TaskItem,
+  type ToolItem,
+  type TranscriptModel,
+  type Turn,
+} from './transcript/reducer';
+import { reasoningItems, summaryText, textItems } from './transcript/selectors';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -297,6 +311,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   removeAttachment(stagedPath: string): Promise<void>;
   artifactBase(workspace: string): Promise<{ baseUrl: string }>;
   existingArtifacts(workspace: string, relativePaths: string[]): Promise<string[]>;
+  transcriptOpenBlob(sessionId: string, path: string): Promise<{ ok: boolean; error?: string }>;
   browserStart(): Promise<BrowserStatus | null>;
   browserStop(): Promise<BrowserStatus | null>;
   browserStatus(): Promise<BrowserStatus | null>;
@@ -356,7 +371,7 @@ declare global {
 
 type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'schedules' | 'settings';
 
-interface SessionRow { sessionId: string; title?: string; updatedAt?: string; status?: string }
+interface SessionRow { sessionId: string; title?: string; updatedAt?: string; status?: string; state?: string; persistenceFailed?: boolean }
 interface UiTool {
   callId: string;
   name: string;
@@ -626,6 +641,16 @@ interface SessionView {
   historyLoaded: boolean;
   historyLoading: boolean;
   pendingEvents: any[];
+  /** Record-backed history; null until a transcript-capable engine answers. */
+  transcriptData: {
+    records: TranscriptRecord[];
+    seqs: Set<number>;
+    model: TranscriptModel;
+    nextBeforeSeq: number | null;
+    partials: Array<{ turnId: string; side: 'head' | 'tail' }>;
+    source: 'transcript' | 'projection' | 'mixed';
+  } | null;
+  pendingRecords: TranscriptRecord[];
 }
 
 /** The +New conversation has no engine session yet; its blank window is still a view. */
@@ -670,6 +695,8 @@ function createSessionView(sessionId: string | null): SessionView {
     historyLoaded: sessionId == null,
     historyLoading: false,
     pendingEvents: [],
+    transcriptData: null,
+    pendingRecords: [],
   };
   transcript.addEventListener('scroll', () => {
     const distance = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
@@ -1663,6 +1690,15 @@ function renderSessionItems(): void {
   }
 }
 
+function sessionStateLabel(state?: string): string {
+  switch (state) {
+    case 'corrupt': return 'file corrupted';
+    case 'newer_version': return 'needs newer core-ai';
+    case 'io_error': return 'unreadable';
+    default: return 'unavailable';
+  }
+}
+
 function buildSessionRow(session: SessionRow): HTMLElement {
   const active = session.sessionId === state.sessionId;
   const row = el('div', `session-sub-row${active ? ' active' : ''}`);
@@ -1695,6 +1731,15 @@ function buildSessionRow(session: SessionRow): HTMLElement {
   }
   const fullTitle = session.title || session.sessionId;
   item.append(el('span', 'session-title', fullTitle));
+  const broken = session.state && session.state !== 'ok';
+  if (broken) {
+    item.append(el('span', 'session-sub-state', sessionStateLabel(session.state)));
+  }
+  if (session.persistenceFailed) {
+    const dot = el('span', 'session-dot save');
+    dot.title = 'This session was not saved';
+    item.append(dot);
+  }
   const sessionSurface = surfaces.peek(session.sessionId);
   if (sessionSurface?.artifactUnread) {
     const dot = el('span', 'session-dot artifact');
@@ -1712,6 +1757,10 @@ function buildSessionRow(session: SessionRow): HTMLElement {
   if (session.status === 'running') tooltip.push('running');
   item.title = tooltip.join('\n');
   item.onclick = () => {
+    if (broken) {
+      toast(`Session cannot be opened: ${sessionStateLabel(session.state)}`, 'error');
+      return;
+    }
     if (session.sessionId !== state.sessionId) void openSession(session.sessionId);
     else void showConversationView();
   };
@@ -1749,7 +1798,26 @@ function openSessionMenu(anchor: HTMLElement, session: SessionRow): void {
     closeSessionMenu();
     void deleteSession(session);
   };
-  menu.append(rename, remove);
+  if (session.persistenceFailed) {
+    const retry = el('button', 'session-menu-item');
+    retry.append(el('span', undefined, 'Retry save'));
+    retry.onclick = () => {
+      closeSessionMenu();
+      void retrySessionSave(session.sessionId);
+    };
+    menu.append(retry);
+  }
+  const close = el('button', 'session-menu-item');
+  close.append(el('span', undefined, 'Close'));
+  close.onclick = () => {
+    closeSessionMenu();
+    void call('session/close', { sessionId: session.sessionId });
+  };
+  if (session.state && session.state !== 'ok') {
+    menu.append(close, remove);
+  } else {
+    menu.append(rename, close, remove);
+  }
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
   let left = rect.right + 6;
@@ -1808,6 +1876,17 @@ async function commitSessionRename(sessionId: string): Promise<void> {
     void loadSummaries();
   }
   renderSessionItems();
+}
+
+async function retrySessionSave(sessionId: string): Promise<void> {
+  const result = await call('session/save', { sessionId });
+  if (!result) return;
+  const row = state.sessions.find((session) => session.sessionId === sessionId);
+  if (row) {
+    row.persistenceFailed = !result.persisted;
+    renderSessionItems();
+  }
+  toast(result.persisted ? 'Session saved' : 'Session still could not be saved', result.persisted ? '' : 'error');
 }
 
 async function deleteSession(session: SessionRow): Promise<void> {
@@ -2299,12 +2378,19 @@ async function openSession(sessionId: string): Promise<void> {
 
   if (!view.historyLoaded && !view.historyLoading) {
     view.historyLoading = true;
-    const history = await call('session/history', { sessionId: target, limit: 300 });
-    view.historyLoading = false;
+    const transcriptCapable = state.capabilities.includes('transcript');
+    const transcriptLoaded = transcriptCapable ? await loadTranscript(view, target) : false;
     if (findSessionView(target) !== view) return;
+    view.historyLoading = false;
     view.historyLoaded = true;
-    if (history?.messages) {
-      renderHistoryMessages(view, history.messages);
+    if (!transcriptLoaded) {
+      const history = await call('session/history', { sessionId: target, limit: 300 });
+      if (findSessionView(target) !== view) return;
+      if (history?.messages) {
+        renderHistoryMessages(view, history.messages);
+      }
+    } else {
+      for (const record of view.pendingRecords.splice(0)) applyTranscriptRecord(view, record);
     }
     // Events that arrived during the load apply after the history they belong behind.
     for (const buffered of view.pendingEvents.splice(0)) applySessionEvent(view, buffered);
@@ -3684,6 +3770,318 @@ function attachMessageCopy(wrapper: HTMLElement, getText: () => string): void {
   wrapper.append(actions);
 }
 
+// ---------- record-backed transcript (reload) ----------
+
+async function loadTranscript(view: SessionView, sessionId: string, beforeSeq?: number): Promise<boolean> {
+  const params: Record<string, unknown> = { sessionId, turns: 30, maxRecords: 1000 };
+  if (beforeSeq !== undefined) params.beforeSeq = beforeSeq;
+  const page = await call('session/records', params) as TranscriptPage | null;
+  if (!page || !Array.isArray(page.records)) return false;
+  if (!view.transcriptData) {
+    view.transcriptData = {
+      records: [],
+      seqs: new Set(),
+      model: emptyModel(),
+      nextBeforeSeq: null,
+      partials: [],
+      source: page.source ?? 'transcript',
+    };
+  }
+  const data = view.transcriptData;
+  if (beforeSeq === undefined) {
+    data.records = page.records;
+    data.partials = page.partialTurns ?? [];
+  } else {
+    data.records = [...page.records, ...data.records];
+    const merged = new Map(data.partials.map((partial) => [partial.turnId, partial]));
+    for (const partial of page.partialTurns ?? []) merged.set(partial.turnId, partial);
+    const started = new Set(data.records.filter((record) => record.kind === 'turn_start').map((record) => record.turn_id));
+    const sealed = new Set(data.records
+      .filter((record) => record.kind === 'turn_complete' || (record.kind === 'error' && record.terminal === true))
+      .map((record) => record.turn_id));
+    data.partials = [...merged.values()].filter((partial) => {
+      if (partial.side === 'head') return !started.has(partial.turnId);
+      return !sealed.has(partial.turnId);
+    });
+  }
+  data.seqs = new Set(data.records.map((record) => record.seq));
+  data.model = reduceAll(data.records, data.partials);
+  data.nextBeforeSeq = page.next_before_seq ?? null;
+  const projected = data.records.some((record) => record.synthetic === true || record.seq < 0);
+  const real = data.records.some((record) => record.synthetic !== true && record.seq >= 0
+    && record.kind !== 'session_start' && record.kind !== 'rewind');
+  data.source = projected ? (real ? 'mixed' : 'projection') : 'transcript';
+  renderTranscript(view);
+  return true;
+}
+
+async function loadEarlierTranscript(view: SessionView): Promise<void> {
+  const data = view.transcriptData;
+  if (!data || data.nextBeforeSeq == null || !view.sessionId) return;
+  const height = view.transcript.scrollHeight;
+  const top = view.transcript.scrollTop;
+  const loaded = await loadTranscript(view, view.sessionId, data.nextBeforeSeq);
+  if (loaded) view.transcript.scrollTop = view.transcript.scrollHeight - height + top;
+}
+
+function applyTranscriptRecord(view: SessionView, record: TranscriptRecord): void {
+  const data = view.transcriptData;
+  if (!data || data.seqs.has(record.seq)) return;
+  data.seqs.add(record.seq);
+  data.records.push(record);
+  reduce(data.model, record);
+}
+
+function handleSessionRecord(params: any): void {
+  const record = params?.record as TranscriptRecord | undefined;
+  if (!record) return;
+  const view = findSessionView(params.sessionId ?? state.sessionId);
+  if (!view) return;
+  if (!view.historyLoaded) {
+    view.pendingRecords.push(record);
+    return;
+  }
+  applyTranscriptRecord(view, record);
+}
+
+function renderTranscript(view: SessionView): void {
+  const data = view.transcriptData;
+  if (!data) return;
+  resetStreaming(view);
+  stopTurnClock(view);
+  view.toolMap.clear();
+  view.taskMap.clear();
+  view.pendingTaskStatus.clear();
+  view.pendingMemoryRun = null;
+  view.planBlock = null;
+  view.cards = [];
+  removeApprovalBar(view);
+  view.transcript.replaceChildren();
+  if (data.source !== 'transcript') {
+    view.transcript.append(el('div', 'notice transcript-projection',
+      'From an older session — some details were reconstructed from the saved context.'));
+  }
+  if (data.nextBeforeSeq != null) {
+    const button = el('button', 'load-earlier', 'Load earlier') as HTMLButtonElement;
+    button.onclick = () => {
+      if (view.status === 'running' || view.streaming) return;
+      button.disabled = true;
+      void loadEarlierTranscript(view).finally(() => { button.disabled = false; });
+    };
+    view.transcript.append(button);
+  }
+  for (const turn of data.model.turns) renderTranscriptTurn(view, turn);
+  for (const item of data.model.orphans) {
+    if (item.kind === 'custom') {
+      renderTranscriptCustom(view, item);
+      continue;
+    }
+    const text = item.kind === 'notice' || item.kind === 'text' ? item.text : undefined;
+    if (text) view.transcript.append(el('div', 'notice', text));
+  }
+}
+
+function renderTranscriptTurn(view: SessionView, turn: Turn): void {
+  const inputs = turn.items.filter((item): item is InputItem => item.kind === 'input');
+  for (const input of inputs) {
+    addMessageBubble(view, 'user', input.text ?? '', transcriptAttachments(input));
+  }
+  const text = textItems(turn);
+  const reasoning = reasoningItems(turn);
+  const toolItems = turn.items.filter((item): item is ToolItem => item.kind === 'tool');
+  const taskItems = turn.items.filter((item): item is TaskItem => item.kind === 'task');
+  const notices = turn.items.filter((item): item is NoticeItem => item.kind === 'notice');
+  const customs = turn.items.filter((item): item is CustomItem => item.kind === 'custom');
+  const hasAssistant = text.length || reasoning.length || toolItems.length || taskItems.length
+    || turn.memoryRuns.length;
+  if (hasAssistant) {
+    const wrapper = addMessageBubble(view, 'assistant', text.join('\n\n'));
+    const bubble = wrapper.querySelector('.bubble') as HTMLElement | null;
+    if (bubble) {
+      const chips = el('div', 'assist-chips');
+      const panels = el('div', 'assist-panels');
+      bubble.prepend(panels);
+      bubble.prepend(chips);
+      if (reasoning.length) {
+        const body = el('div');
+        for (const entry of reasoning) body.append(transcriptPre(entry, 'record-reasoning'));
+        addTranscriptToggle(chips, panels, 'Thinking', body);
+      }
+      if (toolItems.length) addTranscriptTools(view, chips, panels, toolItems);
+      if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
+      if (taskItems.length) addTranscriptTasks(chips, panels, taskItems);
+    }
+  }
+  if (turn.plan) view.transcript.append(transcriptPlan(turn.plan));
+  for (const custom of customs) renderTranscriptCustom(view, custom);
+  for (const notice of notices) renderTranscriptNotice(view, notice);
+  const summary = summaryText(turn.summary);
+  if (summary.length) view.transcript.append(el('div', 'turn-summary', summary.join(' · ')));
+  if (turn.partial !== 'none') {
+    view.transcript.append(el('div', 'notice', 'Part of this turn was not loaded yet.'));
+  }
+}
+
+function addTranscriptToggle(chips: HTMLElement, panels: HTMLElement, label: string, body: HTMLElement): void {
+  const toggle = createAssistToggle(label);
+  toggle.body.append(body);
+  chips.append(toggle.chip);
+  panels.append(toggle.panel);
+}
+
+function addTranscriptTools(view: SessionView, chips: HTMLElement, panels: HTMLElement,
+                            tools: ToolItem[]): void {
+  const body = el('div');
+  for (const tool of tools) {
+    const row = el('div', 'record-tool');
+    const head = el('div', 'record-tool-head');
+    head.append(el('span', 'record-tool-name', tool.name));
+    head.append(el('span', `record-tool-status ${tool.status}`, tool.status));
+    if (tool.approval) head.append(el('span', 'record-tool-approval', tool.approval));
+    row.append(head);
+    if (tool.arguments) row.append(transcriptPre(tool.arguments, 'record-tool-args'));
+    const result = tool.result ?? tool.resultPreview;
+    if (result) row.append(transcriptPre(result, 'record-tool-result'));
+    if (tool.resultRef && tool.resultSeq !== undefined) {
+      addTranscriptFullButton(view, row, tool.resultSeq, 'result', 'record-tool-result');
+    }
+    body.append(row);
+  }
+  addTranscriptToggle(chips, panels, `Tool use (${tools.length})`, body);
+}
+
+function addTranscriptMemory(chips: HTMLElement, panels: HTMLElement, turn: Turn): void {
+  const body = el('div');
+  for (const run of turn.memoryRuns) {
+    const block = el('div', 'memory-run');
+    block.append(el('div', 'memory-meta', `${run.trigger ?? 'memory'} · ${run.running ? 'extracting…' : 'completed'}`));
+    for (const path of run.added) block.append(el('div', 'memory-row', `added ${path}`));
+    for (const path of run.updated) block.append(el('div', 'memory-row', `updated ${path}`));
+    if (run.note) block.append(el('pre', 'memory-note', run.note));
+    body.append(block);
+  }
+  addTranscriptToggle(chips, panels, `Memory (${turn.memoryRuns.length})`, body);
+}
+
+function addTranscriptTasks(chips: HTMLElement, panels: HTMLElement, tasks: TaskItem[]): void {
+  const body = el('div');
+  for (const task of tasks) {
+    const row = el('div', 'record-tool');
+    row.append(el('span', 'record-tool-name', task.toolName ?? task.taskId));
+    row.append(el('span', `record-tool-status ${task.status}`, task.status));
+    body.append(row);
+  }
+  addTranscriptToggle(chips, panels, `Tasks (${tasks.length})`, body);
+}
+
+function transcriptPlan(todos: unknown[]): HTMLElement {
+  const block = el('div', 'plan-block');
+  const head = el('div', 'plan-head');
+  head.append(el('span', 'plan-title', 'plan'));
+  const items = todos.filter((todo): todo is Record<string, unknown> => todo !== null && typeof todo === 'object');
+  const done = items.filter((todo) => planState(String(todo.status)) === 'done').length;
+  head.append(el('span', 'plan-count', `${done}/${items.length}`));
+  block.append(head);
+  for (const todo of items) {
+    const state = planState(String(todo.status));
+    const item = el('div', `plan-item ${state}`);
+    item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(todo.content ?? todo.text ?? '')));
+    block.append(item);
+  }
+  return block;
+}
+
+function renderTranscriptNotice(view: SessionView, notice: NoticeItem): void {
+  const text = notice.text ?? notice.textPreview;
+  if (!text) return;
+  view.transcript.append(el('div', `notice ${notice.level ?? ''}`, text));
+}
+
+function renderTranscriptCustom(view: SessionView, item: CustomItem): void {
+  const data = parseRecordJson(item.data);
+  if (item.name === 'quick_replies') {
+    const options = Array.isArray(data.options) ? data.options : [];
+    const row = el('div', 'record-quick-replies');
+    for (const option of options) {
+      if (option === null || typeof option !== 'object') continue;
+      const value = option as Record<string, unknown>;
+      const label = String(value.label ?? value.value ?? '');
+      if (!label) continue;
+      const button = el('button', 'quick-reply', label) as HTMLButtonElement;
+      button.disabled = true;
+      row.append(button);
+    }
+    if (row.childElementCount) view.transcript.append(row);
+    return;
+  }
+  const card = parseRichCard(item.card);
+  if (card) {
+    const handle = createRichCard(card, {
+      openLink: (url) => void window.coreai.openExternal(url),
+      resolveImage: (url) => resolveCardImageUrl(url),
+      send: () => undefined,
+    }, true);
+    if (handle) {
+      handle.setBusy(true);
+      view.transcript.append(handle.root);
+    }
+  }
+}
+
+function transcriptAttachments(input: InputItem): PendingAttachment[] {
+  return input.attachments.map((attachment, index) => {
+    const mediaType = attachment.mediaType ?? '';
+    const kind: PendingAttachment['kind'] = mediaType.startsWith('image/')
+      ? 'image'
+      : mediaType === 'application/pdf' ? 'pdf' : 'file';
+    return {
+      path: attachment.url ?? attachment.blob_ref ?? `attachment-${index}`,
+      name: attachment.filename ?? 'attachment',
+      kind,
+      size: attachment.size ?? 0,
+    };
+  });
+}
+
+function transcriptPre(text: string, className: string): HTMLElement {
+  const pre = el('pre', className);
+  pre.textContent = text;
+  return pre;
+}
+
+function parseRecordJson(text: string | undefined): Record<string, unknown> {
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function addTranscriptFullButton(view: SessionView, parent: HTMLElement, seq: number,
+                                 field: string, className: string): void {
+  const button = el('button', 'record-load-full', 'Load full') as HTMLButtonElement;
+  button.onclick = () => {
+    button.disabled = true;
+    void (async () => {
+      const payload = await call('session/recordPayload', { sessionId: view.sessionId, seq, field });
+      if (!payload) return;
+      if (typeof payload.text === 'string') {
+        const body = transcriptPre(payload.text, className);
+        const existing = parent.querySelector(`.${className}`);
+        if (existing) existing.replaceWith(body); else parent.append(body);
+        button.remove();
+      } else if (typeof payload.path === 'string' && view.sessionId) {
+        await window.coreai.transcriptOpenBlob(view.sessionId, payload.path);
+      }
+    })().finally(() => { button.disabled = false; });
+  };
+  parent.append(button);
+}
+
 function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
     const notifications = parseTaskNotifications(text);
@@ -3814,7 +4212,7 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
   const parts: Array<{ type: string; text?: string; path?: string }> = [];
   if (text.trim()) parts.push({ type: 'text', text: text.trim() });
   for (const attachment of attachments) parts.push({ type: attachment.kind, path: attachment.path });
-  const sent = await call('session/send', { sessionId: state.sessionId, parts });
+  const sent = await call('session/send', { sessionId: state.sessionId, parts, turnId: `d-${crypto.randomUUID()}` });
   if (!sent) {
     discardEmptyTurnBubble(view);
     resetStreaming(view);
@@ -4736,6 +5134,10 @@ function maybeApplyPendingEngineRestart(view: SessionView): void {
 }
 
 function handleCustomEvent(view: SessionView, event: any): void {
+  if (event.name === 'persistence') {
+    handlePersistenceEvent(view, event);
+    return;
+  }
   if (event.name === 'artifact') {
     applyArtifactEvent(view, event);
     return;
@@ -4769,6 +5171,27 @@ function handleCustomEvent(view: SessionView, event: any): void {
   view.cards.push(handle);
   view.transcript.append(handle.root);
   scrollTranscript(view);
+}
+
+/** A save failed (or recovered): keep the session-row marker and tell the user once. */
+function handlePersistenceEvent(view: SessionView, event: any): void {
+  let payload: any;
+  try {
+    payload = JSON.parse(event.data ?? '{}');
+  } catch {
+    return;
+  }
+  const row = state.sessions.find((session) => session.sessionId === view.sessionId);
+  if (payload.status === 'failed') {
+    if (row) row.persistenceFailed = true;
+    renderSessionItems();
+    toast(`Session not saved: ${payload.error ?? payload.reason ?? 'unknown error'}`, 'error');
+  } else if (payload.status === 'ok') {
+    if (row?.persistenceFailed) {
+      row.persistenceFailed = false;
+      renderSessionItems();
+    }
+  }
 }
 
 /** Standard quick-reply buttons: clicking one sends its value as the next user message. */
@@ -7272,6 +7695,8 @@ async function bootstrap(): Promise<void> {
     if (payload.workspace !== state.workspace) return;
     if (payload.method === 'session/event') {
       handleSessionEvent(payload.params?.event);
+    } else if (payload.method === 'session/record') {
+      handleSessionRecord(payload.params);
     } else if (payload.method === 'engine/ready') {
       // A fresh engine process serves no live turns — every turn the old one was running died.
       finalizeTurnsForEngineRestart();

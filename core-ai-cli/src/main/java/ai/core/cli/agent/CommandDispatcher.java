@@ -92,6 +92,10 @@ public class CommandDispatcher {
                 sessionHandler.handleCompact();
                 return true;
             }
+            case "/save" -> {
+                sessionHandler.handleSave();
+                return true;
+            }
             case "/resume", "/clear" -> {
                 return handleSessionSwitch(lower, queue);
             }

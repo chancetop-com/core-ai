@@ -3,6 +3,7 @@ package ai.core.session;
 import ai.core.agent.Agent;
 import ai.core.agent.budget.CostBudget;
 import ai.core.api.server.session.TurnCompleteEvent;
+import ai.core.session.transcript.TranscriptUsage;
 
 /**
  * Builds turn-complete usage deltas, including cancelled turns. Keeping this in
@@ -16,6 +17,17 @@ public final class SessionTurnUsage {
         var event = TurnCompleteEvent.cancelled(sessionId, output);
         populate(agent, event, before);
         return event;
+    }
+
+    public static TranscriptUsage of(Agent agent, Before before) {
+        var usageAfter = agent.getCurrentTokenUsage();
+        var details = usageAfter.getPromptTokensDetails();
+        var cached = details == null ? 0 : details.cachedTokens - before.cached;
+        return new TranscriptUsage(
+            usageAfter.getPromptTokens() - before.input,
+            usageAfter.getCompletionTokens() - before.output,
+            cached,
+            agent.getCurrentCostUsd() - before.cost);
     }
 
     public static void populate(Agent agent, TurnCompleteEvent event, Before before) {

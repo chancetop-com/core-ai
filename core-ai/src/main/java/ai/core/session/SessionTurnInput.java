@@ -3,8 +3,7 @@ package ai.core.session;
 import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
 import ai.core.agent.PendingUserInputQueue;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import ai.core.agent.PendingUserInputQueue.PendingUserInput;
 
 import java.util.List;
 import java.util.Map;
@@ -16,16 +15,11 @@ import java.util.Map;
  * @author stephen
  */
 final class SessionTurnInput {
-    private final Logger logger = LoggerFactory.getLogger(SessionTurnInput.class);
-    private final SessionCommandQueue commandQueue;
     private final Agent agent;
-    private final String sessionId;
     private volatile PendingUserInputQueue active;
 
-    SessionTurnInput(SessionCommandQueue commandQueue, Agent agent, String sessionId) {
-        this.commandQueue = commandQueue;
+    SessionTurnInput(Agent agent) {
         this.agent = agent;
-        this.sessionId = sessionId;
     }
 
     PendingUserInputQueue begin() {
@@ -35,19 +29,21 @@ final class SessionTurnInput {
         return input;
     }
 
-    boolean offer(String message, Map<String, Object> variables, List<AttachedContent> attachedContents) {
-        var input = active;
-        return input != null && input.offer(message, variables, attachedContents);
+    boolean isActive() {
+        return active != null;
     }
 
-    void end(PendingUserInputQueue input) {
+    boolean offer(String message, Map<String, Object> variables, List<AttachedContent> attachedContents,
+                  String turnId, Long steerSeq) {
+        var input = active;
+        return input != null && input.offer(message, variables, attachedContents, turnId, steerSeq);
+    }
+
+    List<PendingUserInput> end() {
+        var input = active;
         active = null;
         agent.getExecutionContext().setPendingUserInput(null);
-        for (var message : input.closeAndDrain()) {
-            if (!commandQueue.enqueueUserInput(message.message(), message.variables(), message.attachedContents())) {
-                logger.warn("failed to requeue message accepted during the turn, sessionId={}", sessionId);
-            }
-        }
+        return input == null ? List.of() : input.closeAndDrain();
     }
 
     boolean hasPending() {

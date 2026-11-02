@@ -55,6 +55,7 @@ public class NativeReflectionFeature implements Feature {
         "ai.core.agent.subagent.SubagentThreadIndex$ThreadRef",
         "ai.core.agent.subagent.SubagentThreadKind",
         "ai.core.session.FileRuleBasedPermissionStore$PermissionsDomain",
+        "ai.core.session.transcript.TranscriptRecord",
         "ai.core.tool.tools.WriteTodosTool.Todo",
         "ai.core.tool.tools.WriteTodosTool.Status",
         "ai.core.tool.tools.WriteTodoTaskTool.CreateTaskParams",

@@ -82,6 +82,7 @@ contextBridge.exposeInMainWorld('coreai', {
   openExternal: (url: string) => ipcRenderer.invoke('shell:openExternal', url),
   artifactBase: (workspace: string) => ipcRenderer.invoke('artifacts:base', workspace),
   existingArtifacts: (workspace: string, relativePaths: string[]) => ipcRenderer.invoke('artifacts:existing', workspace, relativePaths),
+  transcriptOpenBlob: (sessionId: string, path: string) => ipcRenderer.invoke('transcript:openBlob', sessionId, path),
   onEvent: (callback: (payload: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('engine:event', listener);

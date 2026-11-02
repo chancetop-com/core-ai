@@ -138,6 +138,7 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("session_export");
         capabilities.add("custom_events");
         capabilities.add("scheduled_tasks");
+        capabilities.add("transcript");
         node.put("workspace", bootstrap.workspace.toString());
         scheduler.start();
         return node;
@@ -154,9 +155,13 @@ public class AppServerEngine implements EngineApi {
 
     @Override
     public void shutdown() {
-        scheduler.close();
-        registry.closeAll();
-        CliAppHelper.closeShutdownResources(bootstrap.result);
+        try {
+            scheduler.close();
+            registry.closeAll();
+        } finally {
+            CliAppHelper.closeShutdownResources(bootstrap.result);
+            bootstrap.close();
+        }
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> buildHandlers() {
@@ -165,7 +170,11 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/create", registry::create),
                 Map.entry("session/resume", registry::resume),
                 Map.entry("session/history", registry::history),
+                Map.entry("session/records", registry::records),
+                Map.entry("session/recordPayload", registry::recordPayload),
                 Map.entry("session/send", registry::send),
+                Map.entry("session/save", registry::save),
+                Map.entry("session/close", registry::close),
                 Map.entry("session/cancel", registry::cancel),
                 Map.entry("session/approve", registry::approve),
                 Map.entry("session/compact", registry::compact),

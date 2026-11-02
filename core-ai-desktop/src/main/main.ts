@@ -963,6 +963,23 @@ function registerIpc(): void {
   ipcMain.handle('shell:openExternal', async (_event, url: string) => {
     if (typeof url === 'string' && /^https?:\/\//i.test(url)) await shell.openExternal(url);
   });
+  // Blob refs in a transcript record point at the engine's session sidecars; the renderer may open
+  // them, but only inside the owning session's .blobs directory.
+  ipcMain.handle('transcript:openBlob', async (_event, sessionId: string, blobPath: string) => {
+    const id = String(sessionId ?? '');
+    if (!/^[A-Za-z0-9._-]+$/.test(id)) return { ok: false, error: 'invalid session id' };
+    const root = path.resolve(os.homedir(), '.core-ai', 'sessions');
+    const target = path.resolve(String(blobPath ?? ''));
+    const relative = path.relative(root, target);
+    if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) {
+      return { ok: false, error: 'path outside session storage' };
+    }
+    if (!relative.split(path.sep).includes(`${id}.blobs`)) {
+      return { ok: false, error: 'path outside session blobs' };
+    }
+    const error = await shell.openPath(target);
+    return error ? { ok: false, error } : { ok: true };
+  });
 }
 function resolveInsideWorkspace(workspace: string, relativePath: string): string | null {
   const root = path.resolve(workspace);
