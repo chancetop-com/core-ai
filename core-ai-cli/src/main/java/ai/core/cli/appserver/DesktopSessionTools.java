@@ -20,7 +20,7 @@ import java.util.List;
  */
 final class DesktopSessionTools {
 
-    static void install(Path workspace, Agent agent) {
+    static void install(Path workspace, Agent agent, EngineSessionRegistry registry) {
         var context = agent.getExecutionContext();
         var artifactSink = new LocalArtifactSink(workspace, context);
         context.getCustomVariables().put(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY, artifactSink);
@@ -28,7 +28,8 @@ final class DesktopSessionTools {
         agent.addTools(List.of(
                 LocalSubmitArtifactsTool.create(workspace),
                 SendCustomEventTool.builder().build(),
-                PresentChoicesTool.builder().build()));
+                PresentChoicesTool.builder().build(),
+                SendSessionMessageTool.create(new EngineSessionMessageForwarder(registry))));
         appendArtifactInstructions(agent);
     }
 

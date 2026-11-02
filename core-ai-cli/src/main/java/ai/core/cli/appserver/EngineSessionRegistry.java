@@ -399,7 +399,7 @@ public class EngineSessionRegistry {
             false, recorder);
         inProcess.onEvent(new EventBridge(sessionId, notification));
         inProcess.onEvent(recorder);
-        DesktopSessionTools.install(bootstrap.workspace, agent);
+        DesktopSessionTools.install(bootstrap.workspace, agent, this);
         return new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
     }
 

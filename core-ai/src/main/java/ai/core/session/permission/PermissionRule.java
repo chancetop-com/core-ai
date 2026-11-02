@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.Optional;
 
 public class PermissionRule {
-    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "script_path", "directory", "command");
+    private static final List<String> PRIMARY_KEYS = List.of("file_path", "path", "script_path", "directory", "command", "session_id");
 
     public static String buildPattern(String toolName, Map<String, Object> arguments) {
         var primaryArg = extractPrimaryArg(arguments);

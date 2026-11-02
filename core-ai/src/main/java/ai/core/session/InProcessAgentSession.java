@@ -136,6 +136,14 @@ public class InProcessAgentSession implements AgentSession {
         dispatchEvent(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
     }
 
+    /**
+     * Queues a user message behind any running turn instead of steering it into the current turn.
+     * Used when another session forwards a message and its turn must stay independent.
+     */
+    public boolean enqueueMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
+        return commandQueue.enqueueUserInput(message, variables, attachedContents, turnId);
+    }
+
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
         var executingThread = Thread.currentThread();
         var turnToken = agent.getCancellationToken().createChild();

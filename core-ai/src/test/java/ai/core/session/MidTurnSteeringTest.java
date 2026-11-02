@@ -195,6 +195,37 @@ class MidTurnSteeringTest {
         }
     }
 
+    @Test
+    void enqueuedMessageWaitsForTheRunningTurnAndStartsItsOwnTurn() throws Exception {
+        var block = new BlockingTool();
+        var provider = new RecordingProvider();
+        provider.addResponse(toolCallResponse("call-3", "block", "{}"));
+        provider.addResponse(textResponse("first done"));
+        provider.addResponse(textResponse("queued done"));
+
+        var session = session(provider, block);
+        var listener = new RecordingListener();
+        session.onEvent(listener);
+        try {
+            session.sendMessage("first prompt");
+            assertTrue(block.started.await(10, TimeUnit.SECONDS), "tool must start");
+            assertTrue(session.enqueueMessage("queued prompt", null, null, "queued-turn"));
+
+            assertEquals(0, session.pendingUserInputCount(), "an enqueued message must not steer into the running turn");
+
+            block.release.countDown();
+            assertTrue(listener.firstTurn.await(10, TimeUnit.SECONDS), "first turn must complete");
+            assertTrue(waitForTurns(listener, 2, 10), "the queued message must start its own turn");
+
+            assertEquals(2, listener.turnCount());
+            assertTrue(containsUserText(provider.request(2), "queued prompt"));
+            assertEquals("queued-turn", listener.turns.get(1).turnId);
+        } finally {
+            block.release.countDown();
+            session.close();
+        }
+    }
+
     private static final class RecordingProvider extends MockLLMProvider {
         private final List<List<Message>> requests = new CopyOnWriteArrayList<>();
         private final AtomicInteger calls = new AtomicInteger();

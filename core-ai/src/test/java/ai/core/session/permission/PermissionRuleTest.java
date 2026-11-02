@@ -35,6 +35,13 @@ class PermissionRuleTest {
     }
 
     @Test
+    void buildPatternWithSessionId() {
+        var pattern = PermissionRule.buildPattern("send_session_message",
+                Map.of("session_id", "cli-20261030-164801", "message", "continue"));
+        assertEquals("send_session_message(cli-20261030-164801)", pattern);
+    }
+
+    @Test
     void buildPatternWithNullArgs() {
         var pattern = PermissionRule.buildPattern("shell_command", null);
         assertEquals("shell_command", pattern);

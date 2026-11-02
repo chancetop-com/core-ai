@@ -61,12 +61,12 @@ def text_chunks(text):
     ]
 
 
-def tool_call_chunks(arguments):
+def tool_call_chunks(arguments, name="write_file"):
     return [
         {"id": "1", "object": "chat.completion.chunk", "created": 0, "model": "stub-model",
          "choices": [{"index": 0, "delta": {"role": "assistant", "tool_calls": [
              {"index": 0, "id": "call_stub_1", "type": "function",
-              "function": {"name": "write_file", "arguments": ""}}]}, "finish_reason": None}]},
+              "function": {"name": name, "arguments": ""}}]}, "finish_reason": None}]},
         {"id": "1", "object": "chat.completion.chunk", "created": 0, "model": "stub-model",
          "choices": [{"index": 0, "delta": {"tool_calls": [
              {"index": 0, "function": {"arguments": arguments}}]}, "finish_reason": None}]},
@@ -90,8 +90,14 @@ class StubHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
             return
         has_tool_result = any(m.get("role") == "tool" for m in body.get("messages", []))
-        if "LARGE" in prompt:
+        if not has_tool_result and "FORWARD_TO=" in prompt:
+            target = prompt.split("FORWARD_TO=", 1)[1].split()[0]
+            arguments = json.dumps({"session_id": target, "message": "forwarded hello"}, ensure_ascii=False)
+            chunks = tool_call_chunks(arguments, "send_session_message")
+        elif "LARGE" in prompt:
             chunks = text_chunks("L" * 40000)
+        elif "forwarded hello" in prompt:
+            chunks = text_chunks("forwarded ack")
         elif "TOOL" in prompt or not has_tool_result:
             arguments = json.dumps({"file_path": WRITE_PATH, "content": "hello from stub"}, ensure_ascii=False)
             chunks = tool_call_chunks(arguments)
@@ -518,6 +524,39 @@ def run_dangling_checks(rpc, workspace, home, session_id, first_count):
     expect_eq(rpc.call("session/stats", {"sessionId": session_id}).get("turns"), 2, "dangling stats")
 
 
+def run_forward_checks(rpc, workspace, home):
+    print("-- phase 14: forward a message to another session", flush=True)
+    initialize(rpc, workspace)
+    target = rpc.call("session/create", {})["sessionId"]
+    source = rpc.call("session/create", {})["sessionId"]
+    tools = rpc.call("tools/list", {"sessionId": source}).get("tools", [])
+    check(any(t.get("name") == "send_session_message" for t in tools), "send_session_message is installed")
+    rpc.call("session/send", {"sessionId": source, "parts": [{"type": "text", "text": f"FORWARD_TO={target}"}]})
+    approval = rpc.wait_for_event("tool_approval_request")
+    expect_eq(approval.get("toolName"), "send_session_message", "approval targets send_session_message")
+    rpc.call("session/approve", {"sessionId": source, "callId": approval.get("callId"), "decision": "APPROVE"})
+    result = rpc.wait_for_event("tool_result")
+    expect_eq(result.get("status"), "success", "forward tool result")
+    target_turn = rpc.wait_for(
+        lambda frame: frame.get("method") == "session/event"
+        and frame.get("params", {}).get("sessionId") == target
+        and frame.get("params", {}).get("event", {}).get("type") == "turn_complete",
+        "target turn_complete")
+    check("forwarded ack" in (target_turn.get("params", {}).get("event", {}).get("output") or ""),
+          "target session answered the forwarded message")
+    history = rpc.call("session/history", {"sessionId": target, "limit": 20}).get("messages", [])
+    check(any(m.get("role") == "user" and "forwarded hello" in (m.get("text") or "") for m in history),
+          "target history contains the forwarded user message")
+    check(any(m.get("role") == "assistant" and "forwarded ack" in (m.get("text") or "") for m in history),
+          "target history contains the answer")
+    source_turn = rpc.wait_for(
+        lambda frame: frame.get("method") == "session/event"
+        and frame.get("params", {}).get("sessionId") == source
+        and frame.get("params", {}).get("event", {}).get("type") == "turn_complete",
+        "source turn_complete")
+    check(not source_turn.get("params", {}).get("event", {}).get("cancelled"), "source turn completed")
+
+
 def main():
     global WRITE_PATH
     root = Path(tempfile.mkdtemp(prefix="appserver-e2e-"))
@@ -588,6 +627,10 @@ def main():
         dangling_session, first_count = run_dangling_start(rpc, workspace, home)
         proc, rpc = start_engine(home, workspace, config)
         run_dangling_checks(rpc, workspace, home, dangling_session, first_count)
+        shutdown(rpc)
+
+        proc, rpc = start_engine(home, workspace, config)
+        run_forward_checks(rpc, workspace, home)
         shutdown(rpc)
         print("ALL CHECKS PASSED", flush=True)
     finally:
