@@ -3,7 +3,7 @@
 > 状态：**评审修订稿 v4**（2026-10-30，三轮评审意见已吸收，见 §10、§11、§12）
 > 范围：core-ai-cli 与 core-ai-desktop 共用的本地 session 文件（`~/.core-ai/sessions/<workspace>/`），含主快照 `.data`、subagent 线程文件、`titles.json`、`models.json`、`~/.core-ai/app-server/staging/`。**不含** server 端 MongoDB 持久化。
 > 代码核实：`FileSessionPersistence`、`Node`、`AgentPersistence`、`TurnPersistence`、`InProcessAgentSession`、`AgentInterruptionHandler`、`CustomEventEmitter`、`EngineSession`、`EngineSessionRegistry`、`SessionTitleStore`、`SessionModelStore`、`PathUtils`、`CliAppHelper`、`CliApp`、`AgentSessionRunner`、`AgentSessionRunnerCommandHandler`、`AcpAgentRunner`、`AcpSlashCommandHandler`、`SubagentThreadRegistry`、`AppServer`、`MediaSettingsApi`、`FileScheduledTaskStore`、`HelperConfigStore`、desktop `ChannelBridge`、`app.ts`
-> 关联：[design-cli-session-history-context.md](design-cli-session-history-context.md)、[design-subagent-thread.md](design-subagent-thread.md)、[design-desktop-session-surfaces.md](design-desktop-session-surfaces.md)、[design-session-custom-events.md](design-session-custom-events.md)
+> 关联（以下文档暂未纳入本站）：design-cli-session-history-context.md、design-subagent-thread.md、design-desktop-session-surfaces.md、design-session-custom-events.md
 > 复现与证据（均在仓库内）：`core-ai/src/test/java/ai/core/session/SessionSnapshotCrashConsistencyTest.java`、`TornWriteProbe.java` + `TornWriteProbeTest.java`（`CORE_AI_PROBE=true` 门控）、`core-ai-cli/src/test/java/ai/core/cli/utils/PathUtilsTest.java`、`CliAppHelperTest.defaultSessionIdIsUniqueForTwoSessionsCreatedInTheSameSecond`
 
 ## 0. 决策摘要
@@ -214,7 +214,7 @@ public final class SessionLoads {
 | `corrupt` | 灰字 + "会话文件损坏" | 删除 |
 | `newer_version` | 灰字 + "需要更新 core-ai" | 删除、升级引导 |
 | `io_error` | 灰字 + "暂时无法读取" | 重试（刷新列表）、删除 |
-| `SESSION_BUSY`（P1） | toast："正由 <process> (pid <pid>) 使用，自 <since>" | 重试；不新建 |
+| `SESSION_BUSY`（P1） | toast："正由 `<process>` (pid `<pid>`) 使用，自 `<since>`" | 重试；不新建 |
 
 `ChannelBridge.resolveSession` :343 按错误码分支：`SESSION_NOT_FOUND` / `SESSION_CORRUPT` 才 `session/create`；`SESSION_BUSY` 有限次退避重试，超时告知；`SESSION_NEWER_VERSION` 提示升级并**停止重试/不新建**（当前进程读不了更高版本，重试无意义）；其他错误失败本条消息，不新建。
 

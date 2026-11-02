@@ -2,7 +2,7 @@
 
 > 状态：草案 v0.6（2026-10-30，按第五轮评审定点修订：steerPending 先于 offer、failTurn 终止 API、task_note 并入 turn_start、dangling pending 恢复、rewind 返回 usage、total_turns 口径；评审结论：M0 可开，S1–S3 已定，可进 M1）
 > 作者：Stephen（AI 起草）
-> 关联：[design-core-ai-desktop.md](design-core-ai-desktop.md) §3.4 / §9.2 第 19 条、[design-cli-session-history-context.md](design-cli-session-history-context.md)、[design-session-custom-events.md](design-session-custom-events.md) §3.4、[design-session-rich-cards.md](design-session-rich-cards.md)
+> 关联（以下文档暂未纳入本站）：design-core-ai-desktop.md §3.4 / §9.2 第 19 条、design-cli-session-history-context.md、design-session-custom-events.md §3.4、design-session-rich-cards.md
 > 版本事实：desktop 0.1.38 / CLI v2.0.63 / server 2.0.152。正文行号均为快照 commit `de1b45cb`（`app.ts` 7,316 行，`wc -l`），以函数名为准。
 > 实现状态（2026-11-02）：P0/M1 主体已落地 — `ai.core.session.transcript`（recorder/store/projection/reader）、两宿主注入、`session/records`/`session/recordPayload`/`session/record`、`session/stats`、`session/undo`、桌面 records 渲染与分页、CLI `/resume` 记录回放、`--debug-transcript`。验收：`:core-ai:test`、`:core-ai-cli:test`、`npm --prefix core-ai-desktop test`（144）与 `python core-ai-cli/scripts/appserver-e2e.py`（records/steer/restart/projection/undo/failure/large/gap/dangling）全绿。未完成：矩阵/等价性脚本与性能实测；task_note 轮仅单测覆盖；ACP 与桌面 undo UI 为 P1。Java `AppServerTest` 仍只测 transport，引擎级验收以入库脚本为准。
 
