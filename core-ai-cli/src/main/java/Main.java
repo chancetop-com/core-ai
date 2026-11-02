@@ -63,6 +63,11 @@ public class Main implements Callable<Integer> {
     @Option(names = "--debug", description = "Enable debug output")
     boolean debug;
 
+    @Option(names = "--debug-transcript", description = "Print transcript records to stderr as they are written")
+    void debugTranscript(boolean enabled) {
+        if (enabled) System.setProperty("core.ai.transcript.debug", "true");
+    }
+
     @Option(names = "--model", description = "Override LLM model name")
     String model;
 
@@ -78,8 +83,9 @@ public class Main implements Callable<Integer> {
     @Option(names = {"-c", "--continue"}, description = "Resume the most recent session")
     boolean continueSession;
 
-    @Option(names = "--resume", description = "Pick a recent session to resume")
-    boolean resume;
+    @Option(names = "--resume", arity = "0..1", fallbackValue = "", paramLabel = "session-id",
+            description = "Resume a session: pass a session id to resume it, omit the id to pick from recent sessions")
+    String resumeSessionId;
 
     @Option(names = "--workspace", description = "Set the working directory for the agent session")
     Path workspace;
@@ -146,19 +152,26 @@ public class Main implements Callable<Integer> {
             DebugLog.enable();
             System.setProperty("core.ai.debug", "true");
         }
+        checkSessionOptions();
         var startedAt = Instant.now();
         var startedAtNanos = System.nanoTime();
         var deadlineValue = parseDeadline(deadline);
-        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resume, workspace,
+        var options = new CliAppOptions(configFile, model, prompt, skipPermissions, continueSession, resumeSessionId, workspace,
                 timeLimitSeconds, timeBudgetSeconds, timeBudgetReserveSeconds, deadlineValue, tokenBudget, outputTokenBudget,
                 costBudgetUsd, budgetReserveTokens, budgetReserveCostUsd, budgetReservePercent,
                 budgetEstimateSafetyFactor, startedAt, startedAtNanos);
         if (acpAgent) {
             new CliApp(options).startAcpAgent();
-        } else {
-            new CliApp(options).start();
+            return 0;
         }
-        return 0;
+        return new CliApp(options).start();
+    }
+
+    void checkSessionOptions() {
+        if (continueSession && resumeSessionId != null) {
+            throw new CommandLine.ParameterException(new CommandLine(this),
+                    "--continue and --resume cannot be used together");
+        }
     }
 
     @SuppressWarnings("PMD.SystemPrintln")

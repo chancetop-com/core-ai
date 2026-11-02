@@ -28,6 +28,7 @@ import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProviderType;
 import ai.core.session.FileSessionPersistence;
+import ai.core.session.SessionLoadState;
 import ai.core.session.SessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -58,7 +59,8 @@ public class CliApp {
     private final String prompt;
     private final boolean autoApproveAll;
     private final boolean continueSession;
-    private final boolean resume;
+    /** null = no resume request, empty = interactive picker, otherwise the exact session id */
+    private final String resumeSessionId;
     private final Path workspace;
     private final Integer timeLimitSeconds;
 
@@ -69,7 +71,7 @@ public class CliApp {
         this.prompt = options.prompt();
         this.autoApproveAll = options.autoApproveAll();
         this.continueSession = options.continueSession();
-        this.resume = options.resume();
+        this.resumeSessionId = options.resumeSessionId();
         this.workspace = options.workspace() != null ? options.workspace().toAbsolutePath() : Paths.get("").toAbsolutePath();
         this.timeLimitSeconds = options.timeLimitSeconds();
     }
@@ -132,7 +134,9 @@ public class CliApp {
         props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
         var remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         var remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
-        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var sessionsDir = ai.core.cli.appserver.WorkspaceDirs.ensure(workspace);
+        ai.core.cli.appserver.Housekeeping.run(sessionsDir);
+        var sessionPersistence = new FileSessionPersistence(sessionsDir.toString());
         var sessionManager = new SessionManager(sessionPersistence);
         var permissionStore = CliAppHelper.whiteToolsPermissionStore(workspace);
         var subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
@@ -150,26 +154,34 @@ public class CliApp {
                 props.property("media.image.edit.model").orElse(null), helpers, mediaCatalog, disabledTools);
     }
 
-    private String resolveSessionId(SessionManager sessionManager, TerminalUI ui) {
+    private String resolveSessionId(BootstrapCore bc, TerminalUI ui) {
         if (continueSession) {
-            var sessions = sessionManager.listSessions();
+            var sessions = bc.sessionManager().listSessions();
             if (sessions.isEmpty()) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
                 return null;
             }
-            var sid = sessions.getFirst().id();
-            ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sid + AnsiTheme.RESET + "\n");
-            return sid;
+            for (var session : sessions) {
+                if (bc.sessionManager().title(session.id()).state() == SessionLoadState.OK) {
+                    ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + session.id() + AnsiTheme.RESET + "\n");
+                    return session.id();
+                }
+            }
+            ui.printStreamingChunk(AnsiTheme.MUTED + "Previous sessions are unreadable. Starting new session." + AnsiTheme.RESET + "\n");
+            return null;
         }
-        if (resume) {
-            var sessions = sessionManager.listSessions();
+        if (resumeSessionId == null) return null;
+        if (resumeSessionId.isEmpty()) {
+            var sessions = bc.sessionManager().listSessions();
             if (sessions.isEmpty()) {
                 ui.printStreamingChunk(AnsiTheme.MUTED + "No previous sessions found. Starting new session." + AnsiTheme.RESET + "\n");
                 return null;
             }
-            return CliAppHelper.pickSession(sessions, sessionManager, ui::printStreamingChunk, ui::readRawLine);
+            return CliAppHelper.pickSession(sessions, bc.sessionManager(), ui::printStreamingChunk, ui::readRawLine);
         }
-        return null;
+        var sessionId = SessionResume.requireReadable(bc.sessionPersistence(), resumeSessionId);
+        ui.printStreamingChunk(AnsiTheme.MUTED + "Resuming session: " + sessionId + AnsiTheme.RESET + "\n");
+        return sessionId;
     }
 
     public void startAcpAgent() {
@@ -183,7 +195,7 @@ public class CliApp {
     }
 
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("DE_MIGHT_IGNORE")
-    public void start() {
+    public int start() {
         System.setProperty("core.appName", "core-ai-cli");
         Path jarPath = PathUtils.getJarPath();
         Path configDir = configFile.getParent();
@@ -192,7 +204,14 @@ public class CliApp {
         ui.setPromptMode(prompt != null);
         InteractiveConfigSetup.setupIfNeeded(ui);
         ManagedSkillProvisioner.provision();
-        var sessionContext = initializeSession(ui);
+        SessionContext sessionContext;
+        try {
+            sessionContext = initializeSession(ui);
+        } catch (SessionResumeException e) {
+            ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + e.getMessage() + AnsiTheme.RESET + "\n");
+            CliAppHelper.closeQuietly(ui);
+            return prompt != null ? 1 : 0;
+        }
         var shutdownResources = sessionContext.result().shutdownResources();
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             CliAppHelper.closeQuietly(ui);
@@ -210,13 +229,20 @@ public class CliApp {
         CliAppHelper.closeQuietly(ui);
         HttpTraceUploader.flush();
         CliAppHelper.closeShutdownResources(sessionContext.result());
+        return 0;
     }
 
     private SessionContext initializeSession(TerminalUI ui) {
         var bc = bootstrapCore();
         var modelName = modelOverride != null ? modelOverride : bc.result().llmProviders.getDefaultProvider().config.getModel();
         var runBudget = CliBudgetConfig.create(options, bc.props(), modelName);
-        String currentSessionId = resolveSessionId(bc.sessionManager(), ui);
+        String currentSessionId;
+        try {
+            currentSessionId = resolveSessionId(bc, ui);
+        } catch (SessionResumeException e) {
+            CliAppHelper.closeShutdownResources(bc.result());
+            throw e;
+        }
         if (currentSessionId == null) currentSessionId = CliAppHelper.defaultSessionId("cli-");
         CliLogger.initialize(workspace, currentSessionId);
         var noteMemory = bc.memoryEnabled() ? new MdMemoryProvider(workspace) : null;

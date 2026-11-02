@@ -49,7 +49,10 @@ Model settings are in `~/.core-ai/agent.properties`; workspace `.core-ai/agent.p
 core-ai-cli --workspace /path/to/my-project
 core-ai-cli --continue
 core-ai-cli --resume
+core-ai-cli --resume cli-20261030-164801
 ```
+
+`--continue` resumes the most recent session. `--resume` without a value lists recent sessions to pick from, while `--resume <session-id>` resumes that exact session (combine it with `--prompt` to run one turn and exit). The two flags are mutually exclusive; a missing, unreadable or malformed session id fails with a clear message, and headless runs exit non-zero.
 
 These Agent commands can call a model. Configure a test provider first. Use `/help` in the interactive session; `/init` creates `.core-ai/AGENTS.md`. [Paths and precedence (Chinese)](/cn/manual/#_15-配置和资源路径) describes loading order.
 

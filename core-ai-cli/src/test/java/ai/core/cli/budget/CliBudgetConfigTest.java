@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  */
 class CliBudgetConfigTest {
     private static CliAppOptions options(Integer timeLimitSeconds, Integer timeBudgetSeconds) {
-        return new CliAppOptions(null, null, null, false, false, false, Path.of("."),
+        return new CliAppOptions(null, null, null, false, false, null, Path.of("."),
                 timeLimitSeconds, timeBudgetSeconds, null, null, null, null, null,
                 null, null, null, null, Instant.EPOCH, 0);
     }

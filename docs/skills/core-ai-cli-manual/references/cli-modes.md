@@ -7,7 +7,7 @@
 | Interactive | `core-ai-cli` | REPL: type prompts, use slash commands |
 | Headless | `core-ai-cli --prompt "query"` | Single prompt, print response, exit |
 | ACP | `core-ai-cli --acp-agent` | Stdio mode for editor integration (Agent Client Protocol) |
-| Resume | `core-ai-cli --continue` / `--resume` | Resume the most recent session / pick one |
+| Resume | `core-ai-cli --continue` / `--resume [session-id]` | Resume the most recent session / pick one / resume a specific id |
 | Login | `core-ai-cli --login [server-url]` | Authenticate with a core-ai-server and exit |
 | Hub | `core-ai-cli mcp …` (and `skill` / `api-tool` / `agent` as they ship) | Discover and call server-side resources without an agent session; see [hub.md](hub.md) |
 
@@ -25,7 +25,7 @@ The former remote mode (`--server`, `--api-key`, `--agent-id`, REPL `/remote`) h
 | `--config <path>` | Path | `~/.core-ai/agent.properties` | Config file path |
 | `--dangerously-skip-permissions` | boolean | — | Skip all tool approval prompts |
 | `-c`, `--continue` | boolean | — | Resume most recent session |
-| `--resume` | boolean | — | Pick a recent session to resume |
+| `--resume [session-id]` | String | — | Resume a session: with an id resume that exact session, without one pick from recent sessions (mutually exclusive with `--continue`) |
 | `--workspace <path>` | Path | `.` | Working directory for the session |
 | `--login [server-url]` | String | — | Log in (browser flow or pasted API key) and exit |
 | `--acp-agent` | boolean | — | Start in ACP stdio mode |

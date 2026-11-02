@@ -106,7 +106,10 @@ core-ai-cli --workspace /path/to/project
 core-ai-cli --prompt "Hello"
 core-ai-cli --continue
 core-ai-cli --resume
+core-ai-cli --resume cli-20261030-164801
 ```
+
+`--continue` resumes the latest session; `--resume` picks one interactively, and `--resume <session-id>` resumes that exact session — also with `--prompt` (run one turn, then exit). The flags `--continue` and `--resume` are mutually exclusive.
 
 These operations use your model/Server environment and may make model requests. Use `/help` inside an interactive session.
 

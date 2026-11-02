@@ -49,7 +49,10 @@ core-ai-cli mcp search echo --json
 core-ai-cli --workspace /path/to/my-project
 core-ai-cli --continue
 core-ai-cli --resume
+core-ai-cli --resume cli-20261030-164801
 ```
+
+`--continue` 恢复最近一个会话；`--resume` 不带值时列出最近会话供交互选择，`--resume <session-id>` 直接恢复指定会话（也可与 `--prompt` 组合，恢复后跑一轮再退出）。两者互斥；id 不存在、会话损坏或来自更新版本时会明确报错，headless（`--prompt`）下以非 0 退出码结束。
 
 这些命令进入 Agent 使用流程，可能调用模型；先配置自己的测试环境。交互用 `/help` 查看命令，当前 `/init` 创建 `.core-ai/AGENTS.md`。见[配置和资源路径](manual/#_15-配置和资源路径)。
 

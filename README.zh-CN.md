@@ -106,7 +106,10 @@ core-ai-cli --workspace /path/to/project
 core-ai-cli --prompt "Hello"
 core-ai-cli --continue
 core-ai-cli --resume
+core-ai-cli --resume cli-20261030-164801
 ```
+
+`--continue` 恢复最近一个会话；`--resume` 交互选择要恢复的会话，`--resume <session-id>` 直接恢复指定会话——同样可配 `--prompt`（跑一轮后退出）。`--continue` 与 `--resume` 互斥。
 
 这些操作需要自己的模型/Server 环境，可能产生模型调用。会话中使用 `/help` 查看交互命令。
 
