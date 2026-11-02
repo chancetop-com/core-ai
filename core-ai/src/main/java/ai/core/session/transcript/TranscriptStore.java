@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedByInterruptException;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -146,13 +148,58 @@ public final class TranscriptStore implements AutoCloseable {
         return record.seq;
     }
 
+    /**
+     * Cancelling a turn interrupts the thread that runs it. When that interrupt lands while this
+     * thread is writing, the JDK closes the channel and {@code write} fails with
+     * {@link ClosedByInterruptException} — and the store would stay broken for the rest of the
+     * session, because every later append hits a closed channel. Reopen and finish the line instead,
+     * and keep the interrupt pending for the code that asked for it.
+     */
     private void writeFully(ByteBuffer bytes) {
+        boolean wasInterrupted = Thread.interrupted();
+        boolean interrupted = false;
         try {
-            while (bytes.hasRemaining()) {
-                channel.write(bytes);
-            }
+            interrupted = writeRemaining(bytes);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to append transcript: " + sessionId, e);
+        } finally {
+            if (wasInterrupted || interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private boolean writeRemaining(ByteBuffer bytes) throws IOException {
+        boolean interrupted = false;
+        while (bytes.hasRemaining()) {
+            try {
+                channel.write(bytes);
+            } catch (ClosedByInterruptException e) {
+                interrupted = true;
+                // a pending interrupt fails every write on an interruptible channel, so the retry
+                // needs a clean flag; writeFully puts it back for the cancelling side
+                Thread.interrupted();
+                reopen();
+            } catch (ClosedChannelException ignored) {
+                reopen();
+            }
+        }
+        return interrupted;
+    }
+
+    private void reopen() {
+        if (closed) throw new IllegalStateException("transcript store is closed: " + sessionId);
+        try {
+            channel.close();
+        } catch (IOException ignored) {
+            // an interrupted channel is already closed
+        }
+        try {
+            channel = FileChannel.open(file, StandardOpenOption.CREATE, StandardOpenOption.WRITE,
+                    StandardOpenOption.APPEND);
+            LOGGER.warn("reopened transcript after an interrupted write, sessionId={}", sessionId);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to reopen transcript: " + sessionId, e);
         }
     }
 

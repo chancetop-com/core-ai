@@ -50,11 +50,18 @@ public class TurnDriver {
                 //noinspection ResultOfMethodCallIgnored
                 Thread.interrupted();
             } catch (InterruptedException e) {
-                logger.info("TurnDriver interrupted, running={}, exiting driveLoop", running);
-                Thread.currentThread().interrupt();
-                break;
+                if (!running) {
+                    logger.info("TurnDriver interrupted for shutdown, exiting driveLoop");
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                // a cancelTurn() interrupt can still be pending when a batch exits through an
+                // exception; it must not silently kill the driver and end the session
+                logger.warn("TurnDriver woke on a pending cancel interrupt, continuing");
+                Thread.interrupted();
             } catch (Exception e) {
                 logger.error("unexpected error in TurnDriver", e);
+                Thread.interrupted();
             }
         }
         logger.info("TurnDriver exited driveLoop, thread={}", Thread.currentThread().getName());

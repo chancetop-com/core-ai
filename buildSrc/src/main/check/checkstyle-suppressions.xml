@@ -10,7 +10,7 @@
     <suppress checks="FileLengthCheck" files="Agent\.java"/>
     <suppress checks="FileLengthCheck" files="Node\.java"/>
     <suppress checks="FileLengthCheck" files="InProcessAgentSession\.java"/>
-    <suppress checks="MethodLength|ExecutableStatementCount" files="InProcessAgentSession\.java" lines="138"/>
+    <suppress checks="MethodLength|ExecutableStatementCount" files="InProcessAgentSession\.java" lines="139"/>
     <suppress checks="InnerTypeLast|CustomDeclarationOrder" files="SessionLock\.java"/>
     <suppress checks="InnerTypeLast|CustomDeclarationOrder" files="AtomicFiles\.java"/>
     <suppress checks="InnerTypeLast|CustomDeclarationOrder" files="TranscriptProjection\.java"/>

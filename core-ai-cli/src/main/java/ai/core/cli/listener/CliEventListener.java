@@ -234,14 +234,14 @@ public class CliEventListener extends BaseEventListener {
                     if (ch == ESC || ch == CTRL_C) {
                         if (ch == CTRL_C) {
                             LOGGER.debug("Ctrl+C pressed (jline), cancelling turn");
-                            session.cancelTurn();
-                            return;
+                            cancelTurn();
+                            continue;
                         }
                         int next = reader.read(50L);
                         if (next == NonBlockingReader.READ_EXPIRED) {
                             LOGGER.debug("ESC pressed (jline), cancelling turn");
-                            session.cancelTurn();
-                            return;
+                            cancelTurn();
+                            continue;
                         }
                         drainEscapeSequence(reader, next);
                     }
@@ -252,6 +252,14 @@ public class CliEventListener extends BaseEventListener {
         }, "esc-reader");
         escReaderThread.setDaemon(true);
         escReaderThread.start();
+    }
+
+    private void cancelTurn() {
+        try {
+            session.cancelTurn();
+        } catch (RuntimeException e) {
+            LOGGER.debug("cancelTurn failed: {}", e.getMessage());
+        }
     }
 
     private void drainEscapeSequence(NonBlockingReader reader, int firstByte) {

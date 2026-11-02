@@ -18,6 +18,7 @@ import ai.core.context.CompressionReport;
 import ai.core.session.transcript.TranscriptInput;
 import ai.core.session.transcript.TranscriptKinds;
 import ai.core.session.transcript.TranscriptRecorder;
+import ai.core.session.transcript.TranscriptUsage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -177,7 +178,7 @@ public class InProcessAgentSession implements AgentSession {
             logger.warn("agent session run failed, sessionId={}", sessionId, e);
             persistOnFailure();
             var error = ErrorEvent.of(sessionId, e.getMessage(), "", turnId);
-            if (recorder != null) recorder.failTurn(error, SessionTurnUsage.of(agent, before));
+            recordFailedTurn(error, SessionTurnUsage.of(agent, before));
             dispatchTerminal(error, SessionStatus.ERROR);
         } finally {
             for (var pending : turnInput.end()) {
@@ -220,6 +221,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private void persistOnFailure() {
+        Thread.interrupted();
         TurnPersistence.save(agent, sessionId, logger, "run failure");
     }
 
@@ -245,6 +247,9 @@ public class InProcessAgentSession implements AgentSession {
             if (!dispatchMaxTurns(e, before, turnId)) throw e;
             return;
         } finally {
+            // cancelTurn() interrupts this thread; the interrupt has done its job once the run returned,
+            // and it must not break the persistence and transcript writes that finish the turn
+            Thread.interrupted();
             context.setAttachedContents(null);
         }
         if (agent.isCancelled()) {
@@ -277,6 +282,8 @@ public class InProcessAgentSession implements AgentSession {
         } catch (RuntimeException e) {
             if (!dispatchMaxTurns(e, before, null)) throw e;
             return;
+        } finally {
+            Thread.interrupted();
         }
         if (agent.isCancelled()) {
             debug("agent run cancelled");
@@ -399,7 +406,13 @@ public class InProcessAgentSession implements AgentSession {
             cancelled.turnId = currentTurnId;
             dispatchTerminal(cancelled, SessionStatus.IDLE);
         }
-        if (recorder != null) recorder.close();
+        if (recorder != null) {
+            try {
+                recorder.close();
+            } catch (RuntimeException e) {
+                logger.warn("failed to close the transcript, sessionId={}", sessionId, e);
+            }
+        }
     }
 
     public void setOnIdle(Runnable onIdle) {
@@ -454,13 +467,32 @@ public class InProcessAgentSession implements AgentSession {
      * one of them wins — a turn can neither be terminated twice nor left without a terminal event.
      */
     private void dispatchTerminal(AgentEvent turnEnd, SessionStatus status) {
+        // a cancel interrupt must never keep the terminal event from reaching the clients
+        Thread.interrupted();
         if (!turnActive.compareAndSet(true, false)) return;
         if (turnEnd instanceof TurnCompleteEvent turnComplete) {
             turnComplete.durationMs = System.currentTimeMillis() - turnStartedAtMs;
-            if (recorder != null) recorder.completeTurn(turnComplete);
+            if (recorder != null) {
+                try {
+                    recorder.completeTurn(turnComplete);
+                } catch (RuntimeException e) {
+                    // the transcript is a side record; a write failure must never swallow the terminal
+                    // event, or every client waits for a turn end that will never arrive
+                    logger.warn("failed to record turn completion, sessionId={}", sessionId, e);
+                }
+            }
         }
         dispatch(turnEnd);
         dispatch(StatusChangeEvent.of(sessionId, status));
+    }
+
+    private void recordFailedTurn(ErrorEvent error, TranscriptUsage usage) {
+        if (recorder == null) return;
+        try {
+            recorder.failTurn(error, usage);
+        } catch (RuntimeException e) {
+            logger.warn("failed to record the failed turn, sessionId={}", sessionId, e);
+        }
     }
 
     private void dispatch(AgentEvent event) {
