@@ -84,14 +84,35 @@ import ai.core.server.rbac.RbacModule;
 import ai.core.server.replay.ReplayModule;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
+import core.framework.mongo.Mongo;
 import core.framework.mongo.module.MongoConfig;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import redis.clients.jedis.JedisPool;
+
+import java.time.Duration;
 
 /**
  * @author stephen
  */
 public class ServerApp extends App {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServerApp.class);
+    private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(3);
+
+    @SuppressFBWarnings("MDM_RUNTIME_EXIT_OR_HALT")
+    private static void halt() {
+        Runtime.getRuntime().halt(1);
+    }
+
+    private volatile boolean startupCompleted;
+    private Thread startupWatchdog;
+
     @Override
     protected void initialize() {
+        // must run before any other startup hook, see StartupDependencyCheck
+        onStartup(this::verifyStartupDependencies);
+
         load(new SystemModule("sys.properties"));
         loadProperties("agent.properties");
 
@@ -105,6 +126,39 @@ public class ServerApp extends App {
         loadPlatformInfrastructure();
         loadDomainModules();
         loadTransportModules();
+
+        // registered after all modules, so it runs as the last startup hook
+        onStartup(this::markStartupCompleted);
+    }
+
+    private void verifyStartupDependencies() {
+        startStartupWatchdog();
+        new StartupDependencyCheck(bean(JedisPool.class), bean(Mongo.class)).verify();
+    }
+
+    /**
+     * A startup hook that never returns leaves the http server up, so k8s keeps the pod ready while the
+     * runtime stays partially initialized. Halt the process instead of serving traffic in that state.
+     */
+    private void startStartupWatchdog() {
+        startupWatchdog = Thread.ofVirtual().name("startup-watchdog").start(() -> {
+            try {
+                Thread.sleep(STARTUP_TIMEOUT);
+            } catch (InterruptedException e) {
+                return;
+            }
+            if (!startupCompleted) {
+                LOGGER.error("startup did not complete within {}, halt to avoid serving with partially initialized runtime", STARTUP_TIMEOUT);
+                halt();
+            }
+        });
+    }
+
+    private void markStartupCompleted() {
+        startupCompleted = true;
+        if (startupWatchdog != null) {
+            startupWatchdog.interrupt();
+        }
     }
 
     private void loadPlatformInfrastructure() {
