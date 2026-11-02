@@ -2,6 +2,7 @@ package ai.core.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
+import ai.core.agent.CancellationToken;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
 import ai.core.api.server.session.AgentEvent;
@@ -26,6 +27,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 
@@ -189,18 +191,22 @@ public class InProcessAgentSession implements AgentSession {
             recordFailedTurn(error, SessionTurnUsage.of(agent, before));
             dispatchTerminal(error, SessionStatus.ERROR);
         } finally {
-            for (var pending : turnInput.end()) {
-                if (recorder != null && pending.steerSeq() != null) recorder.steerCancel(pending.steerSeq());
-                if (!commandQueue.enqueueUserInput(pending.message(), pending.variables(), pending.attachedContents(), pending.turnId())) {
-                    logger.warn("failed to requeue message accepted during the turn, sessionId={}", sessionId);
-                }
-            }
-            turnDeadline.cancel(false);
-            threadUnbind.run();
-            turnToken.disconnect();
-            currentTurnId = null;
-            footprint.refresh();
+            finishTurn(turnDeadline, threadUnbind, turnToken);
         }
+    }
+
+    private void finishTurn(ScheduledFuture<?> turnDeadline, Runnable threadUnbind, CancellationToken turnToken) {
+        for (var pending : turnInput.end()) {
+            if (recorder != null && pending.steerSeq() != null) recorder.steerCancel(pending.steerSeq());
+            if (!commandQueue.enqueueUserInput(pending.message(), pending.variables(), pending.attachedContents(), pending.turnId())) {
+                logger.warn("failed to requeue message accepted during the turn, sessionId={}", sessionId);
+            }
+        }
+        turnDeadline.cancel(false);
+        threadUnbind.run();
+        turnToken.disconnect();
+        currentTurnId = null;
+        footprint.refresh();
     }
 
     private SessionTurnUsage.Before turnUsageBefore() {
