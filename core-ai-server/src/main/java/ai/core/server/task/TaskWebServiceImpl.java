@@ -23,8 +23,8 @@ import java.util.List;
  */
 @PermissionsRequired(PermissionCodes.TASK_VIEW)
 public class TaskWebServiceImpl implements TaskWebService {
-    private static String extractType(String taskId) {
-        int idx = taskId.lastIndexOf(':');
+    static String extractType(String taskId) {
+        int idx = taskId.indexOf(':');
         if (idx <= 0) return taskId;
         return taskId.substring(0, idx);
     }
