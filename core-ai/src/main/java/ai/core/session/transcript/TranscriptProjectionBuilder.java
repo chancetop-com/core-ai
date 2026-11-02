@@ -164,7 +164,7 @@ final class TranscriptProjectionBuilder {
             return;
         }
         input.put("text_preview", text.substring(0, PREVIEW));
-        input.put("text_truncated", true);
+        input.put("text_truncated", Boolean.TRUE);
     }
 
     private void putText(TranscriptRecord record, String field, String value) {
@@ -179,7 +179,7 @@ final class TranscriptProjectionBuilder {
             return;
         }
         record.put(field + "_preview", value.substring(0, PREVIEW));
-        record.put(field + "_truncated", true);
+        record.put(field + "_truncated", Boolean.TRUE);
     }
 
     private TranscriptRecord add(String kind, String turnId) {
@@ -187,7 +187,7 @@ final class TranscriptProjectionBuilder {
         record.kind = kind;
         record.ts = System.currentTimeMillis();
         record.turnId = turnId;
-        if (synthetic) record.synthetic = true;
+        if (synthetic) record.synthetic = Boolean.TRUE;
         if (!negative) record.seq = startSeq + out.size();
         out.add(record);
         return record;

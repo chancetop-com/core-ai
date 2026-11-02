@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -40,11 +41,9 @@ class SessionLockTest {
     void engineLockUsesTheEngineName(@TempDir Path dir) {
         var first = EngineLock.tryAcquire(dir, "engine");
         assertInstanceOf(SessionLock.AcquireResult.Acquired.class, first);
-        var lock = ((SessionLock.AcquireResult.Acquired) first).lock();
-        try {
+        try (var lock = ((SessionLock.AcquireResult.Acquired) first).lock()) {
+            assertNotNull(lock);
             assertInstanceOf(SessionLock.AcquireResult.Busy.class, EngineLock.tryAcquire(dir, "engine"));
-        } finally {
-            lock.close();
         }
     }
 }

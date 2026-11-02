@@ -14,15 +14,6 @@ import java.util.Set;
 public class TranscriptRecord {
     private static final Set<String> COMMON_KEYS = Set.of("v", "seq", "ts", "turn_id", "kind", "synthetic");
 
-    public int version = 1;
-    public long seq;
-    public long ts;
-    public String turnId;
-    public String kind;
-    public Boolean synthetic;
-
-    private final Map<String, Object> payload = new LinkedHashMap<>();
-
     public static TranscriptRecord fromMap(Map<String, Object> map) {
         var record = new TranscriptRecord();
         record.version = intValue(map.get("v"), 1);
@@ -35,6 +26,23 @@ public class TranscriptRecord {
         COMMON_KEYS.forEach(record.payload::remove);
         return record;
     }
+
+    private static long longValue(Object value) {
+        return value instanceof Number number ? number.longValue() : 0;
+    }
+
+    private static int intValue(Object value, int fallback) {
+        return value instanceof Number number ? number.intValue() : fallback;
+    }
+
+    public int version = 1;
+    public long seq;
+    public long ts;
+    public String turnId;
+    public String kind;
+    public Boolean synthetic;
+
+    private final Map<String, Object> payload = new LinkedHashMap<>();
 
     public Map<String, Object> toMap() {
         var map = new LinkedHashMap<String, Object>();
@@ -107,11 +115,4 @@ public class TranscriptRecord {
         return value instanceof List<?> list ? (List<Map<String, Object>>) list : null;
     }
 
-    private static long longValue(Object value) {
-        return value instanceof Number number ? number.longValue() : 0;
-    }
-
-    private static int intValue(Object value, int fallback) {
-        return value instanceof Number number ? number.intValue() : fallback;
-    }
 }

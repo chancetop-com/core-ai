@@ -63,11 +63,6 @@ public class Main implements Callable<Integer> {
     @Option(names = "--debug", description = "Enable debug output")
     boolean debug;
 
-    @Option(names = "--debug-transcript", description = "Print transcript records to stderr as they are written")
-    void debugTranscript(boolean enabled) {
-        if (enabled) System.setProperty("core.ai.transcript.debug", "true");
-    }
-
     @Option(names = "--model", description = "Override LLM model name")
     String model;
 
@@ -138,6 +133,11 @@ public class Main implements Callable<Integer> {
 
     @Option(names = "--budget-estimate-safety-factor", description = "Prompt-token estimate safety factor (default 1.10)")
     Double budgetEstimateSafetyFactor;
+
+    @Option(names = "--debug-transcript", description = "Print transcript records to stderr as they are written")
+    void debugTranscript(boolean enabled) {
+        if (enabled) System.setProperty("core.ai.transcript.debug", "true");
+    }
 
     @Override
     public Integer call() {

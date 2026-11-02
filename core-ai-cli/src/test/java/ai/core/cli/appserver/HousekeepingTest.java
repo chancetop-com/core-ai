@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -42,8 +43,8 @@ class HousekeepingTest {
         var owned = Files.createDirectories(staging.resolve("owned"));
         var live = Files.createDirectories(staging.resolve("live"));
         Files.writeString(workspaceB.resolve("owned.data"), "{}");
-        var lock = ((SessionLock.AcquireResult.Acquired) SessionLock.tryAcquire(workspaceA, "live", "test")).lock();
-        try {
+        try (var lock = ((SessionLock.AcquireResult.Acquired) SessionLock.tryAcquire(workspaceA, "live", "test")).lock()) {
+            assertNotNull(lock);
             Files.setLastModifiedTime(orphan, old);
             Files.setLastModifiedTime(owned, old);
             Files.setLastModifiedTime(live, old);
@@ -53,8 +54,6 @@ class HousekeepingTest {
             assertFalse(Files.exists(orphan));
             assertTrue(Files.exists(owned), "another workspace must keep its staging directory");
             assertTrue(Files.exists(live), "a live session must keep its staging directory");
-        } finally {
-            lock.close();
         }
     }
 }

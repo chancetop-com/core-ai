@@ -25,6 +25,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SessionSnapshotCrashConsistencyTest {
     private static final String INTACT = "{\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"hello\"}]}],\"history\":[],\"status\":\"COMPLETED\"}";
 
+    private static void await(CountDownLatch latch) {
+        try {
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     @Test
     void listingSurvivesATruncatedSnapshot(@TempDir Path dir) throws Exception {
         var persistence = new FileSessionPersistence(dir.toString());
@@ -56,8 +64,14 @@ class SessionSnapshotCrashConsistencyTest {
         int rounds = 10;
         for (int round = 0; round < rounds; round++) {
             var start = new CountDownLatch(1);
-            var t1 = Thread.ofPlatform().start(() -> { await(start); a.save("shared", payloadA); });
-            var t2 = Thread.ofPlatform().start(() -> { await(start); b.save("shared", payloadB); });
+            var t1 = Thread.ofPlatform().start(() -> {
+                await(start);
+                a.save("shared", payloadA);
+            });
+            var t2 = Thread.ofPlatform().start(() -> {
+                await(start);
+                b.save("shared", payloadB);
+            });
             start.countDown();
             t1.join(30_000);
             t2.join(30_000);
@@ -67,11 +81,4 @@ class SessionSnapshotCrashConsistencyTest {
         assertEquals(0, mixed, "rounds that ended with a file that is neither writer's snapshot: " + mixed + "/" + rounds);
     }
 
-    private static void await(CountDownLatch latch) {
-        try {
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }

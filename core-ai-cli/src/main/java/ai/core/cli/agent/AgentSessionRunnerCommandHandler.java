@@ -43,15 +43,14 @@ class AgentSessionRunnerCommandHandler {
     private final TranscriptRecorder recorder;
 
     AgentSessionRunnerCommandHandler(TerminalUI ui, Agent agent, String sessionId,
-                                      SessionManager sessionManager, ModelPicker modelPicker,
-                                      MemoryCommandHandler memoryCommand, TranscriptRecorder recorder) {
+                                      SessionManager sessionManager, Handlers handlers) {
         this.ui = ui;
         this.agent = agent;
         this.sessionId = sessionId;
         this.sessionManager = sessionManager;
-        this.modelPicker = modelPicker;
-        this.memoryCommand = memoryCommand;
-        this.recorder = recorder;
+        this.modelPicker = handlers.modelPicker();
+        this.memoryCommand = handlers.memoryCommand();
+        this.recorder = handlers.recorder();
     }
 
     void handleSave() {
@@ -305,5 +304,8 @@ class AgentSessionRunnerCommandHandler {
 
     Agent getAgent() {
         return agent;
+    }
+
+    record Handlers(ModelPicker modelPicker, MemoryCommandHandler memoryCommand, TranscriptRecorder recorder) {
     }
 }

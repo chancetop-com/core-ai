@@ -135,10 +135,6 @@ public class HelperConfigStore {
     }
 
     private void persist() {
-        try {
-            AtomicFiles.writeString(file, JsonUtil.toJson(config));
-        } catch (UncheckedIOException e) {
-            throw new UncheckedIOException("failed to persist helpers, file=" + file, e.getCause());
-        }
+        AtomicFiles.writeString(file, JsonUtil.toJson(config));
     }
 }

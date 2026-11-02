@@ -15,12 +15,9 @@ import ai.core.cli.memory.SessionCloseExtractor;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.BannerPrinter;
 import ai.core.cli.ui.FileReferenceExpander;
-import ai.core.cli.ui.StreamingMarkdownRenderer;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.upgrade.VersionUtil;
 import ai.core.llm.LLMProviders;
-import ai.core.llm.domain.RoleType;
-import ai.core.schedule.CronExpression;
 import ai.core.session.InProcessAgentSession;
 import ai.core.session.SessionLoad;
 import ai.core.session.SessionLoads;
@@ -29,23 +26,13 @@ import ai.core.session.SessionManager;
 import ai.core.session.SessionPersistence;
 import ai.core.session.ToolPermissionStore;
 import ai.core.session.TurnPersistence;
-import ai.core.session.transcript.TranscriptKinds;
 import ai.core.session.transcript.TranscriptMetadata;
-import ai.core.session.transcript.TranscriptReader;
-import ai.core.session.transcript.TranscriptRecord;
 import ai.core.session.transcript.TranscriptRecorder;
 import ai.core.session.transcript.TranscriptStore;
-import ai.core.tool.tools.ScheduledTaskTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -100,7 +87,7 @@ public class AgentSessionRunner {
     private ReplCommandHandler commands;
     private final String defaultServerUrl;
     private final ai.core.schedule.ScheduledTaskStore scheduledTaskStore;
-    private java.util.concurrent.ScheduledExecutorService scheduleTicker;
+    private SessionScheduleTicker scheduleTicker;
 
     public AgentSessionRunner(TerminalUI ui, Agent agent, LLMProviders llmProviders, Config config) {
         this.ui = ui;
@@ -134,18 +121,15 @@ public class AgentSessionRunner {
     }
 
     public String run() {
-        var lock = acquireLock();
-        if (lock == null) return null;
-        try {
+        try (var lock = acquireLock()) {
+            if (lock == null) return null;
             return runLocked();
-        } finally {
-            lock.close();
         }
     }
 
     private String runLocked() {
         if (!loadSession()) return null;
-        if (agent.hasPersistenceProvider() && memoryEnabled && !agent.getHistory().isEmpty()) {
+        if (memoryEnabled && agent.hasPersistenceProvider() && !agent.getHistory().isEmpty()) {
             MemoryTriggerService.getInstance(workspace).resetCursorToEnd();
         }
         recorder = createRecorder();
@@ -160,7 +144,7 @@ public class AgentSessionRunner {
         printBanner();
         upgradeHandler.checkAndHintUpgrade();
         printSessionHistory();
-        startSenderThread(messageQueue, listener, session, readyForInput);
+        SessionTurnSender.startSenderThread(messageQueue, listener, session, readyForInput, POISON_PILL);
         startScheduleTicker(messageQueue);
         readInputLoop(messageQueue, readyForInput);
         stopScheduleTicker();
@@ -174,12 +158,9 @@ public class AgentSessionRunner {
     }
 
     public void runPrompt(String prompt) {
-        var lock = acquireLock();
-        if (lock == null) return;
-        try {
+        try (var lock = acquireLock()) {
+            if (lock == null) return;
             runPromptLocked(prompt);
-        } finally {
-            lock.close();
         }
     }
 
@@ -209,7 +190,7 @@ public class AgentSessionRunner {
                 runPromptWithTimeLimit(listener, session, prompt, timeoutMillis);
             }
         } else {
-            sendPrompt(listener, session, prompt);
+            SessionTurnSender.sendPrompt(listener, session, prompt, ui);
         }
         awaitBackgroundWork(session);
         if (memoryEnabled && promptExtractionEnabled && shouldExtractMemory()) {
@@ -329,7 +310,7 @@ public class AgentSessionRunner {
             return t;
         });
         Future<?> future = executor.submit(() -> {
-            sendPrompt(listener, session, prompt);
+            SessionTurnSender.sendPrompt(listener, session, prompt, ui);
             return null;
         });
         try {
@@ -356,300 +337,28 @@ public class AgentSessionRunner {
     }
 
     private void printSessionHistory() {
-        if (printTranscriptHistory()) return;
-        printAgentHistory();
+        var printer = new TranscriptHistoryPrinter(ui);
+        if (printer.print(recorder, sessionId)) return;
+        printer.printAgentHistory(agent, sessionId);
     }
 
-    /**
-     * Restores the last turns from the transcript, so a resumed session shows thinking, tool calls and
-     * notices — not just the text the agent history kept. Falls back to history when no record exists.
-     */
-    private boolean printTranscriptHistory() {
-        if (recorder == null) return false;
-        var store = recorder.store();
-        var reader = new TranscriptReader(store);
-        var records = new ArrayList<TranscriptRecord>();
-        long before = store.maxSeq() + 1;
-        boolean truncated = false;
-        for (int pages = 0; pages < 100; pages++) {
-            var page = reader.page(before, 100, 2000);
-            if (page.records().isEmpty()) break;
-            records.addAll(0, page.records());
-            if (page.nextBeforeSeq() == null) break;
-            before = page.nextBeforeSeq();
-            if (pages == 99) truncated = true;
-        }
-        if (records.isEmpty()) return false;
-        var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
-        var cancelledSteers = cancelledSteerSeqs(records);
-        boolean printed = false;
-        for (var record : records) {
-            if (record.kind == null) continue;
-            switch (record.kind) {
-                case TranscriptKinds.TURN_START -> printed |= printTurnInputs(record);
-                case TranscriptKinds.STEER -> {
-                    if (TranscriptKinds.STEER_PENDING.equals(record.text("state"))
-                        && !cancelledSteers.contains(record.seq)) {
-                        printed |= printPrompt(recordText(record, "text"));
-                    }
-                }
-                case TranscriptKinds.ASSISTANT_TEXT -> {
-                    var text = recordText(record, "text");
-                    if (text != null && !text.isBlank()) {
-                        printAssistantText(renderer, text);
-                        printed = true;
-                    }
-                }
-                case TranscriptKinds.REASONING -> {
-                    var text = recordText(record, "reasoning");
-                    if (text != null && !text.isBlank()) {
-                        printReasoning(text);
-                        printed = true;
-                    }
-                }
-                case TranscriptKinds.TOOL_START -> {
-                    ui.printStreamingChunk("\n  " + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + ' '
-                        + record.text("toolName") + "\n");
-                    printPreview(record, "arguments");
-                    printed = true;
-                }
-                case TranscriptKinds.TOOL_RESULT -> {
-                    var status = record.text("status");
-                    var color = "success".equals(status) ? AnsiTheme.SEPARATOR : AnsiTheme.ERROR;
-                    ui.printStreamingChunk("  " + color + (status == null ? "done" : status) + AnsiTheme.RESET + "\n");
-                    printPreview(record, "result");
-                    printed = true;
-                }
-                case TranscriptKinds.NOTICE, TranscriptKinds.COMPRESSION, TranscriptKinds.SANDBOX -> {
-                    var text = firstText(record, "text", "message");
-                    if (text != null && !text.isBlank()) {
-                        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + text.strip() + AnsiTheme.RESET + "\n");
-                        printed = true;
-                    }
-                }
-                case TranscriptKinds.ERROR -> {
-                    var text = recordText(record, "message");
-                    if (text != null && !text.isBlank()) {
-                        ui.printStreamingChunk("\n  " + AnsiTheme.ERROR + text.strip() + AnsiTheme.RESET + "\n");
-                        printed = true;
-                    }
-                }
-                case TranscriptKinds.TURN_COMPLETE -> {
-                    var summary = turnSummary(record);
-                    if (summary != null) {
-                        ui.printStreamingChunk("  " + AnsiTheme.MUTED + summary + AnsiTheme.RESET + "\n");
-                    }
-                }
-                default -> {
-                }
-            }
-        }
-        if (truncated) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  … earlier turns are in the transcript" + AnsiTheme.RESET + "\n");
-        }
-        if (printed) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
-        }
-        return printed;
-    }
-
-    private Set<Long> cancelledSteerSeqs(List<TranscriptRecord> records) {
-        var cancelled = new HashSet<Long>();
-        for (var record : records) {
-            if (!TranscriptKinds.STEER.equals(record.kind)) continue;
-            if (!TranscriptKinds.STEER_CANCELLED.equals(record.text("state"))) continue;
-            var ref = record.number("ref_seq");
-            if (ref != null) cancelled.add(ref);
-        }
-        return cancelled;
-    }
-
-    private boolean printTurnInputs(TranscriptRecord record) {
-        var inputs = record.objects("inputs");
-        if (inputs == null) return false;
-        var source = record.text("source");
-        boolean printed = false;
-        for (var input : inputs) {
-            var value = input.get("text");
-            if (value == null) value = input.get("text_preview");
-            if (value == null) continue;
-            var prefix = TranscriptKinds.SOURCE_TASK_NOTE.equals(source)
-                ? AnsiTheme.MUTED + "[task] " + AnsiTheme.RESET : "";
-            printed |= printPrompt(prefix + value);
-        }
-        return printed;
-    }
-
-    private boolean printPrompt(String text) {
-        if (text == null || text.isBlank()) return false;
-        ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + text.strip() + "\n");
-        return true;
-    }
-
-    private void printAssistantText(StreamingMarkdownRenderer renderer, String text) {
-        var writer = ui.getWriter();
-        writer.print("\n" + AnsiTheme.SEPARATOR + "●" + AnsiTheme.RESET + " ");
-        writer.flush();
-        renderer.setFirstLineOffset(AnsiTheme.displayWidth("● "));
-        renderer.processChunk(text.replace("\n", "\n  "));
-        renderer.flush();
-        renderer.reset();
-        writer.println();
-    }
-
-    private void printReasoning(String text) {
-        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "◌ thinking" + AnsiTheme.RESET + "\n");
-        var body = text.strip();
-        if (body.length() > 4000) body = body.substring(0, 4000) + "…";
-        for (var line : body.split("\n")) {
-            ui.printStreamingChunk("  " + AnsiTheme.MUTED + line + AnsiTheme.RESET + "\n");
-        }
-    }
-
-    private void printPreview(TranscriptRecord record, String field) {
-        var text = recordText(record, field);
-        if (text == null || text.isBlank()) return;
-        var line = text.strip().split("\n", 2)[0];
-        if (line.length() > 160) line = line.substring(0, 160) + "…";
-        ui.printStreamingChunk("    " + AnsiTheme.MUTED + line + AnsiTheme.RESET + "\n");
-    }
-
-    private String turnSummary(TranscriptRecord record) {
-        var parts = new java.util.ArrayList<String>();
-        var duration = record.number("duration_ms");
-        if (duration != null) parts.add(String.format(Locale.ROOT, "%.1fs", duration / 1000.0));
-        var input = record.number("input_tokens");
-        var output = record.number("output_tokens");
-        if (input != null || output != null) {
-            parts.add((input == null ? 0 : input) + " in / " + (output == null ? 0 : output) + " out");
-        }
-        var cost = record.decimal("cost_usd");
-        if (cost != null && cost > 0) parts.add(String.format(Locale.ROOT, "$%.4f", cost));
-        return parts.isEmpty() ? null : "✦ " + String.join(" · ", parts);
-    }
-
-    private String recordText(TranscriptRecord record, String field) {
-        var text = record.text(field);
-        return text != null ? text : record.text(field + "_preview");
-    }
-
-    private String firstText(TranscriptRecord record, String first, String second) {
-        var text = recordText(record, first);
-        return text != null ? text : recordText(record, second);
-    }
-
-    private void printAgentHistory() {
-        var messages = agent.getHistory();
-        boolean hasHistory = false;
-        var renderer = new StreamingMarkdownRenderer(ui.getWriter(), ui.isAnsiSupported(), ui::getTerminalWidth);
-        for (var msg : messages) {
-            String text = msg.getTextContent();
-            if (text == null || text.isBlank()) continue;
-            if (msg.role == RoleType.USER) {
-                hasHistory = true;
-                ui.printStreamingChunk("\n" + AnsiTheme.PROMPT + "❯  " + AnsiTheme.RESET + text.strip() + "\n");
-            } else if (msg.role == RoleType.ASSISTANT) {
-                hasHistory = true;
-                // mirror the live turn rendering: ● icon with continuation lines indented
-                var writer = ui.getWriter();
-                writer.print("\n" + AnsiTheme.SEPARATOR + "\u25CF" + AnsiTheme.RESET + " ");
-                writer.flush();
-                renderer.setFirstLineOffset(AnsiTheme.displayWidth("\u25CF "));
-                renderer.processChunk(text.replace("\n", "\n  "));
-                renderer.flush();
-                renderer.reset();
-                writer.println();
-            }
-        }
-        if (hasHistory) {
-            ui.printStreamingChunk(AnsiTheme.MUTED + "  ↑ restored " + sessionId + AnsiTheme.RESET + "\n");
-        }
-    }
-
-    // Fires due session-bound scheduled tasks while the session is open: the trigger
-    // message is enqueued through the same queue as user input, so the sender thread
-    // renders it exactly like a user turn. Claiming always advances next_run_at, so
-    // occurrences missed while the CLI was closed are not caught up.
     private void startScheduleTicker(BlockingQueue<String> messageQueue) {
         if (scheduledTaskStore == null) return;
-        scheduleTicker = Executors.newSingleThreadScheduledExecutor(r -> {
-            var t = new Thread(r, "schedule-ticker");
-            t.setDaemon(true);
-            return t;
-        });
-        scheduleTicker.scheduleAtFixedRate(() -> tickSchedules(messageQueue), 30, 30, TimeUnit.SECONDS);
-    }
-
-    private void tickSchedules(BlockingQueue<String> messageQueue) {
-        try {
-            var now = ZonedDateTime.now();
-            for (var task : scheduledTaskStore.findDue(now)) {
-                if (!task.sessionId.equals(sessionId)) continue;
-                var zone = ZoneId.of(task.timezone);
-                var nextRunAt = new CronExpression(task.cronExpression).nextAfter(now, zone);
-                if (!scheduledTaskStore.claim(task.id, task.nextRunAt, nextRunAt)) continue;
-                messageQueue.offer(ScheduledTaskTool.buildTriggerMessage(task));
-                LOGGER.info("fired scheduled task, id={}, sessionId={}", task.id, task.sessionId);
-            }
-        } catch (Exception e) {
-            LOGGER.warn("schedule tick failed", e);
-        }
+        scheduleTicker = new SessionScheduleTicker(scheduledTaskStore, sessionId);
+        scheduleTicker.start(messageQueue);
     }
 
     private void stopScheduleTicker() {
         if (scheduleTicker != null) {
-            scheduleTicker.shutdownNow();
+            scheduleTicker.stop();
             scheduleTicker = null;
         }
     }
 
-    private void startSenderThread(BlockingQueue<String> queue, CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput) {
-        Thread senderThread = new Thread(() -> {
-            try {
-                while (true) {
-                    String msg = queue.take();
-                    if (POISON_PILL.equals(msg)) break;
-                    sendMessage(listener, session, readyForInput, msg);
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }, "sender-thread");
-        senderThread.setDaemon(true);
-        senderThread.start();
-    }
-
-    private void sendMessage(CliEventListener listener, InProcessAgentSession session, Semaphore readyForInput, String msg) {
-        LOGGER.debug("sending message: {}", msg);
-        listener.prepareTurn();
-        try {
-            session.sendMessage(msg);
-        } finally {
-            listener.getPanel().stopSpinnerIfActive();
-        }
-        LOGGER.debug("waiting for turn...");
-        listener.waitForTurn();
-        LOGGER.debug("turn finished");
-        readyForInput.release();
-    }
-
-    private void sendPrompt(CliEventListener listener, InProcessAgentSession session, String prompt) {
-        LOGGER.debug("sending prompt: {}", prompt);
-        listener.prepareTurn();
-        String expanded = ui.getPasteBuffer().expand(prompt == null ? "" : prompt);
-        try {
-            session.sendMessage(FileReferenceExpander.expand(expanded));
-        } finally {
-            listener.getPanel().stopSpinnerIfActive();
-        }
-        LOGGER.debug("waiting for turn...");
-        listener.waitForTurn();
-        LOGGER.debug("turn finished");
-    }
-
     private void readInputLoop(BlockingQueue<String> queue, Semaphore readyForInput) {
         var sessionHandler = new AgentSessionRunnerCommandHandler(
-                ui, agent, sessionId, sessionManager, modelPicker, memoryCommand, recorder);
+                ui, agent, sessionId, sessionManager,
+                new AgentSessionRunnerCommandHandler.Handlers(modelPicker, memoryCommand, recorder));
         var dispatcher = new CommandDispatcher(
                 ui, modelPicker, switchSessionId,
                 new HandlerContext(commands, memoryCommand, memoryEnabled), sessionHandler,
@@ -661,9 +370,7 @@ public class AgentSessionRunner {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
-            if (showFrame) {
-                ui.printInputFrame();
-            }
+            if (showFrame) ui.printInputFrame();
             var input = ui.readInput();
             if (input == null || "/exit".equalsIgnoreCase(input.trim())) {
                 queue.offer(POISON_PILL);

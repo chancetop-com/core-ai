@@ -16,7 +16,6 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -25,10 +24,42 @@ import java.util.Optional;
  *
  * @author stephen
  */
+@SuppressWarnings("PMD.AvoidSynchronizedAtMethodLevel")
 public final class TranscriptStore implements AutoCloseable {
     private static final Logger LOGGER = LoggerFactory.getLogger(TranscriptStore.class);
     private static final String FILE_SUFFIX = ".events.jsonl";
     private static final String BLOB_SUFFIX = ".blobs";
+
+    public static TranscriptStore open(Path dir, String sessionId) {
+        try {
+            Files.createDirectories(dir);
+            var store = new TranscriptStore(dir, sessionId);
+            store.load();
+            store.channel = FileChannel.open(store.file, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+            return store;
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to open transcript: " + sessionId, e);
+        }
+    }
+
+    public static void delete(Path dir, String sessionId) {
+        try {
+            Files.deleteIfExists(dir.resolve(sessionId + FILE_SUFFIX));
+            deleteRecursively(dir.resolve(sessionId + BLOB_SUFFIX));
+        } catch (IOException e) {
+            LOGGER.warn("failed to delete transcript, sessionId={}", sessionId, e);
+        }
+    }
+
+    private static void deleteRecursively(Path path) throws IOException {
+        if (!Files.exists(path)) return;
+        try (var stream = Files.walk(path)) {
+            for (var child : stream.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(child);
+            }
+        }
+    }
 
     private final Path dir;
     private final String sessionId;
@@ -48,26 +79,14 @@ public final class TranscriptStore implements AutoCloseable {
         this.blobs = dir.resolve(sessionId + BLOB_SUFFIX);
     }
 
-    public static TranscriptStore open(Path dir, String sessionId) {
-        try {
-            Files.createDirectories(dir);
-            var store = new TranscriptStore(dir, sessionId);
-            store.load();
-            store.channel = FileChannel.open(store.file, StandardOpenOption.CREATE,
-                StandardOpenOption.WRITE, StandardOpenOption.APPEND);
-            return store;
-        } catch (IOException e) {
-            throw new UncheckedIOException("failed to open transcript: " + sessionId, e);
-        }
-    }
-
     private void load() throws IOException {
         if (!Files.exists(file)) return;
         truncatePartialTail();
         try (var reader = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
+            var line = reader.readLine();
+            while (line != null) {
                 loadLine(line);
+                line = reader.readLine();
             }
         }
     }
@@ -108,7 +127,7 @@ public final class TranscriptStore implements AutoCloseable {
     private void loadLine(String line) {
         if (line.isBlank()) return;
         try {
-            var record = TranscriptRecord.fromMap(JsonUtil.fromJson(new TypeReference<Map<String, Object>>() { }, line));
+            var record = TranscriptRecord.fromMap(JsonUtil.fromJson(new TypeReference<>() { }, line));
             records.add(record);
             if (record.seq > maxSeq) maxSeq = record.seq;
         } catch (RuntimeException e) {
@@ -242,21 +261,5 @@ public final class TranscriptStore implements AutoCloseable {
         }
     }
 
-    public static void delete(Path dir, String sessionId) {
-        try {
-            Files.deleteIfExists(dir.resolve(sessionId + FILE_SUFFIX));
-            deleteRecursively(dir.resolve(sessionId + BLOB_SUFFIX));
-        } catch (IOException e) {
-            LOGGER.warn("failed to delete transcript, sessionId={}", sessionId, e);
-        }
-    }
 
-    private static void deleteRecursively(Path path) throws IOException {
-        if (!Files.exists(path)) return;
-        try (var stream = Files.walk(path)) {
-            for (var child : stream.sorted(Comparator.reverseOrder()).toList()) {
-                Files.deleteIfExists(child);
-            }
-        }
-    }
 }

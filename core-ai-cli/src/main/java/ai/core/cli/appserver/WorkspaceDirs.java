@@ -33,9 +33,6 @@ public final class WorkspaceDirs {
     private static final String OWNER_FILE = "owner.json";
     private static final int MAX_COLLISIONS = 1000;
 
-    private record CacheKey(Path canonical, Path baseDir) {
-    }
-
     private static final Map<CacheKey, Path> CACHE = new ConcurrentHashMap<>();
 
     public static Path ensure(Path workspace) {
@@ -47,55 +44,78 @@ public final class WorkspaceDirs {
         return CACHE.computeIfAbsent(new CacheKey(canonical, baseDir), key -> ensureUncached(key.canonical(), key.baseDir()));
     }
 
+    static void clearCache() {
+        CACHE.clear();
+    }
+
     private static Path ensureUncached(Path canonical, Path baseDir) {
-        try {
-            Files.createDirectories(baseDir);
-            var lockFile = baseDir.resolve(REGISTRY_LOCK);
-            try (var channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
-                var lock = channel.lock();
-                try {
-                    var identity = identity(canonical);
-                    var registry = loadRegistry(baseDir);
-                    var entry = registry.workspaces.get(identity);
-                    if (entry != null && (entry.dir == null || entry.dir.isBlank())) {
-                        entry = null;
-                    }
-                    if (entry != null) {
-                        if (isCopy(entry, canonical)) {
-                            identity = newIdentity(canonical);
-                        } else {
-                            entry.lastPath = canonical.toString();
-                            try {
-                                saveRegistry(baseDir, registry);
-                            } catch (RuntimeException e) {
-                                LOGGER.warn("failed to update session workspace registry: {}", e.getMessage());
-                            }
-                            var sessionsDir = baseDir.resolve(entry.dir);
-                            Files.createDirectories(sessionsDir);
-                            if (!Files.exists(sessionsDir.resolve(OWNER_FILE))) {
-                                writeOwner(sessionsDir, identity, canonical);
-                            }
-                            return sessionsDir;
-                        }
-                    }
-                    var dirName = chooseDir(baseDir, registry, basename(canonical), identity);
-                    var sessionsDir = baseDir.resolve(dirName);
-                    Files.createDirectories(sessionsDir);
-                    writeOwner(sessionsDir, identity, canonical);
-                    registry.workspaces.put(identity, entry(dirName, canonical));
-                    try {
-                        saveRegistry(baseDir, registry);
-                    } catch (RuntimeException e) {
-                        // owner.json is enough to rebuild the registry on the next start
-                        LOGGER.warn("failed to save session workspace registry: {}", e.getMessage());
-                    }
-                    return sessionsDir;
-                } finally {
-                    lock.release();
-                }
-            }
+        ensureBaseDir(baseDir);
+        try (var channel = FileChannel.open(baseDir.resolve(REGISTRY_LOCK),
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+             var lock = channel.lock()) {
+            if (!lock.isValid()) throw new IllegalStateException("failed to acquire the workspace registry lock");
+            return resolveUnderLock(canonical, baseDir);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to resolve session directory: " + canonical, e);
+        }
+    }
+
+    private static void ensureBaseDir(Path baseDir) {
+        try {
+            Files.createDirectories(baseDir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to create sessions directory: " + baseDir, e);
+        }
+    }
+
+    private static Path resolveUnderLock(Path canonical, Path baseDir) {
+        var identity = identity(canonical);
+        var registry = loadRegistry(baseDir);
+        var entry = registry.workspaces.get(identity);
+        if (entry != null && (entry.dir == null || entry.dir.isBlank())) {
+            entry = null;
+        }
+        if (entry != null && isCopy(entry, canonical)) {
+            identity = newIdentity(canonical);
+            entry = null;
+        }
+        if (entry != null) {
+            return existingSessionsDir(baseDir, registry, entry, identity, canonical);
+        }
+        var dirName = chooseDir(baseDir, registry, basename(canonical), identity);
+        var sessionsDir = baseDir.resolve(dirName);
+        ensureDirectory(sessionsDir);
+        writeOwner(sessionsDir, identity, canonical);
+        registry.workspaces.put(identity, entry(dirName, canonical));
+        saveRegistryQuietly(baseDir, registry, "failed to save session workspace registry");
+        return sessionsDir;
+    }
+
+    private static Path existingSessionsDir(Path baseDir, Registry registry, Registry.Entry entry,
+                                            String identity, Path canonical) {
+        entry.lastPath = canonical.toString();
+        saveRegistryQuietly(baseDir, registry, "failed to update session workspace registry");
+        var sessionsDir = baseDir.resolve(entry.dir);
+        ensureDirectory(sessionsDir);
+        if (!Files.exists(sessionsDir.resolve(OWNER_FILE))) {
+            writeOwner(sessionsDir, identity, canonical);
+        }
+        return sessionsDir;
+    }
+
+    private static void ensureDirectory(Path dir) {
+        try {
+            Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new UncheckedIOException("failed to create session directory: " + dir, e);
+        }
+    }
+
+    private static void saveRegistryQuietly(Path baseDir, Registry registry, String message) {
+        try {
+            saveRegistry(baseDir, registry);
+        } catch (RuntimeException e) {
+            LOGGER.warn("{}: {}", message, e.getMessage());
         }
     }
 
@@ -192,9 +212,11 @@ public final class WorkspaceDirs {
         var registry = new Registry();
         try (var dirs = Files.list(baseDir)) {
             dirs.filter(Files::isDirectory).forEach(dir -> {
+                var name = dir.getFileName();
+                if (name == null) return;
                 var owner = readOwner(dir);
                 if (owner == null || owner.id == null || owner.id.isBlank()) return;
-                registry.workspaces.put(owner.id, entry(dir.getFileName().toString(), pathOrNull(owner.lastPath)));
+                registry.workspaces.put(owner.id, entry(name.toString(), pathOrNull(owner.lastPath)));
             });
         } catch (IOException e) {
             LOGGER.warn("failed to rebuild session workspace registry: {}", e.getMessage());
@@ -241,6 +263,12 @@ public final class WorkspaceDirs {
         return entry;
     }
 
+    private WorkspaceDirs() {
+    }
+
+    private record CacheKey(Path canonical, Path baseDir) {
+    }
+
     public static class Registry {
         public Integer version;
         public Map<String, Entry> workspaces = new LinkedHashMap<>();
@@ -255,12 +283,5 @@ public final class WorkspaceDirs {
     public static class Owner {
         public String id;
         public String lastPath;
-    }
-
-    static void clearCache() {
-        CACHE.clear();
-    }
-
-    private WorkspaceDirs() {
     }
 }

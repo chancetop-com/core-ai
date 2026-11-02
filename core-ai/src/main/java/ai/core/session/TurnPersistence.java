@@ -24,13 +24,13 @@ public final class TurnPersistence {
         try {
             agent.save(sessionId);
             if (sessionId != null && FAILED_SESSIONS.remove(sessionId) != null) {
-                emit(agent, sessionId, "{\"status\":\"ok\"}");
+                emit(agent, "{\"status\":\"ok\"}");
             }
             return true;
         } catch (RuntimeException e) {
             logger.warn("failed to persist session after {}, sessionId={}", reason, sessionId, e);
             if (sessionId != null && FAILED_SESSIONS.putIfAbsent(sessionId, Boolean.TRUE) == null) {
-                emit(agent, sessionId, failureData(reason, e));
+                emit(agent, failureData(reason, e));
             }
             return false;
         }
@@ -48,9 +48,9 @@ public final class TurnPersistence {
         return JsonUtil.toJson(data);
     }
 
-    private static void emit(Agent agent, String sessionId, String data) {
+    private static void emit(Agent agent, String data) {
         var context = agent.getExecutionContext();
-        if (context == null || context.getCustomVariables() == null) return;
+        if (context.getCustomVariables() == null) return;
         if (context.getCustomVariables().get(CustomEventEmitter.CONTEXT_KEY) instanceof CustomEventEmitter emitter) {
             emitter.emit("persistence", data, null, null);
         }

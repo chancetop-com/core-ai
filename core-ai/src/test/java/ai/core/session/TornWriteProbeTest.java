@@ -16,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 class TornWriteProbeTest {
     @Test
+    @SuppressWarnings("PMD.SystemPrintln")
     @EnabledIfEnvironmentVariable(named = "CORE_AI_PROBE", matches = "true")
     void killedWriterNeverLeavesATornOrEmptySnapshot() throws Exception {
         var result = TornWriteProbe.run(Files.createTempDirectory("torn-write-probe-test"), 12, System.out::println);

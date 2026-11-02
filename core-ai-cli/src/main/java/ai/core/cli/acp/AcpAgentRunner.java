@@ -29,23 +29,11 @@ import ai.core.llm.LLMProviders;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.media.MediaProvider;
-import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.FileSessionPersistence;
-import ai.core.session.SessionLoad;
-import ai.core.session.SessionLoads;
 import ai.core.session.SessionLock;
 import ai.core.session.TurnPersistence;
 import ai.core.session.PermissionGate;
 import ai.core.session.ServerPermissionLifecycle;
-import ai.core.session.ToolPermissionStore;
-import ai.core.tool.tools.AskUserTool;
-import ai.core.tool.tools.GlobFileTool;
-import ai.core.tool.tools.GrepFileTool;
-import ai.core.tool.tools.ReadFileTool;
-import ai.core.tool.tools.TaskTool;
-import ai.core.tool.tools.WebFetchTool;
-import ai.core.tool.tools.WebSearchTool;
-import ai.core.tool.tools.WriteTodosTool;
 import com.agentclientprotocol.sdk.agent.AcpAgent;
 import com.agentclientprotocol.sdk.agent.AcpSyncAgent;
 import com.agentclientprotocol.sdk.agent.SyncPromptContext;
@@ -229,7 +217,7 @@ public class AcpAgentRunner {
         try {
             coreAgent = CliAgent.of(agentConfig);
             if (coreAgent.hasPersistenceProvider()) {
-                restoreSession(coreAgent, sessionPersistence, sessionId);
+                AcpSessionLoader.restore(coreAgent, sessionPersistence, sessionId);
             }
         } catch (RuntimeException e) {
             sessionLock.close();
@@ -242,7 +230,7 @@ public class AcpAgentRunner {
                 acpPermissionDispatcher(currentContext, permissionGate),
                 permissionGate,
                 autoApproveAll,
-                whiteToolsPermissionStore(),
+                CliAppHelper.whiteToolsPermissionStore(workspace),
                 toolName -> "builtin"));
         sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence, sessionLock));
         return new AcpSchema.NewSessionResponse(sessionId, null, null);
@@ -282,7 +270,7 @@ public class AcpAgentRunner {
         try {
             coreAgent = CliAgent.of(agentConfig);
             if (coreAgent.hasPersistenceProvider()) {
-                restoreSession(coreAgent, sessionPersistence, sessionId);
+                AcpSessionLoader.restore(coreAgent, sessionPersistence, sessionId);
             }
         } catch (RuntimeException e) {
             sessionLock.close();
@@ -295,7 +283,7 @@ public class AcpAgentRunner {
                 acpPermissionDispatcher(currentContext, permissionGate),
                 permissionGate,
                 autoApproveAll,
-                whiteToolsPermissionStore(),
+                CliAppHelper.whiteToolsPermissionStore(workspace),
                 toolName -> "builtin"));
         sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence, sessionLock));
         LOGGER.info("ACP session loaded: id={}, messages={}", sessionId, coreAgent.getMessages().size());
@@ -373,34 +361,6 @@ public class AcpAgentRunner {
             throw new IllegalStateException("session is in use by " + holder);
         }
         return ((SessionLock.AcquireResult.Acquired) acquire).lock();
-    }
-
-    private static void restoreSession(Agent agent, FileSessionPersistence persistence, String sessionId) {
-        switch (SessionLoads.load(persistence, sessionId)) {
-            case SessionLoad.Ok ok -> agent.restore(sessionId, ok.domain());
-            case SessionLoad.Missing ignored -> {
-            }
-            case SessionLoad.Corrupt corrupt -> throw new IllegalStateException(
-                    "session file is corrupted: " + sessionId + " (" + corrupt.reason() + ")");
-            case SessionLoad.NewerVersion newer -> throw new IllegalStateException(
-                    "session was written by a newer core-ai version: " + sessionId + " (version " + newer.version() + ")");
-            case SessionLoad.IoError error -> throw new IllegalStateException(
-                    "failed to read session: " + sessionId, error.cause());
-        }
-    }
-
-    private ToolPermissionStore whiteToolsPermissionStore() {
-        var permissionStore = new FileRuleBasedPermissionStore(
-                workspace.resolve(".core-ai").resolve("tool-permissions.json"));
-        permissionStore.allow(WriteTodosTool.WT_TOOL_NAME);
-        permissionStore.allow(TaskTool.TOOL_NAME);
-        permissionStore.allow(WebFetchTool.TOOL_NAME);
-        permissionStore.allow(WebSearchTool.TOOL_NAME);
-        permissionStore.allow(AskUserTool.TOOL_NAME);
-        permissionStore.allow(ReadFileTool.TOOL_NAME);
-        permissionStore.allow(GlobFileTool.TOOL_NAME);
-        permissionStore.allow(GrepFileTool.TOOL_NAME);
-        return permissionStore;
     }
 
     private void restoreActiveProvider(PropertiesFileSource props, LLMProviders providers) {

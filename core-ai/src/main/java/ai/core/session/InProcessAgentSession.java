@@ -140,7 +140,7 @@ public class InProcessAgentSession implements AgentSession {
         var turnToken = agent.getCancellationToken().createChild();
         agent.getExecutionContext().setCancellationToken(turnToken);
         var threadUnbind = turnToken.bindThread(executingThread);
-        var input = turnInput.begin();
+        turnInput.begin();
         var turnId = batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT && !batch.values().isEmpty()
                 ? batch.values().getFirst().turnId()
                 : null;

@@ -21,6 +21,7 @@ public final class TornWriteProbe {
     private static final int NEW_PAYLOAD_CHARS = 60_000_000;
     private static final int OLD_PAYLOAD_CHARS = 200_000;
 
+    @SuppressWarnings("PMD.SystemPrintln")
     public static void main(String[] args) throws Exception {
         if (args.length > 0 && "child".equals(args[0])) {
             new FileSessionPersistence(args[1]).save(SESSION_ID, payload("N", NEW_PAYLOAD_CHARS));

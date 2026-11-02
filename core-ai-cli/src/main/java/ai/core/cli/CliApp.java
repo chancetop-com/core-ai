@@ -120,12 +120,7 @@ public class CliApp {
         // Register listener so LiteLLM provider is updated on login / server-switch.
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result, props);
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && result.llmProviders.getProvider(type) != null) {
-                result.llmProviders.setDefaultProvider(type);
-            }
-        });
+        applyActiveProvider(props, result);
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE);
         boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
@@ -152,6 +147,15 @@ public class CliApp {
                 mediaProvider, imageMediaProvider, videoMediaProvider,
                 props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null),
                 props.property("media.image.edit.model").orElse(null), helpers, mediaCatalog, disabledTools);
+    }
+
+    private void applyActiveProvider(PropertiesFileSource props, BootstrapResult result) {
+        props.property("active.provider").ifPresent(name -> {
+            var type = LLMProviderType.fromName(name);
+            if (type != null && result.llmProviders.getProvider(type) != null) {
+                result.llmProviders.setDefaultProvider(type);
+            }
+        });
     }
 
     private String resolveSessionId(BootstrapCore bc, TerminalUI ui) {

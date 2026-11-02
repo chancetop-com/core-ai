@@ -10,8 +10,6 @@ import ai.core.tool.tools.MediaModelHint;
 import ai.core.utils.AtomicFiles;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -29,8 +27,6 @@ import java.util.Properties;
  * @author stephen
  */
 public class MediaSettingsApi {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MediaSettingsApi.class);
-
     private final PropertiesFileSource props;
     private final Path workspace;
     private final MediaProvider imageMediaProvider;

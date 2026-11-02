@@ -23,6 +23,7 @@ public class AppServerCommand implements Callable<Integer> {
     Path configFile;
 
     @Override
+    @SuppressWarnings("PMD.SystemPrintln")
     public Integer call() {
         System.setProperty("core.appName", "core-ai-cli");
         var protocolOut = System.out;

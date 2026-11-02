@@ -393,21 +393,17 @@ public class FileScheduledTaskStore implements ScheduledTaskStore {
     }
 
     private void persistTasks(Map<String, ScheduledTask> snapshot) {
-        persist(file, JsonUtil.toJson(new ArrayList<>(snapshot.values())), "scheduled tasks");
+        persist(file, JsonUtil.toJson(new ArrayList<>(snapshot.values())));
         tasksStamp = stampOrNull(file);
     }
 
     private void persistRuns(Map<String, List<ScheduledTaskRun>> snapshot) {
-        persist(runsFile, JsonUtil.toJson(snapshot), "scheduled runs");
+        persist(runsFile, JsonUtil.toJson(snapshot));
         runsStamp = stampOrNull(runsFile);
     }
 
-    private void persist(Path target, String content, String what) {
-        try {
-            AtomicFiles.writeString(target, content);
-        } catch (UncheckedIOException e) {
-            throw new UncheckedIOException("failed to persist " + what + ", file=" + target, e.getCause());
-        }
+    private void persist(Path target, String content) {
+        AtomicFiles.writeString(target, content);
     }
 
     /**

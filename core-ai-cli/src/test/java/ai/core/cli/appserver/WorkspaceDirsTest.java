@@ -33,7 +33,7 @@ class WorkspaceDirsTest {
         var firstDir = WorkspaceDirs.ensure(first, base);
         Files.writeString(firstDir.resolve("s.data"), "{}");
         var moved = root.resolve("b/app");
-        Files.createDirectories(moved.getParent());
+        Files.createDirectories(root.resolve("b"));
         Files.move(first, moved);
         var movedDir = WorkspaceDirs.ensure(moved, base);
         assertEquals(firstDir, movedDir);

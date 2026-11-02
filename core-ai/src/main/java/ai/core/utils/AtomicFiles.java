@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -37,14 +38,14 @@ public final class AtomicFiles {
 
     public static void write(Path target, byte[] content) {
         var absolute = target.toAbsolutePath();
+        var fileName = absolute.getFileName();
+        if (fileName == null) throw new IllegalArgumentException("target must name a file: " + target);
         var parent = absolute.getParent();
+        var directory = parent == null ? Path.of(".") : parent;
         Path tmp = null;
         try {
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            var name = absolute.getFileName().toString();
-            tmp = Files.createTempFile(parent, "." + name + "." + ProcessHandle.current().pid() + ".", ".tmp");
+            Files.createDirectories(directory);
+            tmp = Files.createTempFile(directory, "." + fileName + "." + ProcessHandle.current().pid() + ".", ".tmp");
             var writer = WRITER.get();
             if (writer != null) {
                 writer.write(tmp, content);
@@ -59,13 +60,16 @@ public final class AtomicFiles {
         } catch (IOException e) {
             throw new UncheckedIOException("failed to write atomically: " + target, e);
         } finally {
-            if (tmp != null) {
-                try {
-                    Files.deleteIfExists(tmp);
-                } catch (IOException e) {
-                    LOGGER.debug("failed to delete temporary file: {}", tmp, e);
-                }
-            }
+            deleteQuietly(tmp);
+        }
+    }
+
+    private static void deleteQuietly(Path tmp) {
+        if (tmp == null) return;
+        try {
+            Files.deleteIfExists(tmp);
+        } catch (IOException e) {
+            LOGGER.debug("failed to delete temporary file: {}", tmp, e);
         }
     }
 
@@ -74,7 +78,7 @@ public final class AtomicFiles {
     }
 
     private static void force(Path tmp) throws IOException {
-        try (var channel = java.nio.channels.FileChannel.open(tmp, StandardOpenOption.WRITE)) {
+        try (var channel = FileChannel.open(tmp, StandardOpenOption.WRITE)) {
             channel.force(true);
         }
     }
@@ -82,20 +86,29 @@ public final class AtomicFiles {
     private static void move(Path tmp, Path target) throws IOException {
         for (int attempt = 0; ; attempt++) {
             try {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                return;
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+                moveOnce(tmp, target);
                 return;
             } catch (IOException e) {
                 if (attempt >= MOVE_ATTEMPTS - 1) throw e;
-                try {
-                    Thread.sleep(MOVE_RETRY_MILLIS);
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw e;
-                }
+                sleepBeforeRetry();
             }
+        }
+    }
+
+    private static void moveOnce(Path tmp, Path target) throws IOException {
+        try {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    private static void sleepBeforeRetry() throws IOException {
+        try {
+            Thread.sleep(MOVE_RETRY_MILLIS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("interrupted while moving the atomic file", e);
         }
     }
 

@@ -35,12 +35,37 @@ import java.util.function.LongSupplier;
  *
  * @author stephen
  */
-@SuppressWarnings("this-escape")
+@SuppressWarnings({"this-escape", "PMD.AvoidSynchronizedAtMethodLevel"})
 public class TranscriptRecorder implements AgentEventListener {
     public static final String CONTEXT_KEY = "__transcript_recorder";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(TranscriptRecorder.class);
 
+    @SuppressWarnings("PMD.SystemPrintln")
+    private static void debug(TranscriptRecord record) {
+        if (!Boolean.getBoolean("core.ai.transcript.debug")) return;
+        System.err.println("[transcript] " + record.seq + " " + record.kind
+            + (record.turnId == null ? "" : " " + record.turnId));
+    }
+
+    private static long number(TranscriptRecord record, String field) {
+        var value = record.number(field);
+        return value == null ? 0 : value;
+    }
+
+    private static double decimal(TranscriptRecord record, String field) {
+        var value = record.decimal(field);
+        return value == null ? 0 : value;
+    }
+
+    private static long turnSeq(String turnId) {
+        if (turnId == null || !turnId.startsWith("t")) return -1;
+        try {
+            return Long.parseLong(turnId.substring(1));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
     private final TranscriptStore store;
     private final TranscriptMetadata metadata;
     private final LongSupplier messageCount;
@@ -157,7 +182,7 @@ public class TranscriptRecorder implements AgentEventListener {
     public synchronized void failTurn(ErrorEvent event, TranscriptUsage usage) {
         writer.flushLocked();
         var record = writeLocked(TranscriptKinds.ERROR, currentTurnId);
-        record.put("terminal", true);
+        record.put("terminal", Boolean.TRUE);
         record.put("message", event.message);
         record.put("detail", event.detail);
         record.put("message_count", messageCount.getAsLong());
@@ -190,7 +215,7 @@ public class TranscriptRecorder implements AgentEventListener {
         writer.flushLocked();
         if (currentTurnId != null) {
             var record = writeLocked(TranscriptKinds.TURN_COMPLETE, currentTurnId);
-            record.put("cancelled", true);
+            record.put("cancelled", Boolean.TRUE);
             record.put("message_count", messageCount.getAsLong());
             commitLocked(record);
             currentTurnId = null;
@@ -313,13 +338,7 @@ public class TranscriptRecorder implements AgentEventListener {
         notifySink(record);
     }
 
-    private static void debug(TranscriptRecord record) {
-        if (!Boolean.getBoolean("core.ai.transcript.debug")) return;
-        System.err.println("[transcript] " + record.seq + " " + record.kind
-            + (record.turnId == null ? "" : " " + record.turnId));
-    }
-
-    String currentTurnId() {
+    synchronized String currentTurnId() {
         return currentTurnId;
     }
 
@@ -366,13 +385,12 @@ public class TranscriptRecorder implements AgentEventListener {
 
     private TranscriptUsage turnUsage(long turnSeq) {
         var turnId = "t" + turnSeq;
-        for (var record : store.records()) {
-            if (!turnId.equals(record.turnId)) continue;
-            if (!TranscriptKinds.TURN_COMPLETE.equals(record.kind)
-                && !TranscriptKinds.ERROR.equals(record.kind)) continue;
-            return usage(record);
-        }
-        return TranscriptUsage.EMPTY;
+        return store.records().stream()
+            .filter(record -> turnId.equals(record.turnId)
+                && (TranscriptKinds.TURN_COMPLETE.equals(record.kind) || TranscriptKinds.ERROR.equals(record.kind)))
+            .findFirst()
+            .map(this::usage)
+            .orElse(TranscriptUsage.EMPTY);
     }
 
     private TranscriptUsage usage(TranscriptRecord record) {
@@ -390,22 +408,5 @@ public class TranscriptRecorder implements AgentEventListener {
         return to;
     }
 
-    private static long number(TranscriptRecord record, String field) {
-        var value = record.number(field);
-        return value == null ? 0 : value;
-    }
 
-    private static double decimal(TranscriptRecord record, String field) {
-        var value = record.decimal(field);
-        return value == null ? 0 : value;
-    }
-
-    private static long turnSeq(String turnId) {
-        if (turnId == null || !turnId.startsWith("t")) return -1;
-        try {
-            return Long.parseLong(turnId.substring(1));
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
 }

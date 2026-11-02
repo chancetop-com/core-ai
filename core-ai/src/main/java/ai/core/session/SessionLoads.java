@@ -3,7 +3,6 @@ package ai.core.session;
 import ai.core.agent.AgentPersistence;
 import core.framework.json.JSON;
 
-import java.io.IOException;
 import java.io.UncheckedIOException;
 
 /**
@@ -30,7 +29,7 @@ public final class SessionLoads {
             return new SessionLoad.NewerVersion(e.version());
         } catch (UncheckedIOException e) {
             if (isJsonFailure(e)) return new SessionLoad.Corrupt(e.getMessage());
-            return new SessionLoad.IoError(e.getCause() instanceof IOException io ? io : new IOException(e));
+            return new SessionLoad.IoError(e.getCause());
         } catch (RuntimeException e) {
             return new SessionLoad.Corrupt(e.getMessage());
         }

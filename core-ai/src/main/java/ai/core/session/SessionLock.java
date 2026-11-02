@@ -49,18 +49,13 @@ public final class SessionLock implements AutoCloseable {
         try {
             Files.createDirectories(dir);
             channel = FileChannel.open(path, StandardOpenOption.CREATE, StandardOpenOption.READ, StandardOpenOption.WRITE);
-            var observedHolder = readHolder(channel, path);
-            FileLock lock;
-            try {
-                lock = channel.tryLock();
-            } catch (OverlappingFileLockException e) {
+            var attempt = tryLock(channel);
+            if (attempt.lock() == null) {
+                var observedHolder = readHolder(channel, path);
                 closeQuietly(channel);
-                return new AcquireResult.Busy(observedHolder, true);
+                return new AcquireResult.Busy(observedHolder, attempt.local());
             }
-            if (lock == null) {
-                closeQuietly(channel);
-                return new AcquireResult.Busy(observedHolder, false);
-            }
+            var lock = attempt.lock();
             var holder = new Holder(ProcessHandle.current().pid(), process, System.currentTimeMillis());
             writeHolder(channel, holder);
             LOCAL_HOLDERS.put(path, holder);
@@ -83,9 +78,7 @@ public final class SessionLock implements AutoCloseable {
             if (lock == null) return true;
             lock.release();
             return false;
-        } catch (OverlappingFileLockException e) {
-            return true;
-        } catch (IOException e) {
+        } catch (OverlappingFileLockException | IOException e) {
             // sharing violation / permission: treat as held, cleanup is best-effort
             return true;
         }
@@ -110,12 +103,14 @@ public final class SessionLock implements AutoCloseable {
             if (size > 0 && size < 4096) {
                 var buffer = ByteBuffer.allocate((int) size);
                 channel.position(0);
-                while (buffer.hasRemaining() && channel.read(buffer) > 0) {
+                while (buffer.hasRemaining()) {
                     // read through the already-open channel: a second open can hit a sharing violation
+                    if (channel.read(buffer) <= 0) break;
                 }
                 return parseHolder(new String(buffer.array(), 0, buffer.position(), StandardCharsets.UTF_8));
             }
         } catch (IOException ignored) {
+            // fall back to a path read; the lock is advisory and this is only a diagnostic
         }
         return readHolder(path);
     }
@@ -134,7 +129,7 @@ public final class SessionLock implements AutoCloseable {
     }
 
     private static void writeHolder(FileChannel channel, Holder holder) throws IOException {
-        var bytes = JsonUtil.toJson(java.util.Map.of(
+        var bytes = JsonUtil.toJson(Map.of(
                 "pid", holder.pid(),
                 "process", holder.process(),
                 "since", holder.since())).getBytes(StandardCharsets.UTF_8);
@@ -150,6 +145,16 @@ public final class SessionLock implements AutoCloseable {
         try {
             channel.close();
         } catch (IOException ignored) {
+            // best effort; the channel is already unusable
+        }
+    }
+
+    private static LockAttempt tryLock(FileChannel channel) throws IOException {
+        try {
+            var lock = channel.tryLock();
+            return new LockAttempt(lock, lock == null);
+        } catch (OverlappingFileLockException e) {
+            return new LockAttempt(null, true);
         }
     }
 
@@ -175,7 +180,11 @@ public final class SessionLock implements AutoCloseable {
         try {
             lock.release();
         } catch (IOException ignored) {
+            // best effort; the channel close below releases the OS lock as well
         }
         closeQuietly(channel);
+    }
+
+    private record LockAttempt(FileLock lock, boolean local) {
     }
 }

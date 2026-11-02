@@ -25,6 +25,17 @@ import java.util.Map;
 final class TranscriptEventWriter {
     private static final int MAX_ENVIRONMENT_TAIL = 32 * 1024;
 
+    private static boolean isBubbleSealing(CustomEvent event) {
+        if (event.card != null) return true;
+        return "quick_replies".equals(event.name);
+    }
+
+    private static String mergeResult(String result, StringBuilder tail) {
+        if (tail == null || tail.isEmpty()) return result;
+        if (result == null || result.isBlank()) return tail.toString();
+        if (result.contains(tail)) return result;
+        return result + "\n" + tail;
+    }
     private final TranscriptRecorder recorder;
     private final StringBuilder text = new StringBuilder();
     private final Map<String, StringBuilder> environment = new HashMap<>();
@@ -164,26 +175,16 @@ final class TranscriptEventWriter {
     }
 
     void onErrorLocked(ErrorEvent event) {
-        if (event == recorder.terminalError()) {
+        if (event.equals(recorder.terminalError())) {
             recorder.clearTerminalError();
             return;
         }
         var record = recorder.writeLocked(TranscriptKinds.ERROR, recorder.currentTurnId());
-        record.put("terminal", false);
+        record.put("terminal", Boolean.FALSE);
         record.put("message", event.message);
         record.put("detail", event.detail);
         recorder.commitLocked(record);
     }
 
-    private static boolean isBubbleSealing(CustomEvent event) {
-        if (event.card != null) return true;
-        return "quick_replies".equals(event.name);
-    }
 
-    private static String mergeResult(String result, StringBuilder tail) {
-        if (tail == null || tail.isEmpty()) return result;
-        if (result == null || result.isBlank()) return tail.toString();
-        if (result.contains(tail)) return result;
-        return result + "\n" + tail;
-    }
 }

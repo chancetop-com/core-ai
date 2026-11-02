@@ -5,7 +5,6 @@ import ai.core.llm.domain.Message;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Owns the open-time transcript reconciliation: base projection, dangling turn/steer recovery,
@@ -102,7 +101,7 @@ final class TranscriptStartup {
         }
         if (open == null) return;
         var record = write(TranscriptKinds.TURN_COMPLETE, open.turnId);
-        record.put("cancelled", true);
+        record.put("cancelled", Boolean.TRUE);
         record.put("message_count", (long) messages.size());
     }
 
@@ -151,7 +150,7 @@ final class TranscriptStartup {
         record.put("workspace", metadata.workspace());
         record.put("engine_version", metadata.engineVersion());
         record.put("client", metadata.client());
-        record.put("projection_reset", true);
+        record.put("projection_reset", Boolean.TRUE);
         record.put("projection_through", (long) through);
         record.put("projection_fingerprint", fingerprint);
         store.setBaseRecords(TranscriptProjection.base(messages, through));

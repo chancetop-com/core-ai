@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -43,18 +44,22 @@ public final class Housekeeping {
         if (!Files.isDirectory(sessionsDir)) return;
         var cutoff = System.currentTimeMillis() - TEMP_AGE_MILLIS;
         try (var entries = Files.list(sessionsDir)) {
-            entries.filter(Files::isRegularFile).forEach(file -> {
-                var name = file.getFileName().toString();
-                if (!name.startsWith(".") || !name.endsWith(".tmp")) return;
-                try {
-                    if (Files.getLastModifiedTime(file).toMillis() >= cutoff) return;
-                    Files.deleteIfExists(file);
-                } catch (IOException e) {
-                    LOGGER.debug("failed to remove stale temp file: {}", file, e);
-                }
-            });
+            entries.filter(Files::isRegularFile).forEach(file -> deleteStaleTempFile(file, cutoff));
         } catch (IOException e) {
             LOGGER.debug("failed to scan session temp files: {}", sessionsDir, e);
+        }
+    }
+
+    private static void deleteStaleTempFile(Path file, long cutoff) {
+        var fileName = file.getFileName();
+        if (fileName == null) return;
+        var name = fileName.toString();
+        if (!name.startsWith(".") || !name.endsWith(".tmp")) return;
+        try {
+            if (Files.getLastModifiedTime(file).toMillis() >= cutoff) return;
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            LOGGER.debug("failed to remove stale temp file: {}", file, e);
         }
     }
 
@@ -62,35 +67,43 @@ public final class Housekeeping {
         if (!Files.isDirectory(stagingRoot)) return;
         var cutoff = System.currentTimeMillis() - STAGING_AGE_MILLIS;
         try (var entries = Files.list(stagingRoot)) {
-            entries.filter(Files::isDirectory).forEach(dir -> {
-                var id = dir.getFileName().toString();
-                try {
-                    SessionFileNames.check(id);
-                    if (Files.getLastModifiedTime(dir).toMillis() >= cutoff) return;
-                    if (sessionExistsAnywhere(sessionsBase, id)) return;
-                    deleteDir(dir);
-                } catch (IllegalArgumentException e) {
-                    LOGGER.debug("ignoring staging directory with unsafe name: {}", dir);
-                } catch (IOException | RuntimeException e) {
-                    LOGGER.debug("failed to remove stale staging directory: {}", dir, e);
-                }
-            });
+            entries.filter(Files::isDirectory).forEach(dir -> cleanupStagingDir(dir, cutoff, sessionsBase));
         } catch (IOException e) {
             LOGGER.debug("failed to scan staging directories: {}", stagingRoot, e);
         }
     }
 
+    private static void cleanupStagingDir(Path dir, long cutoff, Path sessionsBase) {
+        var fileName = dir.getFileName();
+        if (fileName == null) return;
+        var id = fileName.toString();
+        try {
+            SessionFileNames.check(id);
+            if (Files.getLastModifiedTime(dir).toMillis() >= cutoff) return;
+            if (sessionExistsAnywhere(sessionsBase, id)) return;
+            deleteDir(dir);
+        } catch (IllegalArgumentException e) {
+            LOGGER.debug("ignoring staging directory with unsafe name: {}", dir);
+        } catch (IOException | RuntimeException e) {
+            LOGGER.debug("failed to remove stale staging directory: {}", dir, e);
+        }
+    }
+
     static void deleteDir(Path dir) {
         try (var paths = Files.walk(dir)) {
-            for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList()) {
-                try {
-                    Files.deleteIfExists(path);
-                } catch (IOException e) {
-                    LOGGER.debug("failed to delete staging path: {}", path, e);
-                }
+            for (var path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                deletePath(path);
             }
         } catch (IOException e) {
             LOGGER.debug("failed to delete staging directory: {}", dir, e);
+        }
+    }
+
+    private static void deletePath(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException e) {
+            LOGGER.debug("failed to delete staging path: {}", path, e);
         }
     }
 

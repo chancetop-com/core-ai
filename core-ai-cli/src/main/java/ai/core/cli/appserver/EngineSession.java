@@ -67,6 +67,7 @@ public class EngineSession {
         return session.isTurnRunning();
     }
 
+    @SuppressWarnings("PMD.UseTryWithResources")
     public void close() {
         try {
             session.close();

@@ -1,7 +1,6 @@
 package ai.core.cli.appserver;
 
 import ai.core.api.server.gateway.GatewayAvailableModelView;
-import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.AgentSessionRunnerHelper;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.hub.model.ModelHubClient;
@@ -155,23 +154,14 @@ public class AppServerEngine implements EngineApi {
 
     @Override
     public void shutdown() {
-        try {
-            scheduler.close();
-            registry.closeAll();
-        } finally {
-            CliAppHelper.closeShutdownResources(bootstrap.result);
-            bootstrap.close();
-        }
+        AppServerShutdown.close(scheduler, registry, bootstrap);
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> buildHandlers() {
         return Map.ofEntries(
-                Map.entry("session/list", registry::list),
-                Map.entry("session/create", registry::create),
-                Map.entry("session/resume", registry::resume),
-                Map.entry("session/history", registry::history),
-                Map.entry("session/records", registry::records),
-                Map.entry("session/recordPayload", registry::recordPayload),
+                Map.entry("session/list", registry::list), Map.entry("session/create", registry::create),
+                Map.entry("session/resume", registry::resume), Map.entry("session/history", registry::history),
+                Map.entry("session/records", registry::records), Map.entry("session/recordPayload", registry::recordPayload),
                 Map.entry("session/send", registry::send),
                 Map.entry("session/save", registry::save),
                 Map.entry("session/close", registry::close),

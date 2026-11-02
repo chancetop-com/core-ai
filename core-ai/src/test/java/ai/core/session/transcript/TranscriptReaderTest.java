@@ -15,9 +15,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class TranscriptReaderTest {
-    @TempDir
-    Path dir;
-
     private static TranscriptRecord record(long seq, String kind, String turnId, Map<String, Object> payload) {
         var record = new TranscriptRecord();
         record.seq = seq;
@@ -27,13 +24,17 @@ class TranscriptReaderTest {
         return record;
     }
 
+    @TempDir
+    Path dir;
+
     private long appendTurn(TranscriptStore store, long seq, int turn, boolean complete) {
         var turnId = "t" + seq;
-        store.append(record(seq++, TranscriptKinds.TURN_START, turnId, Map.of(
+        long next = seq;
+        store.append(record(next++, TranscriptKinds.TURN_START, turnId, Map.of(
             "source", "user", "inputs", List.of(Map.of("text", "q" + turn)))));
-        store.append(record(seq++, TranscriptKinds.ASSISTANT_TEXT, turnId, Map.of("text", "a" + turn)));
-        if (complete) store.append(record(seq++, TranscriptKinds.TURN_COMPLETE, turnId, Map.of("message_count", 2)));
-        return seq;
+        store.append(record(next++, TranscriptKinds.ASSISTANT_TEXT, turnId, Map.of("text", "a" + turn)));
+        if (complete) store.append(record(next++, TranscriptKinds.TURN_COMPLETE, turnId, Map.of("message_count", 2)));
+        return next;
     }
 
     @Test

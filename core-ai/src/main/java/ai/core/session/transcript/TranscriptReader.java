@@ -3,7 +3,6 @@ package ai.core.session.transcript;
 import ai.core.utils.JsonUtil;
 
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -222,7 +221,7 @@ public final class TranscriptReader {
         private boolean isHeadPartial(List<TranscriptRecord> slice) {
             var first = slice.getFirst();
             var turnSeq = turnSeq(first.turnId);
-            return !TranscriptKinds.TURN_START.equals(first.kind) && turnSeq >= 0;
+            return turnSeq >= 0 && !TranscriptKinds.TURN_START.equals(first.kind);
         }
 
         private boolean isTailPartial(List<TranscriptRecord> slice) {

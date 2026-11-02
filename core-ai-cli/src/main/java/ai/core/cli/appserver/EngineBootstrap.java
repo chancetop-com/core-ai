@@ -62,15 +62,6 @@ public class EngineBootstrap {
         }
     }
 
-    private static PropertiesFileSource loadProperties(Path configFile) {
-        var resolved = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
-        if (Files.exists(resolved)) {
-            return PropertiesFileSource.fromFile(resolved);
-        }
-        LOGGER.info("app-server: no config file at {}, using defaults", resolved);
-        return new PropertiesFileSource(new Properties());
-    }
-
     public final Path workspace;
     public final Path sessionsDir;
     public final SessionLock engineLock;
@@ -111,8 +102,6 @@ public class EngineBootstrap {
         Housekeeping.runEngine(sessionsDir);
         CliLogger.initialize(this.workspace, "app-server");
         this.props = loadProperties(configFile);
-        CliAppHelper.mergeWorkspaceConfig(props, workspace);
-        CliAppHelper.injectLiteLLMFallback(props);
         var bootstrap = new AgentBootstrap(props);
         CliAppHelper.registerMcpLoadingListener();
         this.result = bootstrap.initialize();
@@ -145,6 +134,20 @@ public class EngineBootstrap {
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
         this.disabledTools = CliToolPolicy.disabledTools(props);
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
+    }
+
+    private PropertiesFileSource loadProperties(Path configFile) {
+        var resolved = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
+        PropertiesFileSource props;
+        if (Files.exists(resolved)) {
+            props = PropertiesFileSource.fromFile(resolved);
+        } else {
+            LOGGER.info("app-server: no config file at {}, using defaults", resolved);
+            props = new PropertiesFileSource(new Properties());
+        }
+        CliAppHelper.mergeWorkspaceConfig(props, workspace);
+        CliAppHelper.injectLiteLLMFallback(props);
+        return props;
     }
 
     private MediaModelCatalog createMediaModelCatalog() {
