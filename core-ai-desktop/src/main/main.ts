@@ -1,6 +1,6 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, shell, Tray } from 'electron';
 import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -77,6 +77,7 @@ let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
 let channelBridge: ChannelBridge | null = null;
 let ocgAdmin: OcgHttpPort | null = null;
+let channelKeepAwakeId: number | null = null;
 let tray: Tray | null = null;
 let settings: DesktopSettings = {};
 let quitting = false;
@@ -191,6 +192,21 @@ async function ensureOcgDaemon(): Promise<void> {
     }
   } catch (error) {
     console.error(`[channels] OCG daemon start failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+/** Keep idle timeouts from suspending the bridge; the display may still turn off. */
+function setChannelKeepAwake(enabled: boolean): void {
+  if (enabled) {
+    if (channelKeepAwakeId === null) {
+      channelKeepAwakeId = powerSaveBlocker.start('prevent-app-suspension');
+      console.log('[channels] holding a power request while the IM bridge is enabled');
+    }
+    return;
+  }
+  if (channelKeepAwakeId !== null) {
+    powerSaveBlocker.stop(channelKeepAwakeId);
+    channelKeepAwakeId = null;
+    console.log('[channels] released the IM bridge power request');
   }
 }
 function sessionsDirOf(workspace: string): string { return path.join(os.homedir(), '.core-ai', 'sessions', path.basename(workspace) || 'root'); }
@@ -884,10 +900,12 @@ function registerIpc(): void {
     settings.channelsBridgeEnabled = value;
     saveSettings();
     if (value) {
+      setChannelKeepAwake(true);
       channelBridge?.start();
       void ensureOcgDaemon();
     } else {
       channelBridge?.stop();
+      setChannelKeepAwake(false);
     }
     return channelBridge?.snapshot() ?? null;
   });
@@ -1072,6 +1090,7 @@ else {
       log: (line) => console.log(`[channels] ${line}`),
     });
     if (settings.channelsBridgeEnabled) {
+      setChannelKeepAwake(true);
       channelBridge.start();
       void ensureOcgDaemon();
     }

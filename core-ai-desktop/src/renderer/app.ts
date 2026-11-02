@@ -6458,7 +6458,7 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   };
   bridgeLabel.append(bridgeToggle, document.createTextNode('Route incoming IM messages into desktop sessions (P0)'));
   section.append(bridgeLabel);
-  section.append(el('div', 'hint', 'P0: text only; direct messages and group @mentions. Requires the OCG daemon and a mailbox channel (WeChat). While the bridge runs, do not also poll the same channel with the ocg skill.'));
+  section.append(el('div', 'hint', 'P0: text only; direct messages and group @mentions. Requires the OCG daemon and a mailbox channel (WeChat). While the bridge runs, do not also poll the same channel with the ocg skill. The desktop holds a power request so idle sleep does not suspend the bridge; the display may still turn off.'));
 
   const setup = el('pre', undefined, [
     'ocg config set channels.openclaw-weixin.agentType mailbox',
