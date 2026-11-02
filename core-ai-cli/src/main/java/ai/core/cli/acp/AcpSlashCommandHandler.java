@@ -9,6 +9,11 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.RoleType;
 import ai.core.mcp.client.McpClientManagerRegistry;
+import ai.core.session.SessionLoad;
+import ai.core.session.SessionLoads;
+import ai.core.session.TurnPersistence;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,6 +28,8 @@ import java.util.stream.Collectors;
  * returning results as strings (no TerminalUI dependency).
  */
 class AcpSlashCommandHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AcpSlashCommandHandler.class);
+
     private final Path workspace;
 
     AcpSlashCommandHandler(Path workspace) {
@@ -199,8 +206,8 @@ class AcpSlashCommandHandler {
             history.remove(message);
         }
         removedMessages.clear();
-        if (agent.hasPersistenceProvider()) agent.save(session.sessionId());
-        return "Undone " + removed + " message(s).";
+        boolean persisted = TurnPersistence.save(agent, session.sessionId(), LOGGER, "undo");
+        return "Undone " + removed + " message(s)." + (persisted ? "" : " The session could not be saved.");
     }
 
     private String handleCompact(ai.core.agent.Agent agent, AcpSession session) {
@@ -212,8 +219,9 @@ class AcpSlashCommandHandler {
         if (compressed.equals(msgs)) return nothingToCompact(compression);
         msgs.clear();
         msgs.addAll(compressed);
-        if (agent.hasPersistenceProvider()) agent.save(session.sessionId());
-        return "Compacted: " + before + " \u2192 " + msgs.size() + " messages.";
+        boolean persisted = TurnPersistence.save(agent, session.sessionId(), LOGGER, "compact");
+        return "Compacted: " + before + " \u2192 " + msgs.size() + " messages."
+                + (persisted ? "" : " The session could not be saved.");
     }
 
     private String nothingToCompact(ai.core.context.Compression compression) {
@@ -313,11 +321,24 @@ class AcpSlashCommandHandler {
         }
         var target = parts[1].trim();
         if (target.equals(session.sessionId())) return "Already in this session.";
-        try {
-            agent.load(target);
-            return "Resumed session: " + target + " (" + agent.getHistory().size() + " messages loaded).";
-        } catch (Exception e) {
-            return "Failed to resume session: " + e.getMessage();
+        var load = SessionLoads.load(session.persistence(), target);
+        switch (load) {
+            case SessionLoad.Ok ok -> {
+                agent.restore(target, ok.domain());
+                return "Resumed session: " + target + " (" + agent.getHistory().size() + " messages loaded).";
+            }
+            case SessionLoad.Missing ignored -> {
+                return "Session not found: " + target;
+            }
+            case SessionLoad.Corrupt corrupt -> {
+                return "Session file is corrupted: " + target + " (" + corrupt.reason() + ").";
+            }
+            case SessionLoad.NewerVersion newer -> {
+                return "Session was written by a newer core-ai version: " + target + " (version " + newer.version() + ").";
+            }
+            case SessionLoad.IoError error -> {
+                return "Failed to read session " + target + ": " + error.cause().getMessage();
+            }
         }
     }
 

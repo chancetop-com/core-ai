@@ -1,6 +1,5 @@
 package ai.core.cli.appserver;
 
-import ai.core.cli.utils.PathUtils;
 import ai.core.schedule.CronExpression;
 import ai.core.schedule.ScheduledTask;
 import ai.core.schedule.ScheduledTaskRun;
@@ -9,7 +8,6 @@ import ai.core.tool.tools.ScheduledTaskTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.ZoneId;
@@ -100,6 +98,7 @@ public class EngineScheduler implements AutoCloseable {
     }
 
     void tick() {
+        sessions.evictIdle();
         var tasks = store.listAll();
         notifyChanged(tasks);
         var now = ZonedDateTime.now();
@@ -150,11 +149,7 @@ public class EngineScheduler implements AutoCloseable {
                 return false;
             }
         }
-        return task.sessionId != null && Files.exists(sessionFile(task.sessionId));
-    }
-
-    Path sessionFile(String sessionId) {
-        return Path.of(PathUtils.sessionsDir(workspace), sessionId + ".data");
+        return task.sessionId != null && sessions.exists(task.sessionId);
     }
 
     void refreshSnapshot() {
@@ -293,6 +288,10 @@ public class EngineScheduler implements AutoCloseable {
         Session find(String sessionId);
 
         Session resume(String sessionId);
+
+        boolean exists(String sessionId);
+
+        void evictIdle();
     }
 
     static final class RegistrySessions implements Sessions {
@@ -310,6 +309,16 @@ public class EngineScheduler implements AutoCloseable {
         @Override
         public Session resume(String sessionId) {
             return wrap(registry.resumeQuietly(sessionId));
+        }
+
+        @Override
+        public boolean exists(String sessionId) {
+            return registry.sessionExists(sessionId);
+        }
+
+        @Override
+        public void evictIdle() {
+            registry.evictIdle();
         }
 
         private Session wrap(EngineSession session) {

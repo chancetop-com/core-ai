@@ -35,7 +35,7 @@ public final class TornWriteProbe {
         var persistence = new FileSessionPersistence(dir.toString());
         var file = dir.resolve(SESSION_ID + ".data");
         var original = payload("O", OLD_PAYLOAD_CHARS);
-        long newLength = payload("N", NEW_PAYLOAD_CHARS).length();
+        var replacement = payload("N", NEW_PAYLOAD_CHARS);
         var random = new Random(7);
         var java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         var result = new Result();
@@ -52,11 +52,12 @@ public final class TornWriteProbe {
             child.destroyForcibly();
             child.waitFor();
             long size = Files.exists(file) ? Files.size(file) : -1;
+            var content = size > 0 ? Files.readString(file) : "";
             String state;
-            if (size == original.length()) {
+            if (content.equals(original)) {
                 result.intact++;
                 state = "OLD SNAPSHOT INTACT";
-            } else if (size == newLength) {
+            } else if (content.equals(replacement)) {
                 result.complete++;
                 state = "NEW SNAPSHOT COMPLETE";
             } else if (size <= 0) {

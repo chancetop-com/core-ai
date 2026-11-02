@@ -3,8 +3,11 @@ package ai.core.cli.utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 /**
  * Utility class for managing core-ai paths and directories.
@@ -29,6 +32,30 @@ public final class PathUtils {
         var name = workspace.getFileName();
         var dirName = (name != null && !name.toString().isEmpty()) ? name.toString() : "root";
         return SESSIONS_BASE_DIR.resolve(dirName).toString();
+    }
+
+    /**
+     * Directory name for a workspace: the basename for the first claimant, then a stable hash of
+     * the workspace identity, then a numeric suffix for further collisions.
+     */
+    public static String sessionDirName(String basename, String identity, int collision) {
+        var base = basename == null || basename.isBlank() ? "root" : basename;
+        if (collision <= 0) return base;
+        var hash = sha256Hex(identity == null || identity.isBlank() ? base : identity).substring(0, 8);
+        return collision == 1 ? base + "-" + hash : base + "-" + hash + "-" + collision;
+    }
+
+    private static String sha256Hex(String value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
+            var builder = new StringBuilder(digest.length * 2);
+            for (var b : digest) {
+                builder.append(Character.forDigit((b >> 4) & 0xF, 16)).append(Character.forDigit(b & 0xF, 16));
+            }
+            return builder.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
     }
 
     /**

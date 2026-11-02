@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.session.permission.PermissionRule;
+import ai.core.utils.AtomicFiles;
 import ai.core.utils.JsonUtil;
 import core.framework.api.json.Property;
 import org.slf4j.Logger;
@@ -87,15 +88,12 @@ public class FileRuleBasedPermissionStore implements ToolPermissionStore {
     private void save() {
         if (persistFile == null) return;
         try {
-            var parent = persistFile.getParent();
-            if (parent == null) return;
-            Files.createDirectories(parent);
             var domain = new PermissionsDomain();
             domain.allow = new ArrayList<>(allowPatterns);
             domain.deny = new ArrayList<>(denyPatterns);
-            Files.writeString(persistFile, JsonUtil.toJson(domain));
+            AtomicFiles.writeString(persistFile, JsonUtil.toJson(domain));
             LOGGER.debug("saved {} allow / {} deny patterns to {}", allowPatterns.size(), denyPatterns.size(), persistFile);
-        } catch (IOException e) {
+        } catch (RuntimeException e) {
             LOGGER.warn("failed to save permission patterns to {}", persistFile, e);
         }
     }

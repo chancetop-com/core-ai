@@ -7,6 +7,7 @@ import ai.core.cli.media.MediaModelCatalog;
 import ai.core.media.CoreAiGatewayMediaProvider;
 import ai.core.media.MediaProvider;
 import ai.core.tool.tools.MediaModelHint;
+import ai.core.utils.AtomicFiles;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
@@ -14,10 +15,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Optional;
 import java.util.Properties;
@@ -194,46 +193,13 @@ public class MediaSettingsApi {
         if (parent == null || fileName == null) {
             throw RpcException.business("CONFIG_WRITE_FAILED", "invalid config path: " + target);
         }
-        Path temp = null;
         try {
-            Files.createDirectories(parent);
             var buffer = new ByteArrayOutputStream();
             props.store(buffer, null);
             // write-then-move: a reader (or a crash) never observes a half-written properties file
-            temp = writeTemp(parent, fileName.toString(), buffer.toByteArray());
-            moveIntoPlace(temp, target);
-        } catch (IOException e) {
+            AtomicFiles.write(target, buffer.toByteArray());
+        } catch (IOException | RuntimeException e) {
             throw RpcException.business("CONFIG_WRITE_FAILED", "failed to write " + file + ": " + e.getMessage(), e);
-        } finally {
-            deleteTemp(temp);
-        }
-    }
-
-    private Path writeTemp(Path directory, String name, byte[] content) throws IOException {
-        var temp = Files.createTempFile(directory, name, ".tmp");
-        try {
-            Files.write(temp, content);
-            return temp;
-        } catch (IOException e) {
-            Files.deleteIfExists(temp);
-            throw e;
-        }
-    }
-
-    private void moveIntoPlace(Path temp, Path target) throws IOException {
-        try {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException e) {
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING);
-        }
-    }
-
-    private void deleteTemp(Path temp) {
-        if (temp == null) return;
-        try {
-            Files.deleteIfExists(temp);
-        } catch (IOException e) {
-            LOGGER.debug("failed to remove temporary properties file: {}", temp, e);
         }
     }
 }

@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -282,7 +283,8 @@ public class CliAppHelper {
      * index), so only the core-ai gateway is marked as a managed-reference client.
      */
     private static boolean isGatewayBase(String baseUrl) {
-        return stripTrailingSlashes(baseUrl).endsWith(MEDIA_GATEWAY_PATH);
+        var normalized = stripTrailingSlashes(baseUrl);
+        return normalized != null && normalized.endsWith(MEDIA_GATEWAY_PATH);
     }
 
     private static String stripTrailingSlashes(String value) {
@@ -361,7 +363,9 @@ public class CliAppHelper {
         return permissionStore;
     }
     public static String defaultSessionId(String prefix) {
-        return prefix + LocalDateTime.now().format(SESSION_ID_FORMAT);
+        var value = ThreadLocalRandom.current().nextInt(36 * 36 * 36 * 36);
+        var suffix = Integer.toString(value, 36);
+        return prefix + LocalDateTime.now().format(SESSION_ID_FORMAT) + "-" + "0".repeat(4 - suffix.length()) + suffix;
     }
     static String pickSession(List<SessionInfo> sessions, SessionManager sessionManager,
                               Consumer<String> output, Supplier<String> input) {
@@ -372,7 +376,13 @@ public class CliAppHelper {
             for (int i = pageStart; i < pageEnd; i++) {
                 var session = sessions.get(i);
                 String timeStr = LocalDateTime.ofInstant(session.lastModified(), ZoneId.systemDefault()).format(DISPLAY_FORMAT);
-                String title = truncate(sessionManager.firstUserMessage(session.id()), 50);
+                var parsed = sessionManager.title(session.id());
+                String title = switch (parsed.state()) {
+                    case CORRUPT -> "(unreadable)";
+                    case NEWER_VERSION -> "(needs newer core-ai)";
+                    case IO_ERROR -> "(unavailable)";
+                    default -> truncate(parsed.text(), 50);
+                };
                 output.accept(String.format("  %2d) %s (%s)%n", i - pageStart + 1, title, timeStr));
             }
             output.accept("\n");

@@ -3,7 +3,6 @@ package ai.core.cli.appserver;
 import ai.core.schedule.ScheduledTask;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.nio.file.Files;
 import java.time.ZonedDateTime;
 import java.util.Comparator;
 
@@ -72,7 +71,7 @@ final class SchedulesApi {
             runs.add(ScheduledTaskViews.run(run));
         }
         if (owned) {
-            node.put("sessionExists", Files.exists(scheduler.sessionFile(task.sessionId)));
+            node.put("sessionExists", registry.sessionExists(task.sessionId));
         }
         return node;
     }

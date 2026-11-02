@@ -32,10 +32,11 @@ class SessionSnapshotCrashConsistencyTest {
         Files.writeString(dir.resolve("torn.data"), INTACT.substring(0, INTACT.length() / 2));
         var manager = new SessionManager(persistence);
 
-        assertEquals("hello", manager.firstUserMessage("good"));
+        assertEquals("hello", manager.title("good").text());
         assertEquals(2, manager.listSessions().size(), "a torn file is still a session file");
-        assertNull(assertDoesNotThrow(() -> manager.firstUserMessage("torn")),
-                "one torn snapshot must degrade to 'no title', not throw out of the listing");
+        var torn = assertDoesNotThrow(() -> manager.title("torn"));
+        assertNull(torn.text(), "one torn snapshot must degrade to 'no title', not throw out of the listing");
+        assertEquals(SessionLoadState.CORRUPT, torn.state());
     }
 
     @Test

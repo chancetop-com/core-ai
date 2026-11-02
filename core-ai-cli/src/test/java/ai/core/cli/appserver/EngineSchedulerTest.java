@@ -12,8 +12,10 @@ import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 
@@ -180,7 +182,8 @@ class EngineSchedulerTest {
         var sessions = new FakeSessions();
         var session = new FakeSession();
         sessions.resumable.put("s-legacy", session);
-        var scheduler = new TestScheduler(store, workspace, sessions, () -> new FakeSink(), sessionsDir);
+        sessions.existing.add("s-legacy");
+        var scheduler = new TestScheduler(store, workspace, sessions, () -> new FakeSink());
 
         scheduler.tick();
 
@@ -232,16 +235,8 @@ class EngineSchedulerTest {
 
     /** Points the session-file probe at a temp directory instead of the real ~/.core-ai. */
     private static final class TestScheduler extends EngineScheduler {
-        private final Path sessionsDir;
-
-        TestScheduler(ScheduledTaskStore store, Path workspace, Sessions sessions, Supplier<NotificationSink> sink, Path sessionsDir) {
+        TestScheduler(ScheduledTaskStore store, Path workspace, Sessions sessions, Supplier<NotificationSink> sink) {
             super(store, workspace, sessions, sink);
-            this.sessionsDir = sessionsDir;
-        }
-
-        @Override
-        Path sessionFile(String sessionId) {
-            return sessionsDir.resolve(sessionId + ".data");
         }
     }
 
@@ -263,6 +258,16 @@ class EngineSchedulerTest {
     private static final class FakeSessions implements EngineScheduler.Sessions {
         final Map<String, FakeSession> live = new HashMap<>();
         final Map<String, FakeSession> resumable = new HashMap<>();
+        final Set<String> existing = new HashSet<>();
+
+        @Override
+        public boolean exists(String sessionId) {
+            return existing.contains(sessionId);
+        }
+
+        @Override
+        public void evictIdle() {
+        }
 
         @Override
         public EngineScheduler.Session find(String sessionId) {

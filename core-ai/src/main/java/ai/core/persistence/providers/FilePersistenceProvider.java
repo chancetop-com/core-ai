@@ -1,10 +1,9 @@
 package ai.core.persistence.providers;
 
 import ai.core.persistence.PersistenceProvider;
+import ai.core.utils.AtomicFiles;
 import core.framework.util.Files;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.Optional;
@@ -27,11 +26,7 @@ public class FilePersistenceProvider implements PersistenceProvider {
 
     @Override
     public void save(String id, String context) {
-        try {
-            java.nio.file.Files.writeString(Paths.get(path(id)), context);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to save context to file", e);
-        }
+        AtomicFiles.writeString(Paths.get(path(id)), context);
     }
 
     @Override

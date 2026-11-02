@@ -2,6 +2,7 @@ package ai.core.cli.task;
 
 import ai.core.tool.tools.TodoStore;
 import ai.core.tool.tools.WriteTodoTaskTool;
+import ai.core.utils.AtomicFiles;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -166,12 +167,7 @@ public class FileTodoStore implements TodoStore {
 
     private void writeFile(int id, WriteTodoTaskTool.TaskEntity task) {
         Path file = taskPath(String.valueOf(id));
-        try {
-            String json = JsonUtil.toJson(task);
-            Files.writeString(file, json, StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            throw new RuntimeException("failed to write task file: " + file, e);
-        }
+        AtomicFiles.writeString(file, JsonUtil.toJson(task));
     }
 
     private Path taskPath(String taskId) {

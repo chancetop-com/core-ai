@@ -4,6 +4,7 @@ import ai.core.schedule.CronExpression;
 import ai.core.schedule.ScheduledTask;
 import ai.core.schedule.ScheduledTaskRun;
 import ai.core.schedule.ScheduledTaskStore;
+import ai.core.utils.AtomicFiles;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.slf4j.Logger;
@@ -13,10 +14,8 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.DateTimeException;
 import java.time.ZoneId;
@@ -405,29 +404,9 @@ public class FileScheduledTaskStore implements ScheduledTaskStore {
 
     private void persist(Path target, String content, String what) {
         try {
-            var parent = target.getParent();
-            if (parent != null) Files.createDirectories(parent);
-            var tmp = target.resolveSibling(target.getFileName() + ".tmp");
-            Files.writeString(tmp, content, StandardCharsets.UTF_8);
-            moveInto(tmp, target);
-        } catch (IOException e) {
-            throw new UncheckedIOException("failed to persist " + what + ", file=" + target, e);
-        }
-    }
-
-    private void moveInto(Path tmp, Path target) throws IOException {
-        for (int attempt = 0; ; attempt++) {
-            try {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                return;
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
-                return;
-            } catch (IOException e) {
-                // Windows sharing violations from a concurrent reader are transient; retry briefly.
-                if (attempt >= 2) throw e;
-                sleepQuietly(LOCK_RETRY_MILLIS);
-            }
+            AtomicFiles.writeString(target, content);
+        } catch (UncheckedIOException e) {
+            throw new UncheckedIOException("failed to persist " + what + ", file=" + target, e.getCause());
         }
     }
 

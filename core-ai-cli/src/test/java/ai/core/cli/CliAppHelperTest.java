@@ -25,6 +25,14 @@ class CliAppHelperTest {
     private static final String PROXY_BASE = SERVER + RuntimeAuthConfig.LLM_PROXY_PATH;
 
     @Test
+    void defaultSessionIdCarriesASecondSuffixForCollisionResistance() {
+        var first = CliAppHelper.defaultSessionId("cli-");
+        var second = CliAppHelper.defaultSessionId("cli-");
+        assertTrue(first.matches("^cli-\\d{8}-\\d{6}-[a-z0-9]{4}$"), first);
+        assertTrue(second.matches("^cli-\\d{8}-\\d{6}-[a-z0-9]{4}$"), second);
+    }
+
+    @Test
     void injectsBothTheChatProxyAndTheMediaGatewayFromLogin() {
         var props = new PropertiesFileSource(new Properties());
 

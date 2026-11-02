@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -8,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -40,5 +42,17 @@ class FileSessionPersistenceTest {
         } finally {
             core.framework.util.Files.deleteDir(dir);
         }
+    }
+
+    @Test
+    void rejectsUnsafeIdsAndKeepsBlankFilesReadable(@TempDir Path dir) throws Exception {
+        var persistence = new FileSessionPersistence(dir.toString());
+        assertThrows(IllegalArgumentException.class, () -> persistence.save("../escape", "{}"));
+        assertThrows(IllegalArgumentException.class, () -> persistence.load("a/b"));
+        assertThrows(IllegalArgumentException.class, () -> persistence.delete(List.of("a\\b")));
+
+        persistence.save("blank", "");
+        assertEquals("", persistence.load("blank").orElseThrow());
+        assertEquals(SessionLoadState.CORRUPT, new SessionManager(persistence).title("blank").state());
     }
 }

@@ -104,6 +104,15 @@ public class Agent extends Node<Agent> {
         }
     }
 
+    /**
+     * Restores a snapshot that was already read and parsed by {@link ai.core.session.SessionLoads};
+     * unlike {@link #load(String)} this never touches the persistence provider again.
+     */
+    public void restore(String id, AgentPersistence.AgentPersistenceDomain domain) {
+        new AgentPersistence().apply(this, domain);
+        setId(id);
+    }
+
     String doExecute(String query, Map<String, Object> variables, boolean skipReflection) {
         boolean isFirstExecution = getInput() == null;
         if (isFirstExecution) {

@@ -1,7 +1,5 @@
 package ai.core.session;
 
-import ai.core.agent.AgentPersistence;
-
 import java.util.List;
 
 /**
@@ -18,9 +16,7 @@ public class SessionManager {
         return sessionPersistence.listSessions();
     }
 
-    public String firstUserMessage(String id) {
-        return sessionPersistence.load(id)
-            .map(AgentPersistence::firstUserMessage)
-            .orElse(null);
+    public SessionTitle title(String id) {
+        return SessionLoads.title(sessionPersistence, id);
     }
 }

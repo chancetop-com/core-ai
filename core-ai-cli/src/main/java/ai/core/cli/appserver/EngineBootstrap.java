@@ -21,8 +21,10 @@ import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.media.MediaProvider;
 import ai.core.schedule.ScheduledTaskStore;
+import ai.core.session.EngineLock;
 import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.FileSessionPersistence;
+import ai.core.session.SessionLock;
 import ai.core.session.SessionManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,6 +72,8 @@ public class EngineBootstrap {
     }
 
     public final Path workspace;
+    public final Path sessionsDir;
+    public final SessionLock engineLock;
     public final PropertiesFileSource props;
     public final BootstrapResult result;
     public final int maxTurn;
@@ -98,6 +102,13 @@ public class EngineBootstrap {
 
     public EngineBootstrap(Path workspace, Path configFile) {
         this.workspace = workspace.toAbsolutePath();
+        this.sessionsDir = WorkspaceDirs.ensure(this.workspace);
+        var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
+        if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
+            throw new EngineAlreadyRunningException(busy.holder());
+        }
+        this.engineLock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
+        Housekeeping.runEngine(sessionsDir);
         CliLogger.initialize(this.workspace, "app-server");
         this.props = loadProperties(configFile);
         CliAppHelper.mergeWorkspaceConfig(props, workspace);
@@ -118,7 +129,7 @@ public class EngineBootstrap {
         props.property("agent.memory.timezone").map(ZoneId::of).ifPresent(MemoryTriggerService::setTimezone);
         this.remoteAgents = A2ARemoteAgentConfigLoader.load(props);
         this.remoteServers = A2ARemoteAgentConfigLoader.loadServers(props);
-        this.sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(this.workspace));
+        this.sessionPersistence = new FileSessionPersistence(sessionsDir.toString());
         this.sessionManager = new SessionManager(sessionPersistence);
         this.permissionStore = CliAppHelper.whiteToolsPermissionStore(this.workspace);
         this.subAgentConfigs = CliAppHelper.parseSubAgentConfig(props, result.llmProviders);
@@ -159,5 +170,9 @@ public class EngineBootstrap {
                 result.llmProviders.setDefaultProvider(type);
             }
         });
+    }
+
+    public void close() {
+        engineLock.close();
     }
 }

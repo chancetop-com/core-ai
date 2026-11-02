@@ -1,11 +1,11 @@
 package ai.core.session;
 
 import ai.core.agent.subagent.SubagentPersistenceKeys;
+import ai.core.session.transcript.TranscriptStore;
+import ai.core.utils.AtomicFiles;
 import core.framework.util.Files;
 
 import java.io.File;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Arrays;
@@ -25,11 +25,7 @@ public class FileSessionPersistence implements SessionPersistence {
 
     @Override
     public void save(String id, String context) {
-        try {
-            java.nio.file.Files.writeString(Paths.get(path(id)), context);
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to save session", e);
-        }
+        AtomicFiles.writeString(Paths.get(path(id)), context);
     }
 
     @Override
@@ -42,12 +38,14 @@ public class FileSessionPersistence implements SessionPersistence {
         for (var id : ids) {
             Files.delete(Paths.get(path(id)));
             deleteSubagentFiles(id);
+            TranscriptStore.delete(Paths.get(directory), id);
         }
     }
 
     // Subagent thread files live next to their session and go when the session goes; only the
     // session file itself may be absent (an id that never had a thread or a title-only entry).
     private void deleteSubagentFiles(String id) {
+        SessionFileNames.check(id);
         var dir = new File(directory);
         var threadFiles = dir.listFiles((d, name) -> name.startsWith(id + SubagentPersistenceKeys.THREAD_INFIX) && name.endsWith(".data"));
         if (threadFiles == null) return;
@@ -60,9 +58,12 @@ public class FileSessionPersistence implements SessionPersistence {
     public Optional<String> load(String id) {
         var path = Paths.get(path(id));
         if (!java.nio.file.Files.exists(path)) return Optional.empty();
-        var content = Files.text(path);
-        if (content.isBlank()) return Optional.empty();
-        return Optional.of(content);
+        return Optional.of(Files.text(path));
+    }
+
+    @Override
+    public boolean exists(String id) {
+        return java.nio.file.Files.exists(Paths.get(path(id)));
     }
 
     @Override
@@ -82,6 +83,7 @@ public class FileSessionPersistence implements SessionPersistence {
     }
 
     private String path(String id) {
+        SessionFileNames.check(id);
         return directory + "/" + id + ".data";
     }
 }

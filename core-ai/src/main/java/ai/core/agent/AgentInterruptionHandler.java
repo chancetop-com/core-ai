@@ -2,6 +2,9 @@ package ai.core.agent;
 
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.session.TurnPersistence;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Locale;
 
@@ -9,6 +12,7 @@ import java.util.Locale;
  * @author stephen
  */
 final class AgentInterruptionHandler {
+    private static final Logger LOGGER = LoggerFactory.getLogger(AgentInterruptionHandler.class);
 
     static boolean shouldInjectMarker(CancelReason reason) {
         return reason == CancelReason.USER_CANCELLED
@@ -80,7 +84,7 @@ final class AgentInterruptionHandler {
         if (!agent.hasUserMessage()) return;
         var sessionId = agent.getExecutionContext().getSessionId();
         if (sessionId != null) {
-            agent.save(sessionId);
+            TurnPersistence.save(agent, sessionId, LOGGER, "interruption marker");
         }
     }
 

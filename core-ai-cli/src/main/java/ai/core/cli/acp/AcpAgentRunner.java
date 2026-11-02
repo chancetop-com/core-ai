@@ -20,6 +20,8 @@ import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
+import ai.core.cli.appserver.Housekeeping;
+import ai.core.cli.appserver.WorkspaceDirs;
 import ai.core.cli.utils.PathUtils;
 import ai.core.context.CompressionConfig;
 import ai.core.llm.LLMProviderType;
@@ -29,6 +31,10 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.media.MediaProvider;
 import ai.core.session.FileRuleBasedPermissionStore;
 import ai.core.session.FileSessionPersistence;
+import ai.core.session.SessionLoad;
+import ai.core.session.SessionLoads;
+import ai.core.session.SessionLock;
+import ai.core.session.TurnPersistence;
 import ai.core.session.PermissionGate;
 import ai.core.session.ServerPermissionLifecycle;
 import ai.core.session.ToolPermissionStore;
@@ -50,8 +56,6 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -88,6 +92,7 @@ public class AcpAgentRunner {
     private final String modelOverride;
     private final boolean autoApproveAll;
     private final Path workspace;
+    private final Path sessionsDir;
     private final AcpSlashCommandHandler slashCommands;
     private final Map<String, AcpSession> sessions = new ConcurrentHashMap<>();
     private final AtomicReference<AcpSyncAgent> acpAgentRef = new AtomicReference<>();
@@ -97,6 +102,8 @@ public class AcpAgentRunner {
         this.modelOverride = modelOverride;
         this.autoApproveAll = autoApproveAll;
         this.workspace = workspace != null ? workspace.toAbsolutePath() : Paths.get("").toAbsolutePath();
+        this.sessionsDir = WorkspaceDirs.ensure(this.workspace);
+        Housekeeping.run(sessionsDir);
         this.slashCommands = new AcpSlashCommandHandler(this.workspace);
     }
 
@@ -157,6 +164,7 @@ public class AcpAgentRunner {
             if (ctx.memoryEnabled) {
                 SessionCloseExtractor.onSessionClose(acpSession.agent(), workspace, ctx.memoryEnabled, ctx.dailyLogsEnabled, null);
             }
+            acpSession.lock().close();
         });
         ScriptHookLifecycle.fireSessionStopHooks(workspace);
     }
@@ -198,12 +206,13 @@ public class AcpAgentRunner {
         Path effectiveWorkspace = req.cwd() != null && !req.cwd().isBlank()
                 ? Path.of(req.cwd())
                 : workspace;
-        String sessionId = "acp-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String sessionId = CliAppHelper.defaultSessionId("acp-");
         LOGGER.info("ACP newSession: id={}, cwd={}", sessionId, effectiveWorkspace);
 
         CliLogger.initialize(workspace, sessionId);
 
-        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var sessionLock = acquire(sessionId);
+        var sessionPersistence = new FileSessionPersistence(sessionsDir.toString());
         var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider, sessionId);
         var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider, sessionId);
         var agentConfig = new CliAgent.Config(
@@ -216,9 +225,15 @@ public class AcpAgentRunner {
                     ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null,
                     ctx.disabledTools);
 
-        Agent coreAgent = CliAgent.of(agentConfig);
-        if (coreAgent.hasPersistenceProvider()) {
-            coreAgent.load(sessionId);
+        Agent coreAgent;
+        try {
+            coreAgent = CliAgent.of(agentConfig);
+            if (coreAgent.hasPersistenceProvider()) {
+                restoreSession(coreAgent, sessionPersistence, sessionId);
+            }
+        } catch (RuntimeException e) {
+            sessionLock.close();
+            throw e;
         }
         var currentContext = new AtomicReference<SyncPromptContext>();
         var permissionGate = new PermissionGate();
@@ -229,7 +244,7 @@ public class AcpAgentRunner {
                 autoApproveAll,
                 whiteToolsPermissionStore(),
                 toolName -> "builtin"));
-        sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence));
+        sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence, sessionLock));
         return new AcpSchema.NewSessionResponse(sessionId, null, null);
     }
 
@@ -248,7 +263,8 @@ public class AcpAgentRunner {
 
         CliLogger.initialize(workspace, sessionId);
 
-        var sessionPersistence = new FileSessionPersistence(PathUtils.sessionsDir(workspace));
+        var sessionLock = acquire(sessionId);
+        var sessionPersistence = new FileSessionPersistence(sessionsDir.toString());
         var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider, sessionId);
         var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider, sessionId);
         var agentConfig = new CliAgent.Config(
@@ -262,9 +278,15 @@ public class AcpAgentRunner {
                     ctx.disabledTools);
 
 
-        Agent coreAgent = CliAgent.of(agentConfig);
-        if (coreAgent.hasPersistenceProvider()) {
-            coreAgent.load(sessionId);
+        Agent coreAgent;
+        try {
+            coreAgent = CliAgent.of(agentConfig);
+            if (coreAgent.hasPersistenceProvider()) {
+                restoreSession(coreAgent, sessionPersistence, sessionId);
+            }
+        } catch (RuntimeException e) {
+            sessionLock.close();
+            throw e;
         }
         var currentContext = new AtomicReference<SyncPromptContext>();
         var permissionGate = new PermissionGate();
@@ -275,7 +297,7 @@ public class AcpAgentRunner {
                 autoApproveAll,
                 whiteToolsPermissionStore(),
                 toolName -> "builtin"));
-        sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence));
+        sessions.put(sessionId, new AcpSession(coreAgent, sessionId, currentContext, sessionPersistence, sessionLock));
         LOGGER.info("ACP session loaded: id={}, messages={}", sessionId, coreAgent.getMessages().size());
         return new AcpSchema.LoadSessionResponse(null, null);
     }
@@ -341,9 +363,29 @@ public class AcpAgentRunner {
     }
 
     private void persistSession(AcpSession acpSession) {
-        if (acpSession.agent().hasPersistenceProvider()) {
-            acpSession.agent().save(acpSession.sessionId());
-            LOGGER.debug("ACP session persisted: {}", acpSession.sessionId());
+        TurnPersistence.save(acpSession.agent(), acpSession.sessionId(), LOGGER, "ACP prompt");
+    }
+
+    private SessionLock acquire(String sessionId) {
+        var acquire = SessionLock.tryAcquire(sessionsDir, sessionId, "acp");
+        if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
+            var holder = busy.holder() == null ? "another process" : busy.holder().describe();
+            throw new IllegalStateException("session is in use by " + holder);
+        }
+        return ((SessionLock.AcquireResult.Acquired) acquire).lock();
+    }
+
+    private static void restoreSession(Agent agent, FileSessionPersistence persistence, String sessionId) {
+        switch (SessionLoads.load(persistence, sessionId)) {
+            case SessionLoad.Ok ok -> agent.restore(sessionId, ok.domain());
+            case SessionLoad.Missing ignored -> {
+            }
+            case SessionLoad.Corrupt corrupt -> throw new IllegalStateException(
+                    "session file is corrupted: " + sessionId + " (" + corrupt.reason() + ")");
+            case SessionLoad.NewerVersion newer -> throw new IllegalStateException(
+                    "session was written by a newer core-ai version: " + sessionId + " (version " + newer.version() + ")");
+            case SessionLoad.IoError error -> throw new IllegalStateException(
+                    "failed to read session: " + sessionId, error.cause());
         }
     }
 

@@ -158,6 +158,7 @@ public final class SubagentThreadRegistry {
     private void restoreMessages(Agent agent, String data) {
         try {
             var domain = JSON.fromJSON(AgentPersistence.AgentPersistenceDomain.class, data);
+            ai.core.session.SnapshotVersion.check(domain);
             var messages = domain.messages == null ? new ArrayList<Message>() : new ArrayList<>(domain.messages);
             // drop the persisted system message: the fresh one carries the current environment and instructions
             if (!messages.isEmpty() && messages.getFirst().role == RoleType.SYSTEM) {
@@ -204,11 +205,19 @@ public final class SubagentThreadRegistry {
     private void writeThreadData(SubagentThread thread) {
         var agent = thread.agent();
         if (agent == null || persistenceProvider == null) return;
-        persistenceProvider.save(SubagentPersistenceKeys.thread(sessionId, thread.taskId()),
-                JSON.toJSON(AgentPersistence.AgentPersistenceDomain.of(agent.getMessages(), null, agent.getNodeStatus())));
+        try {
+            persistenceProvider.save(SubagentPersistenceKeys.thread(sessionId, thread.taskId()),
+                    JSON.toJSON(AgentPersistence.AgentPersistenceDomain.of(agent.getMessages(), null, agent.getNodeStatus())));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to persist subagent thread, sessionId={}, taskId={}", sessionId, thread.taskId(), e);
+        }
     }
 
     private void writeIndex() {
-        persistenceProvider.save(SubagentPersistenceKeys.index(sessionId), JSON.toJSON(SubagentThreadIndex.of(list())));
+        try {
+            persistenceProvider.save(SubagentPersistenceKeys.index(sessionId), JSON.toJSON(SubagentThreadIndex.of(list())));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to persist subagent thread index, sessionId={}", sessionId, e);
+        }
     }
 }

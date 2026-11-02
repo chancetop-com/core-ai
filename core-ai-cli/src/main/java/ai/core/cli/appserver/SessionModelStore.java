@@ -1,5 +1,6 @@
 package ai.core.cli.appserver;
 
+import ai.core.utils.AtomicFiles;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import org.slf4j.Logger;
@@ -36,6 +37,7 @@ public class SessionModelStore {
                 }
             } catch (IOException | RuntimeException e) {
                 LOGGER.warn("failed to load session models from {}: {}", file, e.getMessage());
+                quarantine();
             }
         }
     }
@@ -58,15 +60,30 @@ public class SessionModelStore {
         }
     }
 
+    public java.util.Set<String> ids() {
+        return java.util.Set.copyOf(entries.keySet());
+    }
+
+    public void retainOnly(java.util.Set<String> liveIds) {
+        var changed = entries.keySet().removeIf(id -> !liveIds.contains(id));
+        if (changed) save();
+    }
+
     private void save() {
         try {
-            var parent = file.getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            Files.writeString(file, JsonUtil.toJson(entries));
-        } catch (IOException e) {
+            AtomicFiles.writeString(file, JsonUtil.toJson(entries));
+        } catch (RuntimeException e) {
             LOGGER.warn("failed to save session models to {}: {}", file, e.getMessage());
+        }
+    }
+
+    private void quarantine() {
+        try {
+            if (Files.exists(file)) {
+                Files.move(file, file.resolveSibling(file.getFileName() + ".bad-" + System.currentTimeMillis()));
+            }
+        } catch (IOException e) {
+            LOGGER.warn("failed to quarantine corrupt session models file {}: {}", file, e.getMessage());
         }
     }
 

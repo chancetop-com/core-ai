@@ -344,7 +344,15 @@ export class ChannelBridge {
       try {
         await this.options.callEngine(workspace, 'session/resume', { sessionId: existing.sessionId });
         return { sessionId: existing.sessionId, title: existing.title };
-      } catch { /* the session was deleted or is no longer loadable */ }
+      } catch (error) {
+        const code = engineErrorCode(error);
+        // Busy/newer-version sessions are recoverable only by the process/user that owns them;
+        // creating a fresh session here would silently fork the IM conversation.
+        if (code === 'SESSION_BUSY') throw new Error(`session ${existing.sessionId} is in use by another process`);
+        if (code === 'SESSION_NEWER_VERSION') throw new Error(`session ${existing.sessionId} needs a newer core-ai`);
+        if (code !== 'SESSION_NOT_FOUND' && code !== 'SESSION_CORRUPT') throw error;
+        // deleted or corrupt: fall through and create a replacement
+      }
     }
     const title = this.titleFor(message);
     const created = await this.options.callEngine(workspace, 'session/create', { title }) as { sessionId?: unknown };
@@ -410,4 +418,9 @@ export class ChannelBridge {
   private emit(): void {
     this.options.onState(this.snapshot());
   }
+}
+
+function engineErrorCode(error: unknown): string | undefined {
+  const data = (error as { data?: { code?: unknown } } | null)?.data;
+  return typeof data?.code === 'string' ? data.code : undefined;
 }

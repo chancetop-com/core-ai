@@ -1,5 +1,6 @@
 package ai.core.cli.helper;
 
+import ai.core.utils.AtomicFiles;
 import ai.core.utils.JsonUtil;
 
 import java.io.IOException;
@@ -7,7 +8,6 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -136,15 +136,9 @@ public class HelperConfigStore {
 
     private void persist() {
         try {
-            var parent = file.toAbsolutePath().getParent();
-            if (parent != null) {
-                Files.createDirectories(parent);
-            }
-            var tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, JsonUtil.toJson(config), StandardCharsets.UTF_8);
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw new UncheckedIOException("failed to persist helpers, file=" + file, e);
+            AtomicFiles.writeString(file, JsonUtil.toJson(config));
+        } catch (UncheckedIOException e) {
+            throw new UncheckedIOException("failed to persist helpers, file=" + file, e.getCause());
         }
     }
 }

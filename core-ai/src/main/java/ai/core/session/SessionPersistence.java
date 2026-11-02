@@ -11,5 +11,9 @@ import java.util.List;
 public interface SessionPersistence extends PersistenceProvider {
     List<SessionInfo> listSessions();
 
+    default boolean exists(String id) {
+        return load(id).isPresent();
+    }
+
     record SessionInfo(String id, Instant lastModified) { }
 }

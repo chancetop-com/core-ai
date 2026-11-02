@@ -28,7 +28,13 @@ public class AppServerCommand implements Callable<Integer> {
         var protocolOut = System.out;
         System.setOut(new PrintStream(System.err, true, StandardCharsets.UTF_8));
         var resolvedWorkspace = workspace != null ? workspace : Path.of("").toAbsolutePath();
-        var engine = new AppServerEngine(resolvedWorkspace, configFile);
+        AppServerEngine engine;
+        try {
+            engine = new AppServerEngine(resolvedWorkspace, configFile);
+        } catch (EngineAlreadyRunningException e) {
+            System.err.println(e.getMessage());
+            return 2;
+        }
         var server = new AppServer(System.in, protocolOut, engine);
         return server.run();
     }

@@ -2,21 +2,25 @@ package ai.core.cli.utils;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
-
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Session files are stored per workspace; two different workspaces must never share a session directory,
- * otherwise {@code --continue} resumes another project's conversation and the desktop lists it.
+ * Session directories are keyed by workspace identity: the first claimant keeps the basename,
+ * colliding workspaces get a stable hash, and further collisions get a numeric suffix.
  *
  * @author stephen
  */
 class PathUtilsTest {
     @Test
-    void sessionsDirIsDistinctForDifferentWorkspacesWithTheSameName() {
-        var first = PathUtils.sessionsDir(Path.of("D:/clients/acme/app"));
-        var second = PathUtils.sessionsDir(Path.of("D:/clients/globex/app"));
-        assertNotEquals(first, second, "both workspaces are named 'app' but are different projects");
+    void sessionDirectoryNamesAreStableAndDistinctForDifferentWorkspaces() {
+        assertEquals("app", PathUtils.sessionDirName("app", "workspace-a", 0));
+        var first = PathUtils.sessionDirName("app", "workspace-a", 1);
+        var second = PathUtils.sessionDirName("app", "workspace-b", 1);
+        assertNotEquals(first, second, "two workspaces with the same basename must not share a directory");
+        assertEquals(first, PathUtils.sessionDirName("app", "workspace-a", 1), "the hash must be stable");
+        assertTrue(first.startsWith("app-"), first);
+        assertEquals(first + "-2", PathUtils.sessionDirName("app", "workspace-a", 2));
     }
 }

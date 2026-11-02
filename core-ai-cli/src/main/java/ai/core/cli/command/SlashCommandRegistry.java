@@ -17,6 +17,7 @@ public final class SlashCommandRegistry {
             new SlashCommand("/tools", "List available tools"),
             new SlashCommand("/copy", "Copy last response to clipboard"),
             new SlashCommand("/compact", "Remove old messages to free context"),
+            new SlashCommand("/save", "Save the current session now"),
             new SlashCommand("/export", "Export session to markdown (/export [file])"),
             new SlashCommand("/memory", "Manage memory files"),
             new SlashCommand("/memory edit", "Select a memory file to edit"),

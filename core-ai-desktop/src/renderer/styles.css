@@ -917,6 +917,76 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .turn-summary { color: var(--faint); font-size: 12px; margin: 6px 0 0 2px; }
 
+/* ---------- record-backed history (reload of a session's transcript) ---------- */
+
+.transcript-projection { font-style: italic; }
+
+.load-earlier {
+  align-self: center;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 12px;
+  margin: 4px auto 12px;
+  cursor: pointer;
+}
+.load-earlier:hover { color: var(--text); }
+
+.record-tool { border-top: 1px dashed var(--border); padding: 6px 0; }
+.record-tool:first-child { border-top: none; }
+.record-tool-head { display: flex; align-items: baseline; gap: 8px; }
+.record-tool-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+.record-tool-status { font-size: 11.5px; color: var(--muted); margin-left: auto; }
+.record-tool-status.success { color: var(--green); }
+.record-tool-status.failure, .record-tool-status.error { color: var(--red); }
+.record-tool-status.running { color: var(--amber); }
+.record-tool-approval {
+  font-size: 11px;
+  color: var(--faint);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0 5px;
+}
+.record-tool-args, .record-tool-result, .record-reasoning, .memory-note {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--muted);
+  background: var(--bg-panel);
+  border-radius: 6px;
+  padding: 6px 8px;
+  margin: 4px 0 0;
+  max-height: 240px;
+  overflow: auto;
+}
+.record-tool-result { color: var(--text); }
+.record-load-full {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  font: inherit;
+  font-size: 11px;
+  padding: 1px 8px;
+  margin-top: 4px;
+  cursor: pointer;
+}
+.record-load-full:hover { color: var(--text); }
+.record-quick-replies { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.record-quick-replies button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-panel);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 4px 10px;
+}
+
 .system-note {
   text-align: center;
   color: var(--faint);

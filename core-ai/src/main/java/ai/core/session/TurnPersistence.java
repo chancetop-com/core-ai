@@ -1,23 +1,58 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
 /**
- * Best-effort session save used when a turn ends without a normal completion. Extracted from
- * {@link InProcessAgentSession} (file-size budget) — the guards are the point: a provider-less or
- * empty session has nothing to write, and a save failure must never mask the error it was saving.
+ * Best-effort session save used by every turn end, cancel, compact/undo and shutdown path. A save
+ * failure must never change the turn result; it is reported once per failure streak through a
+ * {@code persistence} custom event.
  *
  * @author stephen
  */
 public final class TurnPersistence {
-    static void save(Agent agent, String sessionId, Logger logger, String reason) {
-        if (!agent.hasPersistenceProvider()) return;
-        if (!agent.hasUserMessage()) return;
+    private static final Map<String, Boolean> FAILED_SESSIONS = new ConcurrentHashMap<>();
+
+    public static boolean save(Agent agent, String sessionId, Logger logger, String reason) {
+        if (!agent.hasPersistenceProvider()) return true;
+        if (!agent.hasUserMessage()) return true;
         try {
             agent.save(sessionId);
+            if (sessionId != null && FAILED_SESSIONS.remove(sessionId) != null) {
+                emit(agent, sessionId, "{\"status\":\"ok\"}");
+            }
+            return true;
         } catch (RuntimeException e) {
             logger.warn("failed to persist session after {}, sessionId={}", reason, sessionId, e);
+            if (sessionId != null && FAILED_SESSIONS.putIfAbsent(sessionId, Boolean.TRUE) == null) {
+                emit(agent, sessionId, failureData(reason, e));
+            }
+            return false;
+        }
+    }
+
+    public static void clear(String sessionId) {
+        if (sessionId != null) FAILED_SESSIONS.remove(sessionId);
+    }
+
+    private static String failureData(String reason, RuntimeException failure) {
+        var data = new LinkedHashMap<String, String>();
+        data.put("status", "failed");
+        data.put("reason", reason == null ? "save failed" : reason);
+        data.put("error", failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage());
+        return JsonUtil.toJson(data);
+    }
+
+    private static void emit(Agent agent, String sessionId, String data) {
+        var context = agent.getExecutionContext();
+        if (context == null || context.getCustomVariables() == null) return;
+        if (context.getCustomVariables().get(CustomEventEmitter.CONTEXT_KEY) instanceof CustomEventEmitter emitter) {
+            emitter.emit("persistence", data, null, null);
         }
     }
 

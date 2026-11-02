@@ -77,4 +77,12 @@ class EngineSessionModels {
     void remove(String sessionId) {
         store.remove(sessionId);
     }
+
+    java.util.Set<String> ids() {
+        return store.ids();
+    }
+
+    void retainOnly(java.util.Set<String> liveIds) {
+        store.retainOnly(liveIds);
+    }
 }
