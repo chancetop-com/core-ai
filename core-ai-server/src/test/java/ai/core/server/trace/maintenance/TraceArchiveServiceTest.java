@@ -26,6 +26,7 @@ import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -81,6 +82,84 @@ class TraceArchiveServiceTest {
         assertTrue(spanQueries.contains("trace-1:0:10"), "first span page limited by page size");
         assertTrue(spanQueries.contains("trace-1:10:10"), "spans are paged instead of loaded all at once");
         assertParts(storage.uploads, service.maxPartUncompressedBytes, traces.size(), 15);
+    }
+
+    @Test
+    void deletesArchivedTracesInBoundedPages() {
+        var traces = new ArrayList<Trace>();
+        for (int i = 0; i < 35; i++) {
+            traces.add(trace("trace-" + i, "id-" + i));
+        }
+        var spans = new ArrayList<Span>();
+        for (var trace : traces) {
+            for (int j = 0; j < 120; j++) {
+                var span = new Span();
+                span.id = trace.traceId + "-span-" + j;
+                span.traceId = trace.traceId;
+                spans.add(span);
+            }
+        }
+
+        var service = new TraceArchiveService(mock(ObjectStorageServiceResolver.class), null, "uat");
+        var remainingTraces = new ArrayList<>(traces);
+        var remainingSpans = new ArrayList<>(spans);
+        var maxSpanDeleteIds = new int[]{0};
+        var tracePageSize = new int[]{0};
+
+        service.traceCollection = mockCollection();
+        when(service.traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            tracePageSize[0] = query.limit;
+            assertNull(query.skip, "deletion must page by started_at, not by skip, to avoid re-scanning the collection");
+            int to = Math.min(query.limit, remainingTraces.size());
+            return new ArrayList<>(remainingTraces.subList(0, to));
+        });
+        when(service.traceCollection.delete(any(Bson.class))).thenAnswer(invocation -> {
+            var ids = inValues(invocation.getArgument(0), "_id");
+            int before = remainingTraces.size();
+            remainingTraces.removeIf(t -> ids.contains(t.id));
+            return (long) (before - remainingTraces.size());
+        });
+
+        service.spanCollection = mockCollection();
+        when(service.spanCollection.find(any(Query.class))).thenAnswer(invocation -> {
+            Query query = invocation.getArgument(0);
+            var traceIds = inValues(query.filter, "trace_id");
+            var page = new ArrayList<Span>();
+            for (var span : remainingSpans) {
+                if (page.size() >= query.limit) break;
+                if (traceIds.contains(span.traceId)) {
+                    var projection = new Span(); // _id-only projection
+                    projection.id = span.id;
+                    projection.traceId = span.traceId;
+                    page.add(projection);
+                }
+            }
+            return page;
+        });
+        when(service.spanCollection.delete(any(Bson.class))).thenAnswer(invocation -> {
+            var ids = inValues(invocation.getArgument(0), "_id");
+            maxSpanDeleteIds[0] = Math.max(maxSpanDeleteIds[0], ids.size());
+            int before = remainingSpans.size();
+            remainingSpans.removeIf(s -> ids.contains(s.id));
+            return (long) (before - remainingSpans.size());
+        });
+
+        service.deleteArchivedTraces(ZonedDateTime.parse("2026-09-20T00:00:00Z"));
+
+        assertTrue(remainingTraces.isEmpty(), "all archived traces must be deleted");
+        assertTrue(remainingSpans.isEmpty(), "all spans of archived traces must be deleted");
+        assertTrue(tracePageSize[0] > 0 && tracePageSize[0] <= TraceArchiveService.TRACE_DELETE_BATCH_SIZE,
+                "traces are read in small pages");
+        assertTrue(maxSpanDeleteIds[0] <= TraceArchiveService.SPAN_DELETE_BATCH_SIZE,
+                "spans must be deleted in bounded batches, got one delete of " + maxSpanDeleteIds[0]);
+    }
+
+    private List<String> inValues(Bson filter, String field) {
+        var doc = filter.toBsonDocument();
+        return doc.getDocument(field).getArray("$in").stream()
+                .map(value -> value.asString().getValue())
+                .toList();
     }
 
     private TraceArchiveService archiveService(CapturingStorage storage, List<Trace> traces,
@@ -154,6 +233,12 @@ class TraceArchiveServiceTest {
         trace.traceId = traceId;
         trace.name = traceId;
         trace.startedAt = ZonedDateTime.parse("2026-09-19T00:00:00Z");
+        return trace;
+    }
+
+    private Trace trace(String traceId, String id) {
+        var trace = trace(traceId);
+        trace.id = id;
         return trace;
     }
 

@@ -8,6 +8,7 @@ import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -24,7 +25,6 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
@@ -46,7 +46,8 @@ public class TraceArchiveService {
     // base64 payloads (which is what trace spans mostly contain).
     private static final long MAX_PART_UNCOMPRESSED_BYTES = 160L * 1024 * 1024;
     private static final long MAX_PART_UPLOAD_BYTES = 256L * 1024 * 1024;
-    private static final int SPAN_DELETE_BATCH_SIZE = 30; // delete spans in small batches to avoid Mongo response timeout
+    static final int TRACE_DELETE_BATCH_SIZE = 30;
+    static final int SPAN_DELETE_BATCH_SIZE = 50; // keeps every deleteMany well below the mongo socket read timeout
 
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
@@ -167,29 +168,56 @@ public class TraceArchiveService {
     }
 
     public void deleteArchivedTraces(ZonedDateTime cutoff) {
-        int offset = 0;
         long totalSpansDeleted = 0;
-        var deletedTraceIds = new ArrayList<String>();
+        long totalTracesDeleted = 0;
         while (true) {
+            // always read the oldest page: deleting the traces as we go moves the cursor forward
+            // without skip, which would re-scan the whole collection (and fetch every trace doc)
+            // on each page - the query plan is a started_at index scan plus TRACE_DELETE_BATCH_SIZE fetches
             var batchQuery = new Query();
             batchQuery.filter = Filters.lt("started_at", cutoff);
-            batchQuery.sort = Sorts.ascending("_id");
-            batchQuery.skip = offset;
-            batchQuery.limit = SPAN_DELETE_BATCH_SIZE;
+            batchQuery.sort = Sorts.ascending("started_at");
+            batchQuery.limit = TRACE_DELETE_BATCH_SIZE;
             var batch = traceCollection.find(batchQuery);
             if (batch.isEmpty()) break;
 
             var traceIds = TraceMaintenanceHelper.extractTraceIds(batch);
-            long deleted = spanCollection.delete(Filters.in("trace_id", traceIds));
-            totalSpansDeleted += deleted;
-            deletedTraceIds.addAll(traceIds);
-            offset += batch.size();
-        }
-        LOGGER.info("deleted {} spans total for traces with started_at < {}", totalSpansDeleted, cutoff);
+            var ids = batch.stream().map(t -> t.id).filter(id -> id != null).toList();
+            if (ids.isEmpty()) break;
 
-        long deleted = traceCollection.delete(Filters.lt("started_at", cutoff));
-        LOGGER.info("deleted {} traces with started_at < {}", deleted, cutoff);
-        if (payloadStore != null) payloadStore.deleteForTraces(deletedTraceIds);
+            totalSpansDeleted += deleteSpans(traceIds);
+            if (payloadStore != null) payloadStore.deleteForTraces(traceIds);
+
+            long deleted = traceCollection.delete(Filters.in("_id", ids));
+            totalTracesDeleted += deleted;
+            if (deleted == 0) break;
+            if (totalTracesDeleted % (TRACE_DELETE_BATCH_SIZE * 50) == 0) {
+                LOGGER.info("deleting archived traces, deleted {} traces / {} spans so far, cutoff={}",
+                        totalTracesDeleted, totalSpansDeleted, cutoff);
+            }
+        }
+        LOGGER.info("deleted {} spans and {} traces with started_at < {}", totalSpansDeleted, totalTracesDeleted, cutoff);
+    }
+
+    /**
+     * Deletes spans of the given traces in bounded pages: a single deleteMany over many large
+     * LLM spans can exceed the mongo socket read timeout (one span is routinely hundreds of KB,
+     * a batch of traces can be gigabytes).
+     */
+    private long deleteSpans(List<String> traceIds) {
+        long deleted = 0;
+        while (true) {
+            var query = new Query();
+            query.filter = Filters.in("trace_id", traceIds);
+            query.projection = Projections.include("_id");
+            query.limit = SPAN_DELETE_BATCH_SIZE;
+            var page = spanCollection.find(query);
+            if (page.isEmpty()) return deleted;
+
+            var ids = page.stream().map(s -> s.id).filter(id -> id != null).toList();
+            if (ids.isEmpty()) return deleted;
+            deleted += spanCollection.delete(Filters.in("_id", ids));
+        }
     }
 
     private byte[] archiveLine(String type, Object value) {
