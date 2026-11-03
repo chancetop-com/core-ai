@@ -30,6 +30,7 @@ public class JsonUtil {
 
     public static final ObjectMapper OBJECT_MAPPER = createObjectMapper();
     public static final ObjectMapper OBJECT_MAPPER_NOT_ONLY_PUBLIC = createObjectMapperNotOnlyPublic();
+    public static final ObjectMapper OBJECT_MAPPER_WITH_NULLS = createObjectMapperWithNulls();
 
     private static ObjectMapper createObjectMapper() {
         return new ObjectMapper()
@@ -54,6 +55,11 @@ public class JsonUtil {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
+    private static ObjectMapper createObjectMapperWithNulls() {
+        return createObjectMapper()
+            .setDefaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.ALWAYS, JsonInclude.Include.ALWAYS));
+    }
+
     public static String toJson(Object instance) {
         if (instance == null) {
             throw new Error("instance must not be null");
@@ -63,6 +69,17 @@ public class JsonUtil {
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
+        }
+    }
+
+    public static String toJsonWithNulls(Object instance) {
+        if (instance == null) {
+            throw new Error("instance must not be null");
+        }
+        try {
+            return OBJECT_MAPPER_WITH_NULLS.writeValueAsString(instance);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 

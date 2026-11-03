@@ -101,7 +101,7 @@ public final class UpdateSessionStateTool extends ToolCall {
         }
 
         try {
-            recordService.patchBySession(datasetId, context.getSessionId(), JsonUtil.toJson(data), agentId, context.getUserId());
+            recordService.patchBySession(datasetId, context.getSessionId(), JsonUtil.toJsonWithNulls(data), agentId, context.getUserId());
         } catch (IllegalArgumentException e) {
             return ToolCallResult.failed(e.getMessage());
         }

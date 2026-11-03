@@ -116,7 +116,7 @@ public class HubDatasetService {
         detail.put("fields", new ArrayList<>(data.keySet()));
         return audited(session, userId, ref(resolved, OP_STATE_PATCH, GROUP_STATE), detail, () -> {
             try {
-                datasetRecordService.patchBySession(resolved.datasetId, sessionId, JsonUtil.toJson(data), session.agentId, userId);
+                datasetRecordService.patchBySession(resolved.datasetId, sessionId, JsonUtil.toJsonWithNulls(data), session.agentId, userId);
             } catch (IllegalArgumentException e) {
                 throw new BadRequestException(e.getMessage(), "BAD_REQUEST", e);
             }

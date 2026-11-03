@@ -407,6 +407,33 @@ class DatasetRecordServiceTest {
     }
 
     @Test
+    void mergeReplacesNonObjectTargetWithPatchedObjectFollowingRfc7386() {
+        var current = Map.<String, Object>of("meta", 5);
+        var patch = Map.<String, Object>of("meta", Map.of("keep", 1));
+
+        var merged = DatasetRecordService.merge(current, patch);
+
+        assertEquals(Map.of("keep", 1), merged.get("meta"));
+    }
+
+    @Test
+    void mergeDropsNullsInsideAnObjectPatchThatReplacesAScalar() {
+        var current = Map.<String, Object>of("meta", 5);
+        var patch = new java.util.HashMap<String, Object>();
+        var nested = new java.util.HashMap<String, Object>();
+        nested.put("keep", 1);
+        nested.put("drop", null);
+        patch.put("meta", nested);
+
+        var merged = DatasetRecordService.merge(current, patch);
+
+        @SuppressWarnings("unchecked")
+        var meta = (Map<String, Object>) merged.get("meta");
+        assertEquals(1, meta.size());
+        assertEquals(1, meta.get("keep"));
+    }
+
+    @Test
     void patchBySessionCreatesRecordWhenAbsent() {
         when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
 

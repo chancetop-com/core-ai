@@ -283,6 +283,15 @@ class HubDatasetServiceTest {
     }
 
     @Test
+    void updateStateKeepsNullValuesSoFieldsCanBeDeleted() {
+        service.updateState(SESSION_ID, "menu-state", "{\"menu_source\":null}", USER_ID);
+
+        var patch = ArgumentCaptor.forClass(String.class);
+        verify(recordService).patchBySession(eq("ds-session"), eq(SESSION_ID), patch.capture(), eq("agent1"), eq(USER_ID));
+        assertTrue(patch.getValue().contains("\"menu_source\":null"));
+    }
+
+    @Test
     void recordPayloadMatchesTool() {
         when(recordService.query(any())).thenReturn(new DatasetRecordService.QueryResult(List.of(record()), 1, true));
         when(recordService.update(eq("ds-general"), eq("r1"), any(), eq(USER_ID))).thenReturn(Boolean.TRUE);

@@ -76,10 +76,15 @@ public class DatasetRecordService {
             var value = entry.getValue();
             if (value == null) {
                 result.remove(key);
-            } else if (value instanceof Map<?, ?> patchMap && result.get(key) instanceof Map<?, ?> currentMap) {
+            } else if (value instanceof Map<?, ?> patchMap) {
                 @SuppressWarnings("unchecked")
-                var merged = merge(new LinkedHashMap<>((Map<String, Object>) currentMap), (Map<String, Object>) patchMap);
-                result.put(key, merged);
+                var nested = (Map<String, Object>) patchMap;
+                var currentValue = result.get(key);
+                // RFC 7386: an object patch always recurses, even when the target value is not an object,
+                // so nulls inside the patch are removals rather than stored values
+                @SuppressWarnings("unchecked")
+                var target = currentValue instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.<String, Object>of();
+                result.put(key, merge(target, nested));
             } else {
                 result.put(key, value);
             }

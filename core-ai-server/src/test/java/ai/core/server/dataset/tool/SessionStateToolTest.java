@@ -11,6 +11,7 @@ import ai.core.server.domain.DatasetType;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
@@ -209,6 +210,21 @@ class SessionStateToolTest {
         assertTrue(result.getResult().contains("\"status\":\"updated\""));
         assertTrue(result.getResult().contains("menu_source"));
         verify(recordService).patchBySession("ds1", "s1", "{\"menu_source\":\"OFFLINE\"}", "agent1", "u1");
+    }
+
+    @Test
+    void updateKeepsNullValuesSoFieldsCanBeDeleted() {
+        when(datasetService.get("ds1")).thenReturn(sessionDataset("ds1"));
+        var tool = UpdateSessionStateTool.create("agent1", datasetService, recordService, registry(DatasetPermission.WRITE));
+
+        var result = tool.execute("{\"dataset_id\":\"ds1\",\"data\":{\"menu_source\":null}}", context("s1"));
+
+        assertEquals(ToolCallResult.Status.COMPLETED, result.getStatus());
+        var patch = ArgumentCaptor.forClass(String.class);
+        verify(recordService).patchBySession(any(), any(), patch.capture(), any(), any());
+        var payload = JsonUtil.toMap(patch.getValue());
+        assertTrue(payload.containsKey("menu_source"));
+        assertNull(payload.get("menu_source"));
     }
 
     @Test
