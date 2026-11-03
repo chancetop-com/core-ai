@@ -710,6 +710,26 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 /* Copy action under each message; the label stays quiet until hovered, then confirms with a check. */
 .msg-actions { display: flex; align-items: center; gap: 8px; margin: 2px 0 0 2px; }
 .msg.user .msg-actions { justify-content: flex-end; margin: 2px 2px 0 0; }
+/* Long user input previews five lines; `clamped` also gives the overflow measurement its cut-off. */
+.msg-text { line-height: 1.55; }
+.msg-text.clamped { max-height: calc(5 * 1.55em); overflow: hidden; }
+.msg.user .bubble.is-clamped { cursor: pointer; }
+.msg-more {
+  display: block;
+  margin-top: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: left;
+  opacity: 0.62;
+  cursor: pointer;
+}
+.msg-more[hidden] { display: none; }
+.msg-more:hover { opacity: 1; text-decoration: underline; }
 .msg-action {
   display: inline-flex;
   align-items: center;

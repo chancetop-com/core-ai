@@ -656,6 +656,7 @@ interface SessionView {
 /** The +New conversation has no engine session yet; its blank window is still a view. */
 const DRAFT_VIEW_KEY = '';
 const views = new Map<string, SessionView>();
+const viewResizeObservers = new WeakMap<SessionView, ResizeObserver>();
 let mountedView: SessionView | null = null;
 
 function viewKey(sessionId: string | null): string {
@@ -708,6 +709,13 @@ function createSessionView(sessionId: string | null): SessionView {
     event.preventDefault();
     void window.coreai.openExternal(anchor.href);
   });
+  // A message's line count depends on the transcript width (window or sidebar resize), and a view
+  // can be built off-screen; re-fold long messages whenever the mounted box gets laid out.
+  if (typeof ResizeObserver !== 'undefined') {
+    const observer = new ResizeObserver(() => refreshUserMessageCollapses(view));
+    observer.observe(transcript);
+    viewResizeObservers.set(view, observer);
+  }
   views.set(viewKey(sessionId), view);
   return view;
 }
@@ -740,6 +748,8 @@ function showSessionView(view: SessionView): void {
     surface = surfaces.get(view.sessionId);
   }
   if (sessionStackEl && view.root.parentElement !== sessionStackEl) sessionStackEl.append(view.root);
+  // A detached view measures as empty; mount is the first moment its long messages can fold.
+  refreshUserMessageCollapses(view);
   if (switched) applySurface();
   applyComposerStatus(view.status);
   if (view.stick) view.transcript.scrollTop = view.transcript.scrollHeight;
@@ -750,6 +760,8 @@ function showSessionView(view: SessionView): void {
 function disposeSessionView(view: SessionView): void {
   if (view.streaming) stopReasoningTick(view.streaming);
   stopTurnClock(view);
+  viewResizeObservers.get(view)?.disconnect();
+  viewResizeObservers.delete(view);
   view.root.remove();
   if (views.get(viewKey(view.sessionId)) === view) views.delete(viewKey(view.sessionId));
   if (mountedView === view) mountedView = null;
@@ -3879,6 +3891,7 @@ function renderTranscript(view: SessionView): void {
     const text = item.kind === 'notice' || item.kind === 'text' ? item.text : undefined;
     if (text) view.transcript.append(el('div', 'notice', text));
   }
+  refreshUserMessageCollapses(view);
 }
 
 function renderTranscriptTurn(view: SessionView, turn: Turn): void {
@@ -4082,6 +4095,62 @@ function addTranscriptFullButton(view: SessionView, parent: HTMLElement, seq: nu
   parent.append(button);
 }
 
+const messageMeasurers = new WeakMap<HTMLElement, () => void>();
+
+/** Re-measures the folded user messages of one view; line count changes with the transcript width. */
+function refreshUserMessageCollapses(view: SessionView): void {
+  for (const body of view.transcript.querySelectorAll<HTMLElement>('.msg-text')) {
+    messageMeasurers.get(body)?.();
+  }
+}
+
+/**
+ * Long user input folds to a five-line preview (`.msg-text.clamped`). Whether the text actually
+ * overflows needs layout, so the toggle is measured on append, on view mount and on width changes;
+ * a short message never grows the toggle.
+ */
+function attachUserMessageCollapse(bubble: HTMLElement, body: HTMLElement): () => void {
+  const toggle = el('button', 'msg-more') as HTMLButtonElement;
+  toggle.type = 'button';
+  toggle.hidden = true;
+  bubble.append(toggle);
+  let expanded = false;
+  const measure = (): void => {
+    if (expanded) {
+      toggle.hidden = false;
+      bubble.classList.remove('is-clamped');
+      return;
+    }
+    const overflowing = body.scrollHeight - body.clientHeight > 1;
+    toggle.hidden = !overflowing;
+    bubble.classList.toggle('is-clamped', overflowing);
+  };
+  const paint = (): void => {
+    body.classList.toggle('clamped', !expanded);
+    toggle.textContent = expanded ? 'Show less' : 'Show more';
+    toggle.setAttribute('aria-expanded', String(expanded));
+    measure();
+  };
+  toggle.onclick = (event) => {
+    event.stopPropagation();
+    expanded = !expanded;
+    paint();
+  };
+  bubble.addEventListener('click', (event) => {
+    // Only a folded message expands on a bubble click; "Show less" is the way back.
+    if (expanded || !bubble.classList.contains('is-clamped')) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest('.msg-more, .attachment-row')) return;
+    const selection = window.getSelection();
+    if (selection?.anchorNode && bubble.contains(selection.anchorNode) && selection.toString()) return;
+    expanded = true;
+    paint();
+  });
+  messageMeasurers.set(body, measure);
+  paint();
+  return measure;
+}
+
 function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
   if (role === 'user') {
     const notifications = parseTaskNotifications(text);
@@ -4100,21 +4169,28 @@ function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: s
   const wrapper = el('div', `msg ${role}`);
   wrapper.append(el('div', 'role', role));
   const bubble = el('div', 'bubble');
+  let measure: (() => void) | null = null;
   if (role === 'assistant') {
     bubble.classList.add('md');
     const body = el('div', 'md-body');
     renderMarkdownInto(body, text);
     bubble.append(body);
   } else {
-    if (text) bubble.textContent = text;
+    const body = text ? el('div', 'msg-text') : null;
+    if (body) {
+      body.textContent = text;
+      bubble.append(body);
+    }
     if (attachments.length) {
       const row = el('div', 'attachment-row');
       for (const attachment of attachments) row.append(attachmentChipEl(attachment, false));
       bubble.append(row);
     }
+    if (body) measure = attachUserMessageCollapse(bubble, body);
   }
   wrapper.append(bubble);
   view.transcript.append(wrapper);
+  measure?.();
   if (text.trim()) attachMessageCopy(wrapper, () => text);
   return wrapper;
 }
