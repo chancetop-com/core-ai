@@ -14,6 +14,10 @@ public final class GatewayVideoHandle {
         return GatewayMediaHandle.encodeVideo(jobId);
     }
 
+    public static String encodeLegacy(String jobId) {
+        return GatewayMediaHandle.encodeLegacyVideo(jobId);
+    }
+
     public static String decode(String videoId) {
         if (videoId == null || videoId.isBlank()) throw new BadRequestException("video ID is required");
         var handle = GatewayMediaHandle.decode(videoId);

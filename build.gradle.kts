@@ -215,6 +215,9 @@ project(":core-ai-server") {
         testImplementation("org.apache.commons:commons-lang3:3.12.0")
         // Redis client for distributed messaging
         implementation("redis.clients:jedis:${Versions.JEDIS_VERSION}")
+        // Pure-Java video frame extraction for generation posters; no host ffmpeg required
+        implementation("org.jcodec:jcodec:${Versions.JCODEC_VERSION}")
+        implementation("org.jcodec:jcodec-javase:${Versions.JCODEC_VERSION}")
         testImplementation("core.framework:core-ng-test:${Versions.CORE_FRAMEWORK_VERSION}")
     }
     tasks.withType<Test> {

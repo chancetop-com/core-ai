@@ -60,9 +60,26 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         view.fileId = job.fileId;
         view.fileName = job.fileName;
         view.contentType = job.contentType;
+        view.playable = job.fileId != null;
+        view.artifactState = effectiveArtifactState(job);
+        view.artifactError = job.artifactError;
+        view.artifactSize = job.artifactSize;
+        view.posterFileId = job.posterFileId;
+        view.posterUrl = job.posterFileId == null ? null : "/api/files/" + job.posterFileId + "/content";
+        view.durationSeconds = job.durationSeconds;
+        view.contentUrl = job.fileId != null
+                ? "/api/files/" + job.fileId + "/content"
+                : "/api/media-jobs/" + job.id + "/content";
         view.createdAt = job.createdAt;
         view.completedAt = job.completedAt;
         return view;
+    }
+
+    private static String effectiveArtifactState(MediaJob job) {
+        if (job.fileId != null) return "stored";
+        if (job.artifactState != null) return job.artifactState;
+        if ("completed".equals(job.state)) return "pending";
+        return null;
     }
 
     private static List<MediaJobInputView> toInputViews(List<MediaJobInput> inputs) {

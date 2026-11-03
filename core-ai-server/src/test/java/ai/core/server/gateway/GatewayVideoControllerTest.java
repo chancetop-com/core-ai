@@ -3,6 +3,8 @@ package ai.core.server.gateway;
 import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
+import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.MediaJob;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.web.Request;
 import core.framework.web.WebContext;
@@ -49,14 +51,23 @@ class GatewayVideoControllerTest {
     @Test
     void dispatchesVideoOperationsThroughGatewayMediaProvider() {
         var provider = mock(GatewayMediaProvider.class);
+        var artifactService = mock(MediaArtifactService.class);
         var controller = new GatewayVideoController();
         controller.gatewayMediaProvider = provider;
+        controller.mediaArtifactService = artifactService;
         var owner = new MediaJobOwner("user-1", null, null);
         when(provider.generateVideo(any(), eq(owner)))
                 .thenReturn(new VideoGenerationResponse("gateway-media-v1.vid.am9iLTE", "submitted", null, null));
         when(provider.getVideoStatus("gateway-media-v1.vid.am9iLTE", owner))
                 .thenReturn(new VideoStatusResponse("gateway-media-v1.vid.am9iLTE", "running", 25, null, null));
-        when(provider.downloadVideo("gateway-media-v1.vid.am9iLTE", owner)).thenReturn(new byte[]{0, 0, 0, 1});
+        var job = new MediaJob();
+        job.id = "job-1";
+        job.state = "completed";
+        when(provider.videoJob("gateway-media-v1.vid.am9iLTE", owner)).thenReturn(job);
+        var record = new FileRecord();
+        record.contentType = "video/mp4";
+        when(artifactService.ensureStored(job))
+                .thenReturn(new MediaArtifactService.StoredArtifact(record, new byte[]{0, 0, 0, 1}));
 
         controller.generate("""
                 {"model":"seedance-2.5","prompt":"dance","seconds":5}
@@ -68,7 +79,8 @@ class GatewayVideoControllerTest {
         verify(provider).generateVideo(request.capture(), eq(owner));
         assertThat(request.getValue().model()).isEqualTo("seedance-2.5");
         verify(provider).getVideoStatus("gateway-media-v1.vid.am9iLTE", owner);
-        verify(provider).downloadVideo("gateway-media-v1.vid.am9iLTE", owner);
+        verify(provider).videoJob("gateway-media-v1.vid.am9iLTE", owner);
+        verify(artifactService).ensureStored(job);
     }
 
     @Test

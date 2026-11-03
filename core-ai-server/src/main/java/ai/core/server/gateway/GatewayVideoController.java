@@ -9,6 +9,7 @@ import ai.core.media.reference.MediaReferenceParser;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
 import core.framework.web.Request;
@@ -26,6 +27,8 @@ import java.util.Map;
 public class GatewayVideoController {
     @Inject
     GatewayMediaProvider gatewayMediaProvider;
+    @Inject
+    MediaArtifactService mediaArtifactService;
     @Inject
     WebContext webContext;
 
@@ -50,8 +53,20 @@ public class GatewayVideoController {
     }
 
     Response content(String videoId, MediaJobOwner owner) {
-        return Response.bytes(gatewayMediaProvider.downloadVideo(videoId, owner))
-                .contentType(ContentType.create("video/mp4", StandardCharsets.UTF_8));
+        var job = gatewayMediaProvider.videoJob(videoId, owner);
+        try {
+            var artifact = mediaArtifactService.ensureStored(job);
+            var bytes = artifact.freshBytes() == null ? mediaArtifactService.bytes(artifact.record()) : artifact.freshBytes();
+            var contentType = artifact.record().contentType == null ? "video/mp4" : artifact.record().contentType;
+            return Response.bytes(bytes).contentType(ContentType.create(contentType, StandardCharsets.UTF_8));
+        } catch (MediaArtifactUnavailableException e) {
+            return MediaContentResponses.error(HTTPStatus.GONE, "MEDIA_ARTIFACT_EXPIRED", e.getMessage());
+        } catch (MediaArtifactNotReadyException e) {
+            return MediaContentResponses.error(HTTPStatus.CONFLICT, "MEDIA_ARTIFACT_NOT_READY", e.getMessage())
+                    .header("Retry-After", "2");
+        } catch (RuntimeException e) {
+            return MediaContentResponses.error(HTTPStatus.SERVICE_UNAVAILABLE, "MEDIA_ARTIFACT_FAILED", e.getMessage());
+        }
     }
 
     VideoGenerationRequest videoRequest(byte[] body) {

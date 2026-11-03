@@ -107,6 +107,7 @@ public class SchemaMigrationManager {
             new SchemaMigrationVBackgroundTasks(), new SchemaMigrationVTraceDailyStats(), new SchemaMigrationVTraceDailyStatsAgent(),
             new SchemaMigrationVSessionFeedbackIndexes(), new SchemaMigrationVMemoryExperimentIndexes(), new SchemaMigrationVTraceDailyStatsDateIndex(),
             new SchemaMigrationVAnalyticsDailyStats(), new SchemaMigrationVMediaJobIndexes(), new SchemaMigrationVMediaJobCostIndexes(), new SchemaMigrationVSharedArtifactIndexes(), new SchemaMigrationVGeminiVideoIndexes(),
+            new SchemaMigrationVMediaJobArtifact(),
             new SchemaMigrationVDatasetRecordSessionIndex(),
             new SchemaMigrationVAgentNameSearch(),
             new SchemaMigrationVApiKeys(),

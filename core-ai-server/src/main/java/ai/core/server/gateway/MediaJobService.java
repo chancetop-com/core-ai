@@ -27,7 +27,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -54,6 +53,8 @@ public class MediaJobService {
     MediaCostSettler costSettler;
     @Inject
     FileService fileService;
+    @Inject
+    MediaJobArtifactStore artifactStore;
     @Inject
     TelemetryConfig telemetryConfig;
 
@@ -266,23 +267,7 @@ public class MediaJobService {
      * use: video jobs never populate {@code fileId} until someone asks for the content.
      */
     public FileRecord storeBytes(MediaJob job, byte[] bytes, String contentType) {
-        try {
-            var tempFile = Files.createTempFile("media-job-", ".bin");
-            Files.write(tempFile, bytes);
-            var type = hasText(contentType) ? contentType : "application/octet-stream";
-            var record = fileService.uploadIfAbsent(job.userId, "media-" + job.id + FileService.extension(type), type, tempFile);
-            mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                    Updates.set("file_id", record.id),
-                    Updates.set("file_name", record.fileName),
-                    Updates.set("content_type", record.contentType),
-                    Updates.set("updated_at", ZonedDateTime.now())));
-            job.fileId = record.id;
-            job.fileName = record.fileName;
-            job.contentType = record.contentType;
-            return record;
-        } catch (IOException e) {
-            throw new UncheckedIOException("failed to cache media job bytes, job=" + job.id, e);
-        }
+        return artifactStore.storeBytes(job, bytes, contentType);
     }
 
     public byte[] bytes(FileRecord record) {
@@ -339,6 +324,9 @@ public class MediaJobService {
         MediaPricingService.MediaPrice settled = null;
         if (completed) {
             updates = Updates.combine(updates, Updates.set("completed_at", now));
+            if (!hasText(job.fileId)) {
+                updates = Updates.combine(updates, Updates.set("artifact_state", "pending"));
+            }
             settled = settlePrice(job, status);
             updates = applyPrice(updates, settled);
         }
@@ -347,7 +335,10 @@ public class MediaJobService {
         job.progress = status.progress();
         job.error = status.error();
         job.updatedAt = now;
-        if (completed) job.completedAt = now;
+        if (completed) {
+            job.completedAt = now;
+            if (!hasText(job.fileId)) job.artifactState = "pending";
+        }
         // only a settled generation is reported: an unsettled one would misreport its cost
         if (settled != null) {
             applyPriceToJob(job, settled);

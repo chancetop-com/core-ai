@@ -56,6 +56,18 @@ public final class ImageJpegCodec {
     }
 
     /**
+     * Re-encodes an already decoded frame (for example a video poster extracted by JCodec) into a
+     * downscaled jpeg.
+     */
+    public static byte[] jpeg(BufferedImage source, int maxEdge, float quality) {
+        try {
+            return encode(scale(source, maxEdge), quality);
+        } catch (IOException | RuntimeException e) {
+            return null;
+        }
+    }
+
+    /**
      * @return the integer subsampling factor that keeps the decoded pixel count within
      *         {@link #MAX_DECODE_PIXELS}; 1 when the image can be decoded whole
      */

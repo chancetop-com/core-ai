@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Lasso, Link2, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, DollarSign, Film, FlaskConical, Image as ImageIcon, Lasso, Link2, Play, RotateCcw } from 'lucide-react';
 import { api } from '../../api/client';
 import type { MediaJob, MediaJobInput } from '../../api/client';
 import { usePermission } from '../../api/permissions';
 import { formatCostUsd } from '../traces/traceViewModel';
 import ImageCanvasEditor from '../../components/ImageCanvasEditor';
+import VideoPlayer from '../../components/VideoPlayer';
 import ModelCompareModal from './ModelCompareModal';
 
 const SOURCE_COLORS: Record<string, { bg: string; text: string }> = {
@@ -27,6 +28,14 @@ function formatTime(iso?: string) {
   if (!iso) return '-';
   const d = new Date(iso);
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatDuration(seconds?: number) {
+  if (seconds == null) return '';
+  const whole = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(whole / 60);
+  const rest = whole % 60;
+  return minutes > 0 ? `${minutes}:${String(rest).padStart(2, '0')}` : `${rest}s`;
 }
 
 function unitsLabel(job: MediaJob) {
@@ -62,6 +71,10 @@ function inputContentUrl(input: MediaJobInput) {
 // a video input has no thumbnail record; the tile is a card, the content is the video itself
 function inputThumbnailUrl(input: MediaJobInput) {
   return input.fileId && input.modality !== 'video' ? `/api/files/${input.fileId}/thumbnail` : null;
+}
+
+function videoPosterThumbUrl(job: MediaJob) {
+  return job.posterFileId ? `/api/files/${job.posterFileId}/thumbnail` : job.posterUrl;
 }
 
 function inputLabel(input: MediaJobInput) {
@@ -105,6 +118,7 @@ export default function Generations() {
   const [offset, setOffset] = useState(0);
   const [mediaType, setMediaType] = useState('');
   const [costSource, setCostSource] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   const [preview, setPreview] = useState<MediaJob | null>(null);
   const [compareJob, setCompareJob] = useState<MediaJob | null>(null);
   // the canvas editor re-fetches the image itself: the preview <img> is 307'd to a cross-origin
@@ -120,7 +134,7 @@ export default function Generations() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [preview, compareJob, editFileId]);
-  const requestKey = JSON.stringify({ offset, mediaType, costSource });
+  const requestKey = JSON.stringify({ offset, mediaType, costSource, refreshKey });
   const loading = result.requestKey !== requestKey;
 
   useEffect(() => {
@@ -155,6 +169,12 @@ export default function Generations() {
           </p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => setRefreshKey(value => value + 1)}
+            className="px-3 py-1.5 rounded-lg border text-sm flex items-center gap-1 cursor-pointer"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}
+            title="重新加载列表；视频首次播放时也会自动归档">
+            <RotateCcw size={14} /> Refresh
+          </button>
           <select
             value={mediaType}
             onChange={e => { setMediaType(e.target.value); setOffset(0); }}
@@ -210,6 +230,7 @@ export default function Generations() {
               const sourceColor = SOURCE_COLORS[job.costSource ?? ''] ?? SOURCE_COLORS.unavailable;
               const stateColor = STATE_COLORS[job.state ?? ''] ?? STATE_COLORS.submitted;
               const isImage = job.mediaType === 'image';
+              const poster = videoPosterThumbUrl(job);
               return (
                 <tr key={job.id} className="group border-t hover:bg-[var(--color-bg-tertiary)]"
                   style={{ borderColor: 'var(--color-border)' }}>
@@ -223,11 +244,44 @@ export default function Generations() {
                             <ImageIcon size={14} style={{ color: 'var(--color-text-secondary)' }} />
                           </div>
                         : job.state === 'completed'
-                          ? <div onClick={() => setPreview(job)} title="Click to play"
-                              className="h-16 w-[88px] rounded border flex items-center justify-center cursor-pointer"
-                              style={{ borderColor: 'var(--color-border)', background: '#0f172a' }}>
-                              <Play size={20} color="#f8fafc" fill="#f8fafc" />
-                            </div>
+                          ? job.artifactState === 'expired'
+                            ? <div onClick={() => setPreview(job)} title={job.artifactError || '视频已过期'}
+                                className="relative h-16 w-[88px] overflow-hidden rounded border cursor-pointer"
+                                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-tertiary)' }}>
+                                {poster && <img src={poster} alt={job.fileName ?? '视频封面'} loading="lazy"
+                                  className="h-full w-full object-cover opacity-40" />}
+                                <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
+                                  <Film size={16} style={{ color: 'var(--color-text-secondary)' }} />
+                                  <span className="text-[10px] rounded px-1"
+                                    style={{ color: 'var(--color-text-secondary)', background: 'rgba(15,23,42,0.75)' }}>已过期</span>
+                                </div>
+                              </div>
+                            : <div onClick={() => setPreview(job)}
+                                title={job.playable ? 'Click to play' : 'Click to play (first play archives the video)'}
+                                className="relative h-16 w-[88px] overflow-hidden rounded border cursor-pointer"
+                                style={{ borderColor: 'var(--color-border)', background: '#0f172a' }}>
+                                {poster
+                                  ? <>
+                                      <img src={poster} alt={job.fileName ?? '视频封面'} loading="lazy"
+                                        className="h-full w-full object-cover" />
+                                      <span className="absolute inset-0 flex items-center justify-center bg-black/15">
+                                        <Play size={18} color="#f8fafc" fill="#f8fafc" />
+                                      </span>
+                                    </>
+                                  : <div className="flex h-full w-full items-center justify-center">
+                                      <Play size={20} color="#f8fafc" fill="#f8fafc" />
+                                    </div>}
+                                {(job.durationSeconds ?? job.requestedSeconds) != null && (
+                                  <span className="absolute bottom-1 right-1 rounded px-1 text-[10px]"
+                                    style={{ background: 'rgba(15,23,42,0.8)', color: '#e2e8f0' }}>
+                                    {formatDuration(job.durationSeconds ?? job.requestedSeconds)}
+                                  </span>
+                                )}
+                                {!job.playable && (
+                                  <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full" style={{ background: '#fbbf24' }}
+                                    title="尚未归档；首次播放会自动归档" />
+                                )}
+                              </div>
                           : <div className="h-16 w-[88px] rounded border flex items-center justify-center" style={{ borderColor: 'var(--color-border)' }}>
                               <Film size={14} style={{ color: 'var(--color-text-secondary)' }} />
                             </div>}
@@ -341,17 +395,19 @@ export default function Generations() {
             {preview.mediaType === 'image' && preview.fileId
               ? <img src={`/api/files/${preview.fileId}/content`} alt={preview.fileName ?? 'generated'}
                   className="max-h-[80vh] max-w-[90vw] rounded object-contain" onClick={e => e.stopPropagation()} />
-              : <video src={`/api/media-jobs/${preview.id}/content`} controls autoPlay
-                  className="max-h-[80vh] max-w-[90vw] rounded" onClick={e => e.stopPropagation()} />}
+              : <VideoPlayer job={preview} />}
             {preview.prompt && (
               <div className="max-w-[80vw] text-center text-sm whitespace-pre-wrap" style={{ color: '#e2e8f0' }}
                 onClick={e => e.stopPropagation()}>{preview.prompt}</div>
             )}
             <div className="text-sm" style={{ color: '#cbd5e1' }} onClick={e => e.stopPropagation()}>
               {preview.requestedModel} · {formatTime(preview.createdAt)}
-              <a href={preview.mediaType === 'image' && preview.fileId
-                  ? `/api/files/${preview.fileId}/content` : `/api/media-jobs/${preview.id}/content`}
-                target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
+              {preview.artifactState !== 'expired' && (
+                <a href={preview.mediaType === 'image' && preview.fileId
+                    ? `/api/files/${preview.fileId}/content`
+                    : (preview.contentUrl || `/api/media-jobs/${preview.id}/content`)}
+                  target="_blank" rel="noreferrer" className="ml-3 underline">Open in new tab</a>
+              )}
             </div>
             {recipeLabel(preview) && (
               <div className="text-xs" style={{ color: '#94a3b8' }} onClick={e => e.stopPropagation()}>

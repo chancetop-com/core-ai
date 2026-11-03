@@ -95,6 +95,37 @@ public class MediaJob {
     @Field(name = "content_type")
     public String contentType;
 
+    // video artifact lifecycle: pending -> storing -> stored / expired / failed
+    @Field(name = "artifact_state")
+    public String artifactState;
+
+    @Field(name = "artifact_error")
+    public String artifactError;
+
+    @Field(name = "artifact_size")
+    public Long artifactSize;
+
+    @Field(name = "artifact_stored_at")
+    public ZonedDateTime artifactStoredAt;
+
+    @Field(name = "artifact_attempts")
+    public Integer artifactAttempts;
+
+    @Field(name = "artifact_next_attempt_at")
+    public ZonedDateTime artifactNextAttemptAt;
+
+    @Field(name = "artifact_claimed_at")
+    public ZonedDateTime artifactClaimedAt;
+
+    @Field(name = "poster_file_id")
+    public String posterFileId;
+
+    @Field(name = "poster_attempted_at")
+    public ZonedDateTime posterAttemptedAt;
+
+    @Field(name = "duration_seconds")
+    public Double durationSeconds;
+
     @Field(name = "created_at")
     public ZonedDateTime createdAt;
 

@@ -364,6 +364,14 @@ export interface MediaJob {
   fileId?: string;
   fileName?: string;
   contentType?: string;
+  artifactState?: 'pending' | 'storing' | 'stored' | 'expired' | 'failed';
+  artifactError?: string;
+  artifactSize?: number;
+  posterFileId?: string;
+  posterUrl?: string;
+  durationSeconds?: number;
+  playable?: boolean;
+  contentUrl?: string;
   createdAt?: string;
   completedAt?: string;
 }

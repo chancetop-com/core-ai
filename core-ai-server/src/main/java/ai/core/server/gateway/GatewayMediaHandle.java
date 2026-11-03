@@ -38,6 +38,15 @@ public final class GatewayMediaHandle {
         return encode(jobId, MediaModality.VIDEO);
     }
 
+    /**
+     * The handle persisted by video jobs created before the modality-aware format; still needed to
+     * recognize MP4s the video tool saved back then.
+     */
+    public static String encodeLegacyVideo(String jobId) {
+        if (isBlank(jobId)) throw new BadRequestException("gateway media job ID is required");
+        return LEGACY_VIDEO_PREFIX + "." + encodePart(jobId);
+    }
+
     public static boolean isHandle(String value) {
         if (isBlank(value)) return false;
         return value.startsWith(PREFIX + ".") || value.startsWith(LEGACY_VIDEO_PREFIX + ".");

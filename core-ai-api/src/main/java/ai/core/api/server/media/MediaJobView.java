@@ -94,6 +94,30 @@ public class MediaJobView {
     @Property(name = "contentType")
     public String contentType;
 
+    @Property(name = "artifactState")
+    public String artifactState;
+
+    @Property(name = "artifactError")
+    public String artifactError;
+
+    @Property(name = "artifactSize")
+    public Long artifactSize;
+
+    @Property(name = "posterFileId")
+    public String posterFileId;
+
+    @Property(name = "posterUrl")
+    public String posterUrl;
+
+    @Property(name = "durationSeconds")
+    public Double durationSeconds;
+
+    @Property(name = "playable")
+    public Boolean playable;
+
+    @Property(name = "contentUrl")
+    public String contentUrl;
+
     @Property(name = "createdAt")
     public ZonedDateTime createdAt;
 

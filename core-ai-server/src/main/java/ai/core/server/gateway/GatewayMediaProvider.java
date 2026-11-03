@@ -159,11 +159,15 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         return videoBytes(job);
     }
 
-    private MediaJob videoJob(String videoId, MediaJobOwner owner) {
+    MediaJob videoJob(String videoId, MediaJobOwner owner) {
         var jobId = GatewayVideoHandle.decode(videoId);
         return owner != null && hasText(owner.userId())
                 ? mediaJobService.getOwned(jobId, owner.userId())
                 : mediaJobService.get(jobId);
+    }
+
+    byte[] downloadVideoBytes(MediaJob job) {
+        return videoBytes(job);
     }
 
     private byte[] videoBytes(MediaJob job) {

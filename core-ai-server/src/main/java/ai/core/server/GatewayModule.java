@@ -28,10 +28,14 @@ import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.gateway.HubModelService;
 import ai.core.server.gateway.HubModelWebServiceImpl;
 import ai.core.server.gateway.ImageModelCompareService;
+import ai.core.server.gateway.MediaArtifactMaterializationJob;
+import ai.core.server.gateway.MediaArtifactService;
 import ai.core.server.gateway.MediaCostSettler;
+import ai.core.server.gateway.MediaJobArtifactStore;
 import ai.core.server.gateway.MediaJobContentController;
 import ai.core.server.gateway.MediaJobService;
 import ai.core.server.gateway.MediaJobWebServiceImpl;
+import ai.core.server.gateway.MediaPosterService;
 import ai.core.server.trace.service.MediaPricingService;
 import ai.core.server.domain.GeminiFileRepository;
 import ai.core.server.domain.SessionAttachmentRefRepository;
@@ -49,6 +53,8 @@ import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.time.Duration;
 
 /**
  * @author stephen
@@ -80,9 +86,13 @@ public class GatewayModule extends Module {
         // GatewayModule loads before TraceModule (which owns ModelPricingService)
         bind(MediaPricingService.class);
         var costSettler = bind(MediaCostSettler.class);
+        bind(MediaJobArtifactStore.class);
+        bind(MediaPosterService.class);
         var mediaJobService = bind(MediaJobService.class);
         bind(GatewayProxyService.class);
         bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
+        bind(MediaArtifactService.class);
+        schedule().fixedRate("media-artifact-materialization", bind(MediaArtifactMaterializationJob.class), Duration.ofMinutes(1));
         registerGatewayProviderRoutes();
         registerGatewayModelRoutes();
         registerGatewayProxyRoutes();

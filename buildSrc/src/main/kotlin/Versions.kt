@@ -26,6 +26,7 @@ object Versions {
     const val OPENTELEMETRY_PROTO_VERSION = "1.7.0-alpha"
     const val JEDIS_VERSION = "5.2.0"
     const val GOOGLE_AUTH_VERSION = "1.30.0"
+    const val JCODEC_VERSION = "0.2.5"
 }
 
 object ProjectVersions {

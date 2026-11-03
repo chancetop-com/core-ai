@@ -308,6 +308,18 @@ class MediaJobServiceTest {
         assertTrue(service.fileRecordByHandle(GatewayMediaHandle.encodeImage("job-3")).isEmpty());
     }
 
+    @Test
+    void updateVideoStatusMarksArtifactPendingOnCompletion() {
+        var job = new MediaJob();
+        job.id = "job-1";
+
+        service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
+
+        var update = capturedUpdateText();
+        assertTrue(update.contains("fieldName='artifact_state', operator='$set', value=pending"));
+        assertEquals("pending", job.artifactState);
+    }
+
     private String capturedUpdateText() {
         ArgumentCaptor<Bson> captor = ArgumentCaptor.forClass(Bson.class);
         verify(collection).update(any(Bson.class), captor.capture());
