@@ -2,7 +2,7 @@
 
 > 状态：草案（2026-11-03）
 > 前置：[design-dataset-postgresql-poc.md](design-dataset-postgresql-poc.md)、[poc-dataset-postgresql-result.md](poc-dataset-postgresql-result.md)
-> 关联：[design-dataset-report.md](design-dataset-report.md)（原 Report 设计，本文第 6 节取代其 ReportConfig 部分）、[design-dataset-session-state.md](design-dataset-session-state.md)
+> 关联：[design-dataset-report.md](design-dataset-report.md)（原 Report 设计，本文第 6 节取代其 ReportConfig 部分）
 > 读者：实现本计划的工程师 / agent。每个阶段都可以单独交付，章节内给出了验收标准。
 
 ## 1. 背景与目标

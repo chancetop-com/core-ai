@@ -2,7 +2,7 @@
 
 > 状态：已实现（2026-11-02），结果与偏差见 [poc-dataset-postgresql-result.md](poc-dataset-postgresql-result.md)
 > 关联分析：core-ai-server 存储层 Mongo + Redis → PostgreSQL 评估（结论：dataset 是迁 PG 的第一批候选）
-> 现有设计：[design-dataset-report.md](design-dataset-report.md)、[design-dataset-session-state.md](design-dataset-session-state.md)
+> 现有设计：[design-dataset-report.md](design-dataset-report.md)
 
 ## 1. 背景
 
