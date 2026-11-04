@@ -2,10 +2,12 @@ package ai.core.server.trace.service;
 
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Updates;
 
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 
 import org.bson.conversions.Bson;
 
@@ -114,8 +116,7 @@ public class OTLPIngestService {
 
     private void ensureTraceExists(String traceId, String spanName, long startMs,
                                    Map<String, String> attrs, Map<String, String> resourceAttrs) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (!existing.isEmpty()) return;
+        if (traceExists(traceId)) return;
 
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
@@ -152,10 +153,8 @@ public class OTLPIngestService {
     private void saveSpan(io.opentelemetry.proto.trace.v1.Span protoSpan,
                           String traceId, String spanId, String parentSpanId,
                           Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
-        if (!spanCollection.find(Filters.eq("span_id", spanId)).isEmpty()) return;
         var toolCallId = attrs.get("tool.call_id");
-        if (toolCallId != null && !toolCallId.isEmpty()
-                && !spanCollection.find(Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId))).isEmpty()) {
+        if (toolCallId != null && !toolCallId.isEmpty() && hasToolCallSpan(traceId, toolCallId)) {
             return;  // the same tool call was already synthesized by an earlier request of this conversation
         }
 
@@ -322,14 +321,30 @@ public class OTLPIngestService {
     }
 
     private void backfillTraceModel(String traceId, String model) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (existing.isEmpty()) return;
-        var trace = existing.getFirst();
-        if (trace.model == null || trace.model.isEmpty()) {
-            trace.model = model;
-            trace.updatedAt = ZonedDateTime.now();
-            traceCollection.replace(trace);
-        }
+        // targeted conditional update instead of read-and-replace: spans are large documents (a single
+        // LLM span can exceed 1MB), and loading the whole trace per LLM span was a hot-path read.
+        traceCollection.update(
+            Filters.and(
+                Filters.eq("trace_id", traceId),
+                Filters.or(Filters.exists("model", false), Filters.eq("model", null), Filters.eq("model", ""))),
+            Updates.combine(Updates.set("model", model), Updates.set("updated_at", ZonedDateTime.now())));
+    }
+
+    /** Existence checks project {@code _id} only so a multi-hundred-KB trace/span doc is not fetched just to test it. */
+    private boolean traceExists(String traceId) {
+        var query = new Query();
+        query.filter = Filters.eq("trace_id", traceId);
+        query.projection = Projections.include("_id");
+        query.limit = 1;
+        return !traceCollection.find(query).isEmpty();
+    }
+
+    private boolean hasToolCallSpan(String traceId, String toolCallId) {
+        var query = new Query();
+        query.filter = Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId));
+        query.projection = Projections.include("_id");
+        query.limit = 1;
+        return !spanCollection.find(query).isEmpty();
     }
 
     private void incrementTraceTokens(String traceId, Span span) {

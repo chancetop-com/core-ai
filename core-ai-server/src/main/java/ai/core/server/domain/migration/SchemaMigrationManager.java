@@ -139,7 +139,8 @@ public class SchemaMigrationManager {
             new SchemaMigrationVHubCalls(),
             new SchemaMigrationVSkillDigestBackfill(),
             new SchemaMigrationVFileRecordsDropTTL(),
-            new SchemaMigrationVTracePayloadBlobIndexes()
+            new SchemaMigrationVTracePayloadBlobIndexes(),
+            new SchemaMigrationVSpanToolCallIdIndex()
         ));
         migrations.addAll(projectAndAgentMigrations());
         return migrations;

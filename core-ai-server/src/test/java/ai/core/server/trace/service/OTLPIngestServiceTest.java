@@ -10,6 +10,7 @@ import ai.core.server.trace.domain.TraceStatus;
 import com.google.protobuf.ByteString;
 import com.mongodb.MongoClientSettings;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import core.framework.mongo.impl.ZonedDateTimeCodec;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.common.v1.AnyValue;
@@ -43,7 +44,7 @@ class OTLPIngestServiceTest {
     void calculatesGpt6LunaCatalogCostAndRollsUpTraceCost() {
         var service = service();
         when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
             attr("gen_ai.request.model", "gpt-6-luna"),
@@ -76,7 +77,7 @@ class OTLPIngestServiceTest {
         model.inputPricePer1MTokens = 2D;
         model.outputPricePer1MTokens = 8D;
         when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
             attr("gen_ai.request.model", "gpt-5.6-terra"),
@@ -100,7 +101,7 @@ class OTLPIngestServiceTest {
         model.cacheReadInputPricePer1MTokens = 2.173913e-02D;
         model.peakPriceMultiplier = 2D;
         when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         // start time 2026-08-18T02:00:00Z = Beijing 10:00, peak hour
         long startNanos = Instant.parse("2026-08-18T02:00:00Z").toEpochMilli() * 1_000_000L;
@@ -125,7 +126,7 @@ class OTLPIngestServiceTest {
         model.inputPricePer1MTokens = 1D;
         model.outputPricePer1MTokens = 2D;
         when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
             attr("gen_ai.request.model", "deepseek-v4-pro"),
@@ -142,8 +143,8 @@ class OTLPIngestServiceTest {
     @Test
     void rootOperationSpanUsesAgentNameForTraceTitle() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.run",
             attr("langfuse.observation.type", "agent"),
@@ -159,8 +160,8 @@ class OTLPIngestServiceTest {
     @Test
     void stripsDuplicatedPayloadAttributesFromStoredSpan() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         var input = "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}";
         var output = "{\"role\":\"assistant\",\"content\":\"hi\"}";
@@ -188,8 +189,8 @@ class OTLPIngestServiceTest {
     @Test
     void keepsLangfuseAttributeWhenItDiffersFromSpanPayload() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         var attributeInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from attribute\"}]}";
         var spanInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from prompt\"}]}";
@@ -206,8 +207,10 @@ class OTLPIngestServiceTest {
     @Test
     void gatewaySpansWithSameSessionIdMergeIntoSameTrace() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        // first ingest creates the trace, the second one finds it by the derived session trace id
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -231,8 +234,8 @@ class OTLPIngestServiceTest {
     @Test
     void gatewaySpansWithDifferentSessionIdsKeepSeparateTraces() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -252,8 +255,8 @@ class OTLPIngestServiceTest {
     @Test
     void nonGatewaySpansKeepProtoTraceId() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.run",
             attr("session.id", "chat-session-1"),
@@ -274,8 +277,8 @@ class OTLPIngestServiceTest {
         model.inputPricePer1MTokens = 1D;
         model.outputPricePer1MTokens = 2D;
         when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("flash_to_video",
             attr("media.type", "video"),
@@ -302,8 +305,8 @@ class OTLPIngestServiceTest {
     @Test
     void mediaSpanPayloadBecomesSpanAndTraceInputOutput() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("Video generation",
             attr("media.type", "video"),
@@ -335,8 +338,9 @@ class OTLPIngestServiceTest {
         var provisional = new Trace();
         provisional.traceId = "0".repeat(32);
         provisional.input = "{\"messages\":[{\"role\":\"user\",\"content\":\"full request payload\"}]}";
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(provisional));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(provisional));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.turn",
             attr("langfuse.observation.type", "agent"),
@@ -358,8 +362,9 @@ class OTLPIngestServiceTest {
         var trace = new Trace();
         trace.traceId = "0".repeat(32);
         trace.input = "first request body";
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -379,8 +384,9 @@ class OTLPIngestServiceTest {
         var service = service();
         var trace = new Trace();
         trace.traceId = "0".repeat(32);
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
-        when(service.spanCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.turn",
             attr("session.id", "session-1"),
@@ -396,7 +402,7 @@ class OTLPIngestServiceTest {
     @Test
     void startedRootSpanCreatesAttributedTrace() {
         var service = service();
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.traceStarted("0".repeat(32), "agent.run", 1_000L,
             Map.of("session.id", "run:2de32893", "user.id", "api:c1791592", "client.type", "api",
@@ -425,7 +431,7 @@ class OTLPIngestServiceTest {
         var service = service();
         var existing = new Trace();
         existing.traceId = "0".repeat(32);
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(existing));
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(existing));
 
         service.traceStarted("0".repeat(32), "agent.run", 1_000L, Map.of("user.id", "u-1"), Map.of());
 
@@ -440,6 +446,8 @@ class OTLPIngestServiceTest {
         service.chatSessionCollection = chatSessionCollection();
         service.modelPricingService = new ModelPricingService();
         service.modelPricingService.gatewayModelCollection = gatewayModelCollection();
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
+        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
         return service;
     }
 
