@@ -9,6 +9,7 @@ import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.conversions.Bson;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -32,6 +33,22 @@ import static ai.core.server.gateway.GatewaySupport.hasText;
 public class MediaJobArtifactStore {
     private static final int MAX_ARTIFACT_ATTEMPTS = 5;
     private static final int MAX_ARTIFACT_ERROR_LENGTH = 500;
+
+    // core-ng writes unset optional fields as explicit nulls. Mongo's $lt/$lte are type-bracketed,
+    // so a null value would never match those operators and the job would never be claimed.
+    private static Bson attemptsAllowed() {
+        return Filters.or(
+                Filters.exists("artifact_attempts", false),
+                Filters.eq("artifact_attempts", null),
+                Filters.lt("artifact_attempts", MAX_ARTIFACT_ATTEMPTS));
+    }
+
+    private static Bson nextAttemptAllowed(ZonedDateTime now) {
+        return Filters.or(
+                Filters.exists("artifact_next_attempt_at", false),
+                Filters.eq("artifact_next_attempt_at", null),
+                Filters.lte("artifact_next_attempt_at", now));
+    }
 
     @Inject
     MongoCollection<MediaJob> mediaJobCollection;
@@ -86,12 +103,8 @@ public class MediaJobArtifactStore {
                                 Filters.exists("artifact_state", false),
                                 Filters.eq("artifact_state", null),
                                 Filters.in("artifact_state", List.of("pending", "failed"))),
-                        Filters.or(
-                                Filters.exists("artifact_attempts", false),
-                                Filters.lt("artifact_attempts", MAX_ARTIFACT_ATTEMPTS)),
-                        Filters.or(
-                                Filters.exists("artifact_next_attempt_at", false),
-                                Filters.lte("artifact_next_attempt_at", now))),
+                        attemptsAllowed(),
+                        nextAttemptAllowed(now)),
                 Updates.combine(
                         Updates.set("artifact_state", "storing"),
                         Updates.set("artifact_claimed_at", now),
@@ -154,6 +167,7 @@ public class MediaJobArtifactStore {
                 Filters.eq("poster_file_id", null),
                 Filters.or(
                         Filters.exists("poster_attempted_at", false),
+                        Filters.eq("poster_attempted_at", null),
                         Filters.lt("poster_attempted_at", ZonedDateTime.now().minusDays(1))));
         query.sort = Sorts.ascending("artifact_stored_at");
         query.limit = limit;
@@ -225,12 +239,8 @@ public class MediaJobArtifactStore {
                         Filters.exists("artifact_state", false),
                         Filters.eq("artifact_state", null),
                         Filters.in("artifact_state", List.of("pending", "failed"))),
-                Filters.or(
-                        Filters.exists("artifact_attempts", false),
-                        Filters.lt("artifact_attempts", MAX_ARTIFACT_ATTEMPTS)),
-                Filters.or(
-                        Filters.exists("artifact_next_attempt_at", false),
-                        Filters.lte("artifact_next_attempt_at", ZonedDateTime.now())));
+                attemptsAllowed(),
+                nextAttemptAllowed(ZonedDateTime.now()));
         query.sort = Sorts.ascending("completed_at");
         query.limit = limit;
         return mediaJobCollection.find(query);

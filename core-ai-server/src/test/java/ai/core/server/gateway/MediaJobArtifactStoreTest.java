@@ -92,6 +92,19 @@ class MediaJobArtifactStoreTest {
     }
 
     @Test
+    void claimMatchesJobsWithExplicitNullRetryFields() {
+        when(collection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+
+        store.claim("job-1");
+
+        var captor = ArgumentCaptor.forClass(Bson.class);
+        verify(collection).update(captor.capture(), any(Bson.class));
+        var filter = captor.getValue().toString();
+        assertTrue(filter.contains("Filter{fieldName='artifact_attempts', value=null}"));
+        assertTrue(filter.contains("Filter{fieldName='artifact_next_attempt_at', value=null}"));
+    }
+
+    @Test
     void markUnavailableWritesExpiredState() {
         var job = new MediaJob();
         job.id = "job-1";
