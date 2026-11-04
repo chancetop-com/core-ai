@@ -60,11 +60,15 @@ public class RuntimeStatsJob implements Job {
         stat("runtime.runs_rejected_total", stats.runs.rejectedTotal);
         stat("runtime.sandboxes_live", stats.sandbox.live);
         stat("runtime.sandboxes_rejected_total", stats.sandbox.rejectedTotal);
+        stat("runtime.sandboxes_evicted_total", stats.sandbox.evictedTotal);
         stat("runtime.sandbox_claims_live", stats.sandboxFleet.claimsLive);
         stat("runtime.sandbox_direct_crs_live", stats.sandboxFleet.directCrsLive);
         stat("runtime.sandbox_creates_failed_total", stats.sandboxFleet.createsFailedTotal);
         stat("runtime.span_ingest_depth", stats.spanIngest.queueDepth);
         stat("runtime.span_ingest_dropped_total", stats.spanIngest.droppedTotal);
+        stat("runtime.sse_buffer_bytes", stats.sse.bufferedBytes);
+        stat("runtime.sse_buffer_events", stats.sse.bufferedEvents);
+        stat("runtime.sse_buffer_dropped_total", stats.sse.droppedTotal);
         // context (not stats) so a Kibana query can group by pod when several replicas report
         ActionLogContext.put("runtime_pod", stats.pod);
         ActionLogContext.put("runtime_admission_enabled", limits.admissionEnabled);

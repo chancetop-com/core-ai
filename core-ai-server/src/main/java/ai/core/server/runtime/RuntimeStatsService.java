@@ -8,6 +8,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandbox;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionSnapshot;
 import ai.core.server.trace.spi.LocalSpanProcessor;
+import ai.core.server.web.sse.SessionChannelService;
 import core.framework.inject.Inject;
 
 import java.lang.management.ManagementFactory;
@@ -60,6 +61,8 @@ public class RuntimeStatsService {
     AgentRunner agentRunner;
     @Inject
     SandboxManager sandboxManager;
+    @Inject
+    SessionChannelService sessionChannelService;
 
     public RuntimeStatsView stats() {
         var limits = guard.limits();
@@ -74,7 +77,16 @@ public class RuntimeStatsService {
         view.sandbox = sandboxStats(limits);
         view.sandboxFleet = sandboxFleet();
         view.spanIngest = spanIngestStats();
+        view.sse = sseStats();
         return view;
+    }
+
+    private RuntimeStatsView.SseStats sseStats() {
+        var stats = new RuntimeStatsView.SseStats();
+        stats.bufferedBytes = sessionChannelService.bufferedBytes();
+        stats.bufferedEvents = sessionChannelService.bufferedEvents();
+        stats.droppedTotal = sessionChannelService.droppedTotal();
+        return stats;
     }
 
     private RuntimeStatsView.SpanIngestStats spanIngestStats() {
@@ -144,6 +156,7 @@ public class RuntimeStatsService {
         stats.live = sandboxManager.activeCount();
         stats.max = limits.maxSandboxesPerPod;
         stats.rejectedTotal = sandboxManager.rejectedTotal();
+        stats.evictedTotal = sandboxManager.evictedTotal();
         return stats;
     }
 

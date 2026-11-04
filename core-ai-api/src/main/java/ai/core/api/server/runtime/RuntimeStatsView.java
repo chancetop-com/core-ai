@@ -38,6 +38,9 @@ public class RuntimeStatsView {
     @Property(name = "span_ingest")
     public SpanIngestStats spanIngest;
 
+    @Property(name = "sse")
+    public SseStats sse;
+
     public static class MemoryStats {
         @Property(name = "heap_used")
         public Long heapUsed;
@@ -184,6 +187,9 @@ public class RuntimeStatsView {
 
         @Property(name = "rejected_total")
         public Long rejectedTotal;
+
+        @Property(name = "evicted_total")
+        public Long evictedTotal;
     }
 
     public static class SandboxFleetStats {
@@ -221,6 +227,17 @@ public class RuntimeStatsView {
 
         @Property(name = "capacity")
         public Integer capacity;
+
+        @Property(name = "dropped_total")
+        public Long droppedTotal;
+    }
+
+    public static class SseStats {
+        @Property(name = "buffered_bytes")
+        public Long bufferedBytes;
+
+        @Property(name = "buffered_events")
+        public Long bufferedEvents;
 
         @Property(name = "dropped_total")
         public Long droppedTotal;
