@@ -37,6 +37,15 @@ final class TraceServiceHelper {
     static final String GEN_AI_PROMPT = "gen_ai.prompt";
     static final String GEN_AI_COMPLETION = "gen_ai.completion";
 
+    /** Existence check that never fetches the (potentially megabyte-sized) document body. */
+    static boolean exists(MongoCollection<?> collection, Bson filter) {
+        var query = new Query();
+        query.filter = filter;
+        query.projection = Projections.include("_id");
+        query.limit = 1;
+        return !collection.find(query).isEmpty();
+    }
+
     static Bson spanSummaryProjection() {
         return Projections.exclude("input", "output");
     }

@@ -438,6 +438,25 @@ class OTLPIngestServiceTest {
         verify(service.traceCollection, never()).insert(any(Trace.class));
     }
 
+    @Test
+    void startedRootSpanBackfillsIdentityWhenAChildSpanCreatedTheTraceFirst() {
+        var service = service();
+        var existing = new Trace();
+        existing.traceId = "0".repeat(32);
+        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(existing));
+
+        service.traceStarted("0".repeat(32), "agent.run", 1_000L,
+            Map.of("user.id", "u-1", "session.id", "run:1", "gen_ai.agent.name", "agent-1"), Map.of());
+
+        verify(service.traceCollection, never()).insert(any(Trace.class));
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(service.traceCollection).update(any(Bson.class), updates.capture());
+        var update = updates.getValue().toString();
+        assertTrue(update.contains("user_id"));
+        assertTrue(update.contains("session_id"));
+        assertTrue(update.contains("agent_name"));
+    }
+
     private OTLPIngestService service() {
         var service = new OTLPIngestService();
         service.traceCollection = traceCollection();

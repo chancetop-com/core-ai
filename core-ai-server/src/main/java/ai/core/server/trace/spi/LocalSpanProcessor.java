@@ -30,6 +30,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -41,8 +42,12 @@ public class LocalSpanProcessor implements SpanProcessor {
     // client bug) grow the heap of the pod that is also serving traffic. Dropped spans are counted so
     // the loss is visible instead of silent. Capacity is fixed at class load — changing it needs a restart.
     private static final int INGEST_QUEUE_CAPACITY = 10000;
+    // Trace creation is one small insert per trace and it is the anchor the trace UI needs: it must not
+    // queue behind (or be dropped with) a span backlog, so it runs on its own lane with its own bound.
+    private static final int TRACE_QUEUE_CAPACITY = 2000;
     private static final AtomicLong DROPPED_SPANS = new AtomicLong();
-    private static final ThreadPoolExecutor EXECUTOR = createExecutor();
+    private static final ThreadPoolExecutor EXECUTOR = createExecutor("local-span-processor", 2, INGEST_QUEUE_CAPACITY);
+    private static final ThreadPoolExecutor TRACE_EXECUTOR = createExecutor("local-trace-processor", 1, TRACE_QUEUE_CAPACITY);
     // configured limit, applied once at startup: the pool queue is already built by then
     private static volatile int configuredCapacity;
     private static final Set<String> IDENTITY_ATTRIBUTES = Set.of(
@@ -53,8 +58,8 @@ public class LocalSpanProcessor implements SpanProcessor {
         if (capacity > 0) configuredCapacity = Math.min(capacity, INGEST_QUEUE_CAPACITY);
     }
 
-    private static boolean accepts() {
-        return EXECUTOR.getQueue().size() < effectiveCapacity();
+    private static boolean accepts(ThreadPoolExecutor executor, int capacity) {
+        return executor.getQueue().size() < capacity;
     }
 
     private static int effectiveCapacity() {
@@ -64,22 +69,23 @@ public class LocalSpanProcessor implements SpanProcessor {
     private static void dropSpan(String stage, String spanName) {
         var dropped = DROPPED_SPANS.incrementAndGet();
         if ((dropped & 0x3F) == 1) {
-            LOGGER.warn("span ingest queue is full, dropping span, stage={}, span={}, droppedTotal={}", stage, spanName, dropped);
+            LOGGER.warn("ingest queue is full, dropping span, stage={}, span={}, droppedTotal={}", stage, spanName, dropped);
         }
     }
 
-    private static ThreadPoolExecutor createExecutor() {
-        return new ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS,
-            new ArrayBlockingQueue<>(INGEST_QUEUE_CAPACITY),
+    private static ThreadPoolExecutor createExecutor(String threadName, int threads, int capacity) {
+        var counter = new AtomicInteger();
+        return new ThreadPoolExecutor(threads, threads, 0, TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(capacity),
             r -> {
-                var t = new Thread(r, "local-span-processor");
+                var t = new Thread(r, threadName + "-" + counter.getAndIncrement());
                 t.setDaemon(true);
                 return t;
             },
             (task, executor) -> {
                 var dropped = DROPPED_SPANS.incrementAndGet();
                 if ((dropped & 0x3F) == 1) {
-                    LOGGER.warn("span ingest queue is full, dropping spans, droppedTotal={}, capacity={}", dropped, INGEST_QUEUE_CAPACITY);
+                    LOGGER.warn("ingest queue is full, dropping spans, thread={}, droppedTotal={}, capacity={}", threadName, dropped, capacity);
                 }
             });
     }
@@ -141,7 +147,7 @@ public class LocalSpanProcessor implements SpanProcessor {
 
         var traceId = span.getSpanContext().getTraceId();
         var spanName = span.getName();
-        if (!accepts()) {
+        if (!accepts(TRACE_EXECUTOR, TRACE_QUEUE_CAPACITY)) {
             dropSpan("traceStarted", spanName);
             return;
         }
@@ -154,7 +160,7 @@ public class LocalSpanProcessor implements SpanProcessor {
             } catch (Exception e) {
                 LOGGER.warn("Failed to create trace for started span: {}", spanName, e);
             }
-        }, EXECUTOR);
+        }, TRACE_EXECUTOR);
     }
 
     @Override
@@ -168,7 +174,7 @@ public class LocalSpanProcessor implements SpanProcessor {
         }
 
         var spanName = span.getName();
-        if (!accepts()) {
+        if (!accepts(EXECUTOR, effectiveCapacity())) {
             dropSpan("spanEnded", spanName);
             return;
         }

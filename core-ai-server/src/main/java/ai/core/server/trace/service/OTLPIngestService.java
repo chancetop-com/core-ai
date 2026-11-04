@@ -2,12 +2,10 @@ package ai.core.server.trace.service;
 
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Updates;
 
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import org.bson.conversions.Bson;
 
@@ -111,12 +109,17 @@ public class OTLPIngestService {
      */
     public void traceStarted(String traceId, String spanName, long startEpochMs, Map<String, String> attrs,
                              Map<String, String> resourceAttrs) {
-        ensureTraceExists(OTLPParseHelper.resolveTraceId(traceId, attrs), spanName, startEpochMs, attrs, resourceAttrs);
+        var resolvedTraceId = OTLPParseHelper.resolveTraceId(traceId, attrs);
+        // trace creation and span ingestion run on separate queues, so a fast child span can create the
+        // doc first; the root still owns the identity, so fill whatever the first writer left empty.
+        if (ensureTraceExists(resolvedTraceId, spanName, startEpochMs, attrs, resourceAttrs)) return;
+        TraceIdentity.backfill(traceCollection, resolvedTraceId, attrs);
     }
 
-    private void ensureTraceExists(String traceId, String spanName, long startMs,
-                                   Map<String, String> attrs, Map<String, String> resourceAttrs) {
-        if (traceExists(traceId)) return;
+    /** @return true when this call created the doc; false when it already existed (or lost the insert race). */
+    private boolean ensureTraceExists(String traceId, String spanName, long startMs,
+                                      Map<String, String> attrs, Map<String, String> resourceAttrs) {
+        if (TraceServiceHelper.exists(traceCollection, Filters.eq("trace_id", traceId))) return false;
 
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
@@ -145,8 +148,10 @@ public class OTLPIngestService {
         // another request of the same merged gateway session) already created the trace
         try {
             traceCollection.insert(trace);
+            return true;
         } catch (MongoWriteException e) {
             if (e.getCode() != 11000) throw e;
+            return false;
         }
     }
 
@@ -154,7 +159,8 @@ public class OTLPIngestService {
                           String traceId, String spanId, String parentSpanId,
                           Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
         var toolCallId = attrs.get("tool.call_id");
-        if (toolCallId != null && !toolCallId.isEmpty() && hasToolCallSpan(traceId, toolCallId)) {
+        if (toolCallId != null && !toolCallId.isEmpty()
+                && TraceServiceHelper.exists(spanCollection, Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId)))) {
             return;  // the same tool call was already synthesized by an earlier request of this conversation
         }
 
@@ -328,23 +334,6 @@ public class OTLPIngestService {
                 Filters.eq("trace_id", traceId),
                 Filters.or(Filters.exists("model", false), Filters.eq("model", null), Filters.eq("model", ""))),
             Updates.combine(Updates.set("model", model), Updates.set("updated_at", ZonedDateTime.now())));
-    }
-
-    /** Existence checks project {@code _id} only so a multi-hundred-KB trace/span doc is not fetched just to test it. */
-    private boolean traceExists(String traceId) {
-        var query = new Query();
-        query.filter = Filters.eq("trace_id", traceId);
-        query.projection = Projections.include("_id");
-        query.limit = 1;
-        return !traceCollection.find(query).isEmpty();
-    }
-
-    private boolean hasToolCallSpan(String traceId, String toolCallId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId));
-        query.projection = Projections.include("_id");
-        query.limit = 1;
-        return !spanCollection.find(query).isEmpty();
     }
 
     private void incrementTraceTokens(String traceId, Span span) {
