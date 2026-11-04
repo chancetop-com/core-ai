@@ -59,7 +59,7 @@ public class DatasetMigrationService {
     public Report migrate() {
         try (var transaction = database.beginTransaction()) {
             boolean locked = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired", PgBoolRow.class, LOCK_KEY)
-                    .map(row -> Boolean.TRUE.equals(row.acquired))
+                    .map(row -> row.acquired)
                     .orElse(false);
             if (!locked) {
                 transaction.rollback();
