@@ -2,6 +2,7 @@ include("core-ai")
 include("core-ai-api")
 include("core-ai-cli")
 include("core-ai-server")
+include("core-ai-server-db-migration")
 include("core-ai-benchmark")
 
 // Vector store backends live under sdk/vectorstores/ to keep the repo root focused on core modules.

@@ -190,6 +190,9 @@ project(":core-ai-server") {
     dependencies {
         implementation(project(":core-ai"))
         implementation(project(":core-ai-api"))
+        // PostgreSQL JDBC driver, only loaded when sys.dataset.store=postgresql (dataset PoC)
+        runtimeOnly("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
+        testRuntimeOnly("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
         // vector store backends discovered via ServiceLoader at runtime when sys.milvus.* / sys.hnswlib.* are configured
         runtimeOnly(project(":core-ai-vectorstore-milvus"))
         runtimeOnly(project(":core-ai-vectorstore-hnswlib"))
@@ -222,6 +225,15 @@ project(":core-ai-server") {
     }
     tasks.withType<Test> {
         setProperty("failOnNoDiscoveredTests", false)
+    }
+}
+
+project(":core-ai-server-db-migration") {
+    apply(plugin = "java")
+    apply(plugin = "db-migration")
+    dependencies {
+        runtimeOnly("org.flywaydb:flyway-database-postgresql:${Versions.FLYWAY_VERSION}")
+        runtimeOnly("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
     }
 }
 

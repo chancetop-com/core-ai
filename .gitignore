@@ -85,3 +85,4 @@ core-ai-desktop/release/
 
 # generated: staged from docs/skills for desktop packaging
 core-ai-desktop/skills/
+core-ai-server-db-migration/conf/*/resources/flyway.properties

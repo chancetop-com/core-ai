@@ -27,6 +27,8 @@ object Versions {
     const val JEDIS_VERSION = "5.2.0"
     const val GOOGLE_AUTH_VERSION = "1.30.0"
     const val JCODEC_VERSION = "0.2.5"
+    const val POSTGRESQL_JDBC_VERSION = "42.7.4"
+    const val FLYWAY_VERSION = "11.13.2"
 }
 
 object ProjectVersions {
