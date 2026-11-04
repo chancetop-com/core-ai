@@ -91,19 +91,20 @@ public class DatasetSqlExecutor {
                         + "EXECUTE format('CREATE ROLE %I LOGIN PASSWORD %L', " + readerLiteral + ", " + passwordLiteral + "); "
                         + "ELSE EXECUTE format('ALTER ROLE %I WITH LOGIN PASSWORD %L', " + readerLiteral + ", " + passwordLiteral + "); "
                         + "END IF; END $$",
-                "GRANT SELECT ON dataset_records TO " + reader,
-                "GRANT SELECT ON dataset_sql_grants TO " + reader,
-                "GRANT SELECT ON ALL TABLES IN SCHEMA public TO " + reader,
-                "ALTER TABLE dataset_records ENABLE ROW LEVEL SECURITY",
-                "DROP POLICY IF EXISTS dataset_reader_scope ON dataset_records",
-                "CREATE POLICY dataset_reader_scope ON dataset_records FOR SELECT TO " + reader
-                        + " USING (dataset_id IN (SELECT g.dataset_id FROM dataset_sql_grants g"
+                "GRANT SELECT ON dataset.dataset_records TO " + reader,
+                "GRANT SELECT ON dataset.dataset_sql_grants TO " + reader,
+                "GRANT USAGE ON SCHEMA dataset TO " + reader,
+                "GRANT SELECT ON ALL TABLES IN SCHEMA dataset TO " + reader,
+                "ALTER TABLE dataset.dataset_records ENABLE ROW LEVEL SECURITY",
+                "DROP POLICY IF EXISTS dataset_reader_scope ON dataset.dataset_records",
+                "CREATE POLICY dataset_reader_scope ON dataset.dataset_records FOR SELECT TO " + reader
+                        + " USING (dataset_id IN (SELECT g.dataset_id FROM dataset.dataset_sql_grants g"
                         + " WHERE g.token = current_setting('" + TOKEN_SETTING + "', true)))",
-                "ALTER TABLE dataset_sql_grants ENABLE ROW LEVEL SECURITY",
-                "DROP POLICY IF EXISTS dataset_grants_scope ON dataset_sql_grants",
-                "CREATE POLICY dataset_grants_scope ON dataset_sql_grants FOR SELECT TO " + reader
+                "ALTER TABLE dataset.dataset_sql_grants ENABLE ROW LEVEL SECURITY",
+                "DROP POLICY IF EXISTS dataset_grants_scope ON dataset.dataset_sql_grants",
+                "CREATE POLICY dataset_grants_scope ON dataset.dataset_sql_grants FOR SELECT TO " + reader
                         + " USING (token = current_setting('" + TOKEN_SETTING + "', true))",
-                "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO " + reader);
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA dataset GRANT SELECT ON TABLES TO " + reader);
     }
 
     public Result execute(String sql, List<String> allowedDatasetIds) {
@@ -119,6 +120,7 @@ public class DatasetSqlExecutor {
 
     private Result run(Connection connection, String sql, String token) throws SQLException {
         try (Statement setup = connection.createStatement()) {
+            setup.execute("SET LOCAL search_path = dataset");
             setup.execute("SET LOCAL statement_timeout = " + (STATEMENT_TIMEOUT_SECONDS * 1000));
             setup.execute("SET LOCAL " + TOKEN_SETTING + " = " + quoteLiteral(token));
         }
@@ -169,7 +171,7 @@ public class DatasetSqlExecutor {
 
     private void insertGrants(Connection connection, String token, List<String> datasetIds) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO dataset_sql_grants (token, dataset_id, created_at) VALUES (?, ?, now())")) {
+                "INSERT INTO dataset.dataset_sql_grants (token, dataset_id, created_at) VALUES (?, ?, now())")) {
             for (var datasetId : datasetIds) {
                 statement.setString(1, token);
                 statement.setString(2, datasetId);
@@ -182,7 +184,7 @@ public class DatasetSqlExecutor {
 
     private void cleanup(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
-            statement.execute("DELETE FROM dataset_sql_grants WHERE created_at < now() - interval '1 hour'");
+            statement.execute("DELETE FROM dataset.dataset_sql_grants WHERE created_at < now() - interval '1 hour'");
         }
     }
 

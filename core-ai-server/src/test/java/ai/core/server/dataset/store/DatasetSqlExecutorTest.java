@@ -47,7 +47,7 @@ class DatasetSqlExecutorTest {
     }
 
     private static String view(Dataset dataset) {
-        return DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName(dataset.id));
+        return DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
     }
 
     private static Dataset dataset() {
@@ -105,10 +105,10 @@ class DatasetSqlExecutorTest {
         manager.sync(first);
         insert(first.id, "{\"region\":\"us\",\"total\":1}");
 
-        var granted = EXECUTOR.execute("SELECT id FROM dataset_records", List.of(first.id));
+        var granted = EXECUTOR.execute("SELECT id FROM dataset.dataset_records", List.of(first.id));
         assertEquals(1, granted.rows().size());
 
-        var denied = EXECUTOR.execute("SELECT id FROM dataset_records", List.of());
+        var denied = EXECUTOR.execute("SELECT id FROM dataset.dataset_records", List.of());
         assertTrue(denied.rows().isEmpty());
     }
 
@@ -122,7 +122,7 @@ class DatasetSqlExecutorTest {
     void grantsTableIsScopedToTheCurrentToken() {
         var first = dataset();
         var second = dataset();
-        var result = EXECUTOR.execute("SELECT token FROM dataset_sql_grants", List.of(first.id, second.id));
+        var result = EXECUTOR.execute("SELECT token FROM dataset.dataset_sql_grants", List.of(first.id, second.id));
         assertEquals(2, result.rows().size());
         assertEquals(1, result.rows().stream().map(List::getFirst).distinct().count());
     }
@@ -130,12 +130,12 @@ class DatasetSqlExecutorTest {
     @Test
     void rejectsWritesLongRunningQueriesAndMultipleStatements() {
         assertThrows(IllegalStateException.class,
-                () -> EXECUTOR.execute("INSERT INTO dataset_records (id, dataset_id, agent_id, data, run_started_at, created_at, created_by, updated_at, updated_by) "
+                () -> EXECUTOR.execute("INSERT INTO dataset.dataset_records (id, dataset_id, agent_id, data, run_started_at, created_at, created_by, updated_at, updated_by) "
                         + "VALUES (1, 2, 3, 4, 5, 6, 7, 8, 9)", List.of()));
         assertThrows(IllegalStateException.class, () -> EXECUTOR.execute("SELECT pg_sleep(6)", List.of()));
         assertThrows(IllegalArgumentException.class,
-                () -> EXECUTOR.execute("SELECT 1; DROP TABLE dataset_records", List.of()));
-        assertThrows(IllegalStateException.class, () -> EXECUTOR.execute("COPY dataset_records TO STDOUT", List.of()));
+                () -> EXECUTOR.execute("SELECT 1; DROP TABLE dataset.dataset_records", List.of()));
+        assertThrows(IllegalStateException.class, () -> EXECUTOR.execute("COPY dataset.dataset_records TO STDOUT", List.of()));
     }
 
     @Test

@@ -8,7 +8,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.db.Database;
 import core.framework.db.Transaction;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 import java.time.OffsetDateTime;
 import java.time.ZonedDateTime;
@@ -27,10 +26,12 @@ import java.util.UUID;
  * @author stephen
  */
 public class PostgresDatasetRecordStore implements DatasetRecordStore {
+    private static final String TABLE = "dataset.dataset_records";
+
     private static final String COLUMNS = "id, dataset_id, agent_id, run_id, session_id, user_id, data::text AS data, "
             + "run_started_at, created_at, created_by, updated_at, updated_by";
 
-    private static final String INSERT = "INSERT INTO dataset_records (id, dataset_id, agent_id, run_id, session_id, user_id, data, "
+    private static final String INSERT = "INSERT INTO " + TABLE + " (id, dataset_id, agent_id, run_id, session_id, user_id, data, "
             + "run_started_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)";
 
     private static final String UPSERT_BY_SESSION = INSERT
@@ -40,7 +41,7 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
 
     private static final String PATCH_BY_SESSION = INSERT
             + " ON CONFLICT (dataset_id, session_id) WHERE session_id IS NOT NULL"
-            + " DO UPDATE SET data = jsonb_merge_patch(dataset_records.data, EXCLUDED.data),"
+            + " DO UPDATE SET data = dataset.jsonb_merge_patch(" + TABLE + ".data, EXCLUDED.data),"
             + " run_started_at = EXCLUDED.run_started_at, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by";
 
     private static List<Object> normalize(List<Object> row) {
@@ -56,7 +57,7 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
     Database database;
 
     @Inject
-    MongoCollection<Dataset> datasetCollection;
+    DatasetMetaStore datasetMetaStore;
 
     @Inject
     DatasetViewManager viewManager;
@@ -86,7 +87,7 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
     @Override
     public DatasetRecordService.QueryResult query(DatasetRecordService.QueryRequest request) {
         var view = viewSource(request.datasetId(), request.filter());
-        var source = view != null ? DatasetViewManager.quoteIdentifier(view.viewName()) : "dataset_records";
+        var source = view != null ? DatasetViewManager.qualifiedView(view.viewName()) : TABLE;
         var filter = view != null ? view.clause() : DatasetFilterSql.build(request.filter());
         var where = new StringBuilder(128).append("dataset_id = ?");
         var params = new ArrayList<>();
@@ -137,9 +138,9 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
      */
     private ViewSource viewSource(String datasetId, Map<String, Object> filter) {
         if (filter == null || filter.isEmpty()) return null;
-        var dataset = datasetCollection.get(datasetId).orElse(null);
+        var dataset = datasetMetaStore.get(datasetId);
         if (dataset == null) return null;
-        var view = database.selectOne("SELECT dataset_id, view_name, column_map, schema_hash, updated_at FROM dataset_views WHERE dataset_id = ?",
+        var view = database.selectOne("SELECT dataset_id, view_name, column_map, schema_hash, updated_at FROM app.dataset_views WHERE dataset_id = ?",
                 PgDatasetViewRow.class, datasetId).orElse(null);
         if (view == null) return null;
         var columns = new LinkedHashMap<String, DatasetViewManager.Column>();
@@ -169,25 +170,25 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
 
     @Override
     public boolean update(String datasetId, String id, Map<String, Object> patch, String updatedBy) {
-        int updated = database.execute("UPDATE dataset_records SET data = jsonb_merge_patch(data, ?::jsonb), updated_at = ?, updated_by = ? "
-                        + "WHERE id = ? AND dataset_id = ?",
+        int updated = database.execute("UPDATE " + TABLE + " SET data = dataset.jsonb_merge_patch(data, ?::jsonb), "
+                        + "updated_at = ?, updated_by = ? WHERE id = ? AND dataset_id = ?",
                 JsonUtil.toJsonWithNulls(patch), ZonedDateTime.now(), updatedBy, id, datasetId);
         return updated > 0;
     }
 
     @Override
     public boolean delete(String datasetId, String id) {
-        return database.execute("DELETE FROM dataset_records WHERE id = ? AND dataset_id = ?", id, datasetId) > 0;
+        return database.execute("DELETE FROM " + TABLE + " WHERE id = ? AND dataset_id = ?", id, datasetId) > 0;
     }
 
     @Override
     public long deleteByDataset(String datasetId) {
-        return database.execute("DELETE FROM dataset_records WHERE dataset_id = ?", datasetId);
+        return database.execute("DELETE FROM " + TABLE + " WHERE dataset_id = ?", datasetId);
     }
 
     @Override
     public Optional<DatasetRecord> findBySession(String datasetId, String sessionId) {
-        return database.selectOne("SELECT " + COLUMNS + " FROM dataset_records WHERE dataset_id = ? AND session_id = ?",
+        return database.selectOne("SELECT " + COLUMNS + " FROM " + TABLE + " WHERE dataset_id = ? AND session_id = ?",
                 PgDatasetRecordRow.class, datasetId, sessionId).map(this::toRecord);
     }
 
@@ -230,7 +231,7 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
 
     @Override
     public AggregateResult aggregate(AggregateRequest request) {
-        var dataset = datasetCollection.get(request.datasetId).orElse(null);
+        var dataset = datasetMetaStore.get(request.datasetId);
         var sql = DatasetAggregationSql.build(dataset, request);
         var rows = database.select(sql.sql(), PgJsonRow.class, sql.params().toArray());
         var result = new ArrayList<List<Object>>(rows.size());

@@ -7,7 +7,6 @@ import ai.core.server.domain.SchemaFieldType;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.internal.db.DatabaseImpl;
-import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,12 +17,11 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -56,15 +54,14 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     }
 
     private static PostgresDatasetRecordStore newStore() {
-        @SuppressWarnings("unchecked")
-        MongoCollection<Dataset> datasets = mock(MongoCollection.class);
-        when(datasets.get(any())).thenReturn(Optional.empty());
+        var metaStore = mock(DatasetMetaStore.class);
+        when(metaStore.get(anyString())).thenReturn(null);
         var manager = new DatasetViewManager();
         manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         var store = new PostgresDatasetRecordStore();
         store.database = DATABASE;
-        store.datasetCollection = datasets;
+        store.datasetMetaStore = metaStore;
         store.viewManager = manager;
         return store;
     }
@@ -123,7 +120,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     void aggregateBucketsByDayAndCategory() {
         var dataset = dataset();
         dataset.id = "ds-agg-" + System.nanoTime();
-        when(store.datasetCollection.get(dataset.id)).thenReturn(Optional.of(dataset));
+        when(store.datasetMetaStore.get(dataset.id)).thenReturn(dataset);
 
         insertFor(dataset.id, "r1", "{\"total\":10,\"positive_count\":4,\"region\":\"us\"}", at(0));
         insertFor(dataset.id, "r2", "{\"total\":20,\"positive_count\":6,\"region\":\"us\"}", at(0));
@@ -152,7 +149,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     void aggregateWithoutBucketGroupsByCategoryOnly() {
         var dataset = dataset();
         dataset.id = "ds-agg-nobucket-" + System.nanoTime();
-        when(store.datasetCollection.get(dataset.id)).thenReturn(Optional.of(dataset));
+        when(store.datasetMetaStore.get(dataset.id)).thenReturn(dataset);
         insertFor(dataset.id, "r1", "{\"total\":10,\"region\":\"us\"}", at(0));
         insertFor(dataset.id, "r2", "{\"total\":15,\"region\":\"us\"}", at(1));
 
@@ -171,7 +168,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     void aggregateValidationRejectsNumericFunctionOnStringField() {
         var dataset = dataset();
         dataset.id = "ds-agg-invalid";
-        when(store.datasetCollection.get(dataset.id)).thenReturn(Optional.of(dataset));
+        when(store.datasetMetaStore.get(dataset.id)).thenReturn(dataset);
 
         var request = new AggregateRequest();
         request.datasetId = dataset.id;
@@ -197,7 +194,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     void queriesSchemaFieldsThroughTheGeneratedView() {
         var dataset = dataset();
         dataset.id = "ds-view-" + System.nanoTime();
-        when(store.datasetCollection.get(dataset.id)).thenReturn(Optional.of(dataset));
+        when(store.datasetMetaStore.get(dataset.id)).thenReturn(dataset);
         store.viewManager.sync(dataset);
         insertFor(dataset.id, "r1", "{\"total\":10,\"positive_count\":4,\"region\":\"us\"}", at(0));
         insertFor(dataset.id, "r2", "{\"total\":20,\"positive_count\":6,\"region\":\"cn\"}", at(1));
@@ -215,7 +212,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     void fallsBackToJsonbForFieldsOutsideTheSchema() {
         var dataset = dataset();
         dataset.id = "ds-fallback-" + System.nanoTime();
-        when(store.datasetCollection.get(dataset.id)).thenReturn(Optional.of(dataset));
+        when(store.datasetMetaStore.get(dataset.id)).thenReturn(dataset);
         store.viewManager.sync(dataset);
         insertFor(dataset.id, "r1", "{\"region\":\"us\",\"meta\":{\"priority\":3}}", at(0));
         insertFor(dataset.id, "r2", "{\"region\":\"us\",\"meta\":{\"priority\":4}}", at(1));

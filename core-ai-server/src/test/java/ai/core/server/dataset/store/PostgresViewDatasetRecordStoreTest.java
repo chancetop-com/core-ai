@@ -4,7 +4,6 @@ import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import core.framework.internal.db.DatabaseImpl;
-import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -14,7 +13,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,13 +33,12 @@ class PostgresViewDatasetRecordStoreTest extends DatasetRecordStoreContractTest 
 
     private static PostgresDatasetRecordStore newStore(Map<String, Dataset> datasets) {
         var manager = PgTestSupport.viewManager(DATABASE);
-        @SuppressWarnings("unchecked")
-        MongoCollection<Dataset> collection = mock(MongoCollection.class);
-        when(collection.get(anyString())).thenAnswer(invocation -> Optional.ofNullable(datasets.get(invocation.getArgument(0))));
+        var metaStore = mock(DatasetMetaStore.class);
+        when(metaStore.get(anyString())).thenAnswer(invocation -> datasets.get(invocation.getArgument(0)));
         var store = new PostgresDatasetRecordStore();
         store.database = DATABASE;
         store.viewManager = manager;
-        store.datasetCollection = collection;
+        store.datasetMetaStore = metaStore;
         return store;
     }
 

@@ -1,22 +1,16 @@
 package ai.core.server.dataset;
 
 import ai.core.api.server.dataset.SchemaFieldView;
+import ai.core.server.dataset.store.DatasetMetaStore;
 import ai.core.server.dataset.store.DatasetRecordStore;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.regex.Pattern;
 
 /**
  * @author stephen
@@ -38,7 +32,7 @@ public class DatasetService {
     }
 
     @Inject
-    MongoCollection<Dataset> datasetCollection;
+    DatasetMetaStore datasetMetaStore;
 
     @Inject
     DatasetRecordStore datasetRecordStore;
@@ -53,32 +47,25 @@ public class DatasetService {
         entity.schema = schema;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
-        datasetCollection.insert(entity);
+        datasetMetaStore.create(entity);
         datasetRecordStore.onDatasetSchemaChanged(entity);
         return entity;
     }
 
     public List<Dataset> list(String query, Integer offset, Integer limit) {
-        var dbQuery = new Query();
-        dbQuery.filter = filter(query);
-        dbQuery.sort = Sorts.descending("updated_at");
-        if (offset != null || limit != null) {
-            dbQuery.skip = Math.max(0, offset != null ? offset : 0);
-            dbQuery.limit = Math.min(Math.max(limit != null ? limit : 20, 1), 100);
-        }
-        return datasetCollection.find(dbQuery);
+        return datasetMetaStore.list(query, offset, limit);
     }
 
     public long count(String query) {
-        return datasetCollection.count(filter(query));
+        return datasetMetaStore.count(query);
     }
 
     public Dataset get(String id) {
-        return datasetCollection.get(id).orElse(null);
+        return datasetMetaStore.get(id);
     }
 
     public Dataset update(String id, String name, String description, List<SchemaField> schema, DatasetType type) {
-        var entity = datasetCollection.get(id).orElse(null);
+        var entity = datasetMetaStore.get(id);
         if (entity == null) return null;
 
         boolean schemaChanged = schema != null;
@@ -89,27 +76,17 @@ public class DatasetService {
         }
         if (type != null) entity.type = type;
         entity.updatedAt = ZonedDateTime.now();
-        datasetCollection.replace(entity);
+        datasetMetaStore.update(entity);
         if (schemaChanged) datasetRecordStore.onDatasetSchemaChanged(entity);
         return entity;
     }
 
     public void delete(String id) {
-        var entity = datasetCollection.get(id).orElse(null);
+        var entity = datasetMetaStore.get(id);
         if (entity == null) return;
 
         datasetRecordStore.deleteByDataset(id);
         datasetRecordStore.onDatasetDeleted(id);
-        datasetCollection.delete(id);
-    }
-
-    private Bson filter(String query) {
-        if (query == null || query.isBlank()) return Filters.empty();
-        var pattern = Pattern.quote(query.trim());
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.regex("name", pattern, "i"));
-        filters.add(Filters.regex("description", pattern, "i"));
-        filters.add(Filters.regex("user_id", pattern, "i"));
-        return Filters.or(filters);
+        datasetMetaStore.delete(id);
     }
 }

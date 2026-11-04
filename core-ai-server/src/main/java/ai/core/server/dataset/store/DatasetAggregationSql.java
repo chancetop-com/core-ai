@@ -53,7 +53,7 @@ public final class DatasetAggregationSql {
             if (i > 0) sql.append(", ");
             sql.append(selects.get(i)).append(" AS c").append(i);
         }
-        sql.append(" FROM dataset_records WHERE ").append(where);
+        sql.append(" FROM dataset.dataset_records WHERE ").append(where);
         if (!groupBy.isEmpty()) sql.append(" GROUP BY ").append(String.join(", ", groupBy));
         sql.append(") t ORDER BY t.c0, t.c1");
         return new Sql(sql.toString(), params, columns);

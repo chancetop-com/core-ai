@@ -43,6 +43,7 @@ final class PgTestSupport {
         database.view(PgCountRow.class);
         database.view(PgDatasetViewRow.class);
         database.view(PgSizeRow.class);
+        database.view(PgDatasetRow.class);
         database.view(DatasetViewManagerTest.ValueRow.class);
         database.view(DatasetViewManagerTest.RegionRow.class);
         schema(database);

@@ -7,6 +7,7 @@ import ai.core.server.domain.SchemaFieldType;
 import core.framework.db.Column;
 import core.framework.internal.db.DatabaseImpl;
 import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -33,15 +34,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DatasetViewManagerTest {
     private static final DatabaseImpl DATABASE = PgTestSupport.database("dataset-view-test");
 
-    private static Dataset dataset(String id, SchemaField... fields) {
-        var dataset = new Dataset();
-        dataset.id = id;
-        dataset.name = "test";
-        dataset.userId = "u1";
-        dataset.schema = new ArrayList<>(List.of(fields));
-        return dataset;
-    }
-
     private static SchemaField field(String name, SchemaFieldType type) {
         var field = new SchemaField();
         field.name = name;
@@ -54,8 +46,19 @@ class DatasetViewManagerTest {
         DATABASE.close();
     }
 
+    private final List<String> created = new ArrayList<>();
     private final DatasetViewManager manager = manager();
     private final PostgresDatasetRecordStore store = store();
+
+    private Dataset dataset(String id, SchemaField... fields) {
+        var dataset = new Dataset();
+        dataset.id = id;
+        dataset.name = "test";
+        dataset.userId = "u1";
+        dataset.schema = new ArrayList<>(List.of(fields));
+        created.add(id);
+        return dataset;
+    }
 
     private DatasetViewManager manager() {
         var manager = new DatasetViewManager();
@@ -71,6 +74,12 @@ class DatasetViewManagerTest {
         return store;
     }
 
+
+    @AfterEach
+    void dropCreatedViews() {
+        for (var id : created) manager.drop(id);
+        created.clear();
+    }
 
     @BeforeEach
     void ensureSchema() {
@@ -115,7 +124,7 @@ class DatasetViewManagerTest {
         insert(dataset.id, "{\"region\":\"cn\",\"total\":7}");
 
         manager.sync(dataset);
-        var view = DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName(dataset.id));
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
         var rows = DATABASE.select("SELECT region AS value, sum(total) AS sum FROM " + view + " GROUP BY region ORDER BY region",
                 RegionRow.class);
         assertEquals(2, rows.size());
@@ -141,7 +150,7 @@ class DatasetViewManagerTest {
         dataset.schema = new ArrayList<>(List.of(field("region", SchemaFieldType.STRING)));
         manager.sync(dataset);
 
-        var view = DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName(dataset.id));
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
         assertThrows(RuntimeException.class, () -> DATABASE.select("SELECT total AS value FROM " + view, ValueRow.class));
     }
 
@@ -149,7 +158,7 @@ class DatasetViewManagerTest {
     void dropRemovesTheViewAndRegistryRow() {
         var dataset = dataset("ds-" + UUID.randomUUID(), field("region", SchemaFieldType.STRING));
         manager.sync(dataset);
-        var view = DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName(dataset.id));
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
         assertEquals(0, DATABASE.select("SELECT region AS value FROM " + view, ValueRow.class).size());
 
         manager.drop(dataset.id);
@@ -167,7 +176,7 @@ class DatasetViewManagerTest {
         manager.sync(dataset);
 
         var plan = manager.plan(dataset);
-        var view = DatasetViewManager.quoteIdentifier(plan.viewName());
+        var view = DatasetViewManager.qualifiedView(plan.viewName());
         var rows = DATABASE.select("SELECT " + DatasetViewManager.quoteIdentifier(plan.columns().get(1).columnName())
                 + " AS value FROM " + view, ValueRow.class);
         assertEquals("3", rows.getFirst().value);

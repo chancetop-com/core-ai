@@ -40,7 +40,7 @@ public class DatasetViewManager {
 
     private static final String SYSTEM_COLUMNS = "id, dataset_id, agent_id, run_id, session_id, user_id, data, run_started_at, created_at, updated_at, created_by, updated_by";
 
-    private static final String UPSERT_REGISTRY = "INSERT INTO dataset_views (dataset_id, view_name, column_map, schema_hash, updated_at) "
+    private static final String UPSERT_REGISTRY = "INSERT INTO app.dataset_views (dataset_id, view_name, column_map, schema_hash, updated_at) "
             + "VALUES (?, ?, ?::jsonb, ?, ?) ON CONFLICT (dataset_id) DO UPDATE SET view_name = EXCLUDED.view_name, "
             + "column_map = EXCLUDED.column_map, schema_hash = EXCLUDED.schema_hash, updated_at = EXCLUDED.updated_at";
 
@@ -59,6 +59,10 @@ public class DatasetViewManager {
 
     static String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
+    }
+
+    static String qualifiedView(String viewName) {
+        return "dataset." + quoteIdentifier(viewName);
     }
 
     static String literal(String value) {
@@ -130,8 +134,8 @@ public class DatasetViewManager {
         if (existing == null) return;
         ddl.inTransaction(connection -> {
             try (Statement statement = connection.createStatement()) {
-                statement.execute("DROP VIEW IF EXISTS " + quoteIdentifier(existing.viewName));
-                statement.execute("DELETE FROM dataset_views WHERE dataset_id = " + literal(datasetId));
+                statement.execute("DROP VIEW IF EXISTS " + qualifiedView(existing.viewName));
+                statement.execute("DELETE FROM app.dataset_views WHERE dataset_id = " + literal(datasetId));
             }
         });
         LOGGER.info("dataset view dropped, datasetId={}, view={}", datasetId, existing.viewName);
@@ -154,9 +158,9 @@ public class DatasetViewManager {
         var viewName = viewName(dataset.id);
         var selectList = selectList(columns);
         var statements = new ArrayList<String>();
-        statements.add("DROP VIEW IF EXISTS " + quoteIdentifier(viewName));
-        statements.add("CREATE VIEW " + quoteIdentifier(viewName) + " WITH (security_invoker = true) AS SELECT "
-                + selectList + " FROM dataset_records WHERE dataset_id = " + literal(dataset.id));
+        statements.add("DROP VIEW IF EXISTS " + qualifiedView(viewName));
+        statements.add("CREATE VIEW " + qualifiedView(viewName) + " WITH (security_invoker = true) AS SELECT "
+                + selectList + " FROM dataset.dataset_records WHERE dataset_id = " + literal(dataset.id));
         return new ViewPlan(viewName, columns, schemaHash(selectList), statements);
     }
 
@@ -171,12 +175,12 @@ public class DatasetViewManager {
                 .orElseThrow(() -> new IllegalArgumentException("unknown field: " + fieldName));
         var name = truncate("ix_" + viewName(dataset.id) + "_" + column.columnName(), 60);
         ddl.executeAll(List.of("CREATE INDEX IF NOT EXISTS " + quoteIdentifier(name)
-                + " ON dataset_records (dataset_id, (" + expression(column) + "))"));
+                + " ON dataset.dataset_records (dataset_id, (" + expression(column) + "))"));
     }
 
     private PgDatasetViewRow findRegistry(String datasetId) {
         return database.selectOne(
-                "SELECT dataset_id, view_name, column_map, schema_hash, updated_at FROM dataset_views WHERE dataset_id = ?",
+                "SELECT dataset_id, view_name, column_map, schema_hash, updated_at FROM app.dataset_views WHERE dataset_id = ?",
                 PgDatasetViewRow.class, datasetId).orElse(null);
     }
 

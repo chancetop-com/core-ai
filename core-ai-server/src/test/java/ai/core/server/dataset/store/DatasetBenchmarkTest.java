@@ -30,7 +30,6 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 
@@ -56,7 +55,7 @@ class DatasetBenchmarkTest {
     private static final String[] REGIONS = {"us", "cn", "eu", "jp", "de"};
     private static final String[] STATUSES = {"done", "pending", "failed"};
     private static final ZonedDateTime START = ZonedDateTime.of(2026, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
-    private static final String INSERT_SQL = "INSERT INTO dataset_records (id, dataset_id, agent_id, run_id, session_id, user_id, data, "
+    private static final String INSERT_SQL = "INSERT INTO dataset.dataset_records (id, dataset_id, agent_id, run_id, session_id, user_id, data, "
             + "run_started_at, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?)";
 
     private static final DatabaseImpl DATABASE = benchmarkDatabase();
@@ -173,7 +172,7 @@ class DatasetBenchmarkTest {
 
     private static void deleteBenchmarkRows(java.sql.Connection connection) throws java.sql.SQLException {
         try (var statement = connection.createStatement()) {
-            statement.execute("DELETE FROM dataset_records WHERE dataset_id LIKE 'bench-%'");
+            statement.execute("DELETE FROM dataset.dataset_records WHERE dataset_id LIKE 'bench-%'");
         }
     }
     private final PostgresDatasetRecordStore postgres = postgresStore();
@@ -183,13 +182,12 @@ class DatasetBenchmarkTest {
         var manager = new DatasetViewManager();
         manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
-        @SuppressWarnings("unchecked")
-        core.framework.mongo.MongoCollection<Dataset> datasets = mock(core.framework.mongo.MongoCollection.class);
-        when(datasets.get(anyString())).thenReturn(Optional.of(dataset()));
+        var metaStore = mock(DatasetMetaStore.class);
+        when(metaStore.get(anyString())).thenReturn(dataset());
         var store = new PostgresDatasetRecordStore();
         store.database = DATABASE;
         store.viewManager = manager;
-        store.datasetCollection = datasets;
+        store.datasetMetaStore = metaStore;
         return store;
     }
 
@@ -276,7 +274,7 @@ class DatasetBenchmarkTest {
         manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         manager.sync(dataset());
-        var view = DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName("bench-hot"));
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName("bench-hot"));
         measure("view group by region", "postgres", () -> DATABASE.select(
                 "SELECT region AS value, sum(total) AS sum FROM " + view + " GROUP BY region",
                 DatasetViewManagerTest.RegionRow.class));
@@ -297,9 +295,9 @@ class DatasetBenchmarkTest {
 
     private void storageScenario() {
         vacuum();
-        var size = DATABASE.selectOne("SELECT pg_total_relation_size(?::regclass) AS total", PgCountRow.class, "dataset_records")
+        var size = DATABASE.selectOne("SELECT pg_total_relation_size(?::regclass) AS total", PgCountRow.class, "dataset.dataset_records")
                 .map(row -> row.total).orElse(0L);
-        var rows = DATABASE.selectOne("SELECT count(*) AS total FROM dataset_records WHERE dataset_id = ?", PgCountRow.class, "bench-hot")
+        var rows = DATABASE.selectOne("SELECT count(*) AS total FROM dataset.dataset_records WHERE dataset_id = ?", PgCountRow.class, "bench-hot")
                 .map(row -> row.total).orElse(0L);
         LOGGER.info("storage postgres total_bytes=" + size + ", hotspot_rows=" + rows);
         if (mongo != null) {
@@ -325,7 +323,7 @@ class DatasetBenchmarkTest {
         try (var connection = java.sql.DriverManager.getConnection(System.getenv("CORE_AI_PG_TEST_URL"),
                 PgTestSupport.user(), PgTestSupport.password());
              var statement = connection.createStatement()) {
-            statement.execute("VACUUM (FULL, ANALYZE) dataset_records");
+            statement.execute("VACUUM (FULL, ANALYZE) dataset.dataset_records");
         } catch (java.sql.SQLException e) {
             LOGGER.warn("benchmark vacuum failed: {}", e.getMessage());
         }
@@ -335,7 +333,7 @@ class DatasetBenchmarkTest {
         var column = viewManager().columns(dataset()).stream()
                 .filter(candidate -> candidate.sourceName().equals("positive_count"))
                 .findFirst().orElseThrow();
-        var view = DatasetViewManager.quoteIdentifier(DatasetViewManager.viewName("bench-hot"));
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName("bench-hot"));
         var predicate = " WHERE dataset_id = ? AND " + DatasetViewManager.quoteIdentifier(column.columnName()) + " > ?::numeric";
         explain("count", "EXPLAIN (ANALYZE, BUFFERS) SELECT count(*) FROM " + view + predicate);
         explain("page", "EXPLAIN (ANALYZE, BUFFERS) SELECT id FROM " + view + predicate
@@ -355,7 +353,7 @@ class DatasetBenchmarkTest {
     }
 
     private void seedPostgres() {
-        var count = DATABASE.selectOne("SELECT count(*) AS total FROM dataset_records WHERE dataset_id = ?", PgCountRow.class, "bench-hot")
+        var count = DATABASE.selectOne("SELECT count(*) AS total FROM dataset.dataset_records WHERE dataset_id = ?", PgCountRow.class, "bench-hot")
                 .map(row -> row.total).orElse(0L);
         if (count >= HOTSPOT_ROWS) {
             LOGGER.info("benchmark seed postgres reused");
@@ -378,7 +376,7 @@ class DatasetBenchmarkTest {
             seeded += rows;
         }
         LOGGER.info("benchmark seed postgres=" + seeded);
-        PgTestSupport.ddl().executeAll(List.of("ANALYZE dataset_records"));
+        PgTestSupport.ddl().executeAll(List.of("ANALYZE dataset.dataset_records"));
     }
 
     private Object[] recordParams(String datasetId, String id, Random random) {
