@@ -1,9 +1,10 @@
 package ai.core.server.dataset;
 
 import ai.core.api.server.dataset.SchemaFieldView;
+import ai.core.server.dataset.store.DatasetRecordStore;
 import ai.core.server.domain.Dataset;
-import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.DatasetType;
+import ai.core.server.domain.SchemaField;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -25,7 +26,7 @@ public class DatasetService {
         return dataset != null && dataset.type != null ? dataset.type : DatasetType.GENERAL;
     }
 
-    public static List<SchemaFieldView> schemaViews(List<ai.core.server.domain.SchemaField> fields) {
+    public static List<SchemaFieldView> schemaViews(List<SchemaField> fields) {
         if (fields == null) return List.of();
         return fields.stream().map(field -> {
             var view = new SchemaFieldView();
@@ -40,9 +41,9 @@ public class DatasetService {
     MongoCollection<Dataset> datasetCollection;
 
     @Inject
-    MongoCollection<DatasetRecord> datasetRecordCollection;
+    DatasetRecordStore datasetRecordStore;
 
-    public Dataset create(String name, String description, String userId, List<ai.core.server.domain.SchemaField> schema, DatasetType type) {
+    public Dataset create(String name, String description, String userId, List<SchemaField> schema, DatasetType type) {
         var entity = new Dataset();
         entity.id = UUID.randomUUID().toString();
         entity.name = name;
@@ -53,6 +54,7 @@ public class DatasetService {
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
         datasetCollection.insert(entity);
+        datasetRecordStore.onDatasetSchemaChanged(entity);
         return entity;
     }
 
@@ -75,18 +77,20 @@ public class DatasetService {
         return datasetCollection.get(id).orElse(null);
     }
 
-    public Dataset update(String id, String name, String description, List<ai.core.server.domain.SchemaField> schema, DatasetType type) {
+    public Dataset update(String id, String name, String description, List<SchemaField> schema, DatasetType type) {
         var entity = datasetCollection.get(id).orElse(null);
         if (entity == null) return null;
 
+        boolean schemaChanged = schema != null;
         if (name != null) entity.name = name;
         if (description != null) entity.description = description;
-        if (schema != null) {
+        if (schemaChanged) {
             entity.schema = schema;
         }
         if (type != null) entity.type = type;
         entity.updatedAt = ZonedDateTime.now();
         datasetCollection.replace(entity);
+        if (schemaChanged) datasetRecordStore.onDatasetSchemaChanged(entity);
         return entity;
     }
 
@@ -94,7 +98,8 @@ public class DatasetService {
         var entity = datasetCollection.get(id).orElse(null);
         if (entity == null) return;
 
-        datasetRecordCollection.delete(Filters.eq("dataset_id", id));
+        datasetRecordStore.deleteByDataset(id);
+        datasetRecordStore.onDatasetDeleted(id);
         datasetCollection.delete(id);
     }
 

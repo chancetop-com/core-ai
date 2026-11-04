@@ -38,6 +38,24 @@ services:
           }
         '
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: core-ai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: core_ai
+      POSTGRES_USER: core_ai
+      POSTGRES_PASSWORD: core_ai
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U core_ai -d core_ai"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     container_name: core-ai-redis
@@ -88,6 +106,9 @@ services:
 volumes:
   mongo-data:
     name: core-ai_mongo-data
+    external: true
+  postgres-data:
+    name: core-ai_postgres-data
     external: true
   redis-data:
     name: core-ai_redis-data
