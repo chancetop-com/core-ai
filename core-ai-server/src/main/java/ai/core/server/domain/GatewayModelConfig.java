@@ -33,6 +33,11 @@ public class GatewayModelConfig {
     @Field(name = "is_default")
     public Boolean isDefault;
 
+    // ordered gateway model ids tried when this model fails before producing any output;
+    // an empty list disables failover for this model
+    @Field(name = "fallback_model_ids")
+    public List<String> fallbackModelIds;
+
     @Field(name = "priority")
     public Long priority;
 

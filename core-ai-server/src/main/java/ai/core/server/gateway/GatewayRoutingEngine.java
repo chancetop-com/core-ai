@@ -231,6 +231,46 @@ public class GatewayRoutingEngine {
                 .orElse(models.getFirst().model.modelId);
     }
 
+    /**
+     * Ordered fallback models declared on this gateway model, as configured by an admin.
+     * Disabled models are returned too: the caller resolves each candidate against the live
+     * route (endpoint/provider checks) and skips the ones that cannot serve the request.
+     */
+    public List<GatewayModelConfig> fallbackModels(String modelId) {
+        if (!hasText(modelId)) return List.of();
+        var snapshot = snapshot();
+        var primary = snapshot.models.stream()
+                .filter(model -> modelId.equals(model.modelId))
+                .findFirst()
+                .orElse(null);
+        return fallbackModels(snapshot, primary);
+    }
+
+    private List<GatewayModelConfig> fallbackModels(Snapshot snapshot, GatewayModelConfig primary) {
+        if (primary == null || primary.fallbackModelIds == null || primary.fallbackModelIds.isEmpty()) return List.of();
+
+        var modelsById = new LinkedHashMap<String, GatewayModelConfig>();
+        for (var model : snapshot.models) {
+            if (hasText(model.modelId)) modelsById.putIfAbsent(model.modelId, model);
+        }
+        var fallbacks = new ArrayList<GatewayModelConfig>();
+        var seen = new HashSet<String>();
+        for (var fallbackId : primary.fallbackModelIds) {
+            if (!hasText(fallbackId) || fallbackId.equals(primary.modelId) || !seen.add(fallbackId)) continue;
+            var fallback = modelsById.get(fallbackId);
+            if (fallback != null) fallbacks.add(fallback);
+        }
+        return fallbacks;
+    }
+
+    /**
+     * Same as {@link #fallbackModels(String)} for the exact model row that served the request,
+     * which matters when the same modelId is registered on several providers as failover routes.
+     */
+    public List<GatewayModelConfig> fallbackModelsOf(GatewayModelConfig primary) {
+        return fallbackModels(snapshot(), primary);
+    }
+
     public boolean isRoutable(String modelId) {
         if (!hasText(modelId)) return false;
         return registeredModels(snapshot(), null).stream().anyMatch(route -> modelId.equals(route.model.modelId));

@@ -76,6 +76,7 @@ type ModelFormState = {
   upstreamModel: string;
   endpointTypes: string[];
   enabled: boolean;
+  fallbackModelIds: string;
   priority: string;
   contextWindow: string;
   supportsStream: boolean;
@@ -138,6 +139,7 @@ const emptyModelForm: ModelFormState = {
   upstreamModel: '',
   endpointTypes: ['chat.completions'],
   enabled: true,
+  fallbackModelIds: '',
   priority: '100',
   contextWindow: '',
   supportsStream: true,
@@ -351,6 +353,7 @@ export default function GatewayProviders() {
       upstreamModel: model.upstreamModel || '',
       endpointTypes: model.endpointTypes?.length ? model.endpointTypes : ['chat.completions'],
       enabled: model.enabled !== false,
+      fallbackModelIds: model.fallbackModelIds?.join(', ') || '',
       priority: String(model.priority ?? 100),
       contextWindow: model.contextWindow ? String(model.contextWindow) : '',
       supportsStream: model.supportsStream === true,
@@ -407,6 +410,7 @@ export default function GatewayProviders() {
         upstreamModel: modelForm.upstreamModel,
         endpointTypes: modelForm.endpointTypes,
         enabled: modelForm.enabled,
+        fallbackModelIds: modelForm.fallbackModelIds.split(',').map(v => v.trim()).filter(Boolean),
         priority: optionalNumber(modelForm.priority, 'Priority'),
         supportsVideo: modelForm.supportsVideo,
         maxVideoBytes: optionalNumber(modelForm.maxVideoBytes, 'Max video bytes'),
@@ -1057,6 +1061,16 @@ function renderModelPanel(props: {
             <input className={inputClass} style={inputStyle} type="number" min={0} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} />
           </Field>
         </div>
+
+        <Field label="Failover Models" hint="Gateway model aliases tried in this order when this model fails before producing output (network error, timeout, 5xx/429). Leave empty to disable failover. A model used as the default for agents should list at least one fallback.">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            value={form.fallbackModelIds}
+            onChange={e => setForm({ ...form, fallbackModelIds: e.target.value })}
+            placeholder="e.g. gpt-6.1-sol, gemini-3.8-pro"
+          />
+        </Field>
 
         <Field label="Endpoints">
           <div className="grid grid-cols-2 gap-2">

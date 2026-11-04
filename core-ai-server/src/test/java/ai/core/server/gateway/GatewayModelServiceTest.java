@@ -72,6 +72,52 @@ class GatewayModelServiceTest {
     }
 
     @Test
+    void createPersistsOrderedFallbackModelIds() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var backup = new GatewayModelConfig();
+        backup.id = "backup-1";
+        backup.modelId = "gpt-6";
+        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(backup));
+
+        var request = new GatewayModelRequest();
+        request.modelId = "deepseek-chat";
+        request.providerId = "provider-1";
+        request.upstreamModel = "deepseek/deepseek-chat";
+        request.fallbackModelIds = List.of(" gpt-6 ", "gpt-6");
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals(List.of("gpt-6"), view.fallbackModelIds);
+        var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
+        verify(service.gatewayModelCollection).insert(captor.capture());
+        assertEquals(List.of("gpt-6"), captor.getValue().fallbackModelIds);
+    }
+
+    @Test
+    void rejectsFallbackToItself() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var request = new GatewayModelRequest();
+        request.modelId = "deepseek-chat";
+        request.providerId = "provider-1";
+        request.upstreamModel = "deepseek/deepseek-chat";
+        request.fallbackModelIds = List.of("deepseek-chat");
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
+    void rejectsUnknownFallbackModel() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var request = new GatewayModelRequest();
+        request.modelId = "deepseek-chat";
+        request.providerId = "provider-1";
+        request.upstreamModel = "deepseek/deepseek-chat";
+        request.fallbackModelIds = List.of("missing-model");
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
     void updateClearsNullableNumericFields() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
         var existing = new GatewayModelConfig();

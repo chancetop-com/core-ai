@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.LLMProviderConfig;
+import ai.core.llm.ModalitySupport;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
@@ -19,14 +20,17 @@ import ai.core.llm.streaming.StreamingCallback;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.run.ResponseSchemaConverter;
+import core.framework.http.HTTPClientException;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -456,6 +460,127 @@ class GatewayLLMProviderTest {
         assertEquals(1, gateway.upstream.capturedRequest.messages.size());
     }
 
+    @Test
+    void failsOverToFallbackModelWhenPrimaryFailsBeforeOutput() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.isDefault = Boolean.TRUE;
+        primary.fallbackModelIds = List.of("gpt-6");
+        var backup = model("gpt-6", provider.id, "gpt-6");
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, backup));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", unavailable());
+        upstream.reply("gpt-6", "served by fallback");
+        var request = request("deepseek-v4");
+
+        var response = gateway.completion(request);
+
+        assertEquals("served by fallback", response.choices.getFirst().message.content);
+        assertEquals(List.of("deepseek-v4", "gpt-6"), upstream.calledModels);
+        assertEquals("deepseek-v4", request.model);
+    }
+
+    @Test
+    void followsConfiguredFallbackOrder() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("gpt-6", "gemini-3");
+        var gateway = scriptedGateway(List.of(provider),
+                List.of(primary, model("gpt-6", provider.id, "gpt-6"), model("gemini-3", provider.id, "gemini-3")));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", unavailable());
+        upstream.fail("gpt-6", unavailable());
+        upstream.reply("gemini-3", "third model answered");
+
+        var response = gateway.completion(request("deepseek-v4"));
+
+        assertEquals("third model answered", response.choices.getFirst().message.content);
+        assertEquals(List.of("deepseek-v4", "gpt-6", "gemini-3"), upstream.calledModels);
+    }
+
+    @Test
+    void doesNotFailOverAfterChunksReachedTheCaller() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("gpt-6");
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, model("gpt-6", provider.id, "gpt-6")));
+        var upstream = gateway.upstream(provider.id);
+        upstream.emitThenFail("deepseek-v4", "partial answer", new HTTPClientException(
+                "failed to read sse response, error=unexpected end of stream", "HTTP_REQUEST_FAILED"));
+
+        assertThrows(RuntimeException.class, () -> gateway.completion(request("deepseek-v4")));
+        assertEquals(List.of("deepseek-v4"), upstream.calledModels);
+    }
+
+    @Test
+    void doesNotFailOverOnRequestLevelErrors() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("gpt-6");
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, model("gpt-6", provider.id, "gpt-6")));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", new HTTPClientException(
+                "invalid sse response, statusCode=400, content-type=application/json", "HTTP_REQUEST_FAILED"));
+
+        assertThrows(RuntimeException.class, () -> gateway.completion(request("deepseek-v4")));
+        // a 400 is request-specific: no failover, and no cooldown either — the next call still tries the primary
+        assertThrows(RuntimeException.class, () -> gateway.completion(request("deepseek-v4")));
+        assertEquals(List.of("deepseek-v4", "deepseek-v4"), upstream.calledModels);
+    }
+
+    @Test
+    void skipsDisabledFallbackModel() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("gpt-6");
+        var disabled = model("gpt-6", provider.id, "gpt-6");
+        disabled.enabled = Boolean.FALSE;
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, disabled));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", unavailable());
+
+        assertThrows(RuntimeException.class, () -> gateway.completion(request("deepseek-v4")));
+        assertEquals(List.of("deepseek-v4"), upstream.calledModels);
+    }
+
+    @Test
+    void skipsFallbackThatDeclaresNoVisionForImageRequest() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("text-only");
+        var textOnly = model("text-only", provider.id, "text-only");
+        textOnly.supportsVision = Boolean.FALSE;
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, textOnly));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", unavailable());
+        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER,
+                Content.of(Content.ImageUrl.of("https://example.com/a.png", "png")))), null, null, "deepseek-v4", null);
+
+        assertThrows(RuntimeException.class, () -> gateway.completion(request));
+        assertEquals(List.of("deepseek-v4"), upstream.calledModels);
+    }
+
+    @Test
+    void keepsFailedModelOutOfTheWayDuringCooldown() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-v4", provider.id, "deepseek-v4");
+        primary.fallbackModelIds = List.of("gpt-6");
+        var gateway = scriptedGateway(List.of(provider), List.of(primary, model("gpt-6", provider.id, "gpt-6")));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-v4", unavailable());
+        upstream.reply("gpt-6", "fallback answer");
+
+        gateway.completion(request("deepseek-v4"));
+        gateway.completion(request("deepseek-v4"));
+
+        // the second call skips the unhealthy primary entirely instead of paying its timeout again
+        assertEquals(List.of("deepseek-v4", "gpt-6", "gpt-6"), upstream.calledModels);
+    }
+
+    private HTTPClientException unavailable() {
+        return new HTTPClientException("invalid sse response, statusCode=503, content-type=text/html", "HTTP_REQUEST_FAILED");
+    }
+
     private CompletionRequest request(String model) {
         return CompletionRequest.of(List.of(Message.of(RoleType.USER, "hi")), null, null, model, null);
     }
@@ -470,6 +595,17 @@ class GatewayLLMProviderTest {
         tool.function.parameters.type = JsonSchema.PropertyType.OBJECT;
         tool.function.parameters.properties = new LinkedHashMap<>();
         return tool;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ScriptedGateway scriptedGateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models) {
+        var routingEngine = new GatewayRoutingEngine();
+        routingEngine.gatewayProviderCollection = mockMongo(providers);
+        routingEngine.gatewayModelCollection = mockMongo(models);
+        var gateway = new ScriptedGateway(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"));
+        // the seed modality registry knows deepseek as text-only; failover tests must keep image content intact
+        gateway.setModalityRegistry((model, modality) -> ModalitySupport.SUPPORTED);
+        return gateway;
     }
 
     @SuppressWarnings("unchecked")
@@ -557,6 +693,59 @@ class GatewayLLMProviderTest {
             capturedEndpoint = dto.getEndpoint();
             capturedRequest = dto;
             return response(content);
+        }
+    }
+
+    private static final class ScriptedGateway extends GatewayLLMProvider {
+        final Map<String, ScriptedUpstream> upstreams = new LinkedHashMap<>();
+
+        ScriptedGateway(LLMProviderConfig config, GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
+            super(config, routingEngine, secretProtector, null);
+        }
+
+        ScriptedUpstream upstream(String providerId) {
+            return upstreams.computeIfAbsent(providerId, id -> new ScriptedUpstream());
+        }
+
+        @Override
+        LiteLLMProvider createUpstreamProvider(GatewayProviderConfig provider, String upstreamModel, String endpoint) {
+            return upstream(provider.id);
+        }
+    }
+
+    private static final class ScriptedUpstream extends LiteLLMProvider {
+        final Map<String, Script> scripts = new LinkedHashMap<>();
+        final List<String> calledModels = new ArrayList<>();
+
+        ScriptedUpstream() {
+            super(new LLMProviderConfig(null, null, null), "https://scripted.example.com", "sk-test");
+        }
+
+        void reply(String model, String content) {
+            scripts.put(model, new Script(content, List.of(), null));
+        }
+
+        void fail(String model, RuntimeException error) {
+            scripts.put(model, new Script(null, List.of(), error));
+        }
+
+        void emitThenFail(String model, String chunk, RuntimeException error) {
+            scripts.put(model, new Script(null, List.of(chunk), error));
+        }
+
+        @Override
+        public CompletionResponse delegateCompletionStream(CompletionRequest dto, StreamingCallback callback) {
+            calledModels.add(dto.model);
+            var script = scripts.get(dto.model);
+            if (script == null) throw new AssertionError("unexpected upstream model: " + dto.model);
+            for (var chunk : script.chunks()) {
+                callback.onChunk(chunk);
+            }
+            if (script.error() != null) throw script.error();
+            return response(script.content());
+        }
+
+        private record Script(String content, List<String> chunks, RuntimeException error) {
         }
     }
 }

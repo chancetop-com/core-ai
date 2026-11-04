@@ -40,6 +40,10 @@ public class GatewayModelRequest {
     @Property(name = "isDefault")
     public Boolean isDefault;
 
+    // ordered gateway model ids tried when this model fails before producing any output
+    @Property(name = "fallbackModelIds")
+    public List<String> fallbackModelIds;
+
     @Property(name = "priority")
     public Long priority;
 

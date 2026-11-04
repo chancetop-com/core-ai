@@ -85,6 +85,7 @@ public class GatewayLLMProvider extends LLMProvider {
     private final GatewayRoutingEngine routingEngine;
     private final GatewaySecretProtector secretProtector;
     private final LLMProvider fallback;
+    private final GatewayModelFailover failover = new GatewayModelFailover();
     private final Map<String, LiteLLMProvider> upstreamProviders = new ConcurrentHashMap<>();
     private final Map<String, ai.core.media.GoogleAccessTokenProvider> vertexTokenProviders = new ConcurrentHashMap<>();
 
@@ -115,8 +116,15 @@ public class GatewayLLMProvider extends LLMProvider {
         // fast path: gateway unconfigured deployments go straight to the static provider,
         // without exception-driven routing attempts or log noise on every call
         if (!routingEngine.hasEnabledProviders()) return fallbackCompletionStream(request, callback);
-        // FILE content (PDF attachments) is only expressible through the responses transport;
-        // derive the endpoint when the caller did not specify one
+        var endpoint = resolveEndpoint(request);
+        var resolved = resolveRoute(request.model, endpoint);
+        if (resolved == null) return fallbackCompletionStream(request, callback);
+        return completionWithFailover(request, callback, endpoint, resolved);
+    }
+
+    // FILE content (PDF attachments) is only expressible through the responses transport;
+    // derive the endpoint when the caller did not specify one
+    private String resolveEndpoint(CompletionRequest request) {
         var endpoint = request.getEndpoint();
         if (endpoint == null && CompletionRequest.containsFileContent(request.messages)) {
             endpoint = GatewayModelService.ENDPOINT_RESPONSES;
@@ -127,37 +135,100 @@ public class GatewayLLMProvider extends LLMProvider {
         if (endpoint == null && shouldPreferResponsesForTools(request)) {
             endpoint = GatewayModelService.ENDPOINT_RESPONSES;
         }
-        var resolved = resolveRoute(request.model, endpoint);
-        if (resolved == null) return fallbackCompletionStream(request, callback);
-        // the resolved route owns the transport: a model that has no chat route falls back to the
-        // responses endpoint (e.g. Azure gpt-6.1-sol, whose chat surface rejects function tools),
-        // and the endpoint must carry through to both the upstream URL and the request bridge
-        if (resolved.responses()) endpoint = GatewayModelService.ENDPOINT_RESPONSES;
-        var provider = resolved.route().provider();
-        var upstreamModel = upstreamModel(resolved);
-        var upstream = upstreamProvider(provider, upstreamModel, endpoint);
+        return endpoint;
+    }
+
+    private CompletionResponse completionWithFailover(CompletionRequest request, StreamingCallback callback, String endpoint, ResolvedRoute primary) {
+        var attempts = attempts(request, primary, endpoint);
+        // only a multi-model chain can fail over: capture the caller's request once and restore
+        // it before every attempt, because routing rewrites model/endpoint/format in place
+        var snapshot = attempts.size() > 1 ? GatewayModelFailover.RequestSnapshot.capture(request) : null;
         var originalModel = request.model;
         var originalEndpoint = request.getEndpoint();
-        request.setEndpoint(endpoint);
-        if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
-            // Vertex short-lived OAuth tokens expire within the hour; refresh before every call
-            upstream.updateCredentials(GatewaySupport.geminiOpenAiCompatibleUrl(provider), vertexTokenProvider(provider).accessToken());
-            // Vertex OpenAI-compatible endpoints address models as google/{model}
-            request.model = "google/" + upstreamModel;
-        } else {
-            request.model = upstreamModel;
+        for (var index = 0; index < attempts.size(); index++) {
+            var attempt = attempts.get(index);
+            var tracking = snapshot == null ? null : new GatewayModelFailover.OutputTrackingCallback(callback, request.isPassthrough());
+            var attemptCallback = tracking == null ? callback : tracking;
+            String attemptEndpoint = null;
+            try {
+                if (snapshot != null) snapshot.restore(request);
+                attemptEndpoint = attempt.responses() ? GatewayModelService.ENDPOINT_RESPONSES : endpoint;
+                var provider = attempt.route().provider();
+                var upstreamModel = attempt.route().upstreamModel();
+                var upstream = upstreamProvider(provider, upstreamModel, attemptEndpoint);
+                request.setEndpoint(attemptEndpoint);
+                if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {
+                    // Vertex short-lived OAuth tokens expire within the hour; refresh before every call
+                    upstream.updateCredentials(GatewaySupport.geminiOpenAiCompatibleUrl(provider), vertexTokenProvider(provider).accessToken());
+                    // Vertex OpenAI-compatible endpoints address models as google/{model}
+                    request.model = "google/" + upstreamModel;
+                } else {
+                    request.model = upstreamModel;
+                }
+                var modelId = modelId(attempt);
+                var modelConfig = attempt.route().model();
+                applyReasoningEffort(request, modelConfig);
+                applyResponseFormat(request, modelConfig);
+                applyPreprocess(request);
+                applyTemperature(request, modelConfig);
+                var response = upstream.delegateCompletionStream(request, attemptCallback);
+                failover.recordSuccess(modelId);
+                return response;
+            } catch (RuntimeException e) {
+                var modelId = modelId(attempt);
+                if (GatewayModelFailover.retryable(e)) failover.recordFailure(modelId);
+                if (index == attempts.size() - 1 || !canFailover(e, callback, tracking)) throw e;
+                LOGGER.warn("gateway model failed before producing output, switching to fallback, model={}, fallback={}, attempt={}/{}, endpoint={}, error={}",
+                        modelId, modelId(attempts.get(index + 1)), index + 1, attempts.size(), attemptEndpoint, e.getMessage());
+            } finally {
+                request.model = originalModel;
+                request.setEndpoint(originalEndpoint);
+            }
         }
-        var modelConfig = routingEngine.modelConfig(originalModel);
-        applyReasoningEffort(request, modelConfig);
-        applyResponseFormat(request, modelConfig);
-        applyPreprocess(request);
-        applyTemperature(request, modelConfig);
-        try {
-            return upstream.delegateCompletionStream(request, callback);
-        } finally {
-            request.model = originalModel;
-            request.setEndpoint(originalEndpoint);
+        throw new IllegalStateException("gateway failover exhausted every attempt without a result");
+    }
+
+    private List<ResolvedRoute> attempts(CompletionRequest request, ResolvedRoute primary, String endpoint) {
+        var attempts = new ArrayList<ResolvedRoute>();
+        attempts.add(primary);
+        var primaryModel = primary.route().model();
+        if (primaryModel == null) return attempts;
+        for (var fallback : routingEngine.fallbackModelsOf(primaryModel)) {
+            try {
+                var resolved = resolveRoute(fallback.modelId, endpoint);
+                if (resolved == null || !GatewayModelFailover.supportsRequest(resolved.route().model(), request)) continue;
+                attempts.add(resolved);
+            } catch (BadRequestException e) {
+                // a disabled or endpoint-incompatible fallback is skipped, never fatal to the request
+                LOGGER.debug("skipping gateway fallback model, model={}, reason={}", fallback.modelId, e.getMessage());
+            }
         }
+        return attempts.size() == 1 ? attempts : healthyFirst(attempts);
+    }
+
+    // during an outage the failing model stays out of the way for a cooldown, so later calls
+    // reach the fallback directly instead of paying the upstream timeout again
+    private List<ResolvedRoute> healthyFirst(List<ResolvedRoute> attempts) {
+        var healthy = new ArrayList<ResolvedRoute>();
+        var unhealthy = new ArrayList<ResolvedRoute>();
+        for (var attempt : attempts) {
+            if (failover.isUnhealthy(modelId(attempt))) {
+                unhealthy.add(attempt);
+            } else {
+                healthy.add(attempt);
+            }
+        }
+        healthy.addAll(unhealthy);
+        return healthy;
+    }
+
+    private boolean canFailover(RuntimeException error, StreamingCallback callback, GatewayModelFailover.OutputTrackingCallback tracking) {
+        if (tracking == null || tracking.outputEmitted() || callback.isCancelled()) return false;
+        return GatewayModelFailover.retryable(error);
+    }
+
+    private String modelId(ResolvedRoute attempt) {
+        return attempt.route().model() == null ? null : attempt.route().model().modelId;
     }
 
     @Override
@@ -277,12 +348,6 @@ public class GatewayLLMProvider extends LLMProvider {
         } catch (BadRequestException e) {
             return null;
         }
-    }
-
-    private String upstreamModel(ResolvedRoute resolved) {
-        // transport is driven by the request endpoint, so the upstream model name is always the
-        // real model/deployment name; the responses/ routing-convention prefix is only a static-provider fallback
-        return resolved.route().upstreamModel();
     }
 
     private CompletionResponse fallbackCompletionStream(CompletionRequest request, StreamingCallback callback) {

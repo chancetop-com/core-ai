@@ -151,6 +151,37 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void fallbackModelsPreserveConfiguredOrderAndDropDuplicates() {
+        var primary = model("deepseek", false, 100);
+        primary.fallbackModelIds = List.of("gpt-6", "deepseek", "gemini", "gpt-6", "missing");
+        var engine = engine(List.of(primary, model("gpt-6", false, 200), model("gemini", false, 300)));
+
+        assertEquals(List.of("gpt-6", "gemini"),
+                engine.fallbackModels("deepseek").stream().map(model -> model.modelId).toList());
+    }
+
+    @Test
+    void fallbackModelsReturnEmptyWhenNotConfigured() {
+        var engine = engine(List.of(model("deepseek", false, 100)));
+
+        assertTrue(engine.fallbackModels("deepseek").isEmpty());
+        assertTrue(engine.fallbackModels("unknown").isEmpty());
+        assertTrue(engine.fallbackModels(null).isEmpty());
+    }
+
+    @Test
+    void fallbackModelsKeepDisabledModelsForCallerToSkip() {
+        var primary = model("deepseek", false, 100);
+        primary.fallbackModelIds = List.of("gpt-6");
+        var disabled = model("gpt-6", false, 200);
+        disabled.enabled = Boolean.FALSE;
+        var engine = engine(List.of(primary, disabled));
+
+        assertEquals(List.of("gpt-6"),
+                engine.fallbackModels("deepseek").stream().map(model -> model.modelId).toList());
+    }
+
+    @Test
     void modelConfigAcceptsPrefixedProviderModelFormat() {
         var engine = engine(List.of(model("deepseek-v4-flash", false, 100)), "deepseek/");
 

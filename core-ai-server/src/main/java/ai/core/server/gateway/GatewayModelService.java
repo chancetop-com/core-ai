@@ -267,6 +267,7 @@ public class GatewayModelService {
         if (entity.enabled == null) entity.enabled = Boolean.TRUE;
         if (specified(request, "isDefault", create)) entity.isDefault = request.isDefault;
         if (entity.isDefault == null) entity.isDefault = Boolean.FALSE;
+        if (specified(request, "fallbackModelIds", create)) GatewayModelFallbackSupport.apply(entity, request, create, gatewayModelCollection);
         if (specified(request, "priority", create)) entity.priority = request.priority;
         if (entity.priority == null) entity.priority = 100L;
         if (specified(request, "contextWindow", create)) entity.contextWindow = request.contextWindow;
@@ -402,6 +403,7 @@ public class GatewayModelService {
         view.endpointTypes = entity.endpointTypes;
         view.enabled = entity.enabled;
         view.isDefault = entity.isDefault;
+        view.fallbackModelIds = entity.fallbackModelIds;
         view.priority = entity.priority;
         view.contextWindow = entity.contextWindow;
         view.supportsStream = entity.supportsStream;
