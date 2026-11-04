@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.api.server.DatasetWebService;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.dataset.migration.DatasetMigrationService;
 import ai.core.server.dataset.store.DatasetMetaStore;
 import ai.core.server.dataset.store.DatasetRecordStore;
 import ai.core.server.dataset.store.DatasetSqlExecutor;
@@ -10,6 +11,7 @@ import ai.core.server.dataset.store.DatasetViewManager;
 import ai.core.server.dataset.store.MongoDatasetMetaStore;
 import ai.core.server.dataset.store.MongoDatasetRecordStore;
 import ai.core.server.dataset.store.MongoNativeDatasetRecordStore;
+import ai.core.server.dataset.store.PgBoolRow;
 import ai.core.server.dataset.store.PgCountRow;
 import ai.core.server.dataset.store.PgDatasetMetaStore;
 import ai.core.server.dataset.store.PgDatasetRecordRow;
@@ -41,14 +43,21 @@ public class DatasetModule extends Module {
         var dbUrl = property("sys.db.url").orElse(null);
         var dbUser = property("sys.db.user").orElse(null);
         var dbPassword = property("sys.db.password").orElse(null);
+        var migrationEnabled = Boolean.parseBoolean(property("sys.dataset.migration.enabled").orElse("false"));
         var sqlExecutorEnabled = Boolean.parseBoolean(property("sys.dataset.sqlExecutor.enabled").orElse("false"));
         var sqlExecutorUser = property("sys.dataset.sqlExecutor.user").orElse(null);
         var sqlExecutorPassword = property("sys.dataset.sqlExecutor.password").orElse(null);
         var mongoNativeCollection = property("sys.dataset.mongoNativeCollection").orElse("dataset_records_v2");
         switch (store) {
             case "postgresql" -> bindPostgres(dbUrl, dbUser, dbPassword, sqlExecutorEnabled, sqlExecutorUser, sqlExecutorPassword);
-            case "mongo-native" -> bindMongoNative(mongoNativeCollection);
-            default -> bindMongo();
+            case "mongo-native" -> {
+                bindMongoNative(mongoNativeCollection);
+                if (migrationEnabled) bindMigration(dbUrl, dbUser, dbPassword);
+            }
+            default -> {
+                bindMongo();
+                if (migrationEnabled) bindMigration(dbUrl, dbUser, dbPassword);
+            }
         }
         bind(DatasetService.class);
         bind(DatasetRecordService.class);
@@ -74,20 +83,8 @@ public class DatasetModule extends Module {
 
     private void bindPostgres(String url, String user, String password, boolean sqlExecutorEnabled,
                               String sqlExecutorUser, String sqlExecutorPassword) {
-        if (url == null || user == null || password == null) {
-            throw new Error("sys.db.url/user/password are required when sys.dataset.store=postgresql");
-        }
-        db().url(url);
-        db().user(user);
-        db().password(password);
-        db().view(PgDatasetRecordRow.class);
-        db().view(PgJsonRow.class);
-        db().view(PgCountRow.class);
-        db().view(PgDatasetViewRow.class);
-        db().view(PgDatasetRow.class);
-        db().view(PgSizeRow.class);
-        var ddl = new PgDdl(url, user, password);
-        bind(PgDdl.class, ddl);
+        configureDb(url, user, password);
+        bind(PgDdl.class, new PgDdl(url, user, password));
         bind(DatasetViewManager.class);
         bind(DatasetMetaStore.class, bind(PgDatasetMetaStore.class));
         bind(DatasetRecordStore.class, bind(PostgresDatasetRecordStore.class));
@@ -99,5 +96,32 @@ public class DatasetModule extends Module {
             bind(DatasetSqlExecutor.class, executor);
             onStartup(executor::initialize);
         }
+    }
+
+    // runs while the application still reads and writes Mongo; the copy is idempotent and can be re-run
+    private void bindMigration(String url, String user, String password) {
+        configureDb(url, user, password);
+        bind(PgDdl.class, new PgDdl(url, user, password));
+        bind(DatasetViewManager.class);
+        bind(PgDatasetMetaStore.class);
+        bind(PostgresDatasetRecordStore.class);
+        var migration = bind(DatasetMigrationService.class);
+        onStartup(migration::migrate);
+    }
+
+    private void configureDb(String url, String user, String password) {
+        if (url == null || user == null || password == null) {
+            throw new Error("sys.db.url/user/password are required when postgresql storage or migration is enabled");
+        }
+        db().url(url);
+        db().user(user);
+        db().password(password);
+        db().view(PgDatasetRecordRow.class);
+        db().view(PgJsonRow.class);
+        db().view(PgCountRow.class);
+        db().view(PgDatasetViewRow.class);
+        db().view(PgDatasetRow.class);
+        db().view(PgSizeRow.class);
+        db().view(PgBoolRow.class);
     }
 }

@@ -44,6 +44,12 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
             + " DO UPDATE SET data = dataset.jsonb_merge_patch(" + TABLE + ".data, EXCLUDED.data),"
             + " run_started_at = EXCLUDED.run_started_at, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by";
 
+    // migration path: last-write-wins by updated_at, so re-running is safe
+    private static final String UPSERT_RECORD = INSERT
+            + " ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, run_started_at = EXCLUDED.run_started_at,"
+            + " updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by"
+            + " WHERE " + TABLE + ".updated_at < EXCLUDED.updated_at";
+
     private static List<Object> normalize(List<Object> row) {
         if (row.isEmpty() || row.getFirst() == null) return row;
         var normalized = new ArrayList<>(row);
@@ -57,7 +63,7 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
     Database database;
 
     @Inject
-    DatasetMetaStore datasetMetaStore;
+    PgDatasetMetaStore datasetMetaStore;
 
     @Inject
     DatasetViewManager viewManager;
@@ -65,6 +71,21 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
     @Override
     public void insert(DatasetRecord record) {
         database.execute(INSERT, params(record));
+    }
+
+    public void upsert(DatasetRecord record) {
+        database.execute(UPSERT_RECORD, params(record));
+    }
+
+    public long countByDataset(String datasetId) {
+        return database.selectOne("SELECT count(*) AS total FROM " + TABLE + " WHERE dataset_id = ?", PgCountRow.class, datasetId)
+                .map(row -> row.total)
+                .orElse(0L);
+    }
+
+    public List<String> recordIds(String datasetId) {
+        return database.select("SELECT id FROM " + TABLE + " WHERE dataset_id = ?", PgIdRow.class, datasetId)
+                .stream().map(row -> row.id).toList();
     }
 
     private Object[] params(DatasetRecord record) {
