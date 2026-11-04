@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Trash2, History, Download, FileUp, Copy, ChevronLeft, ChevronRight, Search, Star, Archive, Workflow as WorkflowIcon } from 'lucide-react';
 import { api, type WorkflowView } from '../../api/client';
 import { AuthContext } from '../../api/auth';
+import { useListState } from '../../hooks/useListState';
 import { newGraph } from './graph';
 
 const PAGE_SIZE = 10;
@@ -29,11 +30,11 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
   const [creating, setCreating] = useState(false);
   const [cloningId, setCloningId] = useState('');
   const [error, setError] = useState('');
-  const [activeTab, setActiveTab] = useState<'my' | 'shared' | 'archived'>(initialTab);
-  const [keyword, setKeyword] = useState('');
-  const [myOffset, setMyOffset] = useState(0);
-  const [sharedOffset, setSharedOffset] = useState(0);
-  const [archivedOffset, setArchivedOffset] = useState(0);
+  const [activeTab, setActiveTab] = useListState<'my' | 'shared' | 'archived'>(`workflows.${initialTab}.activeTab`, initialTab);
+  const [keyword, setKeyword] = useListState(`workflows.${initialTab}.keyword`, '');
+  const [myOffset, setMyOffset] = useListState(`workflows.${initialTab}.myOffset`, 0);
+  const [sharedOffset, setSharedOffset] = useListState(`workflows.${initialTab}.sharedOffset`, 0);
+  const [archivedOffset, setArchivedOffset] = useListState(`workflows.${initialTab}.archivedOffset`, 0);
   const navigate = useNavigate();
   const { user } = useContext(AuthContext);
   const isAdmin = user?.role === 'admin';
@@ -114,20 +115,34 @@ export default function WorkflowList({ initialTab = 'my' }: WorkflowListProps) {
 
   useEffect(() => {
     setLoading(true);
+    // Seed every tab; the active one keeps its restored keyword/page so returning
+    // to the list does not flash the default first page before the restored page arrives.
+    const tab = activeTab;
+    const myQuery = tab === 'my' ? keyword : '';
+    const sharedQuery = tab === 'shared' ? keyword : '';
+    const archivedQuery = tab === 'archived' ? keyword : '';
+    const myPage = tab === 'my' ? myOffset : 0;
+    const sharedPage = tab === 'shared' ? sharedOffset : 0;
+    const archivedPage = tab === 'archived' ? archivedOffset : 0;
     Promise.all([
-      api.workflows.list(true, '', 0, PAGE_SIZE),
-      api.workflows.explore('', 0, PAGE_SIZE),
+      api.workflows.list(true, myQuery, myPage, PAGE_SIZE),
+      api.workflows.explore(sharedQuery, sharedPage, PAGE_SIZE),
+      api.workflows.list(true, archivedQuery, archivedPage, PAGE_SIZE, true),
     ])
-      .then(([mine, shared]) => {
+      .then(([mine, shared, archived]) => {
         setMyWorkflows(mine.workflows || []);
         setMyTotal(mine.total || 0);
         setSharedWorkflows(shared.workflows || []);
         setSharedTotal(shared.total || 0);
-        myPageKeyRef.current = workflowPageKey('', 0);
-        sharedPageKeyRef.current = workflowPageKey('', 0);
+        setArchivedWorkflows(archived.workflows || []);
+        setArchivedTotal(archived.total || 0);
+        myPageKeyRef.current = workflowPageKey(myQuery, myPage);
+        sharedPageKeyRef.current = workflowPageKey(sharedQuery, sharedPage);
+        archivedPageKeyRef.current = workflowPageKey(archivedQuery, archivedPage);
       })
       .catch((e) => setError((e as Error).message))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

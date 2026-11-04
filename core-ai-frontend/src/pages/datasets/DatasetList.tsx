@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Database, Plus, Search, RefreshCw, ChevronLeft, ChevronRight, Trash2, Table2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { DatasetView } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 const FORMAT_NOW = Date.now();
 
@@ -10,9 +11,9 @@ export default function DatasetList() {
   const [datasets, setDatasets] = useState<DatasetView[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(10);
-  const [search, setSearch] = useState('');
+  const [offset, setOffset] = useListState('datasets.offset', 0);
+  const [limit, setLimit] = useListState('datasets.limit', 10);
+  const [search, setSearch] = useListState('datasets.search', '');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reqIdRef = useRef(0);
   const navigate = useNavigate();
@@ -38,6 +39,13 @@ export default function DatasetList() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [load]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (offset > 0 && offset >= total) {
+      setOffset(Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit));
+    }
+  }, [loading, offset, total, limit, setOffset]);
 
   const formatTime = (iso: string) => {
     if (!iso) return '-';

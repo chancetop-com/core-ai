@@ -3,12 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { FolderKanban, Plus, RefreshCw, Archive, RotateCcw } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ProjectSummary } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 export default function ProjectList() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [showArchived, setShowArchived] = useState(false);
+  const [showArchived, setShowArchived] = useListState('projects.showArchived', false);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

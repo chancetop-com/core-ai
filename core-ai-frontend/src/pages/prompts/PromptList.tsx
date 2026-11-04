@@ -3,11 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
 import { api } from '../../api/client';
 import type { PromptTemplate } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 import StatusBadge from '../../components/StatusBadge';
 
 export default function PromptList() {
   const [prompts, setPrompts] = useState<PromptTemplate[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useListState('prompts.offset', 0);
   const [loading, setLoading] = useState(true);
   const limit = 20;
   const navigate = useNavigate();

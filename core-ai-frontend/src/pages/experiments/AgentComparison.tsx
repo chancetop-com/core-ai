@@ -8,6 +8,7 @@ import {
   type AgentComparison as ComparisonRecord,
   type AgentVersion,
 } from '../../api/comparison';
+import { useListState } from '../../hooks/useListState';
 import { formatRelativeTime } from '../traces/traceViewModel';
 
 const inputStyle: React.CSSProperties = {
@@ -27,7 +28,9 @@ const STATUS_STYLE: Record<string, React.CSSProperties> = {
 export default function AgentComparison() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = searchParams.get('tab') === 'versions' ? 'versions' : 'experiments';
+  const [storedTab, setStoredTab] = useListState<'experiments' | 'versions'>('agent-comparison.tab', 'experiments');
+  const tabParam = searchParams.get('tab');
+  const tab = tabParam === 'versions' ? 'versions' : tabParam === 'experiments' ? 'experiments' : storedTab;
 
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [comparisons, setComparisons] = useState<ComparisonRecord[]>([]);
@@ -35,8 +38,8 @@ export default function AgentComparison() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  const [agentFilter, setAgentFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useListState('agent-comparison.statusFilter', 'ALL');
+  const [agentFilter, setAgentFilter] = useListState('agent-comparison.agentFilter', '');
 
   const [versionAgentId, setVersionAgentId] = useState<string>(() =>
     searchParams.get('agent') || localStorage.getItem('comparison_agentId') || '');
@@ -106,6 +109,7 @@ export default function AgentComparison() {
   }, [showNew, newAgentId]);
 
   const switchTab = (next: 'experiments' | 'versions') => {
+    setStoredTab(next);
     setSearchParams(next === 'versions' ? { tab: 'versions' } : {}, { replace: true });
   };
 

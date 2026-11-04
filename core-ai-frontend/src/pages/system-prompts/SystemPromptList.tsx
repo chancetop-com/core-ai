@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, ChevronLeft, ChevronRight, FileText } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SystemPrompt } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 export default function SystemPromptList() {
   const [prompts, setPrompts] = useState<SystemPrompt[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useListState('system-prompts.offset', 0);
   const [loading, setLoading] = useState(true);
   const limit = 20;
   const navigate = useNavigate();

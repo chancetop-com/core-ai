@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Server, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, ChevronRight as ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ToolRegistryView, McpConnectionState } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 import { ConnectionStateBadge, EnabledBadge } from './badges';
 import { containsSensitiveConfigJson, isSensitiveConfigKey, mcpImportNaming, planMcpImport } from './mcpConfig';
 
@@ -10,9 +11,9 @@ export default function Mcp() {
   const navigate = useNavigate();
   const [tools, setTools] = useState<ToolRegistryView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(10);
-  const [categoryFilter, setCategoryFilter] = useState('');
+  const [offset, setOffset] = useListState('mcp.offset', 0);
+  const [limit, setLimit] = useListState('mcp.limit', 10);
+  const [categoryFilter, setCategoryFilter] = useListState('mcp.categoryFilter', '');
   const [categories, setCategories] = useState<string[]>([]);
   const [editing, setEditing] = useState<ToolRegistryView | null>(null);
   const [creating, setCreating] = useState(false);
@@ -39,6 +40,15 @@ export default function Mcp() {
 
   const mcpServers = tools.filter(t => t.type === 'MCP');
   const pagedServers = mcpServers.slice(offset, offset + limit);
+
+  // The page offset is restored from the previous visit; a deleted/renamed server list can
+  // shrink below it, so land on the last page instead of showing an empty slice.
+  useEffect(() => {
+    if (loading) return;
+    if (offset > 0 && offset >= mcpServers.length) {
+      setOffset(Math.floor(Math.max(0, mcpServers.length - 1) / limit) * limit);
+    }
+  }, [loading, offset, mcpServers.length, limit, setOffset]);
 
   useEffect(() => {
     if (pagedServers.length === 0) return;

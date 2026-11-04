@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, ChevronLeft, ChevronRight, FlaskConical, Sliders, Trash2, Pencil, Check, X, Zap } from 'lucide-react';
 import { api, type ExperimentRun, type ExperimentConfigItem, type AgentDefinition } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 type Tab = 'runs' | 'configs';
 
@@ -40,23 +41,23 @@ function formatTime(d: string | undefined) {
 export default function MemoryExperimentList() {
   const navigate = useNavigate();
 
-  const [tab, setTab] = useState<Tab>('runs');
+  const [tab, setTab] = useListState<Tab>('memory-experiments.tab', 'runs');
   const [runs, setRuns] = useState<ExperimentRun[]>([]);
   const [configs, setConfigs] = useState<ExperimentConfigItem[]>([]);
   const [runTotal, setRunTotal] = useState(0);
   const [configTotal, setConfigTotal] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  const [runOffset, setRunOffset] = useState(0);
-  const [configOffset, setConfigOffset] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [agentFilter, setAgentFilter] = useState('');
+  const [runOffset, setRunOffset] = useListState('memory-experiments.runOffset', 0);
+  const [configOffset, setConfigOffset] = useListState('memory-experiments.configOffset', 0);
+  const [limit, setLimit] = useListState('memory-experiments.limit', DEFAULT_LIMIT);
+  const [agentFilter, setAgentFilter] = useListState('memory-experiments.agentFilter', '');
   const [showCreate, setShowCreate] = useState(false);
   const [agents, setAgents] = useState<AgentDefinition[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState('');
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [searchText, setSearchText] = useState('');
+  const [searchText, setSearchText] = useListState('memory-experiments.searchText', '');
 
   const loadRuns = useCallback(async (offset: number, agentId: string) => {
     setLoading(true);
@@ -87,11 +88,11 @@ export default function MemoryExperimentList() {
 
   useEffect(() => {
     if (tab === 'runs') loadRuns(runOffset, agentFilter);
-  }, [runOffset, limit, agentFilter, loadRuns, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [runOffset, limit, agentFilter, loadRuns, tab]);
 
   useEffect(() => {
     if (tab === 'configs') loadConfigs(configOffset);
-  }, [configOffset, limit, loadConfigs, tab]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [configOffset, limit, loadConfigs, tab]);
 
   const handleSearch = (value: string) => {
     setSearchText(value);

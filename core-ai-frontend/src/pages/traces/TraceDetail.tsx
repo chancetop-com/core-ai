@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../api/client';
 import type { Span, Trace } from '../../api/client';
 import TraceInspector from './TraceInspector';
@@ -13,6 +13,7 @@ interface TraceDetailState {
 export default function TraceDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [state, setState] = useState<TraceDetailState>({ id: '', trace: null, spans: [] });
 
   useEffect(() => {
@@ -51,7 +52,7 @@ export default function TraceDetail() {
       trace={trace}
       spans={state.spans}
       mode="page"
-      onBack={() => navigate('/traces')}
+      onBack={() => (location.key === 'default' ? navigate('/traces') : navigate(-1))}
     />
   );
 }

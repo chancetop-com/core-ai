@@ -4,6 +4,7 @@ import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, 
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import { useAuth } from '../../api/auth';
+import { useListState } from '../../hooks/useListState';
 import StatusBadge from '../../components/StatusBadge';
 
 const EXPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
@@ -41,13 +42,13 @@ export default function AgentList() {
   const [importing, setImporting] = useState(false);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<'my' | 'other'>('my');
-  const [myOffset, setMyOffset] = useState(0);
-  const [otherOffset, setOtherOffset] = useState(0);
-  const [limit, setLimit] = useState(DEFAULT_LIMIT);
-  const [query, setQuery] = useState('');
-  const [sortBy, setSortBy] = useState<'updated_at' | 'created_at'>(DEFAULT_SORT_BY);
-  const [typeFilter, setTypeFilter] = useState<AgentTypeFilter>('ALL');
+  const [activeTab, setActiveTab] = useListState<AgentTab>('agents.activeTab', 'my');
+  const [myOffset, setMyOffset] = useListState('agents.myOffset', 0);
+  const [otherOffset, setOtherOffset] = useListState('agents.otherOffset', 0);
+  const [limit, setLimit] = useListState('agents.limit', DEFAULT_LIMIT);
+  const [query, setQuery] = useListState('agents.query', '');
+  const [sortBy, setSortBy] = useListState<'updated_at' | 'created_at'>('agents.sortBy', DEFAULT_SORT_BY);
+  const [typeFilter, setTypeFilter] = useListState<AgentTypeFilter>('agents.typeFilter', 'ALL');
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
@@ -91,11 +92,24 @@ export default function AgentList() {
 
   useEffect(() => {
     setLoading(true);
-    const myKey = agentPageKey('my', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY, 'ALL');
-    const otherKey = agentPageKey('other', '', 0, DEFAULT_LIMIT, DEFAULT_SORT_BY, 'ALL');
+    // Seed both tabs; the tab the user is returning to keeps its restored query/page,
+    // so the list never flashes page 1 before the restored page arrives.
+    const tab = activeTab;
+    const myQuery = tab === 'my' ? query.trim() : '';
+    const otherQuery = tab === 'other' ? query.trim() : '';
+    const myLimit = tab === 'my' ? limit : DEFAULT_LIMIT;
+    const otherLimit = tab === 'other' ? limit : DEFAULT_LIMIT;
+    const myPage = tab === 'my' ? pageFor(myOffset, myLimit) : 1;
+    const otherPage = tab === 'other' ? pageFor(otherOffset, otherLimit) : 1;
+    const mySort = tab === 'my' ? sortBy : DEFAULT_SORT_BY;
+    const otherSort = tab === 'other' ? sortBy : DEFAULT_SORT_BY;
+    const myType = tab === 'my' ? typeFilter : 'ALL';
+    const otherType = tab === 'other' ? typeFilter : 'ALL';
+    const myKey = agentPageKey('my', myQuery, tab === 'my' ? myOffset : 0, myLimit, mySort, myType);
+    const otherKey = agentPageKey('other', otherQuery, tab === 'other' ? otherOffset : 0, otherLimit, otherSort, otherType);
     Promise.all([
-      api.agents.list(true, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY, isAdmin ? undefined : false),
-      api.agents.list(false, undefined, DEFAULT_LIMIT, 1, DEFAULT_SORT_BY),
+      api.agents.list(true, myQuery || undefined, myLimit, myPage, mySort, isAdmin ? undefined : false, myType === 'ALL' ? undefined : myType),
+      api.agents.list(false, otherQuery || undefined, otherLimit, otherPage, otherSort, undefined, otherType === 'ALL' ? undefined : otherType),
     ]).then(([myRes, otherRes]) => {
       setMyAgents(myRes.agents || []);
       setMyTotal(myRes.total || 0);

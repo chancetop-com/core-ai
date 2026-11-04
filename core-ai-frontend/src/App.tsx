@@ -9,6 +9,7 @@ import { AuthContext, getStoredUser, storeUser, clearUser } from './api/auth';
 import type { AuthUser } from './api/auth';
 import { authApi } from './api/client';
 import { getSystemSettingsAccess } from './api/permissions';
+import { clearListState } from './hooks/useListState';
 import { clearCachedChat } from './pages/chat/cache';
 
 const TraceList = lazy(() => import('./pages/traces/TraceList'));
@@ -125,6 +126,7 @@ export default function App() {
   }, [refreshProfile]);
 
   const login = useCallback((apiKey: string, userId: string, name: string, role?: string, permissions?: string[]) => {
+    clearListState();
     storeUser(apiKey, userId, name, role, permissions);
     const next: AuthUser = { apiKey, userId, name, role, permissions };
     setUser(next);
@@ -139,6 +141,7 @@ export default function App() {
     // The chat page caches its conversation in sessionStorage for reload recovery;
     // it must not survive into the next account that signs in on this tab.
     clearCachedChat();
+    clearListState();
     setUser(null);
   }, []);
 

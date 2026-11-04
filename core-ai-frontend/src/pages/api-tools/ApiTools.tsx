@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Plus, Key, Power, PowerOff, Trash2, Edit2, X, Save, ChevronLeft, ChevronRight, RefreshCw, ExternalLink } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ServiceApiView } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 export default function ApiTools() {
   const navigate = useNavigate();
   const [serviceApis, setServiceApis] = useState<ServiceApiView[]>([]);
   const [loading, setLoading] = useState(true);
-  const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(10);
+  const [offset, setOffset] = useListState('api-tools.offset', 0);
+  const [limit, setLimit] = useListState('api-tools.limit', 10);
   const [editing, setEditing] = useState<ServiceApiView | null>(null);
   const [creating, setCreating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -30,6 +31,13 @@ export default function ApiTools() {
   useEffect(load, [load]);
 
   const pagedApis = serviceApis.slice(offset, offset + limit);
+
+  useEffect(() => {
+    if (loading) return;
+    if (offset > 0 && offset >= serviceApis.length) {
+      setOffset(Math.floor(Math.max(0, serviceApis.length - 1) / limit) * limit);
+    }
+  }, [loading, offset, serviceApis.length, limit, setOffset]);
 
   const handleToggle = async (apiItem: ServiceApiView) => {
     try {

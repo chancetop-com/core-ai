@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Clock, Database, DollarSign, Filter, Loader2, MessageCircle, RotateCw, Search, UserCircle, X, Zap } from 'lucide-react';
 import { api, type SessionSummary, type Trace, type TraceAccount, type TraceFacet, type TraceFilter } from '../../api/client';
 import { useAuth } from '../../api/auth';
+import { useListState } from '../../hooks/useListState';
 import StatusBadge from '../../components/StatusBadge';
 import TraceDetailPanel from './TraceDetailPanel';
 import { sourceColors, typeColors } from './colors';
@@ -116,8 +117,8 @@ export default function TraceList() {
   const [result, setResult] = useState<TraceListState>({ requestKey: '', traces: [], total: 0 });
   // manual refresh: bumping re-runs the current query with the same filters and page
   const [refreshKey, setRefreshKey] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const [limit, setLimit] = useState(PAGE_SIZES[0]);
+  const [offset, setOffset] = useListState('traces.offset', 0);
+  const [limit, setLimit] = useListState('traces.limit', PAGE_SIZES[0]);
   const [selectedTraceId, setSelectedTraceId] = useState<string | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(() => hasAdvancedFilters(scopeFiltersForRole(readFilters(searchParams), canScopeUsers), canScopeUsers));
   const [filters, setFilters] = useState<TraceFilter>(() => scopeFiltersForRole(readFilters(searchParams), canScopeUsers));
@@ -183,6 +184,13 @@ export default function TraceList() {
   const traces = loading ? [] : result.traces;
   // Keep the last known total while a page loads so the pagination bar doesn't collapse between pages
   const total = result.total;
+
+  useEffect(() => {
+    if (loading || total < 0) return;
+    if (offset > 0 && offset >= total) {
+      setOffset(Math.max(0, Math.floor(Math.max(0, total - 1) / limit) * limit));
+    }
+  }, [loading, total, offset, limit, setOffset]);
 
   // Merge from a ref, not the render closure: the debounce timer may fire after other filters
   // changed, and merging into a stale snapshot would silently revert those changes

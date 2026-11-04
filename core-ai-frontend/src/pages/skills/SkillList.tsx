@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp, X, Package, Download, Loader2, Store, Trash2, Plus } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition, MarketplaceRepoView } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 const DEFAULT_SEARCH_IN = 'name_description';
 const MAX_REQUEST_BYTES = 10_000_000;
@@ -24,18 +25,18 @@ const SEARCH_IN_OPTIONS = [
 type Tab = 'uploaded' | 'marketplace';
 
 export default function SkillList() {
-    const [activeTab, setActiveTab] = useState<Tab>('uploaded');
+    const [activeTab, setActiveTab] = useListState<Tab>('skills.activeTab', 'uploaded');
 
     // --- uploaded tab state ---
     const [skills, setSkills] = useState<SkillDefinition[]>([]);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(true);
-    const [offset, setOffset] = useState(0);
-    const [limit, setLimit] = useState(10);
-    const [search, setSearch] = useState('');
-    const [searchIn, setSearchIn] = useState(DEFAULT_SEARCH_IN);
-    const [sourceFilter, setSourceFilter] = useState<string>('');
-    const [ownerFilter, setOwnerFilter] = useState<string>('');
+    const [offset, setOffset] = useListState('skills.offset', 0);
+    const [limit, setLimit] = useListState('skills.limit', 10);
+    const [search, setSearch] = useListState('skills.search', '');
+    const [searchIn, setSearchIn] = useListState('skills.searchIn', DEFAULT_SEARCH_IN);
+    const [sourceFilter, setSourceFilter] = useListState('skills.sourceFilter', '');
+    const [ownerFilter, setOwnerFilter] = useListState('skills.ownerFilter', '');
     const [uploading, setUploading] = useState(false);
     const uploadRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -92,10 +93,13 @@ export default function SkillList() {
     }, [load, activeTab]);
 
     useEffect(() => {
+        if (loading) return;
         if (total > 0 && offset >= total) {
             setOffset(Math.floor((total - 1) / limit) * limit);
+        } else if (total === 0 && offset > 0) {
+            setOffset(0);
         }
-    }, [total, limit, offset]);
+    }, [loading, total, limit, offset, setOffset]);
 
     // --- marketplace tab logic ---
     const loadMarketplace = useCallback(() => {

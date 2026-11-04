@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { FlaskConical, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api, type ReplayExperimentListItem } from '../../api/client';
 import { usePermission } from '../../api/permissions';
+import { useListState } from '../../hooks/useListState';
 import { formatRelativeTime } from '../traces/traceViewModel';
 
 const PAGE_SIZE = 20;
@@ -14,7 +15,7 @@ export default function ReplayExperimentList({ origin = 'SPAN' }: { origin?: 'SP
   const canReplay = usePermission('experiment.replay');
   const [experiments, setExperiments] = useState<ReplayExperimentListItem[]>([]);
   const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useListState(`replay-experiments.${origin}.offset`, 0);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
