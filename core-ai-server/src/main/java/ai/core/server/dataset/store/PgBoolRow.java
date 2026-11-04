@@ -7,5 +7,5 @@ import core.framework.db.Column;
  */
 public class PgBoolRow {
     @Column(name = "acquired")
-    public boolean acquired;
+    public Boolean acquired;
 }
