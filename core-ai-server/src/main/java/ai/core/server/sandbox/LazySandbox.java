@@ -17,6 +17,7 @@ import org.slf4j.LoggerFactory;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -37,6 +38,7 @@ public class LazySandbox implements Sandbox {
     private volatile Sandbox delegate;
     private volatile SandboxStatus status = SandboxStatus.PENDING;
     private volatile long lastAccessNanos;
+    private final AtomicBoolean materializing = new AtomicBoolean();
 
     public LazySandbox(SandboxConfig config, SandboxManager manager, Consumer<SandboxEvent> eventDispatcher, SessionIdentity identity) {
         this(config, manager, eventDispatcher, identity, null, null);
@@ -224,6 +226,21 @@ public class LazySandbox implements Sandbox {
     }
 
     public void ensureReady() {
+        // Eviction must not close a sandbox while its own acquire/replace is in flight.
+        materializing.set(true);
+        try {
+            doEnsureReady();
+        } finally {
+            materializing.set(false);
+        }
+    }
+
+    /** True while this sandbox is being acquired or replaced; the eviction policy skips such a session. */
+    public boolean isMaterializing() {
+        return materializing.get();
+    }
+
+    private void doEnsureReady() {
         var current = delegate;
         var now = System.nanoTime();
         if (canReuseWithoutProviderValidation(current, now)) {

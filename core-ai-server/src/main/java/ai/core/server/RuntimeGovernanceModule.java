@@ -12,6 +12,7 @@ import ai.core.server.runtime.RuntimeStatsJob;
 import ai.core.server.runtime.RuntimeStatsService;
 import ai.core.server.runtime.RuntimeWebServiceImpl;
 import ai.core.server.sandbox.SandboxManager;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.UserSessionBudget;
 import ai.core.server.settings.SystemSettingsService;
@@ -41,6 +42,11 @@ public class RuntimeGovernanceModule extends Module {
         http().intercept(new AdmissionInterceptor(guard));
         // sandbox quotas are read live from system settings by the manager SandboxModule binds
         bean(SandboxManager.class).limitsSupplier = limitsProvider::get;
+        // quota eviction never touches a session whose turn is still executing; an unreadable turn
+        // state (Redis down) counts as busy, so eviction fails closed instead of interrupting work
+        var turnStates = bean(TurnStateRegistry.class);
+        bean(SandboxService.class).sessionBusy = sessionId ->
+                turnStates.liveness(sessionId) != TurnStateRegistry.TurnLiveness.NOT_RUNNING;
         // run admission reads the same limits; assigned after AgentRunnerModule is bound
         bean(AgentRunner.class).admission.limitsSupplier = limitsProvider::get;
         // session budgets are read live by the session layer itself (queue cap) and by the turn

@@ -78,9 +78,15 @@ public class ServerSkillTool extends ToolCall {
             }
 
             var definition = skillService.findByQualifiedName(meta.getQualifiedName());
-            var baseDir = materializeIfPossible(context.getSandbox(), definition);
+            var sandbox = context.getSandbox();
+            var baseDir = materializeIfPossible(sandbox, definition);
 
-            return ToolCallResult.completed(renderSkill(meta, definition, baseDir))
+            var content = renderSkill(meta, definition, baseDir);
+            if (sandbox != null && baseDir == null) {
+                content += "\n\n[Sandbox unavailable: the skill content is loaded, but scripts cannot run until a sandbox is available.]";
+            }
+
+            return ToolCallResult.completed(content)
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (Exception e) {
             LOGGER.warn("use_skill failed", e);
@@ -98,8 +104,10 @@ public class ServerSkillTool extends ToolCall {
             var archive = archiveBuilder.build(def);
             sandbox.materializeSkill(def.name, def.version, archive);
             return SANDBOX_SKILL_BASE + "/" + def.name;
-        } catch (UnsupportedOperationException e) {
-            LOGGER.warn("sandbox does not support materialization: {}", sandbox.getId());
+        } catch (RuntimeException e) {
+            // Skill content is still useful without a sandbox: only its scripts need /skill materialization.
+            LOGGER.warn("skill materialization failed, returning content without sandbox base_dir: {}, error={}",
+                    def.qualifiedName, e.getMessage());
             return null;
         }
     }

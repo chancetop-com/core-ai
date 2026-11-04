@@ -17,27 +17,29 @@ final class SandboxReleaseSupport {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxReleaseSupport.class);
 
     /**
-     * Best-effort snapshot capture before a session's sandbox is released. Used by both the idle-session
-     * close path and the sandbox TTL cleanup path; capture failures never block release.
+     * Best-effort snapshot capture before a session's sandbox is released. Used by the idle-session
+     * close path, the sandbox TTL cleanup path and quota eviction; the first two release regardless of
+     * the result, eviction keeps the sandbox when this returns false.
      */
-    static void capture(SandboxService service, String sessionId, String sandboxId) {
+    static boolean capture(SandboxService service, String sessionId, String sandboxId) {
         var snapshotService = service.snapshotService;
-        if (snapshotService == null || !snapshotService.enabled()) return;
+        if (snapshotService == null || !snapshotService.enabled()) return true;
         try {
             var sandbox = service.sessionSandboxes.get(sessionId);
-            if (!(sandbox instanceof LazySandbox lazy)) return;
-            if (sandboxId != null && !sandboxId.equals(lazy.getId())) return;
-            if (!lazy.snapshotDirty()) return;
+            if (!(sandbox instanceof LazySandbox lazy)) return true;
+            if (sandboxId != null && !sandboxId.equals(lazy.getId())) return true;
+            if (!lazy.snapshotDirty()) return true;
             var ip = lazy.ip();
             var port = lazy.port();
-            if (ip == null || port == 0) return; // sandbox never materialized
+            if (ip == null || port == 0) return true; // sandbox never materialized
             if (!lazy.isDelegateTracked()) {
                 LOGGER.info("skip snapshot capture, sandbox already released by ttl cleanup: sessionId={}", sessionId);
-                return;
+                return true;
             }
-            snapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
+            return snapshotService.captureBeforeRelease(sessionId, lazy.userId(), lazy.snapshotEpochForCapture(), ip, port, lazy.image());
         } catch (Exception e) {
             LOGGER.warn("sandbox snapshot capture failed, releasing anyway: sessionId={}", sessionId, e);
+            return false;
         }
     }
 

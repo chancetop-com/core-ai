@@ -115,7 +115,7 @@ class SandboxServiceLifecycleTest {
 
         var sandbox = (LazySandbox) service.createSessionSandbox(config, "session-1", "user-1", null);
         sandbox.uploadFile("/tmp/changed.txt", "changed".getBytes(StandardCharsets.UTF_8));
-        service.sandboxManager().getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+        service.sandboxManager().getActiveSandboxes().get(0).lastAccessAt = Instant.now().minusSeconds(60);
 
         jobCaptor.getValue().run();
 

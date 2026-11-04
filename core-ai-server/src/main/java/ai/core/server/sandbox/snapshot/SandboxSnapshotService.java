@@ -151,16 +151,22 @@ public class SandboxSnapshotService {
         return new RestoreResult(RestoreOutcome.DEGRADED, null);
     }
 
-    /** Capture the sandbox filesystem before release. Never throws: release must proceed regardless. */
-    public void captureBeforeRelease(String sessionId, String userId, long epoch, String ip, int port, String image) {
+    /**
+     * Capture the sandbox filesystem before release. Never throws: release must proceed regardless.
+     *
+     * @return true when a snapshot was stored, capture is disabled by deployment, or there was nothing
+     * to store; false when capture is enabled but could not complete — callers that may abort the
+     * release (quota eviction) must keep the sandbox in that case.
+     */
+    public boolean captureBeforeRelease(String sessionId, String userId, long epoch, String ip, int port, String image) {
         var decision = policy == null ? null : policy.decision();
         if (decision == null || !decision.status().effective() || decision.storage() == null) {
             logInactive("captureBeforeRelease", decision);
-            return;
+            return true;
         }
         if (epoch <= 0) {
             LOGGER.debug("sandbox snapshot capture skipped: invalid epoch");
-            return;
+            return false;
         }
         var storage = decision.storage();
         var container = container(storage);
@@ -178,17 +184,19 @@ public class SandboxSnapshotService {
                 tombstone(doc.id);
                 LOGGER.info("stale snapshot discarded: session={}, snapshot={}, capturedEpoch={}, currentEpoch={}",
                         sessionId, doc.id, epoch, currentEpoch);
-                return;
+                return true;
             }
             long updated = snapshotCollection.update(
                     Filters.and(Filters.eq("_id", doc.id), Filters.eq("status", SandboxSnapshotDoc.STATUS_UPLOADING)),
                     Updates.set("status", SandboxSnapshotDoc.STATUS_AVAILABLE));
-            if (updated == 0) return;
+            if (updated == 0) return false;
             LOGGER.info("snapshot available: session={}, snapshot={}, files={}, size={}",
                     sessionId, doc.id, doc.fileCount, doc.sizeBytes);
             deletePreviousGenerations(sessionId, doc.id, storage, container);
+            return true;
         } catch (Exception e) {
             LOGGER.warn("snapshot capture failed, releasing sandbox without snapshot: session={}", sessionId, e);
+            return false;
         } finally {
             deleteQuietly(tmp);
         }

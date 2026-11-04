@@ -81,7 +81,7 @@ class SandboxManagerTest {
 
         var manager = new SandboxManager(provider);
         manager.acquire(config, "s3", "u3");
-        manager.getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+        manager.getActiveSandboxes().get(0).lastAccessAt = Instant.now().minusSeconds(60);
 
         var hookCalled = new AtomicBoolean();
         manager.cleanupExpired(entry -> {
@@ -106,7 +106,7 @@ class SandboxManagerTest {
 
         var manager = new SandboxManager(provider);
         manager.acquire(config, "s4", "u4");
-        manager.getActiveSandboxes().get(0).createdAt = Instant.now().minusSeconds(60);
+        manager.getActiveSandboxes().get(0).lastAccessAt = Instant.now().minusSeconds(60);
 
         manager.cleanupExpired(entry -> {
             throw new IllegalStateException("capture failed");

@@ -28,6 +28,7 @@ import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 
 /**
  * @author stephen
@@ -49,6 +50,10 @@ public class SandboxService {
     private final String serverUrlFromSandbox;
     final Map<String, Sandbox> sessionSandboxes = new ConcurrentHashMap<>();
     final Set<String> persistentSessionIds = ConcurrentHashMap.newKeySet();
+    /** Answers "is a turn running on this session"; a busy session is never evicted. Wired from the messaging module. */
+    public volatile Predicate<String> sessionBusy;
+    /** Eviction only touches sandboxes idle for at least this long, so a just-used session is not reclaimed. */
+    public volatile long evictionMinIdleSeconds = 600;
     @SuppressWarnings("this-escape")
     final SandboxFileService sandboxFileService = new SandboxFileService(this);
     final SessionMcpProcesses sessionMcpProcesses = new SessionMcpProcesses();
@@ -125,6 +130,7 @@ public class SandboxService {
                 new SandboxCleanupJob(sandboxManager, provider,
                         entry -> captureBeforeRelease(entry.sessionId, entry.sandbox.getId())),
                 5, 5, TimeUnit.MINUTES);
+        this.sandboxManager.evictionPolicy = new SandboxEvictionPolicy(this);
     }
 
     /** Attachment references this session staged, so tools outside the sandbox package can resolve one. */
@@ -195,12 +201,7 @@ public class SandboxService {
         LOGGER.warn("replacing sandbox for session: {}, previous={}, replacement={}",
                 sessionId, previous.getId(), sandbox.getId());
         sessionMcpProcesses.stopAll(sessionId, previous);
-        closeSandbox(previous);
-    }
-
-    /** Releases a sandbox instance regardless of whether it is still lazy (never acquired / tracked). */
-    private void closeSandbox(Sandbox sandbox) {
-        SandboxReleaseSupport.close(this, sandbox);
+        SandboxReleaseSupport.close(this, previous);
     }
 
     public void addStagedFile(String sessionId, StagedFile file) {
@@ -280,7 +281,7 @@ public class SandboxService {
         deleteSandboxBinding(sessionId);
         if (hubBinding != null) hubBinding.unbind(sandbox, sessionId);
         if (sandbox != null) {
-            closeSandbox(sandbox);
+            SandboxReleaseSupport.close(this, sandbox);
             LOGGER.info("sandbox released for session: {}", sessionId);
         }
     }
@@ -376,7 +377,7 @@ public class SandboxService {
         redisStore.saveBinding(sessionId, id);
     }
 
-    private void deleteSandboxBinding(String sessionId) {
+    void deleteSandboxBinding(String sessionId) {
         if (redisStore != null) redisStore.deleteBinding(sessionId);
     }
 
