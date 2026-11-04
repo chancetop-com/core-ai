@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -98,10 +99,13 @@ class MediaJobArtifactStoreTest {
         store.claim("job-1");
 
         var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(collection).update(captor.capture(), any(Bson.class));
-        var filter = captor.getValue().toString();
-        assertTrue(filter.contains("Filter{fieldName='artifact_attempts', value=null}"));
-        assertTrue(filter.contains("Filter{fieldName='artifact_next_attempt_at', value=null}"));
+        verify(collection, times(2)).update(captor.capture(), any(Bson.class));
+        var filters = captor.getAllValues().stream().map(Object::toString).toList();
+        assertTrue(filters.stream().anyMatch(filter -> filter.contains("Filter{fieldName='artifact_attempts', value=null}")
+                && !filter.contains("value=completed")));
+        assertTrue(filters.stream().anyMatch(filter -> filter.contains("Filter{fieldName='artifact_attempts', value=null}")
+                && filter.contains("value=completed")
+                && filter.contains("Filter{fieldName='artifact_next_attempt_at', value=null}")));
     }
 
     @Test

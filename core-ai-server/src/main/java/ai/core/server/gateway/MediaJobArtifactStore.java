@@ -93,6 +93,10 @@ public class MediaJobArtifactStore {
 
     public boolean claim(String jobId) {
         var now = ZonedDateTime.now();
+        // $inc refuses a null, which is how core-ng persists an unset counter on a fresh job
+        mediaJobCollection.update(
+                Filters.and(Filters.eq("_id", jobId), Filters.eq("artifact_attempts", null)),
+                Updates.set("artifact_attempts", 0));
         var updated = mediaJobCollection.update(
                 Filters.and(
                         Filters.eq("_id", jobId),
