@@ -182,7 +182,7 @@ class DatasetBenchmarkTest {
         var manager = new DatasetViewManager();
         manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
-        var metaStore = mock(DatasetMetaStore.class);
+        var metaStore = mock(PgDatasetMetaStore.class);
         when(metaStore.get(anyString())).thenReturn(dataset());
         var store = new PostgresDatasetRecordStore();
         store.database = DATABASE;

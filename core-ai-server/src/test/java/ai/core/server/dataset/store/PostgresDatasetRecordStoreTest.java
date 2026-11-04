@@ -54,7 +54,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
     }
 
     private static PostgresDatasetRecordStore newStore() {
-        var metaStore = mock(DatasetMetaStore.class);
+        var metaStore = mock(PgDatasetMetaStore.class);
         when(metaStore.get(anyString())).thenReturn(null);
         var manager = new DatasetViewManager();
         manager.database = DATABASE;
