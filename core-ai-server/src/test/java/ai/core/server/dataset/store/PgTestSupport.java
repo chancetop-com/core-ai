@@ -46,11 +46,11 @@ final class PgTestSupport {
         database.view(PgDatasetRow.class);
         database.view(DatasetViewManagerTest.ValueRow.class);
         database.view(DatasetViewManagerTest.RegionRow.class);
-        schema(database);
+        schema();
         return database;
     }
 
-    static void schema(Database database) {
+    static void schema() {
         var initializer = new DatasetPgSchemaInitializer();
         initializer.ddl = ddl();
         initializer.initialize();

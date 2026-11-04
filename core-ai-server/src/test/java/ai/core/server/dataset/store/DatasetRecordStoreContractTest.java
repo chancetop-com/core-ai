@@ -185,7 +185,7 @@ abstract class DatasetRecordStoreContractTest {
         assertEquals(2, query(Map.of("score", Map.of("$gte", 10))).total());
         assertEquals(1, query(Map.of("score", Map.of("$lt", 20))).total());
         assertEquals(2, query(Map.of("status", Map.of("$in", List.of("alpha", "gamma")))).total());
-        assertEquals(2, query(Map.of("score", Map.of("$exists", true))).total());
+        assertEquals(2, query(Map.of("score", Map.of("$exists", Boolean.TRUE))).total());
         assertEquals(1, query(Map.of("status", Map.of("$contains", "ET"))).total());
     }
 

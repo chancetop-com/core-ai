@@ -84,7 +84,7 @@ class GatewayModelFailoverTest {
 
         assertEquals("alias", request.model);
         assertEquals("responses", request.getEndpoint());
-        assertEquals(Double.valueOf(0.2), request.temperature);
+        assertEquals(0.2, request.temperature);
         assertEquals(ReasoningEffort.HIGH, request.reasoningEffort);
         assertEquals("high", request.getReasoningEffortValue());
         assertEquals("json_object", request.responseFormat.type);

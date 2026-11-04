@@ -58,10 +58,8 @@ public class DatasetMigrationService {
 
     public Report migrate() {
         try (var transaction = database.beginTransaction()) {
-            boolean locked = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired", PgBoolRow.class, LOCK_KEY)
-                    .map(row -> row.acquired)
-                    .orElse(false);
-            if (!locked) {
+            var lock = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired", PgBoolRow.class, LOCK_KEY);
+            if (lock.isEmpty() || !lock.get().acquired) {
                 transaction.rollback();
                 LOGGER.info("dataset migration skipped, another instance holds the lock");
                 return new Report(0, 0, 0, 0, List.of("another instance is migrating"));

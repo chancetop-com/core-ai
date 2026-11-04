@@ -223,7 +223,7 @@ public class SessionChannelService {
     }
 
     private void trimToBudget(SessionChannelState state, String sessionId) {
-        while (!state.eventBuffer.isEmpty() && state.bufferedBytes > maxBufferBytes) {
+        while (state.bufferedBytes > maxBufferBytes && !state.eventBuffer.isEmpty()) {
             var removed = state.eventBuffer.removeFirst();
             state.bufferedBytes -= estimatedBytes(removed);
             recordDrop(state, sessionId, "buffer full");

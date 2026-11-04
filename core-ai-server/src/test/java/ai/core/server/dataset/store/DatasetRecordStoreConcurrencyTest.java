@@ -1,6 +1,7 @@
 package ai.core.server.dataset.store;
 
 import ai.core.utils.JsonUtil;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -40,8 +42,9 @@ abstract class DatasetRecordStoreConcurrencyTest {
     }
 
     @Test
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     void concurrentPatchesDoNotLoseFields() throws Exception {
-        var pool = Executors.newFixedThreadPool(THREADS);
+        ExecutorService pool = Executors.newFixedThreadPool(THREADS);
         var start = new CountDownLatch(1);
         var futures = new ArrayList<Future<?>>();
         try {

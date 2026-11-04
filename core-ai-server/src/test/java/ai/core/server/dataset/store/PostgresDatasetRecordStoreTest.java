@@ -5,7 +5,6 @@ import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.utils.JsonUtil;
-import core.framework.db.Database;
 import core.framework.internal.db.DatabaseImpl;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,12 +44,12 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
         database.view(PgCountRow.class);
         database.view(PgDatasetViewRow.class);
         database.view(PgSizeRow.class);
-        initializeSchema(database);
+        initializeSchema();
         return database;
     }
 
-    private static void initializeSchema(Database database) {
-        PgTestSupport.schema(database);
+    private static void initializeSchema() {
+        PgTestSupport.schema();
     }
 
     private static PostgresDatasetRecordStore newStore() {
@@ -108,7 +107,7 @@ class PostgresDatasetRecordStoreTest extends DatasetRecordStoreContractTest {
 
     @BeforeEach
     void initializeSchemaAgain() {
-        initializeSchema(DATABASE);
+        initializeSchema();
     }
 
     @Override

@@ -62,7 +62,8 @@ final class GatewayModelFailover {
     static boolean supportsRequest(GatewayModelConfig model, CompletionRequest request) {
         if (model == null) return true;
         if (Boolean.FALSE.equals(model.supportsVision) && hasVisualContent(request.messages)) return false;
-        return !Boolean.FALSE.equals(model.supportsTools) || request.tools == null || request.tools.isEmpty();
+        if (request.tools == null || request.tools.isEmpty()) return true;
+        return !Boolean.FALSE.equals(model.supportsTools);
     }
 
     private static boolean failoverStatus(int statusCode) {
@@ -75,7 +76,7 @@ final class GatewayModelFailover {
     private static Integer statusCode(String message) {
         if (message == null) return null;
         var matcher = STATUS_CODE.matcher(message);
-        return matcher.find() ? Integer.parseInt(matcher.group(1)) : null;
+        return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;
     }
 
     private static boolean transientMessage(String message) {

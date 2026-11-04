@@ -83,7 +83,7 @@ class DatasetViewManagerTest {
 
     @BeforeEach
     void ensureSchema() {
-        PgTestSupport.schema(DATABASE);
+        PgTestSupport.schema();
     }
 
     @Test

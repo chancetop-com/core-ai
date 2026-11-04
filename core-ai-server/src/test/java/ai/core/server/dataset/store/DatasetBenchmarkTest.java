@@ -73,7 +73,7 @@ class DatasetBenchmarkTest {
         database.view(PgDatasetViewRow.class);
         database.view(PgSizeRow.class);
         database.view(DatasetViewManagerTest.RegionRow.class);
-        PgTestSupport.schema(database);
+        PgTestSupport.schema();
         return database;
     }
 
@@ -331,7 +331,7 @@ class DatasetBenchmarkTest {
 
     private void explainRange() {
         var column = viewManager().columns(dataset()).stream()
-                .filter(candidate -> candidate.sourceName().equals("positive_count"))
+                .filter(candidate -> "positive_count".equals(candidate.sourceName()))
                 .findFirst().orElseThrow();
         var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName("bench-hot"));
         var predicate = " WHERE dataset_id = ? AND " + DatasetViewManager.quoteIdentifier(column.columnName()) + " > ?::numeric";

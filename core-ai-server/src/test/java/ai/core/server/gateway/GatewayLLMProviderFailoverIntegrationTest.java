@@ -116,7 +116,7 @@ class GatewayLLMProviderFailoverIntegrationTest {
 
     private HttpServer server(ExchangeHandler handler) throws IOException {
         var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        server.createContext("/v1/chat/completions", exchange -> handler.handle(exchange));
+        server.createContext("/v1/chat/completions", handler::handle);
         server.start();
         return server;
     }
