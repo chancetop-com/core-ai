@@ -127,7 +127,13 @@ final class TranscriptStartup {
     private long lastTerminalCount(int baseThrough) {
         long last = baseThrough;
         var rewindTo = latestRewind();
+        var compression = lastCompletedCompression();
+        if (compression != null) {
+            var count = compression.number("after_count");
+            if (count != null && count > last) last = count;
+        }
         for (var record : allRecords()) {
+            if (compression != null && record.seq <= compression.seq) continue;
             if (!isTerminal(record) || isRewound(record.turnId, rewindTo)) continue;
             var count = record.number("message_count");
             if (count != null && count > last) last = count;
@@ -157,8 +163,14 @@ final class TranscriptStartup {
     }
 
     private Long firstInvalidTurn(int size) {
+        var compression = lastCompletedCompression();
+        if (compression != null && size < number(compression, "after_count", 0)) {
+            var seq = turnSeq(compression.turnId);
+            if (seq >= 0) return seq;
+        }
         Long first = null;
         for (var record : records) {
+            if (compression != null && record.seq <= compression.seq) continue;
             if (!isTerminal(record)) continue;
             var count = record.number("message_count");
             if (count == null || count <= size) continue;
@@ -167,6 +179,16 @@ final class TranscriptStartup {
             if (first == null || seq < first) first = seq;
         }
         return first;
+    }
+
+    private TranscriptRecord lastCompletedCompression() {
+        TranscriptRecord latest = null;
+        for (var record : allRecords()) {
+            if (!TranscriptKinds.COMPRESSION.equals(record.kind)) continue;
+            if (!Boolean.TRUE.equals(record.bool("completed"))) continue;
+            latest = record;
+        }
+        return latest;
     }
 
     private void gap(long from, long to) {

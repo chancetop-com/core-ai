@@ -1,6 +1,6 @@
 # Tech Design：会话记录（Session Transcript）——统一 live 与重载的单一真相源
 
-> 状态：草案 v0.6（2026-10-30，按第五轮评审定点修订：steerPending 先于 offer、failTurn 终止 API、task_note 并入 turn_start、dangling pending 恢复、rewind 返回 usage、total_turns 口径；评审结论：M0 可开，S1–S3 已定，可进 M1）
+> 状态：草案 v0.7（v0.6 于 2026-10-30 按第五轮评审定点修订：steerPending 先于 offer、failTurn 终止 API、task_note 并入 turn_start、dangling pending 恢复、rewind 返回 usage、total_turns 口径；评审结论：M0 可开，S1–S3 已定，可进 M1。v0.7 于 2026-11-04 补 completed compression 的水位基点）
 > 作者：Stephen（AI 起草）
 > 关联（以下文档暂未纳入本站）：design-core-ai-desktop.md §3.4 / §9.2 第 19 条、design-cli-session-history-context.md、design-session-custom-events.md §3.4、design-session-rich-cards.md
 > 版本事实：desktop 0.1.38 / CLI v2.0.63 / server 2.0.152。正文行号均为快照 commit `de1b45cb`（`app.ts` 7,316 行，`wc -l`），以函数名为准。
@@ -15,7 +15,7 @@
 | D3 | 记录粒度 | 事件级，chunk 折叠；**所有记录以文件 seq 保序**，模型用单一 `items[]` 承载交错 | 服务端"按轮装桶" |
 | D4 | live 与重载同构 | 引擎落盘即推 `session/record`；桌面 reducer 只消费记录；**块级替换**（sealed/active） | 轮末整体替换：text → tool → text 中段两份正文 |
 | D5 | 统计 | **单一公式**：resume 时 `seed = Σ 未被 rewind 的轮级终止记录 usage`，`Node.currentTokenUsage = seed`；`session/stats` **直接返回 `agent.getCurrentTokenUsage()`**；**运行中 `/undo` 必须 `Node.subtractTokenUsage(被撤销轮的 usage)`**（公式成立的前提，非可选）；`turns = turn_start 数 − rewind 轮数` 从记录数 | "记录累加 + 内存增量"：双算（v0.3 缺陷） |
-| D6 | 旧会话 | 读时投影 base 段 `.data.messages[0, base.projection_through)`；**base = 最新一条 `projection_reset` 的 `session_start`，若无则第一条无 `projection_from` 的**；**gap 段在打开时物化进 `.events.jsonl`**（`synthetic:true`，真实文件 seq）；水位 `last` = **最后一条轮级终止记录**（`turn_complete` 或 `turn_id != null` 的 `error`）的 `message_count`；指纹只用于 reset 校验，不参与 gap 判定 | 负 seq 投影 gap：排序错且重复写（v0.3）；只认 `turn_complete`：失败轮无水位，重启后再物化一遍（v0.4 缺陷） |
+| D6 | 旧会话 | 读时投影 base 段 `.data.messages[0, base.projection_through)`；**base = 最新一条 `projection_reset` 的 `session_start`，若无则第一条无 `projection_from` 的**；**gap 段在打开时物化进 `.events.jsonl`**（`synthetic:true`，真实文件 seq）；水位 `last` = **最后一条轮级终止记录**（`turn_complete` 或 `turn_id != null` 的 `error`）的 `message_count`；**若其后有 `completed` 的 `compression`，则以该记录的 `after_count` 为基点，只统计 seq 在它之后的轮级终止记录**（压缩会截短 `messages`，压缩前的 `message_count` 不能再用于判定 reset）；指纹只用于 reset 校验，不参与 gap 判定 | 负 seq 投影 gap：排序错且重复写（v0.3）；只认 `turn_complete`：失败轮无水位，重启后再物化一遍（v0.4 缺陷） |
 | D7 | 有界性 | **所有字符串载荷字段**都遵循 "> 32KB 外置为 `*_ref` + `*_preview`"（含 `inputs[].text`、`assistant_text.text`、`reasoning`、`arguments`）；单条 ≤ 64KB；`session/records` 按整轮分页 ≤ 2MB / 1000 条，单轮超预算 → 半轮 `partial` | — |
 | D8 | 兼容 | `v:1`；未知 `kind` 忽略；尾行截断丢弃；`capabilities.add("transcript")`；`session/history` 与 `renderHistoryMessages` 在 gate 内保留至 CLI 2.0.70 | — |
 | D9 | 范围 | P0 = 内核 + app-server RPC + 桌面；M1 含 CLI `--debug-transcript`、`/undo` 接 recorder、store 关闭；P1 = CLI `/resume`、ACP、桌面 undo UI | — |
@@ -26,6 +26,8 @@
 评审重点（v0.4）：D5 公式、D6 gap 物化、D11 写入点、§3.7 投影分类（G4）。D1–D4/D10/D12 三轮评审已认同。
 
 ### 0.1 修订记录
+
+**v0.7（2026-11-04，实现修正）** D6/§3.7：`completed` 的 `compression` 成为水位与 reset 的新基点——`last` 取 `after_count`，只统计其后（`seq > compression.seq`）的轮级终止记录；`size < after_count` 时 reset 从压缩轮起跳。否则压缩后重启会把压缩前的 `message_count` 当成当前水位，误判历史被外部截短并写 `rewind`/`projection_reset`，丢掉压缩前所有轮次。单测 `TranscriptRecorderTest.keepsTurnsWhenACompletedCompressionShortenedTheConversation`。
 
 **v0.6（第五轮评审）** 采纳 S1 `steerPending` 先于 `offer`、offer 失败即 cancel、RPC 线程与 agent 线程的窄竞态进 §6；S2 轮级终止改为 `completeTurn / failTurn` API（`turn_id` 用 recorder 的 `currentTurnId`，usage 用 `SessionTurnUsage`，`onError` 监听器不参与水位）；S3 `task_note` 并入 `turn_start{source:"task_note"}`，天然可分页、可 rewind、可计数；S4 `sessionStart` 补写 dangling pending 的 `cancelled`；S5 `rewind(toSeq)` 返回被撤销轮 usage；S6 `total_turns` 公式写全并与 `stats.turns` 共用；S7 `LargeText` 的 ref 保留原字段名；§7.1/§7.3 补 CLI 无 turnId 失败轮、task_note 轮 `/undo`、dangling pending 用例；§9 Q1 接受、Q2 定为"丢弃 + 提示"。
 
@@ -237,8 +239,8 @@ reducer 规则：
 ### 3.7 旧会话投影、水位线与 gap 物化（D6）
 
 1. **base**：第一次接触会话时 `sessionStart` 写 base `session_start{projection_through = size, projection_fingerprint = hash(messages[through-1])}`。**base 的取法：若存在 `projection_reset:true` 的 `session_start`，取最新一条；否则取第一条无 `projection_from` 的。** base 段 `messages[0, base.projection_through)` 读时投影，seq 为负数，不落盘。
-2. **`last`**：最后一条未被 rewind 的**轮级终止记录**（`completeTurn` 写的 `turn_complete`，或 `failTurn` 写的 `error{terminal:true}`，含 synthetic）的 `message_count`；若没有任何轮级终止记录，`last = base.projection_through`。`error{terminal:false}` 不参与；判定不看事件的客户端 `turn_id`。
-3. **gap 物化**（每次 `sessionStart`，与 reset 判定同一把锁）：`size = messages.size()`。**gap 只判 `size > last`，不比指纹**（`messages[last-1]` 的指纹没有存储位置，F）。若 `size > last` → 先写 `session_start{projection_from = last, projection_through = size}`，再把 `messages[last, size)` 投影为合成记录**用真实文件 seq 追加**（`synthetic:true`）；合成末轮 `turn_complete.message_count = size`，`last` 前推，下次不重复。**reset**：若 `size < last`，或 `size == base.projection_through` 但 `messages[base.through-1]` 指纹不匹配 → 同锁内先写 `rewind{to_seq = 第一条 message_count > size 的轮级终止所在轮的 turn_start.seq}`，再写 `session_start{projection_reset:true, projection_through = size, projection_fingerprint}`（它成为新 base），不再物化；接受该段可能失真。**预算**：单次物化 ≤ 2,000 条 messages 同步完成，超出部分记 `projection_from`/`through` 分批，首次 resume 只物化最近 2,000 条，其余在首轮结束后后台补（M1 先量实际耗时，§3.8）。
+2. **`last`**：最后一条未被 rewind 的**轮级终止记录**（`completeTurn` 写的 `turn_complete`，或 `failTurn` 写的 `error{terminal:true}`，含 synthetic）的 `message_count`；若没有任何轮级终止记录，`last = base.projection_through`。`error{terminal:false}` 不参与；判定不看事件的客户端 `turn_id`。**压缩基点**：若存在 `completed:true` 的 `compression`，取最新一条，令 `last = max(上面的结果, compression.after_count)`，并且只扫描 seq 在该 compression 之后的轮级终止记录——压缩前的记录描述的是压缩前那段上下文，拿它们的 `message_count` 与压缩后的 `size` 比较会把正常压缩误判为历史被截短。
+3. **gap 物化**（每次 `sessionStart`，与 reset 判定同一把锁）：`size = messages.size()`。**gap 只判 `size > last`，不比指纹**（`messages[last-1]` 的指纹没有存储位置，F）。若 `size > last` → 先写 `session_start{projection_from = last, projection_through = size}`，再把 `messages[last, size)` 投影为合成记录**用真实文件 seq 追加**（`synthetic:true`）；合成末轮 `turn_complete.message_count = size`，`last` 前推，下次不重复。**reset**：若 `size < last`，或 `size == base.projection_through` 但 `messages[base.through-1]` 指纹不匹配 → 同锁内先写 `rewind{to_seq = 第一条 message_count > size 的轮级终止所在轮的 turn_start.seq}`（有压缩基点时只在这些基点之后的记录里找），再写 `session_start{projection_reset:true, projection_through = size, projection_fingerprint}`（它成为新 base），不再物化；接受该段可能失真。**压缩后的 reset 特例**：若 `size < compression.after_count`，说明 `.data` 比压缩后的上下文还短，reset 直接从该 compression 所在轮的 `turn_start.seq` 起跳。**预算**：单次物化 ≤ 2,000 条 messages 同步完成，超出部分记 `projection_from`/`through` 分批，首次 resume 只物化最近 2,000 条，其余在首轮结束后后台补（M1 先量实际耗时，§3.8）。
 4. **投影算法**（base 与 gap 共用 `TranscriptProjection`），**复用 live 的 USER/TOOL 分类**（G4）：
    - USER 全为 `<system-reminder>` 包裹（`AgentInterruptionHandler.isInterruptionMarker`，需提为 public）→ `notice{level:system}`，不开轮，`turn_id` 随前一轮（无则 null）；
    - USER 为 `<task-notification>` → 先关掉上一轮（补 `turn_complete`），写 `turn_start{source:"task_note", inputs:[{text}]}`，随即补 `turn_complete`（无 usage）；与普通轮同一套 id / 分页 / rewind / 计数规则（base 段 `p{hash}`，gap 段 `t{seq}`）；
@@ -359,7 +361,7 @@ reducer 规则：
 
 入库脚本用离线 LLM stub 启动真实 app-server，覆盖 13 个阶段：初始化/能力、一轮工具调用 + 审批 + 运行中 steering（records kind/seq、`turn_id`、`inputs[].client_turn_id`、steer pending/committed、`message_count == .data` 消息数、`recordPayload`、`stats`）、重启后 records/stats/turn_id 一致、删除 `.events.jsonl` 后的 `.data` 投影（`source:"projection"`、`p...` turn_id、tool/assistant/turn_complete）、投影轮 `/undo` 后 reset、失败轮 `error{terminal:true}` 与重启不重复物化、40KB 大字段外置与 `recordPayload`、旧客户端 gap 物化（synthetic/seq/一次写入/不重复）、dangling `steer{pending}` 杀进程恢复（cancelled + open turn cancelled + `.data` 不损坏）。Java `AppServerTest` 继续只测 JSON-RPC transport。
 
-脚本尚未覆盖（后续补）：`task_note` 轮（当前由 projection/recorder 单测覆盖）、batch 两条输入与 `queued` 跨轮、审批拒绝/取消/多工具交错/partial 页的引擎级组合。
+脚本尚未覆盖（后续补）：`task_note` 轮（当前由 projection/recorder 单测覆盖）、batch 两条输入与 `queued` 跨轮、审批拒绝/取消/多工具交错/partial 页的引擎级组合、压缩后重启的水位（当前由 `TranscriptRecorderTest` 覆盖）。
 
 ### 7.4 DOM 级 E2E
 

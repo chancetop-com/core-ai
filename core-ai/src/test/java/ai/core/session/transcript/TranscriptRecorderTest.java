@@ -1,5 +1,6 @@
 package ai.core.session.transcript;
 
+import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.TextChunkEvent;
 import ai.core.api.server.session.ToolResultEvent;
@@ -142,6 +143,34 @@ class TranscriptRecorderTest {
         assertFalse(result.append().stream().anyMatch(record -> record.synthetic != null));
         assertEquals(7, result.seed().inputTokens());
         store.close();
+    }
+
+    @Test
+    void keepsTurnsWhenACompletedCompressionShortenedTheConversation() {
+        var messageCount = new AtomicInteger();
+        var store = TranscriptStore.open(dir, "s10");
+        var recorder = new TranscriptRecorder(store, metadata(), messageCount::get, record -> {
+        });
+        recorder.sessionStart(List.of());
+        recorder.beginTurn(List.of(new TranscriptInput("one", List.of(), null)), "user", "model", "low");
+        messageCount.set(80);
+        recorder.completeTurn(TurnCompleteEvent.of("s10", "one"));
+        recorder.beginTurn(List.of(new TranscriptInput("two", List.of(), null)), "user", "model", "low");
+        recorder.onCompression(CompressionEvent.of("s10", 80, 8, true));
+        messageCount.set(10);
+        recorder.completeTurn(TurnCompleteEvent.of("s10", "two"));
+        recorder.close();
+
+        var messages = new ArrayList<Message>();
+        for (int i = 0; i < 10; i++) messages.add(Message.of(RoleType.USER, "m" + i));
+        var reopened = TranscriptStore.open(dir, "s10");
+        var result = new TranscriptStartup(reopened, metadata(), messages).start();
+        assertTrue(result.append().stream().noneMatch(record -> TranscriptKinds.REWIND.equals(record.kind)));
+        assertTrue(result.append().stream().noneMatch(record -> Boolean.TRUE.equals(record.bool("projection_reset"))));
+
+        for (var record : result.append()) reopened.append(record);
+        assertEquals(2, new TranscriptReader(reopened).totalTurns());
+        reopened.close();
     }
 
     @Test
