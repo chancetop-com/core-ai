@@ -13,6 +13,7 @@ import core.framework.http.HTTPResponse;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import org.junit.jupiter.api.Test;
 
@@ -37,6 +38,7 @@ import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+@SuppressFBWarnings("NAB_NEEDLESS_BOOLEAN_CONSTANT_CONVERSION")
 class GatewayProxyServiceTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final TelemetryConfig TELEMETRY = SpanTestTelemetry.INSTANCE;
@@ -129,6 +131,158 @@ class GatewayProxyServiceTest {
                 "model", "deepseek/deepseek-chat",
                 "messages", List.of(Map.of("role", "user", "content", "hi"))
         )), "user-1", null, null));
+    }
+
+    @Test
+    void routesAnthropicMessagesToChatProvider() throws Exception {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = service(provider, model("claude-on-deepseek", provider.id, "deepseek-chat", List.of("chat.completions")));
+
+        service.proxyMessages(json(Map.of(
+                "model", "claude-on-deepseek",
+                "max_tokens", 256,
+                "system", "be nice",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null);
+
+        assertEquals("https://api.deepseek.com/v1/chat/completions", service.captured.uri);
+        assertEquals("Bearer sk-test", service.captured.headers.get("Authorization"));
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("deepseek-chat", body.get("model"));
+        assertEquals(256, ((Number) body.get("max_tokens")).intValue());
+        var messages = (List<?>) body.get("messages");
+        assertEquals("system", ((Map<?, ?>) messages.getFirst()).get("role"));
+        assertEquals("be nice", ((Map<?, ?>) messages.getFirst()).get("content"));
+        assertEquals("hi", ((Map<?, ?>) messages.get(1)).get("content"));
+    }
+
+    @Test
+    void convertsChatResponseBackToAnthropicMessage() throws Exception {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = service(provider, model("claude-on-deepseek", provider.id, "deepseek-chat", List.of("chat.completions")));
+        service.response = new HTTPResponse(200, Map.of("Content-Type", "application/json"), json(Map.of(
+                "id", "chatcmpl-1",
+                "choices", List.of(Map.of(
+                        "index", 0,
+                        "message", Map.of("role", "assistant", "content", "hello"),
+                        "finish_reason", "stop")),
+                "usage", Map.of("prompt_tokens", 3, "completion_tokens", 4))));
+
+        var response = service.proxyMessages(json(Map.of(
+                "model", "claude-on-deepseek",
+                "max_tokens", 256,
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null);
+
+        var body = responseBody(response);
+        assertEquals("message", body.get("type"));
+        assertEquals("claude-on-deepseek", body.get("model"));
+        assertEquals("end_turn", body.get("stop_reason"));
+        var content = (List<?>) body.get("content");
+        assertEquals("hello", ((Map<?, ?>) content.getFirst()).get("text"));
+        var usage = (Map<?, ?>) body.get("usage");
+        assertEquals(3, ((Number) usage.get("input_tokens")).intValue());
+        assertEquals(4, ((Number) usage.get("output_tokens")).intValue());
+    }
+
+    @Test
+    void routesAnthropicMessagesToNativeProvider() throws Exception {
+        var provider = provider("Anthropic", "anthropic", "https://api.anthropic.com", "anthropic/", "claude-sonnet-4-6");
+        var service = service(provider, model("claude-sonnet", provider.id, "claude-sonnet-4-6", List.of("messages")));
+
+        service.proxyMessages(json(Map.of(
+                "model", "claude-sonnet",
+                "max_tokens", 256,
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null);
+
+        assertEquals("https://api.anthropic.com/v1/messages", service.captured.uri);
+        assertEquals("sk-test", service.captured.headers.get("x-api-key"));
+        assertEquals("2023-06-01", service.captured.headers.get("anthropic-version"));
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("claude-sonnet-4-6", body.get("model"));
+        assertEquals("hi", ((Map<?, ?>) ((List<?>) body.get("messages")).getFirst()).get("content"));
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void streamsChatUpstreamAsAnthropicEvents() {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = new CapturingStreamingGatewayProxyService();
+        service.routingEngine = routingEngine(List.of(provider),
+                List.of(model("claude-on-deepseek", provider.id, "deepseek-chat", List.of("chat.completions"))));
+        service.secretProtector = new GatewaySecretProtector("test-secret");
+        var source = mock(EventSource.class);
+        when(source.iterator()).thenReturn(List.of(
+                new EventSource.Event(null, null, "{\"id\":\"chatcmpl-1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hi\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":2,\"completion_tokens\":3}}"),
+                new EventSource.Event(null, null, "[DONE]")
+        ).iterator());
+        service.source = source;
+        var channel = mock(ai.core.sse.RawSseChannel.class);
+        var events = new CopyOnWriteArrayList<String>();
+        doAnswer(invocation -> {
+            events.add(invocation.getArgument(0) + ":" + invocation.getArgument(1));
+            return true;
+        }).when(channel).sendRawEvent(any(), any());
+
+        service.streamToChannel(json(Map.of(
+                "model", "claude-on-deepseek",
+                "stream", Boolean.TRUE,
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), GatewayEndpointType.MESSAGES, channel, "user-1", null, null);
+
+        assertTrue(events.stream().anyMatch(event -> event.startsWith("message_start:")));
+        assertTrue(events.stream().anyMatch(event -> event.startsWith("content_block_delta:")));
+        assertTrue(events.stream().anyMatch(event -> event.startsWith("message_stop:")));
+        assertTrue(events.getLast().startsWith("message_stop:"));
+    }
+
+    @Test
+    void routesCountTokensToNativeAnthropicProvider() throws Exception {
+        var provider = provider("Anthropic", "anthropic", "https://api.anthropic.com", "anthropic/", "claude-sonnet-4-6");
+        var service = service(provider, model("claude-sonnet", provider.id, "claude-sonnet-4-6", List.of("messages")));
+
+        service.countMessageTokens(json(Map.of(
+                "model", "claude-sonnet",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )));
+
+        assertEquals("https://api.anthropic.com/v1/messages/count_tokens", service.captured.uri);
+        assertEquals("sk-test", service.captured.headers.get("x-api-key"));
+    }
+
+    @Test
+    void estimatesCountTokensForChatProviders() throws Exception {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = service(provider, model("claude-on-deepseek", provider.id, "deepseek-chat", List.of("chat.completions")));
+
+        var response = service.countMessageTokens(json(Map.of(
+                "model", "claude-on-deepseek",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )));
+
+        assertNull(service.captured);
+        var body = responseBody(response);
+        assertTrue(((Number) body.get("input_tokens")).intValue() > 0);
+    }
+
+    @Test
+    void rejectsChatRequestsForNativeAnthropicModels() {
+        var provider = provider("Anthropic", "anthropic", "https://api.anthropic.com", "anthropic/", "claude-sonnet-4-6");
+        var service = service(provider, model("claude-sonnet", provider.id, "claude-sonnet-4-6", List.of("messages")));
+
+        assertThrows(BadRequestException.class, () -> service.proxyChatCompletions(json(Map.of(
+                "model", "claude-sonnet",
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null));
+    }
+
+    @SuppressFBWarnings("RFI_SET_ACCESSIBLE")
+    private Map<String, Object> responseBody(core.framework.web.Response response) throws Exception {
+        Object body = ((core.framework.internal.web.response.ResponseImpl) response).body;
+        var bytesField = body.getClass().getDeclaredField("bytes");
+        bytesField.setAccessible(true);
+        return MAPPER.readValue((byte[]) bytesField.get(body), MAP_TYPE);
     }
 
     @Test
@@ -651,12 +805,13 @@ class GatewayProxyServiceTest {
 
     private static class CapturingGatewayProxyService extends GatewayProxyService {
         HTTPRequest captured;
+        HTTPResponse response = new HTTPResponse(200, Map.of("Content-Type", "application/json"),
+                "{\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34}}".getBytes(StandardCharsets.UTF_8));
 
         @Override
         HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
             captured = request;
-            return new HTTPResponse(200, Map.of("Content-Type", "application/json"),
-                    "{\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":34}}".getBytes(StandardCharsets.UTF_8));
+            return response;
         }
     }
 

@@ -1,0 +1,26 @@
+package ai.core.server.gateway;
+
+import ai.core.server.web.auth.AuthContext;
+import ai.core.sse.RawSseChannel;
+import core.framework.inject.Inject;
+import core.framework.web.Request;
+import core.framework.web.WebContext;
+import core.framework.web.exception.BadRequestException;
+import core.framework.web.sse.Channel;
+import core.framework.web.sse.ChannelListener;
+
+public class GatewayMessagesChannelListener implements ChannelListener<GatewayMessagesSseEvent> {
+    @Inject
+    GatewayProxyService gatewayProxyService;
+    @Inject
+    WebContext webContext;
+
+    @Override
+    public void onConnect(Request request, Channel<GatewayMessagesSseEvent> channel, String lastEventId) {
+        var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
+        var userId = AuthContext.userId(webContext);
+        gatewayProxyService.streamToChannel(body, GatewayEndpointType.MESSAGES, (RawSseChannel<?>) channel,
+                userId, GatewaySupport.sessionId(request, userId, body), GatewaySupport.agentName(request));
+        channel.close();
+    }
+}

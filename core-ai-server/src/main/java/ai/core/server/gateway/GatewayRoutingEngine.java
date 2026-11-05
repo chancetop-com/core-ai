@@ -395,7 +395,7 @@ public class GatewayRoutingEngine {
 
     private String defaultModel(GatewayProviderConfig provider, GatewayEndpointType endpoint) {
         return switch (endpoint) {
-            case CHAT_COMPLETIONS -> provider.defaultChatModel;
+            case CHAT_COMPLETIONS, MESSAGES -> provider.defaultChatModel;
             case RESPONSES -> provider.defaultResponsesModel;
             case IMAGE_GENERATION, IMAGE_EDIT -> provider.defaultImageModel;
             case VIDEO_GENERATION -> provider.defaultVideoModel;
@@ -403,7 +403,15 @@ public class GatewayRoutingEngine {
     }
 
     private boolean supportsEndpoint(GatewayModelConfig model, GatewayEndpointType endpoint) {
-        return model.endpointTypes == null || model.endpointTypes.isEmpty() || model.endpointTypes.contains(endpoint.id);
+        if (model.endpointTypes == null || model.endpointTypes.isEmpty()) return true;
+        if (endpoint == GatewayEndpointType.MESSAGES) {
+            // the messages surface is an Anthropic client protocol: any chat-capable model can serve
+            // it (the proxy bridges the request to that model's chat transport), not only native
+            // anthropic models registered on the messages endpoint
+            return model.endpointTypes.contains(GatewayModelService.ENDPOINT_MESSAGES)
+                    || model.endpointTypes.contains(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
+        }
+        return model.endpointTypes.contains(endpoint.id);
     }
 
     private String resolveUpstreamModel(String requestedModel, GatewayProviderConfig provider, GatewayEndpointType endpoint) {

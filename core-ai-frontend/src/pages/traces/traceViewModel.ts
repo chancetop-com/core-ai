@@ -266,12 +266,103 @@ export function extractMessages(input?: string | null): ExtractedMessage[] {
   const parsed = tryParseJson(input);
   if (!parsed || typeof parsed !== 'object') return [];
 
-  const body = parsed as { messages?: unknown; instructions?: unknown; input?: unknown };
-  if (Array.isArray(body.messages)) return chatMessages(body.messages);
+  const body = parsed as { messages?: unknown; instructions?: unknown; input?: unknown; system?: unknown };
+  if (Array.isArray(body.messages)) {
+    // The anthropic messages protocol keeps the system prompt outside messages and describes
+    // tool traffic as typed content blocks (tool_use / tool_result).
+    if (isAnthropicRequest(body)) return anthropicMessages({ system: body.system, messages: body.messages });
+    return chatMessages(body.messages);
+  }
   // The responses endpoint describes the conversation as instructions plus typed input items
   // (message / function_call / function_call_output) instead of chat-style messages.
   if ('input' in body || 'instructions' in body) return responsesMessages(body);
   return [];
+}
+
+type AnthropicRequestBody = { system?: unknown; messages: unknown[] };
+
+function isAnthropicRequest(body: { system?: unknown; messages?: unknown }): boolean {
+  if ('system' in body) return true;
+  if (!Array.isArray(body.messages)) return false;
+  return body.messages.some(message => {
+    if (!message || typeof message !== 'object') return false;
+    const content = (message as Record<string, unknown>).content;
+    if (!Array.isArray(content)) return false;
+    return content.some(part => {
+      if (!part || typeof part !== 'object') return false;
+      const type = String((part as Record<string, unknown>).type || '');
+      return type === 'tool_use' || type === 'tool_result' || type === 'thinking';
+    });
+  });
+}
+
+function anthropicMessages(body: AnthropicRequestBody): ExtractedMessage[] {
+  const messages: ExtractedMessage[] = [];
+  const system = anthropicText(body.system);
+  if (system.trim()) messages.push({ role: 'system', content: system });
+
+  for (const item of body.messages) {
+    if (!item || typeof item !== 'object') continue;
+    const message = item as Record<string, unknown>;
+    const role = String(message.role || 'unknown');
+    if (typeof message.content === 'string') {
+      messages.push({ role, content: message.content });
+      continue;
+    }
+    if (!Array.isArray(message.content)) continue;
+
+    const texts: string[] = [];
+    const toolCalls: NonNullable<ExtractedMessage['tool_calls']> = [];
+    const flushText = () => {
+      if (!texts.length && !toolCalls.length) return;
+      const result: ExtractedMessage = { role, content: texts.join('\n') };
+      if (toolCalls.length) result.tool_calls = [...toolCalls];
+      messages.push(result);
+      texts.length = 0;
+      toolCalls.length = 0;
+    };
+
+    for (const block of message.content) {
+      if (!block || typeof block !== 'object') continue;
+      const typed = block as Record<string, unknown>;
+      const type = String(typed.type || '');
+      if (type === 'text' && typeof typed.text === 'string') {
+        texts.push(typed.text);
+      } else if (type === 'tool_use') {
+        toolCalls.push({
+          id: String(typed.id || ''),
+          function: {
+            name: String(typed.name || ''),
+            arguments: typeof typed.input === 'string' ? typed.input : JSON.stringify(typed.input ?? {}),
+          },
+        });
+      } else if (type === 'tool_result') {
+        flushText();
+        messages.push({
+          role: 'tool',
+          content: anthropicText(typed.content),
+          tool_call_id: String(typed.tool_use_id || ''),
+        });
+      } else if (type === 'image') {
+        texts.push('[image]');
+      }
+    }
+    flushText();
+  }
+  return messages;
+}
+
+function anthropicText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (!Array.isArray(value)) return '';
+  return value
+    .map(part => {
+      if (!part || typeof part !== 'object') return '';
+      const typed = part as Record<string, unknown>;
+      return typeof typed.text === 'string' ? typed.text : typed.type === 'image' ? '[image]' : '';
+    })
+    .filter(Boolean)
+    .join('\n');
 }
 
 // Replay runs the stored request through the ChatML codec, so responses-style inputs are not replayable yet.
@@ -288,6 +379,7 @@ export function extractAssistantContent(output?: string | null): ExtractedAssist
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
     if (Array.isArray(obj.output)) return responsesOutput(obj.output, output);
+    if (Array.isArray(obj.content)) return anthropicOutput(obj.content, output);
     const result: ExtractedAssistantOutput = {
       content: typeof obj.content === 'string' ? obj.content : output,
       reasoning: typeof obj.reasoning_content === 'string' ? obj.reasoning_content : undefined,
@@ -423,6 +515,34 @@ function responsesToolCall(obj: Record<string, unknown>): { id: string; function
       arguments: typeof obj.arguments === 'string' ? obj.arguments : '',
     },
   };
+}
+
+function anthropicOutput(content: unknown[], raw: string): ExtractedAssistantOutput {
+  const texts: string[] = [];
+  const reasoning: string[] = [];
+  const toolCalls: NonNullable<ExtractedAssistantOutput['tool_calls']> = [];
+  for (const item of content) {
+    if (!item || typeof item !== 'object') continue;
+    const block = item as Record<string, unknown>;
+    const type = String(block.type || '');
+    if (type === 'text' && typeof block.text === 'string') texts.push(block.text);
+    else if (type === 'thinking' && typeof block.thinking === 'string') reasoning.push(block.thinking);
+    else if (type === 'tool_use') {
+      toolCalls.push({
+        id: String(block.id || ''),
+        function: {
+          name: String(block.name || ''),
+          arguments: typeof block.input === 'string' ? block.input : JSON.stringify(block.input ?? {}),
+        },
+      });
+    }
+  }
+  const text = texts.filter(Boolean).join('\n');
+  const result: ExtractedAssistantOutput = { content: text || (toolCalls.length ? '' : raw) };
+  const reasoningText = reasoning.filter(Boolean).join('\n');
+  if (reasoningText) result.reasoning = reasoningText;
+  if (toolCalls.length > 0) result.tool_calls = toolCalls;
+  return result;
 }
 
 function responsesOutput(items: unknown[], raw: string): ExtractedAssistantOutput {

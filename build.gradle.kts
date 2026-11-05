@@ -215,6 +215,8 @@ project(":core-ai-server") {
         compileOnly("io.undertow:undertow-core:${Versions.UNDERTOW_CORE_VERSION}")
         compileOnly("com.google.auth:google-auth-library-oauth2-http:${Versions.GOOGLE_AUTH_VERSION}")
         compileOnly("com.squareup.okhttp3:okhttp:${Versions.OKHTTP_VERSION}")
+        compileOnly("com.knuddels:jtokkit:${Versions.JTOKKIT_VERSION}")
+        testCompileOnly("com.google.auth:google-auth-library-oauth2-http:${Versions.GOOGLE_AUTH_VERSION}")
         testImplementation("org.apache.commons:commons-lang3:3.12.0")
         // Redis client for distributed messaging
         implementation("redis.clients:jedis:${Versions.JEDIS_VERSION}")

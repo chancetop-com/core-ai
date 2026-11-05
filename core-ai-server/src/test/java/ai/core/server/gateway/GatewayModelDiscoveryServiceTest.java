@@ -88,6 +88,24 @@ class GatewayModelDiscoveryServiceTest {
         assertEquals("https://api.kie.ai/openai/v1/models", service.captured.uri);
     }
 
+    @Test
+    void discoversAnthropicModelsAsMessagesModels() {
+        var provider = provider("provider-1", "anthropic", "https://api.anthropic.com");
+        var service = service(provider, """
+                {"data":[{"type":"model","id":"claude-sonnet-4-6","display_name":"Claude Sonnet 4.6"}],"has_more":false}
+                """);
+
+        var response = service.discover("provider-1", "admin-1");
+
+        assertEquals(1, response.models.size());
+        assertEquals("claude-sonnet-4-6", response.models.get(0).id);
+        assertEquals("Claude Sonnet 4.6", response.models.get(0).displayName);
+        assertEquals(List.of("messages"), response.models.get(0).endpointTypes);
+        assertEquals("https://api.anthropic.com/v1/models", service.captured.uri);
+        assertEquals("sk-test", service.captured.headers.get("x-api-key"));
+        assertEquals("2023-06-01", service.captured.headers.get("anthropic-version"));
+    }
+
     @SuppressWarnings("unchecked")
     private CapturingGatewayModelDiscoveryService service(GatewayProviderConfig provider, String responseBody) {
         var service = new CapturingGatewayModelDiscoveryService(responseBody);

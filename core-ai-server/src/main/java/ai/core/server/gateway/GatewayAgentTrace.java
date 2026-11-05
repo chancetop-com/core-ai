@@ -56,7 +56,8 @@ final class GatewayAgentTrace {
                 .setAttribute(GEN_AI_SYSTEM, call.provider().type)
                 .setAttribute(GEN_AI_REQUEST_MODEL, call.upstreamModel())
                 .setAttribute(LANGFUSE_INPUT, new String(request.body(), StandardCharsets.UTF_8));
-        if (request.endpoint() == GatewayEndpointType.CHAT_COMPLETIONS || request.endpoint() == GatewayEndpointType.RESPONSES) {
+        if (request.endpoint() == GatewayEndpointType.CHAT_COMPLETIONS || request.endpoint() == GatewayEndpointType.RESPONSES
+                || request.endpoint() == GatewayEndpointType.MESSAGES) {
             spanBuilder.setAttribute(GEN_AI_OPERATION_NAME, "chat");
         }
         applyGatewayAttributes(spanBuilder, request.userId(), request.sessionId());

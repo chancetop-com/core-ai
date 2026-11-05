@@ -180,7 +180,7 @@ export default function ApiKeys() {
         </div>
 
         <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)' }}>
-          OpenAI-compatible endpoint for external tools (DS Harness, Claude Code, Codex, Dify, ...).
+          OpenAI-compatible and Anthropic-compatible endpoint for external tools (DS Harness, Claude Code, Codex, Dify, ...).
           Fill in this base URL and use your Default Key above as the API key.
         </p>
 
@@ -203,7 +203,9 @@ export default function ApiKeys() {
         </div>
 
         <div className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
-          Available models: GET <code className="font-mono">{GATEWAY_BASE_URL}/models</code>
+          OpenAI chat: POST <code className="font-mono">{GATEWAY_BASE_URL}/chat/completions</code>
+          {' · '}Anthropic: POST <code className="font-mono">{GATEWAY_BASE_URL}/messages</code>
+          {' · '}Models: GET <code className="font-mono">{GATEWAY_BASE_URL}/models</code>
         </div>
       </div>
 

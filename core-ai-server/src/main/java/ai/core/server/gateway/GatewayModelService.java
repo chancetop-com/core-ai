@@ -31,6 +31,7 @@ import static ai.core.server.gateway.GatewaySupport.trimToNull;
 public class GatewayModelService {
     static final String ENDPOINT_CHAT_COMPLETIONS = "chat.completions";
     static final String ENDPOINT_RESPONSES = "responses";
+    static final String ENDPOINT_MESSAGES = "messages";
     static final String ENDPOINT_IMAGE_GENERATION = "image.generations";
     static final String ENDPOINT_IMAGE_EDIT = "image.edits";
     static final String ENDPOINT_VIDEO_GENERATION = "video.generations";
@@ -67,27 +68,9 @@ public class GatewayModelService {
     }
 
     private static String normalizeEndpointType(String value) {
-        var normalized = endpointTypeAliases().get(value.toLowerCase(Locale.ROOT));
+        var normalized = GatewayEndpointType.fromAlias(value);
         if (normalized == null) throw new BadRequestException("unsupported endpoint type: " + value);
-        return normalized;
-    }
-
-    private static Map<String, String> endpointTypeAliases() {
-        return Map.ofEntries(
-                Map.entry("chat", ENDPOINT_CHAT_COMPLETIONS),
-                Map.entry("chat.completion", ENDPOINT_CHAT_COMPLETIONS),
-                Map.entry("chat.completions", ENDPOINT_CHAT_COMPLETIONS),
-                Map.entry("response", ENDPOINT_RESPONSES),
-                Map.entry("responses", ENDPOINT_RESPONSES),
-                Map.entry("image", ENDPOINT_IMAGE_GENERATION),
-                Map.entry("image.generation", ENDPOINT_IMAGE_GENERATION),
-                Map.entry("image.generations", ENDPOINT_IMAGE_GENERATION),
-                Map.entry("image.edit", ENDPOINT_IMAGE_EDIT),
-                Map.entry("image.edits", ENDPOINT_IMAGE_EDIT),
-                Map.entry("video", ENDPOINT_VIDEO_GENERATION),
-                Map.entry("video.generation", ENDPOINT_VIDEO_GENERATION),
-                Map.entry("video.generations", ENDPOINT_VIDEO_GENERATION)
-        );
+        return normalized.id;
     }
 
     @Inject

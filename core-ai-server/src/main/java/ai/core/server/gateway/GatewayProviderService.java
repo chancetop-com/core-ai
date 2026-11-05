@@ -209,6 +209,7 @@ public class GatewayProviderService {
 
     private String testUrl(GatewayProviderConfig entity) {
         var baseUrl = stripTrailingSlash(entity.baseUrl);
+        if ("anthropic".equals(entity.type)) return GatewaySupport.anthropicApiBaseUrl(entity) + "/models";
         if ("kie".equals(entity.type)) return GatewaySupport.kieChatBaseUrl(entity) + "/models";
         if ("azure".equals(entity.type)) {
             var version = isBlank(entity.apiVersion) ? "2024-10-21" : entity.apiVersion;
@@ -350,7 +351,8 @@ public class GatewayProviderService {
     private String normalizeType(String type) {
         var value = type.trim().toLowerCase(Locale.ROOT);
         return switch (value) {
-            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini", "kie" -> value;
+            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini", "kie", "anthropic" -> value;
+            case "claude" -> "anthropic";
             default -> throw new BadRequestException("unsupported provider type: " + type);
         };
     }
@@ -395,6 +397,7 @@ public class GatewayProviderService {
             case "qwen" -> "qwen/";
             case "openrouter" -> "openrouter/";
             case "kie" -> "kie/";
+            case "anthropic" -> "anthropic/";
             default -> null;
         };
     }

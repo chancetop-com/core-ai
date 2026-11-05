@@ -67,6 +67,21 @@ class GatewayProviderServiceTest {
     }
 
     @Test
+    void createAcceptsAnthropicTypeAndDerivesPrefix() {
+        var service = serviceWithUser(admin("admin-1"));
+        var request = new GatewayProviderRequest();
+        request.name = "Anthropic";
+        request.type = "claude";
+        request.baseUrl = "https://api.anthropic.com";
+        request.apiKey = "sk-ant-test";
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("anthropic", view.type);
+        assertEquals("anthropic/", view.modelPrefix);
+    }
+
+    @Test
     void updateKeepsExistingApiKeyWhenBlank() {
         var service = serviceWithUser(admin("admin-1"));
         var existing = new GatewayProviderConfig();

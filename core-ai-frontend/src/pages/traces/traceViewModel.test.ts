@@ -64,6 +64,58 @@ describe('trace span payload extraction', () => {
       .toEqual([{ role: 'user', content: 'hi' }]);
   });
 
+  it('extracts anthropic messages with tool blocks', () => {
+    const messages = extractMessages(JSON.stringify({
+      system: [{ type: 'text', text: 'be brief' }],
+      messages: [
+        { role: 'user', content: [{ type: 'text', text: 'read a' }] },
+        {
+          role: 'assistant',
+          content: [
+            { type: 'text', text: 'reading' },
+            { type: 'tool_use', id: 'toolu_1', name: 'read_file', input: { path: 'a.txt' } },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'toolu_1', content: [{ type: 'text', text: 'file content' }] },
+            { type: 'text', text: 'continue' },
+          ],
+        },
+      ],
+    }));
+
+    expect(messages).toEqual([
+      { role: 'system', content: 'be brief' },
+      { role: 'user', content: 'read a' },
+      {
+        role: 'assistant',
+        content: 'reading',
+        tool_calls: [{ id: 'toolu_1', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } }],
+      },
+      { role: 'tool', content: 'file content', tool_call_id: 'toolu_1' },
+      { role: 'user', content: 'continue' },
+    ]);
+  });
+
+  it('extracts an anthropic message output with thinking and tool_use blocks', () => {
+    const output = extractAssistantContent(JSON.stringify({
+      type: 'message',
+      content: [
+        { type: 'thinking', thinking: 'checked the repo' },
+        { type: 'text', text: 'done' },
+        { type: 'tool_use', id: 'toolu_1', name: 'read_file', input: { path: 'a.txt' } },
+      ],
+    }));
+
+    expect(output).toEqual({
+      content: 'done',
+      reasoning: 'checked the repo',
+      tool_calls: [{ id: 'toolu_1', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } }],
+    });
+  });
+
   it('returns no messages for payloads without a conversation', () => {
     expect(extractMessages(JSON.stringify({ model: 'gpt-5', tools: [] }))).toEqual([]);
     expect(extractMessages('not json')).toEqual([]);

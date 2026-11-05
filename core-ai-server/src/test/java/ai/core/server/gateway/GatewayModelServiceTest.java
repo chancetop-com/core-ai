@@ -423,6 +423,45 @@ class GatewayModelServiceTest {
         assertEquals("gemini-video", view.modelId);
     }
 
+    @Test
+    void acceptsAnthropicMessagesEndpoint() {
+        var provider = anthropicProvider();
+        var service = serviceWithUser(admin("admin-1"), provider);
+        var request = new GatewayModelRequest();
+        request.modelId = "claude-sonnet";
+        request.providerId = "anthropic";
+        request.upstreamModel = "claude-sonnet-4-6";
+        request.endpointTypes = List.of("message");
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("claude-sonnet", view.modelId);
+        assertEquals(List.of("messages"), view.endpointTypes);
+    }
+
+    @Test
+    void rejectsAnthropicChatEndpoint() {
+        var service = serviceWithUser(admin("admin-1"), anthropicProvider());
+        var request = new GatewayModelRequest();
+        request.modelId = "claude-chat";
+        request.providerId = "anthropic";
+        request.upstreamModel = "claude-sonnet-4-6";
+        request.endpointTypes = List.of("chat.completions");
+
+        var exception = assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+        assertTrue(exception.getMessage().contains("messages"));
+    }
+
+    private GatewayProviderConfig anthropicProvider() {
+        var provider = new GatewayProviderConfig();
+        provider.id = "anthropic";
+        provider.name = "anthropic";
+        provider.type = "anthropic";
+        provider.baseUrl = "https://api.anthropic.com";
+        provider.enabled = Boolean.TRUE;
+        return provider;
+    }
+
     private GatewayProviderConfig vertexGeminiProvider() {
         var provider = new GatewayProviderConfig();
         provider.id = "google";

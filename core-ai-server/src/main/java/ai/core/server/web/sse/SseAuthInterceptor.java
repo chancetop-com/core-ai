@@ -45,13 +45,19 @@ public class SseAuthInterceptor implements SseChannelInterceptor {
             SubUserDelegationResolver.rejectHeaderIfPresent(request);
             webContext.put(AuthContext.USER_ID_KEY, identity.userId);
         } else {
-            var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
+            var gatewayAuthorization = request.path().startsWith("/api/gateway/")
+                    ? RequestAuthenticator.apiKeyAuthorization(request) : null;
+            var apiKeyResult = gatewayAuthorization == null
+                    ? requestAuthenticator.authenticateFromApiKeyRecord(request)
+                    : requestAuthenticator.authenticateFromApiKeyRecord(request, gatewayAuthorization);
             if (apiKeyResult != null) {
                 SubUserDelegationResolver.requireDelegableSurface(request.path(), request);
                 SubUserDelegationResolver.apply(webContext, delegationResolver.resolve(request, apiKeyResult));
             } else {
                 SubUserDelegationResolver.rejectHeaderIfPresent(request);
-                var userId = requestAuthenticator.authenticate(request);
+                var userId = gatewayAuthorization == null
+                        ? requestAuthenticator.authenticate(request)
+                        : requestAuthenticator.authenticate(request, gatewayAuthorization);
                 webContext.put(AuthContext.USER_ID_KEY, userId);
             }
         }

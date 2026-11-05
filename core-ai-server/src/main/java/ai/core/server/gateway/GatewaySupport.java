@@ -27,6 +27,7 @@ final class GatewaySupport {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewaySupport.class);
     static final long DEFAULT_TIMEOUT_SECONDS = 120;
     static final int MAX_SYNTHESIZED_TOOL_CALLS = 20;
+    static final String DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
 
     // Per-conversation session headers sent by LLM CLI terminals (Claude Code, Codex, ...) and by the
     // protocol-converting proxies in front of them (cc-switch, routatic-proxy); extend this table when
@@ -74,7 +75,8 @@ final class GatewaySupport {
         var fingerprint = new TreeMap<String, Object>();
         fingerprint.put("version", 1);
         fingerprint.put("userId", userId == null ? "" : userId);
-        fingerprint.put("instructions", request.get("instructions"));
+        // responses bodies carry the system prompt as instructions, anthropic bodies as system
+        fingerprint.put("instructions", request.get("instructions") != null ? request.get("instructions") : request.get("system"));
         fingerprint.put("opening", canonicalize(opening));
         try {
             return SessionIds.derivedFrom(sha256Hex(GatewayJson.MAPPER.writeValueAsString(fingerprint)).substring(0, 32));
@@ -146,6 +148,7 @@ final class GatewaySupport {
     static List<GatewayToolCall> parseToolCalls(Map<String, Object> body, int maxCalls) {
         var messages = body.get("messages");
         if (!(messages instanceof List<?> messageList) || messageList.isEmpty()) return List.of();
+        if (isAnthropicMessagesBody(body, messageList)) return parseAnthropicToolCalls(messageList, maxCalls);
         var calls = new LinkedHashMap<String, String[]>();
         var results = new ArrayList<GatewayToolCall>();
         for (var item : messageList) {
@@ -160,6 +163,64 @@ final class GatewaySupport {
         }
         if (results.size() <= maxCalls) return results;
         return new ArrayList<>(results.subList(results.size() - maxCalls, results.size()));
+    }
+
+    // Anthropic bodies put the system prompt outside messages and describe tool traffic as typed
+    // content blocks (tool_use in the assistant turn, tool_result in the next user turn).
+    private static boolean isAnthropicMessagesBody(Map<String, Object> body, List<?> messages) {
+        for (var item : messages) {
+            if (!(item instanceof Map<?, ?> message)) continue;
+            if ("tool".equals(string(message.get("role"))) || message.get("tool_calls") != null) return false;
+        }
+        if (body.get("system") != null) return true;
+        for (var item : messages) {
+            if (!(item instanceof Map<?, ?> message) || !(message.get("content") instanceof List<?> blocks)) continue;
+            for (var block : blocks) {
+                if (block instanceof Map<?, ?> blockMap) {
+                    var type = string(blockMap.get("type"));
+                    if ("tool_use".equals(type) || "tool_result".equals(type)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static List<GatewayToolCall> parseAnthropicToolCalls(List<?> messageList, int maxCalls) {
+        var calls = new LinkedHashMap<String, String[]>();
+        var results = new ArrayList<GatewayToolCall>();
+        for (var item : messageList) {
+            if (!(item instanceof Map<?, ?> message) || !(message.get("content") instanceof List<?> blocks)) continue;
+            var assistant = "assistant".equals(string(message.get("role")));
+            for (var block : blocks) {
+                if (!(block instanceof Map<?, ?> blockMap)) continue;
+                var type = string(blockMap.get("type"));
+                if (assistant && "tool_use".equals(type)) {
+                    var id = string(blockMap.get("id"));
+                    var name = string(blockMap.get("name"));
+                    if (hasText(id) && hasText(name)) calls.put(id, new String[]{name, jsonText(blockMap.get("input"))});
+                } else if (!assistant && "tool_result".equals(type)) {
+                    var id = string(blockMap.get("tool_use_id"));
+                    if (!hasText(id)) continue;
+                    var definition = calls.remove(id);
+                    if (definition == null) continue;
+                    results.add(new GatewayToolCall(id, definition[0], definition[1], contentText(blockMap.get("content"))));
+                }
+            }
+        }
+        if (results.size() <= maxCalls) return results;
+        return new ArrayList<>(results.subList(results.size() - maxCalls, results.size()));
+    }
+
+    // tool_use.input is a JSON object, while the span model stores tool arguments as JSON text
+    static String jsonText(Object value) {
+        if (value == null) return null;
+        if (value instanceof String text) return text;
+        try {
+            return GatewayJson.MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException e) {
+            LOGGER.debug("tool input is not serializable", e);
+            return null;
+        }
     }
 
     // message content arrives either as a plain string or as OpenAI content parts
@@ -251,6 +312,18 @@ final class GatewaySupport {
         return baseUrl.endsWith("/openai") ? baseUrl : baseUrl + "/openai";
     }
 
+    // Anthropic names its API root /v1; a baseUrl that already ends there (including a relay's
+    // /anthropic/v1 style path) is used as-is so custom gateways can keep their own layout.
+    static String anthropicApiBaseUrl(GatewayProviderConfig provider) {
+        if (isBlank(provider.baseUrl)) throw new BadRequestException("anthropic provider requires a baseUrl: " + provider.name);
+        var baseUrl = stripTrailingSlash(provider.baseUrl);
+        return baseUrl.endsWith("/v1") ? baseUrl : baseUrl + "/v1";
+    }
+
+    static String anthropicVersion(GatewayProviderConfig provider) {
+        return hasText(provider.apiVersion) ? provider.apiVersion : DEFAULT_ANTHROPIC_VERSION;
+    }
+
     // KIE serves chat models over the OpenAI protocol under the /openai/v1 prefix
     // (GET /openai/v1/models, POST /openai/v1/chat/completions|responses). A baseUrl that already
     // names a /v1 root (e.g. https://api.kie.ai/codex/v1) is used as-is, so a provider can also be
@@ -262,7 +335,19 @@ final class GatewaySupport {
     }
 
     static void validateProviderEndpointCompatibility(GatewayProviderConfig provider, List<String> endpointTypes) {
-        if (endpointTypes == null || endpointTypes.isEmpty() || !"gemini".equals(provider.type)) return;
+        if (endpointTypes == null || endpointTypes.isEmpty()) return;
+        if ("anthropic".equals(provider.type)) {
+            // the gateway bridges anthropic clients onto chat providers, not the other way round:
+            // an anthropic upstream is only addressable through the messages surface
+            for (var endpointType : endpointTypes) {
+                if (!GatewayModelService.ENDPOINT_MESSAGES.equals(endpointType)) {
+                    throw new BadRequestException("anthropic provider supports the messages endpoint only, provider="
+                            + provider.name + ", endpoint=" + endpointType);
+                }
+            }
+            return;
+        }
+        if (!"gemini".equals(provider.type)) return;
         if (endpointTypes.contains(GatewayModelService.ENDPOINT_RESPONSES)) {
             throw new BadRequestException("gemini provider does not support the responses endpoint, provider=" + provider.name);
         }
@@ -280,6 +365,12 @@ final class GatewaySupport {
     }
 
     static void applyAuth(GatewayProviderConfig provider, HTTPRequest request, String apiKey) {
+        if ("anthropic".equals(provider.type)) {
+            // the version header is mandatory for every anthropic call, even when the relay needs no key
+            request.headers.put("anthropic-version", anthropicVersion(provider));
+            if (!isBlank(apiKey)) request.headers.put("x-api-key", apiKey);
+            return;
+        }
         if (isBlank(apiKey)) return;
         if ("azure".equals(provider.type)) {
             request.headers.put("api-key", apiKey);
@@ -290,18 +381,26 @@ final class GatewaySupport {
         }
     }
 
-    // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses uses input_tokens/output_tokens
+    // OpenAI chat/completions uses prompt_tokens/completion_tokens, responses and anthropic use
+    // input_tokens/output_tokens; anthropic streams report the prompt usage inside message.usage
     static GatewayUsage parseUsage(Map<String, Object> body) {
         if (body == null) return null;
-        var usage = body.get("usage") instanceof Map<?, ?> direct ? direct : nestedResponseUsage(body);
+        var usage = body.get("usage") instanceof Map<?, ?> direct ? direct : nestedUsage(body);
         if (usage == null) return null;
         long input = number(usage.get("prompt_tokens"), usage.get("input_tokens"));
         long output = number(usage.get("completion_tokens"), usage.get("output_tokens"));
         if (input == 0 && output == 0) return null;
-        Object cached = usage.get("cached_tokens");
+        Object cached = usage.get("cache_read_input_tokens");
+        if (cached == null) cached = usage.get("cached_tokens");
         if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
         if (cached == null) cached = detailValue(usage, "input_tokens_details");
         return new GatewayUsage(input, output, number(cached, null));
+    }
+
+    private static Map<?, ?> nestedUsage(Map<String, Object> body) {
+        // anthropic message_start: {"type":"message_start","message":{"usage":{...}}}
+        if (body.get("message") instanceof Map<?, ?> message && message.get("usage") instanceof Map<?, ?> usage) return usage;
+        return nestedResponseUsage(body);
     }
 
     // a streaming responses payload reports the usage inside the terminal response.completed event
@@ -318,6 +417,15 @@ final class GatewaySupport {
 
     private static Object detailValue(Map<?, ?> usage, String detailsKey) {
         return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get("cached_tokens") : null;
+    }
+
+    static void mergeExtraBody(Map<String, Object> body, String extraBody) {
+        if (!hasText(extraBody)) return;
+        try {
+            body.putAll(GatewayJson.MAPPER.readValue(extraBody, MAP_TYPE));
+        } catch (Exception e) {
+            throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage(), "BAD_REQUEST", e);
+        }
     }
 
     static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {

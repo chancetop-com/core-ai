@@ -12,6 +12,7 @@ const PROVIDER_TYPES = [
   { value: 'openai-compatible', label: 'OpenAI Compatible', baseUrl: '', prefix: '' },
   { value: 'gemini', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', prefix: 'google/' },
   { value: 'kie', label: 'KIE', baseUrl: 'https://api.kie.ai', prefix: 'kie/' },
+  { value: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', prefix: 'anthropic/' },
 ];
 
 const MEDIA_PROTOCOLS = [
@@ -34,6 +35,7 @@ const GOOGLE_AUTH_TYPES = [
 const ENDPOINT_TYPES = [
   { value: 'chat.completions', label: 'Chat' },
   { value: 'responses', label: 'Responses' },
+  { value: 'messages', label: 'Messages (Anthropic)' },
   { value: 'image.generations', label: 'Image Generation' },
   { value: 'image.edits', label: 'Image Edit' },
   { value: 'video.generations', label: 'Video' },

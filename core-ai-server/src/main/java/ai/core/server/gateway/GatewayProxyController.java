@@ -27,6 +27,16 @@ public class GatewayProxyController {
         return gatewayProxyService.proxyResponses(requestBody, userId, GatewaySupport.sessionId(request, userId, requestBody), GatewaySupport.agentName(request));
     }
 
+    public Response messages(Request request) {
+        var requestBody = body(request);
+        var userId = currentUserId();
+        return gatewayProxyService.proxyMessages(requestBody, userId, GatewaySupport.sessionId(request, userId, requestBody), GatewaySupport.agentName(request));
+    }
+
+    public Response messageCountTokens(Request request) {
+        return gatewayProxyService.countMessageTokens(body(request));
+    }
+
     public Response models(Request request) {
         return gatewayProxyService.models();
     }

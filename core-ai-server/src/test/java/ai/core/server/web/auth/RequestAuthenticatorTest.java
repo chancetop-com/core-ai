@@ -13,6 +13,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -20,6 +21,24 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class RequestAuthenticatorTest {
+    @Test
+    void apiKeyAuthorizationMapsAnthropicHeaderToBearer() {
+        var request = mock(Request.class);
+        when(request.header("Authorization")).thenReturn(Optional.empty());
+        when(request.header("x-api-key")).thenReturn(Optional.of(" coreai_gateway_key "));
+
+        assertEquals("Bearer coreai_gateway_key", RequestAuthenticator.apiKeyAuthorization(request));
+    }
+
+    @Test
+    void apiKeyAuthorizationNeverOverridesAnExistingAuthorizationHeader() {
+        var request = mock(Request.class);
+        when(request.header("Authorization")).thenReturn(Optional.of("Bearer coreai_session_key"));
+        when(request.header("x-api-key")).thenReturn(Optional.of("coreai_gateway_key"));
+
+        assertNull(RequestAuthenticator.apiKeyAuthorization(request));
+    }
+
     @Test
     @SuppressWarnings("unchecked")
     void legacyApiKeyLookupMatchesStringOnlyPartialIndex() {

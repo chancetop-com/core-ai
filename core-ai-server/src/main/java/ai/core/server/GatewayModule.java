@@ -14,6 +14,8 @@ import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayImageController;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
+import ai.core.server.gateway.GatewayMessagesChannelListener;
+import ai.core.server.gateway.GatewayMessagesSseEvent;
 import ai.core.server.gateway.GatewayModalityRegistry;
 import ai.core.server.gateway.GatewayModelDiscoveryService;
 import ai.core.server.gateway.GatewayModelService;
@@ -144,6 +146,8 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.GET, "/api/gateway/v1/models", gatewayProxyController::models);
         http().route(HTTPMethod.POST, "/api/gateway/v1/chat/completions", gatewayProxyController::chatCompletions);
         http().route(HTTPMethod.POST, "/api/gateway/v1/responses", gatewayProxyController::responses);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/messages", gatewayProxyController::messages);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/messages/count_tokens", gatewayProxyController::messageCountTokens);
         http().route(HTTPMethod.POST, "/api/gateway/v1/images/generations", gatewayImageController::generate);
         http().route(HTTPMethod.POST, "/api/gateway/v1/images/edits", gatewayImageController::edit);
         http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayVideoController::generate);
@@ -154,5 +158,7 @@ public class GatewayModule extends Module {
                 bind(GatewayChatCompletionsChannelListener.class), true);
         registry.register(HTTPMethod.POST, "/api/gateway/v1/responses", GatewayResponsesSseEvent.class,
                 bind(GatewayResponsesChannelListener.class), true);
+        registry.register(HTTPMethod.POST, "/api/gateway/v1/messages", GatewayMessagesSseEvent.class,
+                bind(GatewayMessagesChannelListener.class), true);
     }
 }

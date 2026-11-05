@@ -151,6 +151,26 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void messagesEndpointRoutesBothChatAndMessagesModels() {
+        var chat = model("deepseek-chat", false, 100);
+        var messages = model("claude-sonnet", false, 200);
+        messages.endpointTypes = List.of("messages");
+        var engine = engine(List.of(chat, messages));
+
+        assertEquals("deepseek-chat", engine.route("deepseek-chat", GatewayEndpointType.MESSAGES).upstreamModel());
+        assertEquals("claude-sonnet", engine.route("claude-sonnet", GatewayEndpointType.MESSAGES).upstreamModel());
+    }
+
+    @Test
+    void messagesEndpointRejectsResponsesOnlyModels() {
+        var responsesOnly = model("gpt-6.1-sol", false, 100);
+        responsesOnly.endpointTypes = List.of("responses");
+        var engine = engine(List.of(responsesOnly));
+
+        assertThrows(BadRequestException.class, () -> engine.route("gpt-6.1-sol", GatewayEndpointType.MESSAGES));
+    }
+
+    @Test
     void fallbackModelsPreserveConfiguredOrderAndDropDuplicates() {
         var primary = model("deepseek", false, 100);
         primary.fallbackModelIds = List.of("gpt-6", "deepseek", "gemini", "gpt-6", "missing");

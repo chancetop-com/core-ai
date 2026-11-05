@@ -103,8 +103,12 @@ public class AuthInterceptor implements Interceptor {
             return invocation.proceed();
         }
 
-        // 2. bearer api key fallback (CLI / api users / non-cookie clients)
-        var apiKeyResult = requestAuthenticator.authenticateFromApiKeyRecord(request);
+        // 2. bearer api key fallback (CLI / api users / non-cookie clients); gateway routes also
+        // accept the Anthropic protocol's x-api-key header as that bearer credential
+        var gatewayAuthorization = path.startsWith("/api/gateway/") ? RequestAuthenticator.apiKeyAuthorization(request) : null;
+        var apiKeyResult = gatewayAuthorization == null
+                ? requestAuthenticator.authenticateFromApiKeyRecord(request)
+                : requestAuthenticator.authenticateFromApiKeyRecord(request, gatewayAuthorization);
         if (apiKeyResult != null) {
             // X-Subuser-Id switches the effective identity to the declared sub user: ownership,
             // quota, permissions and traces all follow the sub user; without it the key owner is used
@@ -112,7 +116,9 @@ public class AuthInterceptor implements Interceptor {
             SubUserDelegationResolver.apply(invocation.context(), delegationResolver.resolve(request, apiKeyResult));
         } else {
             SubUserDelegationResolver.rejectHeaderIfPresent(request);
-            var userId = requestAuthenticator.authenticate(request);
+            var userId = gatewayAuthorization == null
+                    ? requestAuthenticator.authenticate(request)
+                    : requestAuthenticator.authenticate(request, gatewayAuthorization);
             invocation.context().put(AuthContext.USER_ID_KEY, userId);
             // 3. persist identity into session for internal users so subsequent requests skip key lookup
             var user = userCollection.get(userId).orElse(null);

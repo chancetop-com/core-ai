@@ -41,6 +41,19 @@ public class RequestAuthenticator {
         return auth.isPresent() && auth.get().startsWith("Bearer " + SessionTokenCodec.PREFIX);
     }
 
+    /**
+     * x-api-key is the Anthropic protocol's credential header. Gateway routes accept it as a bearer
+     * equivalent so Anthropic clients (Claude Code with ANTHROPIC_API_KEY) authenticate unchanged;
+     * a request that already carries Authorization keeps that credential.
+     */
+    public static String apiKeyAuthorization(Request request) {
+        var auth = request.header("Authorization");
+        if (auth.isPresent() && !auth.get().isBlank()) return null;
+        var apiKey = request.header("x-api-key").orElse(null);
+        if (apiKey == null || apiKey.isBlank()) return null;
+        return "Bearer " + apiKey.trim();
+    }
+
     @Inject
     MongoCollection<User> userCollection;
     @Inject
@@ -49,9 +62,13 @@ public class RequestAuthenticator {
     SessionTokenService sessionTokenService;
 
     public String authenticate(Request request) {
+        return authenticate(request, null);
+    }
+
+    public String authenticate(Request request, String authorization) {
         var userId = authenticateFromAzureAD(request);
         if (userId == null) {
-            userId = authenticateFromApiKey(request);
+            userId = authenticateFromApiKey(request, authorization);
         }
         if (userId == null) {
             throw new UnauthorizedException("authentication required");
@@ -64,9 +81,12 @@ public class RequestAuthenticator {
      * The caller (AuthInterceptor) decides whether the key scope is acceptable for the requested path.
      */
     public AuthResult authenticateFromApiKeyRecord(Request request) {
-        var auth = request.header("Authorization");
-        if (auth.isEmpty()) return null;
-        var value = auth.get();
+        return authenticateFromApiKeyRecord(request, null);
+    }
+
+    public AuthResult authenticateFromApiKeyRecord(Request request, String authorization) {
+        var value = authorization != null ? authorization : request.header("Authorization").orElse(null);
+        if (value == null) return null;
         if (!value.startsWith("Bearer ctk_") && !value.startsWith("Bearer cmk_")) return null;
 
         var key = value.substring(7);
@@ -119,11 +139,10 @@ public class RequestAuthenticator {
         return userId;
     }
 
-    private String authenticateFromApiKey(Request request) {
-        var auth = request.header("Authorization");
-        if (auth.isEmpty()) return null;
+    private String authenticateFromApiKey(Request request, String authorization) {
+        var value = authorization != null ? authorization : request.header("Authorization").orElse(null);
+        if (value == null) return null;
 
-        var value = auth.get();
         if (!value.startsWith("Bearer coreai_") && !value.startsWith("Bearer cai_")) return null;
 
         var apiKey = value.substring(7);

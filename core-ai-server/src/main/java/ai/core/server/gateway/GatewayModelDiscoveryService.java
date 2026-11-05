@@ -77,11 +77,15 @@ public class GatewayModelDiscoveryService {
             models.addAll(fetch(provider, modelsUrl(provider)));
         }
         var kie = "kie".equals(provider.type);
+        var anthropic = "anthropic".equals(provider.type);
         return models.stream()
                 // KIE's OpenAI listing is the Responses protocol surface (the same one Codex CLI
                 // appends /responses to); its chat-only models are served on per-model paths and
                 // are registered by hand instead
-                .map(model -> kie ? withEndpointTypes(model, List.of(GatewayModelService.ENDPOINT_RESPONSES)) : model)
+                // Anthropic's /v1/models rows carry no mode, so they are messages-surface models
+                .map(model -> kie ? withEndpointTypes(model, List.of(GatewayModelService.ENDPOINT_RESPONSES))
+                        : anthropic ? withEndpointTypes(model, List.of(GatewayModelService.ENDPOINT_MESSAGES))
+                        : model)
                 .map(GatewayModelCatalog::enrich)
                 .filter(model -> model.id() != null && !model.id().isBlank())
                 .collect(Collectors.collectingAndThen(
@@ -235,6 +239,7 @@ public class GatewayModelDiscoveryService {
 
     private String modelsUrl(GatewayProviderConfig provider) {
         var baseUrl = stripTrailingSlash(provider.baseUrl);
+        if ("anthropic".equals(provider.type)) return GatewaySupport.anthropicApiBaseUrl(provider) + "/models";
         if ("kie".equals(provider.type)) return GatewaySupport.kieChatBaseUrl(provider) + "/models";
         if ("azure".equals(provider.type)) {
             // azure provider baseUrl typically ends with /openai/v1 (the chat API root),

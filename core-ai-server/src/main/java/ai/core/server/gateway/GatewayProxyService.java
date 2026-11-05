@@ -5,7 +5,6 @@ import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
 import ai.core.sse.RawSseChannel;
 import ai.core.telemetry.TelemetryConfig;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.http.EventSource;
@@ -16,7 +15,6 @@ import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
-import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.StatusCode;
 import org.slf4j.Logger;
@@ -25,7 +23,6 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 
 import static ai.core.server.gateway.GatewaySupport.DEFAULT_TIMEOUT_SECONDS;
@@ -42,12 +39,6 @@ public class GatewayProxyService {
             .connectTimeout(Duration.ofSeconds(10))
             .timeout(Duration.ofMinutes(10))
             .build();
-    private static final AttributeKey<String> LANGFUSE_OUTPUT = AttributeKey.stringKey("langfuse.observation.output");
-    private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
-    private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
-    private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
-    // cap the span output so a very long streaming response cannot inflate the stored span
-    private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -64,6 +55,33 @@ public class GatewayProxyService {
 
     public Response proxyResponses(byte[] body, String userId, String sessionId, String agentName) {
         return proxy(body, GatewayEndpointType.RESPONSES, MediaJobOwner.UNKNOWN, userId, sessionId, agentName);
+    }
+
+    public Response proxyMessages(byte[] body, String userId, String sessionId, String agentName) {
+        return proxy(body, GatewayEndpointType.MESSAGES, MediaJobOwner.UNKNOWN, userId, sessionId, agentName);
+    }
+
+    /**
+     * Anthropic's token counting surface. Native anthropic providers answer it themselves; for chat
+     * providers the gateway estimates locally because the OpenAI protocol has no equivalent call.
+     */
+    public Response countMessageTokens(byte[] body) {
+        var requestBody = parseBody(body);
+        var selection = routingEngine.route(string(requestBody.get("model")), GatewayEndpointType.MESSAGES);
+        var provider = selection.provider();
+        if (!AnthropicMessagesBridge.isProvider(provider)) {
+            return jsonResponse(Map.of("input_tokens", AnthropicTokenEstimator.estimate(requestBody)));
+        }
+        var outgoingBody = new LinkedHashMap<>(requestBody);
+        outgoingBody.put("model", selection.upstreamModel());
+        var url = GatewaySupport.anthropicApiBaseUrl(provider) + GatewayEndpointType.MESSAGES.path + "/count_tokens";
+        GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
+        var upstreamRequest = new HTTPRequest(HTTPMethod.POST, url);
+        upstreamRequest.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        GatewaySupport.applyAuth(provider, upstreamRequest, apiKey(provider));
+        applyTimeouts(provider, upstreamRequest);
+        upstreamRequest.body(writeJson(outgoingBody), ContentType.APPLICATION_JSON);
+        return response(execute(upstreamRequest, provider));
     }
 
     public Response proxyVideoGenerations(byte[] body, MediaJobOwner owner) {
@@ -116,18 +134,32 @@ public class GatewayProxyService {
         var spans = GatewayAgentTrace.startSpans(telemetryConfig, call, traceRequest);
         var span = spans.llm();
         GatewayAgentTrace.synthesizeToolSpans(telemetryConfig, traceRequest, span);
+        var bridge = AnthropicMessagesBridge.active(endpoint, call.provider());
         try {
             if (!call.stream()) {
                 var upstream = execute(call.request(), call.provider());
-                recordUsage(span, upstream.body);
-                span.setAttribute(LANGFUSE_OUTPUT, new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
-                markUpstreamStatus(span, upstream.statusCode);
-                channel.sendRawData(new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
+                GatewayProxyTrace.recordUsage(span, upstream.body);
+                var outbound = bridge ? AnthropicMessagesBridge.responseBody(upstream, call.requestedModel()) : upstream.body;
+                var outboundText = new String(outbound == null ? new byte[0] : outbound, StandardCharsets.UTF_8);
+                GatewayProxyTrace.output(span, outboundText);
+                GatewayProxyTrace.markUpstreamStatus(span, upstream.statusCode);
+                if (bridge && upstream.statusCode >= 400) {
+                    // the SSE route is already committed as 200; report the failure with the protocol's
+                    // own error event so the Anthropic client can parse it
+                    channel.sendRawEvent("error", outboundText);
+                } else {
+                    channel.sendRawData(outboundText);
+                }
                 return;
             }
-            streamEvents(call, channel, span);
+            if (bridge) {
+                streamAnthropicEvents(call, channel, span);
+            } else {
+                streamEvents(call, channel, span);
+            }
             span.setStatus(StatusCode.OK);
         } catch (RuntimeException e) {
+            if (bridge) AnthropicMessagesBridge.sendStreamError(channel, e);
             span.setStatus(StatusCode.ERROR, e.getMessage());
             spans.root().setStatus(StatusCode.ERROR, e.getMessage());
             LOGGER.error("gateway {} upstream request failed, uri={}", endpoint.path, call.request().uri, e);
@@ -137,17 +169,36 @@ public class GatewayProxyService {
         }
     }
 
+    private void streamAnthropicEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
+        var translator = new AnthropicMessagesStream(call.requestedModel());
+        var output = new StringBuilder();
+        try (var source = sse(call.request(), call.provider())) {
+            for (var event : source) {
+                GatewayProxyTrace.recordStreamUsage(span, event.data());
+                GatewayProxyTrace.appendStreamOutput(output, event.data());
+                for (var translated : translator.onEvent(event.type(), event.data())) {
+                    channel.sendRawEvent(translated.event(), translated.data());
+                }
+                if ("[DONE]".equals(event.data())) break;
+            }
+        }
+        for (var translated : translator.finish()) {
+            channel.sendRawEvent(translated.event(), translated.data());
+        }
+        GatewayProxyTrace.output(span, output.toString());
+    }
+
     private void streamEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
         var output = new StringBuilder();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 channel.sendRawEvent(event.type(), event.data());
-                recordStreamUsage(span, event.data());
-                appendStreamOutput(output, event.data());
+                GatewayProxyTrace.recordStreamUsage(span, event.data());
+                GatewayProxyTrace.appendStreamOutput(output, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
-        if (output.length() > 0) span.setAttribute(LANGFUSE_OUTPUT, output.toString());
+        GatewayProxyTrace.output(span, output.toString());
     }
 
     private Response proxy(byte[] body, GatewayEndpointType endpoint, MediaJobOwner owner, String userId, String sessionId, String agentName) {
@@ -155,23 +206,26 @@ public class GatewayProxyService {
         if (endpoint == GatewayEndpointType.VIDEO_GENERATION && call.stream()) {
             throw new BadRequestException("streaming video generation is not supported by the gateway");
         }
+        var bridge = AnthropicMessagesBridge.active(endpoint, call.provider());
         var traceRequest = new GatewayAgentTrace.TraceRequest(endpoint, userId, body, sessionId, agentName);
         var spans = GatewayAgentTrace.startSpans(telemetryConfig, call, traceRequest);
         var span = spans.llm();
         GatewayAgentTrace.synthesizeToolSpans(telemetryConfig, traceRequest, span);
         try {
             if (call.stream()) {
-                var response = bufferedStream(call, span);
+                var response = bufferedStream(call, span, endpoint);
                 span.setStatus(StatusCode.OK);
                 return response;
             }
             var upstream = execute(call.request(), call.provider());
-            recordUsage(span, upstream.body);
-            span.setAttribute(LANGFUSE_OUTPUT, new String(upstream.body == null ? new byte[0] : upstream.body, StandardCharsets.UTF_8));
-            markUpstreamStatus(span, upstream.statusCode);
+            GatewayProxyTrace.recordUsage(span, upstream.body);
+            var outbound = bridge ? AnthropicMessagesBridge.responseBody(upstream, call.requestedModel()) : upstream.body;
+            GatewayProxyTrace.output(span, new String(outbound == null ? new byte[0] : outbound, StandardCharsets.UTF_8));
+            GatewayProxyTrace.markUpstreamStatus(span, upstream.statusCode);
             if (endpoint == GatewayEndpointType.VIDEO_GENERATION && upstream.statusCode >= 200 && upstream.statusCode < 300) {
                 return gatewayVideoResponse(upstream, call, owner, videoSeconds(body), videoPrompt(body));
             }
+            if (bridge) return jsonResponse(outbound, upstream.statusCode);
             return response(upstream);
         } catch (RuntimeException e) {
             span.setStatus(StatusCode.ERROR, e.getMessage());
@@ -183,64 +237,39 @@ public class GatewayProxyService {
         }
     }
 
-    private void markUpstreamStatus(Span span, int statusCode) {
-        if (statusCode >= 400) span.setStatus(StatusCode.ERROR, "upstream returned " + statusCode);
-        else span.setStatus(StatusCode.OK);
-    }
-
-    private void recordUsage(Span span, byte[] body) {
-        if (body == null || body.length == 0) return;
-        try {
-            applyUsage(span, GatewaySupport.parseUsage(GatewayJson.MAPPER.readValue(body, GatewaySupport.MAP_TYPE)));
-        } catch (Exception e) {
-            LOGGER.debug("response body is not JSON with usage, usage stays unknown", e);
-        }
-    }
-
-    private void recordStreamUsage(Span span, String data) {
-        if (data == null || !data.contains("usage")) return;
-        try {
-            applyUsage(span, GatewaySupport.parseUsage(GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE)));
-        } catch (Exception e) {
-            LOGGER.debug("stream chunk is not a JSON usage payload", e);
-        }
-    }
-
-    private void applyUsage(Span span, GatewayUsage usage) {
-        if (usage == null) return;
-        span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, usage.inputTokens());
-        span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, usage.outputTokens());
-        if (usage.cachedTokens() > 0) span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, usage.cachedTokens());
-    }
-
     private GatewayUpstreamCall prepare(byte[] body, GatewayEndpointType endpoint) {
         var requestBody = parseBody(body);
-        var selection = routingEngine.route(string(requestBody.get("model")), endpoint);
+        var requestedModel = string(requestBody.get("model"));
+        var selection = routingEngine.route(requestedModel, endpoint);
         var provider = selection.provider();
-        var outgoingBody = new LinkedHashMap<>(requestBody);
-        mergeExtraBody(outgoingBody, provider.requestExtraBody);
-        outgoingBody.put("model", selection.upstreamModel());
-        if (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES) {
-            GatewayChatRequestNormalizer.normalize(outgoingBody, routingEngine.modelConfig(string(requestBody.get("model"))));
-        }
+        var upstreamEndpoint = AnthropicMessagesBridge.upstreamEndpoint(provider, endpoint);
+        var outgoingBody = AnthropicMessagesBridge.requestBody(requestBody, endpoint, provider, upstreamEndpoint,
+                selection.upstreamModel(), routingEngine.modelConfig(requestedModel));
 
-        var url = endpointUrl(provider, endpoint, selection.upstreamModel());
+        var url = endpointUrl(provider, upstreamEndpoint, selection.upstreamModel());
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));
         var upstreamRequest = new HTTPRequest(HTTPMethod.POST, url);
         upstreamRequest.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
         GatewaySupport.applyAuth(provider, upstreamRequest, apiKey(provider));
         applyTimeouts(provider, upstreamRequest);
         upstreamRequest.body(writeJson(outgoingBody), ContentType.APPLICATION_JSON);
-        return new GatewayUpstreamCall(upstreamRequest, provider, string(requestBody.get("model")),
+        return new GatewayUpstreamCall(upstreamRequest, provider, requestedModel != null ? requestedModel : selection.upstreamModel(),
                 selection.upstreamModel(), Boolean.TRUE.equals(requestBody.get("stream")));
     }
 
     private String endpointUrl(GatewayProviderConfig provider, GatewayEndpointType endpoint, String model) {
+        if (endpoint == GatewayEndpointType.MESSAGES) {
+            if (!AnthropicMessagesBridge.isProvider(provider)) {
+                throw new BadRequestException("messages endpoint requires an anthropic provider");
+            }
+            return GatewaySupport.anthropicApiBaseUrl(provider) + endpoint.path;
+        }
         var baseUrl = stripTrailingSlash(provider.baseUrl);
         if ("kie".equals(provider.type)
                 && (endpoint == GatewayEndpointType.CHAT_COMPLETIONS || endpoint == GatewayEndpointType.RESPONSES)) {
             return GatewaySupport.kieChatBaseUrl(provider) + endpoint.path;
         }
+        if (AnthropicMessagesBridge.isProvider(provider)) return GatewaySupport.anthropicApiBaseUrl(provider) + endpoint.path;
         if (!"azure".equals(provider.type)) return baseUrl + endpoint.path;
         // tolerate a base url that already includes the openai api path (e.g. https://xxx.openai.azure.com/openai/v1)
         if (baseUrl.endsWith("/openai/v1")) baseUrl = baseUrl.substring(0, baseUrl.length() - "/openai/v1".length());
@@ -261,71 +290,43 @@ public class GatewayProxyService {
         request.timeout = Duration.ofSeconds(valueOrDefault(provider.timeoutSeconds, DEFAULT_TIMEOUT_SECONDS));
     }
 
-    private Response bufferedStream(GatewayUpstreamCall call, Span span) {
+    private Response bufferedStream(GatewayUpstreamCall call, Span span, GatewayEndpointType endpoint) {
         var builder = new StringBuilder();
         var output = new StringBuilder();
+        var translator = AnthropicMessagesBridge.active(endpoint, call.provider())
+                ? new AnthropicMessagesStream(call.requestedModel()) : null;
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
-                appendEvent(builder, event);
-                recordStreamUsage(span, event.data());
-                appendStreamOutput(output, event.data());
+                GatewayProxyTrace.recordStreamUsage(span, event.data());
+                GatewayProxyTrace.appendStreamOutput(output, event.data());
+                if (translator == null) {
+                    appendEvent(builder, event.id(), event.type(), event.data());
+                } else {
+                    for (var translated : translator.onEvent(event.type(), event.data())) {
+                        appendEvent(builder, null, translated.event(), translated.data());
+                    }
+                }
                 if ("[DONE]".equals(event.data())) break;
             }
         }
-        if (output.length() > 0) span.setAttribute(LANGFUSE_OUTPUT, output.toString());
+        if (translator != null) {
+            for (var translated : translator.finish()) {
+                appendEvent(builder, null, translated.event(), translated.data());
+            }
+        }
+        GatewayProxyTrace.output(span, output.toString());
         return Response.bytes(builder.toString().getBytes(StandardCharsets.UTF_8)).contentType(EVENT_STREAM);
     }
 
-    private void appendEvent(StringBuilder builder, EventSource.Event event) {
-        if (hasText(event.id())) builder.append("id: ").append(event.id()).append('\n');
-        if (hasText(event.type())) builder.append("event: ").append(event.type()).append('\n');
-        if (event.data() != null) {
-            for (var line : event.data().split("\\R", -1)) {
+    private void appendEvent(StringBuilder builder, String id, String type, String data) {
+        if (hasText(id)) builder.append("id: ").append(id).append('\n');
+        if (hasText(type)) builder.append("event: ").append(type).append('\n');
+        if (data != null) {
+            for (var line : data.split("\\R", -1)) {
                 builder.append("data: ").append(line).append('\n');
             }
         }
         builder.append('\n');
-    }
-
-    // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content),
-    // the responses endpoint streams it as response.output_text.delta events; concatenate either shape so the
-    // span output holds the final assistant response instead of nothing.
-    private void appendStreamOutput(StringBuilder output, String data) {
-        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return;
-        var body = parseStreamChunk(data);
-        if (body == null) return;
-        var content = chatChunkContent(body);
-        if (content == null) content = responsesDeltaText(body);
-        if (content != null && !content.isBlank()) {
-            output.append(content);
-        }
-    }
-
-    private Map<String, Object> parseStreamChunk(String data) {
-        try {
-            return GatewayJson.MAPPER.readValue(data, GatewaySupport.MAP_TYPE);
-        } catch (JsonProcessingException e) {
-            // non-JSON chunk (e.g. keepalive), nothing to record
-            LOGGER.debug("stream chunk is not a JSON payload, skipped from span output", e);
-            return null;
-        }
-    }
-
-    private String chatChunkContent(Map<String, Object> body) {
-        if (!(body.get("choices") instanceof List<?> choices) || choices.isEmpty()) return null;
-        if (!(choices.getFirst() instanceof Map<?, ?> choice)) return null;
-        var content = contentText(choice.get("delta"));
-        return content == null ? contentText(choice.get("message")) : content;
-    }
-
-    private String responsesDeltaText(Map<String, Object> body) {
-        if (!"response.output_text.delta".equals(body.get("type"))) return null;
-        return body.get("delta") instanceof String delta ? delta : null;
-    }
-
-    private String contentText(Object value) {
-        if (!(value instanceof Map<?, ?> map)) return null;
-        return map.get("content") instanceof String text ? text : null;
     }
 
     HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
@@ -390,15 +391,6 @@ public class GatewayProxyService {
         return code >= 200 && code < 300 ? HTTPStatus.OK : HTTPStatus.BAD_GATEWAY;
     }
 
-    private void mergeExtraBody(Map<String, Object> body, String extraBody) {
-        if (!hasText(extraBody)) return;
-        try {
-            body.putAll(GatewayJson.MAPPER.readValue(extraBody, GatewaySupport.MAP_TYPE));
-        } catch (Exception e) {
-            throw new BadRequestException("invalid provider extra body JSON: " + e.getMessage(), "BAD_REQUEST", e);
-        }
-    }
-
     private Map<String, Object> parseBody(byte[] body) {
         try {
             return GatewayJson.MAPPER.readValue(body, GatewaySupport.MAP_TYPE);
@@ -409,6 +401,13 @@ public class GatewayProxyService {
 
     private Response jsonResponse(Object data) {
         return Response.bytes(writeJson(data)).contentType(ContentType.APPLICATION_JSON);
+    }
+
+    private Response jsonResponse(byte[] body, int statusCode) {
+        var response = body == null || body.length == 0 ? Response.empty() : Response.bytes(body);
+        response.status(status(statusCode));
+        response.contentType(ContentType.APPLICATION_JSON);
+        return response;
     }
 
     private byte[] writeJson(Object data) {

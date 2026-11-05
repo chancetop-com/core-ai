@@ -1,5 +1,7 @@
 package ai.core.server.gateway;
 
+import core.framework.http.HTTPMethod;
+import core.framework.http.HTTPRequest;
 import core.framework.web.Request;
 import org.junit.jupiter.api.Test;
 
@@ -131,6 +133,21 @@ class GatewaySupportTest {
     }
 
     @Test
+    void sessionIdDerivesFromAnthropicBodyAndIgnoresTheTail() {
+        var first = "{\"system\":\"sys\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+        var later = "{\"system\":\"sys\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"},"
+                + "{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"a\"}]},"
+                + "{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"b\"}]}]}";
+        var otherSystem = "{\"system\":\"other\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+        var sessionId = GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(first));
+
+        assertNotNull(sessionId);
+        assertEquals(sessionId, GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(later)));
+        assertNotEquals(sessionId, GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody(otherSystem)));
+    }
+
+    @Test
     void sessionIdReturnsNullForUnreadableBody() {
         assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", jsonBody("not json")));
         assertNull(GatewaySupport.sessionId(requestWithoutHeaders(), "u1", null));
@@ -222,6 +239,50 @@ class GatewaySupportTest {
     }
 
     @Test
+    void parseToolCallsPairsAnthropicToolBlocks() {
+        var body = Map.of(
+                "system", "sys",
+                "messages", List.of(
+                        Map.of("role", "user", "content", "run tools"),
+                        Map.of("role", "assistant", "content", List.of(
+                                Map.of("type", "text", "text", "on it"),
+                                Map.of("type", "tool_use", "id", "toolu_1", "name", "search_menu", "input", Map.of("q", "pasta")),
+                                Map.of("type", "tool_use", "id", "toolu_2", "name", "save_type", "input", Map.of()))),
+                        Map.of("role", "user", "content", List.of(
+                                Map.of("type", "tool_result", "tool_use_id", "toolu_1", "content", "[\"margherita\"]"),
+                                Map.of("type", "tool_result", "tool_use_id", "toolu_2", "content", "saved")))
+                ));
+
+        var calls = GatewaySupport.parseToolCalls(body, GatewaySupport.MAX_SYNTHESIZED_TOOL_CALLS);
+
+        assertEquals(2, calls.size());
+        assertEquals("search_menu", calls.get(0).name());
+        assertEquals("{\"q\":\"pasta\"}", calls.get(0).arguments());
+        assertEquals("[\"margherita\"]", calls.get(0).content());
+        assertEquals("save_type", calls.get(1).name());
+        assertEquals("saved", calls.get(1).content());
+    }
+
+    @Test
+    void parseUsageReadsAnthropicCacheTokens() {
+        var message = GatewaySupport.parseUsage(Map.of(
+                "type", "message_start",
+                "message", Map.of("usage", Map.of(
+                        "input_tokens", 12,
+                        "output_tokens", 1,
+                        "cache_read_input_tokens", 5))));
+        assertEquals(12, message.inputTokens());
+        assertEquals(1, message.outputTokens());
+        assertEquals(5, message.cachedTokens());
+
+        var delta = GatewaySupport.parseUsage(Map.of(
+                "type", "message_delta",
+                "usage", Map.of("output_tokens", 34)));
+        assertEquals(0, delta.inputTokens());
+        assertEquals(34, delta.outputTokens());
+    }
+
+    @Test
     void parseToolCallsReturnsEmptyForNonChatBodies() {
         assertTrue(GatewaySupport.parseToolCalls(bodyOf("model", "gpt-4o"), 20).isEmpty());
         assertTrue(GatewaySupport.parseToolCalls(bodyOf("messages", List.of()), 20).isEmpty());
@@ -290,6 +351,33 @@ class GatewaySupportTest {
         provider.baseUrl = "https://api.kie.ai/codex/v1";
 
         assertEquals("https://api.kie.ai/codex/v1", GatewaySupport.kieChatBaseUrl(provider));
+    }
+
+    @Test
+    void anthropicAuthAlwaysSendsTheVersionHeader() {
+        var provider = new ai.core.server.domain.GatewayProviderConfig();
+        provider.name = "anthropic";
+        provider.type = "anthropic";
+        provider.baseUrl = "https://api.anthropic.com";
+        var request = new HTTPRequest(HTTPMethod.POST, "https://api.anthropic.com/v1/messages");
+
+        GatewaySupport.applyAuth(provider, request, null);
+        assertEquals("2023-06-01", request.headers.get("anthropic-version"));
+        assertNull(request.headers.get("x-api-key"));
+
+        GatewaySupport.applyAuth(provider, request, "sk-ant");
+        assertEquals("sk-ant", request.headers.get("x-api-key"));
+    }
+
+    @Test
+    void anthropicApiBaseUrlAppendsV1OnlyWhenMissing() {
+        var provider = new ai.core.server.domain.GatewayProviderConfig();
+        provider.name = "anthropic";
+        provider.baseUrl = "https://api.anthropic.com/";
+        assertEquals("https://api.anthropic.com/v1", GatewaySupport.anthropicApiBaseUrl(provider));
+
+        provider.baseUrl = "https://relay.example.com/anthropic/v1";
+        assertEquals("https://relay.example.com/anthropic/v1", GatewaySupport.anthropicApiBaseUrl(provider));
     }
 
     @Test
