@@ -124,6 +124,37 @@ class TranscriptRecorderTest {
     }
 
     @Test
+    void doesNotReplayTurnsAppendedAfterARewindOnStartup() {
+        var messageCount = new AtomicInteger();
+        var store = TranscriptStore.open(dir, "s2b");
+        var recorder = new TranscriptRecorder(store, metadata(), messageCount::get, record -> {
+        });
+        recorder.sessionStart(List.of());
+        recorder.beginTurn(List.of(new TranscriptInput("one", List.of(), null)), "user", "model", "low");
+        messageCount.set(2);
+        recorder.completeTurn(TurnCompleteEvent.of("s2b", "one"));
+        recorder.beginTurn(List.of(new TranscriptInput("two", List.of(), null)), "user", "model", "low");
+        messageCount.set(4);
+        recorder.completeTurn(TurnCompleteEvent.of("s2b", "two"));
+        recorder.rewindLast();
+        recorder.beginTurn(List.of(new TranscriptInput("three", List.of(), null)), "user", "model", "low");
+        messageCount.set(6);
+        recorder.completeTurn(TurnCompleteEvent.of("s2b", "three"));
+        recorder.close();
+
+        var messages = new ArrayList<Message>();
+        for (int i = 0; i < 6; i++) messages.add(Message.of(RoleType.USER, "m" + i));
+        var reopened = TranscriptStore.open(dir, "s2b");
+        var result = new TranscriptStartup(reopened, metadata(), messages).start();
+        assertTrue(result.append().stream().noneMatch(record -> TranscriptKinds.REWIND.equals(record.kind)));
+        assertTrue(result.append().stream().noneMatch(record -> Boolean.TRUE.equals(record.synthetic)));
+
+        for (var record : result.append()) reopened.append(record);
+        assertEquals(2, new TranscriptReader(reopened).totalTurns());
+        reopened.close();
+    }
+
+    @Test
     void recordsTerminalErrorAndUsesItsMessageCountForTheNextStart() {
         var messages = new AtomicInteger();
         var recorder = new TranscriptRecorder(TranscriptStore.open(dir, "s3"), metadata(), messages::get, record -> {

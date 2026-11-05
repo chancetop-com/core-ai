@@ -58,14 +58,6 @@ public class TranscriptRecorder implements AgentEventListener {
         return value == null ? 0 : value;
     }
 
-    private static long turnSeq(String turnId) {
-        if (turnId == null || !turnId.startsWith("t")) return -1;
-        try {
-            return Long.parseLong(turnId.substring(1));
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
     private final TranscriptStore store;
     private final TranscriptMetadata metadata;
     private final LongSupplier messageCount;
@@ -196,7 +188,7 @@ public class TranscriptRecorder implements AgentEventListener {
     public synchronized TranscriptUsage rewindLast() {
         var turn = lastTurnStart();
         if (turn == null) return null;
-        var seq = turnSeq(turn.turnId);
+        var seq = TranscriptRewind.turnSeq(turn.turnId);
         var usage = turnUsage(seq);
         var record = writeLocked(TranscriptKinds.REWIND, null);
         record.put("to_seq", seq);
@@ -372,12 +364,11 @@ public class TranscriptRecorder implements AgentEventListener {
     }
 
     private TranscriptRecord lastTurnStart() {
-        var rewindTo = latestRewind();
+        var rewinds = TranscriptRewind.of(store.records());
         TranscriptRecord last = null;
         for (var record : store.records()) {
             if (!TranscriptKinds.TURN_START.equals(record.kind)) continue;
-            var seq = turnSeq(record.turnId);
-            if (seq < 0 || rewindTo >= 0 && seq >= rewindTo) continue;
+            if (TranscriptRewind.turnSeq(record.turnId) < 0 || rewinds.covers(record.turnId)) continue;
             last = record;
         }
         return last;
@@ -397,16 +388,5 @@ public class TranscriptRecorder implements AgentEventListener {
         return new TranscriptUsage(number(record, "input_tokens"), number(record, "output_tokens"),
             number(record, "cached_tokens"), decimal(record, "cost_usd"));
     }
-
-    private long latestRewind() {
-        long to = -1;
-        for (var record : store.records()) {
-            if (!TranscriptKinds.REWIND.equals(record.kind)) continue;
-            var value = record.number("to_seq");
-            if (value != null) to = value;
-        }
-        return to;
-    }
-
 
 }

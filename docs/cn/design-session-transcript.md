@@ -1,6 +1,6 @@
 # Tech Design：会话记录（Session Transcript）——统一 live 与重载的单一真相源
 
-> 状态：草案 v0.7（v0.6 于 2026-10-30 按第五轮评审定点修订：steerPending 先于 offer、failTurn 终止 API、task_note 并入 turn_start、dangling pending 恢复、rewind 返回 usage、total_turns 口径；评审结论：M0 可开，S1–S3 已定，可进 M1。v0.7 于 2026-11-04 补 completed compression 的水位基点）
+> 状态：草案 v0.8（v0.7 于 2026-11-04 补 completed compression 的水位基点；v0.8 于 2026-11-05 修正 rewind 的作用区间：只丢弃 `to_seq ≤ turn_start.seq < rewind.seq` 的轮，rewind 之后追加的轮保留）
 > 作者：Stephen（AI 起草）
 > 关联（以下文档暂未纳入本站）：design-core-ai-desktop.md §3.4 / §9.2 第 19 条、design-cli-session-history-context.md、design-session-custom-events.md §3.4、design-session-rich-cards.md
 > 版本事实：desktop 0.1.38 / CLI v2.0.63 / server 2.0.152。正文行号均为快照 commit `de1b45cb`（`app.ts` 7,316 行，`wc -l`），以函数名为准。
@@ -26,6 +26,8 @@
 评审重点（v0.4）：D5 公式、D6 gap 物化、D11 写入点、§3.7 投影分类（G4）。D1–D4/D10/D12 三轮评审已认同。
 
 ### 0.1 修订记录
+
+**v0.8（2026-11-05，实现修正）** rewind 的区间是 `[to_seq, rewind.seq)`，不是 `≥ to_seq`：一条 rewind 只撤销它之前已经存在的那段历史，rewind 记录之后追加的新轮是新历史。按旧口径，任何一次 rewind 都会把此后所有轮次判为已撤销——桌面只剩 rewind 之前的轮，启动重算水位时还会把整段已存在的对话当 gap 重新物化一遍，造成重复轮次。`TranscriptReader`、`TranscriptStartup`、`TranscriptRecorder` 统一改用 `TranscriptRewind` 的窗口判断；单测 `TranscriptReaderTest.keepsTurnsAppendedAfterARewind` 与 `TranscriptRecorderTest.doesNotReplayTurnsAppendedAfterARewindOnStartup`。
 
 **v0.7（2026-11-04，实现修正）** D6/§3.7：`completed` 的 `compression` 成为水位与 reset 的新基点——`last` 取 `after_count`，只统计其后（`seq > compression.seq`）的轮级终止记录；`size < after_count` 时 reset 从压缩轮起跳。否则压缩后重启会把压缩前的 `message_count` 当成当前水位，误判历史被外部截短并写 `rewind`/`projection_reset`，丢掉压缩前所有轮次。单测 `TranscriptRecorderTest.keepsTurnsWhenACompletedCompressionShortenedTheConversation`。
 
@@ -158,7 +160,7 @@ TranscriptRecorder（唯一写入者，一把锁）
 | `turn_complete` | 同名事件 | `output, cancelled, max_turns_reached, duration_ms, input_tokens, output_tokens, cached_tokens, cost_usd, budget_*, message_count` | `message_count` = supplier 在 **save 之后** 取的 `messages.size()`（end-exclusive 计数） |
 | `error` | `failTurn`（轮级终止）/ `onError` 监听器（非终止） | `terminal: boolean, message, detail, message_count?, input_tokens?, output_tokens?, cached_tokens?, cost_usd?` | **`terminal:true` 只由 `failTurn` 写**（`InProcessAgentSession` 的 `catch → persistOnFailure → dispatchTerminal` 路径直接调用）：`turn_id` = recorder 的 `currentTurnId`，`message_count` 由 supplier 在 save 后取，usage 由 `SessionTurnUsage` 计算；`onError` 监听到的（含 `SessionStreamingCallback.onError`、`QUEUE_FULL`）写 `terminal:false`，不参与水位。**不看事件里的客户端 `turn_id`** |
 | `notice` | 仅投影/物化产生 | `level: "system" \| "compression", text, before_count?, after_count?` | `system` = 中断标记等系统提示；`compression` = 投影中的 `memory_compress` 调用与结果（G4）；`turn_id` 随所在轮，轮外为 null |
-| `rewind` | `rewind(toSeq)` | `to_seq, message_count` | `turn_id = null`；reducer 丢弃 `turn_start.seq ≥ to_seq` 的 turn |
+| `rewind` | `rewind(toSeq)` | `to_seq, message_count` | `turn_id = null`；reducer 丢弃 `to_seq ≤ turn_start.seq < rewind.seq` 的 turn（rewind 记录之后追加的轮保留） |
 
 不落盘：`text_chunk`、`reasoning_chunk`、`environment_output_chunk`、`on_tool`、`status_change`。
 
@@ -223,7 +225,7 @@ reducer 规则：
 - `task_status`：经 `taskIndex` 回写起始轮；**找不到 → `pendingTaskStatus`**，不挂当前轮（H2）。
 - `turn_id = null` 的 `memory`/晚到 `artifact` → seq 之前最近的 turn（含 open）。
 - `turn_complete`/`error` 关闭 turn：running `tool` 置 cancelled；无 `text` item 且 `output` 非空 → 合成 `text`；`error` 追加 `notice`。`notice{level:system}` 原样为 item。
-- `rewind{to_seq}` 删除 `turn_start.seq ≥ to_seq` 的 turn 及其 `taskIndex`。
+- `rewind{to_seq}` 删除 `to_seq ≤ turn_start.seq < rewind.seq` 的 turn 及其 `taskIndex`；rewind 记录之后追加的轮属于新历史，保留。
 - 渲染时相邻 `text` 合并为一个气泡。
 
 **sealed vs active**：`TurnDom` 按 `(turnId, key)` 存块；流式期间唯一 active 块（text 或 reasoning）+ running 工具卡；记录到达即替换对应 active 节点并清瞬时缓冲；`turn_complete` 只管 summary/结束态/stale。`reasoning_complete` 留在瞬时层封块。乐观气泡认领规则见上文 reducer 规则。

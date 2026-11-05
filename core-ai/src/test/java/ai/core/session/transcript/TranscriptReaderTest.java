@@ -99,6 +99,24 @@ class TranscriptReaderTest {
     }
 
     @Test
+    void keepsTurnsAppendedAfterARewind() {
+        try (var store = TranscriptStore.open(dir, "s3b")) {
+            long seq = 1;
+            seq = appendTurn(store, seq, 1, true);
+            seq = appendTurn(store, seq, 2, true);
+            store.append(record(seq++, TranscriptKinds.REWIND, null, Map.of("to_seq", 4)));
+            appendTurn(store, seq, 3, true);
+            var reader = new TranscriptReader(store);
+
+            assertEquals(2, reader.totalTurns());
+            var page = reader.page(store.maxSeq() + 1, 30, 1000);
+            assertEquals(List.of("t1", "t8"), page.records().stream()
+                .filter(entry -> TranscriptKinds.TURN_START.equals(entry.kind))
+                .map(entry -> entry.turnId).toList());
+        }
+    }
+
+    @Test
     void reportsProjectionAndMixedSources() {
         try (var store = TranscriptStore.open(dir, "s4")) {
             store.setBaseRecords(List.of(

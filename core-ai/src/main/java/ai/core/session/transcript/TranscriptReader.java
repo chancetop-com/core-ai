@@ -106,35 +106,15 @@ public final class TranscriptReader {
     }
 
     private List<List<TranscriptRecord>> eligible(List<List<TranscriptRecord>> groups) {
-        var rewindTo = latestRewind();
+        var rewinds = TranscriptRewind.of(store.records());
         var eligible = new ArrayList<List<TranscriptRecord>>();
         for (var group : groups) {
             var turn = group.isEmpty() ? null : group.getFirst();
             if (turn == null) continue;
-            var seq = turnSeq(turn.turnId);
-            if (rewindTo >= 0 && seq >= rewindTo) continue;
+            if (rewinds.covers(turn.turnId)) continue;
             eligible.add(group);
         }
         return eligible;
-    }
-
-    private long latestRewind() {
-        long to = -1;
-        for (var record : store.records()) {
-            if (!TranscriptKinds.REWIND.equals(record.kind)) continue;
-            var value = record.number("to_seq");
-            if (value != null) to = value;
-        }
-        return to;
-    }
-
-    private static long turnSeq(String turnId) {
-        if (turnId == null || !turnId.startsWith("t")) return -1;
-        try {
-            return Long.parseLong(turnId.substring(1));
-        } catch (NumberFormatException e) {
-            return -1;
-        }
     }
 
     private static String value(Map<String, Object> map, String key) {
@@ -220,7 +200,7 @@ public final class TranscriptReader {
 
         private boolean isHeadPartial(List<TranscriptRecord> slice) {
             var first = slice.getFirst();
-            var turnSeq = turnSeq(first.turnId);
+            var turnSeq = TranscriptRewind.turnSeq(first.turnId);
             return turnSeq >= 0 && !TranscriptKinds.TURN_START.equals(first.kind);
         }
 
