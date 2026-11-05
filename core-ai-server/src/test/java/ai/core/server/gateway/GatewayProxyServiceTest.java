@@ -394,21 +394,26 @@ class GatewayProxyServiceTest {
         var captured = new CopyOnWriteArrayList<ExportTraceServiceRequest>();
         var service = spanCapturingService(captured, latch);
         try {
-            service.proxyChatCompletions(json(Map.of(
+            var bodyWithSession = json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "hi"))
-            )), "user-1", "session-1", null);
-            service.proxyChatCompletions(json(Map.of(
+            ));
+            var bodyWithoutSession = json(Map.of(
                     "model", "deepseek/deepseek-chat",
                     "messages", List.of(Map.of("role", "user", "content", "again"))
-            )), "user-1", null, null);
+            ));
+            service.proxyChatCompletions(bodyWithSession, "user-1", "session-1", null);
+            service.proxyChatCompletions(bodyWithoutSession, "user-1", null, null);
 
-            // span export runs on LocalSpanProcessor's async executor; under full-suite load the
-            // single worker thread can be scheduled late, so allow a generous wait
             assertTrue(latch.await(15, TimeUnit.SECONDS), "spans exported: " + captured.size() + "/2");
             assertEquals(2, captured.size());
-            assertEquals("session-1", spanAttributes(protoSpan(captured.get(0))).get("session.id"));
-            assertNull(spanAttributes(protoSpan(captured.get(1))).get("session.id"));
+            var spansByInput = new HashMap<String, Map<String, String>>();
+            for (var request : captured) {
+                var attributes = spanAttributes(protoSpan(request));
+                spansByInput.put(attributes.get("langfuse.observation.input"), attributes);
+            }
+            assertEquals("session-1", spansByInput.get(new String(bodyWithSession, StandardCharsets.UTF_8)).get("session.id"));
+            assertNull(spansByInput.get(new String(bodyWithoutSession, StandardCharsets.UTF_8)).get("session.id"));
         } finally {
             LocalSpanProcessorRegistry.clear();
         }
