@@ -119,6 +119,28 @@ test('null turn records attach to the nearest turn', () => {
   assert.equal(model.orphans.length, 0);
 });
 
+test('turns and inputs carry the record timestamp, projected records do not', () => {
+  const model = reduceAll([
+    { seq: -2, ts: 111, turn_id: 'pabc', kind: 'turn_start', inputs: [{ text: 'old' }] },
+    { seq: 2, ts: 222, turn_id: 't2', kind: 'turn_start', inputs: [{ text: 'new' }] },
+    { seq: 3, ts: 333, turn_id: 't2', kind: 'steer', state: 'pending', text: 'more' },
+    { seq: 4, ts: 444, turn_id: 't2', kind: 'turn_complete', message_count: 1 },
+  ]);
+  assert.equal(model.turns[0].startedAt, undefined);
+  assert.equal(model.turns[0].items[0].ts, undefined);
+  assert.equal(model.turns[1].startedAt, 222);
+  assert.equal(model.turns[1].items[0].ts, 222);
+  assert.equal(model.turns[1].items.find((item) => item.kind === 'input' && item.steering).ts, 333);
+});
+
+test('materialised gap records have no timestamp either', () => {
+  const model = reduceAll([
+    { seq: 5, ts: 555, synthetic: true, turn_id: 't5', kind: 'turn_start', inputs: [{ text: 'gap' }] },
+  ]);
+  assert.equal(model.turns[0].startedAt, undefined);
+  assert.equal(model.turns[0].items[0].ts, undefined);
+});
+
 test('emptyModel has no turns', () => {
   assert.deepEqual(emptyModel(), { turns: [], taskIndex: {}, pendingTaskStatus: {}, orphans: [] });
 });

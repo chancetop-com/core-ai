@@ -701,6 +701,8 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .msg { margin-bottom: 14px; max-width: 900px; }
 .msg .role { color: var(--faint); font-size: 12px; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.6px; }
+/* The label stays a quiet annotation: time is normal case, tabular so bubbles do not jitter. */
+.msg .role .msg-time { margin-left: 8px; font-size: 11px; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; opacity: 0.85; }
 .bubble { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 9px; padding: 9px 12px; white-space: pre-wrap; word-break: break-word; }
 .msg.user { margin-left: auto; text-align: right; }
 /* the wrapper's text-align only right-hugs the bubble / label; the message text itself reads left */

@@ -45,6 +45,7 @@ export interface InputItem {
   attachments: RecordAttachment[];
   clientTurnId?: string | null;
   steering: boolean;
+  ts?: number;
 }
 
 export interface TextItem {
@@ -158,6 +159,8 @@ export interface Turn {
   open: boolean;
   partial: 'none' | 'head' | 'tail';
   memoryRuns: MemoryRun[];
+  /** Start of the turn, i.e. when the user message that opened it was sent. */
+  startedAt?: number;
 }
 
 export interface TranscriptModel {
@@ -258,6 +261,7 @@ function addTurn(model: TranscriptModel, record: TranscriptRecord): void {
   }
   const source = typeof record.source === 'string' ? record.source : 'user';
   const kind: Turn['kind'] = source === 'task_note' ? 'task_note' : 'user';
+  const ts = recordTs(record);
   const turn: Turn = {
     turnId,
     sortSeq: record.seq,
@@ -269,6 +273,7 @@ function addTurn(model: TranscriptModel, record: TranscriptRecord): void {
     open: true,
     partial: 'none',
     memoryRuns: [],
+    startedAt: ts,
   };
   const inputs = Array.isArray(record.inputs) ? record.inputs as TurnInput[] : [];
   if (inputs.length) {
@@ -284,6 +289,7 @@ function addTurn(model: TranscriptModel, record: TranscriptRecord): void {
         attachments: Array.isArray(input.attachments) ? input.attachments : [],
         clientTurnId: input.client_turn_id ?? null,
         steering: false,
+        ts,
       });
     });
   } else {
@@ -293,6 +299,7 @@ function addTurn(model: TranscriptModel, record: TranscriptRecord): void {
       kind: 'input',
       attachments: [],
       steering: false,
+      ts,
     });
   }
   model.turns.push(turn);
@@ -323,6 +330,7 @@ function applySteer(model: TranscriptModel, record: TranscriptRecord): void {
     attachments: Array.isArray(record.attachments) ? record.attachments as RecordAttachment[] : [],
     clientTurnId: typeof record.client_turn_id === 'string' ? record.client_turn_id : null,
     steering: true,
+    ts: recordTs(record),
   };
   turn.items.push(input);
 }
@@ -650,6 +658,15 @@ function parseData(text: string | undefined): Record<string, unknown> {
   } catch {
     return {};
   }
+}
+
+/**
+ * Timestamp of a record the engine wrote. Projected legacy history carries materialisation time,
+ * not the time the message was sent, so those records deliberately have no timestamp.
+ */
+function recordTs(record: TranscriptRecord): number | undefined {
+  if (record.synthetic === true || record.seq < 0) return undefined;
+  return typeof record.ts === 'number' && Number.isFinite(record.ts) && record.ts > 0 ? record.ts : undefined;
 }
 
 function stringList(value: unknown): string[] {

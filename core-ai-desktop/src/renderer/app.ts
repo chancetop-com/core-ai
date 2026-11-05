@@ -26,6 +26,7 @@ import {
   type Turn,
 } from './transcript/reducer';
 import { reasoningItems, summaryText, textItems } from './transcript/selectors';
+import { messageTimeLabel } from './transcript/time';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -3897,7 +3898,7 @@ function renderTranscript(view: SessionView): void {
 function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   const inputs = turn.items.filter((item): item is InputItem => item.kind === 'input');
   for (const input of inputs) {
-    addMessageBubble(view, 'user', input.text ?? '', transcriptAttachments(input));
+    addMessageBubble(view, 'user', input.text ?? '', transcriptAttachments(input), input.ts);
   }
   const text = textItems(turn);
   const reasoning = reasoningItems(turn);
@@ -3908,7 +3909,7 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   const hasAssistant = text.length || reasoning.length || toolItems.length || taskItems.length
     || turn.memoryRuns.length;
   if (hasAssistant) {
-    const wrapper = addMessageBubble(view, 'assistant', text.join('\n\n'));
+    const wrapper = addMessageBubble(view, 'assistant', text.join('\n\n'), [], turn.startedAt);
     const bubble = wrapper.querySelector('.bubble') as HTMLElement | null;
     if (bubble) {
       const chips = el('div', 'assist-chips');
@@ -4151,7 +4152,29 @@ function attachUserMessageCollapse(bubble: HTMLElement, body: HTMLElement): () =
   return measure;
 }
 
-function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string, attachments: PendingAttachment[] = []): HTMLElement {
+/**
+ * Time under a message's role label. Projected legacy records have no trustworthy time, so the
+ * bubble simply renders without one.
+ */
+function messageTime(ts: number | undefined): HTMLElement | null {
+  if (ts === undefined) return null;
+  const formatted = messageTimeLabel(ts);
+  if (!formatted) return null;
+  const stamp = el('time', 'msg-time', formatted.label);
+  stamp.dateTime = new Date(ts).toISOString();
+  stamp.title = formatted.title;
+  return stamp;
+}
+
+function messageRoleLine(role: 'user' | 'assistant', ts?: number): HTMLElement {
+  const line = el('div', 'role', role);
+  const stamp = messageTime(ts);
+  if (stamp) line.append(stamp);
+  return line;
+}
+
+function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: string,
+                          attachments: PendingAttachment[] = [], ts?: number): HTMLElement {
   if (role === 'user') {
     const notifications = parseTaskNotifications(text);
     if (notifications) {
@@ -4167,7 +4190,7 @@ function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: s
     }
   }
   const wrapper = el('div', `msg ${role}`);
-  wrapper.append(el('div', 'role', role));
+  wrapper.append(messageRoleLine(role, ts));
   const bubble = el('div', 'bubble');
   let measure: (() => void) | null = null;
   if (role === 'assistant') {
@@ -4269,12 +4292,13 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
     composerAutoGrow?.();
     surface.draft = '';
   }
-  addMessageBubble(view, 'user', text.trim(), attachments);
+  const sentAt = Date.now();
+  addMessageBubble(view, 'user', text.trim(), attachments, sentAt);
   scrollTranscript(view, true);
   // A message typed while the turn runs steers it: seal the current assistant bubble and continue
   // in a new one below the user message, but keep the turn's original start time.
   const steering = view.status === 'running' || state.status === 'running';
-  const startedAt = steering && view.turnClock ? view.turnClock.startedAt : Date.now();
+  const startedAt = steering && view.turnClock ? view.turnClock.startedAt : sentAt;
   if (steering && view.turnClock?.chip) {
     view.turnClock.chip.textContent = `Steered · ${formatElapsed(Date.now() - startedAt)}`;
     view.turnClock.chip.classList.remove('busy');
@@ -4303,7 +4327,7 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
 function ensureStreaming(view: SessionView): StreamingState {
   if (!view.streaming) {
     const wrapper = el('div', 'msg assistant');
-    wrapper.append(el('div', 'role', 'assistant'));
+    wrapper.append(messageRoleLine('assistant', view.turnClock?.startedAt ?? Date.now()));
     const bubble = el('div', 'bubble md');
     const body = el('div', 'md-body');
     bubble.append(body);
