@@ -5,6 +5,8 @@ import { useAuth } from '../../api/auth';
 
 // the gateway is served by the same host as this page, so the address the user is on is the one to hand to other tools
 const GATEWAY_BASE_URL = `${window.location.origin}/api/gateway/v1`;
+// Claude Code always appends /v1/messages to ANTHROPIC_BASE_URL, so it must not include /v1
+const CLAUDE_CODE_BASE_URL = `${window.location.origin}/api/gateway`;
 
 export default function ApiKeys() {
   const { login } = useAuth();
@@ -204,8 +206,13 @@ export default function ApiKeys() {
 
         <div className="text-xs mt-3" style={{ color: 'var(--color-text-secondary)' }}>
           OpenAI chat: POST <code className="font-mono">{GATEWAY_BASE_URL}/chat/completions</code>
-          {' · '}Anthropic: POST <code className="font-mono">{GATEWAY_BASE_URL}/messages</code>
+          {' · '}Anthropic SDK: POST <code className="font-mono">{GATEWAY_BASE_URL}/messages</code>
           {' · '}Models: GET <code className="font-mono">{GATEWAY_BASE_URL}/models</code>
+        </div>
+        <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+          Claude Code appends <code className="font-mono">/v1/messages</code>: set
+          {' '}<code className="font-mono">ANTHROPIC_BASE_URL={CLAUDE_CODE_BASE_URL}</code>
+          {' '}and register a gateway model with the same id as <code className="font-mono">--model</code>.
         </div>
       </div>
 

@@ -206,7 +206,9 @@ curl -sS -X POST \
 
 ## 7 模型 Gateway
 
-当前 Gateway 提供 `GET /api/gateway/v1/models`、`POST /api/gateway/v1/chat/completions`、`responses`、`messages`（Anthropic 协议）、`images/generations`、`images/edits`、`videos` 等路由，实际模型能力还受后端供应商和账户配置限制。`/api/gateway/v1/messages` 既可由 Anthropic 供应商直连，也可桥接到已注册的 chat 模型（由网关做 Anthropic ↔ OpenAI 协议转换），认证可用 `Authorization: Bearer` 或 Anthropic 客户端默认的 `x-api-key`。`/api/cli/v1` 是 CLI 登录后使用的代理入口，不能直接当成所有外部客户端的 Gateway base。
+当前 Gateway 提供 `GET /api/gateway/v1/models`、`POST /api/gateway/v1/chat/completions`、`responses`、`messages`（Anthropic 协议）、`messages/count_tokens`、`images/generations`、`images/edits`、`videos` 等路由，实际模型能力还受后端供应商和账户配置限制。`/api/gateway/v1/messages` 既可由 Anthropic 供应商直连，也可桥接到已注册的 chat 模型（由网关做 Anthropic ↔ OpenAI 协议转换），认证可用 `Authorization: Bearer` 或 Anthropic 客户端默认的 `x-api-key`。
+
+Anthropic SDK 的 base 用 `https://<server>/api/gateway/v1`（SDK 追加 `/messages`）；**Claude Code 会在 `ANTHROPIC_BASE_URL` 后追加 `/v1/messages`，所以它的 base 必须是 `https://<server>/api/gateway`**，并需在网关注册一个与 `--model` 同名的模型（例如 `claude-sonnet-4-6`）指向实际供应商模型。`/api/cli/v1` 是 CLI 登录后使用的代理入口，不能直接当成所有外部客户端的 Gateway base。
 
 先用有权限的身份读取 models，再选择支持目标能力的模型和客户端。视频等长任务需要按相应路由查状态与取内容。仓库 `core-ai-server/examples/python/` 有已有示例及历史测试记录；它们不是本次验证结果，也不应原样连接其中的环境地址。
 
