@@ -141,6 +141,17 @@ test('materialised gap records have no timestamp either', () => {
   assert.equal(model.turns[0].items[0].ts, undefined);
 });
 
+test('web tools carry the web use kind for the replay chip', () => {
+  const model = reduceAll([
+    start(2, 'search'),
+    { seq: 3, turn_id: 't2', kind: 'tool_start', callId: 'c1', toolName: 'web_search', arguments: '{"query":"core-ng"}' },
+    { seq: 4, turn_id: 't2', kind: 'tool_result', callId: 'c1', toolName: 'web_search', status: 'success', result: 'ok' },
+  ]);
+  const tool = model.turns[0].items.find((item) => item.kind === 'tool');
+  assert.equal(tool.useKind, 'web');
+  assert.equal(tool.arguments, '{"query":"core-ng"}');
+});
+
 test('emptyModel has no turns', () => {
   assert.deepEqual(emptyModel(), { turns: [], taskIndex: {}, pendingTaskStatus: {}, orphans: [] });
 });

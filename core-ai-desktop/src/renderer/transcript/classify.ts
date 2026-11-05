@@ -1,6 +1,6 @@
 // Pure classification helpers shared by the transcript reducer and its renderer.
 
-export type ToolUseKind = 'skill' | 'subagent' | 'mcp' | 'api' | 'agent';
+export type ToolUseKind = 'skill' | 'subagent' | 'mcp' | 'api' | 'agent' | 'web';
 
 export interface TaskNotification {
   taskId: string | null;
@@ -38,6 +38,7 @@ export function subagentLabelFrom(argumentsText: unknown): string | null {
 
 export function toolUseKind(toolName: string, toolType: unknown): ToolUseKind | null {
   if (toolName === 'use_skill') return 'skill';
+  if (toolName === 'web_search' || toolName === 'web_fetch') return 'web';
   if (toolType === 'subagent' || toolType === 'mcp' || toolType === 'api' || toolType === 'agent') return toolType;
   return toolName === 'task' ? 'subagent' : null;
 }
@@ -45,7 +46,16 @@ export function toolUseKind(toolName: string, toolType: unknown): ToolUseKind | 
 export function toolUseLabel(kind: ToolUseKind, toolName: string, argumentsText: unknown): string {
   if (kind === 'skill') return skillNameFrom(argumentsText) ?? toolName;
   if (kind === 'subagent') return subagentLabelFrom(argumentsText) ?? toolName;
+  if (kind === 'web') return webUseLabel(toolName, argumentsText) ?? toolName;
   return toolName;
+}
+
+/** What a web call touched: the query for a search, the URL for a fetch. */
+function webUseLabel(toolName: string, argumentsText: unknown): string | null {
+  const parsed = parseArguments(argumentsText);
+  const target = parsed?.[toolName === 'web_search' ? 'query' : 'url'];
+  if (typeof target !== 'string' || !target.trim()) return null;
+  return `${toolName === 'web_search' ? 'search' : 'fetch'} · ${target.trim()}`;
 }
 
 export function systemReminderText(text: string | undefined): string | null {

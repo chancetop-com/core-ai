@@ -12,6 +12,7 @@ import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import { createRichCard, parseRichCard } from './richCard';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
+import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
 import type { TranscriptPage, TranscriptRecord } from './transcript/records';
 import {
   emptyModel,
@@ -566,9 +567,6 @@ interface MemoryUi {
 
 /** Memory chips live per message: extraction completes long after the turn that triggered it ended. */
 const memoryUi = new WeakMap<HTMLElement, MemoryUi>();
-
-/** Tool calls with a known origin are listed under their own chip, mirroring "Skill use". */
-type ToolUseKind = 'skill' | 'subagent' | 'mcp' | 'api' | 'agent';
 
 interface ToolUseChip {
   toggle: AssistToggle;
@@ -3922,6 +3920,8 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
         addTranscriptToggle(chips, panels, 'Thinking', body);
       }
       if (toolItems.length) addTranscriptTools(view, chips, panels, toolItems);
+      const webTools = toolItems.filter((tool) => tool.useKind === 'web');
+      if (webTools.length) addTranscriptToolUse(chips, panels, 'web', webTools);
       if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
       if (taskItems.length) addTranscriptTasks(chips, panels, taskItems);
     }
@@ -3962,6 +3962,25 @@ function addTranscriptTools(view: SessionView, chips: HTMLElement, panels: HTMLE
     body.append(row);
   }
   addTranscriptToggle(chips, panels, `Tool use (${tools.length})`, body);
+}
+
+/** Same chip a live turn gets, rebuilt from records when the session is reopened. */
+function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, kind: ToolUseKind, tools: ToolItem[]): void {
+  const counts = new Map<string, number>();
+  for (const tool of tools) {
+    const label = toolUseLabel(kind, tool.name, tool.arguments);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const body = el('div');
+  for (const [label, count] of counts) {
+    body.append(el('div', 'tool-use-row', count > 1 ? `${label} · ×${count}` : label));
+  }
+  const meta = TOOL_USE_CHIPS[kind];
+  const toggle = createAssistToggle(`${meta.label} (${counts.size})`);
+  toggle.chip.classList.add(meta.chipClass);
+  toggle.body.append(body);
+  chips.append(toggle.chip);
+  panels.append(toggle.panel);
 }
 
 function addTranscriptMemory(chips: HTMLElement, panels: HTMLElement, turn: Turn): void {
@@ -4540,59 +4559,9 @@ function appendToolStart(view: SessionView, event: any): void {
   refreshToolsBusy(entry);
   current.toolsToggle?.setLabel(`Tool use (${panel.childElementCount})`);
   const useKind = toolUseKind(tool.name, event.toolType);
-  if (useKind) {
-    const row = toolUseRowText(useKind, tool.name, event.arguments);
-    if (row) recordToolUse(current, useKind, row);
-  }
+  if (useKind) recordToolUse(current, useKind, toolUseLabel(useKind, tool.name, event.arguments));
   view.toolMap.set(tool.callId, tool);
   scrollTranscript(view);
-}
-
-function skillNameFrom(argumentsText: unknown): string | null {
-  try {
-    const parsed = typeof argumentsText === 'string' ? JSON.parse(argumentsText) : argumentsText;
-    if (parsed && typeof parsed === 'object') {
-      const value = (parsed as Record<string, unknown>).name;
-      if (typeof value === 'string' && value.trim()) return value.trim();
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-/** "explore-agent · find the login flow" — what a task call launches, from its arguments. */
-function subagentLabelFrom(argumentsText: unknown): string | null {
-  try {
-    const parsed = typeof argumentsText === 'string' ? JSON.parse(argumentsText) : argumentsText;
-    if (parsed && typeof parsed === 'object') {
-      const args = parsed as Record<string, unknown>;
-      const type = typeof args.subagent_type === 'string' && args.subagent_type.trim() ? args.subagent_type.trim() : null;
-      const description = typeof args.description === 'string' && args.description.trim() ? args.description.trim() : null;
-      if (type && description) return `${type} · ${description}`;
-      if (type) return type;
-    }
-  } catch {
-    return null;
-  }
-  return null;
-}
-
-/**
- * Which chip a tool call is listed under, or null for the generic tool list. The engine tags each
- * tool with its origin (sourceType) as {@code toolType}; task is still recognizable by name on
- * engines that predate the tag.
- */
-function toolUseKind(toolName: string, toolType: unknown): ToolUseKind | null {
-  if (toolName === 'use_skill') return 'skill';
-  if (toolType === 'subagent' || toolType === 'mcp' || toolType === 'api' || toolType === 'agent') return toolType;
-  return toolName === 'task' ? 'subagent' : null;
-}
-
-function toolUseRowText(kind: ToolUseKind, toolName: string, argumentsText: unknown): string | null {
-  if (kind === 'skill') return skillNameFrom(argumentsText);
-  if (kind === 'subagent') return subagentLabelFrom(argumentsText) ?? toolName;
-  return toolName;
 }
 
 const TOOL_USE_CHIPS: Record<ToolUseKind, { label: string; chipClass: string }> = {
@@ -4601,6 +4570,7 @@ const TOOL_USE_CHIPS: Record<ToolUseKind, { label: string; chipClass: string }> 
   mcp: { label: 'MCP', chipClass: 'mcp-chip' },
   api: { label: 'API tool', chipClass: 'api-chip' },
   agent: { label: 'Agent', chipClass: 'agent-chip' },
+  web: { label: 'Web', chipClass: 'web-chip' },
 };
 
 /** One chip per tool origin next to thinking / tool use; expanding lists everything called this turn. */
