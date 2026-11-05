@@ -66,14 +66,15 @@ public class ChannelSyncController implements Controller {
     PersonalAssistantService personalAssistantService;
     @Inject
     UserChannelTargetStore userChannelTargetStore;
+    @Inject
+    ChannelImageAttachments imageAttachments;
 
     @Override
     @SuppressWarnings("unchecked")
     @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public Response execute(Request request) {
         var payload = parseBody(request);
-        var userText = extractUserText(payload);
-        if (userText == null) throw new BadRequestException("no user message found in request");
+        var userMessage = extractUserMessage(payload);
 
         var channelId = request.pathParam("channelId");
         var callbackUrl = request.header("X-OCG-Callback").orElse(null);
@@ -95,6 +96,8 @@ public class ChannelSyncController implements Controller {
         var agentId = personalAssistantService.resolve(channel.agentId, userId);
         var agent = agentDefinitionService.getEntity(agentId);
         if (agent == null) throw new NotFoundException("agent not found: " + agentId);
+        var attachments = userMessage.imageUrls().isEmpty() ? List.<Map<String, String>>of()
+                : imageAttachments.store(userMessage.imageUrls());
 
         var cacheKey = sessionCacheKey(channelId, channel.agentId, userId, userField);
         var asyncOcg = callbackUrl != null && !callbackUrl.isBlank();
@@ -104,7 +107,7 @@ public class ChannelSyncController implements Controller {
         var sessionId = resolveSession(cacheKey, userField, isNewConversation, userId, channel, agent);
         // the owning replica writes the user message when it consumes this command — the one writer every
         // send path shares. Writing it here as well is what put a second, identical row in the transcript.
-        var command = SessionCommand.channelSendMessage(sessionId, userId, userText, channel.channelId, peerTarget);
+        var command = SessionCommand.channelSendMessage(sessionId, userId, userMessage.text(), channel.channelId, peerTarget, attachments);
         commandPublisher.publish(command);
 
         if (asyncOcg) {
@@ -185,28 +188,40 @@ public class ChannelSyncController implements Controller {
         return channel;
     }
 
-    @SuppressWarnings("unchecked")
-    private String extractUserText(Map<String, Object> payload) {
+    private UserMessage extractUserMessage(Map<String, Object> payload) {
         var messages = payload.get("messages");
-        if (!(messages instanceof List<?> list)) return null;
+        if (!(messages instanceof List<?> list)) throw new BadRequestException("messages must be an array");
         for (int i = list.size() - 1; i >= 0; i--) {
             if (!(list.get(i) instanceof Map<?, ?> msg)) continue;
-            var role = msg.get("role");
-            if (!"user".equals(role)) continue;
-            var content = msg.get("content");
-            if (content instanceof String text && !text.isBlank()) return text;
-            if (content instanceof List<?> parts) {
-                for (var part : parts) {
-                    if (part instanceof Map<?, ?> partMap
-                            && "text".equals(partMap.get("type"))
-                            && partMap.get("text") instanceof String s
-                            && !s.isBlank()) {
-                        return s;
-                    }
-                }
+            if ("user".equals(msg.get("role"))) return parseUserContent(msg.get("content"));
+        }
+        throw new BadRequestException("no user message found in request");
+    }
+
+    private UserMessage parseUserContent(Object content) {
+        if (content instanceof String text && !text.isBlank()) return new UserMessage(text, List.of());
+        if (!(content instanceof List<?> parts)) throw new BadRequestException("user message must contain text or images");
+        var texts = new ArrayList<String>();
+        var imageUrls = new ArrayList<String>();
+        for (var part : parts) {
+            if (!(part instanceof Map<?, ?> value)) throw new BadRequestException("invalid user message part");
+            if ("text".equals(value.get("type"))) {
+                if (!(value.get("text") instanceof String text)) throw new BadRequestException("text part must contain text");
+                if (!text.isBlank()) texts.add(text);
+            } else if ("image_url".equals(value.get("type"))) {
+                imageUrls.add(imageUrl(value));
+            } else {
+                throw new BadRequestException("channel messages only support text and image_url parts");
             }
         }
-        return null;
+        if (texts.isEmpty() && imageUrls.isEmpty()) throw new BadRequestException("user message must contain text or images");
+        return new UserMessage(String.join("\n", texts), List.copyOf(imageUrls));
+    }
+
+    private String imageUrl(Map<?, ?> part) {
+        if (part.get("image_url") instanceof Map<?, ?> image
+                && image.get("url") instanceof String url && !url.isBlank()) return url;
+        throw new BadRequestException("image_url part must contain a url");
     }
 
     private String pollForResponse(String sessionId) {
@@ -272,6 +287,8 @@ public class ChannelSyncController implements Controller {
         openAIResponse.put("choices", choices);
         return Response.text(JsonUtil.toJson(openAIResponse));
     }
+
+    private record UserMessage(String text, List<String> imageUrls) { }
 
     private record SessionCacheKey(String channelId, String agentId, String userId, String userField) { }
 }

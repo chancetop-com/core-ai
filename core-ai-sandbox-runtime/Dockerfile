@@ -61,6 +61,10 @@ RUN echo "Installing openclaw-channel-gateway@${OCG_VERSION} cache-bust=${OCG_CA
     find /usr/local/lib/node_modules/openclaw-channel-gateway -path '*/node_modules/.bin/*' -type f -exec chmod 755 {} \; && \
     find /usr/local/lib/node_modules/openclaw-channel-gateway -name node-gyp-build -type f -exec chmod 755 {} \;
 
+COPY core-ai-sandbox-runtime/ocg/apply-patch.mjs core-ai-sandbox-runtime/ocg/http-image-content.mjs /tmp/core-ai-ocg-patch/
+RUN node /tmp/core-ai-ocg-patch/apply-patch.mjs /usr/local/lib/node_modules/openclaw-channel-gateway && \
+    rm -rf /tmp/core-ai-ocg-patch
+
 # Layer 5: gh CLI (version bumps only)
 RUN curl -fsSL https://github.com/cli/cli/releases/download/v2.92.0/gh_2.92.0_linux_amd64.tar.gz -o /tmp/gh.tar.gz && \
     tar xzf /tmp/gh.tar.gz -C /tmp && \

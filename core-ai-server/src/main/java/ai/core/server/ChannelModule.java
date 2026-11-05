@@ -4,6 +4,7 @@ import ai.core.api.server.channel.ChannelWebService;
 import ai.core.api.server.ocg.OcgConfigWebService;
 import ai.core.server.channel.ChannelController;
 import ai.core.server.channel.ChannelDispatcher;
+import ai.core.server.channel.ChannelImageAttachments;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.ChannelSyncController;
 import ai.core.server.channel.ChannelWebServiceImpl;
@@ -63,6 +64,7 @@ public class ChannelModule extends Module {
         api().service(ChannelWebService.class, bind(ChannelWebServiceImpl.class));
 
         // OpenAI-compatible sync endpoint for all channels
+        bind(ChannelImageAttachments.class);
         var channelSync = bind(ChannelSyncController.class);
         http().route(HTTPMethod.POST, "/api/channels/:channelId/v1/chat/completions", channelSync);
 

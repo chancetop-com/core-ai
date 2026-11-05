@@ -28,6 +28,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ocg:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Test OCG image forwarding
+        run: node --test core-ai-sandbox-runtime/ocg/test/http-images.test.mjs
+
   runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 20

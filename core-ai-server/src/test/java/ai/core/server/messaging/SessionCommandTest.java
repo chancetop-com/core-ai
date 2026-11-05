@@ -3,6 +3,7 @@ package ai.core.server.messaging;
 import ai.core.utils.JsonUtil;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,6 +12,21 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionCommandTest {
+    @Test
+    void channelImagesSurviveCommandStreamSerializationWithTheReplyTarget() {
+        var attachments = List.of(Map.of("type", "IMAGE", "container", "multimodal",
+                "blobName", "ai/uploads/sign.png", "contentType", "image/png", "fileName", "sign.png"));
+        var command = SessionCommand.channelSendMessage("s-1", "u-1", "read this", "chan-1", "qqbot:c2c:OPENID", attachments);
+        var restored = SessionCommand.fromMap(Map.of("type", command.type().name(), "sessionId", command.sessionId(),
+                "userId", command.userId(), "payload", command.payload()));
+
+        var payload = payloadOf(restored);
+        assertEquals(attachments, payload.get("multimodalAttachments"));
+        assertEquals("read this", payload.get("message"));
+        assertEquals("chan-1", payload.get("channelId"));
+        assertEquals("qqbot:c2c:OPENID", payload.get("noticeRecipient"));
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> payloadOf(SessionCommand command) {
         return JsonUtil.fromJson(Map.class, command.payload());

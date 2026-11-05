@@ -60,9 +60,17 @@ public record SessionCommand(CommandType type, String sessionId, String userId, 
      * that block lives in exists only there.
      */
     public static SessionCommand channelSendMessage(String sessionId, String userId, String message, String channelId, String noticeRecipient) {
+        return channelSendMessage(sessionId, userId, message, channelId, noticeRecipient, null);
+    }
+
+    public static SessionCommand channelSendMessage(String sessionId, String userId, String message, String channelId, String noticeRecipient,
+                                                    List<Map<String, String>> multimodalAttachments) {
         var payloadMap = new HashMap<String, Object>();
         payloadMap.put("message", message);
         payloadMap.put("variables", Map.of());
+        if (multimodalAttachments != null && !multimodalAttachments.isEmpty()) {
+            payloadMap.put("multimodalAttachments", multimodalAttachments);
+        }
         if (channelId != null && !channelId.isBlank()) payloadMap.put("channelId", channelId);
         if (noticeRecipient != null && !noticeRecipient.isBlank()) payloadMap.put("noticeRecipient", noticeRecipient);
         return new SessionCommand(CommandType.SEND_MESSAGE, sessionId, userId, JsonUtil.toJson(payloadMap), null);
