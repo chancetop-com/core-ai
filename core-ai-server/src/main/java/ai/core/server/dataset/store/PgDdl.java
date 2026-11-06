@@ -33,38 +33,12 @@ public class PgDdl {
     }
 
     public void inTransaction(Work work) {
-        Connection connection = null;
-        try {
-            connection = DriverManager.getConnection(url, user, password);
+        try (Connection connection = DriverManager.getConnection(url, user, password)) {
             connection.setAutoCommit(false);
             work.run(connection);
             connection.commit();
         } catch (SQLException e) {
-            rollback(connection);
             throw new IllegalStateException("failed to execute dataset ddl: " + e.getMessage(), e);
-        } catch (RuntimeException e) {
-            rollback(connection);
-            throw e;
-        } finally {
-            close(connection);
-        }
-    }
-
-    private void rollback(Connection connection) {
-        if (connection == null) return;
-        try {
-            connection.rollback();
-        } catch (SQLException ignored) {
-            // closing the connection rolls back as well
-        }
-    }
-
-    private void close(Connection connection) {
-        if (connection == null) return;
-        try {
-            connection.close();
-        } catch (SQLException ignored) {
-            // the transaction is already committed or rolled back
         }
     }
 
