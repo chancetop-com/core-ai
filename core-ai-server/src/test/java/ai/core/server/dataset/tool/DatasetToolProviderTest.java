@@ -65,7 +65,7 @@ class DatasetToolProviderTest {
                 registry(List.of(config("ds1", DatasetPermission.WRITE))), "agent1", "run1");
 
         var names = Set.copyOf(provider.provide().keySet());
-        assertEquals(Set.of("query_dataset_records", "insert_dataset_record", "update_dataset_record"), names);
+        assertEquals(Set.of("query_dataset_records", "insert_dataset_record", "update_dataset_record", "rename_dataset_field"), names);
         assertTrue(names.stream().noneMatch(n -> n.contains("session_state")));
     }
 
@@ -87,6 +87,6 @@ class DatasetToolProviderTest {
 
         var names = Set.copyOf(provider.provide().keySet());
         assertEquals(Set.of("get_session_state", "set_session_state", "update_session_state",
-                "query_dataset_records", "insert_dataset_record", "update_dataset_record"), names);
+                "query_dataset_records", "insert_dataset_record", "update_dataset_record", "rename_dataset_field"), names);
     }
 }
