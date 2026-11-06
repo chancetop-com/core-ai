@@ -25,9 +25,10 @@ That is why the first local session logs a warning, why ``CORE_AI_HUB`` always w
 set, and why ``backend="cli"`` is refused while it is set. See ``docs/cn/design-sandbox-hub.md``
 §5.8 for the full list of local/production differences.
 
-Only ``builtin`` tools (``web_search``, ``submit_artifacts``) have no local counterpart: the
+Session/UI ``builtin`` tools (``web_search``, ``submit_artifacts``) have no local counterpart: the
 user-level hub has no such tools, so they are simply absent from the local catalog and raise
-`ToolNotFoundError` instead of pretending to work.
+`ToolNotFoundError` instead of pretending to work. The media and multimodal builtins are present:
+they come from ``core-ai-cli tool list`` and run against the same local providers an agent turn uses.
 
 When a call comes back wrong, ``record=DIR`` (or ``CORE_AI_CLI_RECORD=DIR``) captures every
 exchange — the argv, the stdin, the exit code and the raw stdout — as ``DIR/0001-mcp-call.json``…
@@ -81,6 +82,8 @@ CLI_MAX_TIMEOUT = 300
 # The Java client aborts a call at (--timeout + 30)s; discovery calls use its 60s default.
 CLI_CALL_GRACE_SECONDS = 30
 CLI_DISCOVERY_TIMEOUT_SECONDS = 60
+# Builtin media tools run longer than a hub tool: generate_image waits up to 12 minutes on the upstream.
+BUILTIN_MAX_TIMEOUT = 1800
 # Keep whole payloads whole: the CLI truncates text output by default (64KiB / 20000 chars) while a
 # sandbox call does not, and silently losing the tail of a report is worse than a large buffer.
 MAX_OUTPUT_CHARS = 1_000_000
@@ -311,10 +314,13 @@ class CliSession(_SessionBase):
         self._version_probe = ""
         self._timeout_warned = False
         self._task_tools: dict[str, str] = {}
+        self._task_kinds: dict[str, str] = {}
+        self._builtin_details: dict[str, ToolDetail] = {}
         self._waiting_warned: set[str] = set()
         self._unlistable: list[str] = []
         self._source_counts: dict[str, int] = {}
         self._catalog_command = True  # until a CLI turns out not to have the one-shot `catalog`
+        self._tool_command = True  # until a CLI turns out not to have the local `tool` subcommand
         self._record_dir = (record or os.environ.get(RECORD_ENV) or "").strip()
         self._record_lock = threading.Lock()
         self._record_index = 0
@@ -619,8 +625,55 @@ class CliSession(_SessionBase):
         self._unlistable = []
         one_shot = self._one_shot_catalog()
         if one_shot is not None:
-            return self._one_shot_payload(one_shot)
-        return self._enumerated_catalog()
+            return self._with_builtins(self._one_shot_payload(one_shot))
+        return self._with_builtins(self._enumerated_catalog())
+
+    def _with_builtins(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Local builtins are a property of this machine, not of the hub catalog; merge them last."""
+        builtins = self._builtin_tools()
+        if not builtins:
+            return payload
+        payload["tools"] = list(payload.get("tools") or []) + builtins
+        payload["groups"] = list(payload.get("groups") or []) + [
+            {"kind": "builtin", "group": "", "path": "", "count": len(builtins)}
+        ]
+        return payload
+
+    def _builtin_tools(self) -> list[dict[str, Any]]:
+        """``core-ai-cli tool list``: the media/multimodal tools this machine can run without a session hub.
+
+        An older CLI answers a usage error here; that is not a hole in the catalog, so it is not a gap —
+        the script simply gets no builtin tools, the documented pre-``tool``-command behaviour.
+        """
+        self._builtin_details = {}
+        if not self._tool_command:
+            return []
+        response = self._list_source(["tool", "list"], "builtin tools", record_gap=False)
+        if response is None or not isinstance(response.get("tools"), list):
+            self._tool_command = False
+            return []
+        tools: list[dict[str, Any]] = []
+        for item in response.get("tools") or []:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name") or item.get("path") or ""
+            if not name:
+                continue
+            tools.append(_summary(name, "builtin", description=item.get("description")))
+            schema = item.get("input_schema")
+            if isinstance(schema, str):
+                try:
+                    schema = json.loads(schema)
+                except ValueError:
+                    schema = None
+            if isinstance(schema, dict):
+                self._builtin_details[name] = ToolDetail(
+                    name=name, kind="builtin", group="", path=name, ref_id=name,
+                    description=item.get("description") or "", exposure="direct",
+                    input_schema=schema,
+                    timeout_seconds=item.get("timeout_seconds") or DEFAULT_TIMEOUT,
+                )
+        return tools
 
     def _one_shot_catalog(self) -> Optional[dict[str, Any]]:
         """The whole catalog in one CLI call, or ``None`` when this CLI cannot answer it.
@@ -768,11 +821,20 @@ class CliSession(_SessionBase):
         return detail
 
     def _fetch_detail(self, entry: ToolSummary) -> Optional[ToolDetail]:
-        """Local schemas come from ``describe`` for mcp/api and are synthesized for agents."""
+        """Local schemas come from ``describe`` for mcp/api/builtin and are synthesized for agents."""
         if entry.kind == "llm_call":
             return _detail(entry, {}, LLM_CALL_SCHEMA)
         if entry.kind == "agent":
             return _detail(entry, {}, AGENT_SCHEMA)
+        if entry.kind == "builtin":
+            if entry.name in self._builtin_details:
+                return self._builtin_details[entry.name]
+            try:
+                payload = self._require(["tool", "describe", entry.path])
+            except (ToolNotFoundError, CoreAiSessionError) as error:
+                LOGGER.debug("core_ai_session: describe builtin %s failed: %s", entry.path, error)
+                return None
+            return _detail(entry, payload, payload.get("input_schema"))
         args = ["mcp", "describe", entry.path] if entry.kind == "mcp" else ["api-tool", "describe", entry.path]
         try:
             payload = self._require(args)
@@ -816,8 +878,8 @@ class CliSession(_SessionBase):
 
     def _invoke(self, entry: ToolSummary, arguments: dict[str, Any], *, timeout: Optional[int] = None,
                 wait: bool = True, wait_timeout: float = DEFAULT_WAIT_TIMEOUT) -> Union[ToolResult, Task]:
-        seconds = self._effective_timeout(timeout)
         if entry.kind in ("mcp", "api"):
+            seconds = self._effective_timeout(timeout)
             leaf = "mcp" if entry.kind == "mcp" else "api-tool"
             payload = self._call(
                 [leaf, "call", entry.path, "--args-file", "-", "--timeout", str(seconds),
@@ -827,13 +889,38 @@ class CliSession(_SessionBase):
                 seconds,
             )
         elif entry.kind in ("llm_call", "agent"):
+            seconds = self._effective_timeout(timeout)
             payload = self._run_agent(entry, arguments, seconds, image_only=entry.kind == "llm_call")
+        elif entry.kind == "builtin":
+            seconds = self._builtin_timeout(entry, timeout)
+            payload = self._call(
+                ["tool", "call", entry.path, "--args-file", "-", "--timeout", str(seconds),
+                 *self._session_option()],
+                json.dumps(arguments, ensure_ascii=False),
+                entry,
+                seconds,
+            )
         else:
             raise ToolNotFoundError(
-                f"'{entry.kind}' tools exist inside a sandbox only; this local session can call "
-                "mcp, api, llm_call and agent tools"
+                f"'{entry.kind}' tools cannot be called through this local session; "
+                "call mcp, api, llm_call, agent or builtin tools"
             )
-        return self._finish(self._to_result(payload), entry, wait, wait_timeout)
+        result = self._to_result(payload)
+        if result.status == "pending" and result.task_id:
+            self._task_kinds[result.task_id] = entry.kind
+            self._task_tools[result.task_id] = entry.name
+        return self._finish(result, entry, wait, wait_timeout)
+
+    def _builtin_timeout(self, entry: ToolSummary, timeout: Optional[int]) -> int:
+        detail = self._detail(entry)
+        ceiling = detail.timeout_seconds if detail and detail.timeout_seconds else BUILTIN_MAX_TIMEOUT
+        ceiling = max(1, min(int(ceiling), BUILTIN_MAX_TIMEOUT))
+        requested = int(timeout) if timeout else ceiling
+        return max(1, min(requested, BUILTIN_MAX_TIMEOUT))
+
+    def _session_option(self) -> list[str]:
+        anchor = (self.session_id or os.environ.get(SESSION_ID_ENV, "")).strip()
+        return ["--session", anchor] if anchor else []
 
     def _run_agent(self, entry: ToolSummary, arguments: dict[str, Any], seconds: int, *,
                    image_only: bool) -> dict[str, Any]:
@@ -890,7 +977,15 @@ class CliSession(_SessionBase):
         )
 
     def _fetch_task(self, task_id: str) -> dict[str, Any]:
-        """Poll one run: ``agent status`` renders the same result shape as ``agent run`` did."""
+        """Poll one run: ``tool task`` for a builtin tool, ``agent status`` for an agent run."""
+        if self._task_kinds.get(task_id) == "builtin":
+            code, payload, stdout, stderr = self._run_raw(
+                ["tool", "task", task_id],
+                kill_after=CLI_DISCOVERY_TIMEOUT_SECONDS + CLI_CALL_GRACE_SECONDS,
+            )
+            if code != 0 and not (code == EXIT_TOOL_ERROR and payload):
+                self._raise_exit(code, payload, stderr, tool=self._task_tools.get(task_id), kind="builtin")
+            return payload
         entry = ToolSummary(name=self._task_tools.get(task_id, "agent"), kind="agent")
         code, payload, stdout, stderr = self._run_raw(
             ["agent", "status", task_id],  # status has no --max-output: it never truncates
@@ -944,7 +1039,9 @@ class AsyncCliSession(CliSession):
         return self._catalog
 
     def _fetch_detail(self, entry: ToolSummary) -> Optional[ToolDetail]:
-        return None  # a subprocess round trip cannot be awaited from a synchronous call path
+        # a subprocess round trip cannot be awaited from a synchronous call path, but the builtin
+        # schema already arrived with the catalog
+        return self._builtin_details.get(entry.name) if entry.kind == "builtin" else None
 
     async def _dataset_call(self, op: DatasetOp, dataset_id: str, args: dict[str, Any]) -> dict[str, Any]:  # type: ignore[override]
         return await asyncio.to_thread(CliSession._dataset_call, self, op, dataset_id, args)
@@ -993,6 +1090,8 @@ class AsyncCliSession(CliSession):
         await self._await_task(task, wait_timeout)
         if task.result is None:
             raise self.pending_error(entry.name, entry.kind, task.task_id, wait_timeout)
+        if not task.result.task_id:
+            task.result.task_id = task.task_id
         if task.result.is_error:
             raise self.tool_error(task.result, entry.name)
         return task.result

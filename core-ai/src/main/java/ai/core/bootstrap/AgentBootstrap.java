@@ -2,9 +2,7 @@ package ai.core.bootstrap;
 
 import ai.core.document.Tokenizer;
 import ai.core.llm.LLMProvider;
-import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
-import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
@@ -219,54 +217,15 @@ public class AgentBootstrap {
     }
 
     private void configureLLMProviders(BootstrapResult result) {
-        var providers = new LLMProviders();
-        result.llmProviders = providers;
-        var config = setupLLMProperties();
-
-        // LiteLLM
-        props.property("litellm.api.base").ifPresent(base -> {
-            var providerConfig = createProviderConfig(config, "litellm");
-            var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("litellm.api.base"), props.property("litellm.api.key").orElse(""));
-            injectTracerIfAvailable(provider);
-            result.liteLLMProvider = provider;
-            providers.addProvider(LLMProviderType.LITELLM, provider);
-        });
-
-        // OpenRouter
-        props.property("openrouter.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(config, "openrouter");
-            var provider = new LiteLLMProvider(providerConfig, "https://openrouter.ai/api/v1", key);
-            injectTracerIfAvailable(provider);
-            result.openRouterProvider = provider;
-            providers.addProvider(LLMProviderType.OPENROUTER, provider);
-        });
-
-        // DeepSeek
-        props.property("deepseek.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(config, "deepseek");
-            var provider = new LiteLLMProvider(providerConfig, "https://api.deepseek.com/v1", key);
-            injectTracerIfAvailable(provider);
-            result.deepSeekProvider = provider;
-            providers.addProvider(LLMProviderType.DEEPSEEK, provider);
-        });
-
-        // Azure OpenAI
-        props.property("azure.api.key").ifPresent(key -> props.property("azure.api.base").ifPresent(base -> {
-            var providerConfig = createProviderConfig(config, "azure");
-            var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("azure.api.base"), key);
-            injectTracerIfAvailable(provider);
-            result.azureProvider = provider;
-            providers.addProvider(LLMProviderType.AZURE, provider);
-        }));
-
-        // OpenAI
-        props.property("openai.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(config, "openai");
-            var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("openai.api.base"), key);
-            injectTracerIfAvailable(provider);
-            result.openAIProvider = provider;
-            providers.addProvider(LLMProviderType.OPENAI, provider);
-        });
+        result.llmProviders = LLMProviderFactory.create(props);
+        result.liteLLMProvider = (LiteLLMProvider) result.llmProviders.getProvider(LLMProviderType.LITELLM);
+        result.openRouterProvider = (LiteLLMProvider) result.llmProviders.getProvider(LLMProviderType.OPENROUTER);
+        result.deepSeekProvider = (LiteLLMProvider) result.llmProviders.getProvider(LLMProviderType.DEEPSEEK);
+        result.azureProvider = (LiteLLMProvider) result.llmProviders.getProvider(LLMProviderType.AZURE);
+        result.openAIProvider = (LiteLLMProvider) result.llmProviders.getProvider(LLMProviderType.OPENAI);
+        for (var type : result.llmProviders.getProviderTypes()) {
+            injectTracerIfAvailable(result.llmProviders.getProvider(type));
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -291,46 +250,6 @@ public class AgentBootstrap {
         if (props.property("mcp.servers.json").isEmpty()) {
             logger.debug("MCP client disabled - mcp.servers.json not configured");
             McpClientManagerRegistry.clear();
-        }
-    }
-
-    private LLMProviderConfig setupLLMProperties() {
-        var config = new LLMProviderConfig(null, 0.7d, "text-embedding-3-large");
-        applyConfigProperties(config, "llm");
-        if (config.getModel() == null) {
-            config.setModel("deepseek/deepseek-v4-flash");
-        }
-        if (config.getMultiModalModel() == null) {
-            config.setMultiModalModel("azure/responses/gpt-5-mini");
-        }
-        return config;
-    }
-
-    private LLMProviderConfig createProviderConfig(LLMProviderConfig baseConfig, String prefix) {
-        var config = new LLMProviderConfig(baseConfig);
-        applyConfigProperties(config, prefix);
-        return config;
-    }
-
-    private void applyConfigProperties(LLMProviderConfig config, String prefix) {
-        props.property(prefix + ".model").ifPresent(config::setModel);
-        props.property(prefix + ".model.multimodal").ifPresent(config::setMultiModalModel);
-        props.property(prefix + ".temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
-        props.property(prefix + ".embeddings.model").ifPresent(config::setEmbeddingModel);
-        props.property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);
-        props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.valueOf(v)));
-        props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.valueOf(v)));
-        props.property(prefix + ".stream.buffer.size").ifPresent(v -> config.setStreamBufferSize(Integer.parseInt(v)));
-        applyModelExtraBodies(config, prefix);
-    }
-
-    private void applyModelExtraBodies(LLMProviderConfig config, String prefix) {
-        var extraBodyPrefix = prefix + ".request.extra_body.";
-        for (var key : props.propertyNames()) {
-            if (key.startsWith(extraBodyPrefix) && key.length() > extraBodyPrefix.length()) {
-                var modelName = key.substring(extraBodyPrefix.length());
-                props.property(key).ifPresent(extraBody -> config.addModelExtraBody(modelName, extraBody));
-            }
         }
     }
 

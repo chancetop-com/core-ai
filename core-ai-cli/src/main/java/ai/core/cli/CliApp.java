@@ -140,7 +140,7 @@ public class CliApp {
         var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         var videoMediaProvider = CliAppHelper.videoMediaProvider(props);
         var mediaProvider = CliAppHelper.sharedMediaProvider(props);
-        var mediaCatalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider);
+        var mediaCatalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider, AuthConfig.load());
         var disabledTools = CliToolPolicy.disabledTools(props);
         return new BootstrapCore(props, result, maxTurn, memory, dailyLogs, coding, todoV2,
                 remoteAgents, remoteServers, sessionPersistence, sessionManager, permissionStore, subAgentConfigs, a2aAutoDiscover,

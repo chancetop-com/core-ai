@@ -88,7 +88,7 @@ s.mcp["google-gbp"]["list_reviews"](location="…")   # <server>/<tool>
 s.api["order-service"]["reviews"]["get_reviews"](…) # <app>/<service>/<operation>
 s.llm_call["seo-title-semantics"](query="…")        # LLM_CALL definition; query (+ optional image_url)
 s.agent["review-responder"].run("reply to r-1", wait=False)
-s.builtin.web_search(query="…")                     # the agent's non-sandboxed builtins
+s.builtin.generate_image(prompt="a quiet café at dusk")  # sandbox: agent builtins; local: core-ai-cli tool list
 ```
 
 * `s.agent[name].run(task, wait=True, timeout=None, **kwargs)` passes `task` as the tool's `query`; a

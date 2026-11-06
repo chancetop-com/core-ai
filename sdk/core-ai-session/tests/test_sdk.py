@@ -459,7 +459,7 @@ class CliSessionTest(unittest.TestCase):
 
     def test_catalog_names_match_the_sandbox_catalog(self) -> None:
         opened = self.open()
-        local = {tool.name for tool in opened.catalog().tools}
+        local = {tool.name for tool in opened.catalog().tools if tool.kind != "builtin"}
         remote = {
             tool["name"] for tool in fixture("catalog.json")["tools"]
             if tool["kind"] != "builtin" and tool["exposure"] != "hidden"
@@ -588,20 +588,76 @@ class CliSessionTest(unittest.TestCase):
         finally:
             os.environ.pop("FAKE_CLI_TRIM", None)
 
-    def test_builtin_tools_do_not_exist_locally(self) -> None:
+    def test_builtin_tools_are_in_the_local_catalog(self) -> None:
         opened = self.open()
-        opened.catalog()
-        with self.assertRaises(ToolNotFoundError) as caught:
-            opened.builtin.web_search
-        self.assertIn("builtin", str(caught.exception))
-        with self.assertRaises(ToolNotFoundError):
-            opened.tool("web_search")
+        names = {tool.name for tool in opened.catalog().tools if tool.kind == "builtin"}
+        self.assertEqual({"generate_image", "generate_video", "get_video_status",
+                          "caption_image", "understand_video", "summarize_pdf"}, names)
+        self.assertEqual("builtin", opened.builtin.generate_image.kind)
+        self.assertEqual(["prompt"], opened.describe("generate_image").input_schema["required"])
+
+    def test_a_builtin_call_uses_the_tool_subcommand(self) -> None:
+        opened = self.open()
+        result = opened.tool("generate_image")(prompt="一张海报", size="1024x1024")
+        self.assertEqual("done: generate_image", result.text)
+        call = [item for item in self.calls() if item["argv"][:2] == ["tool", "call"]][-1]
+        self.assertEqual("generate_image", call["argv"][2])
+        self.assertIn("--args-file", call["argv"])
+        self.assertIn("一张海报", call["stdin"])
+
+    def test_a_builtin_uses_its_own_timeout_not_the_cli_cap(self) -> None:
+        opened = self.open()
+        opened.tool("generate_image")(prompt="a cat")
+        call = [item for item in self.calls() if item["argv"][:2] == ["tool", "call"]][-1]
+        self.assertEqual("720", call["argv"][call["argv"].index("--timeout") + 1])
+        opened.tool("generate_image")(prompt="a cat", timeout=120)
+        call = [item for item in self.calls() if item["argv"][:2] == ["tool", "call"]][-1]
+        self.assertEqual("120", call["argv"][call["argv"].index("--timeout") + 1])
+
+    def test_a_builtin_video_returns_a_task_and_polls_it(self) -> None:
+        opened = self.open()
+        task = opened.tool("generate_video")(prompt="a slow pan", wait=False)
+        self.assertEqual("video-task-1", task.task_id)
+        self.assertEqual("pending", task.status)
+        result = task.wait(5)
+        self.assertIn("is ready", result.text)
+        self.assertEqual("video-task-1", result.task_id)
+        poll = [item for item in self.calls() if item["argv"][:2] == ["tool", "task"]][-1]
+        self.assertEqual("video-task-1", poll["argv"][2])
+
+    def test_a_builtin_failure_raises_tool_error(self) -> None:
+        opened = self.open()
+        with self.assertRaises(ToolError):
+            opened.tool("generate_image")(prompt="__fail__")
+
+    def test_an_async_builtin_call_uses_the_catalog_schema(self) -> None:
+        async def run() -> ToolResult:
+            opened = AsyncCliSession(cli=CLI_COMMAND, poll_interval=0.01)
+            await opened.refresh()
+            try:
+                return await opened.tool("generate_image")(prompt="a cat")
+            finally:
+                await opened.aclose()
+
+        result = asyncio.run(run())
+        self.assertEqual("done: generate_image", result.text)
+
+    def test_an_old_cli_without_the_tool_subcommand_simply_has_no_builtins(self) -> None:
+        os.environ["FAKE_CLI_NO_TOOL"] = "1"
+        try:
+            opened = self.open()
+            self.assertFalse([tool for tool in opened.catalog().tools if tool.kind == "builtin"])
+            with self.assertRaises(ToolNotFoundError):
+                opened.tool("generate_image")
+        finally:
+            os.environ.pop("FAKE_CLI_NO_TOOL", None)
 
     def test_me_reports_a_local_session(self) -> None:
-        info = self.open().me()
+        opened = self.open()
+        info = opened.me()
         self.assertEqual("local", info.sandbox_state)
         self.assertEqual("local-cli", info.caller["source"])
-        self.assertEqual(6, info.tool_count)
+        self.assertEqual(len(opened.catalog().tools), info.tool_count)
         self.assertEqual("", info.session_id)  # there is no session to name
 
     def test_empty_catalog_is_not_an_error(self) -> None:

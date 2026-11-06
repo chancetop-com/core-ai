@@ -139,9 +139,11 @@ tasks over the wire, HTTP status mapping — drive a real `Session`/`AsyncSessio
 python scripts/full_pipeline.py --tool kubernetes/namespaces_list --args '{}' --dry-run --json
 ```
 
-The catalog is what *you* can see, not what an agent mounts, and `builtin` tools do not exist here —
-a `ToolNotFoundError` or a `catalog_gaps` entry at this stage is expected. What this run proves is
-that the arguments, the result handling and the exit codes work against a live server.
+The catalog is what *you* can see, not what an agent mounts; its `builtin` namespace holds only the
+local media/multimodal tools from `core-ai-cli tool list`, so a session/UI builtin such as
+`submit_artifacts` still gives a `ToolNotFoundError`, and a `catalog_gaps` entry is expected when a
+source is not readable. What this run proves is that the arguments, the result handling and the exit
+codes work against a live server.
 
 **In a sandbox (the authoritative run).** Have the agent run the script through its `run_bash` tool
 (e.g. `/skill/<name>/scripts/main.py`), with the mounts the skill is written for. Afterwards check

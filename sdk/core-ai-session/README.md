@@ -31,11 +31,16 @@ up on the script's next `session()` without an SDK release.
 | `api` | `s.api["<app>"]["<service>"]["<operation>"](…)` | Service API operations; the caller identity is forwarded to the backend |
 | `llm_call` | `s.llm_call["<definition>"](query=…)` | LLM_CALL definitions — the only LLM path a script has |
 | `agent` | `s.agent["<name>"].run("…")` | sub-agent delegation (usually long-running) |
-| `builtin` | `s.tool("<name>")(…)` | the agent's non-sandboxed builtin tools |
+| `builtin` | `s.tool("<name>")(…)` | the agent's non-sandboxed builtin tools (sandbox), or the local media/multimodal tools (CLI) |
 | files | `s.files.publish(path, title=…)` | publish a file as a session artifact, returns its URL |
 | datasets | `s.dataset["<name>"].state()/insert()/…` | the datasets this session's agent mounts |
 
 `s.call("<tool path>", {…})` reaches any of them; the namespaces are the readable form.
+
+On a workstation the `builtin` namespace holds what `core-ai-cli tool list` reports: `generate_image`,
+`generate_video`, `get_video_status`, `caption_image`, `understand_video` and `summarize_pdf`, whenever the
+local configuration has the provider and model they need. They are the same tools with the same result shape
+as their sandbox counterparts, so a skill script can generate and inspect media in both places.
 
 ## Install
 
@@ -45,7 +50,7 @@ up on the script's next `session()` without an SDK release.
   runtime version you target:
 
   ```bash
-  pip install https://github.com/chancetop-com/core-ai/releases/download/sandbox-v1.0.48/core_ai_session-1.0.48-py3-none-any.whl
+  pip install https://github.com/chancetop-com/core-ai/releases/download/sandbox-v1.0.55/core_ai_session-1.0.55-py3-none-any.whl
   ```
 
   (each `sandbox-v<version>` release attaches `core_ai_session-<version>-py3-none-any.whl`).
@@ -76,6 +81,7 @@ result.data                         # text parsed as JSON when it is JSON, else 
 result.duration_ms, result.call_id, result.llm_usage
 
 summary = s.llm_call["seo-title-semantics"](query=result.text[:2000])
+image = s.tool("generate_image")(prompt="a quiet café at dusk", size="1024x1024")
 url = s.files.publish("/workspace/report.html", title="Weekly report")     # public=True for a permanent URL
 ```
 
@@ -159,7 +165,7 @@ The script API is unified; the identity and the reach are not — and they say s
 | Catalog means | what the **agent mounts** | what **you can see**, enumerated best effort (`s.catalog_gaps`) |
 | `s.me()` | session id, agent name, `contract_version` | a stand-in (`sandbox_state="local"`); one warning is logged |
 | Identity | the session's caller; backend data scoping applies | you |
-| `builtin` tools | `submit_artifacts`, `web_search`, … | absent — calling one raises `ToolNotFoundError` |
+| `builtin` tools | `submit_artifacts`, `web_search`, media/multimodal builtins, … | the media/multimodal builtins from `core-ai-cli tool list`; session/UI builtins (`submit_artifacts`, `web_search`, …) are absent and raise `ToolNotFoundError` |
 | Call timeout | up to 600 s | capped at 300 s: the call returns a `Task` and keeps running |
 | Datasets | the token names the session | pass `session_id=` / `CORE_AI_SESSION_ID` / `--session` |
 | `server` / `api_key` | n/a | a direct `CliSession(server=…, api_key=…)` / `AsyncCliSession(…)` for one session, or `CORE_AI_SERVER` / `CORE_AI_API_KEY`, which the CLI resolves itself |
@@ -196,4 +202,5 @@ contract and `docs/skills/session-probe/` for a smaller skill built the same way
 - `tests/` — the offline suite plus the live helpers (recording, verification)
 - `contract-fixtures/` — the single source of truth for the hub wire format: the Go runtime
   (`core-ai-sandbox-runtime/hub_contract_test.go`), the Python SDK and the fake CLI all assert
-  against the same bytes; `recorded/` holds real, anonymised `core-ai-cli` exchanges
+  against the same bytes; `local-builtin-tools.json` pins the CLI's local `tool list` envelope;
+  `recorded/` holds real, anonymised `core-ai-cli` exchanges

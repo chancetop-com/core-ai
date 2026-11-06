@@ -10,6 +10,7 @@ shipped as a GraalVM native binary.
 | `ai.core.cli.agent` | Agent session loop, turn execution and session persistence |
 | `ai.core.cli.command` | Slash commands and REPL handlers |
 | `ai.core.cli.hub` | `mcp` / `skill` / `api-tool` / `agent` hub subcommands |
+| `ai.core.cli.tool` | local builtin `tool` subcommands (media generation, image/PDF/video understanding) |
 | `ai.core.cli.config` | `agent.properties` and LLM provider configuration |
 | `ai.core.cli.ui` | Terminal rendering, pickers and spinners |
 | `ai.core.cli.memory` | Session memory and knowledge extraction |

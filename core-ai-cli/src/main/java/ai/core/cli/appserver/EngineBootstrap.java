@@ -151,7 +151,7 @@ public class EngineBootstrap {
     }
 
     private MediaModelCatalog createMediaModelCatalog() {
-        var catalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider);
+        var catalog = CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider, AuthConfig.load());
         if (catalog != null) {
             LOGGER.info("media gateway configured: base={}", CliAppHelper.mediaGatewayBase(props));
         }

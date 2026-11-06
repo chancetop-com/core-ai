@@ -137,7 +137,7 @@ public class AcpAgentRunner {
                 props.property("media.video.model").orElse(null),
                 props.property("media.image.edit.model").orElse(null),
                 CliAppHelper.compressionConfig(props),
-                CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider),
+                CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider, AuthConfig.load()),
                 CliToolPolicy.disabledTools(props));
         restoreActiveProvider(props, result.llmProviders);
 

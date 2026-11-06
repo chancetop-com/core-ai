@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.api.server.gateway.GatewayModelWebService;
 import ai.core.api.server.gateway.GatewayProviderWebService;
+import ai.core.api.server.hubmedia.HubMediaUnderstandingWebService;
 import ai.core.api.server.hubmodels.HubMediaModelWebService;
 import ai.core.api.server.hubmodels.HubModelWebService;
 import ai.core.api.server.media.MediaJobWebService;
@@ -27,6 +28,7 @@ import ai.core.server.gateway.GatewayProxyService;
 import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
+import ai.core.server.gateway.HubMediaUnderstandingWebServiceImpl;
 import ai.core.server.gateway.HubModelService;
 import ai.core.server.gateway.HubModelWebServiceImpl;
 import ai.core.server.gateway.ImageModelCompareService;
@@ -137,6 +139,7 @@ public class GatewayModule extends Module {
         api().service(HubModelWebService.class, bind(HubModelWebServiceImpl.class));
         bind(HubMediaModelService.class);
         api().service(HubMediaModelWebService.class, bind(HubMediaModelWebServiceImpl.class));
+        api().service(HubMediaUnderstandingWebService.class, bind(HubMediaUnderstandingWebServiceImpl.class));
     }
 
     private void registerGatewayProxyRoutes() {

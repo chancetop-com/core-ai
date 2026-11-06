@@ -1,0 +1,64 @@
+{
+  "tools": [
+    {
+      "name": "generate_image",
+      "kind": "builtin",
+      "group": "",
+      "path": "generate_image",
+      "ref_id": "generate_image",
+      "description": "Generate an image from a text prompt.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"prompt\":{\"type\":\"string\"},\"size\":{\"type\":\"string\"}},\"required\":[\"prompt\"]}",
+      "timeout_seconds": 720
+    },
+    {
+      "name": "generate_video",
+      "kind": "builtin",
+      "group": "",
+      "path": "generate_video",
+      "ref_id": "generate_video",
+      "description": "Submit an asynchronous video generation task.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"prompt\":{\"type\":\"string\"}},\"required\":[\"prompt\"]}",
+      "timeout_seconds": 120
+    },
+    {
+      "name": "get_video_status",
+      "kind": "builtin",
+      "group": "",
+      "path": "get_video_status",
+      "ref_id": "get_video_status",
+      "description": "Check a submitted video task and download it when ready.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"video_id\":{\"type\":\"string\"}},\"required\":[\"video_id\"]}",
+      "timeout_seconds": 600
+    },
+    {
+      "name": "caption_image",
+      "kind": "builtin",
+      "group": "",
+      "path": "caption_image",
+      "ref_id": "caption_image",
+      "description": "Ask a vision model what an image contains.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"query\"]}",
+      "timeout_seconds": 300
+    },
+    {
+      "name": "understand_video",
+      "kind": "builtin",
+      "group": "",
+      "path": "understand_video",
+      "ref_id": "understand_video",
+      "description": "Understand the content of a video.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"attachment_reference_id\":{\"type\":\"string\"},\"question\":{\"type\":\"string\"}},\"required\":[\"attachment_reference_id\",\"question\"]}",
+      "timeout_seconds": 600
+    },
+    {
+      "name": "summarize_pdf",
+      "kind": "builtin",
+      "group": "",
+      "path": "summarize_pdf",
+      "ref_id": "summarize_pdf",
+      "description": "Read and analyze a PDF document.",
+      "input_schema": "{\"type\":\"object\",\"properties\":{\"query\":{\"type\":\"string\"},\"url\":{\"type\":\"string\"}},\"required\":[\"query\",\"url\"]}",
+      "timeout_seconds": 300
+    }
+  ]
+}

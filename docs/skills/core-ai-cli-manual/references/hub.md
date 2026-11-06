@@ -1,6 +1,6 @@
 # core-ai Hub: Using Server-Side Tools, Skills, and Agents from the CLI
 
-core-ai-server is the central registry for MCP tools, skills, API tools, and agents. `core-ai-cli` exposes each registry as an argv subcommand family that any agent or script can call from a shell. These subcommands are **pure HTTP clients**: no LLM, no local MCP, no agent session is started. Cold start is fast and output is machine-readable with `--json`.
+core-ai-server is the central registry for MCP tools, skills, API tools, and agents. `core-ai-cli` exposes each registry as an argv subcommand family that any agent or script can call from a shell. The registry subcommands are **pure HTTP clients**: no LLM, no local MCP, no agent session is started. The local `tool` surface is the one exception: it runs a builtin media/multimodal tool in-process, with no agent turn. Cold start is fast and output is machine-readable with `--json`.
 
 Pattern shared by every hub kind:
 
@@ -339,12 +339,30 @@ files, so use the exported-catalog form there (`from_fixture` says so if it cann
 Export one real catalog per agent (`core-ai-sandbox catalog --json > catalog.json`) so the fake exposes the same namespaces as production.
 
 A local catalog comes from `core-ai-cli catalog` (CLI ≥ 2.0.19) — one request, the same
-everything-the-user-can-reach answer the server hands a sandbox session. An older CLI has no such
-subcommand and the SDK falls back to enumerating source by source, which is correct but costs a
-listing per MCP server and per API app. Either way the local catalog is best effort: a source the
-server could not refresh is flagged (`catalog_gaps`), and the sandbox catalogs are authoritative.
+everything-the-user-can-reach answer the server hands a sandbox session — plus `core-ai-cli tool list`
+for the builtin media/multimodal tools this machine can run. An older CLI has no `catalog` subcommand
+and the SDK falls back to enumerating source by source, which is correct but costs a listing per MCP
+server and per API app; a CLI without `tool` simply has no local builtins (the SDK skips them, it does
+not flag a gap). Either way the local catalog is best effort: a source the server could not refresh is
+flagged (`catalog_gaps`), and the sandbox catalogs are authoritative.
 
-`CORE_AI_HUB` always wins and there is no fallback: while it is set, `backend="cli"` is refused and a dead sandbox raises `NotBoundError` — calls never quietly re-run under your local identity. Point the SDK at another binary with `CORE_AI_CLI=/path/to/cli` (tests use this to run a fake CLI). The local backend needs `core-ai-cli` ≥ 2.0.10 (`api-tool` and `agent` subcommands); if a command is rejected, the error names the installed version and the required one.
+The local builtin surface is the same six tools a media-capable agent has:
+
+```bash
+core-ai-cli tool list --json                  # what this machine can run, with input_schema
+core-ai-cli tool describe generate_image      # one tool's schema and effective timeout
+core-ai-cli tool call generate_image --args '{"prompt":"a quiet café at dusk"}'
+core-ai-cli tool call generate_video --args '{"prompt":"a slow pan"}'   # pending + task_id
+core-ai-cli tool task <video_id>              # poll; get_video_status downloads the MP4
+```
+
+`generate_image` / `caption_image` / `summarize_pdf` use your own media/LLM configuration; `generate_video`
+and `get_video_status` need a video provider/model; `understand_video` needs a login (it calls
+`POST /api/hub/media/understand-video`) and accepts a `video_<uuid>` reference (pass `--session` when that
+reference belongs to a session), a local video path, or an http(s) URL. Generated images and videos land
+under `{workspace}/.core-ai/media/{images,videos}`.
+
+`CORE_AI_HUB` always wins and there is no fallback: while it is set, `backend="cli"` is refused and a dead sandbox raises `NotBoundError` — calls never quietly re-run under your local identity. Point the SDK at another binary with `CORE_AI_CLI=/path/to/cli` (tests use this to run a fake CLI). The local backend needs `core-ai-cli` ≥ 2.0.10 (`api-tool` and `agent` subcommands); the `tool` subcommand ships with the local builtin surface, and an older CLI simply leaves the `builtin` namespace empty. If a command is rejected, the error names the installed version and the required one.
 
 #### Checking the local transport
 
@@ -362,8 +380,8 @@ The script API is unified; the identity and the reach are not, deliberately and 
 | Identity | the session's caller; backend data scoping applies | you — caller headers, permissions and data scoping are yours |
 | `llm_call` / `agent` | everything the agent mounts | only what you can run yourself |
 | `mcp.call` permission | comes with the agent's mount | admin-only until granted to your role, so a local 403 is not a production 403 |
-| `builtin` tools | `web_search`, `submit_artifacts`, `files.publish` | absent from the local catalog; calling one raises `ToolNotFoundError`, never a fake success |
-| Call timeout | up to 600 s | capped at 300 s by `--timeout`: the SDK clamps it with one warning, returns a `Task`, and the work keeps running |
+| `builtin` tools | `web_search`, `submit_artifacts`, `files.publish` plus the agent's media/multimodal tools | the media/multimodal tools from `core-ai-cli tool list` (`generate_image`, `generate_video`, `get_video_status`, `caption_image`, `understand_video`, `summarize_pdf`); session/UI builtins (`submit_artifacts`, `web_search`, …) are absent and raise `ToolNotFoundError`, never a fake success |
+| Call timeout | up to 600 s | mcp/api/agent: capped at 300 s by `--timeout` (the SDK clamps with one warning, returns a `Task`, and the work keeps running); builtins use the tool's own timeout (up to 1800 s) |
 | Quota and traces | the session's | yours |
 | Windows argv limits | n/a (Linux pod) | names, JSON arguments and task text travel on **stdin** (`--args-file -`, `--task-file -`); nothing long ever goes into argv |
 | Lifetime | tied to the session binding: releasing the sandbox ⇒ `NotBoundError` | one subprocess per call — nothing to bind, nothing to release |

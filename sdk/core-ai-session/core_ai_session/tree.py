@@ -515,6 +515,8 @@ class _SessionBase:
             outcome = task.wait(wait_timeout)
             if outcome.status == "pending":
                 raise self.pending_error(entry.name, entry.kind, task.task_id, wait_timeout)
+            if not outcome.task_id:
+                outcome.task_id = task.task_id
             return outcome
         if result.is_error:
             raise self.tool_error(result, entry.name)

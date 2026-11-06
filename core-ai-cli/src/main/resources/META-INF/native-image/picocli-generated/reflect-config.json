@@ -294,6 +294,42 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.tool.ToolCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.tool.ToolCommandBase",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.tool.ToolListCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.tool.ToolDescribeCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.tool.ToolCallCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.tool.ToolTaskCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.hub.HubCommandBase",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,

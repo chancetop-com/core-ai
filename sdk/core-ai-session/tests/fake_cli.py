@@ -38,6 +38,8 @@ Environment knobs, all optional:
    filtered scan past its window produces.
  * ``FAKE_CLI_DATASET_NONE=1`` — the session mounts no datasets at all: ``dataset list`` is empty, the
    shape an agent without a dataset configuration produces.
+ * ``FAKE_CLI_NO_TOOL=1`` — pretend the installed CLI predates the ``tool`` subcommand: every local
+   builtin disappears from the catalog, the behaviour the SDK keeps for older CLIs.
 
 The ``dataset`` leaves answer with the recorded payloads of ``dataset-payloads.json`` (the exact
 JSON text the builtin tools produce), and ``dataset list``/``show`` with the datasets of
@@ -166,6 +168,37 @@ AGENTS = {
          "status": "published", "owner_is_me": True},
     ],
 }
+
+# `core-ai-cli tool list`: the local builtin surface, the same six tools a media-capable agent has.
+BUILTIN_TOOLS = fixture("local-builtin-tools.json")["tools"]
+BUILTIN_DETAILS = {tool["name"]: tool["input_schema"] for tool in BUILTIN_TOOLS}
+
+BUILTIN_VIDEO_TASK = "video-task-1"
+
+
+def builtin_listing() -> list[dict]:
+    return BUILTIN_TOOLS
+
+
+def builtin_call(name: str, stdin: str) -> tuple[dict, int]:
+    """A local builtin call: the same ``SandboxHubCallResponse`` shape the hub returns."""
+    if "__fail__" in stdin:
+        return {
+            "call_id": "builtin-call-1", "status": "failed", "success": False, "is_error": True,
+            "text": "the local media provider rejected the request", "duration_ms": 12,
+            "error_message": "the local media provider rejected the request",
+        }, 1
+    if name == "generate_video":
+        return {
+            "call_id": BUILTIN_VIDEO_TASK, "status": "pending", "task_id": BUILTIN_VIDEO_TASK,
+            "text": "Video generation submitted.\nvideo_id: " + BUILTIN_VIDEO_TASK,
+            "duration_ms": 25,
+        }, 0
+    return {
+        "call_id": "builtin-call-1", "status": "completed", "success": True, "is_error": False,
+        "text": "done: " + name, "duration_ms": 42,
+    }, 0
+
 
 # `core-ai-cli dataset <family> <verb>` → the operation name the payload fixture is keyed by.
 DATASET_OPS = {
@@ -376,6 +409,8 @@ def main() -> int:
     empty = bool(os.environ.get("FAKE_CLI_EMPTY"))
     leaf = "/".join(positionals[:2])
     rest = positionals[2:]
+    if os.environ.get("FAKE_CLI_NO_TOOL") and leaf.startswith("tool/"):
+        return error(2, "bad_request", "Unmatched argument: tool")
 
     if leaf == "catalog":
         return emit(*catalog_payload(empty))
@@ -438,6 +473,33 @@ def main() -> int:
         if task_id == fixture("task-completed.json")["task_id"]:
             return emit(run_result("completed"), 0)
         return emit(run_result("running", task_id=task_id, output=""), 6)
+
+    if leaf == "tool/list":
+        return emit({"tools": [] if empty else builtin_listing()}, 0)
+    if leaf == "tool/describe":
+        name = rest[0] if rest else ""
+        detail = next((tool for tool in BUILTIN_TOOLS if tool["name"] == name), None)
+        if detail is None:
+            return error(5, "not_found", f"unknown builtin tool: {name}")
+        return emit({
+            "name": name, "kind": "builtin", "group": "", "path": name, "ref_id": name,
+            "description": detail["description"], "input_schema": BUILTIN_DETAILS[name],
+            "timeout_seconds": detail["timeout_seconds"],
+        }, 0)
+    if leaf == "tool/call":
+        return emit(*builtin_call(rest[0] if rest else "", stdin))
+    if leaf == "tool/task":
+        task_id = rest[0] if rest else ""
+        if task_id == BUILTIN_VIDEO_TASK:
+            return emit({
+                "call_id": task_id, "status": "completed", "success": True, "is_error": False,
+                "text": "Video " + task_id + " is ready. Call get_video_status with this video_id to save it locally.",
+                "duration_ms": 0,
+            }, 0)
+        return emit({
+            "call_id": task_id, "status": "pending", "task_id": task_id,
+            "text": "Video is still processing. Poll again.", "duration_ms": 0,
+        }, 0)
 
     if leaf == "dataset/list":
         return emit({"datasets": [] if empty else dataset_bindings()}, 0)

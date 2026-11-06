@@ -10,6 +10,7 @@ import ai.core.cli.hub.catalog.CatalogCommand;
 import ai.core.cli.hub.dataset.DatasetCommand;
 import ai.core.cli.hub.report.ReportCommand;
 import ai.core.cli.hub.skill.SkillCommand;
+import ai.core.cli.tool.ToolCommand;
 import ai.core.cli.upgrade.UpgradeChecker;
 import ai.core.cli.upgrade.UpgradeDownloader;
 import org.slf4j.LoggerFactory;
@@ -29,7 +30,7 @@ import java.util.concurrent.Callable;
  */
 @Command(name = "core-ai-cli", versionProvider = VersionProvider.class, description = "Core-AI CLI agent",
         subcommands = {McpCommand.class, SkillCommand.class, ApiToolCommand.class, AgentCommand.class,
-            ReportCommand.class, DatasetCommand.class, CatalogCommand.class, AppServerCommand.class})
+            ReportCommand.class, DatasetCommand.class, CatalogCommand.class, ToolCommand.class, AppServerCommand.class})
 public class Main implements Callable<Integer> {
     public static void main(String[] args) {
         initSlf4j();

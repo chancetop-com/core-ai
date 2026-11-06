@@ -405,6 +405,8 @@ class AsyncSession(Session):
             if task.result is None:
                 raise self.pending_error(entry.name, entry.kind, task.task_id, wait_timeout)
             result = task.result
+            if not result.task_id:
+                result.task_id = task.task_id
         if result.is_error:
             raise self.tool_error(result, entry.name)
         return result

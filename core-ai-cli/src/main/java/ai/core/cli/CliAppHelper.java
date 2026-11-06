@@ -165,7 +165,7 @@ public class CliAppHelper {
         injectLiteLLMFallback(props, AuthConfig.load());
     }
 
-    static void injectLiteLLMFallback(PropertiesFileSource props, AuthConfig auth) {
+    public static void injectLiteLLMFallback(PropertiesFileSource props, AuthConfig auth) {
         if (auth == null || auth.apiKey() == null) return;
         var serverBase = stripTrailingSlashes(auth.serverUrl());
         var proxyBase = serverBase + RuntimeAuthConfig.LLM_PROXY_PATH;
@@ -240,12 +240,12 @@ public class CliAppHelper {
      * Only a managed gateway can supply a model catalog; a custom endpoint keeps its model in
      * {@code media.*.model}. The fetch is started in the background so engine startup never waits on it.
      */
-    public static MediaModelCatalog mediaModelCatalog(MediaProvider imageProvider, MediaProvider videoProvider) {
+    public static MediaModelCatalog mediaModelCatalog(MediaProvider imageProvider, MediaProvider videoProvider, AuthConfig auth) {
         if (!(imageProvider instanceof CoreAiGatewayMediaProvider)
                 && !(videoProvider instanceof CoreAiGatewayMediaProvider)) {
             return null;
         }
-        var catalog = MediaModelCatalog.create(AuthConfig.load());
+        var catalog = MediaModelCatalog.create(auth);
         if (catalog != null) catalog.warmUp();
         return catalog;
     }

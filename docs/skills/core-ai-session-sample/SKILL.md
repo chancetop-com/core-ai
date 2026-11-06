@@ -42,7 +42,7 @@ from a laptop into a pod.
 ```bash
 # inside a sandbox the package is preinstalled — nothing to install
 # on a workstation, either install the released wheel (matches the sandbox runtime version):
-pip install https://github.com/chancetop-com/core-ai/releases/download/sandbox-v1.0.48/core_ai_session-1.0.48-py3-none-any.whl
+pip install https://github.com/chancetop-com/core-ai/releases/download/sandbox-v1.0.55/core_ai_session-1.0.55-py3-none-any.whl
 # ... or, with the core-ai repository checked out, run this from the repository root:
 pip install -e sdk/core-ai-session
 
@@ -63,7 +63,7 @@ Everything the session's agent has configured, and nothing else — the catalog 
 | `api` | `s.api["<app>"]["<service>"]["<operation>"](...)` | Service API operations; caller identity is forwarded |
 | `llm_call` | `s.llm_call["<definition>"](query=…)` | LLM_CALL definitions — the only LLM path a script has |
 | `agent` | `s.agent["<name>"].run("…", wait=False)` | sub-agent delegation (usually long-running) |
-| `builtin` | `s.tool("<name>")(...)` | the agent's non-sandboxed builtin tools |
+| `builtin` | `s.tool("<name>")(...)` | sandbox: the agent's non-sandboxed builtin tools; locally: the media/multimodal tools from `core-ai-cli tool list` |
 | files | `s.files.publish(path, title=…)` | publish a file as a session artifact, returns its URL |
 | datasets | `s.dataset["<name>"].state()/insert()/…` | the datasets this session's agent mounts |
 
@@ -201,8 +201,8 @@ the local agent loads it by its frontmatter.
 | catalog | what the **agent mounts** | what **you can see**, enumerated best effort (`s.catalog_gaps` names the gaps) |
 | identity | the session's caller; backend data scoping applies | you — caller headers, permissions and data scoping are yours |
 | `s.me()` | session id, agent name, `contract_version` | a stand-in (`sandbox_state="local"`); one warning is logged |
-| `builtin` tools | `submit_artifacts`, `web_search`, … | absent — calling one raises `ToolNotFoundError`, never a fake success |
-| call timeout | up to 600 s | capped at 300 s by the CLI: the call returns a `Task` and keeps running |
+| `builtin` tools | `submit_artifacts`, `web_search`, media/multimodal builtins, … | media/multimodal builtins run through `core-ai-cli tool list`; session/UI builtins (`submit_artifacts`, `web_search`, …) are absent and raise `ToolNotFoundError`, never a fake success |
+| call timeout | up to 600 s | mcp/api/agent capped at 300 s by the CLI: the call returns a `Task` and keeps running; builtins use the tool's own timeout (up to 1800 s) |
 | datasets | the token names the session | pass `session_id=` / `CORE_AI_SESSION_ID` / `--session` |
 | `CORE_AI_SERVER` / key | n/a | resolved flag → env → `~/.core-ai/auth.json` |
 

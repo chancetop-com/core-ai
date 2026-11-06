@@ -213,6 +213,8 @@ class Task:
         self.status = payload.get("status", self.status)
         if self.status != "pending":
             self.result = self.session._to_result(payload)
+            if not self.result.task_id:
+                self.result.task_id = self.task_id
         return self
 
     def wait(self, timeout: float = 1800.0) -> ToolResult:
@@ -232,6 +234,8 @@ class Task:
                 task_id=self.task_id,
                 text=f"task {self.task_id} is still pending after {timeout:.0f}s",
             )
+        if not self.result.task_id:
+            self.result.task_id = self.task_id
         if self.result.is_error:
             raise self.session.tool_error(self.result, self.tool or "")
         return self.result
