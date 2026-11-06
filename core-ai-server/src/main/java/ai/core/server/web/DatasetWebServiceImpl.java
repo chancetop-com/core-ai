@@ -7,6 +7,7 @@ import ai.core.api.server.dataset.DatasetView;
 import ai.core.api.server.dataset.ListDatasetRecordsResponse;
 import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.dataset.ListDatasetsResponse;
+import ai.core.api.server.dataset.RenameDatasetFieldRequest;
 import ai.core.api.server.dataset.SchemaFieldView;
 import ai.core.api.server.dataset.UpdateDatasetRequest;
 import ai.core.server.dataset.DatasetRecordService;
@@ -23,6 +24,7 @@ import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
+import core.framework.web.exception.BadRequestException;
 
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -88,6 +90,16 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
     public void delete(String id) {
         datasetService.delete(id);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
+    public DatasetView renameField(String id, RenameDatasetFieldRequest request) {
+        try {
+            return toView(datasetService.renameField(id, request.from, request.to, AuthContext.userId(webContext)).dataset());
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage(), "BAD_REQUEST", e);
+        }
     }
 
     @Override

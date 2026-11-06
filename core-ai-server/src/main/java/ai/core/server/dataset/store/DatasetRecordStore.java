@@ -34,6 +34,11 @@ public interface DatasetRecordStore {
     // stores without a database-side aggregation raise UnsupportedOperationException
     AggregateResult aggregate(AggregateRequest request);
 
+    // renames a top-level field in every record of the dataset; returns the number of records changed
+    default long renameField(String datasetId, String from, String to, String updatedBy) {
+        throw new UnsupportedOperationException("rename_field is not supported by this dataset store");
+    }
+
     // hook for stores that materialize the schema (postgres views); no-op elsewhere
     default void onDatasetSchemaChanged(Dataset dataset) {
     }

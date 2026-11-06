@@ -37,6 +37,7 @@ final class PgTestSupport {
         database.user = user();
         database.password = password();
         database.view(PgDatasetRecordRow.class);
+        database.view(PgIdRow.class);
         database.view(PgJsonRow.class);
         database.view(PgCountRow.class);
         database.view(PgDatasetViewRow.class);

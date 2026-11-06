@@ -106,6 +106,41 @@ public class MongoDatasetRecordStore implements DatasetRecordStore {
         return datasetRecordCollection.delete(Filters.eq("dataset_id", datasetId));
     }
 
+    @Override
+    public long renameField(String datasetId, String from, String to, String updatedBy) {
+        long renamed = 0;
+        String lastId = "";
+        var effectiveUser = updatedBy != null ? updatedBy : "system";
+        while (true) {
+            var query = new Query();
+            query.filter = Filters.and(Filters.eq("dataset_id", datasetId), Filters.gt("_id", lastId));
+            query.sort = Sorts.ascending("_id");
+            query.limit = 1000;
+            var records = datasetRecordCollection.find(query);
+            if (records.isEmpty()) return renamed;
+            for (var record : records) {
+                lastId = record.id;
+                if (record.data == null || record.data.isBlank()) continue;
+                Map<String, Object> data;
+                try {
+                    data = JsonUtil.toMap(record.data);
+                } catch (RuntimeException | Error e) {
+                    LOGGER.warn("skip invalid dataset record while renaming field, id={}", record.id, e);
+                    continue;
+                }
+                if (!data.containsKey(from)) continue;
+                var value = data.remove(from);
+                data.put(to, value);
+                record.data = JsonUtil.toJsonWithNulls(data);
+                record.updatedAt = ZonedDateTime.now();
+                record.updatedBy = effectiveUser;
+                datasetRecordCollection.replace(record);
+                renamed++;
+            }
+            if (records.size() < 1000) return renamed;
+        }
+    }
+
     /**
      * A record is addressed by its own id *and* the dataset it belongs to: an id alone would let a caller
      * update or delete a record of a dataset it has no access to (ids are opaque and get copied around).

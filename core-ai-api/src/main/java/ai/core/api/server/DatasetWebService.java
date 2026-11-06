@@ -5,6 +5,7 @@ import ai.core.api.server.dataset.DatasetView;
 import ai.core.api.server.dataset.ListDatasetRecordsResponse;
 import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.dataset.ListDatasetsResponse;
+import ai.core.api.server.dataset.RenameDatasetFieldRequest;
 import ai.core.api.server.dataset.UpdateDatasetRequest;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.DELETE;
@@ -39,6 +40,10 @@ public interface DatasetWebService {
     @DELETE
     @Path("/api/datasets/:id")
     void delete(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/datasets/:id/rename-field")
+    DatasetView renameField(@PathParam("id") String id, RenameDatasetFieldRequest request);
 
     @GET
     @Path("/api/datasets/:id/records")

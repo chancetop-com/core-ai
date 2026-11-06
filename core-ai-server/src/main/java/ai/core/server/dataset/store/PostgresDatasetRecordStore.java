@@ -27,6 +27,14 @@ import java.util.UUID;
  */
 public class PostgresDatasetRecordStore implements DatasetRecordStore {
     private static final String TABLE = "dataset.dataset_records";
+    private static final int RENAME_BATCH_SIZE = 5000;
+
+    private static final String SELECT_RENAME_IDS = "SELECT id FROM " + TABLE
+            + " WHERE dataset_id = ? AND id > ? AND jsonb_exists(data, ?) ORDER BY id LIMIT ?";
+
+    private static final String RENAME = "UPDATE " + TABLE
+            + " SET data = (data - ?) || jsonb_build_object(?, data -> ?), updated_at = ?, updated_by = ?"
+            + " WHERE dataset_id = ? AND id > ? AND id <= ? AND jsonb_exists(data, ?)";
 
     private static final String COLUMNS = "id, dataset_id, agent_id, run_id, session_id, user_id, data::text AS data, "
             + "run_started_at, created_at, created_by, updated_at, updated_by";
@@ -205,6 +213,21 @@ public class PostgresDatasetRecordStore implements DatasetRecordStore {
     @Override
     public long deleteByDataset(String datasetId) {
         return database.execute("DELETE FROM " + TABLE + " WHERE dataset_id = ?", datasetId);
+    }
+
+    @Override
+    public long renameField(String datasetId, String from, String to, String updatedBy) {
+        long renamed = 0;
+        String lastId = "";
+        var effectiveUser = updatedBy != null ? updatedBy : "system";
+        while (true) {
+            var ids = database.select(SELECT_RENAME_IDS, PgIdRow.class, datasetId, lastId, from, RENAME_BATCH_SIZE);
+            if (ids.isEmpty()) return renamed;
+            var batchLastId = ids.getLast().id;
+            renamed += database.execute(RENAME, from, to, from, ZonedDateTime.now(), effectiveUser, datasetId, lastId, batchLastId, from);
+            if (ids.size() < RENAME_BATCH_SIZE) return renamed;
+            lastId = batchLastId;
+        }
     }
 
     @Override

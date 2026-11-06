@@ -4,6 +4,7 @@ import ai.core.api.server.hub.HubDatasetDataRequest;
 import ai.core.api.server.hub.HubDatasetListView;
 import ai.core.api.server.hub.HubDatasetOpResponse;
 import ai.core.api.server.hub.HubDatasetRecordsQuery;
+import ai.core.api.server.hub.HubDatasetRenameRequest;
 import ai.core.api.server.hub.HubDatasetStateQuery;
 import ai.core.api.server.hub.HubDatasetView;
 import ai.core.api.server.hub.HubDatasetWebService;
@@ -109,6 +110,14 @@ public class HubDatasetWebServiceImpl implements HubDatasetWebService {
     public HubDatasetOpResponse deleteRecord(String sessionId, String datasetId, String recordId) {
         return response(HubDatasetService.OP_RECORDS_DELETE,
                 hubDatasetService.deleteRecord(sessionId, datasetId, recordId, userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
+    public HubDatasetOpResponse renameField(String sessionId, String datasetId, HubDatasetRenameRequest request) {
+        return response(HubDatasetService.OP_FIELDS_RENAME,
+                hubDatasetService.renameField(sessionId, datasetId, request == null ? null : request.from,
+                        request == null ? null : request.to, userId()));
     }
 
     private String userId() {

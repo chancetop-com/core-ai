@@ -45,10 +45,12 @@ public class HubDatasetService {
     public static final String OP_RECORDS_INSERT = "records.insert";
     public static final String OP_RECORDS_UPDATE = "records.update";
     public static final String OP_RECORDS_DELETE = "records.delete";
+    public static final String OP_FIELDS_RENAME = "fields.rename";
 
     public static final String GROUP_DATASETS = "datasets";
     public static final String GROUP_STATE = "state";
     public static final String GROUP_RECORDS = "records";
+    public static final String GROUP_FIELDS = "fields";
 
     @Inject
     SessionRegistry sessionRegistry;
@@ -175,6 +177,23 @@ public class HubDatasetService {
                 throw new NotFoundException("record not found, id=" + recordId);
             }
             return DatasetOpPayloads.recordUpdated(recordId, resolved.datasetId, data.keySet());
+        });
+    }
+
+    public String renameField(String sessionId, String datasetRef, String from, String to, String userId) {
+        var session = sessionRegistry.requireAccessible(sessionId, userId);
+        var resolved = resolve(session, datasetRef, Access.WRITE);
+        requireRecordDataset(resolved);
+        var detail = detail(resolved.datasetId());
+        detail.put("from", from);
+        detail.put("to", to);
+        return audited(session, userId, ref(resolved, OP_FIELDS_RENAME, GROUP_FIELDS), detail, () -> {
+            try {
+                var result = datasetService.renameField(resolved.datasetId(), from, to, userId);
+                return DatasetOpPayloads.fieldRenamed(resolved.datasetId(), from, to, result.records());
+            } catch (IllegalArgumentException e) {
+                throw new BadRequestException(e.getMessage(), "BAD_REQUEST", e);
+            }
         });
     }
 

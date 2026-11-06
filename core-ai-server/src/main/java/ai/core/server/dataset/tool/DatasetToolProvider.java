@@ -37,6 +37,7 @@ public class DatasetToolProvider implements ToolProvider {
             if (registry.hasAnyWrite()) {
                 list.add(InsertDatasetRecordTool.create(agentId, runId, datasetService, datasetRecordService, registry));
                 list.add(UpdateDatasetRecordTool.create(datasetService, datasetRecordService, registry));
+                list.add(RenameDatasetFieldTool.create(datasetService, registry));
             }
             if (registry.hasAnyFull()) {
                 list.add(DeleteDatasetRecordTool.create(datasetService, datasetRecordService, registry));

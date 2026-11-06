@@ -9,6 +9,7 @@ import ai.core.server.domain.SchemaField;
 import core.framework.inject.Inject;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -90,5 +91,51 @@ public class DatasetService {
         datasetRecordStore.deleteByDataset(id);
         datasetRecordStore.onDatasetDeleted(id);
         datasetMetaStore.delete(id);
+    }
+
+    public RenameResult renameField(String id, String from, String to, String updatedBy) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("dataset_id is required");
+        if (from == null || from.isBlank()) throw new IllegalArgumentException("from field is required");
+        if (to == null || to.isBlank()) throw new IllegalArgumentException("to field is required");
+        if (from.equals(to)) throw new IllegalArgumentException("from and to must be different");
+
+        var entity = datasetMetaStore.get(id);
+        if (entity == null) throw new IllegalArgumentException("dataset not found: " + id);
+        if (entity.schema == null || entity.schema.isEmpty()) throw new IllegalArgumentException("dataset has no schema: " + id);
+
+        for (var field : entity.schema) {
+            if (field != null && to.equals(field.name)) throw new IllegalArgumentException("field already exists: " + to);
+        }
+        int sourceIndex = -1;
+        for (int i = 0; i < entity.schema.size(); i++) {
+            var field = entity.schema.get(i);
+            if (field != null && from.equals(field.name)) {
+                sourceIndex = i;
+                break;
+            }
+        }
+        if (sourceIndex < 0) throw new IllegalArgumentException("unknown field: " + from);
+
+        long records = datasetRecordStore.renameField(id, from, to, updatedBy);
+        var schema = new ArrayList<SchemaField>(entity.schema.size());
+        for (int i = 0; i < entity.schema.size(); i++) {
+            var field = entity.schema.get(i);
+            if (i == sourceIndex) {
+                var renamed = new SchemaField();
+                renamed.name = to;
+                renamed.type = field.type;
+                renamed.label = field.label;
+                schema.add(renamed);
+            } else {
+                schema.add(field);
+            }
+        }
+        entity.schema = schema;
+        entity.updatedAt = ZonedDateTime.now();
+        datasetMetaStore.updateWithSchema(entity);
+        return new RenameResult(entity, from, to, records);
+    }
+
+    public record RenameResult(Dataset dataset, String from, String to, long records) {
     }
 }

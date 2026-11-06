@@ -56,4 +56,9 @@ public interface HubDatasetWebService {
     @Path("/api/hub/sessions/:sessionId/datasets/:datasetId/records/:recordId")
     HubDatasetOpResponse deleteRecord(@PathParam("sessionId") String sessionId, @PathParam("datasetId") String datasetId,
                                       @PathParam("recordId") String recordId);
+
+    @POST
+    @Path("/api/hub/sessions/:sessionId/datasets/:datasetId/fields/rename")
+    HubDatasetOpResponse renameField(@PathParam("sessionId") String sessionId, @PathParam("datasetId") String datasetId,
+                                     HubDatasetRenameRequest request);
 }

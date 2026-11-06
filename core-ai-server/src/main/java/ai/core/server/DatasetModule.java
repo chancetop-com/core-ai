@@ -19,6 +19,7 @@ import ai.core.server.dataset.store.PgDatasetRecordRow;
 import ai.core.server.dataset.store.PgDatasetRow;
 import ai.core.server.dataset.store.PgDatasetViewRow;
 import ai.core.server.dataset.store.PgDdl;
+import ai.core.server.dataset.store.PgIdRow;
 import ai.core.server.dataset.store.PgJsonRow;
 import ai.core.server.dataset.store.PgSizeRow;
 import ai.core.server.dataset.store.PostgresDatasetRecordStore;
@@ -123,6 +124,7 @@ public class DatasetModule extends Module {
         db().user(user);
         db().password(password);
         db().view(PgDatasetRecordRow.class);
+        db().view(PgIdRow.class);
         db().view(PgJsonRow.class);
         db().view(PgCountRow.class);
         db().view(PgDatasetViewRow.class);

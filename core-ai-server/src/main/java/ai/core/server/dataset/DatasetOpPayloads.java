@@ -107,6 +107,16 @@ public final class DatasetOpPayloads {
         return JsonUtil.toJson(response);
     }
 
+    public static String fieldRenamed(String datasetId, String from, String to, long records) {
+        var response = new LinkedHashMap<String, Object>();
+        response.put("status", "renamed");
+        response.put("dataset_id", datasetId);
+        response.put("from", from);
+        response.put("to", to);
+        response.put("renamed_records", records);
+        return JsonUtil.toJson(response);
+    }
+
     private DatasetOpPayloads() {
     }
 }
