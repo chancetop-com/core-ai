@@ -8,6 +8,7 @@ import ai.core.server.dataset.store.DatasetMetaStore;
 import ai.core.server.dataset.store.DatasetRecordStore;
 import ai.core.server.dataset.store.DatasetSqlExecutor;
 import ai.core.server.dataset.store.DatasetViewManager;
+import ai.core.server.dataset.store.DatasetViewReconciler;
 import ai.core.server.dataset.store.MongoDatasetMetaStore;
 import ai.core.server.dataset.store.MongoDatasetRecordStore;
 import ai.core.server.dataset.store.MongoNativeDatasetRecordStore;
@@ -25,6 +26,8 @@ import ai.core.server.web.DatasetWebServiceImpl;
 import com.mongodb.ConnectionString;
 import com.mongodb.client.MongoClients;
 import core.framework.module.Module;
+
+import java.time.Duration;
 
 /**
  * Picks the dataset store with {@code sys.dataset.store} (mongo | mongo-native | postgresql). Metadata and
@@ -88,6 +91,9 @@ public class DatasetModule extends Module {
         bind(DatasetViewManager.class);
         bind(DatasetMetaStore.class, bind(PgDatasetMetaStore.class));
         bind(DatasetRecordStore.class, bind(PostgresDatasetRecordStore.class));
+        var reconciler = bind(DatasetViewReconciler.class);
+        onStartup(reconciler::reconcile);
+        schedule().fixedRate("dataset-view-reconcile", reconciler, Duration.ofHours(24));
         if (sqlExecutorEnabled) {
             if (sqlExecutorUser == null || sqlExecutorPassword == null) {
                 throw new Error("sys.dataset.sqlExecutor.user/password are required when the sql executor is enabled");

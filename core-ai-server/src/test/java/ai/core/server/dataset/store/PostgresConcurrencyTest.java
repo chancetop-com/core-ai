@@ -12,7 +12,7 @@ class PostgresConcurrencyTest extends DatasetRecordStoreConcurrencyTest {
     private static final DatabaseImpl DATABASE = PgTestSupport.database("dataset-concurrency-test");
 
     private static PostgresDatasetRecordStore newStore() {
-        var manager = PgTestSupport.viewManager(DATABASE);
+        var manager = PgTestSupport.viewManager();
         var store = new PostgresDatasetRecordStore();
         store.database = DATABASE;
         store.viewManager = manager;

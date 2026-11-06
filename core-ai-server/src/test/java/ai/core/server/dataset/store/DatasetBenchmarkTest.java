@@ -180,7 +180,6 @@ class DatasetBenchmarkTest {
 
     private PostgresDatasetRecordStore postgresStore() {
         var manager = new DatasetViewManager();
-        manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         var metaStore = mock(PgDatasetMetaStore.class);
         when(metaStore.get(anyString())).thenReturn(dataset());
@@ -271,7 +270,6 @@ class DatasetBenchmarkTest {
 
     private void viewScenario() {
         var manager = new DatasetViewManager();
-        manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         manager.sync(dataset());
         var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName("bench-hot"));
@@ -309,7 +307,6 @@ class DatasetBenchmarkTest {
 
     private DatasetViewManager viewManager() {
         var manager = new DatasetViewManager();
-        manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         return manager;
     }

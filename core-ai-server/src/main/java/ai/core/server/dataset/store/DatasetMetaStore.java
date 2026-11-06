@@ -21,5 +21,14 @@ public interface DatasetMetaStore {
 
     void update(Dataset dataset);
 
+    // stores that materialize the schema (postgres views) keep metadata and view changes in one transaction
+    default void createWithSchema(Dataset dataset) {
+        create(dataset);
+    }
+
+    default void updateWithSchema(Dataset dataset) {
+        update(dataset);
+    }
+
     void delete(String id);
 }

@@ -3,7 +3,6 @@ package ai.core.server.dataset.store;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.utils.JsonUtil;
-import core.framework.db.Database;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -108,37 +107,44 @@ public class DatasetViewManager {
     }
 
     @Inject
-    Database database;
-
-    @Inject
     PgDdl ddl;
 
     public void sync(Dataset dataset) {
         if (dataset == null || dataset.id == null) return;
-        var plan = plan(dataset);
-        var existing = findRegistry(dataset.id);
-        if (existing != null && plan.schemaHash().equals(existing.schemaHash)) return;
+        ddl.inTransaction(connection -> sync(connection, dataset));
+    }
 
-        ddl.inTransaction(connection -> {
-            try (Statement statement = connection.createStatement()) {
-                for (var sql : plan.statements()) statement.execute(sql);
-            }
-            upsertRegistry(connection, dataset.id, plan);
-        });
+    void sync(Connection connection, Dataset dataset) throws SQLException {
+        if (dataset == null || dataset.id == null) return;
+        var plan = plan(dataset);
+        var existing = findRegistry(connection, dataset.id);
+        if (existing != null
+                && plan.viewName().equals(existing.viewName())
+                && plan.schemaHash().equals(existing.schemaHash())
+                && viewExists(connection, existing.viewName())) {
+            return;
+        }
+
+        setLockTimeout(connection);
+        try (Statement statement = connection.createStatement()) {
+            for (var sql : plan.statements()) statement.execute(sql);
+        }
+        upsertRegistry(connection, dataset.id, plan);
         LOGGER.info("dataset view synced, datasetId={}, view={}, columns={}", dataset.id, plan.viewName(), plan.columns().size());
     }
 
     public void drop(String datasetId) {
         if (datasetId == null) return;
-        var existing = findRegistry(datasetId);
-        if (existing == null) return;
         ddl.inTransaction(connection -> {
+            var existing = findRegistry(connection, datasetId);
+            if (existing == null) return;
+            setLockTimeout(connection);
             try (Statement statement = connection.createStatement()) {
-                statement.execute("DROP VIEW IF EXISTS " + qualifiedView(existing.viewName));
+                statement.execute("DROP VIEW IF EXISTS " + qualifiedView(existing.viewName()));
                 statement.execute("DELETE FROM app.dataset_views WHERE dataset_id = " + literal(datasetId));
             }
+            LOGGER.info("dataset view dropped, datasetId={}, view={}", datasetId, existing.viewName());
         });
-        LOGGER.info("dataset view dropped, datasetId={}, view={}", datasetId, existing.viewName);
     }
 
     public List<Column> columns(Dataset dataset) {
@@ -178,10 +184,29 @@ public class DatasetViewManager {
                 + " ON dataset.dataset_records (dataset_id, (" + expression(column) + "))"));
     }
 
-    private PgDatasetViewRow findRegistry(String datasetId) {
-        return database.selectOne(
-                "SELECT dataset_id, view_name, column_map, schema_hash, updated_at FROM app.dataset_views WHERE dataset_id = ?",
-                PgDatasetViewRow.class, datasetId).orElse(null);
+    private Registry findRegistry(Connection connection, String datasetId) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT view_name, schema_hash FROM app.dataset_views WHERE dataset_id = ?")) {
+            statement.setString(1, datasetId);
+            var resultSet = statement.executeQuery();
+            if (!resultSet.next()) return null;
+            return new Registry(resultSet.getString("view_name"), resultSet.getString("schema_hash"));
+        }
+    }
+
+    private boolean viewExists(Connection connection, String viewName) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT 1 FROM pg_views WHERE schemaname = ? AND viewname = ?")) {
+            statement.setString(1, "dataset");
+            statement.setString(2, viewName);
+            return statement.executeQuery().next();
+        }
+    }
+
+    private void setLockTimeout(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("SET LOCAL lock_timeout = '3s'");
+        }
     }
 
     private String selectList(List<Column> columns) {
@@ -205,6 +230,9 @@ public class DatasetViewManager {
             statement.setObject(5, ZonedDateTime.now().toOffsetDateTime());
             statement.executeUpdate();
         }
+    }
+
+    private record Registry(String viewName, String schemaHash) {
     }
 
     public record Column(String sourceName, String columnName, SchemaFieldType type) {

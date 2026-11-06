@@ -47,8 +47,7 @@ public class DatasetService {
         entity.schema = schema;
         entity.createdAt = ZonedDateTime.now();
         entity.updatedAt = entity.createdAt;
-        datasetMetaStore.create(entity);
-        datasetRecordStore.onDatasetSchemaChanged(entity);
+        datasetMetaStore.createWithSchema(entity);
         return entity;
     }
 
@@ -76,8 +75,11 @@ public class DatasetService {
         }
         if (type != null) entity.type = type;
         entity.updatedAt = ZonedDateTime.now();
-        datasetMetaStore.update(entity);
-        if (schemaChanged) datasetRecordStore.onDatasetSchemaChanged(entity);
+        if (schemaChanged) {
+            datasetMetaStore.updateWithSchema(entity);
+        } else {
+            datasetMetaStore.update(entity);
+        }
         return entity;
     }
 

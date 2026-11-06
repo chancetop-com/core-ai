@@ -1,6 +1,5 @@
 package ai.core.server.dataset.store;
 
-import core.framework.db.Database;
 import core.framework.internal.db.DatabaseImpl;
 
 /**
@@ -26,9 +25,8 @@ final class PgTestSupport {
         return new PgDdl(url(), user(), password());
     }
 
-    static DatasetViewManager viewManager(Database database) {
+    static DatasetViewManager viewManager() {
         var manager = new DatasetViewManager();
-        manager.database = database;
         manager.ddl = ddl();
         return manager;
     }

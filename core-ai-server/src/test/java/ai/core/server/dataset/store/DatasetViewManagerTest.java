@@ -62,7 +62,6 @@ class DatasetViewManagerTest {
 
     private DatasetViewManager manager() {
         var manager = new DatasetViewManager();
-        manager.database = DATABASE;
         manager.ddl = PgTestSupport.ddl();
         return manager;
     }

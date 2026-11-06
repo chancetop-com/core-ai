@@ -8,6 +8,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,6 +22,13 @@ import java.util.List;
 public class PgDatasetMetaStore implements DatasetMetaStore {
     private static final String SELECT = "SELECT id, name, description, user_id, type, schema_json, schema_version, created_at, updated_at "
             + "FROM app.datasets";
+
+    private static final String INSERT = "INSERT INTO app.datasets (id, name, description, user_id, type, schema_json, schema_version, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)";
+
+    private static final String UPDATE = "UPDATE app.datasets SET name = ?, description = ?, type = ?, schema_json = ?, "
+            + "schema_version = schema_version + CASE WHEN schema_json IS DISTINCT FROM ? THEN 1 ELSE 0 END, "
+            + "updated_at = ? WHERE id = ?";
 
     private static String where(String query, List<Object> params) {
         if (query == null || query.isBlank()) return "";
@@ -60,6 +69,12 @@ public class PgDatasetMetaStore implements DatasetMetaStore {
     @Inject
     Database database;
 
+    @Inject
+    PgDdl ddl;
+
+    @Inject
+    DatasetViewManager viewManager;
+
     @Override
     public List<Dataset> list(String query, Integer offset, Integer limit) {
         var params = new ArrayList<>();
@@ -86,21 +101,78 @@ public class PgDatasetMetaStore implements DatasetMetaStore {
         return database.selectOne(SELECT + " WHERE id = ?", PgDatasetRow.class, id).map(PgDatasetMetaStore::toDataset).orElse(null);
     }
 
+    public List<Dataset> listAll() {
+        return database.select(SELECT + " ORDER BY id", PgDatasetRow.class).stream().map(PgDatasetMetaStore::toDataset).toList();
+    }
+
     @Override
     public void create(Dataset dataset) {
-        database.execute("INSERT INTO app.datasets (id, name, description, user_id, type, schema_json, schema_version, created_at, updated_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-                dataset.id, dataset.name, dataset.description, dataset.userId, type(dataset.type), schemaJson(dataset),
-                dataset.createdAt, dataset.updatedAt);
+        database.execute(INSERT, insertParams(dataset));
+    }
+
+    @Override
+    public void createWithSchema(Dataset dataset) {
+        ddl.inTransaction(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement(INSERT)) {
+                setInsert(statement, dataset);
+                statement.executeUpdate();
+            }
+            viewManager.sync(connection, dataset);
+        });
     }
 
     @Override
     public void update(Dataset dataset) {
-        database.execute("UPDATE app.datasets SET name = ?, description = ?, type = ?, schema_json = ?, "
-                        + "schema_version = schema_version + CASE WHEN schema_json IS DISTINCT FROM ? THEN 1 ELSE 0 END, "
-                        + "updated_at = ? WHERE id = ?",
-                dataset.name, dataset.description, type(dataset.type), schemaJson(dataset), schemaJson(dataset),
-                dataset.updatedAt, dataset.id);
+        database.execute(UPDATE, updateParams(dataset));
+    }
+
+    @Override
+    public void updateWithSchema(Dataset dataset) {
+        ddl.inTransaction(connection -> {
+            try (PreparedStatement statement = connection.prepareStatement("SELECT 1 FROM app.datasets WHERE id = ? FOR UPDATE")) {
+                statement.setString(1, dataset.id);
+                var resultSet = statement.executeQuery();
+                if (!resultSet.next()) throw new IllegalStateException("dataset not found: " + dataset.id);
+            }
+            try (PreparedStatement statement = connection.prepareStatement(UPDATE)) {
+                setUpdate(statement, dataset);
+                statement.executeUpdate();
+            }
+            viewManager.sync(connection, dataset);
+        });
+    }
+
+    private Object[] insertParams(Dataset dataset) {
+        return new Object[]{
+            dataset.id, dataset.name, dataset.description, dataset.userId, type(dataset.type), schemaJson(dataset),
+            dataset.createdAt, dataset.updatedAt};
+    }
+
+    private Object[] updateParams(Dataset dataset) {
+        return new Object[]{
+            dataset.name, dataset.description, type(dataset.type), schemaJson(dataset), schemaJson(dataset),
+            dataset.updatedAt, dataset.id};
+    }
+
+    private void setInsert(PreparedStatement statement, Dataset dataset) throws SQLException {
+        statement.setString(1, dataset.id);
+        statement.setString(2, dataset.name);
+        statement.setString(3, dataset.description);
+        statement.setString(4, dataset.userId);
+        statement.setString(5, type(dataset.type));
+        statement.setString(6, schemaJson(dataset));
+        statement.setObject(7, dataset.createdAt != null ? dataset.createdAt.toOffsetDateTime() : null);
+        statement.setObject(8, dataset.updatedAt != null ? dataset.updatedAt.toOffsetDateTime() : null);
+    }
+
+    private void setUpdate(PreparedStatement statement, Dataset dataset) throws SQLException {
+        statement.setString(1, dataset.name);
+        statement.setString(2, dataset.description);
+        statement.setString(3, type(dataset.type));
+        statement.setString(4, schemaJson(dataset));
+        statement.setString(5, schemaJson(dataset));
+        statement.setObject(6, dataset.updatedAt != null ? dataset.updatedAt.toOffsetDateTime() : null);
+        statement.setString(7, dataset.id);
     }
 
     @Override

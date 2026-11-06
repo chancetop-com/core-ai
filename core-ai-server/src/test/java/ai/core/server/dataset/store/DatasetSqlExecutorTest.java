@@ -36,7 +36,7 @@ class DatasetSqlExecutorTest {
             System.getenv().getOrDefault("CORE_AI_PG_TEST_PASSWORD", "core_ai"), READER, READER_PASSWORD);
 
     private static DatasetViewManager manager() {
-        return PgTestSupport.viewManager(DATABASE);
+        return PgTestSupport.viewManager();
     }
 
     private static PostgresDatasetRecordStore newStore() {
@@ -76,7 +76,7 @@ class DatasetSqlExecutorTest {
         DATABASE.close();
     }
 
-    private final DatasetViewManager manager = PgTestSupport.viewManager(DATABASE);
+    private final DatasetViewManager manager = PgTestSupport.viewManager();
     private final PostgresDatasetRecordStore store = newStore();
 
 
