@@ -186,6 +186,28 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void routesUnregisteredAnthropicModelToFallback() throws Exception {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var fallback = model("deepseek-flash", provider.id, "deepseek-chat", List.of("chat.completions"));
+        fallback.messagesFallback = Boolean.TRUE;
+        fallback.temperature = 1D;
+        var service = service(provider, fallback);
+
+        service.proxyMessages(json(Map.of(
+                "model", "claude-sonnet-4-6",
+                "max_tokens", 64,
+                "temperature", 0.2,
+                "messages", List.of(Map.of("role", "user", "content", "hi"))
+        )), "user-1", null, null);
+
+        assertEquals("https://api.deepseek.com/v1/chat/completions", service.captured.uri);
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        assertEquals("deepseek-chat", body.get("model"));
+        assertEquals(64, ((Number) body.get("max_tokens")).intValue());
+        assertEquals(1D, ((Number) body.get("temperature")).doubleValue(), 1e-9);
+    }
+
+    @Test
     void routesAnthropicMessagesToNativeProvider() throws Exception {
         var provider = provider("Anthropic", "anthropic", "https://api.anthropic.com", "anthropic/", "claude-sonnet-4-6");
         var service = service(provider, model("claude-sonnet", provider.id, "claude-sonnet-4-6", List.of("messages")));

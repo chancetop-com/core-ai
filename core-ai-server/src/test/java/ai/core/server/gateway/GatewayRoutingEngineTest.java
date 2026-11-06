@@ -162,6 +162,38 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void messagesFallbackRoutesUnregisteredModels() {
+        var fallback = model("deepseek-flash", false, 100);
+        fallback.messagesFallback = Boolean.TRUE;
+        var engine = engine(List.of(fallback, model("gpt-6", false, 200)));
+
+        var route = engine.route("claude-sonnet-4-6", GatewayEndpointType.MESSAGES);
+
+        assertEquals("deepseek-flash", route.upstreamModel());
+        assertEquals("deepseek-flash", route.model().modelId);
+    }
+
+    @Test
+    void messagesFallbackDoesNotApplyToOtherEndpoints() {
+        var fallback = model("deepseek-flash", false, 100);
+        fallback.messagesFallback = Boolean.TRUE;
+        var engine = engine(List.of(fallback));
+
+        assertThrows(BadRequestException.class, () -> engine.route("claude-sonnet-4-6", GatewayEndpointType.CHAT_COMPLETIONS));
+    }
+
+    @Test
+    void messagesFallbackDoesNotServeDisabledModels() {
+        var fallback = model("deepseek-flash", false, 100);
+        fallback.messagesFallback = Boolean.TRUE;
+        var disabled = model("claude-sonnet-4-6", false, 200);
+        disabled.enabled = Boolean.FALSE;
+        var engine = engine(List.of(fallback, disabled));
+
+        assertThrows(BadRequestException.class, () -> engine.route("claude-sonnet-4-6", GatewayEndpointType.MESSAGES));
+    }
+
+    @Test
     void messagesEndpointRejectsResponsesOnlyModels() {
         var responsesOnly = model("gpt-6.1-sol", false, 100);
         responsesOnly.endpointTypes = List.of("responses");

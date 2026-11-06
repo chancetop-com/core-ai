@@ -1717,6 +1717,7 @@ export interface GatewayModel {
   endpointTypes?: string[];
   enabled?: boolean;
   isDefault?: boolean;
+  messagesFallback?: boolean | null;
   fallbackModelIds?: string[] | null;
   priority?: number | null;
   contextWindow?: number | null;
@@ -1754,6 +1755,7 @@ export interface GatewayModelRequest {
   upstreamModel?: string;
   endpointTypes?: string[];
   enabled?: boolean;
+  messagesFallback?: boolean | null;
   fallbackModelIds?: string[] | null;
   priority?: number | null;
   contextWindow?: number | null;

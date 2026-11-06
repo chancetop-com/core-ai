@@ -244,7 +244,7 @@ public class GatewayProxyService {
         var provider = selection.provider();
         var upstreamEndpoint = AnthropicMessagesBridge.upstreamEndpoint(provider, endpoint);
         var outgoingBody = AnthropicMessagesBridge.requestBody(requestBody, endpoint, provider, upstreamEndpoint,
-                selection.upstreamModel(), routingEngine.modelConfig(requestedModel));
+                selection.upstreamModel(), selection.model());
 
         var url = endpointUrl(provider, upstreamEndpoint, selection.upstreamModel());
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));

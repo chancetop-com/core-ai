@@ -78,6 +78,7 @@ type ModelFormState = {
   upstreamModel: string;
   endpointTypes: string[];
   enabled: boolean;
+  messagesFallback: boolean;
   fallbackModelIds: string;
   priority: string;
   contextWindow: string;
@@ -141,6 +142,7 @@ const emptyModelForm: ModelFormState = {
   upstreamModel: '',
   endpointTypes: ['chat.completions'],
   enabled: true,
+  messagesFallback: false,
   fallbackModelIds: '',
   priority: '100',
   contextWindow: '',
@@ -355,6 +357,7 @@ export default function GatewayProviders() {
       upstreamModel: model.upstreamModel || '',
       endpointTypes: model.endpointTypes?.length ? model.endpointTypes : ['chat.completions'],
       enabled: model.enabled !== false,
+      messagesFallback: model.messagesFallback === true,
       fallbackModelIds: model.fallbackModelIds?.join(', ') || '',
       priority: String(model.priority ?? 100),
       contextWindow: model.contextWindow ? String(model.contextWindow) : '',
@@ -412,6 +415,7 @@ export default function GatewayProviders() {
         upstreamModel: modelForm.upstreamModel,
         endpointTypes: modelForm.endpointTypes,
         enabled: modelForm.enabled,
+        messagesFallback: modelForm.messagesFallback,
         fallbackModelIds: modelForm.fallbackModelIds.split(',').map(v => v.trim()).filter(Boolean),
         priority: optionalNumber(modelForm.priority, 'Priority'),
         supportsVideo: modelForm.supportsVideo,
@@ -801,6 +805,7 @@ function renderModelsTable(props: {
                     {model.modelId}
                   </span>
                   {model.enabled === false && <span className="text-xs ml-1" style={{ color: 'var(--color-warning)' }}>· disabled</span>}
+                  {model.messagesFallback && <span className="text-xs ml-1" style={{ color: 'var(--color-accent)' }}>· anthropic fallback</span>}
                 </td>
                 <td className="px-3 py-3 max-w-[100px] 2xl:max-w-[200px] truncate hidden min-[1536px]:table-cell" title={model.displayName || undefined} style={{ color: 'var(--color-text-secondary)' }}>
                   {model.displayName || '-'}
@@ -1072,6 +1077,12 @@ function renderModelPanel(props: {
             onChange={e => setForm({ ...form, fallbackModelIds: e.target.value })}
             placeholder="e.g. gpt-6.1-sol, gemini-3.8-pro"
           />
+        </Field>
+
+        <Field label="Anthropic fallback" hint="Route /v1/messages requests whose model id is not registered here, e.g. Claude Code's claude-* names. Only one model can carry this flag.">
+          <Checkbox checked={form.messagesFallback} onChange={checked => setForm({ ...form, messagesFallback: checked })}>
+            Use this model for unregistered messages models
+          </Checkbox>
         </Field>
 
         <Field label="Endpoints">

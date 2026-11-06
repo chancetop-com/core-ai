@@ -36,6 +36,9 @@ public class GatewayModelView {
     @Property(name = "isDefault")
     public Boolean isDefault;
 
+    @Property(name = "messagesFallback")
+    public Boolean messagesFallback;
+
     @Property(name = "fallbackModelIds")
     public List<String> fallbackModelIds;
 

@@ -110,6 +110,9 @@ public class GatewayRoutingEngine {
                     + ", endpoint=" + endpoint.id + ", registered=" + registeredEndpoints(registeredModels, requestedModel));
             // a disabled model must not be served by provider-prefix or provider-fallback routing either
             if (isDisabled(requestedModel)) throw new BadRequestException("gateway model is disabled: " + requestedModel);
+            // Anthropic clients send names the gateway does not register (Claude Code sends claude-*)
+            var messagesFallback = endpoint == GatewayEndpointType.MESSAGES ? messagesFallbackRoute(endpointModels) : null;
+            if (messagesFallback != null) return messagesFallback;
             if (!registeredModels.isEmpty()) throw new BadRequestException("no enabled gateway model matches model: " + requestedModel);
             return legacyRoute(requestedModel, endpoint, snapshot.providers);
         }
@@ -402,6 +405,11 @@ public class GatewayRoutingEngine {
         };
     }
 
+    private GatewayRoute messagesFallbackRoute(List<RegisteredGatewayModel> endpointModels) {
+        return endpointModels.stream().filter(route -> Boolean.TRUE.equals(route.model.messagesFallback))
+                .findFirst()
+                .map(route -> new GatewayRoute(route.provider, route.model.upstreamModel, route.model)).orElse(null);
+    }
     private boolean supportsEndpoint(GatewayModelConfig model, GatewayEndpointType endpoint) {
         if (model.endpointTypes == null || model.endpointTypes.isEmpty()) return true;
         if (endpoint == GatewayEndpointType.MESSAGES) {

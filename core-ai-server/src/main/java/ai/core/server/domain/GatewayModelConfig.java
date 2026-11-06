@@ -33,6 +33,10 @@ public class GatewayModelConfig {
     @Field(name = "is_default")
     public Boolean isDefault;
 
+    // route /messages requests whose model id is not registered to this model; only one model carries it
+    @Field(name = "messages_fallback")
+    public Boolean messagesFallback;
+
     // ordered gateway model ids tried when this model fails before producing any output;
     // an empty list disables failover for this model
     @Field(name = "fallback_model_ids")

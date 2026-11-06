@@ -40,6 +40,10 @@ public class GatewayModelRequest {
     @Property(name = "isDefault")
     public Boolean isDefault;
 
+    // route /messages requests whose model id is not registered to this model
+    @Property(name = "messagesFallback")
+    public Boolean messagesFallback;
+
     // ordered gateway model ids tried when this model fails before producing any output
     @Property(name = "fallbackModelIds")
     public List<String> fallbackModelIds;

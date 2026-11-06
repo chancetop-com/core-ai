@@ -49,6 +49,21 @@ class GatewayModelServiceTest {
     }
 
     @Test
+    void createPersistsMessagesFallbackAndClearsOtherModels() {
+        var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
+        var request = new GatewayModelRequest();
+        request.modelId = "deepseek-fallback";
+        request.providerId = "provider-1";
+        request.upstreamModel = "deepseek/deepseek-v4-flash";
+        request.messagesFallback = Boolean.TRUE;
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals(Boolean.TRUE, view.messagesFallback);
+        verify(service.gatewayModelCollection).update(any(org.bson.conversions.Bson.class), any(org.bson.conversions.Bson.class));
+    }
+
+    @Test
     void rejectsMissingProvider() {
         var service = serviceWithUser(admin("admin-1"), null);
         var request = new GatewayModelRequest();

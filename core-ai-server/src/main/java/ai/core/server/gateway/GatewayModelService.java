@@ -142,6 +142,7 @@ public class GatewayModelService {
         apply(entity, request, true);
         GatewaySupport.validateProviderEndpointCompatibility(provider, entity.endpointTypes);
         if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
+        if (Boolean.TRUE.equals(entity.messagesFallback)) clearOtherMessagesFallbacks(entity.id);
         rejectDuplicateModelId(entity);
         entity.createdBy = userId;
         entity.updatedBy = userId;
@@ -162,6 +163,7 @@ public class GatewayModelService {
         apply(entity, request, false);
         GatewaySupport.validateProviderEndpointCompatibility(provider, entity.endpointTypes);
         if (Boolean.TRUE.equals(entity.isDefault)) clearDefaults(entity.providerId);
+        if (Boolean.TRUE.equals(entity.messagesFallback)) clearOtherMessagesFallbacks(entity.id);
         rejectDuplicateModelId(entity);
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
@@ -250,6 +252,8 @@ public class GatewayModelService {
         if (entity.enabled == null) entity.enabled = Boolean.TRUE;
         if (specified(request, "isDefault", create)) entity.isDefault = request.isDefault;
         if (entity.isDefault == null) entity.isDefault = Boolean.FALSE;
+        if (specified(request, "messagesFallback", create)) entity.messagesFallback = request.messagesFallback;
+        if (entity.messagesFallback == null) entity.messagesFallback = Boolean.FALSE;
         if (specified(request, "fallbackModelIds", create)) GatewayModelFallbackSupport.apply(entity, request, create, gatewayModelCollection);
         if (specified(request, "priority", create)) entity.priority = request.priority;
         if (entity.priority == null) entity.priority = 100L;
@@ -386,6 +390,7 @@ public class GatewayModelService {
         view.endpointTypes = entity.endpointTypes;
         view.enabled = entity.enabled;
         view.isDefault = entity.isDefault;
+        view.messagesFallback = entity.messagesFallback;
         view.fallbackModelIds = entity.fallbackModelIds;
         view.priority = entity.priority;
         view.contextWindow = entity.contextWindow;
@@ -426,6 +431,14 @@ public class GatewayModelService {
                 Filters.eq("is_default", Boolean.TRUE)
         );
         gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("is_default", Boolean.FALSE));
+    }
+
+    private void clearOtherMessagesFallbacks(String keepId) {
+        var filter = Filters.and(
+                Filters.eq("messages_fallback", Boolean.TRUE),
+                Filters.ne("_id", keepId)
+        );
+        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("messages_fallback", Boolean.FALSE));
     }
 
     private record StagedImport(GatewayModelConfig entity, boolean create) {
