@@ -1,6 +1,8 @@
 package ai.core.cli.appserver;
 
 import ai.core.cli.memory.GlobalUserMemory;
+import ai.core.cli.memory.MemoryIndexMaintainer;
+import ai.core.cli.memory.MemoryTriggerService;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,6 +82,57 @@ public final class LocalMemory {
             throw RpcException.business("FILE_NOT_FOUND", "memory file not found: " + relative, "path", relative);
         }
         return readContent(resolved, root.relativize(resolved).toString().replace('\\', '/'));
+    }
+
+    /**
+     * Runs the deterministic memory governance pass for the Memory panel. Returns counts; when
+     * another pass is already running the response carries {@code running=true} instead.
+     */
+    public static ObjectNode maintain(Path workspace, boolean memoryEnabled) {
+        return maintain(workspace, memoryEnabled, false);
+    }
+
+    /**
+     * Runs memory governance for the Memory panel. The deterministic pass is fast and always safe;
+     * {@code deep} additionally runs the isolated semantic curator, which may take a minute.
+     */
+    public static ObjectNode maintain(Path workspace, boolean memoryEnabled, boolean deep) {
+        var node = Params.object();
+        if (!memoryEnabled) {
+            node.put("available", false);
+            return node;
+        }
+        node.put("available", true);
+        if (deep) {
+            var result = MemoryTriggerService.getInstance(workspace).maintenance().runCurator();
+            if (result == null) {
+                node.put("running", true);
+                return node;
+            }
+            node.put("completed", result.completed());
+            putCounts(node, result.index());
+            return node;
+        }
+        var result = MemoryTriggerService.getInstance(workspace).maintenance().run();
+        if (result == null) {
+            node.put("running", true);
+            return node;
+        }
+        node.put("completed", true);
+        putCounts(node, result);
+        return node;
+    }
+
+    private static void putCounts(ObjectNode node, MemoryIndexMaintainer.Result result) {
+        if (result == null) {
+            node.put("running", true);
+            return;
+        }
+        node.put("running", false);
+        node.put("added", result.added());
+        node.put("removed", result.removed());
+        node.put("updated", result.updated());
+        node.put("total", result.total());
     }
 
     /** The global user memory lives in the user's home, not the workspace — only that one file is reachable. */

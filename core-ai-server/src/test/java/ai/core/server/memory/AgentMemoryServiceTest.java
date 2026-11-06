@@ -138,6 +138,24 @@ class AgentMemoryServiceTest {
         assertTrue(evidence.contains("no conversation retained"));
     }
 
+    @Test
+    @SuppressWarnings("unchecked")
+    void dedupeExactDuplicatesKeepsTheNewestRowPerLayer() {
+        var older = knowledge("agent-1", "same fact");
+        older.id = "old";
+        var newer = knowledge("agent-1", "  Same   Fact ");
+        newer.id = "new";
+        when(memoryCollection.find(any(Query.class))).thenReturn(
+                List.of(older, newer),
+                List.of(),
+                List.of());
+
+        int removed = service.dedupeExactDuplicates("agent-1");
+
+        assertEquals(1, removed);
+        verify(memoryCollection).delete("old");
+    }
+
     private AgentMemory knowledge(String agentId, String content) {
         var memory = new AgentMemory();
         memory.id = "memory-1";

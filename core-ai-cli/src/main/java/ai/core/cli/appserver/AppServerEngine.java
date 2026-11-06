@@ -56,9 +56,7 @@ public class AppServerEngine implements EngineApi {
 
     private static void storeAgentProperties(Path file, Properties props) throws IOException {
         var parent = file.getParent();
-        if (parent != null) {
-            Files.createDirectories(parent);
-        }
+        if (parent != null) Files.createDirectories(parent);
         try (var out = Files.newOutputStream(file)) {
             props.store(out, null);
         }
@@ -192,6 +190,8 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),
                 Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
                 Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),
+                Map.entry("memory/maintain", params -> LocalMemory.maintain(bootstrap.workspace, bootstrap.memoryEnabled,
+                        params.path("deep").asBoolean(false))),
                 Map.entry("skills/list", this::skillsList),
                 Map.entry("skills/delete", params -> LocalSkills.delete(bootstrap.workspace, params)),
                 Map.entry("tools/list", this::toolsList),

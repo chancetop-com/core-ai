@@ -7,6 +7,7 @@ import ai.core.server.domain.ChatMessage;
 import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.trace.domain.Trace;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -15,6 +16,8 @@ import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -67,7 +70,7 @@ public class AgentMemoryService {
     public List<AgentMemory> findByAgentId(String agentId) {
         var query = new Query();
         query.filter = Filters.eq("agent_id", agentId);
-        query.sort = Sorts.ascending("created_at");
+        query.sort = Sorts.descending("created_at");
         return memoryCollection.find(query);
     }
 
@@ -79,6 +82,27 @@ public class AgentMemoryService {
         );
         query.sort = Sorts.ascending("created_at");
         return memoryCollection.find(query);
+    }
+
+    /** Distinct agent ids with at least one memory row; used by the daily maintenance task. */
+    public List<String> findAgentIdsWithMemories() {
+        var ids = new LinkedHashSet<String>();
+        int pageSize = 1000;
+        int skip = 0;
+        while (true) {
+            var query = new Query();
+            query.projection = Projections.include("agent_id");
+            query.sort = Sorts.ascending("agent_id");
+            query.skip = skip;
+            query.limit = pageSize;
+            var page = memoryCollection.find(query);
+            for (var memory : page) {
+                if (memory.agentId != null && !memory.agentId.isBlank()) ids.add(memory.agentId);
+            }
+            if (page.size() < pageSize) break;
+            skip += pageSize;
+        }
+        return new ArrayList<>(ids);
     }
 
     /**
@@ -341,6 +365,28 @@ public class AgentMemoryService {
             memoryCollection.delete(filter);
         }
         return (int) count;
+    }
+
+    /**
+     * Removes duplicate rows with the same normalized content within each layer, keeping the newest
+     * one. Exact duplicates are safe to collapse; semantic near-duplicates need the curator phase.
+     */
+    public int dedupeExactDuplicates(String agentId) {
+        int removed = 0;
+        var seen = new LinkedHashMap<String, AgentMemory>();
+        for (var layer : List.of(MemoryLayer.KNOWLEDGE, MemoryLayer.METHODS, MemoryLayer.TRAJECTORIES)) {
+            seen.clear();
+            for (var memory : findByAgentIdAndLayer(agentId, layer.mongoValue())) {
+                String key = normalizeContent(memory.content);
+                if (layer == MemoryLayer.KNOWLEDGE) key = key.toLowerCase(Locale.ROOT);
+                var previous = seen.put(key, memory);
+                if (previous != null && previous.id != null) {
+                    memoryCollection.delete(previous.id);
+                    removed++;
+                }
+            }
+        }
+        return removed;
     }
 
     // Legacy support: replaceAll still works but V2 uses appendMemories instead.

@@ -77,6 +77,8 @@ When logged in and no `litellm.api.base` is configured, the CLI uses the server 
 | `/memory edit` | Edit a memory file |
 | `/memory search <keyword>` | Search memories |
 | `/memory open` | Open memory folder in the file manager |
+| `/memory maintain` | Rebuild the knowledge index from pages on disk |
+| `/memory maintain deep` | Run the isolated memory curator, then rebuild the index |
 | `/memory clear` | Delete knowledge wiki pages, recreate structure |
 | `/memory enable` / `/memory disable` | Set `agent.memory.enabled` |
 

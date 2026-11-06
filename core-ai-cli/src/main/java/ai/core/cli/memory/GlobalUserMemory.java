@@ -21,10 +21,20 @@ public final class GlobalUserMemory {
 
     static final String HEADER = "--- Global User Memory (all workspaces) ---";
     static final String FILE_NAME = "MEMORY.md";
-    static final int MAX_BYTES = 8 * 1024;
+    static final String ARCHIVE_FILE_NAME = "MEMORY.archive.md";
+    static final int MAX_CHARS = 8 * 1024;
+    private static final String TRIMMED_MARKER =
+            "(older entries trimmed — showing the most recent ones)";
 
     public static Path defaultPath() {
         return Path.of(System.getProperty("user.home"), ".core-ai", FILE_NAME);
+    }
+
+    private static int keepFrom(String content, int maxChars) {
+        if (content.length() <= maxChars) return 0;
+        int start = content.length() - maxChars;
+        int lineStart = content.indexOf('\n', start);
+        return lineStart >= 0 ? lineStart + 1 : start;
     }
 
     private final Path filePath;
@@ -42,19 +52,16 @@ public final class GlobalUserMemory {
     }
 
     /**
-     * @return the stored preferences, or "" when the file is absent or blank; truncated with a
-     * marker when it exceeds {@link #MAX_BYTES}
+     * @return the stored preferences, or "" when the file is absent or blank; the most recent
+     * entries are kept (with a marker) when the file exceeds {@link #MAX_CHARS}
      */
     public String load() {
         try {
             if (!Files.isRegularFile(filePath)) return "";
             String content = Files.readString(filePath).strip();
             if (content.isEmpty()) return "";
-            if (content.length() > MAX_BYTES) {
-                return content.substring(0, MAX_BYTES)
-                        + "\n(truncated — edit " + filePath + " to trim)";
-            }
-            return content;
+            int keepFrom = keepFrom(content, MAX_CHARS);
+            return keepFrom == 0 ? content : TRIMMED_MARKER + "\n" + content.substring(keepFrom);
         } catch (IOException e) {
             LOGGER.warn("Failed to read global user memory {}: {}", filePath, e.getMessage());
             return "";
@@ -62,7 +69,9 @@ public final class GlobalUserMemory {
     }
 
     /**
-     * Append one preference as a markdown bullet; fails when the store would exceed its cap.
+     * Appends one preference as a markdown bullet. The store is bounded: when the new line does not
+     * fit, the oldest complete lines move to the archive file so that the most recent preferences
+     * always survive and nothing is lost.
      *
      * @return {@code true} when the file did not exist before this call
      */
@@ -72,15 +81,37 @@ public final class GlobalUserMemory {
             Path parent = filePath.getParent();
             if (parent != null) Files.createDirectories(parent);
             boolean created = !Files.isRegularFile(filePath);
-            long size = created ? 0 : Files.size(filePath);
-            if (size + line.length() > MAX_BYTES) {
-                throw new IllegalStateException("Global user memory is full (limit " + MAX_BYTES / 1024
-                        + "KB); edit " + filePath + " to remove stale entries");
+            String existing = created ? "" : Files.readString(filePath);
+            if (!existing.isEmpty() && !existing.endsWith("\n")) existing += "\n";
+
+            String updated = existing + line;
+            int keepFrom = keepFrom(updated, MAX_CHARS);
+            if (keepFrom > 0) {
+                appendArchive(updated.substring(0, keepFrom));
+                updated = updated.substring(keepFrom);
             }
-            Files.writeString(filePath, line, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            Files.writeString(filePath, updated,
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
             return created;
         } catch (IOException e) {
             throw new RuntimeException("Failed to write global user memory: " + e.getMessage(), e);
+        }
+    }
+
+    private Path archivePath() {
+        Path parent = filePath.getParent();
+        return parent == null ? Path.of(ARCHIVE_FILE_NAME) : parent.resolve(ARCHIVE_FILE_NAME);
+    }
+
+    private void appendArchive(String entries) {
+        try {
+            Path archive = archivePath();
+            Path parent = archive.getParent();
+            if (parent != null) Files.createDirectories(parent);
+            Files.writeString(archive, entries,
+                    StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (IOException e) {
+            LOGGER.warn("Failed to archive trimmed global memory {}: {}", archivePath(), e.getMessage());
         }
     }
 }

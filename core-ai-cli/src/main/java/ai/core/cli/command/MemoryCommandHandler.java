@@ -1,6 +1,7 @@
 package ai.core.cli.command;
 
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemoryIndexMaintainer;
 import ai.core.cli.memory.MdMemoryProvider.MemoryEntry;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.ui.AnsiTheme;
@@ -58,6 +59,10 @@ public class MemoryCommandHandler {
             showAndPick(memory.listMemories());
         } else if ("open".equals(args)) {
             openFolder();
+        } else if ("maintain".equals(args)) {
+            maintain(false);
+        } else if ("maintain deep".equals(args)) {
+            maintain(true);
         } else if ("clear".equals(args)) {
             clearMemory();
         } else {
@@ -143,6 +148,41 @@ public class MemoryCommandHandler {
         }
     }
 
+    private void maintain(boolean deep) {
+        if (deep) {
+            ui.printStreamingChunk("\n  " + AnsiTheme.MUTED
+                    + "Running the memory curator (isolated agent; may take a minute)..." + AnsiTheme.RESET + "\n");
+            var result = triggerService.maintenance().runCurator();
+            if (result == null) {
+                ui.printStreamingChunk("  " + AnsiTheme.WARNING + "Maintenance is already running."
+                        + AnsiTheme.RESET + "\n\n");
+                return;
+            }
+            ui.printStreamingChunk("  " + (result.completed() ? AnsiTheme.SUCCESS + "✓" : AnsiTheme.WARNING + "!")
+                    + AnsiTheme.RESET + " Curator " + (result.completed() ? "completed" : "failed")
+                    + ".\n");
+            printMaintenanceCounts(result.index());
+            return;
+        }
+
+        ui.printStreamingChunk("\n  " + AnsiTheme.MUTED + "Rebuilding the knowledge index from the pages on disk..."
+                + AnsiTheme.RESET + "\n");
+        var result = triggerService.maintenance().run();
+        if (result == null) {
+            ui.printStreamingChunk("  " + AnsiTheme.WARNING + "Maintenance is already running."
+                    + AnsiTheme.RESET + "\n\n");
+            return;
+        }
+        printMaintenanceCounts(result);
+    }
+
+    private void printMaintenanceCounts(MemoryIndexMaintainer.Result result) {
+        if (result == null) return;
+        ui.printStreamingChunk("  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET
+                + String.format(" Memory maintained: added=%d, removed=%d, updated=%d, total=%d%n%n",
+                result.added(), result.removed(), result.updated(), result.total()));
+    }
+
     private void clearMemory() {
         ui.printStreamingChunk("\n  " + AnsiTheme.WARNING + "This will delete all knowledge wiki pages and MEMORY.md."
                 + "\n  daily-logs, episodes, and log.md are preserved."
@@ -221,6 +261,8 @@ public class MemoryCommandHandler {
                         + "  /memory edit                  Select a memory file to edit%n"
                         + "  /memory search [keyword]      Search memories by keyword%n"
                         + "  /memory open                  Open memory folder in file manager%n"
+                        + "  /memory maintain              Rebuild the knowledge index from pages on disk%n"
+                        + "  /memory maintain deep         Run the memory curator (merge/dedupe/stale pages)%n"
                         + "  /memory clear                 Delete knowledge wiki pages, recreate structure%n"
                         + "  Global user preferences live in ~/.core-ai/MEMORY.md (listed as global/MEMORY.md)%n%n",
                 AnsiTheme.PROMPT, AnsiTheme.RESET, statusIcon, statusText));

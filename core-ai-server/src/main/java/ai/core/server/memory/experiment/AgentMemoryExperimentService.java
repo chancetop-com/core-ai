@@ -197,23 +197,19 @@ public class AgentMemoryExperimentService {
     }
 
     private List<AgentMemory> rankMemories(List<AgentMemory> memories, RankingStrategy strategy, int topK) {
-        if (memories.size() <= topK) return new ArrayList<>(memories);
-
         var effective = strategy != null ? strategy : MemoryPolicy.DEFAULT_RANKING;
-        if (effective == RankingStrategy.RECENCY || effective == RankingStrategy.SEMANTIC
-                || effective == RankingStrategy.HYBRID || effective == RankingStrategy.BM25
-                || effective == RankingStrategy.IMPORTANCE) {
-            // All non-random strategies fall back to recency until vector search is available
-            return memories.stream()
-                    .sorted(AgentMemoryExperimentService::compareNewestFirst)
-                    .limit(topK)
-                    .collect(Collectors.toList());
+        if (effective == RankingStrategy.RANDOM) {
+            var shuffled = new ArrayList<>(memories);
+            Collections.shuffle(shuffled, random);
+            return shuffled.subList(0, Math.min(topK, shuffled.size()));
         }
 
-        // RANDOM
-        var shuffled = new ArrayList<>(memories);
-        Collections.shuffle(shuffled, random);
-        return shuffled.subList(0, Math.min(topK, shuffled.size()));
+        // All non-random strategies fall back to recency until vector search is available.
+        // Sorting before the size check keeps small pools newest-first too.
+        return memories.stream()
+                .sorted(AgentMemoryExperimentService::compareNewestFirst)
+                .limit(topK)
+                .collect(Collectors.toList());
     }
 
     // ── Prompt formatting (always Markdown for best readability and token efficiency) ──

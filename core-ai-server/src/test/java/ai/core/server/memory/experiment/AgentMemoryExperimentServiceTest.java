@@ -129,6 +129,16 @@ class AgentMemoryExperimentServiceTest {
     }
 
     @Test
+    void fullModeKeepsSmallPoolsNewestFirst() {
+        stubConfig(config(InjectionMode.FULL, List.of(MemoryLayer.METHODS), 5));
+        stubLayer(MemoryLayer.METHODS, method("m-old", "old method", 0), method("m-new", "new method", 9));
+
+        var result = service.prepareInjection(AGENT_ID);
+
+        assertEquals(List.of("m-new", "m-old"), result.injectedMemoryIds);
+    }
+
+    @Test
     void startRunRecordsTheInjectionMode() {
         service.startRun(AGENT_ID, "session-1", "session:session-1",
                 config(InjectionMode.FULL, List.of(MemoryLayer.METHODS), 5), MemoryInjectionResult.skipped());

@@ -9,7 +9,6 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GlobalUserMemoryTest {
@@ -29,23 +28,32 @@ class GlobalUserMemoryTest {
     }
 
     @Test
-    void rejectsWritesThatExceedTheCap() {
+    void appendDropsTheOldestEntriesInsteadOfRejectingNewOnes() throws IOException {
         var memory = new GlobalUserMemory(tempDir.resolve(".core-ai/MEMORY.md"));
-        memory.append("x".repeat(GlobalUserMemory.MAX_BYTES - 4));
+        memory.append("oldest");
+        memory.append("x".repeat(GlobalUserMemory.MAX_CHARS - 20));
+        memory.append("newest");
 
-        assertThrows(IllegalStateException.class, () -> memory.append("one more"));
+        String loaded = memory.load();
+
+        assertTrue(loaded.endsWith("- newest"), loaded);
+        assertFalse(loaded.contains("oldest"), loaded);
+        assertTrue(loaded.length() <= GlobalUserMemory.MAX_CHARS, "the store stays bounded");
+        assertTrue(Files.readString(tempDir.resolve(".core-ai/" + GlobalUserMemory.ARCHIVE_FILE_NAME))
+                .contains("- oldest"), "trimmed entries are archived, not lost");
     }
 
     @Test
-    void loadTruncatesAnOversizedFile() throws IOException {
+    void loadKeepsTheNewestEntriesWhenTheFileIsOversized() throws IOException {
         Path dir = tempDir.resolve(".core-ai");
         Files.createDirectories(dir);
         Path file = dir.resolve("MEMORY.md");
-        Files.writeString(file, "y".repeat(GlobalUserMemory.MAX_BYTES + 100));
+        Files.writeString(file, "- oldest\n" + "y".repeat(GlobalUserMemory.MAX_CHARS) + "\n- newest");
 
         String loaded = new GlobalUserMemory(file).load();
 
-        assertTrue(loaded.startsWith("y".repeat(GlobalUserMemory.MAX_BYTES)), loaded);
-        assertTrue(loaded.endsWith("to trim)"), loaded);
+        assertTrue(loaded.endsWith("- newest"), loaded);
+        assertFalse(loaded.contains("- oldest"), loaded);
+        assertTrue(loaded.startsWith("(older entries trimmed"), loaded);
     }
 }

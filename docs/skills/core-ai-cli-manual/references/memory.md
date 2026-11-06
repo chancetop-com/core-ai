@@ -24,13 +24,17 @@ Durable preferences that must apply to **every** workspace live in a single file
 
 | Layer | Location | Content |
 |-------|----------|---------|
-| global | `~/.core-ai/MEMORY.md` | One markdown bullet per preference (≤ 8KB) |
+| global | `~/.core-ai/MEMORY.md` | One markdown bullet per preference (bounded to the newest 8K characters) |
 
 It is injected into the system prompt for every workspace, ahead of the workspace wiki, under a
 `--- Global User Memory (all workspaces) ---` heading. Agents append to it with the
 `save_user_memory` tool (used during extraction, or on an explicit "记住…"); project facts must
 stay in the workspace wiki instead. Edit it by hand any time, or via `/memory edit`
 (it is listed as `global/MEMORY.md`). `/memory clear` does not touch it.
+
+The store is bounded FIFO: when a new bullet would exceed 8K characters, the oldest complete lines
+move to `~/.core-ai/MEMORY.archive.md` (archived, never injected). A new "记住" therefore always
+succeeds, and the most recent preferences are the ones kept in the prompt.
 
 ## Configuration
 
@@ -82,6 +86,23 @@ agent.memory.daily.logs.enabled=false
 
 Also configurable at runtime via `/memory enable` and `/memory disable` commands.
 
+## Memory Governance
+
+Memory maintenance runs independently of task turns:
+
+| Trigger | What runs |
+|---------|-----------|
+| Engine/CLI startup | Deterministic pass: rebuild `knowledge/MEMORY.md` from the pages on disk, prune `log.md` |
+| First idle after each local date | The same deterministic pass (at most once per day per process) |
+| `/memory maintain` | The deterministic pass on demand |
+| `/memory maintain deep` | An isolated curator agent (merge duplicate pages, resolve stale/conflicting statements) followed by the deterministic pass |
+| Desktop Memory panel | **Maintain index** / **Curate memory** buttons (same two paths) |
+
+The index is derived state: pages under `knowledge/{type}/` are the source of truth, and
+`MEMORY.md` is rebuilt from them (curated Description/When to Use values are preserved for pages
+that still exist). The curator agent does not inherit the task conversation history and only gets
+file tools plus `add_knowledge_log`; it is a separate agent run, not a normal chat session.
+
 ## Memory Commands
 
 | Command | Action |
@@ -90,6 +111,8 @@ Also configurable at runtime via `/memory enable` and `/memory disable` commands
 | `/memory edit` | Edit a memory file |
 | `/memory search <k>` | Search memories |
 | `/memory open` | Open memory folder |
+| `/memory maintain` | Rebuild the knowledge index from pages on disk |
+| `/memory maintain deep` | Run the isolated memory curator, then rebuild the index |
 | `/memory clear` | Delete all knowledge wiki pages |
 | `/memory enable` | Set `agent.memory.enabled=true` |
 | `/memory disable` | Set `agent.memory.enabled=false` |

@@ -3,6 +3,7 @@ package ai.core.cli.acp;
 import ai.core.cli.DebugLog;
 import ai.core.cli.agent.AgentSessionRunnerHelper;
 import ai.core.cli.memory.MdMemoryProvider;
+import ai.core.cli.memory.MemoryIndexMaintainer;
 import ai.core.cli.memory.MemoryTriggerService;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import ai.core.llm.LLMProviderType;
@@ -288,6 +289,17 @@ class AcpSlashCommandHandler {
         if ("enable".equals(args)) return updateMemoryEnabledConfig(true);
         if ("disable".equals(args)) return updateMemoryEnabledConfig(false);
         if (args.startsWith("search ")) return memorySearch(args.substring(7).trim());
+        if ("maintain deep".equals(args)) {
+            var result = MemoryTriggerService.getInstance(workspace).maintenance().runCurator();
+            if (result == null) return "Memory maintenance is already running.";
+            return "Memory curator " + (result.completed() ? "completed" : "failed")
+                    + (result.index() == null ? "" : formatMaintenance(result.index()));
+        }
+        if ("maintain".equals(args)) {
+            var result = MemoryTriggerService.getInstance(workspace).maintenance().run();
+            if (result == null) return "Memory maintenance is already running.";
+            return formatMaintenance(result);
+        }
         if ("clear".equals(args)) {
             MemoryTriggerService.getInstance(workspace).clearKnowledge();
             return "Knowledge cleared and directory structure recreated.";
@@ -298,8 +310,14 @@ class AcpSlashCommandHandler {
                   /memory enable             Enable memory (set agent.memory.enabled=true)
                   /memory disable            Disable memory (set agent.memory.enabled=false)
                   /memory search <keyword>   Search memories by keyword
+                  /memory maintain           Rebuild the knowledge index from pages on disk
                   /memory clear              Delete knowledge wiki pages, recreate structure
                 """;
+    }
+
+    private String formatMaintenance(MemoryIndexMaintainer.Result result) {
+        return String.format("Memory maintained: added=%d, removed=%d, updated=%d, total=%d",
+                result.added(), result.removed(), result.updated(), result.total());
     }
 
     private String handleSessions(AcpSession session) {

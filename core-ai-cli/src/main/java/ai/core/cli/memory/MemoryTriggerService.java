@@ -74,6 +74,7 @@ public final class MemoryTriggerService {
     private final Path workspace;
     private final Path dailyLogsDir;
     private final MdMemoryProvider memoryProvider;
+    private final MemoryMaintenanceService maintenance;
     private final MemoryActivityPublisher activity = new MemoryActivityPublisher();
     private final AtomicInteger turnCount = new AtomicInteger(0);
     private final AtomicReference<Instant> lastActivity = new AtomicReference<>(Instant.now());
@@ -91,6 +92,7 @@ public final class MemoryTriggerService {
         this.workspace = workspace.toAbsolutePath();
         this.dailyLogsDir = this.workspace.resolve(".core-ai/daily-logs");
         this.memoryProvider = new MdMemoryProvider(this.workspace);
+        this.maintenance = new MemoryMaintenanceService(this.workspace, this.memoryProvider, () -> this.mainAgent);
     }
 
     public void setDailyLogsEnabled(boolean enabled) {
@@ -111,9 +113,7 @@ public final class MemoryTriggerService {
         attachCompressionListener();
         if (this.scheduler != null) return;
 
-        if (dailyLogsEnabled) {
-            ensureDirectories();
-        }
+        if (dailyLogsEnabled) ensureDirectories();
 
         scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
             var t = new Thread(r, "memory-trigger");
@@ -130,6 +130,7 @@ public final class MemoryTriggerService {
             try {
                 KnowledgeLogTool.pruneOldEntries(workspace);
                 processLockFiles();
+                maintenance.run();
             } finally {
                 latch.countDown();
             }
@@ -172,6 +173,10 @@ public final class MemoryTriggerService {
 
     public void resetCursorToEnd() {
         extractionCursor.set(Math.max(0, mainAgent.getHistory().size()));
+    }
+
+    public MemoryMaintenanceService maintenance() {
+        return maintenance;
     }
 
     /**
@@ -371,7 +376,10 @@ public final class MemoryTriggerService {
         if (agentBusy.get()) return;
 
         long idleSeconds = Instant.now().getEpochSecond() - lastActivity.get().getEpochSecond();
-        if (idleSeconds >= EXTRACTION_IDLE_SECONDS && !extractionInProgress.get() && turnCount.get() > 2) {
+        if (idleSeconds < EXTRACTION_IDLE_SECONDS) return;
+
+        if (!extractionInProgress.get()) maintenance.runDailyIfDue();
+        if (!extractionInProgress.get() && turnCount.get() > 2) {
             LOGGER.debug("Idle trigger: {}s without activity", idleSeconds);
             runIncrementalExtraction(MemoryExtractionReport.Trigger.IDLE);
             turnCount.set(0);

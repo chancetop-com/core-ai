@@ -6477,6 +6477,53 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
   const listed = await call('memory/list', { limit: 300 });
   if (!listed) return root;
   const files: any[] = listed.files ?? [];
+  const actions = el('div', 'memory-actions');
+  const maintain = el('button', 'btn small', 'Maintain index') as HTMLButtonElement;
+  maintain.type = 'button';
+  maintain.onclick = async () => {
+    maintain.disabled = true;
+    maintain.textContent = 'Maintaining…';
+    const result = await call('memory/maintain', {});
+    maintain.disabled = false;
+    maintain.textContent = 'Maintain index';
+    if (!result) return;
+    if (result.available === false) {
+      toast('Memory is disabled for this workspace', 'warn');
+      return;
+    }
+    if (result.running) {
+      toast('Memory maintenance is already running');
+      return;
+    }
+    toast(`Memory maintained: +${result.added} -${result.removed} ~${result.updated}`);
+    void renderContent();
+  };
+  actions.append(maintain);
+  const curate = el('button', 'btn small', 'Curate memory') as HTMLButtonElement;
+  curate.type = 'button';
+  curate.onclick = async () => {
+    curate.disabled = true;
+    curate.textContent = 'Curating…';
+    const result = await call('memory/maintain', { deep: true });
+    curate.disabled = false;
+    curate.textContent = 'Curate memory';
+    if (!result) return;
+    if (result.available === false) {
+      toast('Memory is disabled for this workspace', 'warn');
+      return;
+    }
+    if (result.running) {
+      toast('Memory maintenance is already running');
+      return;
+    }
+    if (result.completed === false) {
+      toast('Memory curator failed', 'warn');
+      return;
+    }
+    toast(`Memory curated: +${result.added ?? 0} -${result.removed ?? 0} ~${result.updated ?? 0}`);
+    void renderContent();
+  };
+  actions.append(curate);
   const layout = el('div', 'memory-list');
   const items = el('div', 'file-items');
   const preview = el('div', 'file-preview');
@@ -6494,7 +6541,7 @@ async function renderMemoryPanel(): Promise<HTMLElement> {
     items.append(item);
   }
   layout.append(items, preview);
-  body.append(layout);
+  body.append(actions, layout);
   return root;
 }
 
