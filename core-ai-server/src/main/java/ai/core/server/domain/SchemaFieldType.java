@@ -11,5 +11,9 @@ public enum SchemaFieldType {
     @MongoEnumValue("STRING")
     STRING,
     @MongoEnumValue("BOOLEAN")
-    BOOLEAN
+    BOOLEAN,
+    @MongoEnumValue("DATE")
+    DATE,
+    @MongoEnumValue("DATETIME")
+    DATETIME
 }

@@ -94,7 +94,12 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         }
 
         var dataset = datasetService.get(datasetId);
-        var filtered = DatasetRecordWriteRules.filterToSchema(dataset, data);
+        Map<String, Object> filtered;
+        try {
+            filtered = DatasetRecordWriteRules.normalizePatch(dataset, data);
+        } catch (IllegalArgumentException e) {
+            return ToolCallResult.failed(e.getMessage());
+        }
         if (filtered.isEmpty()) {
             return ToolCallResult.failed("none of the provided fields match the dataset schema: "
                     + DatasetRecordWriteRules.schemaFieldNames(dataset));

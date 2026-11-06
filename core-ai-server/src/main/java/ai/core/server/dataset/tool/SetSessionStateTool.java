@@ -3,6 +3,7 @@ package ai.core.server.dataset.tool;
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetRecordWriteRules;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
 import ai.core.tool.ToolCall;
@@ -98,7 +99,13 @@ public final class SetSessionStateTool extends ToolCall {
         if (data == null || data.isEmpty()) {
             return ToolCallResult.failed("data is required and must not be empty");
         }
-        var dataJson = JsonUtil.toJson(data);
+        Map<String, Object> normalized;
+        try {
+            normalized = DatasetRecordWriteRules.normalize(dataset, data);
+        } catch (IllegalArgumentException e) {
+            return ToolCallResult.failed(e.getMessage());
+        }
+        var dataJson = JsonUtil.toJson(normalized);
         if (dataJson.getBytes(StandardCharsets.UTF_8).length > DatasetRecordService.MAX_STATE_BYTES) {
             return ToolCallResult.failed("state too large, max " + (DatasetRecordService.MAX_STATE_BYTES / 1024) + " KB");
         }

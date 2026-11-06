@@ -92,6 +92,14 @@ final class DatasetViewFilterSql {
             params.add(expected);
             return ref + " " + operator + " ?::text";
         }
+        if (column.type() == SchemaFieldType.DATE && expected instanceof String) {
+            params.add(expected);
+            return ref + " " + operator + " ?::date";
+        }
+        if (column.type() == SchemaFieldType.DATETIME && expected instanceof String) {
+            params.add(expected);
+            return ref + " " + operator + " ?::timestamptz";
+        }
         return null;
     }
 
@@ -124,6 +132,16 @@ final class DatasetViewFilterSql {
                 if (!(value instanceof String)) yield null;
                 params.add(value);
                 yield "?::text";
+            }
+            case DATE -> {
+                if (!(value instanceof String)) yield null;
+                params.add(value);
+                yield "?::date";
+            }
+            case DATETIME -> {
+                if (!(value instanceof String)) yield null;
+                params.add(value);
+                yield "?::timestamptz";
             }
         };
     }

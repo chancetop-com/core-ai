@@ -92,7 +92,7 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireSessionDataset(resolved, datasetRef);
-        var data = parseData(dataText);
+        var data = normalize(resolved, parseData(dataText), false);
         var dataJson = JsonUtil.toJson(data);
         var size = bytes(dataJson);
         if (size > DatasetRecordService.MAX_STATE_BYTES) {
@@ -110,7 +110,7 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireSessionDataset(resolved, datasetRef);
-        var data = parseData(dataText);
+        var data = normalize(resolved, parseData(dataText), true);
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
@@ -148,7 +148,7 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireRecordDataset(resolved);
-        var data = filterToSchema(resolved, parseData(dataText));
+        var data = normalize(resolved, parseData(dataText), false);
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
@@ -165,7 +165,7 @@ public class HubDatasetService {
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireRecordDataset(resolved);
         if (!hasText(recordId)) throw new BadRequestException("record_id is required");
-        var data = filterToSchema(resolved, parseData(dataText));
+        var data = normalize(resolved, parseData(dataText), true);
         var detail = detail(resolved.datasetId);
         detail.put("record_id", recordId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
@@ -223,13 +223,20 @@ public class HubDatasetService {
         if (sessionError != null) throw new BadRequestException(sessionError);
     }
 
-    private Map<String, Object> filterToSchema(Resolved resolved, Map<String, Object> data) {
-        var filtered = DatasetRecordWriteRules.filterToSchema(resolved.dataset, data);
-        if (filtered.isEmpty()) {
+    private Map<String, Object> normalize(Resolved resolved, Map<String, Object> data, boolean patch) {
+        Map<String, Object> normalized;
+        try {
+            normalized = patch
+                    ? DatasetRecordWriteRules.normalizePatch(resolved.dataset, data)
+                    : DatasetRecordWriteRules.normalize(resolved.dataset, data);
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage(), "BAD_REQUEST", e);
+        }
+        if (normalized.isEmpty()) {
             throw new BadRequestException("none of the provided fields match the dataset schema: "
                     + DatasetRecordWriteRules.schemaFieldNames(resolved.dataset));
         }
-        return filtered;
+        return normalized;
     }
 
     private String audited(ChatSession session, String userId, OpRef opRef, Map<String, Object> detail,

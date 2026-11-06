@@ -249,7 +249,7 @@ public class LLMCallExecutor {
             .append("- Extract only values explicitly stated in the text. Do not infer or fabricate data.\n")
             .append("- If a field is not present in the text, set it to null.\n")
             .append("- For numeric fields, coerce string representations to numbers (e.g., \"42\" → 42).\n")
-            .append("- For boolean fields, accept true/false or yes/no.\n")
+            .append("- For boolean fields, use true/false only.\n")
             .append("- Return a valid JSON object matching the schema. Do not include extra fields.\n\n")
             .append("Agent output:\n---\n")
             .append(output)
@@ -268,6 +268,8 @@ public class LLMCallExecutor {
         for (var field : fields) {
             var prop = new JsonSchema();
             prop.type = toJsonSchemaType(field.type);
+            if (field.type == SchemaFieldType.DATE) prop.format = "date";
+            if (field.type == SchemaFieldType.DATETIME) prop.format = "date-time";
             if (field.label != null) prop.description = field.label;
             properties.put(field.name, prop);
             required.add(field.name);
@@ -281,7 +283,7 @@ public class LLMCallExecutor {
     private JsonSchema.PropertyType toJsonSchemaType(SchemaFieldType type) {
         return switch (type) {
             case NUMBER -> JsonSchema.PropertyType.NUMBER;
-            case STRING -> JsonSchema.PropertyType.STRING;
+            case STRING, DATE, DATETIME -> JsonSchema.PropertyType.STRING;
             case BOOLEAN -> JsonSchema.PropertyType.BOOLEAN;
         };
     }

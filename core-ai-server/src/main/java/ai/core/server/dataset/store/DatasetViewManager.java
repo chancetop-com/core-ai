@@ -103,6 +103,8 @@ public class DatasetViewManager {
             case NUMBER -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'number' THEN (data ->> " + key + ")::numeric END";
             case BOOLEAN -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'boolean' THEN (data ->> " + key + ")::boolean END";
             case STRING -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'string' THEN data ->> " + key + " END";
+            case DATE -> "dataset.dataset_to_date(data -> " + key + ")";
+            case DATETIME -> "dataset.dataset_to_timestamp(data -> " + key + ")";
         };
     }
 

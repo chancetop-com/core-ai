@@ -3,6 +3,7 @@ package ai.core.server.dataset.tool;
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetOpPayloads;
 import ai.core.server.dataset.DatasetRecordService;
+import ai.core.server.dataset.DatasetRecordWriteRules;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.domain.DatasetType;
 import ai.core.tool.ToolCall;
@@ -101,7 +102,8 @@ public final class UpdateSessionStateTool extends ToolCall {
         }
 
         try {
-            recordService.patchBySession(datasetId, context.getSessionId(), JsonUtil.toJsonWithNulls(data), agentId, context.getUserId());
+            var normalized = DatasetRecordWriteRules.normalizePatch(dataset, data);
+            recordService.patchBySession(datasetId, context.getSessionId(), JsonUtil.toJsonWithNulls(normalized), agentId, context.getUserId());
         } catch (IllegalArgumentException e) {
             return ToolCallResult.failed(e.getMessage());
         }

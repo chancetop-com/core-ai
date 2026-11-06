@@ -16,7 +16,9 @@ import java.math.BigDecimal;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -151,6 +153,27 @@ class DatasetViewManagerTest {
 
         var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
         assertThrows(RuntimeException.class, () -> DATABASE.select("SELECT total AS value FROM " + view, ValueRow.class));
+    }
+
+    @Test
+    void dateAndDatetimeColumnsAreTypedAndFilterable() {
+        var dataset = dataset("ds-" + UUID.randomUUID(),
+                field("day", SchemaFieldType.DATE),
+                field("at", SchemaFieldType.DATETIME));
+        insert(dataset.id, "{\"day\":\"2026-11-06\",\"at\":\"2026-11-06T12:00:00+08:00\"}");
+        manager.sync(dataset);
+
+        var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
+        assertEquals(1, DATABASE.select("SELECT day::text AS value FROM " + view + " WHERE day >= ?::date",
+                ValueRow.class, "2026-11-01").size());
+        assertEquals(1, DATABASE.select("SELECT at::text AS value FROM " + view + " WHERE at = ?::timestamptz",
+                ValueRow.class, "2026-11-06T04:00:00Z").size());
+
+        var columns = new LinkedHashMap<String, DatasetViewManager.Column>();
+        for (var column : manager.columns(dataset)) columns.put(column.sourceName(), column);
+        var clause = DatasetViewFilterSql.build(Map.of("day", Map.of("$gte", "2026-11-01")), columns);
+        assertEquals(1, DATABASE.select("SELECT day::text AS value FROM " + view + " WHERE " + clause.sql(),
+                ValueRow.class, clause.params().toArray()).size());
     }
 
     @Test

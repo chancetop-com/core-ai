@@ -55,6 +55,20 @@ public class DatasetPgSchemaInitializer {
                     + "  END IF; "
                     + " END LOOP; "
                     + " RETURN result; "
+                    + "END $$",
+            "CREATE OR REPLACE FUNCTION dataset.dataset_to_date(v jsonb) RETURNS date "
+                    + "LANGUAGE plpgsql IMMUTABLE AS $$ "
+                    + "BEGIN "
+                    + " IF jsonb_typeof(v) <> 'string' OR NOT (v #>> '{}') ~ '^\\d{4}-\\d{2}-\\d{2}' THEN RETURN NULL; END IF; "
+                    + " RETURN make_date(substr(v #>> '{}', 1, 4)::int, substr(v #>> '{}', 6, 2)::int, substr(v #>> '{}', 9, 2)::int); "
+                    + "EXCEPTION WHEN others THEN RETURN NULL; "
+                    + "END $$",
+            "CREATE OR REPLACE FUNCTION dataset.dataset_to_timestamp(v jsonb) RETURNS timestamptz "
+                    + "LANGUAGE plpgsql IMMUTABLE AS $$ "
+                    + "BEGIN "
+                    + " IF jsonb_typeof(v) <> 'string' OR NOT (v #>> '{}') ~ '(Z|[+-]\\d{2}:?\\d{2})$' THEN RETURN NULL; END IF; "
+                    + " RETURN (v #>> '{}')::timestamptz; "
+                    + "EXCEPTION WHEN others THEN RETURN NULL; "
                     + "END $$");
 
     @Inject
