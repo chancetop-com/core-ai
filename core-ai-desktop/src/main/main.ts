@@ -27,7 +27,8 @@ import {
 import { BrowserManager } from './browser/BrowserManager';
 import { ChannelBridge, type ChannelBridgeState } from './channels/ChannelBridge';
 import { type ChannelBinding, resolveBindingWorkspace } from './channels/Bindings';
-import { createOcgPort, OcgHttpPort } from './channels/OcgClient';
+import { channelsFromStatus, createOcgPort, type OcgChannel, OcgHttpPort } from './channels/OcgClient';
+import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
 import { BuiltinSkills } from './skills/BuiltinSkills';
@@ -192,6 +193,29 @@ async function ensureOcgDaemon(): Promise<void> {
     }
   } catch (error) {
     console.error(`[channels] OCG daemon start failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Channel list for the settings panel. OCG 1.3.4 answers every /ocg/v1 route except health
+ * with MAILBOX_DISABLED until a channel is routed to the mailbox, so fall back to the CLI,
+ * which still reports the running channels and their transport.
+ */
+async function adminChannelList(): Promise<{ ok: boolean; channels: OcgChannel[]; statusOnly?: boolean; warning?: string }> {
+  ocgAdmin ??= new OcgHttpPort();
+  const listed = await ocgAdmin.channels();
+  if (listed.ok) return { ok: true, channels: listed.data?.channels ?? [] };
+  const status = await runOcg(['status', '--json'], 30_000);
+  if (status.code !== 0) return { ok: false, channels: [], warning: listed.error ?? 'OCG channel list unavailable' };
+  try {
+    const text = status.stdout.trim();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('no JSON object');
+    const body = JSON.parse(text.slice(start, end + 1)) as { channels?: unknown[] };
+    return { ok: true, channels: channelsFromStatus(body.channels ?? []), statusOnly: true, warning: listed.error };
+  } catch {
+    return { ok: false, channels: [], warning: listed.error ?? 'OCG channel list unavailable' };
   }
 }
 /** Keep idle timeouts from suspending the bridge; the display may still turn off. */
@@ -716,6 +740,8 @@ function registerIpc(): void {
   ipcMain.handle('engine:capabilities', async (_event, workspace: string) => {
     const target = String(workspace ?? '');
     if (!target || !supervisor) return [];
+    // The window just opened this workspace: the IM bridge's default route follows it.
+    rememberWorkspace(target);
     try {
       if (!supervisor.isRunning(target)) await supervisor.ensureRunning(target, settings.approvalPolicy ?? 'ask');
       return supervisor.capabilities(target);
@@ -725,7 +751,9 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle('engine:restart', async (_event, workspace: string) => {
-    if (workspace) await supervisor?.restart(workspace);
+    if (!workspace) return;
+    rememberWorkspace(workspace);
+    await supervisor?.restart(workspace);
   });
   ipcMain.handle('attachments:pick', async () => {
     const preset = process.env.COREAI_TEST_PICK_FILES;
@@ -864,8 +892,29 @@ function registerIpc(): void {
     if (!health.ok || (health.apiVersion ?? 0) < 1) {
       return { ok: false, error: health.error ?? 'OCG daemon does not advertise /ocg/v1' };
     }
-    const result = await ocgAdmin.channels();
-    return result.ok ? { ok: true, channels: result.data?.channels ?? [] } : result;
+    const listed = await adminChannelList();
+    return {
+      ok: true,
+      version: health.version,
+      agentType: health.agentType,
+      mailbox: health.mailbox,
+      channels: listed.channels,
+      ...(listed.statusOnly ? { statusOnly: true } : {}),
+      ...(listed.warning ? { warning: listed.warning } : {}),
+    };
+  });
+  ipcMain.handle('channels:routeToDesktop', async (_event, channelId: string) => {
+    ocgAdmin ??= new OcgHttpPort();
+    return routeChannelToDesktop(String(channelId ?? ''), {
+      run: (args, timeoutMs) => runOcg(args, timeoutMs),
+      channels: async () => {
+        const listed = await adminChannelList();
+        return listed.ok
+          ? { ok: true, data: { channels: listed.channels } }
+          : { ok: false, error: listed.warning ?? 'OCG channel list unavailable' };
+      },
+      restartChannel: (id) => ocgAdmin!.restartChannel(id),
+    });
   });
   ipcMain.handle('channels:adminOp', async (_event, channelId: string, op: string, accountId?: string) => {
     ocgAdmin ??= new OcgHttpPort();

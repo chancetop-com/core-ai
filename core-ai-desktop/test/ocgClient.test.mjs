@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import clientModule from '../dist/test/ocgClient.js';
 
-const { OcgHttpPort, createOcgPort } = clientModule;
+const { OcgHttpPort, createOcgPort, channelsFromStatus } = clientModule;
 const TOKEN = 'local-token';
 
 function startServer(handler) {
@@ -37,7 +37,11 @@ test('health, wait and reply use the versioned routes and local token', async (t
     const url = new URL(req.url, 'http://localhost');
     res.setHeader('Content-Type', 'application/json');
     if (url.pathname === '/ocg/v1/health') {
-      res.end(JSON.stringify({ ok: true, apiVersion: 1, version: '1.3.3', features: ['inbox'] }));
+      res.end(JSON.stringify({
+        ok: true, apiVersion: 1, version: '1.3.3', features: ['inbox'],
+        agentType: 'mailbox',
+        mailbox: { enabled: true, pending: 1, leased: 2, done: 3, oldestPendingAt: 123 },
+      }));
       return;
     }
     if (url.pathname === '/ocg/v1/inbox/wait') {
@@ -71,6 +75,8 @@ test('health, wait and reply use the versioned routes and local token', async (t
   const health = await client.health();
   assert.equal(health.ok, true);
   assert.equal(health.apiVersion, 1);
+  assert.equal(health.agentType, 'mailbox');
+  assert.deepEqual(health.mailbox, { enabled: true, pending: 1, leased: 2, done: 3, oldestPendingAt: 123 });
 
   const wait = await client.wait('core-ai-desktop', 1);
   assert.equal(wait.ok, true);
@@ -81,6 +87,32 @@ test('health, wait and reply use the versioned routes and local token', async (t
   assert.deepEqual(bodies[0], {
     text: '收到', isError: false, consumer: 'core-ai-desktop', clientReplyId: 'm_1:1',
   });
+});
+
+test('channelsFromStatus groups live accounts and keeps their transport', () => {
+  const channels = channelsFromStatus([
+    { id: 'qqbot', accountId: 'default', status: 'running', agentType: 'acp' },
+    { id: 'qqbot', accountId: '1905153209', status: 'running', agentType: 'acp' },
+    { id: 'qqbot', accountId: 'default', status: 'running', agentType: 'acp' },
+    { id: 'openclaw-weixin', accountId: 'acct', status: 'running', agentType: 'http' },
+  ]);
+  assert.deepEqual(channels, [
+    {
+      channelId: 'qqbot',
+      enabled: true,
+      agentType: 'acp',
+      accounts: [
+        { accountId: 'default', running: true },
+        { accountId: '1905153209', running: true },
+      ],
+    },
+    {
+      channelId: 'openclaw-weixin',
+      enabled: true,
+      agentType: 'http',
+      accounts: [{ accountId: 'acct', running: true }],
+    },
+  ]);
 });
 
 test('a daemon without apiVersion falls back to the CLI port', async (t) => {

@@ -30,6 +30,7 @@ const targets = [
   { entryPoints: ['src/main/skills/RuntimeTools.ts'], outfile: 'dist/test/runtimeTools.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/ChannelBridge.ts'], outfile: 'dist/test/channelBridge.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/OcgClient.ts'], outfile: 'dist/test/ocgClient.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/channels/OcgRouting.ts'], outfile: 'dist/test/ocgRouting.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/Bindings.ts'], outfile: 'dist/test/bindings.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/computer/CuaManager.ts'], outfile: 'dist/test/cuaManager.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/attachments/AttachmentStager.ts'], outfile: 'dist/test/attachmentStager.js', platform: 'node', target: 'node20', format: 'cjs' },

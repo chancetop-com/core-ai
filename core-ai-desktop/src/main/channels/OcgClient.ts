@@ -6,11 +6,23 @@ import path from 'node:path';
 import type { OcgPort } from './ChannelBridge';
 import type { OcgInboundMessage, OcgResult } from './OcgCli';
 
+export interface OcgMailboxStatus {
+  enabled?: boolean;
+  pending?: number;
+  leased?: number;
+  done?: number;
+  oldestPendingAt?: number | null;
+}
+
 export interface OcgHealth {
   ok: boolean;
   apiVersion?: number;
   version?: string;
   features?: string[];
+  /** Effective global transport: http | acp | mailbox. */
+  agentType?: string;
+  /** The mailbox only exists when at least one channel (or the global agentType) routes to it. */
+  mailbox?: OcgMailboxStatus;
   error?: string;
 }
 
@@ -30,6 +42,30 @@ export interface OcgChannel {
   enabled: boolean;
   agentType: string;
   accounts: OcgChannelAccount[];
+}
+
+/**
+ * Build the channel view from `ocg status --json`. OCG 1.3.4 gates its
+ * /ocg/v1/channels route behind mailbox mode, so before the first channel is
+ * switched the daemon can only report the live channels and their transport.
+ */
+export function channelsFromStatus(entries: unknown[]): OcgChannel[] {
+  const byId = new Map<string, OcgChannel>();
+  for (const entry of entries) {
+    if (!entry || typeof entry !== 'object') continue;
+    const record = entry as Record<string, unknown>;
+    const channelId = typeof record.id === 'string' ? record.id : '';
+    if (!channelId) continue;
+    const agentType = typeof record.agentType === 'string' ? record.agentType : 'http';
+    const channel = byId.get(channelId) ?? { channelId, enabled: true, agentType, accounts: [] };
+    channel.agentType = agentType;
+    const accountId = typeof record.accountId === 'string' ? record.accountId : 'default';
+    if (!channel.accounts.some((account) => account.accountId === accountId)) {
+      channel.accounts.push({ accountId, running: record.status === 'running' });
+    }
+    byId.set(channelId, channel);
+  }
+  return [...byId.values()];
 }
 
 export interface OcgLoginStart {
@@ -80,6 +116,19 @@ function tokenOf(options: OcgHttpOptions, configPath: string): string | null {
   }
 }
 
+function mailboxOf(value: unknown): OcgMailboxStatus | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  const count = (entry: unknown): number | undefined => (typeof entry === 'number' ? entry : undefined);
+  return {
+    enabled: record.enabled === true,
+    pending: count(record.pending),
+    leased: count(record.leased),
+    done: count(record.done),
+    oldestPendingAt: typeof record.oldestPendingAt === 'number' ? record.oldestPendingAt : null,
+  };
+}
+
 function errorOf(body: unknown, status: number): { code?: string; error: string } {
   if (body && typeof body === 'object') {
     const record = body as Record<string, unknown>;
@@ -118,6 +167,8 @@ export class OcgHttpPort implements OcgPort {
         features: Array.isArray(body.features)
           ? body.features.filter((entry): entry is string => typeof entry === 'string')
           : undefined,
+        agentType: typeof body.agentType === 'string' ? body.agentType : undefined,
+        mailbox: mailboxOf(body.mailbox),
       };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };

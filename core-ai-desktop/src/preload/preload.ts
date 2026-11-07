@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('coreai', {
   channelsAdminOverview: () => ipcRenderer.invoke('channels:adminOverview'),
   channelsAdminOp: (channelId: string, op: 'start' | 'stop' | 'restart', accountId?: string) =>
     ipcRenderer.invoke('channels:adminOp', channelId, op, accountId),
+  channelsRouteToDesktop: (channelId: string) => ipcRenderer.invoke('channels:routeToDesktop', channelId),
   channelsLoginStart: (channelId: string, accountId?: string) => ipcRenderer.invoke('channels:loginStart', channelId, accountId),
   channelsLoginStatus: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginStatus', channelId, loginId),
   channelsLoginCancel: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginCancel', channelId, loginId),

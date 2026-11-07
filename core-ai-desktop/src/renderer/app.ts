@@ -174,9 +174,23 @@ interface OcgChannel {
   accounts: OcgChannelAccount[];
 }
 
+interface OcgMailboxStatus {
+  enabled?: boolean;
+  pending?: number;
+  leased?: number;
+  done?: number;
+  oldestPendingAt?: number | null;
+}
+
 interface OcgAdminOverview {
   ok: boolean;
+  version?: string;
+  agentType?: string;
+  mailbox?: OcgMailboxStatus;
   channels?: OcgChannel[];
+  /** Rows came from `ocg status` because OCG's v1 channel-admin API needs mailbox mode. */
+  statusOnly?: boolean;
+  warning?: string;
   error?: string;
 }
 
@@ -343,6 +357,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   channelsBridgeSetEnabled(enabled: boolean): Promise<ChannelBridgeState | null>;
   channelsAdminOverview(): Promise<OcgAdminOverview>;
   channelsAdminOp(channelId: string, op: 'start' | 'stop' | 'restart', accountId?: string): Promise<{ ok: boolean; error?: string }>;
+  channelsRouteToDesktop(channelId: string): Promise<{ ok: boolean; previous?: string; daemonRestarted?: boolean; warning?: string; error?: string }>;
   channelsLoginStart(channelId: string, accountId?: string): Promise<OcgLoginStart>;
   channelsLoginStatus(channelId: string, loginId: string): Promise<OcgLoginStatus>;
   channelsLoginCancel(channelId: string, loginId: string): Promise<OcgLoginStatus>;
@@ -6955,12 +6970,29 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   };
   row('OCG CLI', status.present ? `${status.version ? `v${status.version}` : 'installed'} - ${status.path ?? ''}` : 'not installed');
   row('OCG daemon', status.daemon ?? (status.present ? 'status unknown' : 'not available'));
+  if (admin.ok) {
+    row('OCG transport', admin.agentType ?? 'unknown');
+    row('OCG mailbox', admin.mailbox?.enabled
+      ? `enabled · ${admin.mailbox.pending ?? 0} pending · ${admin.mailbox.leased ?? 0} leased · ${admin.mailbox.done ?? 0} done`
+      : 'disabled');
+  }
   row('ocg skill', skill ? `${builtinStatusLabel(skill)} - ${skill.targetDir}` : 'not in the built-in catalog');
   row('Desktop bridge', bridge?.running ? `running · consumer ${bridge.consumer}` : bridge?.enabled ? 'starting…' : 'stopped');
   row('Last IM message', bridge?.lastMessageAt ? `${new Date(bridge.lastMessageAt).toLocaleTimeString()} · ${bridge.lastPeer ?? ''}` : 'none');
   row('Last IM reply', bridge?.lastReplyAt ? new Date(bridge.lastReplyAt).toLocaleTimeString() : 'none');
   row('Bridge error', bridge?.lastError ?? 'none');
   section.append(grid);
+  const bridgeOn = bridge?.enabled === true || settings?.channelsBridgeEnabled === true;
+  const mailboxChannels = (admin.channels ?? []).filter((channel) => channel.agentType === 'mailbox');
+  if (bridgeOn && admin.ok && (!admin.mailbox?.enabled || mailboxChannels.length === 0)) {
+    const routes = (admin.channels ?? [])
+      .map((channel) => `${channel.channelId} → ${channel.agentType}`)
+      .join(', ');
+    section.append(el('div', 'hint',
+      `The desktop bridge is on, but no channel is routed to the OCG mailbox${routes ? ` (${routes})` : ''}. `
+      + 'Those messages still go to their http/acp agent, so no desktop session is created. '
+      + 'Use “Route to desktop” on a channel below, and check that binding points at the workspace where you want the conversation to live.'));
+  }
   const rerender = async (): Promise<void> => {
     const fresh = await renderChannelsSection();
     section.replaceWith(fresh);
@@ -6985,7 +7017,7 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   const bridgeLabel = el('label', 'schedule-filter');
   const bridgeToggle = el('input') as HTMLInputElement;
   bridgeToggle.type = 'checkbox';
-  bridgeToggle.checked = bridge?.enabled === true || settings?.channelsBridgeEnabled === true;
+  bridgeToggle.checked = bridgeOn;
   bridgeToggle.onchange = async () => {
     if (bridgeToggle.checked && !window.confirm('Enable the desktop IM bridge?\n\nIncoming messages run through an agent in the current workspace and are replied to on your behalf. P0 supports text only and has no sender allowlist in OCG yet — only use it with a bot you control.')) {
       bridgeToggle.checked = false;
@@ -6998,12 +7030,12 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   };
   bridgeLabel.append(bridgeToggle, document.createTextNode('Route incoming IM messages into desktop sessions (P0)'));
   section.append(bridgeLabel);
-  section.append(el('div', 'hint', 'P0: text only; direct messages and group @mentions. Requires the OCG daemon and a mailbox channel (WeChat). While the bridge runs, do not also poll the same channel with the ocg skill. The desktop holds a power request so idle sleep does not suspend the bridge; the display may still turn off.'));
+  section.append(el('div', 'hint', 'The bridge only consumes channels whose OCG agentType is "mailbox". The conversation is created in the workspace selected by the routing binding below, or in the workspace currently open in the app — where it behaves like any other desktop session. While the bridge runs, do not also poll the same mailbox with the ocg skill: the two consumers would compete for messages. Text only; direct messages and group @mentions.'));
 
   const setup = el('pre', undefined, [
-    'ocg config set channels.openclaw-weixin.agentType mailbox',
-    'ocg daemon start    # P0: temporarily disable qqbot first',
-    'ocg channels login --channel openclaw-weixin',
+    'ocg config set channels.<channel-id>.agentType mailbox',
+    'ocg daemon stop && ocg daemon start   # a restart releases a previous ACP process',
+    'ocg channels login --channel <channel-id>',
   ].join('\n'));
   setup.style.margin = '8px 0 12px';
   setup.style.padding = '10px 12px';
@@ -7081,8 +7113,15 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   if (!admin.ok) {
     section.append(el('div', 'hint', admin.error ?? 'OCG channel admin unavailable'));
   } else if (!admin.channels?.length) {
-    section.append(el('div', 'hint', 'No channels configured in OCG.'));
+    section.append(el('div', 'hint', admin.warning
+      ? `No running channels reported by OCG (${admin.warning}).`
+      : 'No running channels reported by OCG.'));
   } else {
+    if (admin.statusOnly) {
+      section.append(el('div', 'hint',
+        `OCG's channel admin API is unavailable until a channel is routed to the mailbox${admin.warning ? ` (${admin.warning})` : ''}. `
+        + 'Showing the running channels from `ocg status`; Start/Stop/Login stay in the terminal until then, but "Route to desktop" works.'));
+    }
     for (const channel of admin.channels) {
       const card = el('div');
       Object.assign(card.style, {
@@ -7100,24 +7139,26 @@ async function renderChannelsSection(): Promise<HTMLElement> {
           gap: '8px', marginTop: '6px',
         });
         row.append(el('span', undefined, `${account.running ? '● running' : '○ stopped'} · ${account.accountId}`));
-        const accountButtons = el('div');
-        Object.assign(accountButtons.style, { display: 'flex', gap: '6px' });
-        const toggleAccount = el('button', 'btn small', account.running ? 'Stop' : 'Start');
-        toggleAccount.onclick = async () => {
-          const result = await window.coreai.channelsAdminOp(
-            channel.channelId,
-            account.running ? 'stop' : 'start',
-            account.accountId,
-          );
-          toast(result.ok
-            ? `${channel.channelId}/${account.accountId}: ${account.running ? 'stopped' : 'started'}`
-            : result.error ?? 'operation failed', result.ok ? '' : 'error');
-          await rerender();
-        };
-        const relink = el('button', 'btn small', 'Relink');
-        relink.onclick = () => void openLogin(channel.channelId, account.accountId);
-        accountButtons.append(toggleAccount, relink);
-        row.append(accountButtons);
+        if (!admin.statusOnly) {
+          const accountButtons = el('div');
+          Object.assign(accountButtons.style, { display: 'flex', gap: '6px' });
+          const toggleAccount = el('button', 'btn small', account.running ? 'Stop' : 'Start');
+          toggleAccount.onclick = async () => {
+            const result = await window.coreai.channelsAdminOp(
+              channel.channelId,
+              account.running ? 'stop' : 'start',
+              account.accountId,
+            );
+            toast(result.ok
+              ? `${channel.channelId}/${account.accountId}: ${account.running ? 'stopped' : 'started'}`
+              : result.error ?? 'operation failed', result.ok ? '' : 'error');
+            await rerender();
+          };
+          const relink = el('button', 'btn small', 'Relink');
+          relink.onclick = () => void openLogin(channel.channelId, account.accountId);
+          accountButtons.append(toggleAccount, relink);
+          row.append(accountButtons);
+        }
         card.append(row);
       }
       const operations = el('div');
@@ -7135,7 +7176,27 @@ async function renderChannelsSection(): Promise<HTMLElement> {
       stop.onclick = () => void run('stop');
       const restart = el('button', 'btn small', 'Restart');
       restart.onclick = () => void run('restart');
-      operations.append(add, start, stop, restart);
+      if (channel.agentType !== 'mailbox') {
+        const route = el('button', 'btn small', 'Route to desktop');
+        route.title = 'Set this channel to the OCG mailbox so the desktop bridge answers it';
+        route.onclick = async () => {
+          const acpNote = channel.agentType === 'acp'
+            ? '\n\nOCG runs a separate ACP process for this channel; the daemon will restart to release its sessions (all channels reconnect briefly).'
+            : '';
+          const bridgeNote = bridgeOn
+            ? ''
+            : '\n\nThe desktop bridge is stopped: enable it above, or incoming messages will wait in the OCG mailbox.';
+          if (!window.confirm(`Route ${channel.channelId} to the desktop bridge?\n\nThis sets channels.${channel.channelId}.agentType = "mailbox" in ~/.openclaw-channel-gateway/ocg.json. Incoming messages will create desktop sessions instead of being handled by the ${channel.agentType} agent.${acpNote}${bridgeNote}`)) return;
+          route.disabled = true;
+          const result = await window.coreai.channelsRouteToDesktop(channel.channelId);
+          if (!result.ok) toast(result.error ?? 'routing failed', 'error');
+          else if (result.warning) toast(result.warning, 'error');
+          else toast(`${channel.channelId}: now routed to the desktop mailbox`);
+          await rerender();
+        };
+        operations.append(route);
+      }
+      if (!admin.statusOnly) operations.append(add, start, stop, restart);
       card.append(operations);
       section.append(card);
     }
@@ -7827,6 +7888,17 @@ async function bootstrap(): Promise<void> {
 
   window.coreai.onChannelSession((payload) => {
     if (!payload || payload.workspace !== state.workspace) return;
+    // The bridge persists a session only after its first turn; keep its row visible meanwhile.
+    if (payload.kind === 'created' && payload.sessionId && !state.sessions.some((row) => row.sessionId === payload.sessionId)) {
+      state.pendingSessionIds.add(payload.sessionId);
+      state.sessions = [{
+        sessionId: payload.sessionId,
+        title: payload.title,
+        status: 'running',
+        updatedAt: new Date().toISOString(),
+      }, ...state.sessions];
+      renderSessionItems();
+    }
     void refreshSessionList();
     if (payload.kind === 'replied') toast(`${payload.title} · replied`);
   });
