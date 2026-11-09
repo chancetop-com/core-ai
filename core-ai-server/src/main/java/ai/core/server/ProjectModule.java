@@ -8,11 +8,8 @@ import ai.core.server.project.ProjectAnalysisService;
 import ai.core.server.project.ProjectAttributionJob;
 import ai.core.server.project.ProjectAttributionStage;
 import ai.core.server.project.ProjectMemberQueryService;
-import ai.core.server.project.MongoProjectStore;
-import ai.core.server.project.PgProjectStore;
 import ai.core.server.project.ProjectPlaybookService;
 import ai.core.server.project.ProjectQueryService;
-import ai.core.server.project.ProjectStore;
 import ai.core.server.project.ProjectReportCompletionJob;
 import ai.core.server.project.ProjectReportFileController;
 import ai.core.server.project.ProjectReportFileService;
@@ -49,7 +46,6 @@ public class ProjectModule extends Module {
         // bind() resolves @Inject eagerly, so each service's dependencies must be bound first:
         // ProjectStateService before ProjectService (it injects it), QueryService before the
         // assembler/report stage, stages before the analysis service.
-        bindProjectStore();
         bind(ProjectStateService.class);
         bind(ProjectService.class);
         bind(ProjectReportQueryService.class);
@@ -89,13 +85,5 @@ public class ProjectModule extends Module {
         schedule().fixedRate("project-stats-refresh", bind(ProjectStatsRefreshJob.class), Duration.ofMinutes(10));
         // in-flight report render completion (the renderer agent writes sections into a draft)
         schedule().fixedRate("project-report-completion", bind(ProjectReportCompletionJob.class), Duration.ofSeconds(30));
-    }
-
-    private void bindProjectStore() {
-        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
-            bind(ProjectStore.class, bind(PgProjectStore.class));
-        } else {
-            bind(ProjectStore.class, bind(MongoProjectStore.class));
-        }
     }
 }
