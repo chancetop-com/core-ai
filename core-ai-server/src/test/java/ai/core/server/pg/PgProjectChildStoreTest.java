@@ -214,6 +214,7 @@ class PgProjectChildStoreTest {
             var later = scan(projectId, ZonedDateTime.parse("2026-11-02T00:00:00Z"));
             later.targetId = scan.targetId;
             repository.upsert(later);
+            assertEquals(1, repository.listByProjectAndTargets(projectId, "session", List.of(scan.targetId)).size());
             assertEquals(1, repository.listByProject(projectId).size());
             assertEquals(later.materialAt, repository.find(projectId, "session", scan.targetId).orElseThrow().materialAt);
             assertEquals(later.materialAt, repository.oldestMaterialAt(projectId).orElseThrow());

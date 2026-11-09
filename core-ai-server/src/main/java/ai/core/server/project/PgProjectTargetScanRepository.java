@@ -37,6 +37,7 @@ public class PgProjectTargetScanRepository implements ProjectTargetScanRepositor
         params.add(projectId);
         params.add("targetType");
         params.add(targetType);
+        params.add("targetId");
         params.addAll(targetIds);
         return database.select(SELECT + " WHERE data ->> ? = ? AND data ->> ? = ? AND data ->> ? IN (" + placeholders + ")",
                 PgDocumentRow.class, params.toArray())
