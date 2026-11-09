@@ -1,12 +1,11 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.http.HTTPMethod;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Controller;
 import core.framework.web.Request;
 import core.framework.web.Response;
@@ -31,7 +30,7 @@ public class ProjectReportFileController implements Controller {
     @Inject
     ProjectReportFileService reportFileService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     public Response execute(Request request) {
@@ -39,7 +38,7 @@ public class ProjectReportFileController implements Controller {
         if (userId == null) throw new UnauthorizedException("unauthorized");
         var projectId = request.pathParam("id");
         var fileId = request.pathParam("fileId");
-        var admin = ProjectAccess.admin(userCollection, userId);
+        var admin = ProjectAccess.admin(userStore, userId);
         if (request.method() == HTTPMethod.DELETE) {
             reportFileService.deleteReport(projectId, userId, admin, fileId);
         } else {

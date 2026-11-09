@@ -1,12 +1,8 @@
 package ai.core.server.project;
 
 import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectSubject;
 import ai.core.server.file.FileService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 
@@ -28,7 +24,7 @@ public class ProjectReportFileService {
     @Inject
     ProjectAttributionStore attributionStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
 
     /** renames a report of the directory (display metadata of the file record — the list shows this name) */
     public void renameReport(String projectId, String userId, boolean admin, String fileId, String fileName) {
@@ -65,10 +61,11 @@ public class ProjectReportFileService {
     private void clearSubjectReport(String projectId, String fileId) {
         for (var subject : projectService.subjects(projectId)) {
             if (!fileId.equals(subject.reportFileId)) continue;
-            subjectCollection.update(Filters.eq("_id", subject.id), Updates.combine(
-                Updates.unset("report_file_id"),
-                Updates.unset("report_share_token"),
-                Updates.unset("report_generated_at")));
+            subjectStore.update(subject.id, entity -> {
+                entity.reportFileId = null;
+                entity.reportShareToken = null;
+                entity.reportGeneratedAt = null;
+            });
         }
     }
 }

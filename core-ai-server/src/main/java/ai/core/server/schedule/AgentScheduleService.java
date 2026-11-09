@@ -7,7 +7,6 @@ import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.schedule.CronExpression;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
-import ai.core.server.domain.ProjectSubject;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -24,7 +23,7 @@ public class AgentScheduleService {
     @Inject
     MongoCollection<AgentSchedule> agentScheduleCollection;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ai.core.server.project.ProjectSubjectStore subjectStore;
 
     public AgentScheduleView create(CreateScheduleRequest request, String userId) {
         var entity = new AgentSchedule();
@@ -114,7 +113,7 @@ public class AgentScheduleService {
             entity.subjectId = null;
             return;
         }
-        var subject = subjectCollection.get(subjectId)
+        var subject = subjectStore.get(subjectId)
             .orElseThrow(() -> new BadRequestException("project subject not found, subjectId=" + subjectId));
         if (projectId != null && !projectId.isBlank() && !projectId.equals(subject.projectId)) {
             throw new BadRequestException("subject does not belong to the project, subjectId=" + subjectId + ", projectId=" + projectId);

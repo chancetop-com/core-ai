@@ -50,7 +50,7 @@ public class TraceService {
     @Inject
     MongoCollection<Span> spanCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     TracePayloadStore payloadStore;
 
@@ -207,17 +207,14 @@ public class TraceService {
 
     private Set<String> matchingUserIds(String query) {
         var userIds = new LinkedHashSet<String>();
-        if (!TraceServiceHelper.hasText(query) || userCollection == null) return userIds;
+        if (!TraceServiceHelper.hasText(query) || userStore == null) return userIds;
         var needle = query.trim();
         if (needle.contains("@")) {
             userIds.add(needle.toLowerCase(Locale.ROOT));
         }
 
         try {
-            var userQuery = new Query();
-            userQuery.filter = Filters.exists("email");
-            userQuery.limit = USER_SEARCH_LIMIT;
-            var users = userCollection.find(userQuery);
+            var users = userStore.listUsersWithEmail(USER_SEARCH_LIMIT);
             if (users == null) return userIds;
             for (var user : users) {
                 if (matchesUser(user, needle)) {

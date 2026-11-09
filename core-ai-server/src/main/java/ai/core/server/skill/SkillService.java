@@ -6,9 +6,7 @@ import ai.core.server.domain.SkillSourceType;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
 import ai.core.skill.SkillMetadata;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.types.ObjectId;
@@ -55,7 +53,7 @@ public class SkillService {
     }
 
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
 
     @Inject
     SkillBlobStore blobStore;
@@ -86,7 +84,7 @@ public class SkillService {
 
         var accepted = acceptedResources(resources);
         String qualifiedName = namespace + "/" + parsed.getName();
-        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
+        var existing = skillStore.findByQualifiedName(qualifiedName);
         var entity = existing.orElseGet(SkillDefinition::new);
         var previous = entity.resources;
         if (entity.id == null) {
@@ -107,10 +105,10 @@ public class SkillService {
         entity.updatedAt = ZonedDateTime.now();
 
         if (existing.isPresent()) {
-            skillCollection.replace(entity);
+            skillStore.replace(entity);
             LOGGER.info("updated skill via upload, id={}, qualifiedName={}", entity.id, qualifiedName);
         } else {
-            skillCollection.insert(entity);
+            skillStore.insert(entity);
             LOGGER.info("created skill via upload, id={}, qualifiedName={}", entity.id, qualifiedName);
         }
         blobStore.deleteReplaced(previous, entity.resources);
@@ -172,14 +170,13 @@ public class SkillService {
     }
 
     public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn, Integer offset, Integer limit) {
-        var indexedFilter = SkillQueryHelper.indexedFilter(filter);
+        String namespace = filter == null ? null : filter.namespace();
+        var sourceType = sourceType(filter);
         if (SkillQueryHelper.notInMemoryFilters(userId, query)) {
-            var dbQuery = SkillQueryHelper.sortedQuery(indexedFilter);
-            SkillQueryHelper.applyPaging(dbQuery, offset, limit);
-            return skillCollection.find(dbQuery);
+            return skillStore.list(namespace, sourceType, offset, limit);
         }
 
-        var candidates = skillCollection.find(SkillQueryHelper.sortedQuery(indexedFilter));
+        var candidates = skillStore.list(namespace, sourceType, null, null);
         var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
         var filtered = candidates.stream()
             .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
@@ -188,30 +185,49 @@ public class SkillService {
     }
 
     public long count(SkillFilter filter, String userId, String query, String searchIn) {
-        var indexedFilter = SkillQueryHelper.indexedFilter(filter);
+        String namespace = filter == null ? null : filter.namespace();
+        var sourceType = sourceType(filter);
         if (SkillQueryHelper.notInMemoryFilters(userId, query)) {
-            return skillCollection.count(indexedFilter);
+            return skillStore.count(namespace, sourceType);
         }
 
         var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
-        return skillCollection.find(SkillQueryHelper.sortedQuery(indexedFilter)).stream()
+        return skillStore.list(namespace, sourceType, null, null).stream()
             .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
             .count();
     }
 
+    private SkillSourceType sourceType(SkillFilter filter) {
+        if (filter == null || filter.sourceType() == null || filter.sourceType().isBlank()) return null;
+        return SkillSourceType.valueOf(filter.sourceType());
+    }
+
     public SkillDefinition get(String id) {
-        return skillCollection.get(id)
+        return skillStore.get(id)
             .orElseThrow(() -> new NotFoundException("skill not found, id=" + id));
     }
 
     public SkillDefinition findByQualifiedName(String qualifiedName) {
-        return skillCollection.findOne(Filters.eq("qualified_name", qualifiedName))
+        return skillStore.findByQualifiedName(qualifiedName)
             .orElseThrow(() -> new NotFoundException("skill not found: " + qualifiedName));
     }
 
+    public SkillDefinition findOrNull(String id) {
+        return id == null ? null : skillStore.get(id).orElse(null);
+    }
+
+    public SkillDefinition findByQualifiedNameOrNull(String qualifiedName) {
+        return qualifiedName == null ? null
+            : skillStore.findByQualifiedName(qualifiedName).orElse(null);
+    }
+
+    public List<SkillDefinition> findByName(String name) {
+        return name == null ? List.of() : skillStore.findByName(name);
+    }
+
     public void delete(String id) {
-        var entity = skillCollection.get(id).orElse(null);
-        skillCollection.delete(id);
+        var entity = skillStore.get(id).orElse(null);
+        skillStore.delete(id);
         if (entity != null) blobStore.deleteReplaced(entity.resources, null);
         invalidateCatalog();
         LOGGER.info("deleted skill, id={}", id);
@@ -233,7 +249,7 @@ public class SkillService {
             entity.digest = SkillDigest.of(entity.content, digestBytes(entity.resources));
         }
         entity.updatedAt = ZonedDateTime.now();
-        skillCollection.replace(entity);
+        skillStore.replace(entity);
         blobStore.deleteReplaced(previous, entity.resources);
         invalidateCatalog();
         return entity;
@@ -333,7 +349,7 @@ public class SkillService {
         if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
         entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
         entity.updatedAt = ZonedDateTime.now();
-        skillCollection.replace(entity);
+        skillStore.replace(entity);
         blobStore.deleteReplaced(previous, entity.resources);
         invalidateCatalog();
     }
@@ -343,7 +359,7 @@ public class SkillService {
     }
 
     SkillRepoManager repoManager() {
-        return new SkillRepoManager(skillCollection, blobStore);
+        return new SkillRepoManager(skillStore, blobStore);
     }
 
     private SkillResourceWriter writer() {
@@ -354,7 +370,7 @@ public class SkillService {
         var cleanIds = IdLists.clean(new ArrayList<>(skillIds));
         if (cleanIds.isEmpty()) return Map.of();
         var result = new HashMap<String, String>();
-        for (var def : skillCollection.find(Filters.in("_id", cleanIds.toArray(new String[0])))) {
+        for (var def : skillStore.listByIds(cleanIds)) {
             result.put(def.id, def.name);
         }
         return result;
@@ -365,7 +381,7 @@ public class SkillService {
         if (cleanSkillIds.isEmpty()) return List.of();
         var result = new ArrayList<SkillMetadata>();
         for (var id : cleanSkillIds) {
-            skillCollection.get(id).ifPresent(def -> result.add(toMetadata(def)));
+            skillStore.get(id).ifPresent(def -> result.add(toMetadata(def)));
         }
         return result;
     }
@@ -377,7 +393,7 @@ public class SkillService {
         if (cleanSkillIds.isEmpty()) return List.of();
         var result = new ArrayList<SkillMetadata>(cleanSkillIds.size());
         for (var id : cleanSkillIds) {
-            var definition = skillCollection.get(id).orElseThrow(SkillService::unavailableSkill);
+            var definition = skillStore.get(id).orElseThrow(SkillService::unavailableSkill);
             result.add(toMetadata(definition));
         }
         return result;

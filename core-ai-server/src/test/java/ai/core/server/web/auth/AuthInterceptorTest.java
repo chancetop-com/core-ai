@@ -46,12 +46,12 @@ class AuthInterceptorTest {
         sessionIdentity = mock(SessionIdentity.class);
         userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         var delegationResolver = new SubUserDelegationResolver();
-        delegationResolver.userCollection = userCollection;
+        delegationResolver.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
 
         interceptor = new AuthInterceptor();
         interceptor.requestAuthenticator = requestAuthenticator;
         interceptor.channelConfigStore = mock(ChannelConfigStore.class);
-        interceptor.userCollection = userCollection;
+        interceptor.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         interceptor.sessionIdentity = sessionIdentity;
         interceptor.sandboxService = mock(SandboxService.class);
         interceptor.delegationResolver = delegationResolver;

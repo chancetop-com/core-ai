@@ -4,9 +4,10 @@ import ai.core.agent.ExecutionContext;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
-import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
+import ai.core.server.project.ProjectAttributionRepository;
+import ai.core.server.project.ProjectStore;
+import ai.core.server.project.ProjectSubjectStore;
+import ai.core.server.user.UserStore;
 import ai.core.server.domain.WorkflowRun;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
@@ -41,15 +42,15 @@ public class SelfHarnessApiCaller {
     @Inject
     SelfHarnessDispatcher dispatcher;
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
     @Inject
     ai.core.server.apiuser.PermissionService permissionService;
     @Inject
-    MongoCollection<ai.core.server.domain.User> userCollection;
+    UserStore userStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
@@ -57,7 +58,7 @@ public class SelfHarnessApiCaller {
     @Inject
     MongoCollection<FileRecord> fileRecordCollection;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
 
     public String callApi(String name, String args, ExecutionContext context) {
         ActionLogContext.put("self-harness-call", name);
@@ -184,10 +185,10 @@ public class SelfHarnessApiCaller {
             throw new IllegalArgumentException("project_id is required");
         }
         var userId = requireUser(context);
-        var project = projectCollection.get(projectId)
+        var project = projectStore.get(projectId)
             .orElseThrow(() -> new IllegalArgumentException("project not found, id=" + projectId));
         // a project is a shared business container: read access = owner/admin or project.view
-        if (!ai.core.server.project.ProjectAccess.canView(project, userId, permissionService, userCollection)) {
+        if (!ai.core.server.project.ProjectAccess.canView(project, userId, permissionService, userStore)) {
             throw new IllegalArgumentException("project is not accessible to the current user");
         }
         var agentIds = new ArrayList<String>();
@@ -229,16 +230,13 @@ public class SelfHarnessApiCaller {
     }
 
     private List<String> subjectIdsOf(String projectId) {
-        var query = new Query();
-        query.filter = Filters.eq("project_id", projectId);
-        return subjectCollection.find(query).stream().map(s -> s.id).toList();
+        return subjectStore.listByProject(projectId).stream().map(s -> s.id).toList();
     }
 
     private List<String> attributionTargets(String targetType, String... subjectIds) {
         if (subjectIds.length == 0) return List.of();
-        var query = new Query();
-        query.filter = Filters.and(Filters.in("subject_id", List.of(subjectIds)), Filters.eq("target_type", targetType));
-        return attributionCollection.find(query).stream().map(a -> a.targetId).toList();
+        return attributionRepository.listBySubjectsAndType(List.of(subjectIds), targetType)
+            .stream().map(a -> a.targetId).toList();
     }
 
     private int clampLimit(Integer limit) {

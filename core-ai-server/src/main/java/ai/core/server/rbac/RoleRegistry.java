@@ -1,9 +1,9 @@
 package ai.core.server.rbac;
 
 import ai.core.server.domain.SystemSettings;
+import ai.core.server.settings.SystemSettingsStore;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 
 import java.time.Duration;
@@ -63,7 +63,7 @@ public class RoleRegistry {
                     PermissionCodes.DASHBOARD_VIEW, PermissionCodes.CHAT_USE, PermissionCodes.NOTIFICATION_VIEW));
 
     @Inject
-    MongoCollection<SystemSettings> systemSettingsCollection;
+    SystemSettingsStore systemSettingsStore;
 
     private volatile Snapshot cached;
     private volatile long cachedAt;
@@ -107,19 +107,19 @@ public class RoleRegistry {
     public void updateRoles(Map<String, List<String>> roles, Map<String, String> traceScopes) {
         validate(roles);
         var encodedScopes = traceScopes != null ? JsonUtil.toJson(storedTraceScopes(traceScopes)) : null;
-        var entity = systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        var entity = systemSettingsStore.get(SETTINGS_ID).orElse(null);
         if (entity == null) {
             entity = new SystemSettings();
             entity.id = SETTINGS_ID;
             entity.createdAt = ZonedDateTime.now();
             entity.rbacRoles = JsonUtil.toJson(roles);
             entity.rbacTraceScopes = encodedScopes;
-            systemSettingsCollection.insert(entity);
+            systemSettingsStore.insert(entity);
         } else {
             entity.rbacRoles = JsonUtil.toJson(roles);
             if (encodedScopes != null) entity.rbacTraceScopes = encodedScopes;
             entity.updatedAt = ZonedDateTime.now();
-            systemSettingsCollection.replace(entity);
+            systemSettingsStore.replace(entity);
         }
         synchronized (this) {
             cached = null;
@@ -143,7 +143,7 @@ public class RoleRegistry {
     private Snapshot load() {
         var roles = new LinkedHashMap<>(DEFAULT_ROLES);
         var traceScopes = new HashMap<String, String>();
-        var entity = systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        var entity = systemSettingsStore.get(SETTINGS_ID).orElse(null);
         if (entity != null) {
             mergeRoles(roles, entity.rbacRoles);
             mergeTraceScopes(traceScopes, entity.rbacTraceScopes);

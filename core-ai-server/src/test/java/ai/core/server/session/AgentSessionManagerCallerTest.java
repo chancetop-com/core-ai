@@ -373,7 +373,7 @@ class AgentSessionManagerCallerTest {
         @SuppressWarnings("unchecked")
         MongoCollection<User> users = (MongoCollection<User>) mock(MongoCollection.class);
         when(users.get(anyString())).thenReturn(java.util.Optional.empty());
-        manager.userCollection = users;
+        manager.userStore = ai.core.server.user.MongoUserStore.of(users);
         return new Harness(manager, assembler);
     }
 

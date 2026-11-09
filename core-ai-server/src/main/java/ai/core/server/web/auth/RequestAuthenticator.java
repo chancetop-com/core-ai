@@ -1,13 +1,12 @@
 package ai.core.server.web.auth;
 
+import ai.core.server.apiuser.ApiKeyStore;
 import ai.core.server.domain.ApiKey;
 import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.sandboxhub.SessionTokenCodec;
 import ai.core.server.sandboxhub.SessionTokenService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Request;
 import core.framework.web.exception.UnauthorizedException;
 
@@ -55,9 +54,9 @@ public class RequestAuthenticator {
     }
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
-    MongoCollection<ApiKey> apiKeyCollection;
+    ApiKeyStore apiKeyStore;
     @Inject
     SessionTokenService sessionTokenService;
 
@@ -99,12 +98,12 @@ public class RequestAuthenticator {
             updateKeyStatus(record, "expired");
             throw new UnauthorizedException("api key expired");
         }
-        var user = userCollection.get(record.userId);
+        var user = userStore.get(record.userId);
         if (user.isEmpty() || !"active".equals(user.get().status)) {
             throw new UnauthorizedException("api user disabled");
         }
         if (user.get().ownerId != null) {
-            var owner = userCollection.get(user.get().ownerId);
+            var owner = userStore.get(user.get().ownerId);
             if (owner.isEmpty() || !"active".equals(owner.get().status)) {
                 throw new UnauthorizedException("api user disabled");
             }
@@ -146,9 +145,7 @@ public class RequestAuthenticator {
         if (!value.startsWith("Bearer coreai_") && !value.startsWith("Bearer cai_")) return null;
 
         var apiKey = value.substring(7);
-        var user = userCollection.findOne(Filters.and(
-            Filters.eq("api_key", apiKey),
-            Filters.type("api_key", "string")));
+        var user = userStore.findByApiKey(apiKey);
         if (user.isEmpty()) throw new UnauthorizedException("invalid api key");
 
         if (!"active".equals(user.get().status)) {
@@ -160,7 +157,7 @@ public class RequestAuthenticator {
     }
 
     private void ensureUser(String userId, String name) {
-        var existing = userCollection.get(userId);
+        var existing = userStore.get(userId);
         if (existing.isEmpty()) {
             var user = new User();
             user.id = userId;
@@ -169,7 +166,7 @@ public class RequestAuthenticator {
             user.status = "active";
             user.createdAt = ZonedDateTime.now();
             user.lastLoginAt = user.createdAt;
-            userCollection.insert(user);
+            userStore.insert(user);
         } else {
             updateLastLogin(existing.get());
         }
@@ -177,22 +174,21 @@ public class RequestAuthenticator {
 
     private void updateLastLogin(User user) {
         user.lastLoginAt = ZonedDateTime.now();
-        userCollection.replace(user);
+        userStore.replace(user);
     }
 
     private void updateLastUsed(ApiKey apiKey) {
         var now = ZonedDateTime.now();
         if (apiKey.lastUsedAt != null && apiKey.lastUsedAt.plus(LAST_USED_UPDATE_THRESHOLD).isAfter(now)) return;
-        apiKeyCollection.update(Filters.eq("_id", apiKey.id), Updates.set("last_used_at", now));
+        apiKeyStore.updateLastUsedAt(apiKey.id, now);
     }
 
     private void updateKeyStatus(ApiKey apiKey, String status) {
-        apiKeyCollection.update(Filters.eq("_id", apiKey.id),
-            Updates.combine(Updates.set("status", status), Updates.set("revoked_at", ZonedDateTime.now())));
+        apiKeyStore.markStatus(apiKey.id, status, ZonedDateTime.now());
     }
 
     private java.util.Optional<ApiKey> findByHash(String key) {
-        return apiKeyCollection.findOne(Filters.eq("key_hash", sha256(key)));
+        return apiKeyStore.findByKeyHash(sha256(key));
     }
 
     public record AuthResult(String userId, String keyId, String scope) {

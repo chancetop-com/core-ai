@@ -2,10 +2,7 @@ package ai.core.server.trace.service;
 
 import ai.core.server.domain.User;
 import ai.core.server.rbac.RoleRegistry;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import java.time.Duration;
 import java.util.Comparator;
@@ -31,7 +28,7 @@ public class TraceVisibilityResolver {
     }
 
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     RoleRegistry roleRegistry;
 
@@ -40,7 +37,7 @@ public class TraceVisibilityResolver {
 
     public TraceVisibility resolve(String userId) {
         if (userId == null || userId.isBlank()) return TraceVisibility.of(Set.of());
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null) return TraceVisibility.of(Set.of(userId));
         if (RoleRegistry.ROLE_ADMIN.equals(user.role)) return TraceVisibility.all();
         return switch (roleRegistry.traceScope(user.role)) {
@@ -61,13 +58,9 @@ public class TraceVisibilityResolver {
     public List<User> visibleUsers(String userId) {
         var visibleUserIds = resolve(userId).scopedUserIdsOrNull();
         if (visibleUserIds != null && visibleUserIds.isEmpty()) return List.of();
-        var query = new Query();
-        // both filters are index-backed; name ordering is applied in Java so a missing name index cannot break it
-        query.filter = visibleUserIds != null
-            ? Filters.in("_id", visibleUserIds)
-            : Filters.in("user_type", "internal", USER_TYPE_API);
-        query.limit = SCOPE_USERS_LIMIT;
-        var users = userCollection.find(query);
+        var users = visibleUserIds != null
+            ? userStore.listByIds(visibleUserIds)
+            : userStore.listInternalAndApiUsers();
         return users.stream()
             .sorted(Comparator.comparing(TraceVisibilityResolver::displayName, String.CASE_INSENSITIVE_ORDER))
             .limit(SCOPE_USERS_LIMIT)
@@ -81,12 +74,9 @@ public class TraceVisibilityResolver {
         synchronized (this) {
             current = cachedApiUserIds;
             if (current != null && System.currentTimeMillis() - cachedApiUserIdsAt < API_USER_CACHE_TTL.toMillis()) return current;
-            var query = new Query();
-            query.filter = Filters.eq("user_type", USER_TYPE_API);
-            query.limit = API_USER_LIMIT;
             var ids = new LinkedHashSet<String>();
-            for (var user : userCollection.find(query)) {
-                if (user.id != null && !user.id.isBlank()) ids.add(user.id);
+            for (var id : userStore.listUserIdsByType(USER_TYPE_API, API_USER_LIMIT)) {
+                if (id != null && !id.isBlank()) ids.add(id);
             }
             current = Set.copyOf(ids);
             cachedApiUserIds = current;

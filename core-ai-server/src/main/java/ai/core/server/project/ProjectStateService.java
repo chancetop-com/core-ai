@@ -5,12 +5,8 @@ import ai.core.server.domain.ProjectActionItem;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
-import org.bson.Document;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -33,11 +29,11 @@ public class ProjectStateService {
     static final int TITLE_MAX_LENGTH = 200;
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectEvent> eventCollection;
+    ProjectEventStore eventStore;
 
     /**
      * Overwrites the subject's current phase/summary and appends phase/summary events on change. The
@@ -55,13 +51,13 @@ public class ProjectStateService {
         var summaryChanged = newSummary != null && !newSummary.equals(subject.summary);
         var older = subject.statusUpdatedAt != null && eventAt.isBefore(subject.statusUpdatedAt);
         if (!older) {
-            var updates = new ArrayList<org.bson.conversions.Bson>();
-            if (newPhase != null) updates.add(Updates.set("phase", newPhase));
-            if (newSummary != null) updates.add(Updates.set("summary", newSummary));
-            updates.add(Updates.set("status_updated_at", eventAt));
-            updates.add(Updates.set("status_updated_by", updatedBy));
-            updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-            subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(updates));
+            subjectStore.update(subjectId, entity -> {
+                if (newPhase != null) entity.phase = newPhase;
+                if (newSummary != null) entity.summary = newSummary;
+                entity.statusUpdatedAt = eventAt;
+                entity.statusUpdatedBy = updatedBy;
+                entity.updatedAt = ZonedDateTime.now();
+            });
         }
         if (phaseChanged) {
             var meta = subject.phase == null ? null : JsonUtil.toJson(Map.of("previous_phase", subject.phase));
@@ -123,10 +119,10 @@ public class ProjectStateService {
             item.updatedBy = updatedBy;
             if (statusChanged || titleChanged) recordActionItemEvent(projectId, subjectId, item, updatedBy, eventAt);
         }
-        // raw Documents: core-ng has no codec for nested classes, so $set of entity instances fails
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.set("action_items", items.stream().map(this::toDocument).toList()),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subjectId, entity -> {
+            entity.actionItems = items;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     public void addNote(String projectId, String subjectId, String content, ZonedDateTime at, String createdBy) {
@@ -141,14 +137,15 @@ public class ProjectStateService {
     public void recordSubjectStatus(String projectId, String subjectId, String status, String updatedBy) {
         var subject = requireSubject(projectId, subjectId);
         if (status == null || status.equals(subject.status)) return;
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.set("status", status),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subjectId, entity -> {
+            entity.status = status;
+            entity.updatedAt = ZonedDateTime.now();
+        });
         recordEvent(projectId, subjectId, ProjectSubjectEvent.TYPE_SUBJECT_STATUS, updatedBy, new EventValue(null, status, null, ZonedDateTime.now()));
     }
 
     public void deleteSubjectEvents(String subjectId) {
-        eventCollection.delete(Filters.eq("subject_id", subjectId));
+        eventStore.deleteBySubject(subjectId);
     }
 
     private void recordActionItemEvent(String projectId, String subjectId, ProjectActionItem item, String updatedBy, ZonedDateTime at) {
@@ -159,13 +156,7 @@ public class ProjectStateService {
     // idempotent append: an identical (type, key, value, at) row for the subject already exists →
     // skip (crash-replay / re-analysis safety); the (subject_id, at) index serves the lookup
     private void recordEventOnce(String projectId, String subjectId, String type, String createdBy, EventValue fields) {
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("subject_id", subjectId));
-        filters.add(Filters.eq("at", fields.at()));
-        filters.add(Filters.eq("type", type));
-        filters.add(Filters.eq("value", fields.value()));
-        filters.add(fields.key() == null ? Filters.exists("key", false) : Filters.eq("key", fields.key()));
-        if (eventCollection.count(Filters.and(filters)) > 0) return;
+        if (eventStore.exists(projectId, subjectId, type, fields.key(), fields.value(), fields.at())) return;
         recordEvent(projectId, subjectId, type, createdBy, fields);
     }
 
@@ -180,17 +171,7 @@ public class ProjectStateService {
         event.meta = fields.meta();
         event.at = fields.at();
         event.createdBy = createdBy;
-        eventCollection.insert(event);
-    }
-
-    private Document toDocument(ProjectActionItem item) {
-        var doc = new Document("subject_id", item.subjectId)
-            .append("id", item.id)
-            .append("title", item.title)
-            .append("status", item.status);
-        if (item.note != null) doc.append("note", item.note);
-        doc.append("created_at", item.createdAt).append("updated_at", item.updatedAt).append("updated_by", item.updatedBy);
-        return doc;
+        eventStore.insert(event);
     }
 
     // the event time is the MATERIAL time (when the fact actually happened): the analyzer passes
@@ -210,12 +191,12 @@ public class ProjectStateService {
     }
 
     private Project require(String projectId) {
-        return projectCollection.get(projectId)
+        return projectStore.get(projectId)
             .orElseThrow(() -> new core.framework.web.exception.NotFoundException("project not found, id=" + projectId));
     }
 
     private ProjectSubject requireSubject(String projectId, String subjectId) {
-        var subject = subjectCollection.get(subjectId).orElse(null);
+        var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || !projectId.equals(subject.projectId)) {
             throw new BadRequestException("subject does not belong to the project, subjectId=" + subjectId);
         }

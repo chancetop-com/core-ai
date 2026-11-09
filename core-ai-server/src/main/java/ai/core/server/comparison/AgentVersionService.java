@@ -11,7 +11,6 @@ import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
-import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
@@ -54,7 +53,7 @@ public class AgentVersionService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
 
     public AgentVersionView create(CreateAgentVersionRequest request, String userId) {
         if (request == null || Strings.isBlank(request.agentId)) throw new BadRequestException("agent_id required");
@@ -149,14 +148,14 @@ public class AgentVersionService {
     private void requireAgentOwnerOrAdmin(String agentId, String userId) {
         var agent = agentDefinitionCollection.get(agentId).orElse(null);
         if (agent == null) {
-            if (ComparisonAccess.isAdmin(userCollection, userId)) return;
+            if (ComparisonAccess.isAdmin(userStore, userId)) return;
             throw new ForbiddenException("agent is unavailable");
         }
         requireAgentOwnerOrAdmin(agent, userId);
     }
 
     private void requireAgentOwnerOrAdmin(AgentDefinition agent, String userId) {
-        if (userId != null && (userId.equals(agent.userId) || ComparisonAccess.isAdmin(userCollection, userId))) return;
+        if (userId != null && (userId.equals(agent.userId) || ComparisonAccess.isAdmin(userStore, userId))) return;
         throw new ForbiddenException("only the agent owner or admin can manage versions");
     }
 }

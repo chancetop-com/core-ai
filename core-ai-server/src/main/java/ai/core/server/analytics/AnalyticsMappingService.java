@@ -1,11 +1,6 @@
 package ai.core.server.analytics;
 
-import ai.core.server.domain.GatewayModelConfig;
-import ai.core.server.domain.GatewayProviderConfig;
-import ai.core.server.domain.User;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
 
 import java.util.ArrayList;
@@ -42,14 +37,14 @@ public class AnalyticsMappingService {
     }
 
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    ai.core.server.gateway.GatewayModelStore gatewayModelStore;
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    ai.core.server.gateway.GatewayProviderStore gatewayProviderStore;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
 
     public Map<String, String> loadModelToProviderMapping() {
-        var models = gatewayModelCollection.find(new Query());
+        var models = gatewayModelStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         for (var model : models) {
             if (model.modelId != null && model.providerId != null) {
@@ -60,7 +55,7 @@ public class AnalyticsMappingService {
     }
 
     public Map<String, String> loadProviderIdToNameMapping() {
-        var providers = gatewayProviderCollection.find(new Query());
+        var providers = gatewayProviderStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         for (var provider : providers) {
             if (provider.id != null && provider.name != null) {
@@ -71,7 +66,7 @@ public class AnalyticsMappingService {
     }
 
     public Map<String, String> loadUserIdToNameMapping() {
-        var users = userCollection.find(new Query());
+        var users = userStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         for (var user : users) {
             if (user.id != null && user.name != null) {

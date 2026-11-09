@@ -51,7 +51,7 @@ import static org.mockito.Mockito.when;
 
 class SessionRebuildManagerTest {
     @SuppressWarnings("unchecked")
-    private final MongoCollection<User> users = (MongoCollection<User>) mock(MongoCollection.class);
+    private final ai.core.server.user.UserStore users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
 
     @Test
     void agentSnapshotPersistsCaptionRoutingPreferenceAcrossPodRebuilds() {
@@ -690,7 +690,7 @@ class SessionRebuildManagerTest {
                                                          SandboxService sandboxService,
                                                          ToolRegistryService toolRegistryService) {
         @SuppressWarnings("unchecked")
-        var users = (MongoCollection<User>) mock(MongoCollection.class);
+        var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, subAgentManager, sandboxService,
                 mock(ChatArtifactSetup.class), toolRegistryService, mock(SystemPromptService.class),
@@ -704,7 +704,7 @@ class SessionRebuildManagerTest {
     private SessionRebuildManager rebuildManager(ChatMessageService chatMessageService,
                                                  MongoCollection<AgentDefinition> agents) {
         @SuppressWarnings("unchecked")
-        var users = (MongoCollection<User>) mock(MongoCollection.class);
+        var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
             null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));

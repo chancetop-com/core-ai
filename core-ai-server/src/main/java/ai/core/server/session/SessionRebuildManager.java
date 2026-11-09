@@ -20,7 +20,6 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.ToolRef;
-import ai.core.server.domain.User;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
@@ -35,6 +34,7 @@ import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.user.UserStore;
 import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
@@ -76,7 +76,7 @@ public class SessionRebuildManager {
     private final EventPublisher eventPublisher;
     private final SessionOwnershipRegistry ownershipRegistry;
     private final SystemSettingsService systemSettingsService;
-    private final MongoCollection<User> userCollection;
+    private final UserStore userStore;
     private final AgentMemoryExperimentService memoryExperimentService;
     private final AgentMemoryService agentMemoryService;
     private final SessionSearchService sessionSearchService;
@@ -104,7 +104,7 @@ public class SessionRebuildManager {
         this.eventPublisher = deps.eventPublisher;
         this.ownershipRegistry = deps.ownershipRegistry;
         this.systemSettingsService = deps.systemSettingsService;
-        this.userCollection = deps.userCollection;
+        this.userStore = deps.userStore;
         this.memoryExperimentService = deps.memoryExperimentService;
         this.agentMemoryService = deps.agentMemoryService;
         this.sessionSearchService = deps.sessionSearchService;
@@ -281,7 +281,7 @@ public class SessionRebuildManager {
                                              String agentName, boolean allowSandboxReattach, String agentId) {
         var context = userId != null ? contextBuilder.build(sessionId, userId) : null;
         if (context != null) {
-            var user = userCollection.get(userId).orElse(null);
+            var user = userStore.get(userId).orElse(null);
             context.setCaller(CallerContexts.fromUser(user));
             UserIdentityPrompt.attach(context, agentId, agentDefinitionCollection, user);
         }
@@ -430,7 +430,7 @@ public class SessionRebuildManager {
                         EventPublisher eventPublisher,
                         SessionOwnershipRegistry ownershipRegistry,
                         SystemSettingsService systemSettingsService,
-                        MongoCollection<User> userCollection,
+                        UserStore userStore,
                         AgentMemoryExperimentService memoryExperimentService,
                         AgentMemoryService agentMemoryService,
                                   SessionSearchService sessionSearchService,

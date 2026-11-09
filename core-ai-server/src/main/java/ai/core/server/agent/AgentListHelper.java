@@ -3,11 +3,10 @@ package ai.core.server.agent;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
@@ -26,7 +25,6 @@ import java.util.Set;
  * @author stephen
  */
 final class AgentListHelper {
-    private static final String FAVORITE_AGENT_IDS_FIELD = "favorite_agent_ids";
 
     static void prioritizeAssistant(List<AgentDefinition> agents, String agentId) {
         if (agentId == null) return;
@@ -45,8 +43,8 @@ final class AgentListHelper {
         return view;
     }
 
-    static Set<String> favoriteAgentIds(MongoCollection<User> userCollection, String userId) {
-        return userCollection.get(userId)
+    static Set<String> favoriteAgentIds(UserStore userStore, String userId) {
+        return userStore.get(userId)
                 .map(user -> user.favoriteAgentIds)
                 .orElse(List.of())
                 .stream()
@@ -58,17 +56,12 @@ final class AgentListHelper {
     }
 
     // the fork pins the caller's own assistant, the star toggle pins anything else
-    static void addFavorite(MongoCollection<User> userCollection, String userId, String agentId) {
-        initializeFavoritesIfNull(userCollection, userId);
-        userCollection.update(Filters.eq("_id", userId), Updates.addToSet(FAVORITE_AGENT_IDS_FIELD, agentId));
-    }
-
-    // core-ng writes null fields explicitly on entity replace, so existing user documents may carry
-    // favorite_agent_ids=null; $addToSet/$pull reject non-array fields, so normalize null to [] first.
-    private static void initializeFavoritesIfNull(MongoCollection<User> userCollection, String userId) {
-        var filter = Filters.and(Filters.eq("_id", userId),
-                Filters.or(Filters.exists(FAVORITE_AGENT_IDS_FIELD, false), Filters.type(FAVORITE_AGENT_IDS_FIELD, "null")));
-        userCollection.update(filter, Updates.set(FAVORITE_AGENT_IDS_FIELD, List.of()));
+    static void addFavorite(UserStore userStore, String userId, String agentId) {
+        userStore.update(userId, user -> {
+            var favorites = user.favoriteAgentIds == null ? new ArrayList<String>() : new ArrayList<>(user.favoriteAgentIds);
+            if (!favorites.contains(agentId)) favorites.add(agentId);
+            user.favoriteAgentIds = favorites;
+        });
     }
 
     static Map<String, String> resolveSkillNames(SkillService skillService, List<AgentDefinition> entities) {
@@ -85,11 +78,11 @@ final class AgentListHelper {
     }
 
     private final MongoCollection<AgentDefinition> agentDefinitionCollection;
-    private final MongoCollection<User> userCollection;
+    private final UserStore userStore;
 
-    AgentListHelper(MongoCollection<AgentDefinition> agentDefinitionCollection, MongoCollection<User> userCollection) {
+    AgentListHelper(MongoCollection<AgentDefinition> agentDefinitionCollection, UserStore userStore) {
         this.agentDefinitionCollection = agentDefinitionCollection;
-        this.userCollection = userCollection;
+        this.userStore = userStore;
     }
 
     AgentDefinition findDefaultAssistant(Bson filter) {
@@ -134,7 +127,7 @@ final class AgentListHelper {
     }
 
     void markFavorites(ListAgentsResponse response, String userId) {
-        var favoriteIds = favoriteAgentIds(userCollection, userId);
+        var favoriteIds = favoriteAgentIds(userStore, userId);
         if (favoriteIds.isEmpty()) return;
         for (var agent : response.agents) {
             if (favoriteIds.contains(agent.id)) agent.favorite = Boolean.TRUE;
@@ -144,16 +137,20 @@ final class AgentListHelper {
     void favorite(String agentId, String userId) {
         agentDefinitionCollection.get(agentId)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
-        addFavorite(userCollection, userId, agentId);
+        addFavorite(userStore, userId, agentId);
     }
 
     void unfavorite(String agentId, String userId) {
-        initializeFavoritesIfNull(userCollection, userId);
-        userCollection.update(Filters.eq("_id", userId), Updates.pull(FAVORITE_AGENT_IDS_FIELD, agentId));
+        userStore.update(userId, user -> {
+            if (user.favoriteAgentIds == null) return;
+            var favorites = new ArrayList<>(user.favoriteAgentIds);
+            favorites.remove(agentId);
+            user.favoriteAgentIds = favorites;
+        });
     }
 
     ListAgentsResponse listFavorites(String userId) {
-        var favoriteIds = userCollection.get(userId)
+        var favoriteIds = userStore.get(userId)
                 .map(user -> user.favoriteAgentIds)
                 .orElse(List.of());
         var ordered = new ArrayList<AgentDefinition>();
@@ -203,7 +200,7 @@ final class AgentListHelper {
         }
         if (userIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
-        for (var u : userCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(userIds))))) {
+        for (var u : userStore.listByIds(userIds)) {
             map.put(u.id, u.name);
         }
         return map;

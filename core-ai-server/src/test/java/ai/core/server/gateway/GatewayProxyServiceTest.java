@@ -10,8 +10,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.http.EventSource;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
@@ -787,10 +785,8 @@ class GatewayProxyServiceTest {
     @SuppressWarnings("unchecked")
     private GatewayRoutingEngine routingEngine(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        routingEngine.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        when(routingEngine.gatewayProviderCollection.find(any(Query.class))).thenReturn(providers);
-        when(routingEngine.gatewayModelCollection.find(any(Query.class))).thenReturn(models);
+        routingEngine.providerStore = GatewayStoreTestSupport.providerStore(providers);
+        routingEngine.modelStore = GatewayStoreTestSupport.modelStore(models);
         return routingEngine;
     }
 

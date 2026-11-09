@@ -86,7 +86,7 @@ class ProjectReportQueryServiceTest {
         service.fileRecordCollection = files;
         service.agentRunCollection = runs;
         service.chatSessionCollection = sessions;
-        service.projectCollection = projects;
+        service.projectStore = ProjectStoreTestSupport.store(projects);
         service.agentCollection = agents;
 
         var project = new Project();

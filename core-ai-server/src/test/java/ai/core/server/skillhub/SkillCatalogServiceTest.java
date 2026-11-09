@@ -3,6 +3,7 @@ package ai.core.server.skillhub;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.skill.MongoSkillStore;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,7 +33,7 @@ class SkillCatalogServiceTest {
     void setUp() {
         collection = (MongoCollection<SkillDefinition>) mock(MongoCollection.class);
         catalog = new SkillCatalogService();
-        catalog.skillCollection = collection;
+        catalog.skillStore = MongoSkillStore.of(collection);
     }
 
     @Test

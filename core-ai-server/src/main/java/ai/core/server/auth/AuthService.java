@@ -6,16 +6,12 @@ import ai.core.api.server.auth.RegisterResponse;
 import ai.core.api.server.apiuser.response.OutboundCallerHeaderView;
 import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import ai.core.api.server.user.GenerateApiKeyResponse;
-import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.OutboundCallerHeaderConfig;
 import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.rbac.RoleRegistry;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.UnauthorizedException;
@@ -43,7 +39,7 @@ public class AuthService {
     private static final String STATUS_PENDING = "pending";
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     PermissionService permissionService;
     @Inject
@@ -54,7 +50,7 @@ public class AuthService {
     public String adminName;
 
     public void initialize() {
-        var existing = userCollection.get(adminEmail.toLowerCase(Locale.getDefault()));
+        var existing = userStore.get(adminEmail.toLowerCase(Locale.getDefault()));
         if (existing.isPresent()) return;
 
         var admin = new User();
@@ -65,13 +61,13 @@ public class AuthService {
         admin.role = "admin";
         admin.status = STATUS_ACTIVE;
         admin.createdAt = ZonedDateTime.now();
-        userCollection.insert(admin);
+        userStore.insert(admin);
         LOGGER.info("admin user created, email={}", adminEmail);
     }
 
     public RegisterResponse register(String email, String password, String name) {
         var normalizedEmail = email.toLowerCase(Locale.getDefault());
-        var existing = userCollection.get(normalizedEmail);
+        var existing = userStore.get(normalizedEmail);
 
         if (existing.isPresent()) {
             var user = existing.get();
@@ -83,7 +79,7 @@ public class AuthService {
             if (name != null) user.name = name;
             user.apiKey = generateApiKey();
             user.apiKeyCreatedAt = ZonedDateTime.now();
-            userCollection.replace(user);
+            userStore.replace(user);
 
             var response = new RegisterResponse();
             response.apiKey = user.apiKey;
@@ -100,7 +96,7 @@ public class AuthService {
         user.apiKey = generateApiKey();
         user.apiKeyCreatedAt = ZonedDateTime.now();
         user.createdAt = ZonedDateTime.now();
-        userCollection.insert(user);
+        userStore.insert(user);
 
         var response = new RegisterResponse();
         response.apiKey = user.apiKey;
@@ -110,7 +106,7 @@ public class AuthService {
 
     public LoginResponse login(String email, String password) {
         var normalizedEmail = email.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new UnauthorizedException("invalid email or password"));
 
         if ("api".equals(user.userType)) {
@@ -130,7 +126,7 @@ public class AuthService {
             user.apiKeyCreatedAt = ZonedDateTime.now();
         }
         user.lastLoginAt = ZonedDateTime.now();
-        userCollection.replace(user);
+        userStore.replace(user);
 
         var response = new LoginResponse();
         response.apiKey = user.apiKey;
@@ -145,7 +141,7 @@ public class AuthService {
         requireAdmin(adminUserId);
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         if (!STATUS_ACTIVE.equals(newStatus) && !STATUS_PENDING.equals(newStatus)) {
@@ -153,7 +149,7 @@ public class AuthService {
         }
 
         user.status = newStatus;
-        userCollection.replace(user);
+        userStore.replace(user);
         LOGGER.info("user status updated, email={}, newStatus={}", normalizedEmail, newStatus);
     }
 
@@ -161,14 +157,14 @@ public class AuthService {
         requireAdmin(adminUserId);
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         if ("admin".equals(user.role)) {
             throw new BadRequestException("cannot delete admin user");
         }
 
-        userCollection.delete(normalizedEmail);
+        userStore.delete(normalizedEmail);
         LOGGER.info("user deleted, email={}", normalizedEmail);
     }
 
@@ -176,12 +172,12 @@ public class AuthService {
         requireAdmin(adminUserId);
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         user.apiKey = generateApiKey();
         user.apiKeyCreatedAt = ZonedDateTime.now();
-        userCollection.replace(user);
+        userStore.replace(user);
         LOGGER.info("api key generated for user, email={}", normalizedEmail);
 
         var response = new GenerateApiKeyResponse();
@@ -193,7 +189,7 @@ public class AuthService {
         requireAdmin(adminUserId);
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         if (user.apiKey == null) {
@@ -202,7 +198,7 @@ public class AuthService {
 
         user.apiKey = null;
         user.apiKeyCreatedAt = null;
-        userCollection.replace(user);
+        userStore.replace(user);
         LOGGER.info("api key revoked for user, email={}", normalizedEmail);
     }
 
@@ -218,11 +214,11 @@ public class AuthService {
         }
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         user.role = newRole;
-        userCollection.replace(user);
+        userStore.replace(user);
         LOGGER.info("user role updated, email={}, newRole={}", normalizedEmail, newRole);
     }
 
@@ -234,11 +230,11 @@ public class AuthService {
         }
 
         var normalizedEmail = targetEmail.toLowerCase(Locale.getDefault());
-        var user = userCollection.get(normalizedEmail)
+        var user = userStore.get(normalizedEmail)
             .orElseThrow(() -> new BadRequestException("user not found: " + targetEmail));
 
         user.passwordHash = hashPassword(newPassword);
-        userCollection.replace(user);
+        userStore.replace(user);
         LOGGER.info("password reset for user, email={}", normalizedEmail);
     }
 
@@ -246,14 +242,14 @@ public class AuthService {
         requireAdmin(adminUserId);
 
         var normalizedEmail = email.toLowerCase(Locale.getDefault());
-        var existing = userCollection.get(normalizedEmail);
+        var existing = userStore.get(normalizedEmail);
         if (existing.isPresent()) {
             var user = existing.get();
             if (STATUS_ACTIVE.equals(user.status)) {
                 throw new BadRequestException("user is already active");
             }
             user.status = STATUS_ACTIVE;
-            userCollection.replace(user);
+            userStore.replace(user);
             LOGGER.info("user approved, email={}", normalizedEmail);
         } else {
             var user = new User();
@@ -262,7 +258,7 @@ public class AuthService {
             user.name = normalizedEmail;
             user.status = STATUS_ACTIVE;
             user.createdAt = ZonedDateTime.now();
-            userCollection.insert(user);
+            userStore.insert(user);
             LOGGER.info("user pre-approved, email={}", normalizedEmail);
         }
     }
@@ -270,14 +266,11 @@ public class AuthService {
     public ListUsersResponse listUsers(String adminUserId) {
         requireAdmin(adminUserId);
 
-        var query = new Query();
-        query.filter = Filters.in("user_type", "internal", ApiUserService.USER_TYPE_API);
-        query.sort = Sorts.ascending("created_at");
-        var users = userCollection.find(query);
+        var users = userStore.listInternalAndApiUsers();
         var ownerIds = users.stream().map(user -> user.ownerId).filter(Objects::nonNull).distinct().toList();
         var ownerNames = new HashMap<String, String>();
         for (var ownerId : ownerIds) {
-            ownerNames.put(ownerId, userCollection.get(ownerId).map(owner -> owner.name).orElse(ownerId));
+            ownerNames.put(ownerId, userStore.get(ownerId).map(owner -> owner.name).orElse(ownerId));
         }
         var response = new ListUsersResponse();
         response.users = new ArrayList<>(users.size());
@@ -326,7 +319,7 @@ public class AuthService {
     }
 
     private void requireAdmin(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new UnauthorizedException("user not found"));
         if (!"admin".equals(user.role)) {
             throw new UnauthorizedException("admin required");

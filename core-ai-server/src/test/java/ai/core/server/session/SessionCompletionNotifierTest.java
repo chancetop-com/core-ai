@@ -213,7 +213,7 @@ class SessionCompletionNotifierTest {
 
         var now = new AtomicLong(START);
         notifier.sessionRegistry = registry;
-        notifier.userCollection = users;
+        notifier.userStore = ai.core.server.user.MongoUserStore.of(users);
         notifier.channelConfigStore = channelConfigStore;
         notifier.channelRegistry = channelRegistry;
         notifier.publicUrlConfiguration = new PublicUrlConfiguration("https://core.example");

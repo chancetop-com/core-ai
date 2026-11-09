@@ -30,7 +30,7 @@ class MediaPricingServiceTest {
     void setUp() {
         service = new MediaPricingService();
         models = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        service.gatewayModelCollection = models;
+        service.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(models);
     }
 
     private MediaPricingService.VideoPricingRequest videoRequest(String requestedModel, String resolvedModel, Integer seconds,

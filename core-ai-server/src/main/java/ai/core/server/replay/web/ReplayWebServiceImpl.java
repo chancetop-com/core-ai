@@ -13,7 +13,6 @@ import ai.core.api.server.replay.ReplaySampleView;
 import ai.core.api.server.replay.ReplayUsageView;
 import ai.core.api.server.replay.ReplayWebService;
 import ai.core.api.server.replay.UpdateReplayExperimentRequest;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.replay.domain.ReplayExperiment;
@@ -22,8 +21,8 @@ import ai.core.server.replay.domain.ReplayRun;
 import ai.core.server.replay.domain.ReplaySample;
 import ai.core.server.replay.service.ReplayService;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
@@ -146,7 +145,7 @@ public class ReplayWebServiceImpl implements ReplayWebService {
     @Inject
     ReplayService replayService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     WebContext webContext;
 
@@ -244,7 +243,7 @@ public class ReplayWebServiceImpl implements ReplayWebService {
 
     private Scope scope() {
         var userId = AuthContext.userId(webContext);
-        var admin = userId != null && userCollection.get(userId)
+        var admin = userId != null && userStore.get(userId)
                 .map(user -> "admin".equals(user.role))
                 .orElse(Boolean.FALSE);
         return new Scope(userId, admin);

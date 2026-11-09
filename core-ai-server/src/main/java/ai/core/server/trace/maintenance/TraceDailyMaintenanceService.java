@@ -1,18 +1,15 @@
 package ai.core.server.trace.maintenance;
 
 import ai.core.server.analytics.AnalyticsMappingService;
-import ai.core.server.domain.GatewayModelConfig;
-import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Aggregates;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
+import core.framework.mongo.Aggregate;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,9 +34,9 @@ public class TraceDailyMaintenanceService {
     @Inject
     MongoCollection<AnalyticsDailyStats> analyticsStatsCollection;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    ai.core.server.gateway.GatewayModelStore gatewayModelStore;
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    ai.core.server.gateway.GatewayProviderStore gatewayProviderStore;
     @Inject
     MongoCollection<Trace> traceCollection;
 
@@ -96,7 +93,7 @@ public class TraceDailyMaintenanceService {
     }
 
     private Map<String, String> loadProviderIdToNameMapping() {
-        var providers = gatewayProviderCollection.find(new Query());
+        var providers = gatewayProviderStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         for (var provider : providers) {
             if (provider.id != null && provider.name != null) {
@@ -107,7 +104,7 @@ public class TraceDailyMaintenanceService {
     }
 
     private Map<String, String> loadModelToProviderMapping() {
-        var models = gatewayModelCollection.find(new Query());
+        var models = gatewayModelStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         for (var model : models) {
             if (model.modelId != null && model.providerId != null) {

@@ -1,7 +1,5 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
-import core.framework.mongo.MongoCollection;
 
 import java.util.List;
 
@@ -13,8 +11,8 @@ import java.util.List;
  * @author stephen
  */
 final class ProjectScope {
-    static ProjectScope resolve(MongoCollection<Project> projectCollection, String projectId) {
-        var project = projectCollection.get(projectId).orElse(null);
+    static ProjectScope resolve(ProjectStore projectStore, String projectId) {
+        var project = projectStore.get(projectId).orElse(null);
         if (project == null || project.members == null || project.members.isEmpty()) return null;
         var agentIds = project.members.stream().filter(m -> "agent".equals(m.type)).map(m -> m.id).toList();
         var workflowIds = project.members.stream().filter(m -> "workflow".equals(m.type)).map(m -> m.id).toList();

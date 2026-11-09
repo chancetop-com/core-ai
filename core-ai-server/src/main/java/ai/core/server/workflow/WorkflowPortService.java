@@ -3,7 +3,6 @@ package ai.core.server.workflow;
 import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
@@ -58,7 +57,7 @@ public class WorkflowPortService {
     MongoCollection<WorkflowDefinition> definitionCollection;
 
     @Inject
-    MongoCollection<ToolRegistryEntry> toolRegistryCollection;
+    ai.core.server.tool.ToolRegistryStore toolRegistryStore;
 
     public ExportWorkflowResponse export(String id, String userId) {
         WorkflowDefinition definition = definitionService.get(id, userId);   // ownership-checked
@@ -139,7 +138,7 @@ public class WorkflowPortService {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "MCP_TOOL", null, "node is missing server_id"));
             return;
         }
-        if (toolRegistryCollection.get(String.valueOf(serverId)).isEmpty()) {
+        if (toolRegistryStore.get(String.valueOf(serverId)).isEmpty()) {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "MCP_TOOL", String.valueOf(serverId), "references an unknown MCP server"));
         }
     }

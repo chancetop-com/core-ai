@@ -7,8 +7,6 @@ import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import com.sun.net.httpserver.HttpServer;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -17,26 +15,15 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 /**
  * Exercises the failover path through the real HTTP/SSE transport instead of a stubbed upstream:
  * a provider reporting an in-stream error must hand the request to the next model in the chain.
  */
 class GatewayLLMProviderFailoverIntegrationTest {
-    @SuppressWarnings("unchecked")
-    private static <T> MongoCollection<T> mockMongo(List<T> rows) {
-        var collection = (MongoCollection<T>) mock(MongoCollection.class);
-        when(collection.find(any(Query.class))).thenReturn(rows);
-        when(collection.get(any(String.class))).thenReturn(Optional.empty());
-        return collection;
-    }
 
     private HttpServer failingServer;
     private HttpServer healthyServer;
@@ -133,8 +120,8 @@ class GatewayLLMProviderFailoverIntegrationTest {
     @SuppressWarnings("unchecked")
     private GatewayLLMProvider gateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(providers);
-        routingEngine.gatewayModelCollection = mockMongo(models);
+        routingEngine.providerStore = GatewayStoreTestSupport.providerStore(providers);
+        routingEngine.modelStore = GatewayStoreTestSupport.modelStore(models);
         return new GatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), null);
     }
 

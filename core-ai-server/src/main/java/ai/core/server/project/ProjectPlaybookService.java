@@ -45,7 +45,7 @@ public class ProjectPlaybookService {
     static final int MAX_PLAYBOOK_CHARS = 20000;   // sanity cap only — the prompt asks for 3500
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
     @Inject
@@ -66,7 +66,7 @@ public class ProjectPlaybookService {
     LLMCallExecutor llmCallExecutor;
 
     public String generate(String projectId) {
-        var project = projectCollection.get(projectId)
+        var project = projectStore.get(projectId)
             .orElseThrow(() -> new IllegalStateException("project not found, id=" + projectId));
         var definition = agentCollection.get("builtin-" + ProjectBuiltinAgents.PLAYBOOK_WRITER).orElse(null);
         if (definition == null) {

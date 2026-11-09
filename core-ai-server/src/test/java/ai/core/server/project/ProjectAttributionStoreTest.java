@@ -50,8 +50,8 @@ class ProjectAttributionStoreTest {
     void setUp() {
         store = new ProjectAttributionStore();
         attributions = (MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class);
-        store.attributionCollection = attributions;
-        store.subjectCollection = (MongoCollection<ProjectSubject>) mock(MongoCollection.class);
+        store.attributionRepository = MongoProjectAttributionRepository.of(attributions);
+        store.subjectStore = MongoProjectSubjectStore.of((MongoCollection<ProjectSubject>) mock(MongoCollection.class));
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         store.fileRecordCollection = files;
         var record = new FileRecord();

@@ -6,8 +6,6 @@ import ai.core.mcp.client.McpServerConfig;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
 import ai.core.tool.ToolCallResult;
-import com.mongodb.client.model.Filters;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.StopWatch;
 import core.framework.web.exception.ConflictException;
 import io.modelcontextprotocol.spec.McpSchema;
@@ -56,7 +54,7 @@ class McpServerOperationService {
     private final Map<String, CachedToolDetails> toolDetailsCache = new ConcurrentHashMap<>();
     private final Map<String, CachedState> stateCache = new ConcurrentHashMap<>();
     private java.util.function.Consumer<String> catalogInvalidator;
-    private MongoCollection<ToolRegistryEntry> toolRegistryCollection;
+    private ToolRegistryStore toolRegistryStore;
 
     McpServerOperationService(Map<String, ToolRegistryEntry> tools,
                                McpServerConnectionManager mcpConnectionManager,
@@ -66,8 +64,8 @@ class McpServerOperationService {
         this.applicationMcpManager = applicationMcpManager;
     }
 
-    void setToolRegistryCollection(MongoCollection<ToolRegistryEntry> toolRegistryCollection) {
-        this.toolRegistryCollection = toolRegistryCollection;
+    void setToolRegistryStore(ToolRegistryStore toolRegistryStore) {
+        this.toolRegistryStore = toolRegistryStore;
     }
 
     /** Optional hub catalog hook — server enable/disable/connect drops the stale snapshot immediately. */
@@ -99,7 +97,7 @@ class McpServerOperationService {
         entity.rawConfig = rawConfig;
         entity.enabled = enabled == null || enabled;
         entity.createdAt = ZonedDateTime.now();
-        toolRegistryCollection.insert(entity);
+        toolRegistryStore.insert(entity);
 
         tools.put(entity.id, entity);
         if (Boolean.TRUE.equals(entity.enabled)) {
@@ -167,7 +165,7 @@ class McpServerOperationService {
             enabledChanged = true;
         }
 
-        toolRegistryCollection.replace(entity);
+        toolRegistryStore.replace(entity);
         if (configChanged || enabledChanged) mcpConnectionManager.applyMcpServerState(entity, configChanged);
         LOGGER.info("updated mcp server, id={}, name={}", entity.id, entity.name);
         return entity;
@@ -185,7 +183,7 @@ class McpServerOperationService {
         }
 
         mcpConnectionManager.unregisterMcpServer(id);
-        toolRegistryCollection.delete(id);
+        toolRegistryStore.delete(id);
         LOGGER.info("deleted mcp server, id={}, name={}", id, entity.name);
     }
 
@@ -199,7 +197,7 @@ class McpServerOperationService {
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
 
         entity.enabled = Boolean.TRUE;
-        toolRegistryCollection.replace(entity);
+        toolRegistryStore.replace(entity);
         if (isSandboxHosted(entity)) {
             mcpConnectionManager.ensureRegisteredOnDiscovery(entity);
         } else {
@@ -220,7 +218,7 @@ class McpServerOperationService {
         if (entity.type != ToolType.MCP) throw new RuntimeException("tool is not an mcp server, id=" + id);
 
         entity.enabled = Boolean.FALSE;
-        toolRegistryCollection.replace(entity);
+        toolRegistryStore.replace(entity);
         mcpConnectionManager.unregisterMcpServer(id);
         LOGGER.info("disabled mcp server, id={}, name={}", id, entity.name);
         return entity;
@@ -398,9 +396,7 @@ class McpServerOperationService {
     }
 
     private java.util.Optional<ToolRegistryEntry> findMcpServerByName(String name) {
-        return toolRegistryCollection.findOne(Filters.and(
-                Filters.eq("type", ToolType.MCP.name()),
-                Filters.eq("name", name)));
+        return toolRegistryStore.findMcpServerByName(name);
     }
 
     private record CachedToolDetails(List<McpSchema.Tool> tools, long createdAtNanos) {

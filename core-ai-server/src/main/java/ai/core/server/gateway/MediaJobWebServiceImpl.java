@@ -10,14 +10,11 @@ import ai.core.api.server.media.MediaJobView;
 import ai.core.api.server.media.MediaJobWebService;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.MediaJobInput;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 
 import java.util.HashMap;
@@ -103,7 +100,7 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
     @Inject
     ImageModelCompareService imageModelCompareService;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     WebContext webContext;
 
@@ -142,7 +139,7 @@ public class MediaJobWebServiceImpl implements MediaJobWebService {
         }
         if (userIds.isEmpty()) return Map.of();
         var names = new HashMap<String, String>();
-        for (var user : userCollection.find(Filters.in("_id", userIds))) {
+        for (var user : userStore.listByIds(userIds)) {
             names.put(user.id, user.name);
         }
         return names;

@@ -19,9 +19,9 @@ import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.OutboundCallerContext;
 import ai.core.utils.JsonUtil;
+import ai.core.server.user.UserStore;
 import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.StopWatch;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
@@ -70,7 +70,7 @@ public class ApiToolHubService {
     @Inject
     ToolRegistryService toolRegistryService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     public ApiToolHubAppsResponse apps() {
         var response = new ApiToolHubAppsResponse();
@@ -163,7 +163,7 @@ public class ApiToolHubService {
 
     private User user(String userId) {
         if (userId == null) return null;
-        return userCollection.get(userId).orElse(null);
+        return userStore.get(userId).orElse(null);
     }
 
     /** StopWatch.elapsed() is nanosecond-based; hub responses and audit use milliseconds. */

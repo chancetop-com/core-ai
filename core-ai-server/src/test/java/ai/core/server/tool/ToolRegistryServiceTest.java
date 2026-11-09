@@ -69,6 +69,7 @@ class ToolRegistryServiceTest {
     @BeforeEach
     void setUp() {
         mocks = MockitoAnnotations.openMocks(this);
+        service.toolRegistryStore = MongoToolRegistryStore.of(collection);
         connections = mockConstruction(McpServerConnectionManager.class);
         when(collection.find(any(Bson.class))).thenAnswer(invocation -> {
             Bson filter = invocation.getArgument(0);

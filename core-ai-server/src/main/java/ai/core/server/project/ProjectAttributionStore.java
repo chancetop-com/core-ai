@@ -3,24 +3,14 @@ package ai.core.server.project;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.Document;
 import org.bson.conversions.Bson;
 
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -51,44 +41,32 @@ public class ProjectAttributionStore {
     public static final String SOURCE_MANUAL = "manual";
     public static final String SOURCE_UPLOAD = "upload";
 
-    private static final int DUPLICATE_KEY_CODE = 11000;
     private static final Bson FILE_TIME_PROJECTION = Projections.include("_id", "created_at");
-    private static final ZonedDateTime EPOCH = ZonedDateTime.of(1970, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC);
 
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     MongoCollection<FileRecord> fileRecordCollection;
 
     public Optional<ProjectSubject> subject(String subjectId) {
         if (subjectId == null || subjectId.isBlank()) return Optional.empty();
-        return subjectCollection.get(subjectId);
+        return subjectStore.get(subjectId);
     }
 
     /** every attribution row of one target, across projects */
     public List<ProjectSubjectAttribution> byTarget(String targetType, String targetId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("target_type", targetType), Filters.eq("target_id", targetId));
-        return attributionCollection.find(query);
+        return attributionRepository.byTarget(targetType, targetId);
     }
 
     /** file id → subject id for one project (unique per file by index); ids only, no payload */
     public Map<String, String> fileSubjects(String projectId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("project_id", projectId), Filters.eq("target_type", TARGET_FILE));
-        query.projection = Projections.include("target_id", "subject_id");
-        var result = new HashMap<String, String>();
-        for (var row : attributionCollection.find(query)) result.putIfAbsent(row.targetId, row.subjectId);
-        return result;
+        return attributionRepository.fileSubjects(projectId);
     }
 
     public Optional<ProjectSubjectAttribution> fileAttribution(String projectId, String fileId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("project_id", projectId), Filters.eq("target_type", TARGET_FILE), Filters.eq("target_id", fileId));
-        query.limit = 1;
-        return attributionCollection.find(query).stream().findFirst();
+        return attributionRepository.fileAttribution(projectId, fileId);
     }
 
     /**
@@ -96,33 +74,16 @@ public class ProjectAttributionStore {
      * newest file first. Index-served on (project_id|subject_id, target_type, target_created_at).
      */
     public List<ProjectSubjectAttribution> filedFiles(String projectId, String subjectId, ZonedDateTime from, ZonedDateTime to, int offset, int limit) {
-        var query = new Query();
-        query.filter = filedFilter(projectId, subjectId, from, to);
-        query.sort = Sorts.descending("target_created_at");
-        query.skip = offset;
-        query.limit = limit;
-        return attributionCollection.find(query);
+        return attributionRepository.filedFiles(projectId, subjectId, from, to, offset, limit);
     }
 
     public long filedFileCount(String projectId, String subjectId, ZonedDateTime from, ZonedDateTime to) {
-        return attributionCollection.count(filedFilter(projectId, subjectId, from, to));
+        return attributionRepository.filedFileCount(projectId, subjectId, from, to);
     }
 
     /** per-subject report count and newest report time for one project (group on the attribution table) */
     public Map<String, SubjectFileStats> fileStatsBySubject(String projectId) {
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(Filters.eq("project_id", projectId), Filters.eq("target_type", TARGET_FILE))),
-            Aggregates.group("$subject_id", Accumulators.sum("count", 1), Accumulators.max("latest", "$target_created_at")));
-        var result = new HashMap<String, SubjectFileStats>();
-        for (var doc : attributionCollection.aggregate(aggregate)) {
-            var subjectId = doc.getString("_id");
-            if (subjectId == null) continue;
-            var latest = doc.get("latest") instanceof Date date ? date.toInstant().atZone(ZoneOffset.UTC) : null;
-            result.put(subjectId, new SubjectFileStats(((Number) doc.get("count")).longValue(), latest));
-        }
-        return result;
+        return attributionRepository.fileStatsBySubject(projectId);
     }
 
     /**
@@ -132,17 +93,9 @@ public class ProjectAttributionStore {
      */
     public Result attribute(String projectId, String subjectId, String targetType, String targetId, String source) {
         if (TARGET_FILE.equals(targetType)) return attributeFile(projectId, subjectId, targetId, source, null, null);
-        if (attributionCollection.count(Filters.and(
-            Filters.eq("subject_id", subjectId), Filters.eq("target_type", targetType), Filters.eq("target_id", targetId))) > 0) {
-            return Result.EXISTS;
-        }
-        try {
-            attributionCollection.insert(row(projectId, subjectId, targetType, targetId, source));
-            return Result.INSERTED;
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
-            return Result.EXISTS;   // concurrent writer inserted the equivalent row
-        }
+        if (attributionRepository.exists(subjectId, targetType, targetId)) return Result.EXISTS;
+        return attributionRepository.insertIfAbsent(row(projectId, subjectId, targetType, targetId, source))
+            ? Result.INSERTED : Result.EXISTS;
     }
 
     /**
@@ -154,48 +107,27 @@ public class ProjectAttributionStore {
         if (existing.isPresent()) return subjectId.equals(existing.get().subjectId) ? Result.EXISTS : Result.CONFLICT;
         var attribution = fileRow(projectId, subjectId, fileId, source, agentId, createdAt);
         if (attribution == null) return Result.MISSING;
-        try {
-            attributionCollection.insert(attribution);
-            return Result.INSERTED;
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
-            // concurrent writer won the unique index race; report what is there now
-            var current = fileAttribution(projectId, fileId);
-            return current.isPresent() && !subjectId.equals(current.get().subjectId) ? Result.CONFLICT : Result.EXISTS;
-        }
+        if (attributionRepository.insertIfAbsent(attribution)) return Result.INSERTED;
+        // concurrent writer won the unique index race; report what is there now
+        var current = fileAttribution(projectId, fileId);
+        return current.isPresent() && !subjectId.equals(current.get().subjectId) ? Result.CONFLICT : Result.EXISTS;
     }
 
     /** Re-homes a file inside a project: drops its current rows, inserts the new one (null subject = unassigned). */
     public void moveFile(String projectId, String subjectId, String fileId, String source) {
         var previous = fileAttribution(projectId, fileId).orElse(null);
-        attributionCollection.delete(Filters.and(Filters.eq("project_id", projectId), Filters.eq("target_type", TARGET_FILE), Filters.eq("target_id", fileId)));
+        attributionRepository.deleteByProjectAndTarget(projectId, TARGET_FILE, fileId);
         if (subjectId == null || subjectId.isBlank()) return;
         // keep the file metadata of the previous home so the moved report keeps its date and producer
         var attribution = fileRow(projectId, subjectId, fileId, source,
             previous != null ? previous.agentId : null, previous != null ? previous.targetCreatedAt : null);
         if (attribution == null) return;   // file gone: nothing left to re-home
-        try {
-            attributionCollection.insert(attribution);
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
-        }
+        attributionRepository.insertIfAbsent(attribution);
     }
 
     /** the file was deleted: drop its rows in every project (called by FileService.delete) */
     public void removeFile(String fileId) {
-        attributionCollection.delete(Filters.and(Filters.eq("target_type", TARGET_FILE), Filters.eq("target_id", fileId)));
-    }
-
-    // rows without a file time are legacy orphans (file gone before the time backfill): the lower bound keeps
-    // them out of both the page and the count so offsets stay consistent; the range is served by the sort index
-    private Bson filedFilter(String projectId, String subjectId, ZonedDateTime from, ZonedDateTime to) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("project_id", projectId));
-        if (subjectId != null && !subjectId.isBlank()) filters.add(Filters.eq("subject_id", subjectId));
-        filters.add(Filters.eq("target_type", TARGET_FILE));
-        filters.add(Filters.gte("target_created_at", from != null ? from : EPOCH));
-        if (to != null) filters.add(Filters.lte("target_created_at", to));
-        return Filters.and(filters);
+        attributionRepository.deleteByTargetTypeAndId(TARGET_FILE, fileId);
     }
 
     // null when the file does not exist: no attribution row is written for a file nobody can open

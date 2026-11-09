@@ -10,11 +10,7 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.domain.SystemPrompt;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
@@ -32,7 +28,7 @@ public class SystemPromptService {
     private static final Pattern VARIABLE_PATTERN = Pattern.compile("\\{\\{(\\w+)}}");
 
     @Inject
-    MongoCollection<SystemPrompt> systemPromptCollection;
+    SystemPromptStore store;
 
     @Inject
     LLMProviders llmProviders;
@@ -56,7 +52,7 @@ public class SystemPromptService {
         entity.userId = userId;
         entity.createdAt = ZonedDateTime.now();
 
-        systemPromptCollection.insert(entity);
+        store.insert(entity);
         return toView(entity);
     }
 
@@ -66,15 +62,11 @@ public class SystemPromptService {
     }
 
     public SystemPromptView getByName(String name) {
-        var query = new Query();
-        query.filter = Filters.eq("name", name);
-        query.sort = Sorts.descending("version");
-        query.limit = 1;
-        var results = systemPromptCollection.find(query);
-        if (results.isEmpty()) {
+        var entity = store.latestByName(name);
+        if (entity == null) {
             throw new NotFoundException("system prompt not found, name=" + name);
         }
-        return toView(results.getFirst());
+        return toView(entity);
     }
 
     public SystemPromptView update(String promptId, SystemPromptRequest request, String userId) {
@@ -93,33 +85,24 @@ public class SystemPromptService {
         entity.userId = userId;
         entity.createdAt = ZonedDateTime.now();
 
-        systemPromptCollection.insert(entity);
+        store.insert(entity);
         return toView(entity);
     }
 
     public void delete(String promptId) {
-        systemPromptCollection.delete(Filters.eq("prompt_id", promptId));
+        store.deleteByPromptId(promptId);
     }
 
     public List<SystemPromptVersionView> versions(String promptId) {
-        var query = new Query();
-        query.filter = Filters.eq("prompt_id", promptId);
-        query.sort = Sorts.descending("version");
-        var entities = systemPromptCollection.find(query);
-        return entities.stream().map(this::toVersionView).toList();
+        return store.versions(promptId).stream().map(this::toVersionView).toList();
     }
 
     public SystemPromptView getVersion(String promptId, int version) {
-        var query = new Query();
-        query.filter = Filters.and(
-            Filters.eq("prompt_id", promptId),
-            Filters.eq("version", version)
-        );
-        var results = systemPromptCollection.find(query);
-        if (results.isEmpty()) {
+        var entity = store.version(promptId, version);
+        if (entity == null) {
             throw new RuntimeException("version not found, promptId=" + promptId + ", version=" + version);
         }
-        return toView(results.getFirst());
+        return toView(entity);
     }
 
     public String resolveContent(String promptId) {
@@ -127,15 +110,11 @@ public class SystemPromptService {
     }
 
     SystemPrompt getLatestVersion(String promptId) {
-        var query = new Query();
-        query.filter = Filters.eq("prompt_id", promptId);
-        query.sort = Sorts.descending("version");
-        query.limit = 1;
-        var results = systemPromptCollection.find(query);
-        if (results.isEmpty()) {
+        var entity = store.latestByPromptId(promptId);
+        if (entity == null) {
             throw new RuntimeException("system prompt not found, promptId=" + promptId);
         }
-        return results.getFirst();
+        return entity;
     }
 
     private SystemPromptView getLatestView(String promptId) {
@@ -144,9 +123,7 @@ public class SystemPromptService {
 
     private List<String> findDistinctPromptIds(int offset, int limit) {
         // get all latest versions, sorted by createdAt desc, then paginate
-        var query = new Query();
-        query.sort = Sorts.descending("created_at");
-        var all = systemPromptCollection.find(query);
+        var all = store.listAll();
 
         var seen = new java.util.LinkedHashSet<String>();
         for (var entity : all) {

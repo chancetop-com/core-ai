@@ -2,7 +2,6 @@ package ai.core.server.artifact;
 
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
-import ai.core.server.domain.User;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
@@ -38,7 +37,7 @@ public class ArtifactService {
     MongoCollection<ChatSession> chatSessionCollection;
 
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
 
     public MyArtifactResult listMy(String userId, Integer offset, Integer limit, String agentId) {
         int skip = offset != null && offset >= 0 ? offset : 0;
@@ -212,10 +211,7 @@ public class ArtifactService {
         if (userIds.isEmpty()) return List.of();
 
         var userMap = new HashMap<String, String>();
-        var query = new Query();
-        query.filter = Filters.in("_id", userIds.toArray(new String[0]));
-        query.projection = Projections.include("_id", "name");
-        for (var user : userCollection.find(query)) {
+        for (var user : userStore.listByIds(userIds)) {
             if (user.id != null && user.name != null) userMap.put(user.id, user.name);
         }
 

@@ -24,6 +24,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GatewayProviderServiceTest {
+    private MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    private MongoCollection<GatewayModelConfig> gatewayModelCollection;
+
     @Test
     void createMasksApiKeyAndAppliesDefaults() {
         var service = serviceWithUser(admin("admin-1"));
@@ -45,7 +48,7 @@ class GatewayProviderServiceTest {
         assertEquals(10L, view.connectTimeoutSeconds);
 
         var captor = ArgumentCaptor.forClass(GatewayProviderConfig.class);
-        verify(service.gatewayProviderCollection).insert(captor.capture());
+        verify(gatewayProviderCollection).insert(captor.capture());
         assertNull(captor.getValue().apiKey);
         assertTrue(service.secretProtector.isProtected(captor.getValue().apiKeyEncrypted));
         assertEquals("sk-test-123456", service.secretProtector.unprotect(captor.getValue().apiKeyEncrypted));
@@ -91,7 +94,7 @@ class GatewayProviderServiceTest {
         existing.baseUrl = "https://api.deepseek.com/v1";
         existing.apiKey = "old-secret";
         existing.enabled = Boolean.TRUE;
-        when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(existing));
+        when(gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayProviderRequest();
         request.name = "DeepSeek Updated";
@@ -100,7 +103,7 @@ class GatewayProviderServiceTest {
         service.update("provider-1", request, "admin-1");
 
         var captor = ArgumentCaptor.forClass(GatewayProviderConfig.class);
-        verify(service.gatewayProviderCollection).replace(captor.capture());
+        verify(gatewayProviderCollection).replace(captor.capture());
         assertEquals("DeepSeek Updated", captor.getValue().name);
         assertEquals("old-secret", captor.getValue().apiKey);
     }
@@ -137,10 +140,10 @@ class GatewayProviderServiceTest {
     @Test
     void deleteRejectsProviderWithModelsUnlessCascading() {
         var service = serviceWithUser(admin("admin-1"));
-        when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
+        when(gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
         var model = new GatewayModelConfig();
         model.id = "model-1";
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(org.bson.conversions.Bson.class))).thenReturn(List.of(model));
 
         assertThrows(BadRequestException.class, () -> service.delete("provider-1", "admin-1", false));
     }
@@ -148,21 +151,21 @@ class GatewayProviderServiceTest {
     @Test
     void deleteCascadesModelsWhenRequested() {
         var service = serviceWithUser(admin("admin-1"));
-        when(service.gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
+        when(gatewayProviderCollection.get("provider-1")).thenReturn(Optional.of(provider("provider-1")));
         var model = new GatewayModelConfig();
         model.id = "model-1";
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(org.bson.conversions.Bson.class))).thenReturn(List.of(model));
 
         service.delete("provider-1", "admin-1", true);
 
-        verify(service.gatewayModelCollection).delete(any(org.bson.conversions.Bson.class));
-        verify(service.gatewayProviderCollection).delete("provider-1");
+        verify(gatewayModelCollection).delete(any(org.bson.conversions.Bson.class));
+        verify(gatewayProviderCollection).delete("provider-1");
     }
 
     @Test
     void deleteRejectsMissingProvider() {
         var service = serviceWithUser(admin("admin-1"));
-        when(service.gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
+        when(gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
 
         assertThrows(core.framework.web.exception.NotFoundException.class, () -> service.delete("missing", "admin-1", false));
     }
@@ -170,12 +173,15 @@ class GatewayProviderServiceTest {
     @SuppressWarnings("unchecked")
     private GatewayProviderService serviceWithUser(User user) {
         var service = new GatewayProviderService();
-        service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        service.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        service.userCollection = (MongoCollection<User>) mock(MongoCollection.class);
+        gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
+        service.providerStore = MongoGatewayProviderStore.of(gatewayProviderCollection);
+        service.modelStore = MongoGatewayModelStore.of(gatewayModelCollection);
+        var users = (MongoCollection<User>) mock(MongoCollection.class);
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.secretProtector = new GatewaySecretProtector("test-secret");
-        when(service.userCollection.get(user.id)).thenReturn(Optional.of(user));
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
+        when(users.get(user.id)).thenReturn(Optional.of(user));
+        when(gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         return service;
     }
 

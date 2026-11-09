@@ -2,8 +2,8 @@ package ai.core.server.apiuser;
 
 import ai.core.server.domain.User;
 import ai.core.server.rbac.RoleRegistry;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 
 import java.util.List;
@@ -28,12 +28,12 @@ public class PermissionService {
     private static final String USER_TYPE_API = "api";
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     RoleRegistry roleRegistry;
 
     public void check(String userId, String resourceType, String resourceId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null || user.permissions == null || user.permissions.isEmpty()) return;
         if (!hasResourcePermission(user, resourceType, resourceId)) {
             throw new ForbiddenException("no permission to access " + resourceType + " " + resourceId);
@@ -48,13 +48,13 @@ public class PermissionService {
 
     /** Non-throwing variant of {@link #check} for whitelist filtering (returns true when the user is unrestricted). */
     public boolean checkResource(String userId, String resourceType, String resourceId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null || user.permissions == null || user.permissions.isEmpty()) return true;
         return hasResourcePermission(user, resourceType, resourceId);
     }
 
     public boolean has(String userId, String permission) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null) return false;
         if (USER_TYPE_API.equals(user.userType)) return true;
         var permissions = roleRegistry.permissionsOf(user.role);
@@ -70,12 +70,12 @@ public class PermissionService {
     }
 
     public boolean isApiUser(String userId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         return user != null && USER_TYPE_API.equals(user.userType);
     }
 
     public List<String> permissionsOf(String userId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null) return List.of();
         return roleRegistry.permissionsOf(user.role);
     }

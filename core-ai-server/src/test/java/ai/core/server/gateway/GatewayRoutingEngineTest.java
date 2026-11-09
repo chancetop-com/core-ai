@@ -3,8 +3,6 @@ package ai.core.server.gateway;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.tool.tools.MediaModelHint;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
@@ -15,9 +13,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
 
 class GatewayRoutingEngineTest {
     @Test
@@ -250,10 +245,8 @@ class GatewayRoutingEngineTest {
     @SuppressWarnings("unchecked")
     private GatewayRoutingEngine engine(List<GatewayModelConfig> models, String modelPrefix) {
         var engine = new GatewayRoutingEngine();
-        engine.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        engine.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        when(engine.gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of(provider(modelPrefix)));
-        when(engine.gatewayModelCollection.find(any(Query.class))).thenReturn(models);
+        engine.providerStore = GatewayStoreTestSupport.providerStore(List.of(provider(modelPrefix)));
+        engine.modelStore = GatewayStoreTestSupport.modelStore(models);
         return engine;
     }
 

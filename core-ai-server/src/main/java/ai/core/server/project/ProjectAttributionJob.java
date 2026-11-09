@@ -1,13 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -32,11 +26,9 @@ public class ProjectAttributionJob implements Job {
     static final int MAX_PROJECTS_PER_TICK = 10;
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
-    @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     ProjectAnalysisService analysisService;
 
@@ -45,15 +37,7 @@ public class ProjectAttributionJob implements Job {
         // LLM-driven attribution takes longer than the 10s scheduler default; raise the SLOW_PROCESS threshold
         ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
         var cutoff = ZonedDateTime.now().minus(ATTRIBUTION_INTERVAL);
-        var query = new Query();
-        // the eq-null branch is required: core-ng writes the cursor as an explicit null, so an
-        // exists:false-only check would never match a project that has not been analyzed yet
-        query.filter = Filters.and(
-            Filters.eq("status", ProjectService.STATUS_ACTIVE),
-            Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-            Filters.or(Filters.exists("last_analyzed_at", false), Filters.eq("last_analyzed_at", null), Filters.lt("last_analyzed_at", cutoff)));
-        query.limit = MAX_PROJECTS_PER_TICK;
-        for (var project : projectCollection.find(query)) {
+        for (var project : projectStore.listForAttribution(cutoff, MAX_PROJECTS_PER_TICK)) {
             // a started subject is the classic driver; with auto-discovery on an empty project must
             // still run, otherwise it can never receive its first attribution (and its first proposals)
             if (ProjectService.AUTO_SUBJECTS_OFF.equals(ProjectService.autoSubjectMode(project)) && !hasStartedSubject(project.id)) continue;
@@ -64,8 +48,6 @@ public class ProjectAttributionJob implements Job {
     }
 
     private boolean hasStartedSubject(String projectId) {
-        return subjectCollection.count(Filters.and(
-            Filters.eq("project_id", projectId),
-            Filters.eq("status", "started"))) > 0;
+        return subjectStore.countStarted(projectId) > 0;
     }
 }

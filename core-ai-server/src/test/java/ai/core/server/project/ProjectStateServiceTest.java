@@ -62,9 +62,9 @@ class ProjectStateServiceTest {
         projects = (MongoCollection<Project>) mock(MongoCollection.class);
         subjects = (MongoCollection<ProjectSubject>) mock(MongoCollection.class);
         events = (MongoCollection<ProjectSubjectEvent>) mock(MongoCollection.class);
-        service.projectCollection = projects;
-        service.subjectCollection = subjects;
-        service.eventCollection = events;
+        service.projectStore = ProjectStoreTestSupport.store(projects);
+        service.subjectStore = MongoProjectSubjectStore.of(subjects);
+        service.eventStore = MongoProjectEventStore.of(events);
         when(projects.get("p-1")).thenReturn(Optional.of(project("p-1")));
         when(events.count(any(Bson.class))).thenReturn(0L);
     }
@@ -80,7 +80,7 @@ class ProjectStateServiceTest {
 
         service.updateStatus("p-1", "s-1", "phase-1", "summary-1", null, "agent-1");
 
-        verify(subjects).update(any(Bson.class), any(Bson.class));
+        verify(subjects).replace(any(ProjectSubject.class));
         var captor = forClass(ProjectSubjectEvent.class);
         verify(events, times(2)).insert(captor.capture());   // phase-1 + summary-1
         assertEquals(ProjectSubjectEvent.TYPE_PHASE, captor.getAllValues().getFirst().type);
@@ -123,7 +123,7 @@ class ProjectStateServiceTest {
         service.updateStatus("p-1", "s-1", "audit", null, ZonedDateTime.now().minusDays(10), "agent-1");
 
         verify(events).insert(any());                                   // the older phase is still a fact of history
-        verify(subjects, never()).update(any(Bson.class), any(Bson.class));   // but the current state stays newer
+        verify(subjects, never()).replace(any(ProjectSubject.class));   // but the current state stays newer
     }
 
     @Test
@@ -146,7 +146,7 @@ class ProjectStateServiceTest {
         verify(events).insert(captor.capture());
         assertEquals("audit_score", captor.getValue().key);
         assertEquals("6.2", captor.getValue().value);
-        verify(subjects, never()).update(any(Bson.class), any(Bson.class));
+        verify(subjects, never()).replace(any(ProjectSubject.class));
         verify(projects, never()).replace(any());
     }
 
@@ -189,7 +189,7 @@ class ProjectStateServiceTest {
         stored.actionItems = new ArrayList<>(java.util.List.of(item));
         service.updateActionItem("p-1", "agent-1", new ProjectStateService.ActionItemFields("s-1", item.id, "fix links", "done", "all fixed", null));
 
-        verify(subjects, times(2)).update(any(Bson.class), any(Bson.class));
+        verify(subjects, times(2)).replace(any(ProjectSubject.class));
         verify(events, times(2)).insert(any());   // created + status change
     }
 

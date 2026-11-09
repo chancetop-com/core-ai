@@ -3,7 +3,6 @@ package ai.core.server.settings;
 import ai.core.api.server.settings.SystemSettingsRequest;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,14 +17,14 @@ import static org.mockito.Mockito.when;
 
 class TraceArchiveSettingsTest {
     private TraceArchiveSettings settings;
-    private MongoCollection<SystemSettings> collection;
+    private SystemSettingsStore collection;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         settings = new TraceArchiveSettings();
-        collection = mock(MongoCollection.class);
-        settings.systemSettingsCollection = collection;
+        collection = mock(SystemSettingsStore.class);
+        settings.systemSettingsStore = collection;
     }
 
     @Test

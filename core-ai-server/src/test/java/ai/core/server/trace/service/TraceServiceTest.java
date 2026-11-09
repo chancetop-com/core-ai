@@ -62,11 +62,13 @@ class TraceServiceTest {
         return user;
     }
 
+    private MongoCollection<User> userCollection;
+
     @Test
     void listPlainTextQueryMatchesAccountNameThroughUserIdQuery() {
         var service = service();
         var aliceTrace = trace("t1", "alice@example.com", "old chat completion", "support-agent", "gpt-4o", 10);
-        when(service.userCollection.find(any(Query.class))).thenReturn(List.of(
+        when(userCollection.find(any(Query.class))).thenReturn(List.of(
             user("Alice Chen", "alice@example.com"),
             user("Bob Li", "bob@example.com")));
         // First trace query is the indexed user_id match; second is the bounded name/agent scan.
@@ -78,7 +80,7 @@ class TraceServiceTest {
         filter.limit = 20;
 
         assertEquals(List.of(aliceTrace), service.list(filter));
-        verify(service.userCollection).find(any(Query.class));
+        verify(userCollection).find(any(Query.class));
     }
 
     @Test
@@ -87,7 +89,7 @@ class TraceServiceTest {
         var first = trace("t1", "alice@example.com", "chat completion", "support-agent", "gpt-4o", 2);
         var second = trace("t2", "alice@example.com", "tool call", "support-agent", "gpt-4o", 1);
         var ignored = trace("t3", "bob@example.com", "chat completion", "support-agent", "gpt-4o-mini", 0);
-        when(service.userCollection.find(any(Query.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
+        when(userCollection.find(any(Query.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(first, second)).thenReturn(List.of(ignored));
 
         var filter = new TraceListFilter();
@@ -113,7 +115,7 @@ class TraceServiceTest {
         filter.limit = 20;
 
         assertEquals(List.of(match), service.list(filter));
-        verify(service.userCollection, never()).find(any(Query.class));
+        verify(userCollection, never()).find(any(Query.class));
     }
 
     @Test
@@ -148,7 +150,8 @@ class TraceServiceTest {
         var service = new TraceService();
         service.traceCollection = traceCollection();
         service.spanCollection = spanCollection();
-        service.userCollection = userCollection();
+        userCollection = userCollection();
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         return service;
     }
 }

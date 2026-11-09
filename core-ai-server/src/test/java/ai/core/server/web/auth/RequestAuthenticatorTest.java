@@ -49,7 +49,7 @@ class RequestAuthenticatorTest {
         when(users.findOne(any(Bson.class))).thenReturn(Optional.empty());
 
         var authenticator = new RequestAuthenticator();
-        authenticator.userCollection = users;
+        authenticator.userStore = ai.core.server.user.MongoUserStore.of(users);
 
         assertThrows(UnauthorizedException.class, () -> authenticator.authenticate(request));
 

@@ -13,7 +13,6 @@ import ai.core.api.server.session.UpdateChatSessionRequest;
 import ai.core.api.server.session.UpdateChatSessionResponse;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionFeedback;
-import ai.core.server.domain.User;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
@@ -21,6 +20,7 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionCompletionNotifier;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
@@ -49,7 +49,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     public ListChatSessionsResponse list(ListChatSessionsRequest request) {
@@ -123,7 +123,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
             if (session == null || session.deletedAt != null) throw new NotFoundException("session not found");
             if (session.userId != null && !userId.equals(session.userId)) throw new ForbiddenException("forbidden");
             chatMessageService.updateSessionNotify(userId, sessionId, request.notifyOnComplete);
-            var owner = session.userId != null ? userCollection.get(session.userId).orElse(null) : null;
+            var owner = session.userId != null ? userStore.get(session.userId).orElse(null) : null;
             response.notifyTargetConfigured = SessionCompletionNotifier.hasTarget(owner);
         }
         response.updated = Boolean.TRUE;

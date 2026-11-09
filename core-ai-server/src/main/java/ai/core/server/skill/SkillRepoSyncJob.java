@@ -1,11 +1,8 @@
 package ai.core.server.skill;
 
-import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.settings.SystemSettingsService;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -42,7 +39,7 @@ public class SkillRepoSyncJob implements Job {
     SkillService skillService;
 
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
 
     @Inject
     SystemSettingsService systemSettingsService;
@@ -65,7 +62,7 @@ public class SkillRepoSyncJob implements Job {
         }
         lastSweepAt = ZonedDateTime.now();
 
-        var repoSkills = skillCollection.find(Filters.eq("source_type", SkillSourceType.REPO));
+        var repoSkills = skillStore.listBySourceType(SkillSourceType.REPO);
         int failed = 0;
         int deferred = 0;
         for (var skill : repoSkills) {

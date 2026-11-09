@@ -3,9 +3,9 @@ package ai.core.server.hub;
 import ai.core.api.server.hub.HubCallView;
 import ai.core.api.server.hub.ListHubCallsResponse;
 import ai.core.server.domain.HubCall;
-import ai.core.server.domain.User;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -36,7 +36,7 @@ public class HubCallQueryService {
     @Inject
     MongoCollection<HubCall> callCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     public ListHubCallsResponse list(HubCallListFilter filter) {
         var mongoFilter = mongoFilter(filter);
@@ -117,7 +117,7 @@ public class HubCallQueryService {
 
     private Account accountFor(String userId, Map<String, Account> accountCache) {
         if (!hasText(userId)) return Account.EMPTY;
-        return accountCache.computeIfAbsent(userId, id -> userCollection.get(id)
+        return accountCache.computeIfAbsent(userId, id -> userStore.get(id)
                 .map(user -> new Account(user.name, user.email))
                 .orElse(Account.EMPTY));
     }

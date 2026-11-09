@@ -51,7 +51,7 @@ class ApiToolHubServiceTest {
         service.accessPolicy = accessPolicy;
         service.auditService = auditService;
         service.toolRegistryService = registry;
-        service.userCollection = userCollection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         when(userCollection.get("user-1")).thenReturn(Optional.of(user()));
         when(auditService.begin(any(HubCallAuditService.BeginRequest.class))).thenReturn("audit-1");
     }

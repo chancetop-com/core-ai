@@ -88,10 +88,11 @@ class TraceWebServiceImplTest {
         service.traceService = mock(TraceService.class);
         service.traceAccessControl = mock(TraceAccessControl.class);
         service.traceVisibilityResolver = mock(TraceVisibilityResolver.class);
-        service.userCollection = userCollection();
+        var users = userCollection();
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.webContext = mock(WebContext.class);
         when(service.webContext.get(AuthContext.USER_ID_KEY)).thenReturn(userId);
-        when(service.userCollection.get(userId)).thenReturn(Optional.empty());
+        when(users.get(userId)).thenReturn(Optional.empty());
         when(service.traceVisibilityResolver.resolve(userId)).thenReturn(TraceVisibility.of(Set.of(userId)));
         return service;
     }

@@ -3,9 +3,7 @@ package ai.core.server.trace.service;
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.media.domain.Usage;
 import ai.core.server.domain.GatewayModelConfig;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 /**
  * Media generation pricing (design docs/cn/design-media-cost-recording.md). Same priority order as
@@ -16,7 +14,7 @@ import core.framework.mongo.MongoCollection;
  */
 public class MediaPricingService {
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    ai.core.server.gateway.GatewayModelStore gatewayModelStore;
 
     public MediaPrice resolveImage(String requestedModel, String resolvedModel, Usage usage, int imageCount) {
         var gatewayModel = gatewayModel(requestedModel);
@@ -80,7 +78,7 @@ public class MediaPricingService {
 
     private GatewayModelConfig gatewayModel(String model) {
         if (model == null || model.isBlank()) return null;
-        var models = gatewayModelCollection.find(Filters.eq("model_id", model));
+        var models = gatewayModelStore.listByModelId(model);
         if (!models.isEmpty()) return models.getFirst();
         return null;
     }

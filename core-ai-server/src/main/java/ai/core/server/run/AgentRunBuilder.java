@@ -31,7 +31,6 @@ import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.domain.TokenUsage;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.TranscriptEntry;
-import ai.core.server.domain.User;
 import ai.core.server.file.FileDownloadUrlResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.memory.AgentMemoryService;
@@ -51,6 +50,7 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -137,7 +137,7 @@ public class AgentRunBuilder {
     @Inject
     ai.core.server.project.ProjectArtifactBinder artifactBinder;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     ai.core.server.asynctask.AsyncToolTaskService asyncToolTaskService;
 
@@ -231,7 +231,7 @@ public class AgentRunBuilder {
         context.setTokenCostCallback(usage -> apiUserQuotaService.recordUsage(runEntity.userId,
                 usage.getPromptTokens(), usage.getCompletionTokens()));
         // caller identity follows the run initiator (runEntity.userId), not the agent definition owner
-        var caller = userCollection.get(runEntity.userId).orElse(null);
+        var caller = userStore.get(runEntity.userId).orElse(null);
         context.setCaller(CallerContexts.fromUser(caller));
         UserIdentityPrompt.attach(context, definition, caller);
         if (sandbox != null) context.sandbox(sandbox);

@@ -20,16 +20,15 @@ import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.auth.AuthService;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.rbac.RoleRegistry;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.web.session.SessionIdentity;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.NotFoundException;
 
@@ -50,7 +49,7 @@ public class AuthWebServiceImpl implements AuthWebService {
     @Inject
     RoleRegistry roleRegistry;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     SessionIdentity sessionIdentity;
 
@@ -88,7 +87,7 @@ public class AuthWebServiceImpl implements AuthWebService {
             return view;
         }
         var userId = AuthContext.userId(webContext);
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
                 .orElseThrow(() -> new NotFoundException("user not found: " + userId));
         var view = new UserProfileView();
         view.userId = user.id;
@@ -127,7 +126,7 @@ public class AuthWebServiceImpl implements AuthWebService {
     public void resetUserQuota(String userId) {
         AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        if (userCollection.get(userId).isEmpty()) {
+        if (userStore.get(userId).isEmpty()) {
             throw new NotFoundException("user not found, userId=" + userId);
         }
         apiUserQuotaService.resetQuota(userId);

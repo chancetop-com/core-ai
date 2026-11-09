@@ -1,18 +1,13 @@
 package ai.core.server.project;
 
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,15 +33,15 @@ public class ProjectSubjectAnalysisStage {
     static final String WRITER = "project-agent";
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<ProjectSubjectEvent> eventCollection;
+    ProjectEventStore eventStore;
     @Inject
     ProjectStateService stateService;
     @Inject
@@ -55,11 +50,11 @@ public class ProjectSubjectAnalysisStage {
     LLMCallExecutor llmCallExecutor;
 
     public boolean hasUnanalyzedMaterial(String subjectId) {
-        return attributionCollection.count(unanalyzedFilter(subjectId)) > 0;
+        return attributionRepository.countUnanalyzed(subjectId) > 0;
     }
 
     public SubjectAnalysisResult run(String projectId, String subjectId) {
-        var subject = subjectCollection.get(subjectId).orElse(null);
+        var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || !projectId.equals(subject.projectId)) return new SubjectAnalysisResult(0, 0);
         var unanalyzed = unanalyzedRows(subjectId);
         if (unanalyzed.isEmpty()) return new SubjectAnalysisResult(0, 0);
@@ -84,17 +79,8 @@ public class ProjectSubjectAnalysisStage {
         return new SubjectAnalysisResult(material.consumed().size(), count);
     }
 
-    private org.bson.conversions.Bson unanalyzedFilter(String subjectId) {
-        return Filters.and(
-            Filters.eq("subject_id", subjectId),
-            Filters.or(Filters.exists("analyzed_at", false), Filters.eq("analyzed_at", null)));
-    }
-
     private List<ProjectSubjectAttribution> unanalyzedRows(String subjectId) {
-        var query = new Query();
-        query.filter = unanalyzedFilter(subjectId);
-        query.limit = MAX_ROWS;
-        return attributionCollection.find(query);
+        return attributionRepository.listUnanalyzed(subjectId, MAX_ROWS);
     }
 
     // per-row consumption marker + the material time consumed (a grown session is re-opened by the
@@ -102,17 +88,19 @@ public class ProjectSubjectAnalysisStage {
     private void markAnalyzed(List<ProjectAnalysisMaterialLoader.Consumed> consumed, ProjectSubject subject) {
         var now = ZonedDateTime.now();
         for (var item : consumed) {
-            var updates = Updates.combine(Updates.set("analyzed_at", now),
-                item.materialAt() != null ? Updates.set("analyzed_through", item.materialAt()) : Updates.unset("analyzed_through"));
-            attributionCollection.update(Filters.eq("_id", item.row().id), updates);
+            attributionRepository.update(item.row().id, row -> {
+                row.analyzedAt = now;
+                row.analyzedThrough = item.materialAt();
+            });
         }
-        subjectCollection.update(Filters.eq("_id", subject.id), Updates.combine(
-            Updates.set("analyzed_at", now),
-            Updates.set("updated_at", now)));
+        subjectStore.update(subject.id, entity -> {
+            entity.analyzedAt = now;
+            entity.updatedAt = now;
+        });
     }
 
     private String buildInput(String projectId, ProjectSubject subject, String digest) {
-        var project = projectCollection.get(projectId).orElse(null);
+        var project = projectStore.get(projectId).orElse(null);
         var playbook = project != null && project.playbook != null && !project.playbook.isBlank()
             ? "PLAYBOOK:\n" + limit(project.playbook, 20000) + "\n\n"
             : "";
@@ -152,12 +140,8 @@ public class ProjectSubjectAnalysisStage {
 
     // latest value per KPI key from the event series (newest first, first hit per key wins)
     private Map<String, String> latestKpis(String subjectId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("subject_id", subjectId), Filters.eq("type", ProjectSubjectEvent.TYPE_KPI));
-        query.sort = Sorts.descending("at");
-        query.limit = MAX_KPI_STATE;
         var latest = new LinkedHashMap<String, String>();
-        for (var event : eventCollection.find(query)) {
+        for (var event : eventStore.listBySubjectAndType(subjectId, ProjectSubjectEvent.TYPE_KPI, MAX_KPI_STATE)) {
             if (event.key != null) latest.putIfAbsent(event.key, event.value);
         }
         return latest;
@@ -237,9 +221,10 @@ public class ProjectSubjectAnalysisStage {
     // prompt instructs it to keep the existing one (no program-side gating).
     private int applyProfile(String subjectId, Object profileValue) {
         if (!(profileValue instanceof Map<?, ?> profile) || profile.isEmpty()) return 0;
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.set("profile", JsonUtil.toJson(profile)),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subjectId, entity -> {
+            entity.profile = JsonUtil.toJson(profile);
+            entity.updatedAt = ZonedDateTime.now();
+        });
         return 1;
     }
 

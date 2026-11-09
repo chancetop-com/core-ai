@@ -83,7 +83,7 @@ class AgentComparisonServiceTest {
     @BeforeEach
     void setUp() {
         service.comparisonCollection = comparisons;
-        service.userCollection = users;
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.assembler = assembler;
         service.adoptionService = adoptionService;
         when(assembler.toDetailView(any(), anyBoolean())).thenReturn(new AgentComparisonView());

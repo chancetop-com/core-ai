@@ -10,7 +10,6 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.channel.UserChannelTargetStore;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 
@@ -29,7 +28,7 @@ import java.util.List;
  */
 public class NotificationSettingsService {
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     ChannelConfigStore channelConfigStore;
     @Inject
@@ -80,7 +79,7 @@ public class NotificationSettingsService {
         user.notifyChannelId = channelId;
         user.notifyRecipient = recipient;
         if (request.minMinutes != null) user.notifyMinMinutes = request.minMinutes;
-        userCollection.replace(user);
+        userStore.replace(user);
     }
 
     private List<ChannelConfigView> deliverableChannels(String userId) {
@@ -127,7 +126,7 @@ public class NotificationSettingsService {
     }
 
     private User requireUser(String userId) {
-        return userCollection.get(userId)
+        return userStore.get(userId)
                 .orElseThrow(() -> new NotFoundException("user not found, id=" + userId));
     }
 

@@ -2,10 +2,9 @@ package ai.core.server.web.auth;
 
 import ai.core.server.apiuser.ApiUserKeyService;
 import ai.core.server.apiuser.ApiUserService;
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Request;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
@@ -75,7 +74,7 @@ public class SubUserDelegationResolver {
     }
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     /**
      * Resolves the effective identity of an already-authenticated api key request; the caller must
@@ -91,7 +90,7 @@ public class SubUserDelegationResolver {
         if (!ApiUserKeyService.SCOPE_MANAGE.equals(authResult.scope())) {
             throw new ForbiddenException("X-Subuser-Id requires a management key");
         }
-        var target = userCollection.get(header.get().trim()).orElse(null);
+        var target = userStore.get(header.get().trim()).orElse(null);
         if (target == null || !ApiUserService.USER_TYPE_API.equals(target.userType) || target.ownerId == null) {
             throw new ForbiddenException("invalid sub user");
         }

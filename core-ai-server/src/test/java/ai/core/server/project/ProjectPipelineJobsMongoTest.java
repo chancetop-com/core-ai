@@ -170,18 +170,17 @@ class ProjectPipelineJobsMongoTest {
 
     private ProjectAttributionJob attributionJob(ProjectAnalysisService service) {
         var job = new ProjectAttributionJob();
-        job.projectCollection = projectCollection;
-        job.subjectCollection = subjectCollection;
-        job.attributionCollection = attributionCollection;
+        job.projectStore = ProjectStoreTestSupport.store(projectCollection);
+        job.subjectStore = MongoProjectSubjectStore.of(subjectCollection);
         job.analysisService = service;
         return job;
     }
 
     private ProjectAnalysisJob analysisJob(ProjectAnalysisService service) {
         var job = new ProjectAnalysisJob();
-        job.projectCollection = projectCollection;
-        job.subjectCollection = subjectCollection;
-        job.attributionCollection = attributionCollection;
+        job.projectStore = ProjectStoreTestSupport.store(projectCollection);
+        job.subjectStore = MongoProjectSubjectStore.of(subjectCollection);
+        job.attributionRepository = MongoProjectAttributionRepository.of(attributionCollection);
         job.analysisService = service;
         return job;
     }

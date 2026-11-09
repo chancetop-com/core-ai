@@ -1,7 +1,6 @@
 package ai.core.server.project;
 
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -33,9 +32,9 @@ public class ProjectAnalysisService {
     static final Duration STALE_CLAIM = Duration.ofMinutes(30);
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
@@ -53,49 +52,50 @@ public class ProjectAnalysisService {
 
     // single-flight claim with stale recovery
     public boolean claimAnalysis(String projectId) {
-        long updated = projectCollection.update(Filters.and(
-                Filters.eq("_id", projectId),
-                Filters.or(
-                    Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-                    Filters.lt("analysis_claimed_at", ZonedDateTime.now().minus(STALE_CLAIM)))),
-            Updates.combine(
-                Updates.set("analysis_status", ProjectService.ANALYSIS_RUNNING),
-                Updates.set("analysis_claimed_at", ZonedDateTime.now())));
-        return updated > 0;
+        var now = ZonedDateTime.now();
+        return projectStore.updateIf(projectId,
+            project -> !ProjectService.ANALYSIS_RUNNING.equals(project.analysisStatus)
+                || project.analysisClaimedAt == null
+                || project.analysisClaimedAt.isBefore(now.minus(STALE_CLAIM)),
+            project -> {
+                project.analysisStatus = ProjectService.ANALYSIS_RUNNING;
+                project.analysisClaimedAt = now;
+            });
     }
 
     // refreshes the claim between LLM calls (see STALE_CLAIM)
     void heartbeat(String projectId) {
-        projectCollection.update(Filters.eq("_id", projectId), Updates.set("analysis_claimed_at", ZonedDateTime.now()));
+        projectStore.update(projectId, project -> project.analysisClaimedAt = ZonedDateTime.now());
     }
 
     public void finishAnalysis(String projectId, String error) {
         var now = ZonedDateTime.now();
-        var list = new ArrayList<org.bson.conversions.Bson>();
-        list.add(Updates.set("analysis_status", error != null ? "error" : "idle"));
-        list.add(Updates.set("analysis_error", error));
-        list.add(Updates.set("updated_at", now));
-        list.add(Updates.unset("analysis_claimed_at"));
-        if (error == null) {
-            list.add(Updates.set("last_analysis_at", now));
-            list.add(Updates.set("stats_dirty", Boolean.TRUE));
-        }
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(list));
+        projectStore.update(projectId, project -> {
+            project.analysisStatus = error != null ? "error" : "idle";
+            project.analysisError = error;
+            project.updatedAt = now;
+            project.analysisClaimedAt = null;
+            if (error == null) {
+                project.lastAnalysisAt = now;
+                project.statsDirty = Boolean.TRUE;
+            }
+        });
     }
 
     // attribution stage completion stamps last_analyzed_at (the attribution job's own gate; the
     // subject-analysis job gates on last_analysis_at instead); failures leave it untouched
     public void finishAttribution(String projectId, String error) {
-        var list = new ArrayList<org.bson.conversions.Bson>();
-        list.add(Updates.set("analysis_status", error != null ? "error" : "idle"));
-        list.add(Updates.set("analysis_error", error));
-        list.add(Updates.set("updated_at", ZonedDateTime.now()));
-        list.add(Updates.unset("analysis_claimed_at"));
-        if (error == null) {
-            list.add(Updates.set("last_analyzed_at", ZonedDateTime.now()));
-            list.add(Updates.set("stats_dirty", Boolean.TRUE));   // new material → cost snapshot is stale
-        }
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(list));
+        var now = ZonedDateTime.now();
+        projectStore.update(projectId, project -> {
+            project.analysisStatus = error != null ? "error" : "idle";
+            project.analysisError = error;
+            project.updatedAt = now;
+            project.analysisClaimedAt = null;
+            if (error == null) {
+                project.lastAnalyzedAt = now;
+                project.statsDirty = Boolean.TRUE;   // new material → cost snapshot is stale
+            }
+        });
     }
 
     public void runAttribution(String projectId) {
@@ -149,7 +149,7 @@ public class ProjectAnalysisService {
             heartbeat(projectId);
             var result = analyzeTargets(projectId, focusSubjectId);
             finishAnalysis(projectId, null);
-            projectCollection.update(Filters.eq("_id", projectId), Updates.set("last_analyzed_at", ZonedDateTime.now()));
+            projectStore.update(projectId, project -> project.lastAnalyzedAt = ZonedDateTime.now());
             // manual runs refresh the cost snapshot right away (scheduled runs rely on the stats job)
             statsQueryService.refresh(projectId);
             return new AnalysisResult(attributed, result.analyzed(), result.updated());
@@ -185,7 +185,7 @@ public class ProjectAnalysisService {
     // attributed-but-not-yet-analyzed material are worth analyzing
     private List<ProjectSubject> analysisTargets(String projectId, String focusSubjectId) {
         var targets = new ArrayList<ProjectSubject>();
-        for (var subject : subjectCollection.find(Filters.eq("project_id", projectId))) {
+        for (var subject : subjectStore.listByProject(projectId)) {
             if (focusSubjectId != null && !focusSubjectId.isBlank()) {
                 if (!focusSubjectId.equals(subject.id)) continue;
             } else if (!"started".equals(subject.status)) {

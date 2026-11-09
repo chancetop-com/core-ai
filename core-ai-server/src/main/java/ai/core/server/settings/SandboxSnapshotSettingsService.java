@@ -7,10 +7,8 @@ import ai.core.server.domain.SystemSettings;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.RoleRegistry;
 import com.mongodb.MongoException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import core.framework.db.UncheckedSQLException;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 
@@ -26,7 +24,7 @@ public class SandboxSnapshotSettingsService {
     private static final int MAX_RETENTION_DAYS = 3650;
 
     @Inject
-    MongoCollection<SystemSettings> systemSettingsCollection;
+    SystemSettingsStore systemSettingsStore;
     @Inject
     PermissionService permissionService;
 
@@ -39,14 +37,33 @@ public class SandboxSnapshotSettingsService {
         requirePermission(userId);
         int days = validateRetentionDays(request);
         var now = ZonedDateTime.now();
-        if (entity() == null) {
-            insertOrUpdate(days, userId, now);
+        var settings = entity();
+        if (settings == null) {
+            settings = new SystemSettings();
+            settings.id = SETTINGS_ID;
+            settings.sandboxSnapshotRetentionDays = days;
+            settings.createdBy = userId;
+            settings.createdAt = now;
+            settings.updatedBy = userId;
+            settings.updatedAt = now;
+            try {
+                systemSettingsStore.insert(settings);
+            } catch (RuntimeException e) {
+                if (!isDuplicateKey(e)) throw e;
+                settings = systemSettingsStore.get(SETTINGS_ID)
+                        .orElseThrow(() -> new IllegalStateException("sandbox snapshot settings were not saved"));
+                settings.sandboxSnapshotRetentionDays = days;
+                settings.updatedBy = userId;
+                settings.updatedAt = now;
+                systemSettingsStore.replace(settings);
+            }
         } else {
-            updateFields(days, userId, now);
+            settings.sandboxSnapshotRetentionDays = days;
+            settings.updatedBy = userId;
+            settings.updatedAt = now;
+            systemSettingsStore.replace(settings);
         }
-        var saved = entity();
-        if (saved == null) throw new IllegalStateException("sandbox snapshot settings were not saved");
-        return toView(saved);
+        return toView(settings);
     }
 
     public int retentionDays() {
@@ -66,29 +83,6 @@ public class SandboxSnapshotSettingsService {
         } catch (ArithmeticException e) {
             throw new BadRequestException("retention_days must be an integer", "INVALID_RETENTION_DAYS", e);
         }
-    }
-
-    private void insertOrUpdate(int days, String userId, ZonedDateTime now) {
-        var settings = new SystemSettings();
-        settings.id = SETTINGS_ID;
-        settings.sandboxSnapshotRetentionDays = days;
-        settings.createdBy = userId;
-        settings.createdAt = now;
-        settings.updatedBy = userId;
-        settings.updatedAt = now;
-        try {
-            systemSettingsCollection.insert(settings);
-        } catch (MongoException e) {
-            if (e.getCode() != 11000) throw e;
-            updateFields(days, userId, now);
-        }
-    }
-
-    private void updateFields(int days, String userId, ZonedDateTime now) {
-        systemSettingsCollection.update(Filters.eq("_id", SETTINGS_ID), Updates.combine(
-                Updates.set("sandbox_snapshot_retention_days", days),
-                Updates.set("updated_by", userId),
-                Updates.set("updated_at", now)));
     }
 
     private void requirePermission(String userId) {
@@ -114,7 +108,12 @@ public class SandboxSnapshotSettingsService {
         return view;
     }
 
+    private boolean isDuplicateKey(RuntimeException e) {
+        if (e instanceof MongoException mongo) return mongo.getCode() == 11000;
+        return e instanceof UncheckedSQLException sql && sql.errorType == UncheckedSQLException.ErrorType.INTEGRITY_CONSTRAINT_VIOLATION;
+    }
+
     private SystemSettings entity() {
-        return systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        return systemSettingsStore.get(SETTINGS_ID).orElse(null);
     }
 }

@@ -1,15 +1,10 @@
 package ai.core.server.gateway;
 
 import ai.core.api.server.gateway.GatewayAvailableModelView;
-
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.tool.tools.MediaModelHint;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 
 import java.time.Duration;
@@ -28,9 +23,9 @@ public class GatewayRoutingEngine {
     private static final long CACHE_TTL_NANOS = Duration.ofSeconds(5).toNanos();
 
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    GatewayProviderStore providerStore;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    GatewayModelStore modelStore;
 
     private volatile Snapshot cache;
 
@@ -143,7 +138,7 @@ public class GatewayRoutingEngine {
 
     public GatewayProviderConfig jobProvider(String providerId) {
         if (!hasText(providerId)) throw new BadRequestException("gateway provider ID is required");
-        return gatewayProviderCollection.get(providerId)
+        return providerStore.get(providerId)
                 .orElseThrow(() -> new BadRequestException("gateway provider is unavailable for video task: " + providerId));
     }
 
@@ -352,20 +347,14 @@ public class GatewayRoutingEngine {
     }
 
     private List<GatewayProviderConfig> enabledProviders() {
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = Sorts.ascending("name");
-        return gatewayProviderCollection.find(query).stream()
+        return providerStore.listAll().stream()
                 .filter(provider -> !Boolean.FALSE.equals(provider.enabled))
                 .toList();
     }
 
     private List<GatewayModelConfig> allModels() {
-        if (gatewayModelCollection == null) return List.of();
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = Sorts.ascending("model_id");
-        return gatewayModelCollection.find(query);
+        if (modelStore == null) return List.of();
+        return modelStore.listAll();
     }
 
     private void addLegacyModel(List<GatewayPublishedModel> data, Set<String> seen, GatewayProviderConfig provider, String model) {

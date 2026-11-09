@@ -15,13 +15,11 @@ import ai.core.server.apimcp.serviceapi.domain.PathParamAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apimcp.serviceapi.domain.TypeAdditional;
-import com.mongodb.client.model.Filters;
 import core.framework.async.Executor;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.NotFoundException;
 
 import java.time.ZonedDateTime;
@@ -33,7 +31,7 @@ import java.util.UUID;
  */
 public class ServiceApiService {
     @Inject
-    MongoCollection<ServiceApi> apiMongoCollection;
+    ServiceApiStore store;
     @Inject
     Executor executor;
 
@@ -47,15 +45,15 @@ public class ServiceApiService {
         serviceApi.updatedAt = serviceApi.createdAt;
         serviceApi.createdBy = request.operator;
         serviceApi.updatedBy = serviceApi.createdBy;
-        apiMongoCollection.insert(serviceApi);
+        store.insert(serviceApi);
     }
 
     public void delete(String id) {
-        apiMongoCollection.delete(id);
+        store.delete(id);
     }
 
     public void update(String id, UpdateApiRequest request) {
-        var serviceApi = apiMongoCollection.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
+        var serviceApi = store.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
         if (request.name != null) {
             serviceApi.name = request.name;
         }
@@ -82,11 +80,11 @@ public class ServiceApiService {
         }
         serviceApi.updatedBy = request.operator;
         serviceApi.updatedAt = ZonedDateTime.now();
-        apiMongoCollection.replace(serviceApi);
+        store.replace(serviceApi);
     }
 
     public void updateFromSysApi(String id, String url, String operator) {
-        var serviceApi = apiMongoCollection.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
+        var serviceApi = store.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
         var client = HTTPClient.builder().trustAll().build();
         var req = new HTTPRequest(HTTPMethod.GET, url);
         req.headers.put("Content-Type", "application/json");
@@ -95,7 +93,7 @@ public class ServiceApiService {
         serviceApi.payload = rsp.text();
         serviceApi.updatedBy = operator;
         serviceApi.updatedAt = ZonedDateTime.now();
-        apiMongoCollection.replace(serviceApi);
+        store.replace(serviceApi);
     }
 
     public void updateAllFromSysApi(String operator) {
@@ -109,11 +107,11 @@ public class ServiceApiService {
     }
 
     public ServiceApi getByName(String name) {
-        return apiMongoCollection.findOne(Filters.eq("name", name)).orElseThrow(() -> new NotFoundException("service api not found: " + name));
+        return store.getByName(name).orElseThrow(() -> new NotFoundException("service api not found: " + name));
     }
 
     public ServiceApiView get(String id) {
-        return toApiView(apiMongoCollection.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id)));
+        return toApiView(store.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id)));
     }
 
     public ListServiceApiResponse list() {
@@ -123,7 +121,7 @@ public class ServiceApiService {
     }
 
     public List<ServiceApi> findAll() {
-        return apiMongoCollection.find(Filters.empty());
+        return store.listAll();
     }
 
     /**

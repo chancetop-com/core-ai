@@ -6,13 +6,9 @@ import ai.core.api.server.apiuser.response.CreateKeyResponse;
 import ai.core.api.server.apiuser.response.ListKeysView;
 import ai.core.api.server.apiuser.response.RenewKeyResponse;
 import ai.core.server.domain.ApiKey;
-import ai.core.server.domain.User;
 import ai.core.server.web.auth.RequestAuthenticator;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -38,9 +34,9 @@ public class ApiUserKeyService {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     @Inject
-    MongoCollection<ApiKey> apiKeyCollection;
+    ApiKeyStore apiKeyStore;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     ApiUserService apiUserService;
 
@@ -63,7 +59,7 @@ public class ApiUserKeyService {
         apiKey.status = "active";
         apiKey.expiresAt = ZonedDateTime.now().plusSeconds(ttl);
         apiKey.createdAt = ZonedDateTime.now();
-        apiKeyCollection.insert(apiKey);
+        apiKeyStore.insert(apiKey);
 
         var response = new CreateKeyResponse();
         response.keyId = apiKey.id;
@@ -82,7 +78,7 @@ public class ApiUserKeyService {
         }
         int ttl = resolveTtl(request != null ? request.ttlSeconds : null);
         apiKey.expiresAt = ZonedDateTime.now().plusSeconds(ttl);
-        apiKeyCollection.update(Filters.eq("_id", keyId), Updates.set("expires_at", apiKey.expiresAt));
+        apiKeyStore.updateExpiresAt(keyId, apiKey.expiresAt);
 
         var response = new RenewKeyResponse();
         response.keyId = keyId;
@@ -92,17 +88,12 @@ public class ApiUserKeyService {
 
     public void expireKey(String managerUserId, String keyId) {
         requireOwnedKey(managerUserId, keyId);
-        apiKeyCollection.update(Filters.eq("_id", keyId), Updates.combine(
-                Updates.set("status", "revoked"),
-                Updates.set("revoked_at", ZonedDateTime.now())));
+        apiKeyStore.revoke(keyId, ZonedDateTime.now());
     }
 
     public ListKeysView listKeys(String managerUserId, String userId) {
         apiUserService.getApiUser(managerUserId, userId);
-        var query = new core.framework.mongo.Query();
-        query.filter = Filters.eq("user_id", userId);
-        query.sort = Sorts.descending("created_at");
-        var keys = apiKeyCollection.find(query);
+        var keys = apiKeyStore.listByUser(userId);
 
         var view = new ListKeysView();
         view.keys = keys.stream().map(k -> {
@@ -132,7 +123,7 @@ public class ApiUserKeyService {
         apiKey.scope = SCOPE_MANAGE;
         apiKey.status = "active";
         apiKey.createdAt = ZonedDateTime.now();
-        apiKeyCollection.insert(apiKey);
+        apiKeyStore.insert(apiKey);
 
         var response = new CreateKeyResponse();
         response.keyId = apiKey.id;
@@ -141,23 +132,16 @@ public class ApiUserKeyService {
     }
 
     public void revokeManageKeys(String managerUserId) {
-        var query = new core.framework.mongo.Query();
-        query.filter = Filters.and(
-                Filters.eq("user_id", managerUserId),
-                Filters.eq("scope", SCOPE_MANAGE),
-                Filters.eq("status", "active"));
-        var keys = apiKeyCollection.find(query);
-        for (var key : keys) {
-            apiKeyCollection.update(Filters.eq("_id", key.id), Updates.combine(
-                    Updates.set("status", "revoked"),
-                    Updates.set("revoked_at", ZonedDateTime.now())));
+        var now = ZonedDateTime.now();
+        for (var key : apiKeyStore.listActiveManageKeys(managerUserId)) {
+            apiKeyStore.revoke(key.id, now);
         }
     }
 
     private ApiKey requireOwnedKey(String managerUserId, String keyId) {
-        var apiKey = apiKeyCollection.get(keyId).orElse(null);
+        var apiKey = apiKeyStore.get(keyId).orElse(null);
         if (apiKey == null) throw new NotFoundException("key not found, keyId=" + keyId);
-        var user = userCollection.get(apiKey.userId).orElse(null);
+        var user = userStore.get(apiKey.userId).orElse(null);
         if (user == null || user.ownerId == null || !user.ownerId.equals(managerUserId)) {
             throw new ForbiddenException("key does not belong to current manager");
         }

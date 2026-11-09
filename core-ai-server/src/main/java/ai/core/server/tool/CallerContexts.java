@@ -2,8 +2,8 @@ package ai.core.server.tool;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.tool.OutboundCallerContext.Caller;
-import core.framework.mongo.MongoCollection;
 
 /**
  * Builds the caller identity from a user record. For API sub users the caller carries the
@@ -25,8 +25,8 @@ public final class CallerContexts {
      *
      * @return the resolved user, so callers that need it for the prompt do not read it a second time
      */
-    public static User attach(ExecutionContext context, MongoCollection<User> userCollection, String userId) {
-        var user = userId != null ? userCollection.get(userId).orElse(null) : null;
+    public static User attach(ExecutionContext context, UserStore userStore, String userId) {
+        var user = userId != null ? userStore.get(userId).orElse(null) : null;
         context.setCaller(fromUser(user));
         return user;
     }

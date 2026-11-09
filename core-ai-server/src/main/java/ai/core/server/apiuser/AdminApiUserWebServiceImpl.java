@@ -6,13 +6,12 @@ import ai.core.api.server.apiuser.request.UpdateStatusRequest;
 import ai.core.api.server.apiuser.response.AdminApiUserView;
 import ai.core.api.server.apiuser.response.CreateApiUserResponse;
 import ai.core.api.server.apiuser.response.ListApiUsersResponse;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
@@ -34,7 +33,7 @@ public class AdminApiUserWebServiceImpl implements AdminApiUserWebService {
     @Inject
     ApiUserKeyService apiUserKeyService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     public CreateApiUserResponse create(CreateApiUserRequest request) {
@@ -55,7 +54,7 @@ public class AdminApiUserWebServiceImpl implements AdminApiUserWebService {
         var ownerIds = users.stream().map(user -> user.ownerId).filter(Objects::nonNull).distinct().toList();
         var ownerNames = new HashMap<String, String>();
         for (var ownerId : ownerIds) {
-            ownerNames.put(ownerId, userCollection.get(ownerId).map(owner -> owner.name).orElse(ownerId));
+            ownerNames.put(ownerId, userStore.get(ownerId).map(owner -> owner.name).orElse(ownerId));
         }
         var response = new ListApiUsersResponse();
         response.users = users.stream()

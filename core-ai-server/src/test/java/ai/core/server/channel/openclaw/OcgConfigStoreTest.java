@@ -22,7 +22,7 @@ import static org.mockito.Mockito.when;
 class OcgConfigStoreTest {
     @Test
     void mintsDistinctSecrets() {
-        var store = new OcgConfigStore();
+        var store = new MongoOcgConfigStore();
         Set<String> secrets = new HashSet<>(8);
         for (int i = 0; i < 8; i++) {
             secrets.add(store.newSecret());
@@ -35,7 +35,7 @@ class OcgConfigStoreTest {
 
     @Test
     void keepsTheSecretTheConfigAlreadyHas() {
-        var store = new OcgConfigStore();
+        var store = new MongoOcgConfigStore();
         var config = new OcgConfigView();
         config.callbackSecret = "existing-secret";
 
@@ -44,7 +44,7 @@ class OcgConfigStoreTest {
 
     @Test
     void mintsAndPersistsWhenTheConfigHasNone() {
-        var store = new OcgConfigStore();
+        var store = new MongoOcgConfigStore();
         MongoCollection<OcgConfigView> collection = mock();
         store.collection = collection;
         var config = new OcgConfigView();

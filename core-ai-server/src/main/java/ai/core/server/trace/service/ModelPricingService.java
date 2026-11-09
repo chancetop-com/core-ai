@@ -2,9 +2,7 @@ package ai.core.server.trace.service;
 
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.server.domain.GatewayModelConfig;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
 
@@ -13,7 +11,7 @@ import java.time.ZonedDateTime;
  */
 public class ModelPricingService {
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    ai.core.server.gateway.GatewayModelStore gatewayModelStore;
 
     // Gateway Model configuration price (cached input split + optional peak-hour multiplier); null when not configured.
     Price resolveGatewayModel(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt) {
@@ -58,7 +56,7 @@ public class ModelPricingService {
 
     private GatewayModelConfig gatewayModel(String model) {
         if (model == null || model.isBlank()) return null;
-        var models = gatewayModelCollection.find(Filters.eq("model_id", model));
+        var models = gatewayModelStore.listByModelId(model);
         if (!models.isEmpty()) return models.getFirst();
         return null;
     }

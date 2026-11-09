@@ -1,10 +1,8 @@
 package ai.core.server.apiuser;
 
 import ai.core.server.domain.User;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
 
@@ -16,19 +14,15 @@ import java.time.ZonedDateTime;
  */
 public class ApiUserQuotaService {
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     public void checkQuota(String userId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null) return;
 
         var now = ZonedDateTime.now();
         if (windowResetDue(user, now)) {
-            // targeted $set so concurrent quota $inc is not overwritten by a full replace
-            userCollection.update(Filters.eq("_id", userId), Updates.combine(
-                    Updates.set("quota_consumed_input_tokens", 0L),
-                    Updates.set("quota_consumed_output_tokens", 0L),
-                    Updates.set("quota_window_start", now)));
+            userStore.resetQuota(userId, now);
             user.quotaConsumedInputTokens = 0L;
             user.quotaConsumedOutputTokens = 0L;
             user.quotaWindowStart = now;
@@ -57,24 +51,7 @@ public class ApiUserQuotaService {
      */
     public void recordUsage(String userId, long inputTokens, long outputTokens) {
         if (userId == null) return;
-        if (inputTokens > 0) {
-            userCollection.update(
-                Filters.and(
-                    Filters.eq("_id", userId),
-                    Filters.ne("quota_input_tokens", null),
-                    Filters.gt("quota_input_tokens", 0)),
-                Updates.inc("quota_consumed_input_tokens", inputTokens)
-            );
-        }
-        if (outputTokens > 0) {
-            userCollection.update(
-                Filters.and(
-                    Filters.eq("_id", userId),
-                    Filters.ne("quota_output_tokens", null),
-                    Filters.gt("quota_output_tokens", 0)),
-                Updates.inc("quota_consumed_output_tokens", outputTokens)
-            );
-        }
+        userStore.incrementQuotaUsage(userId, inputTokens, outputTokens);
     }
 
     /**
@@ -84,11 +61,7 @@ public class ApiUserQuotaService {
      * day-boundary reset in {@link #checkQuota}).
      */
     public void resetQuota(String userId) {
-        var now = ZonedDateTime.now();
-        userCollection.update(Filters.eq("_id", userId), Updates.combine(
-                Updates.set("quota_consumed_input_tokens", 0L),
-                Updates.set("quota_consumed_output_tokens", 0L),
-                Updates.set("quota_window_start", now)));
+        userStore.resetQuota(userId, ZonedDateTime.now());
     }
 
     private boolean windowResetDue(User user, ZonedDateTime now) {

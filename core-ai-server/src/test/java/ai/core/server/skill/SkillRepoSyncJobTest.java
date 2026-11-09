@@ -78,7 +78,7 @@ class SkillRepoSyncJobTest {
     private SkillRepoSyncJob job(SkillService service, MongoCollection<SkillDefinition> collection, SystemSettingsService settings) {
         var job = new SkillRepoSyncJob();
         job.skillService = service;
-        job.skillCollection = collection;
+        job.skillStore = MongoSkillStore.of(collection);
         job.systemSettingsService = settings;
         return job;
     }

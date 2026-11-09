@@ -1,13 +1,9 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 
 import java.time.ZonedDateTime;
@@ -47,11 +43,11 @@ public class ProjectSubjectReviewService {
     }
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
     ProjectService projectService;
     @Inject
@@ -67,24 +63,28 @@ public class ProjectSubjectReviewService {
         requireProposed(projectId, subjectId);
         // recordSubjectStatus writes status + the subject_status event (a proposal has no event yet)
         stateService.recordSubjectStatus(projectId, subjectId, ProjectService.SUBJECT_STARTED, userId);
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.unset("proposed_at"),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subjectId, entity -> {
+            entity.proposedAt = null;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     public void rejectSubject(String projectId, String userId, boolean admin, String subjectId) {
         var project = projectService.require(projectId);
         projectService.requireAccess(project, userId, admin);
         var subject = requireProposed(projectId, subjectId);
-        attributionCollection.delete(Filters.eq("subject_id", subjectId));
+        attributionRepository.deleteBySubject(subjectId);
         stateService.deleteSubjectEvents(subjectId);
-        subjectCollection.delete(Filters.eq("_id", subjectId));
+        subjectStore.delete(subjectId);
         // scan markers stay (the material WAS offered); the rejected name list is what keeps the
         // attributor from proposing the same entity again
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.addToSet("rejected_subject_names", ProjectSubjectNames.normalize(subject.name)),
-            Updates.set("stats_dirty", Boolean.TRUE),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        var normalized = ProjectSubjectNames.normalize(subject.name);
+        projectStore.update(projectId, entity -> {
+            if (entity.rejectedSubjectNames == null) entity.rejectedSubjectNames = new ArrayList<>();
+            if (!entity.rejectedSubjectNames.contains(normalized)) entity.rejectedSubjectNames.add(normalized);
+            entity.statsDirty = Boolean.TRUE;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     public void mergeSubject(String projectId, String userId, boolean admin, String subjectId, String intoSubjectId) {
@@ -97,13 +97,14 @@ public class ProjectSubjectReviewService {
         if (ProjectService.SUBJECT_PROPOSED.equals(into.status)) {
             throw new BadRequestException("merge target is itself a pending proposal; accept it first");
         }
-        for (var row : attributionCollection.find(Filters.eq("subject_id", subjectId))) rewrite(row, projectId, into.id);
+        for (var row : attributionRepository.listBySubject(subjectId)) rewrite(row, projectId, into.id);
         stateService.deleteSubjectEvents(subjectId);
-        subjectCollection.delete(Filters.eq("_id", subjectId));
+        subjectStore.delete(subjectId);
         addAlias(into, from.name);
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.set("stats_dirty", Boolean.TRUE),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        projectStore.update(projectId, entity -> {
+            entity.statsDirty = Boolean.TRUE;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     /**
@@ -131,7 +132,7 @@ public class ProjectSubjectReviewService {
             return;
         }
         attributionStore.attribute(projectId, intoSubjectId, row.targetType, row.targetId, ProjectAttributionStore.SOURCE_ATTRIBUTOR);
-        attributionCollection.delete(Filters.eq("_id", row.id));
+        attributionRepository.deleteById(row.id);
     }
 
     // profile is extracted ONCE by the analyzer and never overwritten, so an alias written here
@@ -148,9 +149,10 @@ public class ProjectSubjectReviewService {
         if (aliases.stream().anyMatch(name::equalsIgnoreCase)) return;
         aliases.add(name);
         profile.put("aliases", aliases);
-        subjectCollection.update(Filters.eq("_id", subject.id), Updates.combine(
-            Updates.set("profile", JsonUtil.toJson(profile)),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subject.id, entity -> {
+            entity.profile = JsonUtil.toJson(profile);
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     private ProjectSubject requireProposed(String projectId, String subjectId) {

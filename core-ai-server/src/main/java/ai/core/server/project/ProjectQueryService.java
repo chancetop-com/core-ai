@@ -2,9 +2,7 @@ package ai.core.server.project;
 
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
@@ -52,7 +50,7 @@ public class ProjectQueryService {
     }
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
     @Inject
@@ -62,40 +60,22 @@ public class ProjectQueryService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<ProjectSubjectEvent> eventCollection;
+    ProjectEventStore eventStore;
     @Inject
     ProjectReportQueryService reportQueryService;
 
     // subject history rows (D7): the event series behind the timeline, trends and the report
     public List<ProjectSubjectEvent> events(String projectId, String subjectId, String type, ZonedDateTime from, ZonedDateTime to) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("project_id", projectId));
-        if (subjectId != null && !subjectId.isBlank()) filters.add(Filters.eq("subject_id", subjectId));
-        if (type != null && !type.isBlank()) filters.add(Filters.eq("type", type));
-        if (from != null) filters.add(Filters.gte("at", from));
-        if (to != null) filters.add(Filters.lte("at", to));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("at");
-        query.limit = EVENTS_MAX;
-        return eventCollection.find(query);
+        return eventStore.listByProject(projectId, subjectId, type, from, to, EVENTS_MAX);
     }
 
     // the most recent events of one type in chronological order (the cockpit's KPI series / notes list)
     public List<ProjectSubjectEvent> stateEvents(String projectId, String subjectId, String type) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("project_id", projectId));
-        if (subjectId != null && !subjectId.isBlank()) filters.add(Filters.eq("subject_id", subjectId));
-        filters.add(Filters.eq("type", type));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("at");
-        query.limit = STATE_EVENTS_MAX;
-        var rows = new ArrayList<>(eventCollection.find(query));
+        var rows = new ArrayList<>(eventStore.listByProject(projectId, subjectId, type, null, null, STATE_EVENTS_MAX));
         rows.sort((a, b) -> compareDesc(b.at, a.at));
         return rows;
     }
@@ -113,14 +93,11 @@ public class ProjectQueryService {
     }
 
     public long attributionCount(String subjectId) {
-        return attributionCollection.count(Filters.eq("subject_id", subjectId));
+        return attributionRepository.countBySubject(subjectId);
     }
 
     private List<ProjectSubject> subjectPageSource(String projectId) {
-        var query = new Query();
-        query.filter = Filters.eq("project_id", projectId);
-        query.sort = Sorts.ascending("created_at");
-        return subjectCollection.find(query);
+        return subjectStore.listByProject(projectId);
     }
 
     private List<ProjectSubject> filterByName(List<ProjectSubject> all, String search) {
@@ -132,7 +109,7 @@ public class ProjectQueryService {
     // a single type pages in the database; the merged view fetches the first offset+limit rows of
     // every type, merges by time and slices ONCE (offset applied to the merged order only)
     public List<ProjectExecution> executions(String projectId, String type, String subjectId, int offset, int limit) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
+        var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return List.of();
         if (type != null) {
             return switch (type) {
@@ -153,7 +130,7 @@ public class ProjectQueryService {
     }
 
     public long executionCount(String projectId, String type, String subjectId) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
+        var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return 0;
         long total = 0;
         if (type == null || "chat".equals(type)) total += chatSessionCollection.count(sessionFilter(scope, subjectId));
@@ -164,7 +141,7 @@ public class ProjectQueryService {
 
     // narrative timeline: history events (authoritative) + member sessions + reports
     public List<TimelineEntry> timeline(String projectId, String subjectId) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
+        var scope = ProjectScope.resolve(projectStore, projectId);
         var entries = new ArrayList<TimelineEntry>();
         if (scope == null) return entries;
         for (var event : events(projectId, subjectId, null, null, null)) {
@@ -318,16 +295,12 @@ public class ProjectQueryService {
     }
 
     private List<String> attributionTargets(String subjectId, String targetType) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("subject_id", subjectId), Filters.eq("target_type", targetType));
-        return attributionCollection.find(query).stream().map(a -> a.targetId).toList();
+        return attributionRepository.listBySubjectAndType(subjectId, targetType).stream().map(a -> a.targetId).toList();
     }
 
     private Map<String, String> subjectByTarget(ProjectScope scope, String targetType) {
         var result = new HashMap<String, String>();
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("project_id", scope.projectId), Filters.eq("target_type", targetType));
-        for (var attribution : attributionCollection.find(query)) {
+        for (var attribution : attributionRepository.listByProjectAndType(scope.projectId, targetType)) {
             result.putIfAbsent(attribution.targetId, attribution.subjectId);
         }
         return result;

@@ -9,7 +9,7 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.util.IdLists;
@@ -45,7 +45,7 @@ public class AgentDefinitionService {
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     SkillService skillService;
     @Inject
@@ -136,7 +136,7 @@ public class AgentDefinitionService {
         Integer limit = paginated ? pageSize : null;
         String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
 
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
         String keyword = AgentQueryHelper.trimToNull(effectiveRequest.query);
         List<AgentDefinition> paged;
         long total;
@@ -182,17 +182,17 @@ public class AgentDefinitionService {
     }
 
     public void favorite(String agentId, String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
         listHelper.favorite(agentId, userId);
     }
 
     public void unfavorite(String agentId, String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
         listHelper.unfavorite(agentId, userId);
     }
 
     public ListAgentsResponse favorites(String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userCollection);
+        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
         return listHelper.listFavorites(userId);
     }
 
@@ -375,7 +375,7 @@ public class AgentDefinitionService {
 
     private String resolveUserName(String userId) {
         if (userId == null) return null;
-        return userCollection.get(userId).map(u -> u.name).orElse(userId);
+        return userStore.get(userId).map(u -> u.name).orElse(userId);
     }
 
     private String resolveAgentName(String agentId) {
@@ -426,6 +426,6 @@ public class AgentDefinitionService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(u -> "admin".equals(u.role)).orElse(Boolean.FALSE);
+        return userStore.get(userId).map(u -> "admin".equals(u.role)).orElse(Boolean.FALSE);
     }
 }

@@ -5,7 +5,6 @@ import ai.core.api.server.user.GenerateApiKeyResponse;
 import ai.core.api.server.user.UserView;
 import ai.core.server.domain.User;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import org.bouncycastle.crypto.generators.OpenBSDBCrypt;
@@ -23,16 +22,16 @@ public class UserService {
     private static final int BCRYPT_COST = 10;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     public UserView me(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
         return toView(user);
     }
 
     public ApiKeyView getApiKey(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
         if ("api".equals(user.userType)) {
             throw new ForbiddenException("api user cannot manage api key");
@@ -45,7 +44,7 @@ public class UserService {
     }
 
     public GenerateApiKeyResponse generateApiKey(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
         if ("api".equals(user.userType)) {
             throw new ForbiddenException("api user cannot manage api key");
@@ -57,7 +56,7 @@ public class UserService {
 
         user.apiKey = apiKey;
         user.apiKeyCreatedAt = ZonedDateTime.now();
-        userCollection.replace(user);
+        userStore.replace(user);
 
         var response = new GenerateApiKeyResponse();
         response.apiKey = apiKey;
@@ -65,7 +64,7 @@ public class UserService {
     }
 
     public void changePassword(String userId, String currentPassword, String newPassword) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new RuntimeException("user not found, id=" + userId));
 
         if (user.passwordHash == null || !verifyPassword(currentPassword, user.passwordHash)) {
@@ -77,7 +76,7 @@ public class UserService {
         }
 
         user.passwordHash = hashPassword(newPassword);
-        userCollection.replace(user);
+        userStore.replace(user);
     }
 
     private String hashPassword(String password) {

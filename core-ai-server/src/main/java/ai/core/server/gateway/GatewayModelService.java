@@ -7,12 +7,7 @@ import ai.core.api.server.gateway.ListGatewayAvailableModelsResponse;
 import ai.core.api.server.gateway.ListGatewayModelsResponse;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
-import ai.core.server.domain.User;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 
@@ -74,18 +69,18 @@ public class GatewayModelService {
     }
 
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    GatewayModelStore modelStore;
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    GatewayProviderStore providerStore;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     GatewayModelDiscoveryService gatewayModelDiscoveryService;
     @Inject
     GatewayRoutingEngine gatewayRoutingEngine;
 
     public ListGatewayModelsResponse importModels(String providerId, ImportGatewayModelsRequest request, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var provider = provider(providerId);
         if (request.models == null || request.models.isEmpty()) throw new BadRequestException("models are required");
 
@@ -101,9 +96,9 @@ public class GatewayModelService {
         var imported = new ListGatewayModelsResponse();
         imported.models = staged.stream().map(change -> {
             if (change.create) {
-                gatewayModelCollection.insert(change.entity);
+                modelStore.insert(change.entity);
             } else {
-                gatewayModelCollection.replace(change.entity);
+                modelStore.replace(change.entity);
             }
             return toView(change.entity, provider);
         }).toList();
@@ -112,14 +107,10 @@ public class GatewayModelService {
     }
 
     public ListGatewayModelsResponse list(String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = Sorts.ascending("model_id");
-
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var providers = providersById();
         var response = new ListGatewayModelsResponse();
-        response.models = gatewayModelCollection.find(query).stream()
+        response.models = modelStore.listAll().stream()
                 .map(model -> toView(model, providers.get(model.providerId)))
                 .toList();
         return response;
@@ -132,7 +123,7 @@ public class GatewayModelService {
     }
 
     public GatewayModelView create(GatewayModelRequest request, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         validate(request, true);
         var provider = provider(request.providerId);
 
@@ -148,13 +139,13 @@ public class GatewayModelService {
         entity.updatedBy = userId;
         entity.createdAt = now;
         entity.updatedAt = now;
-        gatewayModelCollection.insert(entity);
+        modelStore.insert(entity);
         invalidateRouting();
         return toView(entity, provider);
     }
 
     public GatewayModelView update(String id, GatewayModelRequest request, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         validate(request, false);
 
         var entity = getEntity(id);
@@ -167,27 +158,27 @@ public class GatewayModelService {
         rejectDuplicateModelId(entity);
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
-        gatewayModelCollection.replace(entity);
+        modelStore.replace(entity);
         invalidateRouting();
         return toView(entity, provider);
     }
 
     public GatewayModelView updateDefault(String id, boolean isDefault, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var entity = getEntity(id);
         if (!isDefault && !Boolean.TRUE.equals(entity.isDefault)) return toView(entity, provider(entity.providerId));
         if (isDefault) clearDefaults(entity.providerId);
         entity.isDefault = isDefault;
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
-        gatewayModelCollection.replace(entity);
+        modelStore.replace(entity);
         invalidateRouting();
         return toView(entity, provider(entity.providerId));
     }
 
     public void delete(String id, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
-        gatewayModelCollection.delete(id);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
+        modelStore.delete(id);
         invalidateRouting();
     }
 
@@ -254,7 +245,7 @@ public class GatewayModelService {
         if (entity.isDefault == null) entity.isDefault = Boolean.FALSE;
         if (specified(request, "messagesFallback", create)) entity.messagesFallback = request.messagesFallback;
         if (entity.messagesFallback == null) entity.messagesFallback = Boolean.FALSE;
-        if (specified(request, "fallbackModelIds", create)) GatewayModelFallbackSupport.apply(entity, request, create, gatewayModelCollection);
+        if (specified(request, "fallbackModelIds", create)) GatewayModelFallbackSupport.apply(entity, request, create, modelStore);
         if (specified(request, "priority", create)) entity.priority = request.priority;
         if (entity.priority == null) entity.priority = 100L;
         if (specified(request, "contextWindow", create)) entity.contextWindow = request.contextWindow;
@@ -344,28 +335,23 @@ public class GatewayModelService {
     }
 
     private GatewayModelConfig getEntity(String id) {
-        return gatewayModelCollection.get(id)
+        return modelStore.get(id)
                 .orElseThrow(() -> new NotFoundException("gateway model not found: " + id));
     }
 
     private GatewayProviderConfig provider(String id) {
-        return gatewayProviderCollection.get(id)
+        return providerStore.get(id)
                 .orElseThrow(() -> new BadRequestException("providerId is invalid: " + id));
     }
 
     private Map<String, GatewayProviderConfig> providersById() {
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = Sorts.ascending("name");
         var providers = new LinkedHashMap<String, GatewayProviderConfig>();
-        gatewayProviderCollection.find(query).forEach(provider -> providers.put(provider.id, provider));
+        providerStore.listAll().forEach(provider -> providers.put(provider.id, provider));
         return providers;
     }
 
     private List<GatewayModelConfig> providerModels(String providerId) {
-        var query = new Query();
-        query.filter = Filters.eq("provider_id", providerId);
-        return gatewayModelCollection.find(query);
+        return modelStore.listByProviderId(providerId);
     }
 
     private Map<String, GatewayModelMetadata> discoveredModels(GatewayProviderConfig provider) {
@@ -426,19 +412,11 @@ public class GatewayModelService {
     }
 
     private void clearDefaults(String providerId) {
-        var filter = Filters.and(
-                Filters.eq("provider_id", providerId),
-                Filters.eq("is_default", Boolean.TRUE)
-        );
-        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("is_default", Boolean.FALSE));
+        modelStore.clearDefault(providerId);
     }
 
     private void clearOtherMessagesFallbacks(String keepId) {
-        var filter = Filters.and(
-                Filters.eq("messages_fallback", Boolean.TRUE),
-                Filters.ne("_id", keepId)
-        );
-        gatewayModelCollection.update(filter, com.mongodb.client.model.Updates.set("messages_fallback", Boolean.FALSE));
+        modelStore.clearMessagesFallbackExcept(keepId);
     }
 
     private record StagedImport(GatewayModelConfig entity, boolean create) {

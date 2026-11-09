@@ -18,7 +18,6 @@ import ai.core.server.comparison.domain.ComparisonVariant;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.User;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.client.model.Filters;
@@ -61,7 +60,7 @@ public class AgentComparisonService {
     @Inject
     MongoCollection<AgentVersion> versionCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     AgentDefinitionService agentDefinitionService;
     @Inject
@@ -126,7 +125,7 @@ public class AgentComparisonService {
             requireAgentOwnerOrAdmin(agent, userId);
             return findComparisons(Filters.eq("agent_id", agent.id), 100);
         }
-        if (ComparisonAccess.isAdmin(userCollection, userId)) {
+        if (ComparisonAccess.isAdmin(userStore, userId)) {
             var query = new Query();
             query.sort = Sorts.descending("created_at");
             query.limit = 200;
@@ -159,7 +158,7 @@ public class AgentComparisonService {
         view.agentId = agentId;
         var comparison = runningComparison(agentId, null).orElse(null);
         if (comparison == null) return view;
-        if (ComparisonAccess.isParticipant(comparison, userId) || ComparisonAccess.canManage(userCollection, comparison, userId)) {
+        if (ComparisonAccess.isParticipant(comparison, userId) || ComparisonAccess.canManage(userStore, comparison, userId)) {
             view.id = comparison.id;
             view.status = comparison.status.name();
             view.agentName = comparison.agentName;
@@ -169,7 +168,7 @@ public class AgentComparisonService {
 
     public AgentComparisonView get(String id, String userId) {
         var comparison = requireComparison(id);
-        var manager = ComparisonAccess.canManage(userCollection, comparison, userId);
+        var manager = ComparisonAccess.canManage(userStore, comparison, userId);
         if (!manager && !ComparisonAccess.isParticipant(comparison, userId)) {
             throw new ForbiddenException("comparison is unavailable");
         }
@@ -178,7 +177,7 @@ public class AgentComparisonService {
 
     public AgentComparisonView update(String id, UpdateAgentComparisonRequest request, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status == ComparisonStatus.ENDED) {
             throw new BadRequestException("comparison has ended");
         }
@@ -226,7 +225,7 @@ public class AgentComparisonService {
 
     public AgentComparisonView start(String id, StartAgentComparisonRequest request, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status != ComparisonStatus.DRAFT) {
             throw new BadRequestException("comparison is not a draft");
         }
@@ -253,7 +252,7 @@ public class AgentComparisonService {
 
     public AgentComparisonView end(String id, EndAgentComparisonRequest request, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status == ComparisonStatus.DRAFT) {
             throw new BadRequestException("comparison has not started");
         }
@@ -282,7 +281,7 @@ public class AgentComparisonService {
      */
     public AgentComparisonView resume(String id, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status != ComparisonStatus.ENDED) {
             throw new BadRequestException("only an ended comparison can be resumed");
         }
@@ -303,7 +302,7 @@ public class AgentComparisonService {
      */
     public AgentComparisonView revertAdopt(String id, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status == ComparisonStatus.DRAFT) {
             throw new BadRequestException("comparison has not started");
         }
@@ -321,7 +320,7 @@ public class AgentComparisonService {
 
     public void delete(String id, String userId) {
         var comparison = requireComparison(id);
-        ComparisonAccess.requireManage(userCollection, comparison, userId);
+        ComparisonAccess.requireManage(userStore, comparison, userId);
         if (comparison.status != ComparisonStatus.DRAFT) {
             throw new BadRequestException("only a draft comparison can be deleted; end a running test instead");
         }
@@ -413,7 +412,7 @@ public class AgentComparisonService {
     }
 
     private void requireAgentOwnerOrAdmin(AgentDefinition agent, String userId) {
-        if (userId != null && (userId.equals(agent.userId) || ComparisonAccess.isAdmin(userCollection, userId))) return;
+        if (userId != null && (userId.equals(agent.userId) || ComparisonAccess.isAdmin(userStore, userId))) return;
         throw new ForbiddenException("only the agent owner or admin can manage comparisons");
     }
 }

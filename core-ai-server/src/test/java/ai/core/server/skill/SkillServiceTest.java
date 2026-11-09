@@ -41,7 +41,8 @@ class SkillServiceTest {
     @Test
     void repoRegistrationUsesInjectedSkillCollection() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         assertEquals("nextlevelbuilder", service.extractRepoOwner("https://github.com/nextlevelbuilder/ui-ux-pro-max-skill"));
     }
@@ -49,16 +50,17 @@ class SkillServiceTest {
     @Test
     void listAppliesDbPagingWithoutInMemoryFilters() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var matchingName = skill("1", "Admin", "seo-audit", null);
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName));
+        when(collection.find(any(Query.class))).thenReturn(List.of(matchingName));
 
         var result = service.list(null, null, null, null, 20, 10);
 
         assertEquals(List.of(matchingName), result);
         var query = ArgumentCaptor.forClass(Query.class);
-        verify(service.skillCollection).find(query.capture());
+        verify(collection).find(query.capture());
         assertEquals(20, query.getValue().skip);
         assertEquals(10, query.getValue().limit);
     }
@@ -66,40 +68,43 @@ class SkillServiceTest {
     @Test
     void listFiltersAndPagesQueryInMemory() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var matchingName = skill("1", "Admin", "seo-audit", null);
         var notMatching = skill("2", "Admin", "prompt-pack", "Prompt templates");
         var matchingDescription = skill("3", "Admin", "content-helper", "Run SEO audit checks");
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingDescription));
+        when(collection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingDescription));
 
         var result = service.list(null, null, "audit", null, 1, 1);
 
         assertEquals(List.of(matchingDescription), result);
-        verify(service.skillCollection).find(any(Query.class));
+        verify(collection).find(any(Query.class));
     }
 
     @Test
     void listFiltersCreatorInMemory() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var matchingCreator = skill("1", "Admin", "seo-audit", null);
         matchingCreator.userId = "alice@example.com";
         var notMatching = skill("2", "Admin", "prompt-pack", null);
         notMatching.userId = "bob@example.com";
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingCreator, notMatching));
+        when(collection.find(any(Query.class))).thenReturn(List.of(matchingCreator, notMatching));
 
         var result = service.list(null, "ali", null, null, 0, 10);
 
         assertEquals(List.of(matchingCreator), result);
-        verify(service.skillCollection).find(any(Query.class));
+        verify(collection).find(any(Query.class));
     }
 
     @Test
     void countFiltersQueryInMemory() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var matchingName = skill("1", "Admin", "seo-audit", null);
         var notMatching = skill("2", "Admin", "prompt-pack", "Prompt templates");
@@ -107,24 +112,25 @@ class SkillServiceTest {
         matchingTool.allowedTools = List.of("audit-tool");
         var matchingMetadata = skill("4", "Admin", "report-helper", null);
         matchingMetadata.metadata = Map.of("category", "audit");
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingTool, matchingMetadata));
+        when(collection.find(any(Query.class))).thenReturn(List.of(matchingName, notMatching, matchingTool, matchingMetadata));
 
         var result = service.count(null, null, "audit", "metadata");
 
         assertEquals(3, result);
-        verify(service.skillCollection).find(any(Query.class));
-        verify(service.skillCollection, never()).count(any(Bson.class));
+        verify(collection).find(any(Query.class));
+        verify(collection, never()).count(any(Bson.class));
     }
 
     @Test
     void defaultQuerySearchesNameAndDescriptionOnly() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var matchingDescription = skill("1", "Admin", "content-helper", "Run SEO audit checks");
         var metadataOnly = skill("2", "Admin", "prompt-pack", null);
         metadataOnly.allowedTools = List.of("audit-tool");
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(matchingDescription, metadataOnly));
+        when(collection.find(any(Query.class))).thenReturn(List.of(matchingDescription, metadataOnly));
 
         var result = service.list(null, null, "audit", null, 0, 10);
 
@@ -134,12 +140,13 @@ class SkillServiceTest {
     @Test
     void contentSearchSearchesSkillMdContentOnly() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
 
         var contentMatch = skill("1", "Admin", "review-helper", "Review pull requests");
         contentMatch.content = "Use this skill when auditing database migrations.";
         var descriptionMatch = skill("2", "Admin", "db-helper", "Audit database migrations");
-        when(service.skillCollection.find(any(Query.class))).thenReturn(List.of(contentMatch, descriptionMatch));
+        when(collection.find(any(Query.class))).thenReturn(List.of(contentMatch, descriptionMatch));
 
         var result = service.list(null, null, "auditing", "content", 0, 10);
 
@@ -149,8 +156,9 @@ class SkillServiceTest {
     @Test
     void getThrowsNotFoundForMissingSkill() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
-        when(service.skillCollection.get("missing")).thenReturn(Optional.empty());
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
+        when(collection.get("missing")).thenReturn(Optional.empty());
 
         assertThrows(NotFoundException.class, () -> service.get("missing"));
     }
@@ -158,10 +166,11 @@ class SkillServiceTest {
     @Test
     void resolveAccessibleSkillsAllowsExistingSkillForItsOwner() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
         var owned = skill("skill-1", "Admin", "seo-audit", null);
         owned.userId = "caller-1";
-        when(service.skillCollection.get("skill-1")).thenReturn(Optional.of(owned));
+        when(collection.get("skill-1")).thenReturn(Optional.of(owned));
 
         var result = service.resolveAccessibleSkills(List.of("skill-1"), "caller-1");
 
@@ -172,10 +181,11 @@ class SkillServiceTest {
     @Test
     void resolveAccessibleSkillsAllowsExistingSkillAcrossUsersAndWithoutCaller() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
         var foreign = skill("foreign", "Admin", "seo-audit", null);
         foreign.userId = "owner-1";
-        when(service.skillCollection.get("foreign")).thenReturn(Optional.of(foreign));
+        when(collection.get("foreign")).thenReturn(Optional.of(foreign));
 
         var crossUser = service.resolveAccessibleSkills(List.of("foreign"), "caller-1");
         var callerless = service.resolveAccessibleSkills(List.of("foreign"), null);
@@ -189,8 +199,9 @@ class SkillServiceTest {
     @Test
     void resolveAccessibleSkillsStillRejectsUnknownSkill() {
         var service = new SkillService();
-        service.skillCollection = skillCollection();
-        when(service.skillCollection.get("missing")).thenReturn(Optional.empty());
+        var collection = skillCollection();
+        service.skillStore = MongoSkillStore.of(collection);
+        when(collection.get("missing")).thenReturn(Optional.empty());
 
         var error = assertThrows(ForbiddenException.class,
                 () -> service.resolveAccessibleSkills(List.of("missing"), "caller-1"));
@@ -265,7 +276,7 @@ class SkillServiceTest {
         when(blobStore.configured()).thenReturn(Boolean.TRUE);
         when(blobStore.put(anyString(), anyString(), any(byte[].class))).thenReturn("artifacts/skills/s1/resources/abc");
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = blobStore;
         var font = new byte[]{0x00, (byte) 0xFF};
         var content = "---\nname: demo\ndescription: demo\n---\n";
@@ -286,7 +297,7 @@ class SkillServiceTest {
         var collection = skillCollection();
         when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = mock(SkillBlobStore.class);
         var content = "---\nname: demo\ndescription: demo\n---\n";
 
@@ -302,7 +313,7 @@ class SkillServiceTest {
         var collection = skillCollection();
         when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = mock(SkillBlobStore.class);
         var content = "---\nname: demo\ndescription: demo\n---\n";
         var runScript = "#!/bin/sh\necho hi\n".getBytes(StandardCharsets.UTF_8);
@@ -328,7 +339,7 @@ class SkillServiceTest {
         when(collection.get("1")).thenReturn(Optional.of(entity));
         var blobStore = mock(SkillBlobStore.class);
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = blobStore;
 
         service.update("1", "new description", null, null, List.of(new SkillResourceUpdate("scripts/run.sh", true, null)));
@@ -345,7 +356,7 @@ class SkillServiceTest {
         var entity = skill("1", "Admin", "review", "desc");
         when(collection.get("1")).thenReturn(Optional.of(entity));
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = mock(SkillBlobStore.class);
 
         var error = assertThrows(BadRequestException.class, () -> service.update("1", null, null, null,
@@ -370,7 +381,7 @@ class SkillServiceTest {
         var bytes = new byte[]{0x00, (byte) 0xFF};
         when(blobStore.fetch("artifacts/skills/1/resources/x")).thenReturn(bytes);
         var service = new SkillService();
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = blobStore;
 
         service.update("1", null, "new content", null, null);
@@ -385,7 +396,7 @@ class SkillServiceTest {
     }
 
     private SkillRepoManager manager(MongoCollection<SkillDefinition> collection) {
-        return new SkillRepoManager(collection, mock(SkillBlobStore.class));
+        return new SkillRepoManager(MongoSkillStore.of(collection), mock(SkillBlobStore.class));
     }
 
     private SkillResource resource(String path, String content) {
@@ -403,7 +414,7 @@ class SkillServiceTest {
                 return manager;
             }
         };
-        service.skillCollection = collection;
+        service.skillStore = MongoSkillStore.of(collection);
         return service;
     }
 

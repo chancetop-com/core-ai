@@ -39,12 +39,13 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.Mockito.when;
 
 class AgentDefinitionServiceTest {
+    private MongoCollection<User> userCollection;
+
     @Test
     void createRejectsUnknownSkillBeforeInsert() {
         assertCreateSkillUnavailable("unknown-skill");
@@ -189,7 +190,7 @@ class AgentDefinitionServiceTest {
         noMatch.name = "Sales Bot";
         when(collection.find(any(Query.class))).thenReturn(List.of(nameMatch, descriptionMatch, noMatch));
         var service = service(collection);
-        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+        when(userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
 
         var request = new ListAgentsRequest();
         request.query = "hr";
@@ -210,7 +211,7 @@ class AgentDefinitionServiceTest {
         }
         when(collection.find(any(Query.class))).thenReturn(agents);
         var service = service(collection);
-        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+        when(userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
 
         var request = new ListAgentsRequest();
         request.query = "hr";
@@ -295,7 +296,7 @@ class AgentDefinitionServiceTest {
         var admin = new User();
         admin.id = "admin-1";
         admin.role = "admin";
-        when(service.userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        when(userCollection.get("admin-1")).thenReturn(Optional.of(admin));
 
         service.delete(assistant.id, "admin-1");
 
@@ -344,7 +345,7 @@ class AgentDefinitionServiceTest {
         var admin = new User();
         admin.id = "admin-1";
         admin.role = "admin";
-        when(service.userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        when(userCollection.get("admin-1")).thenReturn(Optional.of(admin));
         var request = new UpdateAgentRequest();
         request.description = "support fix";
 
@@ -407,19 +408,18 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
-    void favoriteInitializesNullFieldThenAddsAgentId() {
+    void favoriteAddsAgentIdToUser() {
         var collection = agentCollection();
         var agent = definition("agent-1", "owner", DefinitionType.AGENT, AgentStatus.PUBLISHED);
         when(collection.get(agent.id)).thenReturn(Optional.of(agent));
         var service = service(collection);
+        var user = new User();
+        user.id = "user-1";
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         service.favorite(agent.id, "user-1");
 
-        var updates = ArgumentCaptor.forClass(Bson.class);
-        verify(service.userCollection, times(2)).update(any(Bson.class), updates.capture());
-        var values = updates.getAllValues();
-        assertTrue(values.get(0).toBsonDocument().containsKey("$set"));
-        assertTrue(values.get(1).toBsonDocument().containsKey("$addToSet"));
+        verify(userCollection).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -430,20 +430,20 @@ class AgentDefinitionServiceTest {
 
         assertThrows(RuntimeException.class, () -> service.favorite("missing", "user-1"));
 
-        verifyNoMoreInteractions(service.userCollection);
+        verifyNoMoreInteractions(userCollection);
     }
 
     @Test
-    void unfavoriteInitializesNullFieldThenPullsAgentId() {
+    void unfavoriteRemovesAgentIdFromUser() {
         var service = service(agentCollection());
+        var user = new User();
+        user.id = "user-1";
+        user.favoriteAgentIds = List.of("agent-1");
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         service.unfavorite("agent-1", "user-1");
 
-        var updates = ArgumentCaptor.forClass(Bson.class);
-        verify(service.userCollection, times(2)).update(any(Bson.class), updates.capture());
-        var values = updates.getAllValues();
-        assertTrue(values.get(0).toBsonDocument().containsKey("$set"));
-        assertTrue(values.get(1).toBsonDocument().containsKey("$pull"));
+        verify(userCollection).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -456,7 +456,7 @@ class AgentDefinitionServiceTest {
         var user = new User();
         user.id = "user-1";
         user.favoriteAgentIds = List.of("agent-first", "agent-second");
-        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         var response = service.favorites("user-1");
 
@@ -473,7 +473,7 @@ class AgentDefinitionServiceTest {
         var user = new User();
         user.id = "user-1";
         user.favoriteAgentIds = List.of("assistant:user-1", "assistant:user-2");
-        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         service.favorites("user-1");
 
@@ -489,7 +489,7 @@ class AgentDefinitionServiceTest {
         var service = service(agentCollection());
         var user = new User();
         user.id = "user-1";
-        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         var response = service.favorites("user-1");
 
@@ -503,11 +503,11 @@ class AgentDefinitionServiceTest {
         var agent = definition("agent-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
         when(collection.find(any(Query.class))).thenReturn(List.of(agent));
         var service = service(collection);
-        when(service.userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
+        when(userCollection.find(any(org.bson.Document.class))).thenReturn(List.of());
         var user = new User();
         user.id = "user-1";
         user.favoriteAgentIds = List.of("agent-1");
-        when(service.userCollection.get("user-1")).thenReturn(Optional.of(user));
+        when(userCollection.get("user-1")).thenReturn(Optional.of(user));
 
         var response = service.list("user-1", new ListAgentsRequest());
 
@@ -777,7 +777,8 @@ class AgentDefinitionServiceTest {
     private AgentDefinitionService service(MongoCollection<AgentDefinition> collection) {
         var service = new AgentDefinitionService();
         service.agentDefinitionCollection = collection;
-        service.userCollection = mock(MongoCollection.class);
+        userCollection = mock(MongoCollection.class);
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         service.skillService = mock(SkillService.class);
         service.systemPromptService = mock(SystemPromptService.class);
         service.personalAssistantService = mock(PersonalAssistantService.class);

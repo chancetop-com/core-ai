@@ -17,10 +17,8 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.github.GitHubTokenProvider;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
 import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.time.ZonedDateTime;
@@ -52,7 +50,7 @@ public class ToolRegistryService {
     private McpServerOperationService mcpOperationService;
 
     @Inject
-    MongoCollection<ToolRegistryEntry> toolRegistryCollection;
+    ToolRegistryStore toolRegistryStore;
     @Inject
     ApiDefinitionService apiDefinitionService;
     @Inject
@@ -105,7 +103,7 @@ public class ToolRegistryService {
 
     public void initialize(String mcpServersJson) {
         initializeDependencies();
-        mcpOperationService.setToolRegistryCollection(toolRegistryCollection);
+        mcpOperationService.setToolRegistryStore(toolRegistryStore);
         loadBuiltinTools();
         loadServiceApiTools();
         resolutionService.setInternalApiToolLoader(serviceApiTools.loader());
@@ -198,8 +196,7 @@ public class ToolRegistryService {
     }
 
     private void loadDatabaseTools() {
-        for (var entry : toolRegistryCollection.find(Filters.or(
-                Filters.eq("enabled", Boolean.TRUE), Filters.eq("type", ToolType.MCP.name())))) {
+        for (var entry : toolRegistryStore.listEnabledOrMcp()) {
             if (tools.containsKey(entry.id)) {
                 LOGGER.debug("skipping duplicate tool: {}", entry.id);
                 continue;
@@ -210,7 +207,7 @@ public class ToolRegistryService {
     }
 
     public void syncDatabaseTools() {
-        var dbEntries = toolRegistryCollection.find(Filters.eq("type", ToolType.MCP.name()));
+        var dbEntries = toolRegistryStore.listByType(ToolType.MCP);
         var dbEntryIds = new HashSet<String>();
 
         for (var dbEntry : dbEntries) {

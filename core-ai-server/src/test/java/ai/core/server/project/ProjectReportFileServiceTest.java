@@ -8,7 +8,6 @@ import ai.core.server.file.FileService;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -53,7 +52,7 @@ class ProjectReportFileServiceTest {
         attributionStore = mock(ProjectAttributionStore.class);
         service.attributionStore = attributionStore;
         subjects = (MongoCollection<ProjectSubject>) mock(MongoCollection.class);
-        service.subjectCollection = subjects;
+        service.subjectStore = MongoProjectSubjectStore.of(subjects);
 
         var project = new Project();
         project.id = "p-1";
@@ -77,12 +76,13 @@ class ProjectReportFileServiceTest {
         subject.id = "s-1";
         subject.reportFileId = "f-1";
         when(projectService.subjects("p-1")).thenReturn(List.of(subject));
+        when(subjects.get("s-1")).thenReturn(Optional.of(subject));
 
         service.deleteReport("p-1", "user-1", false, "f-1");
 
         verify(fileService).delete("f-1");
         // the subject's rendered report was that very file: the pointers must not survive as a dangling iframe
-        verify(subjects).update(any(Bson.class), any(Bson.class));
+        verify(subjects).replace(any(ProjectSubject.class));
     }
 
     @Test

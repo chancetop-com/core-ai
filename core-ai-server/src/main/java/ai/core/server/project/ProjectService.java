@@ -3,23 +3,17 @@ package ai.core.server.project;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
+import ai.core.server.domain.ProjectReportSource;
 import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.user.UserStore;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.workflow.WorkflowDefinitionService;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.Document;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -53,7 +47,6 @@ public class ProjectService {
     static final String AUTO_SUBJECTS_PROPOSE = "propose";
     static final String AUTO_SUBJECTS_CREATE = "create";
     static final String AUTO_SUBJECTS_OFF = "off";
-    static final int DUPLICATE_KEY_CODE = 11000;
 
     // null = propose: a missing value must behave like the default (no backfill migration)
     public static String autoSubjectMode(Project project) {
@@ -62,17 +55,17 @@ public class ProjectService {
     }
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
     MongoCollection<WorkflowDefinition> workflowCollection;
     @Inject
-    MongoCollection<ai.core.server.domain.User> userCollection;
+    UserStore userStore;
     @Inject
     ai.core.server.apiuser.PermissionService permissionService;
     @Inject
@@ -93,58 +86,57 @@ public class ProjectService {
         project.statsDirty = Boolean.TRUE;
         project.createdAt = ZonedDateTime.now();
         project.updatedAt = project.createdAt;
-        projectCollection.insert(project);
+        projectStore.insert(project);
         return project;
     }
 
     public Project require(String id) {
-        return projectCollection.get(id).orElseThrow(() -> new NotFoundException("project not found, id=" + id));
+        return projectStore.get(id).orElseThrow(() -> new NotFoundException("project not found, id=" + id));
     }
 
     // a project is a shared business container: owner and admins always pass; everyone else needs
     // the RBAC permission code (project.view / project.manage)
     public void requireAccess(Project project, String userId, boolean admin) {
-        if (admin || ProjectAccess.canManage(project, userId, permissionService, userCollection)) return;
+        if (admin || ProjectAccess.canManage(project, userId, permissionService, userStore)) return;
         throw new ForbiddenException("permission required: " + ai.core.server.rbac.PermissionCodes.PROJECT_MANAGE);
     }
 
     public void requireView(Project project, String userId) {
-        if (ProjectAccess.canView(project, userId, permissionService, userCollection)) return;
+        if (ProjectAccess.canView(project, userId, permissionService, userStore)) return;
         throw new ForbiddenException("permission required: " + ai.core.server.rbac.PermissionCodes.PROJECT_VIEW);
     }
 
     public List<Project> list(String userId, int offset, int limit, Boolean archivedOnly) {
-        var query = new Query();
-        query.filter = listFilter(userId, archivedOnly);
-        query.sort = Sorts.descending("created_at");
-        query.skip = offset;
-        query.limit = limit;
-        return projectCollection.find(query);
+        return projectStore.list(scopedUserId(userId), archivedOnly, offset, limit);
     }
 
     public long count(String userId, Boolean archivedOnly) {
-        return projectCollection.count(listFilter(userId, archivedOnly));
+        return projectStore.count(scopedUserId(userId), archivedOnly);
+    }
+
+    private String scopedUserId(String userId) {
+        return ProjectAccess.canViewAll(userId, permissionService, userStore) ? null : userId;
     }
 
     public void update(String id, String userId, boolean admin, UpdateFields fields) {
         var project = require(id);
         requireAccess(project, userId, admin);
-        var updates = new ArrayList<Bson>();
-        if (fields.name() != null && !fields.name().isBlank()) updates.add(Updates.set("name", fields.name().trim()));
-        updates.add(Updates.set("description", blankToNull(fields.description())));
-        updates.add(Updates.set("goal", blankToNull(fields.goal())));
-        updates.add(Updates.set("playbook", blankToNull(fields.playbook())));
-        if (fields.reportSources() != null) {
-            // raw Documents: core-ng only generates codecs for @Collection classes, $set of the
-            // embedded ProjectReportSource list fails with "Can't find a codec"
-            updates.add(Updates.set("report_sources", resolveReportSources(project.userId, fields.reportSources())));
-        }
-        if (fields.status() != null) {
-            if (!STATUS_ACTIVE.equals(fields.status()) && !STATUS_ARCHIVED.equals(fields.status())) throw new BadRequestException("invalid status: " + fields.status());
-            updates.add(Updates.set("status", fields.status()));
-        }
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        projectCollection.update(Filters.eq("_id", id), Updates.combine(updates));
+        projectStore.update(id, entity -> {
+            if (fields.name() != null && !fields.name().isBlank()) entity.name = fields.name().trim();
+            entity.description = blankToNull(fields.description());
+            entity.goal = blankToNull(fields.goal());
+            entity.playbook = blankToNull(fields.playbook());
+            if (fields.reportSources() != null) {
+                entity.reportSources = resolveReportSources(project.userId, fields.reportSources());
+            }
+            if (fields.status() != null) {
+                if (!STATUS_ACTIVE.equals(fields.status()) && !STATUS_ARCHIVED.equals(fields.status())) {
+                    throw new BadRequestException("invalid status: " + fields.status());
+                }
+                entity.status = fields.status();
+            }
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     public void updateAutoSubjects(String projectId, String userId, boolean admin, String mode) {
@@ -153,14 +145,15 @@ public class ProjectService {
         if (!AUTO_SUBJECTS_OFF.equals(mode) && !AUTO_SUBJECTS_PROPOSE.equals(mode) && !AUTO_SUBJECTS_CREATE.equals(mode)) {
             throw new BadRequestException("invalid auto_subjects mode: " + mode);
         }
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.set("auto_subjects", mode),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        projectStore.update(projectId, entity -> {
+            entity.autoSubjects = mode;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     // report sources must be addable members (own or shared); names are snapshotted so display survives removal
-    private List<Document> resolveReportSources(String ownerUserId, List<ReportSourceRef> refs) {
-        var sources = new ArrayList<Document>();
+    private List<ProjectReportSource> resolveReportSources(String ownerUserId, List<ReportSourceRef> refs) {
+        var sources = new ArrayList<ProjectReportSource>();
         for (var ref : refs) {
             String name;
             if ("agent".equals(ref.type())) {
@@ -174,7 +167,11 @@ public class ProjectService {
             } else {
                 throw new BadRequestException("invalid report source type: " + ref.type());
             }
-            sources.add(refDocument(ref.type(), ref.id(), name));
+            var source = new ProjectReportSource();
+            source.type = ref.type();
+            source.id = ref.id();
+            source.name = name;
+            sources.add(source);
         }
         return sources;
     }
@@ -186,32 +183,31 @@ public class ProjectService {
     public void archive(String id, String userId, boolean admin) {
         var project = require(id);
         requireAccess(project, userId, admin);
-        projectCollection.update(Filters.eq("_id", id), Updates.combine(
-            Updates.set("status", STATUS_ARCHIVED),
-            Updates.set("archived_at", ZonedDateTime.now()),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        projectStore.update(id, entity -> {
+            entity.status = STATUS_ARCHIVED;
+            entity.archivedAt = ZonedDateTime.now();
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     public void activate(String id, String userId, boolean admin) {
         var project = require(id);
         requireAccess(project, userId, admin);
-        projectCollection.update(Filters.eq("_id", id), Updates.combine(
-            Updates.set("status", STATUS_ACTIVE),
-            Updates.unset("archived_at"),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        projectStore.update(id, entity -> {
+            entity.status = STATUS_ACTIVE;
+            entity.archivedAt = null;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     // ---- subjects: the state carriers of the project (state writes live in ProjectStateService) ----
 
     public List<ProjectSubject> subjects(String projectId) {
-        var query = new Query();
-        query.filter = Filters.eq("project_id", projectId);
-        query.sort = Sorts.ascending("created_at");
-        return subjectCollection.find(query);
+        return subjectStore.listByProject(projectId);
     }
 
     public ProjectSubject subject(String projectId, String subjectId) {
-        var entity = subjectCollection.get(subjectId).orElse(null);
+        var entity = subjectStore.get(subjectId).orElse(null);
         if (entity == null || !projectId.equals(entity.projectId)) {
             throw new BadRequestException("subject does not belong to the project, subjectId=" + subjectId);
         }
@@ -230,7 +226,7 @@ public class ProjectService {
         subject.externalLink = blankToNull(externalLink);
         subject.createdAt = ZonedDateTime.now();
         subject.updatedAt = subject.createdAt;
-        subjectCollection.insert(subject);
+        subjectStore.insert(subject);
         return subject;
     }
 
@@ -254,13 +250,9 @@ public class ProjectService {
         subject.proposedAt = SUBJECT_PROPOSED.equals(status) ? ZonedDateTime.now() : null;
         subject.createdAt = ZonedDateTime.now();
         subject.updatedAt = subject.createdAt;
-        try {
-            subjectCollection.insert(subject);
-        } catch (MongoWriteException e) {
-            // the partial unique index caught a concurrent run proposing the same entity: reuse it
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
+        if (!subjectStore.insertIfAbsent(subject)) {
             var existing = autoSubjectByNameKey(projectId, subject.nameKey);
-            if (existing == null) throw e;
+            if (existing == null) throw new IllegalStateException("failed to create auto subject, projectId=" + projectId);
             return existing;
         }
         markStatsDirty(projectId);
@@ -268,21 +260,19 @@ public class ProjectService {
     }
 
     private ProjectSubject autoSubjectByNameKey(String projectId, String nameKey) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("project_id", projectId), Filters.eq("name_key", nameKey), Filters.eq("source", SOURCE_AUTO));
-        return subjectCollection.find(query).stream().findFirst().orElse(null);
+        return subjectStore.findAutoByNameKey(projectId, nameKey).orElse(null);
     }
 
     public void updateSubject(String projectId, String userId, boolean admin, String subjectId, SubjectFields fields) {
         var project = require(projectId);
         requireAccess(project, userId, admin);
         subject(projectId, subjectId);
-        var updates = new ArrayList<Bson>();
-        if (fields.name() != null && !fields.name().isBlank()) updates.add(Updates.set("name", fields.name().trim()));
-        updates.add(Updates.set("description", blankToNull(fields.description())));
-        updates.add(Updates.set("external_link", blankToNull(fields.externalLink())));
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(updates));
+        subjectStore.update(subjectId, entity -> {
+            if (fields.name() != null && !fields.name().isBlank()) entity.name = fields.name().trim();
+            entity.description = blankToNull(fields.description());
+            entity.externalLink = blankToNull(fields.externalLink());
+            entity.updatedAt = ZonedDateTime.now();
+        });
         if (fields.status() != null) {
             if (!"started".equals(fields.status()) && !"paused".equals(fields.status())) throw new BadRequestException("invalid subject status: " + fields.status());
             stateService.recordSubjectStatus(projectId, subjectId, fields.status(), userId);
@@ -296,8 +286,8 @@ public class ProjectService {
         var project = require(projectId);
         requireAccess(project, userId, admin);
         subject(projectId, subjectId);
-        if (attributionCollection.count(Filters.eq("subject_id", subjectId)) > 0) throw new BadRequestException("subject is referenced by attributions and cannot be deleted; reset its analysis first or rename it instead");
-        subjectCollection.delete(Filters.eq("_id", subjectId));
+        if (attributionRepository.countBySubject(subjectId) > 0) throw new BadRequestException("subject is referenced by attributions and cannot be deleted; reset its analysis first or rename it instead");
+        subjectStore.delete(subjectId);
         stateService.deleteSubjectEvents(subjectId);
         markStatsDirty(projectId);
     }
@@ -344,23 +334,18 @@ public class ProjectService {
     }
 
     private void writeMembers(String projectId, List<ProjectMemberRef> members) {
-        var docs = members.stream().map(m -> refDocument(m.type, m.id, m.name)).toList();
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            docs.isEmpty() ? Updates.unset("members") : Updates.set("members", docs),
-            Updates.set("stats_dirty", Boolean.TRUE),
-            Updates.set("updated_at", ZonedDateTime.now())));
-    }
-
-    private Document refDocument(String type, String id, String name) {
-        var doc = new Document("type", type).append("id", id);
-        if (name != null) doc.append("name", name);
-        return doc;
+        projectStore.update(projectId, entity -> {
+            entity.members = members.isEmpty() ? null : members;
+            entity.statsDirty = Boolean.TRUE;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     private void markStatsDirty(String projectId) {
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.set("stats_dirty", Boolean.TRUE),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        projectStore.update(projectId, entity -> {
+            entity.statsDirty = Boolean.TRUE;
+            entity.updatedAt = ZonedDateTime.now();
+        });
     }
 
     /**
@@ -369,8 +354,9 @@ public class ProjectService {
      * outside the newest batch and unreachable for good otherwise.
      */
     public void rewindAttributionBackfill(String projectId, ZonedDateTime from) {
-        projectCollection.update(Filters.and(Filters.eq("_id", projectId), Filters.gt("attribution_backfilled_at", from)),
-            Updates.set("attribution_backfilled_at", from));
+        projectStore.updateIf(projectId,
+            project -> project.attributionBackfilledAt != null && project.attributionBackfilledAt.isAfter(from),
+            project -> project.attributionBackfilledAt = from);
     }
 
     // ---- subject attribution (analysis output): rows in a side table, raw records stay untouched ----
@@ -404,19 +390,6 @@ public class ProjectService {
         if (fileId == null || fileId.isBlank()) throw new BadRequestException("file_id is required");
         if (subjectId != null && !subjectId.isBlank()) subject(projectId, subjectId);
         attributionStore.moveFile(projectId, blankToNull(subjectId), fileId, ProjectAttributionStore.SOURCE_MANUAL);
-    }
-
-    private Bson listFilter(String userId, Boolean archivedOnly) {
-        var filters = new ArrayList<Bson>();
-        if (!ProjectAccess.canViewAll(userId, permissionService, userCollection)) {
-            filters.add(Filters.eq("user_id", userId));
-        }
-        if (Boolean.TRUE.equals(archivedOnly)) {
-            filters.add(Filters.eq("status", STATUS_ARCHIVED));
-        } else if (Boolean.FALSE.equals(archivedOnly)) {
-            filters.add(Filters.eq("status", STATUS_ACTIVE));
-        }
-        return filters.isEmpty() ? new Document() : Filters.and(filters);
     }
 
     // every write requires a subject: the project itself holds no state (it is a scaffold)

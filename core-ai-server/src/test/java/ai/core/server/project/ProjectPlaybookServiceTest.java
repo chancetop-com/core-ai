@@ -53,7 +53,7 @@ class ProjectPlaybookServiceTest {
     void setUp() {
         service = new ProjectPlaybookService();
         var projects = (MongoCollection<Project>) mock(MongoCollection.class);
-        service.projectCollection = projects;
+        service.projectStore = ProjectStoreTestSupport.store(projects);
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
         service.chatSessionCollection = sessions;
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);

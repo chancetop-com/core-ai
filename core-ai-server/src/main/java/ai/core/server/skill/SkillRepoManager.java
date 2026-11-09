@@ -4,8 +4,6 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.skill.SkillMetadata;
-import com.mongodb.client.model.Filters;
-import core.framework.mongo.MongoCollection;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -95,11 +93,11 @@ class SkillRepoManager {
         }
     }
 
-    private final MongoCollection<SkillDefinition> skillCollection;
+    private final SkillStore skillStore;
     private final SkillBlobStore blobStore;
 
-    SkillRepoManager(MongoCollection<SkillDefinition> skillCollection, SkillBlobStore blobStore) {
-        this.skillCollection = skillCollection;
+    SkillRepoManager(SkillStore skillStore, SkillBlobStore blobStore) {
+        this.skillStore = skillStore;
         this.blobStore = blobStore;
     }
 
@@ -117,7 +115,7 @@ class SkillRepoManager {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
         }
 
-        var existing = skillCollection.findOne(Filters.eq("qualified_name", qualifiedName));
+        var existing = skillStore.findByQualifiedName(qualifiedName);
         var entity = existing.orElseGet(SkillDefinition::new);
         var previous = entity.resources;
         if (entity.id == null) {
@@ -147,9 +145,9 @@ class SkillRepoManager {
         entity.repoConfig = repoConfig;
 
         if (existing.isPresent()) {
-            skillCollection.replace(entity);
+            skillStore.replace(entity);
         } else {
-            skillCollection.insert(entity);
+            skillStore.insert(entity);
         }
         blobStore.deleteReplaced(previous, entity.resources);
         return entity;

@@ -14,7 +14,6 @@ import ai.core.api.server.memory.ListExperimentRunsResponse;
 import ai.core.api.server.memory.MemoryLayerView;
 import ai.core.api.server.memory.RankingStrategyView;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.User;
 import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
@@ -25,6 +24,7 @@ import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.rbac.RoleRegistry;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
@@ -151,7 +151,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Inject
     WebContext webContext;
@@ -169,7 +169,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(user -> RoleRegistry.ROLE_ADMIN.equals(user.role)).orElse(Boolean.FALSE);
+        return userStore.get(userId).map(user -> RoleRegistry.ROLE_ADMIN.equals(user.role)).orElse(Boolean.FALSE);
     }
 
     @Override

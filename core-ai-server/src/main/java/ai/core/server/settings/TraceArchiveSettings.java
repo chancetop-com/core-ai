@@ -4,7 +4,6 @@ import ai.core.api.server.settings.SystemSettingsRequest;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 
 /**
@@ -40,10 +39,10 @@ public class TraceArchiveSettings {
     }
 
     @Inject
-    MongoCollection<SystemSettings> systemSettingsCollection;
+    SystemSettingsStore systemSettingsStore;
 
     /** Interval between archive runs, defaulted when never configured. */
     public int intervalMinutes() {
-        return resolveIntervalMinutes(systemSettingsCollection.get(SETTINGS_ID).orElse(null));
+        return resolveIntervalMinutes(systemSettingsStore.get(SETTINGS_ID).orElse(null));
     }
 }

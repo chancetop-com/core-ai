@@ -1,11 +1,9 @@
 package ai.core.server.tool;
 
 import ai.core.server.domain.OutboundCallerHeaderConfig;
-import ai.core.server.domain.User;
 import ai.core.tool.CallerHeaderProvider;
 import ai.core.tool.OutboundCallerContext.Caller;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +24,7 @@ public class CallerHeaderConfigResolver implements CallerHeaderProvider {
     private static final long CACHE_TTL_MILLIS = 5_000;
 
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
 
     private final Map<String, CachedConfig> cache = new ConcurrentHashMap<>();
 
@@ -51,7 +49,7 @@ public class CallerHeaderConfigResolver implements CallerHeaderProvider {
         if (cached != null && now - cached.resolvedAt < CACHE_TTL_MILLIS) {
             return cached.configs;
         }
-        var manager = userCollection.get(managerId).orElse(null);
+        var manager = userStore.get(managerId).orElse(null);
         var configs = manager == null ? null : manager.outboundCallerHeaders;
         if (manager == null) {
             LOGGER.warn("manager user not found for caller header config, managerId={}", managerId);

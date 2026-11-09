@@ -6,13 +6,11 @@ import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -62,7 +60,7 @@ public class ProjectAttributionStage {
     static final ZonedDateTime EPOCH = ZonedDateTime.of(2000, 1, 1, 0, 0, 0, 0, ZoneId.of("UTC"));
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
     @Inject
@@ -76,7 +74,7 @@ public class ProjectAttributionStage {
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
     ProjectService projectService;
     @Inject
@@ -86,7 +84,7 @@ public class ProjectAttributionStage {
 
     // returns how many targets were attributed (0 when there is no new material or nothing matched)
     public int run(String projectId) {
-        var project = projectCollection.get(projectId).orElse(null);
+        var project = projectStore.get(projectId).orElse(null);
         if (project == null) return 0;
         var cursor = project.attributionBackfilledAt != null ? project.attributionBackfilledAt : EPOCH;
         var material = new ProjectAttributionMaterial(projectId, MAX_DIGEST_CHARS);
@@ -207,18 +205,14 @@ public class ProjectAttributionStage {
 
     private void advanceCursor(String projectId, ZonedDateTime next) {
         if (next == null) return;
-        projectCollection.update(Filters.eq("_id", projectId), Updates.set("attribution_backfilled_at", next));
+        projectStore.update(projectId, project -> project.attributionBackfilledAt = next);
     }
 
     // a target that grew since its last offer (new messages) has new material for the subjects it is
     // attributed to: re-open its attribution rows so the subject analysis consumes the new part
     private void reopenGrownTargets(String projectId, ProjectAttributionMaterial material) {
         for (var target : material.grown()) {
-            attributionCollection.update(Filters.and(
-                    Filters.eq("target_type", target.targetType()),
-                    Filters.eq("target_id", target.targetId()),
-                    Filters.eq("project_id", projectId)),
-                Updates.unset("analyzed_at"));
+            attributionRepository.clearAnalyzed(projectId, target.targetType(), target.targetId());
         }
     }
 

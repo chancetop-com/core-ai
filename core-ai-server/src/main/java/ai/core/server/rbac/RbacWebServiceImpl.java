@@ -3,10 +3,9 @@ package ai.core.server.rbac;
 import ai.core.api.server.rbac.RoleConfigView;
 import ai.core.api.server.rbac.RbacWebService;
 import ai.core.server.apiuser.PermissionService;
-import ai.core.server.domain.User;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.ForbiddenException;
 
@@ -21,7 +20,7 @@ public class RbacWebServiceImpl implements RbacWebService {
     @Inject
     PermissionService permissionService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     @PermissionsRequired(PermissionCodes.RBAC_MANAGE)
@@ -44,7 +43,7 @@ public class RbacWebServiceImpl implements RbacWebService {
     }
 
     private void requireAdmin(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
                 .orElseThrow(() -> new ForbiddenException("admin required"));
         if (!RoleRegistry.ROLE_ADMIN.equals(user.role)) {
             throw new ForbiddenException("admin required");

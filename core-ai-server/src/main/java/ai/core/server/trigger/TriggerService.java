@@ -6,9 +6,7 @@ import ai.core.api.server.trigger.TriggerView;
 import ai.core.api.server.trigger.UpdateTriggerRequest;
 import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.trigger.domain.TriggerType;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,7 +23,7 @@ public class TriggerService {
     private static final Logger LOGGER = LoggerFactory.getLogger(TriggerService.class);
 
     @Inject
-    MongoCollection<Trigger> triggerCollection;
+    TriggerStore store;
 
     public String publicUrl = "http://localhost:8080";
 
@@ -48,16 +46,13 @@ public class TriggerService {
         }
         entity.config = config;
 
-        triggerCollection.insert(entity);
+        store.insert(entity);
         LOGGER.info("trigger created, id={}, name={}, type={}", entity.id, entity.name, entity.type);
         return toView(entity);
     }
 
     public ListTriggersResponse list(String type) {
-        var filter = type != null && !type.isBlank()
-                ? Filters.eq("type", type.toUpperCase(Locale.ROOT))
-                : Filters.empty();
-        var entities = triggerCollection.find(filter);
+        var entities = store.list(type != null && !type.isBlank() ? type.toUpperCase(Locale.ROOT) : null);
         var response = new ListTriggersResponse();
         response.triggers = entities.stream().map(this::toView).toList();
         response.total = (long) response.triggers.size();
@@ -65,7 +60,7 @@ public class TriggerService {
     }
 
     public TriggerView get(String id) {
-        var entity = triggerCollection.get(id)
+        var entity = store.get(id)
                 .orElseThrow(() -> new RuntimeException("trigger not found, id=" + id));
         return toView(entity);
     }
@@ -93,12 +88,12 @@ public class TriggerService {
     }
 
     public Trigger getEntity(String id) {
-        return triggerCollection.get(id)
+        return store.get(id)
                 .orElseThrow(() -> new RuntimeException("trigger not found, id=" + id));
     }
 
     public TriggerView update(String id, UpdateTriggerRequest request, String userId) {
-        var entity = triggerCollection.get(id)
+        var entity = store.get(id)
                 .orElseThrow(() -> new RuntimeException("trigger not found, id=" + id));
 
         if (request.name != null) entity.name = request.name;
@@ -123,12 +118,12 @@ public class TriggerService {
         }
         entity.updatedAt = ZonedDateTime.now();
 
-        triggerCollection.replace(entity);
+        store.replace(entity);
         return toView(entity);
     }
 
     public void delete(String id) {
-        triggerCollection.delete(id);
+        store.delete(id);
         LOGGER.info("trigger deleted, id={}", id);
     }
 
@@ -136,7 +131,7 @@ public class TriggerService {
         var entity = getEntity(id);
         entity.enabled = Boolean.TRUE;
         entity.updatedAt = ZonedDateTime.now();
-        triggerCollection.replace(entity);
+        store.replace(entity);
         return toView(entity);
     }
 
@@ -144,7 +139,7 @@ public class TriggerService {
         var entity = getEntity(id);
         entity.enabled = Boolean.FALSE;
         entity.updatedAt = ZonedDateTime.now();
-        triggerCollection.replace(entity);
+        store.replace(entity);
         return toView(entity);
     }
 
@@ -157,7 +152,7 @@ public class TriggerService {
         config.put("secret", "whk_" + UUID.randomUUID().toString().replace("-", ""));
         entity.config = config;
         entity.updatedAt = ZonedDateTime.now();
-        triggerCollection.replace(entity);
+        store.replace(entity);
         return toView(entity);
     }
 

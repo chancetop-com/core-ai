@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -36,13 +37,13 @@ class ApiUserServiceTest {
         MongoCollection<User> collection = mock(MongoCollection.class);
         userCollection = collection;
         service = new ApiUserService();
-        service.userCollection = userCollection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
     }
 
     @Test
     void repeatedCreateReturnsExistingUserWithoutInsert() {
         var existing = user("api:1", "owner-1", "merchant-1");
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of(existing));
+        when(userCollection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
 
         var result = service.createApiUser("owner-1", "merchant-1", "Merchant One", null);
 
@@ -56,7 +57,7 @@ class ApiUserServiceTest {
         // both callers see no existing user, then one insert hits the unique index conflict,
         // the loser re-fetches and returns the winner
         var findCalls = new AtomicInteger();
-        when(userCollection.find(any(Bson.class))).thenAnswer(inv -> findCalls.getAndIncrement() == 0 ? List.of() : List.of(winner));
+        when(userCollection.findOne(any(Bson.class))).thenAnswer(inv -> findCalls.getAndIncrement() == 0 ? Optional.empty() : Optional.of(winner));
         doThrow(new RuntimeException("duplicate key")).when(userCollection).insert(any(User.class));
 
         var result = service.createApiUser("owner-1", "merchant-1", "Merchant One", null);
@@ -66,7 +67,7 @@ class ApiUserServiceTest {
 
     @Test
     void concurrentCreateWithoutWinnerPropagatesInsertError() {
-        when(userCollection.find(any(Bson.class))).thenAnswer(inv -> List.of());
+        when(userCollection.findOne(any(Bson.class))).thenAnswer(inv -> Optional.empty());
 
         doThrow(new RuntimeException("duplicate key")).when(userCollection).insert(any(User.class));
 
@@ -77,7 +78,7 @@ class ApiUserServiceTest {
     @Test
     void externalIdIsTrimmedBeforeLookup() {
         var existing = user("api:3", "owner-1", "merchant-1");
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of(existing));
+        when(userCollection.findOne(any(Bson.class))).thenReturn(Optional.of(existing));
 
         var result = service.createApiUser("owner-1", "  merchant-1  ", "Merchant One", null);
 
@@ -93,7 +94,7 @@ class ApiUserServiceTest {
 
     @Test
     void metadataStoredOnCreate() {
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(userCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
 
         var result = service.createApiUser("owner-1", "merchant-1", "Merchant One",
                 Map.of("store_id", " 888 ", "region", "us-east"));
@@ -104,7 +105,7 @@ class ApiUserServiceTest {
 
     @Test
     void emptyMetadataNotStored() {
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(userCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
 
         var result = service.createApiUser("owner-1", "merchant-1", "Merchant One", Map.of());
 
@@ -118,8 +119,8 @@ class ApiUserServiceTest {
         admin.role = "admin";
         var manager = user("api:manager", null, null);
         manager.userType = "api";
-        when(userCollection.get("admin-1")).thenReturn(java.util.Optional.of(admin));
-        when(userCollection.get("api:manager")).thenReturn(java.util.Optional.of(manager));
+        when(userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        when(userCollection.get("api:manager")).thenReturn(Optional.of(manager));
 
         var request = new UpdateApiUserConfigRequest();
         var header = new OutboundCallerHeaderRequest();
@@ -140,8 +141,8 @@ class ApiUserServiceTest {
         admin.role = "admin";
         var manager = user("api:manager", null, null);
         manager.userType = "api";
-        when(userCollection.get("admin-1")).thenReturn(java.util.Optional.of(admin));
-        when(userCollection.get("api:manager")).thenReturn(java.util.Optional.of(manager));
+        when(userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        when(userCollection.get("api:manager")).thenReturn(Optional.of(manager));
 
         var request = new UpdateApiUserConfigRequest();
         request.permissions = List.of();
@@ -154,7 +155,7 @@ class ApiUserServiceTest {
     void managerCannotConfigureCallerHeadersOnSubUser() {
         var subUser = user("api:sub", "api:manager", "merchant-1");
         subUser.userType = "api";
-        when(userCollection.get("api:sub")).thenReturn(java.util.Optional.of(subUser));
+        when(userCollection.get("api:sub")).thenReturn(Optional.of(subUser));
 
         var request = new UpdateApiUserConfigRequest();
         var header = new OutboundCallerHeaderRequest();

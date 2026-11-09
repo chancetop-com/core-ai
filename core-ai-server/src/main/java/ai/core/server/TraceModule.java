@@ -15,7 +15,10 @@ import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.service.IngestService;
 import ai.core.server.trace.service.ModelPricingService;
 import ai.core.server.trace.service.OTLPIngestService;
+import ai.core.server.trace.service.MongoPromptTemplateStore;
+import ai.core.server.trace.service.PgPromptTemplateStore;
 import ai.core.server.trace.service.PromptService;
+import ai.core.server.trace.service.PromptTemplateStore;
 import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
@@ -64,6 +67,11 @@ public class TraceModule extends Module {
         bind(TraceService.class);
         bind(TraceVisibilityResolver.class);
         bind(TraceAccessControl.class);
+        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+            bind(PromptTemplateStore.class, bind(PgPromptTemplateStore.class));
+        } else {
+            bind(PromptTemplateStore.class, bind(MongoPromptTemplateStore.class));
+        }
         bind(PromptService.class);
         bind(ModelPricingService.class);
         var otlpIngestService = bind(OTLPIngestService.class);

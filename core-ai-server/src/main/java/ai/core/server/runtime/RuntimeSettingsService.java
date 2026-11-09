@@ -3,9 +3,9 @@ package ai.core.server.runtime;
 import ai.core.api.server.runtime.RuntimeLimitsRequest;
 import ai.core.api.server.runtime.RuntimeLimitsView;
 import ai.core.server.domain.SystemSettings;
-import ai.core.server.domain.User;
+import ai.core.server.settings.SystemSettingsStore;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 
@@ -22,9 +22,9 @@ public class RuntimeSettingsService {
     static final String SETTINGS_ID = "default";
 
     @Inject
-    MongoCollection<SystemSettings> systemSettingsCollection;
+    SystemSettingsStore systemSettingsStore;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     public RuntimeLimitsView get(String userId) {
         requireAdmin(userId);
@@ -52,9 +52,9 @@ public class RuntimeSettingsService {
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
         if (created) {
-            systemSettingsCollection.insert(entity);
+            systemSettingsStore.insert(entity);
         } else {
-            systemSettingsCollection.replace(entity);
+            systemSettingsStore.replace(entity);
         }
         return get(userId);
     }
@@ -134,7 +134,7 @@ public class RuntimeSettingsService {
     }
 
     SystemSettings entity() {
-        return systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        return systemSettingsStore.get(SETTINGS_ID).orElse(null);
     }
 
     /** Shared by the read-side services so every runtime endpoint keeps the same admin gate. */
@@ -144,7 +144,7 @@ public class RuntimeSettingsService {
 
     private void requireAdmin(String userId) {
         if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
+        var user = userStore.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
         if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
     }
 }

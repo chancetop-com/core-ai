@@ -1,19 +1,15 @@
 package ai.core.server.project;
 
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectStatsData;
 import ai.core.server.domain.ProjectStatsEntity;
 import ai.core.server.domain.ProjectStatsItem;
-import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectStats;
 import ai.core.server.trace.domain.Trace;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.BsonField;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
@@ -35,21 +31,21 @@ import java.util.List;
  */
 public class ProjectStatsQueryService {
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectStatsEntity> statsCollection;
+    ProjectStatsStore statsStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
     MongoCollection<Trace> traceCollection;
 
     // reads the cached snapshot; subjectId != null returns that subject's breakdown from the cache
     public ProjectQueryService.ProjectStats stats(String projectId, String subjectId) {
-        var project = statsCollection.get(projectId).orElse(null);
+        var project = statsStore.get(projectId).orElse(null);
         var snapshot = project != null ? project.stats : null;
         if (snapshot == null) {
             return new ProjectQueryService.ProjectStats(List.of(), List.of(), List.of());
@@ -72,7 +68,7 @@ public class ProjectStatsQueryService {
     }
 
     public ZonedDateTime computedAt(String projectId) {
-        var project = statsCollection.get(projectId).orElse(null);
+        var project = statsStore.get(projectId).orElse(null);
         return project != null && project.stats != null ? project.stats.computedAt : null;
     }
 
@@ -85,7 +81,7 @@ public class ProjectStatsQueryService {
 
     // full recomputation of the project snapshot (members' traces + per-subject breakdown)
     public void refresh(String projectId) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
+        var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return;
         var data = new ProjectStatsData();
         var byAgent = aggregateGroup(statsFilter(scope, null), "$agent_id", "$agent_name");
@@ -115,11 +111,12 @@ public class ProjectStatsQueryService {
         var entity = new ProjectStatsEntity();
         entity.id = projectId;
         entity.stats = data;
-        statsCollection.replace(entity);   // upsert by _id (project id)
-        projectCollection.update(Filters.eq("_id", projectId), Updates.combine(
-            Updates.set("stats_dirty", Boolean.FALSE),
-            Updates.set("last_stats_at", now),
-            Updates.set("updated_at", now)));
+        statsStore.replace(entity);   // upsert by project id
+        projectStore.update(projectId, project -> {
+            project.statsDirty = Boolean.FALSE;
+            project.lastStatsAt = now;
+            project.updatedAt = now;
+        });
     }
 
     private List<ProjectQueryService.StatRow> aggregateGroup(Bson match, String groupField, String nameField) {
@@ -176,15 +173,11 @@ public class ProjectStatsQueryService {
     }
 
     private List<String> subjectIds(String projectId) {
-        var query = new Query();
-        query.filter = Filters.eq("project_id", projectId);
-        return subjectCollection.find(query).stream().map(s -> s.id).toList();
+        return subjectStore.listByProject(projectId).stream().map(s -> s.id).toList();
     }
 
     private List<String> attributionTargets(String subjectId, String targetType) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("subject_id", subjectId), Filters.eq("target_type", targetType));
-        return attributionCollection.find(query).stream().map(a -> a.targetId).toList();
+        return attributionRepository.listBySubjectAndType(subjectId, targetType).stream().map(a -> a.targetId).toList();
     }
 
     private List<String> attributionRunTraceIds(String subjectId) {

@@ -11,12 +11,8 @@ import ai.core.server.domain.TriggerType;
 import ai.core.server.file.FileService;
 import ai.core.server.run.AgentRunner;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,17 +50,17 @@ public class ProjectReportStage {
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectEvent> eventCollection;
+    ProjectEventStore eventStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
-    MongoCollection<ProjectReportDraft> draftCollection;
+    ProjectReportDraftStore draftStore;
     @Inject
     AgentRunner agentRunner;
     @Inject
@@ -75,13 +71,13 @@ public class ProjectReportStage {
     // submits the renderer agent run and marks the subject in flight; throws on user-actionable
     // failures (already rendering / no events / definition missing)
     public void submit(String projectId, String subjectId) {
-        var project = projectCollection.get(projectId).orElse(null);
+        var project = projectStore.get(projectId).orElse(null);
         if (project == null || ProjectService.STATUS_ARCHIVED.equals(project.status)) return;
-        var subject = subjectCollection.get(subjectId).orElse(null);
+        var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || !projectId.equals(subject.projectId)) return;
         if (subject.reportRunId != null) {
             complete(subjectId);
-            var current = subjectCollection.get(subjectId).orElse(null);
+            var current = subjectStore.get(subjectId).orElse(null);
             if (current != null && current.reportRunId != null) {
                 throw new IllegalStateException("a report render is already running for this subject");
             }
@@ -100,28 +96,29 @@ public class ProjectReportStage {
         draft.sections = new ArrayList<>();
         draft.createdAt = ZonedDateTime.now();
         draft.updatedAt = draft.createdAt;
-        draftCollection.insert(draft);
+        draftStore.insert(draft);
         var input = buildInput(project, subject, events);
         String runId;
         try {
             runId = agentRunner.runAs(definition, input, TriggerType.MANUAL, project.userId,
                 Map.of("project_id", projectId, "subject_id", subjectId, "draft_id", draft.id));
         } catch (RuntimeException e) {
-            draftCollection.delete(Filters.eq("_id", draft.id));
+            draftStore.delete(draft.id);
             throw e;
         }
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.set("report_run_id", runId),
-            Updates.set("report_draft_id", draft.id),
-            Updates.set("report_error", null),
-            Updates.set("updated_at", ZonedDateTime.now())));
+        subjectStore.update(subjectId, entity -> {
+            entity.reportRunId = runId;
+            entity.reportDraftId = draft.id;
+            entity.reportError = null;
+            entity.updatedAt = ZonedDateTime.now();
+        });
         LOGGER.info("report render submitted, subjectId={}, runId={}, draftId={}", subjectId, runId, draft.id);
     }
 
     // called by the completion job (and on submit retry): assembles the draft when the agent run
     // finished, or records the failure; no-op while the run is still in flight
     public void complete(String subjectId) {
-        var subject = subjectCollection.get(subjectId).orElse(null);
+        var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || subject.reportRunId == null) return;
         var run = agentRunCollection.get(subject.reportRunId).orElse(null);
         if (run == null || run.status == null) {
@@ -138,7 +135,7 @@ public class ProjectReportStage {
     }
 
     private void assemble(ProjectSubject subject) {
-        var draft = subject.reportDraftId != null ? draftCollection.get(subject.reportDraftId).orElse(null) : null;
+        var draft = subject.reportDraftId != null ? draftStore.get(subject.reportDraftId).orElse(null) : null;
         var html = draft != null && draft.sections != null && !draft.sections.isEmpty()
             ? String.join("", draft.sections) : null;
         if (html == null || html.isBlank()) {
@@ -147,42 +144,38 @@ public class ProjectReportStage {
         }
         var eventsThrough = latestEventAt(subject);
         var record = saveReport(subject, html);
-        subjectCollection.update(Filters.eq("_id", subject.id), Updates.combine(
-            Updates.set("report_file_id", record.fileId),
-            Updates.set("report_share_token", record.shareToken),
-            Updates.set("report_generated_at", ZonedDateTime.now()),
-            Updates.set("report_events_at", eventsThrough),
-            Updates.set("report_error", null),
-            Updates.set("updated_at", ZonedDateTime.now()),
-            Updates.unset("report_run_id"),
-            Updates.unset("report_draft_id")));
-        draftCollection.delete(Filters.eq("_id", draft.id));
+        subjectStore.update(subject.id, entity -> {
+            entity.reportFileId = record.fileId;
+            entity.reportShareToken = record.shareToken;
+            entity.reportGeneratedAt = ZonedDateTime.now();
+            entity.reportEventsAt = eventsThrough;
+            entity.reportError = null;
+            entity.updatedAt = ZonedDateTime.now();
+            entity.reportRunId = null;
+            entity.reportDraftId = null;
+        });
+        draftStore.delete(draft.id);
         LOGGER.info("report assembled, subjectId={}", subject.id);
     }
 
     private void finish(ProjectSubject subject, String error, String draftId) {
-        var updates = new ArrayList<org.bson.conversions.Bson>();
-        updates.add(Updates.set("report_error", error));
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        updates.add(Updates.unset("report_run_id"));
-        updates.add(Updates.unset("report_draft_id"));
-        subjectCollection.update(Filters.eq("_id", subject.id), Updates.combine(updates));
+        subjectStore.update(subject.id, entity -> {
+            entity.reportError = error;
+            entity.updatedAt = ZonedDateTime.now();
+            entity.reportRunId = null;
+            entity.reportDraftId = null;
+        });
         var draft = draftId != null ? draftId : subject.reportDraftId;
-        if (draft != null) draftCollection.delete(Filters.eq("_id", draft));
+        if (draft != null) draftStore.delete(draft);
         LOGGER.info("report render finished with error, subjectId={}, error={}", subject.id, error);
     }
 
     private ZonedDateTime latestEventAt(ProjectSubject subject) {
-        var query = new Query();
-        query.filter = Filters.eq("subject_id", subject.id);
-        query.sort = Sorts.descending("at");
-        query.limit = 1;
-        var events = eventCollection.find(query);
-        return events.isEmpty() ? ZonedDateTime.now() : events.getFirst().at;
+        return eventStore.latestAt(subject.id).orElseGet(ZonedDateTime::now);
     }
 
     private ReportFile saveReport(ProjectSubject subject, String html) {
-        var project = projectCollection.get(subject.projectId).orElse(null);
+        var project = projectStore.get(subject.projectId).orElse(null);
         var userId = project != null ? project.userId : subject.userId;
         Path tempFile;
         try {
@@ -198,14 +191,9 @@ public class ProjectReportStage {
     }
 
     private List<ProjectSubjectEvent> loadEvents(String projectId, String subjectId) {
-        var filter = Filters.and(Filters.eq("project_id", projectId), Filters.eq("subject_id", subjectId));
-        long total = eventCollection.count(filter);
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.ascending("at");
-        if (total > MAX_EVENTS) query.skip = (int) (total - MAX_EVENTS);
-        query.limit = MAX_EVENTS;
-        return eventCollection.find(query);
+        long total = eventStore.countByProjectAndSubject(projectId, subjectId);
+        int offset = total > MAX_EVENTS ? (int) (total - MAX_EVENTS) : 0;
+        return eventStore.listByProjectAndSubject(projectId, subjectId, offset, MAX_EVENTS);
     }
 
     private String buildInput(Project project, ProjectSubject subject, List<ProjectSubjectEvent> events) {

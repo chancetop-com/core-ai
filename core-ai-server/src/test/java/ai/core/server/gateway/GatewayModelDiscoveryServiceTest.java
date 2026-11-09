@@ -109,16 +109,19 @@ class GatewayModelDiscoveryServiceTest {
     @SuppressWarnings("unchecked")
     private CapturingGatewayModelDiscoveryService service(GatewayProviderConfig provider, String responseBody) {
         var service = new CapturingGatewayModelDiscoveryService(responseBody);
-        service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        service.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        service.userCollection = (MongoCollection<User>) mock(MongoCollection.class);
+        var providers = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        var models = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
+        service.providerStore = MongoGatewayProviderStore.of(providers);
+        service.modelStore = MongoGatewayModelStore.of(models);
+        var users = (MongoCollection<User>) mock(MongoCollection.class);
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.secretProtector = new GatewaySecretProtector("test-secret");
-        when(service.gatewayProviderCollection.get(provider.id)).thenReturn(Optional.of(provider));
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
+        when(providers.get(provider.id)).thenReturn(Optional.of(provider));
+        when(models.find(any(Query.class))).thenReturn(List.of());
         var admin = new User();
         admin.id = "admin-1";
         admin.role = "admin";
-        when(service.userCollection.get("admin-1")).thenReturn(Optional.of(admin));
+        when(users.get("admin-1")).thenReturn(Optional.of(admin));
         return service;
     }
 

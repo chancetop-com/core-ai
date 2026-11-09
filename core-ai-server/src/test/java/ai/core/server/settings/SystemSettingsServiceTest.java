@@ -27,14 +27,14 @@ import static org.mockito.Mockito.when;
 
 class SystemSettingsServiceTest {
     private SystemSettingsService service;
-    private MongoCollection<SystemSettings> settings;
+    private SystemSettingsStore settings;
     private MongoCollection<GatewayModelConfig> models;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
         service = new SystemSettingsService();
-        settings = mock(MongoCollection.class);
+        settings = mock(SystemSettingsStore.class);
         var users = (MongoCollection<User>) mock(MongoCollection.class);
         models = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
 
@@ -42,9 +42,9 @@ class SystemSettingsServiceTest {
         admin.role = "admin";
         when(users.get("admin")).thenReturn(Optional.of(admin));
 
-        service.systemSettingsCollection = settings;
-        service.userCollection = users;
-        service.gatewayModelCollection = models;
+        service.systemSettingsStore = settings;
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
+        service.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(models);
         service.secretProtector = mock(GatewaySecretProtector.class);
     }
 

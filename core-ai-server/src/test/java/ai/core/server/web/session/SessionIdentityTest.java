@@ -77,7 +77,7 @@ class SessionIdentityTest {
         when(webContext.request()).thenReturn(request);
         service.webContext = webContext;
         service.permissionService = permissionService();
-        service.userCollection = userCollection();
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection());
         return service;
     }
 

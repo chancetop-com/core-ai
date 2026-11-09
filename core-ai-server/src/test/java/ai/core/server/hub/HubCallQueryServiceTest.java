@@ -50,7 +50,7 @@ class HubCallQueryServiceTest {
         callCollection = (MongoCollection<HubCall>) mock(MongoCollection.class);
         userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         service.callCollection = callCollection;
-        service.userCollection = userCollection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
     }
 
     @Test

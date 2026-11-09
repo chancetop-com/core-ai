@@ -2,7 +2,6 @@ package ai.core.server.project;
 
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import core.framework.scheduler.JobContext;
@@ -46,10 +45,10 @@ class ProjectAttributionJobTest {
     void setUp() {
         job = new ProjectAttributionJob();
         projects = (MongoCollection<Project>) mock(MongoCollection.class);
-        job.projectCollection = projects;
+        job.projectStore = ProjectStoreTestSupport.store(projects);
         subjects = (MongoCollection<ProjectSubject>) mock(MongoCollection.class);
-        job.subjectCollection = subjects;
-        job.attributionCollection = (MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class);
+        job.subjectStore = MongoProjectSubjectStore.of(subjects);
+        
         analysisService = mock(ProjectAnalysisService.class);
         job.analysisService = analysisService;
         when(analysisService.claimAnalysis(anyString())).thenReturn(Boolean.TRUE);

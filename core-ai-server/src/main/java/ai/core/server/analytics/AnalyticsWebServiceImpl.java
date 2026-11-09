@@ -10,12 +10,11 @@ import ai.core.api.server.analytics.AnalyticsTrendPointView;
 import ai.core.api.server.analytics.AnalyticsWebService;
 import ai.core.api.server.analytics.ListAnalyticsDimensionTrendResponse;
 import ai.core.api.server.analytics.ListAnalyticsTrendResponse;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.ForbiddenException;
 
@@ -43,7 +42,7 @@ public class AnalyticsWebServiceImpl implements AnalyticsWebService {
     @Inject
     AdminAnalyticsService analyticsService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     WebContext webContext;
 
@@ -180,7 +179,7 @@ public class AnalyticsWebServiceImpl implements AnalyticsWebService {
     private void requireAdmin() {
         String userId = AuthContext.userId(webContext);
         if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
+        var user = userStore.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
         if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
     }
 }

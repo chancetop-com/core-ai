@@ -92,7 +92,7 @@ class TraceVisibilityResolverTest {
 
     private TraceVisibilityResolver resolver() {
         var resolver = new TraceVisibilityResolver();
-        resolver.userCollection = userCollection;
+        resolver.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         resolver.roleRegistry = roleRegistry;
         return resolver;
     }

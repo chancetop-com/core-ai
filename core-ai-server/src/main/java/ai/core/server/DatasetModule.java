@@ -87,7 +87,7 @@ public class DatasetModule extends Module {
 
     private void bindPostgres(String url, String user, String password, boolean sqlExecutorEnabled,
                               String sqlExecutorUser, String sqlExecutorPassword) {
-        configureDb(url, user, password);
+        configureDatasetViews();
         bind(PgDdl.class, new PgDdl(url, user, password));
         bind(DatasetViewManager.class);
         bind(DatasetMetaStore.class, bind(PgDatasetMetaStore.class));
@@ -107,7 +107,7 @@ public class DatasetModule extends Module {
 
     // runs while the application still reads and writes Mongo; the copy is idempotent and can be re-run
     private void bindMigration(String url, String user, String password) {
-        configureDb(url, user, password);
+        configureDatasetViews();
         bind(PgDdl.class, new PgDdl(url, user, password));
         bind(DatasetViewManager.class);
         bind(PgDatasetMetaStore.class);
@@ -116,13 +116,7 @@ public class DatasetModule extends Module {
         onStartup(migration::migrate);
     }
 
-    private void configureDb(String url, String user, String password) {
-        if (url == null || user == null || password == null) {
-            throw new Error("sys.db.url/user/password are required when postgresql storage or migration is enabled");
-        }
-        db().url(url);
-        db().user(user);
-        db().password(password);
+    private void configureDatasetViews() {
         db().view(PgDatasetRecordRow.class);
         db().view(PgIdRow.class);
         db().view(PgJsonRow.class);

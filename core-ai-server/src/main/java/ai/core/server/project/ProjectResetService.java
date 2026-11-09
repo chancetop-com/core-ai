@@ -1,16 +1,6 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectReportDraft;
-import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
-import ai.core.server.domain.ProjectSubjectEvent;
-import ai.core.server.domain.ProjectTargetScan;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 
@@ -28,61 +18,57 @@ import java.time.ZonedDateTime;
  */
 public class ProjectResetService {
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<ProjectSubjectEvent> eventCollection;
+    ProjectEventStore eventStore;
     @Inject
-    MongoCollection<ProjectReportDraft> draftCollection;
+    ProjectReportDraftStore draftStore;
     @Inject
-    MongoCollection<ProjectTargetScan> scanCollection;
+    ProjectTargetScanRepository scanRepository;
     @Inject
     ProjectStatsQueryService statsQueryService;
 
     public void reset(String projectId, String subjectId) {
-        projectCollection.get(projectId)
+        projectStore.get(projectId)
             .orElseThrow(() -> new NotFoundException("project not found, id=" + projectId));
-        var subject = subjectCollection.get(subjectId).orElse(null);
+        var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || !projectId.equals(subject.projectId)) {
             throw new BadRequestException("subject does not belong to the project, subjectId=" + subjectId);
         }
         dropScans(projectId, subjectId);
-        eventCollection.delete(Filters.eq("subject_id", subjectId));
-        attributionCollection.delete(Filters.eq("subject_id", subjectId));
-        draftCollection.delete(Filters.eq("subject_id", subjectId));
-        subjectCollection.update(Filters.eq("_id", subjectId), Updates.combine(
-            Updates.set("status", null),
-            Updates.set("updated_at", ZonedDateTime.now()),
-            Updates.unset("analyzed_at"),
-            Updates.unset("profile"),
-            Updates.unset("phase"),
-            Updates.unset("summary"),
-            Updates.unset("status_updated_at"),
-            Updates.unset("status_updated_by"),
-            Updates.unset("action_items"),
-            Updates.unset("report_file_id"),
-            Updates.unset("report_share_token"),
-            Updates.unset("report_generated_at"),
-            Updates.unset("report_error"),
-            Updates.unset("report_events_at"),
-            Updates.unset("report_run_id"),
-            Updates.unset("report_draft_id")));
+        eventStore.deleteBySubject(subjectId);
+        attributionRepository.deleteBySubject(subjectId);
+        draftStore.deleteBySubject(subjectId);
+        subjectStore.update(subjectId, entity -> {
+            entity.status = null;
+            entity.updatedAt = ZonedDateTime.now();
+            entity.analyzedAt = null;
+            entity.profile = null;
+            entity.phase = null;
+            entity.summary = null;
+            entity.statusUpdatedAt = null;
+            entity.statusUpdatedBy = null;
+            entity.actionItems = null;
+            entity.reportFileId = null;
+            entity.reportShareToken = null;
+            entity.reportGeneratedAt = null;
+            entity.reportError = null;
+            entity.reportEventsAt = null;
+            entity.reportRunId = null;
+            entity.reportDraftId = null;
+        });
         statsQueryService.refresh(projectId);
     }
 
     // the subject's attributed session/run/workflow-run targets lose their "offered" marker
     private void dropScans(String projectId, String subjectId) {
-        var query = new Query();
-        query.filter = Filters.eq("subject_id", subjectId);
-        for (var row : attributionCollection.find(query)) {
+        for (var row : attributionRepository.listBySubject(subjectId)) {
             if (ProjectAttributionStore.TARGET_FILE.equals(row.targetType)) continue;
-            scanCollection.delete(Filters.and(
-                Filters.eq("project_id", projectId),
-                Filters.eq("target_type", row.targetType),
-                Filters.eq("target_id", row.targetId)));
+            scanRepository.deleteByProjectAndTarget(projectId, row.targetType, row.targetId);
         }
     }
 }

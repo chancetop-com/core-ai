@@ -1,12 +1,11 @@
 package ai.core.server.skill;
 
 import ai.core.api.server.skill.SkillDefinitionView;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Controller;
 import core.framework.web.Request;
 import core.framework.web.Response;
@@ -28,7 +27,7 @@ public class SkillUploadController implements Controller {
     SkillService skillService;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Inject
     WebContext webContext;
@@ -37,7 +36,7 @@ public class SkillUploadController implements Controller {
     @SuppressFBWarnings("EXS_EXCEPTION_SOFTENING_HAS_CHECKED")
     public Response execute(Request request) {
         var userId = AuthContext.userId(webContext);
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
             .orElseThrow(() -> new BadRequestException("user not found"));
         var namespace = user.name != null ? user.name : userId.split("@")[0];
 

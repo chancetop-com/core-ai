@@ -43,7 +43,7 @@ class HubCallWebServiceImplTest {
         userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         service.queryService = queryService;
         service.webContext = webContext;
-        service.userCollection = userCollection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         when(webContext.get("auth.userId")).thenReturn("u1");
         when(userCollection.get(anyString())).thenReturn(Optional.empty());
         when(queryService.list(any(HubCallListFilter.class))).thenReturn(new ListHubCallsResponse());

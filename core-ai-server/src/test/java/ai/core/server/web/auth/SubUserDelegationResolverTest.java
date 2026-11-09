@@ -118,7 +118,7 @@ class SubUserDelegationResolverTest {
 
     private SubUserDelegationResolver resolver(MongoCollection<User> users) {
         var resolver = new SubUserDelegationResolver();
-        resolver.userCollection = users;
+        resolver.userStore = ai.core.server.user.MongoUserStore.of(users);
         return resolver;
     }
 

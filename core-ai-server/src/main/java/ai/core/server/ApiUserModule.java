@@ -3,7 +3,10 @@ package ai.core.server;
 import ai.core.api.server.apiuser.AdminApiUserWebService;
 import ai.core.api.server.apiuser.ApiUserWebService;
 import ai.core.server.apiuser.AdminApiUserWebServiceImpl;
+import ai.core.server.apiuser.ApiKeyStore;
 import ai.core.server.apiuser.ApiUserKeyService;
+import ai.core.server.apiuser.MongoApiKeyStore;
+import ai.core.server.apiuser.PgApiKeyStore;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.apiuser.ApiUserService;
 import ai.core.server.apiuser.ApiUserUsageService;
@@ -18,6 +21,7 @@ import core.framework.module.Module;
 public class ApiUserModule extends Module {
     @Override
     protected void initialize() {
+        bindApiKeyStore();
         bind(ApiUserService.class);
         var keyService = bind(ApiUserKeyService.class);
         keyService.defaultTtlSeconds = property("sys.api-user.key.default.ttl").map(Integer::parseInt).orElse(3600);
@@ -32,5 +36,13 @@ public class ApiUserModule extends Module {
 
         api().service(ApiUserWebService.class, bind(ApiUserWebServiceImpl.class));
         api().service(AdminApiUserWebService.class, bind(AdminApiUserWebServiceImpl.class));
+    }
+
+    private void bindApiKeyStore() {
+        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+            bind(ApiKeyStore.class, bind(PgApiKeyStore.class));
+        } else {
+            bind(ApiKeyStore.class, bind(MongoApiKeyStore.class));
+        }
     }
 }

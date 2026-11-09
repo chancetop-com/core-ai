@@ -3,12 +3,11 @@ package ai.core.server.hub;
 import ai.core.api.server.hub.HubCallWebService;
 import ai.core.api.server.hub.ListHubCallsRequest;
 import ai.core.api.server.hub.ListHubCallsResponse;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.UnauthorizedException;
@@ -31,7 +30,7 @@ public class HubCallWebServiceImpl implements HubCallWebService {
     @Inject
     WebContext webContext;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     @PermissionsRequired(PermissionCodes.TRACE_VIEW)
@@ -88,7 +87,7 @@ public class HubCallWebServiceImpl implements HubCallWebService {
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId)
+        return userStore.get(userId)
                 .map(user -> "admin".equals(user.role))
                 .orElse(Boolean.FALSE);
     }

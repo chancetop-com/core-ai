@@ -16,13 +16,12 @@ import ai.core.server.domain.DatasetRecord;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 
@@ -46,7 +45,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
     DatasetRecordService datasetRecordService;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
@@ -148,7 +147,7 @@ public class DatasetWebServiceImpl implements DatasetWebService {
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;
         view.createdBy = entity.userId != null
-                ? userCollection.get(entity.userId).map(u -> u.name).orElse(entity.userId)
+                ? userStore.get(entity.userId).map(u -> u.name).orElse(entity.userId)
                 : null;
         return view;
     }

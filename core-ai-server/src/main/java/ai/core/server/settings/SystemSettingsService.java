@@ -2,20 +2,16 @@ package ai.core.server.settings;
 
 import ai.core.api.server.settings.SystemSettingsRequest;
 import ai.core.api.server.settings.SystemSettingsView;
-import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.SystemSettings;
-import ai.core.server.domain.User;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.memory.AgentMemoryConsolidationJob;
 import ai.core.server.skill.SkillRepoSyncJob;
-import com.mongodb.client.model.Filters;
+import ai.core.server.gateway.GatewayModelStore;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.Base64;
@@ -33,11 +29,11 @@ public class SystemSettingsService {
     public String defaultLlmModel;
 
     @Inject
-    MongoCollection<SystemSettings> systemSettingsCollection;
+    SystemSettingsStore systemSettingsStore;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    GatewayModelStore gatewayModelStore;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     GatewaySecretProtector secretProtector;
 
@@ -65,7 +61,7 @@ public class SystemSettingsService {
             TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
-            systemSettingsCollection.insert(entity);
+            systemSettingsStore.insert(entity);
         } else {
             applyModels(entity, models);
             applyIntegrations(entity, request);
@@ -73,7 +69,7 @@ public class SystemSettingsService {
             TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
-            systemSettingsCollection.replace(entity);
+            systemSettingsStore.replace(entity);
         }
         return toView(entity);
     }
@@ -234,13 +230,7 @@ public class SystemSettingsService {
      */
     private String enabledModel(String model) {
         if (model == null) return null;
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("model_id", model),
-                Filters.ne("enabled", Boolean.FALSE)
-        );
-        query.limit = 1;
-        return gatewayModelCollection.find(query).isEmpty() ? null : model;
+        return gatewayModelStore.existsEnabledModel(model) ? model : null;
     }
 
     public String videoUnderstandingModel() {
@@ -354,40 +344,28 @@ public class SystemSettingsService {
      * take effect immediately on all replicas without restart.
      */
     SystemSettings entity() {
-        return systemSettingsCollection.get(SETTINGS_ID).orElse(null);
+        return systemSettingsStore.get(SETTINGS_ID).orElse(null);
     }
 
     private void validateMemoryExtractionModel(String model) {
         if (model == null) return;
-        requireModel(Filters.and(
-                Filters.eq("model_id", model),
-                Filters.ne("enabled", Boolean.FALSE),
-                Filters.eq("endpoint_types", "chat.completions")
-        ), "memoryExtractionModel must be an enabled chat gateway model: " + model);
+        if (!gatewayModelStore.existsEnabledModelWithEndpoint(model, "chat.completions")) {
+            throw new BadRequestException("memoryExtractionModel must be an enabled chat gateway model: " + model);
+        }
     }
 
     private void validateChatModel(String model) {
         if (model == null) return;
-        requireModel(Filters.and(
-                Filters.eq("model_id", model),
-                Filters.ne("enabled", Boolean.FALSE),
-                Filters.eq("endpoint_types", "chat.completions")
-        ), "llm model must be an enabled gateway model with chat.completions: " + model);
+        if (!gatewayModelStore.existsEnabledModelWithEndpoint(model, "chat.completions")) {
+            throw new BadRequestException("llm model must be an enabled gateway model with chat.completions: " + model);
+        }
     }
 
     private void validateModelExists(String model, String field) {
         if (model == null) return;
-        requireModel(Filters.and(
-                Filters.eq("model_id", model),
-                Filters.ne("enabled", Boolean.FALSE)
-        ), field + " must be an enabled gateway model: " + model);
-    }
-
-    private void requireModel(Bson filter, String message) {
-        var query = new Query();
-        query.filter = filter;
-        query.limit = 1;
-        if (gatewayModelCollection.find(query).isEmpty()) throw new BadRequestException(message);
+        if (!gatewayModelStore.existsEnabledModel(model)) {
+            throw new BadRequestException(field + " must be an enabled gateway model: " + model);
+        }
     }
 
     @SuppressFBWarnings("CC_CYCLOMATIC_COMPLEXITY")
@@ -431,7 +409,7 @@ public class SystemSettingsService {
 
     private void requireAdmin(String userId) {
         if (userId == null) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
+        var user = userStore.get(userId).orElseThrow(() -> new ForbiddenException("admin required"));
         if (!"admin".equals(user.role)) throw new ForbiddenException("admin required");
     }
 

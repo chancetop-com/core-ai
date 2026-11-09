@@ -1,8 +1,5 @@
 package ai.core.server.channel.openclaw;
 
-import com.mongodb.client.model.Filters;
-import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,25 +8,34 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * @author stephen
  */
-public class OcgConfigStore {
+public abstract class OcgConfigStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(OcgConfigStore.class);
     private static final int SECRET_BYTES = 32;
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    @Inject
-    MongoCollection<OcgConfigView> collection;
+    protected abstract Optional<OcgConfigView> get(String id);
+
+    protected abstract Optional<OcgConfigView> findByChannelId(String channelId);
+
+    protected abstract List<OcgConfigView> list();
+
+    protected abstract void insert(OcgConfigView config);
+
+    protected abstract void replace(OcgConfigView config);
+
+    protected abstract void delete(String id);
 
     public void store(OcgConfigView config) {
         try {
-            var existing = collection.get(config.id).orElse(null);
-            if (existing == null) {
-                collection.insert(config);
+            if (get(config.id).isEmpty()) {
+                insert(config);
             } else {
-                collection.replace(config);
+                replace(config);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to persist OCG config to db, id={}", config.id, e);
@@ -38,37 +44,34 @@ public class OcgConfigStore {
     }
 
     public OcgConfigView load(String id) {
-        return collection.get(id).orElse(null);
+        return get(id).orElse(null);
     }
 
     public OcgConfigView loadByChannelId(String channelId) {
-        var configs = collection.find(Filters.eq("channel_id", channelId));
-        return configs.isEmpty() ? null : configs.get(0);
+        return findByChannelId(channelId).orElse(null);
     }
 
     public Map<String, OcgConfigView> all() {
-        var configs = collection.find(Filters.empty());
         var result = new LinkedHashMap<String, OcgConfigView>();
-        for (var config : configs) {
+        for (var config : list()) {
             result.put(config.id, config);
         }
         return result;
     }
 
     public List<OcgConfigView> allWithSandbox() {
-        var configs = collection.find(Filters.empty());
-        return configs.stream()
-                .filter(config -> config.sandboxId != null && !config.sandboxId.isBlank())
-                .toList();
+        return list().stream()
+            .filter(config -> config.sandboxId != null && !config.sandboxId.isBlank())
+            .toList();
     }
 
     public void clearSandbox(String id) {
-        var config = collection.get(id).orElse(null);
+        var config = get(id).orElse(null);
         if (config == null) return;
         config.sandboxId = null;
         config.sandboxIp = null;
         try {
-            collection.replace(config);
+            replace(config);
         } catch (Exception e) {
             LOGGER.warn("failed to clear OCG sandbox in db, id={}", id, e);
         }
@@ -76,7 +79,7 @@ public class OcgConfigStore {
 
     public void remove(String id) {
         try {
-            collection.delete(id);
+            delete(id);
         } catch (Exception e) {
             LOGGER.warn("failed to delete OCG config from db, id={}", id, e);
         }

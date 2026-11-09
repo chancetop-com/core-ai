@@ -12,6 +12,9 @@ import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
+import ai.core.server.domain.ProjectReportDraft;
+import ai.core.server.domain.ProjectStatsEntity;
+import ai.core.server.domain.ProjectTargetScan;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.User;
 import ai.core.server.domain.SkillDefinition;
@@ -25,12 +28,23 @@ import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.gateway.GatewaySecretProtector;
 import ai.core.server.notification.NotificationEventPublisher;
 import ai.core.server.notification.NotificationService;
+import ai.core.server.project.MongoProjectStore;
 import ai.core.server.project.ProjectService;
+import ai.core.server.project.ProjectStore;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.SessionRegistry;
+import ai.core.server.gateway.GatewayModelStore;
+import ai.core.server.gateway.GatewayProviderStore;
+import ai.core.server.tool.ToolRegistryStore;
+import ai.core.server.settings.MongoSystemSettingsStore;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.user.MongoUserStore;
+import ai.core.server.user.UserStore;
+import ai.core.server.settings.SystemSettingsStore;
+import ai.core.server.skill.MongoSkillStore;
 import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.SkillStore;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
@@ -42,6 +56,8 @@ import core.framework.mongo.module.MongoConfig;
 import core.framework.test.module.AbstractTestModule;
 
 import java.util.Map;
+
+import static org.mockito.Mockito.mock;
 
 /**
  * Minimal integration-test context: real Mongo + just the workflow beans needed to drive a START -> END run.
@@ -68,6 +84,9 @@ public class WorkflowTestModule extends AbstractTestModule {
         mongo.collection(ProjectSubject.class);
         mongo.collection(ProjectSubjectAttribution.class);
         mongo.collection(ProjectSubjectEvent.class);
+        mongo.collection(ProjectReportDraft.class);
+        mongo.collection(ProjectStatsEntity.class);
+        mongo.collection(ProjectTargetScan.class);
         mongo.collection(User.class);                    // project feature: ProjectService/ProjectAccess permission checks
         mongo.collection(SystemSettings.class);          // project feature: RoleRegistry permission resolution
         mongo.collection(AgentRun.class);
@@ -122,8 +141,15 @@ public class WorkflowTestModule extends AbstractTestModule {
 
     private void bindWorkflowServices() {
         // ProjectService's permission deps must be bound BEFORE it (core-ng bind() resolves eagerly)
+        bind(SystemSettingsStore.class, bind(MongoSystemSettingsStore.class));
+        bind(GatewayModelStore.class, mock(GatewayModelStore.class));
+        bind(GatewayProviderStore.class, mock(GatewayProviderStore.class));
+        bind(ToolRegistryStore.class, mock(ToolRegistryStore.class));
+        bind(UserStore.class, bind(MongoUserStore.class));
         bind(ai.core.server.rbac.RoleRegistry.class);
         bind(ai.core.server.apiuser.PermissionService.class);
+        bind(ProjectStore.class, bind(MongoProjectStore.class));
+        bindProjectDataStores();
         bind(ai.core.server.project.ProjectStateService.class);   // injected by ProjectService
         bind(ai.core.server.project.ProjectAttributionStore.class);   // injected by ProjectService/ProjectArtifactBinder
         bind(ai.core.server.project.ProjectArtifactBinder.class);
@@ -138,6 +164,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(SystemSettingsService.class);
         bind(ObjectStorageServiceResolver.class);
         bind(SkillBlobStore.class);
+        bind(SkillStore.class, bind(MongoSkillStore.class));
         bind(SkillService.class);
         bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPrivateAgentSafetyValidator.class);
@@ -161,5 +188,14 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(NotificationService.class);
         bind(WorkflowRunner.class);
         bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
+    }
+
+    private void bindProjectDataStores() {
+        bind(ai.core.server.project.ProjectSubjectStore.class, bind(ai.core.server.project.MongoProjectSubjectStore.class));
+        bind(ai.core.server.project.ProjectEventStore.class, bind(ai.core.server.project.MongoProjectEventStore.class));
+        bind(ai.core.server.project.ProjectAttributionRepository.class, bind(ai.core.server.project.MongoProjectAttributionRepository.class));
+        bind(ai.core.server.project.ProjectTargetScanRepository.class, bind(ai.core.server.project.MongoProjectTargetScanRepository.class));
+        bind(ai.core.server.project.ProjectReportDraftStore.class, bind(ai.core.server.project.MongoProjectReportDraftStore.class));
+        bind(ai.core.server.project.ProjectStatsStore.class, bind(ai.core.server.project.MongoProjectStatsStore.class));
     }
 }

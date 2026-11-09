@@ -10,6 +10,7 @@ import ai.core.server.web.SystemSettingsWebServiceImpl;
 import core.framework.module.APIConfig;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -77,6 +78,11 @@ class SettingsModuleTest {
 
         @Override
         public <T> T bind(T instance) {
+            return instance;
+        }
+
+        @Override
+        public <T> T bind(Type type, String name, T instance) {
             return instance;
         }
 

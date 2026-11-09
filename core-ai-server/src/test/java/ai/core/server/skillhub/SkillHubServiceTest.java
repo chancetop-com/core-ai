@@ -3,6 +3,7 @@ package ai.core.server.skillhub;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.skill.MongoSkillStore;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skillhub.SkillCatalogService.CatalogSkill;
@@ -50,7 +51,7 @@ class SkillHubServiceTest {
         hubService = new SkillHubService();
         hubService.catalog = catalog;
         hubService.accessPolicy = new SkillHubAccessPolicy();
-        hubService.skillCollection = collection;
+        hubService.skillStore = MongoSkillStore.of(collection);
         hubService.archiveBuilder = new SkillArchiveBuilder();
         hubService.blobStore = blobStore;
     }

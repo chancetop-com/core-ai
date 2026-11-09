@@ -1,8 +1,7 @@
 package ai.core.server.comparison;
 
 import ai.core.server.comparison.domain.AgentComparison;
-import ai.core.server.domain.User;
-import core.framework.mongo.MongoCollection;
+import ai.core.server.user.UserStore;
 import core.framework.web.exception.ForbiddenException;
 
 import java.util.List;
@@ -14,7 +13,7 @@ import java.util.List;
  * @author stephen
  */
 public final class ComparisonAccess {
-    public static boolean canManage(MongoCollection<User> userCollection, AgentComparison comparison, String userId) {
+    public static boolean canManage(UserStore userCollection, AgentComparison comparison, String userId) {
         if (userId == null) return false;
         if (userId.equals(comparison.createdBy)) return true;
         return isAdmin(userCollection, userId);
@@ -25,7 +24,7 @@ public final class ComparisonAccess {
         return comparison.participantUserIds.contains(userId);
     }
 
-    public static void requireManage(MongoCollection<User> userCollection, AgentComparison comparison, String userId) {
+    public static void requireManage(UserStore userCollection, AgentComparison comparison, String userId) {
         if (!canManage(userCollection, comparison, userId)) throw new ForbiddenException("comparison is unavailable");
     }
 
@@ -33,7 +32,7 @@ public final class ComparisonAccess {
         if (!isParticipant(comparison, userId)) throw new ForbiddenException("comparison is unavailable");
     }
 
-    public static boolean isAdmin(MongoCollection<User> userCollection, String userId) {
+    public static boolean isAdmin(UserStore userCollection, String userId) {
         if (userId == null) return false;
         return userCollection.get(userId).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
     }

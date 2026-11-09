@@ -2,10 +2,8 @@ package ai.core.server.skillhub;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.tool.ToolSearchScorer;
-import com.mongodb.client.model.Projections;
+import ai.core.server.skill.SkillStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,7 +18,7 @@ import java.util.Map;
 /**
  * In-memory catalog of every registered skill, refreshed by {@code skill-hub-catalog-sync}
  * (30s) and invalidated on every {@code SkillService} write path. The snapshot carries
- * metadata only — content and resource bodies stay in Mongo (single skill bodies go up to
+ * metadata only — content and resource bodies stay in the store (single skill bodies go up to
  * 10MB, they must not travel through every search).
  * <p>
  * Scoring reuses {@link ToolSearchScorer} with {@code namespace} as the brand layer and
@@ -50,7 +48,7 @@ public class SkillCatalogService {
     }
 
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
 
     private volatile Snapshot snapshot = new Snapshot(List.of());
 
@@ -130,11 +128,9 @@ public class SkillCatalogService {
     }
 
     private Snapshot loadSnapshot() {
-        var query = new Query();
-        query.projection = Projections.exclude("content", "resources.content");
         List<SkillDefinition> defs;
         try {
-            defs = skillCollection.find(query);
+            defs = skillStore.listCatalog();
         } catch (RuntimeException e) {
             LOGGER.warn("skill catalog refresh failed: {}", e.getMessage());
             return new Snapshot(List.of());

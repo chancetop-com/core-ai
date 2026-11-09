@@ -51,7 +51,7 @@ class ProjectAttributionStageTest {
     void setUp() {
         stage = new ProjectAttributionStage();
         projects = (MongoCollection<Project>) mock(MongoCollection.class);
-        stage.projectCollection = projects;
+        stage.projectStore = ProjectStoreTestSupport.store(projects);
         runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         stage.agentRunCollection = runs;
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
@@ -62,7 +62,7 @@ class ProjectAttributionStageTest {
         stage.fileRecordCollection = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         stage.agentCollection = agents;
-        stage.attributionCollection = (MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class);
+        stage.attributionRepository = MongoProjectAttributionRepository.of((MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class));
         projectService = mock(ProjectService.class);
         stage.projectService = projectService;
         var scanStore = mock(ProjectTargetScanStore.class);

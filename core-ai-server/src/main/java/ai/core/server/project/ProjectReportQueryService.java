@@ -4,7 +4,6 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
-import ai.core.server.domain.Project;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
@@ -44,7 +43,7 @@ public class ProjectReportQueryService {
     private static final Bson FILE_META_PROJECTION = Projections.exclude("data", "storage_path");
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     MongoCollection<ChatSession> chatSessionCollection;
     @Inject
@@ -62,7 +61,7 @@ public class ProjectReportQueryService {
     }
 
     public ReportPage reports(String projectId, ReportFilter filter, int offset, int limit) {
-        if (projectCollection.get(projectId).isEmpty()) return new ReportPage(List.of(), 0);
+        if (projectStore.get(projectId).isEmpty()) return new ReportPage(List.of(), 0);
         int safeOffset = Math.max(offset, 0);
         int safeLimit = limit <= 0 ? DEFAULT_LIMIT : Math.min(limit, MAX_LIMIT);
         return Boolean.TRUE.equals(filter.unassigned()) ? inbox(projectId, filter, safeOffset, safeLimit) : filed(projectId, filter, safeOffset, safeLimit);
@@ -70,7 +69,7 @@ public class ProjectReportQueryService {
 
     /** per-subject counts / newest report plus the (bounded) size of the inbox: what the project page cards show */
     public ReportStats stats(String projectId) {
-        if (projectCollection.get(projectId).isEmpty()) return new ReportStats(0, Map.of());
+        if (projectStore.get(projectId).isEmpty()) return new ReportStats(0, Map.of());
         var unassigned = inbox(projectId, new ReportFilter(null, null, null, null, Boolean.TRUE), 0, 1).total();
         return new ReportStats(unassigned, attributionStore.fileStatsBySubject(projectId));
     }
@@ -102,7 +101,7 @@ public class ProjectReportQueryService {
     // ---- inbox: newest member artifacts minus the ones already homed, paged in memory (bounded scan) ----
 
     private ReportPage inbox(String projectId, ReportFilter filter, int offset, int limit) {
-        var scope = ProjectScope.resolve(projectCollection, projectId);
+        var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return new ReportPage(List.of(), 0);
         var homed = attributionStore.fileSubjects(projectId);
         var byFile = new LinkedHashMap<String, ProjectReport>();

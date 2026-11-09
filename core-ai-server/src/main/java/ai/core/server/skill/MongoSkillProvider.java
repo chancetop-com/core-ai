@@ -1,12 +1,9 @@
 package ai.core.server.skill;
 
-import ai.core.server.domain.SkillDefinition;
 import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillProvider;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 import java.util.List;
 import java.util.Set;
@@ -22,7 +19,7 @@ import java.util.Set;
 public class MongoSkillProvider {
 
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
 
     @Inject
     SkillService skillService;
@@ -47,7 +44,7 @@ public class MongoSkillProvider {
         public List<SkillMetadata> listSkills() {
             if (allowedIds.isEmpty()) return List.of();
             var snapshot = List.copyOf(allowedIds);
-            var definitions = skillCollection.find(Filters.in("_id", snapshot));
+            var definitions = skillStore.listByIds(snapshot);
             return definitions.stream().map(skillService::toMetadata).toList();
         }
 

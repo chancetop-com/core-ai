@@ -6,7 +6,6 @@ import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Controller;
 import core.framework.web.Request;
 import core.framework.web.Response;
@@ -67,7 +66,7 @@ public class ProjectReportUploadController implements Controller {
     @Inject
     ProjectAttributionStore attributionStore;
     @Inject
-    MongoCollection<ai.core.server.domain.User> userCollection;
+    ai.core.server.user.UserStore userStore;
 
     @Override
     public Response execute(Request request) {
@@ -76,7 +75,7 @@ public class ProjectReportUploadController implements Controller {
         var projectId = request.pathParam("id");
         var subjectId = request.pathParam("subjectId");
         var project = projectService.require(projectId);
-        projectService.requireAccess(project, userId, ProjectAccess.admin(userCollection, userId));
+        projectService.requireAccess(project, userId, ProjectAccess.admin(userStore, userId));
         var subject = projectService.subject(projectId, subjectId);
 
         var files = request.files();

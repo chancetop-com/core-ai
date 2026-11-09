@@ -1,13 +1,7 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
-import ai.core.server.domain.SkillSourceType;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
@@ -23,32 +17,6 @@ public final class SkillQueryHelper {
     private static final String SEARCH_IN_NAME = "name";
     private static final String SEARCH_IN_METADATA = "metadata";
     private static final String SEARCH_IN_CONTENT = "content";
-
-    public static Bson indexedFilter(SkillFilter filter) {
-        if (filter == null) return Filters.empty();
-        var filters = new ArrayList<Bson>();
-        if (filter.namespace() != null && !filter.namespace().isBlank()) {
-            filters.add(Filters.eq("namespace", filter.namespace()));
-        }
-        if (filter.sourceType() != null && !filter.sourceType().isBlank()) {
-            filters.add(Filters.eq("source_type", SkillSourceType.valueOf(filter.sourceType())));
-        }
-        return filters.isEmpty() ? Filters.empty() : Filters.and(filters);
-    }
-
-    public static Query sortedQuery(Bson filter) {
-        var dbQuery = new Query();
-        dbQuery.filter = filter;
-        dbQuery.sort = Sorts.descending("updated_at");
-        return dbQuery;
-    }
-
-    public static void applyPaging(Query dbQuery, Integer offset, Integer limit) {
-        if (offset != null || limit != null) {
-            dbQuery.skip = Math.max(0, offset != null ? offset : 0);
-            dbQuery.limit = normalizedLimit(limit);
-        }
-    }
 
     public static List<SkillDefinition> page(List<SkillDefinition> skills, Integer offset, Integer limit) {
         if (offset == null && limit == null) {

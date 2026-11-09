@@ -40,10 +40,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class OTLPIngestServiceTest {
+    private MongoCollection<GatewayModelConfig> gatewayModelCollection;
+
     @Test
     void calculatesGpt6LunaCatalogCostAndRollsUpTraceCost() {
         var service = service();
-        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
@@ -76,7 +78,7 @@ class OTLPIngestServiceTest {
         model.modelId = "gpt-5.6-terra";
         model.inputPricePer1MTokens = 2D;
         model.outputPricePer1MTokens = 8D;
-        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
@@ -100,7 +102,7 @@ class OTLPIngestServiceTest {
         model.outputPricePer1MTokens = 1.956522D;
         model.cacheReadInputPricePer1MTokens = 2.173913e-02D;
         model.peakPriceMultiplier = 2D;
-        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         // start time 2026-08-18T02:00:00Z = Beijing 10:00, peak hour
@@ -125,7 +127,7 @@ class OTLPIngestServiceTest {
         model.modelId = "deepseek-v4-pro";
         model.inputPricePer1MTokens = 1D;
         model.outputPricePer1MTokens = 2D;
-        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
 
         service.ingest(request(span("chat",
@@ -276,7 +278,7 @@ class OTLPIngestServiceTest {
         model.modelId = "seedance-2";
         model.inputPricePer1MTokens = 1D;
         model.outputPricePer1MTokens = 2D;
-        when(service.modelPricingService.gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
         when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
 
@@ -464,7 +466,8 @@ class OTLPIngestServiceTest {
         service.agentRunCollection = agentRunCollection();
         service.chatSessionCollection = chatSessionCollection();
         service.modelPricingService = new ModelPricingService();
-        service.modelPricingService.gatewayModelCollection = gatewayModelCollection();
+        gatewayModelCollection = gatewayModelCollection();
+        service.modelPricingService.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(gatewayModelCollection);
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
         when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
         return service;

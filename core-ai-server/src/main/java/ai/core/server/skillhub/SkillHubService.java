@@ -14,10 +14,8 @@ import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillResourceLimits;
 import ai.core.server.skillhub.SkillCatalogService.CatalogSkill;
 import ai.core.server.skillhub.SkillCatalogService.SearchOutcome;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+import ai.core.server.skill.SkillStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
@@ -28,13 +26,12 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.ZonedDateTime;
 import java.util.Base64;
 import java.util.HexFormat;
 
 /**
  * Orchestrates Skill Hub operations over the metadata catalog, with content and
- * archive bodies loaded on demand from Mongo. Read endpoints bump lightweight
+ * archive bodies loaded on demand from the store. Read endpoints bump lightweight
  * per-skill counters (fire-and-forget, failures only warn).
  *
  * @author stephen
@@ -47,7 +44,7 @@ public class SkillHubService {
     @Inject
     SkillHubAccessPolicy accessPolicy;
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
     @Inject
     SkillArchiveBuilder archiveBuilder;
     @Inject
@@ -126,7 +123,7 @@ public class SkillHubService {
     private SkillDefinition definition(String namespace, String name) {
         var entry = catalog.find(namespace, name);
         if (entry == null) throw new NotFoundException("skill not found: " + namespace + "/" + name);
-        var definition = skillCollection.get(entry.id())
+        var definition = skillStore.get(entry.id())
                 .orElseThrow(() -> new NotFoundException("skill not found: " + namespace + "/" + name));
         if (!accessPolicy.canView(definition)) {
             throw new ForbiddenException("skill is not accessible: " + namespace + "/" + name);
@@ -196,8 +193,7 @@ public class SkillHubService {
 
     private void recordShow(String namespace, String name) {
         try {
-            skillCollection.update(Filters.eq("qualified_name", namespace + "/" + name),
-                    Updates.inc("stats.show_count", 1));
+            skillStore.recordShow(namespace + "/" + name);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to record skill show, qualifiedName={}/{}", namespace, name, e);
         }
@@ -205,9 +201,7 @@ public class SkillHubService {
 
     private void recordPull(String id, String namespace, String name) {
         try {
-            skillCollection.update(Filters.eq("_id", id), Updates.combine(
-                    Updates.inc("stats.pull_count", 1),
-                    Updates.set("stats.last_pulled_at", ZonedDateTime.now())));
+            skillStore.recordPull(id);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to record skill pull, qualifiedName={}/{}", namespace, name, e);
         }

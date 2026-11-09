@@ -6,15 +6,15 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ResourcePermission;
 import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,7 +62,7 @@ public class PersonalAssistantService {
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     SkillService skillService;
 
@@ -98,7 +98,7 @@ public class PersonalAssistantService {
 
     private User forkableUser(String userId) {
         if (userId == null || userId.isBlank() || SYSTEM_USER_ID.equals(userId)) return null;
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         return user != null && !USER_TYPE_API.equals(user.userType) ? user : null;
     }
 
@@ -115,7 +115,7 @@ public class PersonalAssistantService {
         }
         grantAgentPermission(user, fork.id);
         // the copy is the user's everyday entry point, so it starts pinned above the rest of the selector
-        AgentListHelper.addFavorite(userCollection, user.id, fork.id);
+        AgentListHelper.addFavorite(userStore, user.id, fork.id);
         LOGGER.info("personal assistant forked, userId={}, agentId={}, templateId={}", user.id, fork.id, template.id);
         return fork;
     }
@@ -272,7 +272,12 @@ public class PersonalAssistantService {
         for (var permission : user.permissions) {
             if (PermissionService.RESOURCE_TYPE_AGENT.equals(permission.resourceType) && agentId.equals(permission.resourceId)) return;
         }
-        var permission = new Document("resource_type", PermissionService.RESOURCE_TYPE_AGENT).append("resource_id", agentId);
-        userCollection.update(Filters.eq("_id", user.id), Updates.addToSet("permissions", permission));
+        userStore.update(user.id, entity -> {
+            if (entity.permissions == null) entity.permissions = new ArrayList<>();
+            var permission = new ResourcePermission();
+            permission.resourceType = PermissionService.RESOURCE_TYPE_AGENT;
+            permission.resourceId = agentId;
+            entity.permissions.add(permission);
+        });
     }
 }

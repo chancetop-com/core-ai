@@ -1,13 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
-import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.ProjectSubjectAttribution;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -32,11 +26,11 @@ public class ProjectAnalysisJob implements Job {
     static final int MAX_PROJECTS_PER_TICK = 5;
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
-    MongoCollection<ProjectSubject> subjectCollection;
+    ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ProjectSubjectAttribution> attributionCollection;
+    ProjectAttributionRepository attributionRepository;
     @Inject
     ProjectAnalysisService analysisService;
 
@@ -45,15 +39,7 @@ public class ProjectAnalysisJob implements Job {
         // LLM-driven analysis takes longer than the 10s scheduler default; raise the SLOW_PROCESS threshold
         ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
         var cutoff = ZonedDateTime.now().minus(ANALYSIS_INTERVAL);
-        var query = new Query();
-        // the eq-null branch is required: core-ng writes the cursor as an explicit null, so an
-        // exists:false-only check would never match a project that has not been analyzed yet
-        query.filter = Filters.and(
-            Filters.eq("status", ProjectService.STATUS_ACTIVE),
-            Filters.ne("analysis_status", ProjectService.ANALYSIS_RUNNING),
-            Filters.or(Filters.exists("last_analysis_at", false), Filters.eq("last_analysis_at", null), Filters.lt("last_analysis_at", cutoff)));
-        query.limit = MAX_PROJECTS_PER_TICK;
-        for (var project : projectCollection.find(query)) {
+        for (var project : projectStore.listForAnalysis(cutoff, MAX_PROJECTS_PER_TICK)) {
             if (!hasUnanalyzedStartedSubject(project.id)) continue;
             if (!analysisService.claimAnalysis(project.id)) continue;
             LOGGER.info("project subject analysis triggered, projectId={}", project.id);
@@ -62,16 +48,8 @@ public class ProjectAnalysisJob implements Job {
     }
 
     private boolean hasUnanalyzedStartedSubject(String projectId) {
-        var started = new Query();
-        started.filter = Filters.and(
-            Filters.eq("project_id", projectId),
-            Filters.eq("status", "started"));
-        for (var subject : subjectCollection.find(started)) {
-            if (attributionCollection.count(Filters.and(
-                    Filters.eq("subject_id", subject.id),
-                    Filters.or(Filters.exists("analyzed_at", false), Filters.eq("analyzed_at", null)))) > 0) {
-                return true;
-            }
+        for (var subject : subjectStore.listStarted(projectId)) {
+            if (attributionRepository.countUnanalyzed(subject.id) > 0) return true;
         }
         return false;
     }

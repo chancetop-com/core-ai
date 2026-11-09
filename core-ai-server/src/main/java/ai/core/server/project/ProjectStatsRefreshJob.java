@@ -1,11 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.Project;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -25,7 +21,7 @@ public class ProjectStatsRefreshJob implements Job {
     static final int MAX_PROJECTS_PER_TICK = 10;
 
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     ProjectStatsQueryService statsQueryService;
 
@@ -33,12 +29,7 @@ public class ProjectStatsRefreshJob implements Job {
     public void execute(JobContext context) {
         // cost snapshots aggregate the member traces; large projects take longer than the 10s scheduler default
         ActionLogContext.maxProcessTime(Duration.ofMinutes(5));
-        var query = new Query();
-        query.filter = Filters.and(
-            Filters.eq("status", ProjectService.STATUS_ACTIVE),
-            Filters.eq("stats_dirty", Boolean.TRUE));
-        query.limit = MAX_PROJECTS_PER_TICK;
-        for (var project : projectCollection.find(query)) {
+        for (var project : projectStore.listDirtyStats(MAX_PROJECTS_PER_TICK)) {
             LOGGER.info("project stats refresh triggered, projectId={}", project.id);
             statsQueryService.refresh(project.id);
         }

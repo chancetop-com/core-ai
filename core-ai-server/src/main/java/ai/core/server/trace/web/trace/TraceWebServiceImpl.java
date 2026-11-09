@@ -16,7 +16,6 @@ import ai.core.api.server.trace.TraceFacetView;
 import ai.core.api.server.trace.TraceStatusView;
 import ai.core.api.server.trace.TraceView;
 import ai.core.api.server.trace.TraceWebService;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.trace.domain.Span;
@@ -29,8 +28,8 @@ import ai.core.server.trace.service.TraceVisibility;
 import ai.core.server.trace.service.TraceVisibilityResolver;
 import ai.core.server.util.SessionIds;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
@@ -91,7 +90,7 @@ public class TraceWebServiceImpl implements TraceWebService {
     @Inject
     TraceVisibilityResolver traceVisibilityResolver;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     WebContext webContext;
 
@@ -339,7 +338,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         return accountCache.computeIfAbsent(userId, id -> {
             var view = new TraceAccountView();
             view.userId = id;
-            userCollection.get(id).ifPresent(user -> {
+            userStore.get(id).ifPresent(user -> {
                 view.name = user.name;
                 view.email = user.email;
                 view.role = user.role;

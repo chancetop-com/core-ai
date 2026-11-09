@@ -45,7 +45,7 @@ class McpServerOperationServiceTest {
             connectionManager,
             applicationMcpManager
         );
-        service.setToolRegistryCollection(collection);
+        service.setToolRegistryStore(MongoToolRegistryStore.of(collection));
     }
 
     @Test

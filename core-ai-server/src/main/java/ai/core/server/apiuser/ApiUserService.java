@@ -9,9 +9,8 @@ import ai.core.api.server.apiuser.response.ResourcePermissionView;
 import ai.core.server.domain.OutboundCallerHeaderConfig;
 import ai.core.server.domain.ResourcePermission;
 import ai.core.server.domain.User;
-import com.mongodb.client.model.Filters;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -33,7 +32,7 @@ public class ApiUserService {
     public static final String USER_TYPE_API = "api";
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     /**
      * Creates an API user owned by the given manager user (business system).
@@ -61,7 +60,7 @@ public class ApiUserService {
         user.status = "active";
         user.createdAt = ZonedDateTime.now();
         try {
-            userCollection.insert(user);
+            userStore.insert(user);
         } catch (RuntimeException e) {
             // concurrent create with same (owner_id, external_id): return the winning record
             var winner = findByOwnerAndExternalId(ownerId, normalizedExternalId);
@@ -83,7 +82,7 @@ public class ApiUserService {
         user.status = "active";
         user.createdBy = createdBy;
         user.createdAt = ZonedDateTime.now();
-        userCollection.insert(user);
+        userStore.insert(user);
         return user;
     }
 
@@ -101,7 +100,7 @@ public class ApiUserService {
             throw new BadRequestException("outbound_caller_headers can only be configured by admin on manager users");
         }
         applyConfig(user, request);
-        userCollection.replace(user);
+        userStore.replace(user);
         return user;
     }
 
@@ -111,9 +110,9 @@ public class ApiUserService {
      * sub users accept permissions/quota/metadata but never outbound_caller_headers.
      */
     public User updateConfigByAdmin(String adminUserId, String userId, UpdateApiUserConfigRequest request) {
-        var admin = userCollection.get(adminUserId).orElse(null);
+        var admin = userStore.get(adminUserId).orElse(null);
         if (admin == null || !"admin".equals(admin.role)) throw new ForbiddenException("admin required");
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null) throw new NotFoundException("user not found, userId=" + userId);
         var isManager = "api".equals(user.userType) && user.ownerId == null;
         if (isManager) {
@@ -128,7 +127,7 @@ public class ApiUserService {
             }
             applyConfig(user, request);
         }
-        userCollection.replace(user);
+        userStore.replace(user);
         return user;
     }
 
@@ -171,12 +170,12 @@ public class ApiUserService {
             throw new BadRequestException("invalid status, must be active or disabled");
         }
         user.status = status;
-        userCollection.replace(user);
+        userStore.replace(user);
         return user;
     }
 
     public List<User> listApiUsers(String adminUserId) {
-        return userCollection.find(Filters.eq("user_type", USER_TYPE_API));
+        return userStore.listByUserType(USER_TYPE_API);
     }
 
     public ApiUserView toView(User user) {
@@ -204,7 +203,7 @@ public class ApiUserService {
     }
 
     private User requireApiUser(String userId) {
-        var user = userCollection.get(userId).orElse(null);
+        var user = userStore.get(userId).orElse(null);
         if (user == null || !USER_TYPE_API.equals(user.userType)) {
             throw new NotFoundException("api user not found, userId=" + userId);
         }
@@ -220,12 +219,7 @@ public class ApiUserService {
     private User findByOwnerAndExternalId(String ownerId, String externalId) {
         // explicit $type predicates are required for the partial unique index to be usable
         // (MongoDB cannot derive $type from $eq; without them notablescan rejects the query)
-        var users = userCollection.find(Filters.and(
-                Filters.eq("owner_id", ownerId),
-                Filters.eq("external_id", externalId),
-                Filters.type("owner_id", "string"),
-                Filters.type("external_id", "string")));
-        return users.isEmpty() ? null : users.getFirst();
+        return userStore.findByOwnerAndExternalId(ownerId, externalId).orElse(null);
     }
 
     private List<ResourcePermission> toEntities(List<ResourcePermissionRequest> requests) {

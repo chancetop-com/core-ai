@@ -26,7 +26,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressWarnings("PMD.SingularField")
 class GatewayModelServiceTest {
+    private MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    private MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+
     @Test
     void createAppliesDefaultsAndNormalizesEndpointTypes() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
@@ -44,7 +48,7 @@ class GatewayModelServiceTest {
         assertEquals(100L, view.priority);
 
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).insert(captor.capture());
+        verify(gatewayModelCollection).insert(captor.capture());
         assertEquals(Boolean.TRUE, captor.getValue().enabled);
     }
 
@@ -60,7 +64,7 @@ class GatewayModelServiceTest {
         var view = service.create(request, "admin-1");
 
         assertEquals(Boolean.TRUE, view.messagesFallback);
-        verify(service.gatewayModelCollection).update(any(org.bson.conversions.Bson.class), any(org.bson.conversions.Bson.class));
+        verify(gatewayModelCollection).update(any(org.bson.conversions.Bson.class), any(org.bson.conversions.Bson.class));
     }
 
     @Test
@@ -92,7 +96,7 @@ class GatewayModelServiceTest {
         var backup = new GatewayModelConfig();
         backup.id = "backup-1";
         backup.modelId = "gpt-6";
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of(backup));
+        when(gatewayModelCollection.find(any(org.bson.conversions.Bson.class))).thenReturn(List.of(backup));
 
         var request = new GatewayModelRequest();
         request.modelId = "deepseek-chat";
@@ -104,7 +108,7 @@ class GatewayModelServiceTest {
 
         assertEquals(List.of("gpt-6"), view.fallbackModelIds);
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).insert(captor.capture());
+        verify(gatewayModelCollection).insert(captor.capture());
         assertEquals(List.of("gpt-6"), captor.getValue().fallbackModelIds);
     }
 
@@ -146,7 +150,7 @@ class GatewayModelServiceTest {
         existing.contextWindow = 128_000L;
         existing.inputPricePer1MTokens = 1.25D;
         existing.outputPricePer1MTokens = 5D;
-        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+        when(gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
         request.fields = Map.of("priority", Boolean.TRUE, "contextWindow", Boolean.TRUE, "inputPricePer1MTokens", Boolean.TRUE, "outputPricePer1MTokens", Boolean.TRUE);
@@ -154,7 +158,7 @@ class GatewayModelServiceTest {
         service.update("model-1", request, "admin-1");
 
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).replace(captor.capture());
+        verify(gatewayModelCollection).replace(captor.capture());
         assertEquals(100L, captor.getValue().priority);
         assertNull(captor.getValue().contextWindow);
         assertNull(captor.getValue().inputPricePer1MTokens);
@@ -174,7 +178,7 @@ class GatewayModelServiceTest {
 
         assertEquals("json_object", view.responseFormat);
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).insert(captor.capture());
+        verify(gatewayModelCollection).insert(captor.capture());
         assertEquals("json_object", captor.getValue().responseFormat);
     }
 
@@ -201,7 +205,7 @@ class GatewayModelServiceTest {
         existing.endpointTypes = List.of("chat.completions");
         existing.enabled = Boolean.TRUE;
         existing.responseFormat = "json_object";
-        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+        when(gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
         request.fields = Map.of("responseFormat", Boolean.TRUE);
@@ -209,7 +213,7 @@ class GatewayModelServiceTest {
         service.update("model-1", request, "admin-1");
 
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).replace(captor.capture());
+        verify(gatewayModelCollection).replace(captor.capture());
         assertNull(captor.getValue().responseFormat);
     }
 
@@ -226,7 +230,7 @@ class GatewayModelServiceTest {
 
         assertEquals(1D, view.temperature);
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).insert(captor.capture());
+        verify(gatewayModelCollection).insert(captor.capture());
         assertEquals(1D, captor.getValue().temperature);
     }
 
@@ -253,7 +257,7 @@ class GatewayModelServiceTest {
         existing.endpointTypes = List.of("chat.completions");
         existing.enabled = Boolean.TRUE;
         existing.temperature = 1D;
-        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+        when(gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var request = new GatewayModelRequest();
         request.fields = Map.of("temperature", Boolean.TRUE);
@@ -261,7 +265,7 @@ class GatewayModelServiceTest {
         service.update("model-1", request, "admin-1");
 
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).replace(captor.capture());
+        verify(gatewayModelCollection).replace(captor.capture());
         assertNull(captor.getValue().temperature);
     }
 
@@ -276,13 +280,13 @@ class GatewayModelServiceTest {
         existing.endpointTypes = List.of("chat.completions");
         existing.enabled = Boolean.TRUE;
         existing.isDefault = Boolean.TRUE;
-        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+        when(gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var view = service.updateDefault("model-1", false, "admin-1");
 
         assertEquals(Boolean.FALSE, view.isDefault);
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).replace(captor.capture());
+        verify(gatewayModelCollection).replace(captor.capture());
         assertEquals(Boolean.FALSE, captor.getValue().isDefault);
     }
 
@@ -297,12 +301,12 @@ class GatewayModelServiceTest {
         existing.endpointTypes = List.of("chat.completions");
         existing.enabled = Boolean.TRUE;
         existing.isDefault = Boolean.FALSE;
-        when(service.gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
+        when(gatewayModelCollection.get("model-1")).thenReturn(Optional.of(existing));
 
         var view = service.updateDefault("model-1", false, "admin-1");
 
         assertEquals(Boolean.FALSE, view.isDefault);
-        verify(service.gatewayModelCollection, never()).replace(any(GatewayModelConfig.class));
+        verify(gatewayModelCollection, never()).replace(any(GatewayModelConfig.class));
     }
 
     @Test
@@ -316,7 +320,7 @@ class GatewayModelServiceTest {
     void importUsesOfficialModelIdAsDefaultAlias() {
         var service = serviceWithUser(admin("admin-1"), provider("provider-1", "LiteLLM"));
         service.gatewayModelDiscoveryService = new StubModelDiscoveryService();
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
+        when(gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         var request = new ImportGatewayModelsRequest();
         var model = new ImportGatewayModelsRequest.Model();
         model.upstreamModel = "deepseek/deepseek-chat";
@@ -334,7 +338,7 @@ class GatewayModelServiceTest {
         assertEquals(1D, response.models.get(0).inputPricePer1MTokens);
 
         var captor = ArgumentCaptor.forClass(GatewayModelConfig.class);
-        verify(service.gatewayModelCollection).insert(captor.capture());
+        verify(gatewayModelCollection).insert(captor.capture());
         assertEquals("deepseek/deepseek-chat", captor.getValue().modelId);
     }
 
@@ -493,17 +497,20 @@ class GatewayModelServiceTest {
     @SuppressWarnings("unchecked")
     private GatewayModelService serviceWithUser(User user, GatewayProviderConfig provider) {
         var service = new GatewayModelService();
-        service.gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
-        service.gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
-        service.userCollection = (MongoCollection<User>) mock(MongoCollection.class);
-        when(service.userCollection.get(user.id)).thenReturn(Optional.of(user));
-        when(service.gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
+        gatewayModelCollection = (MongoCollection<GatewayModelConfig>) mock(MongoCollection.class);
+        gatewayProviderCollection = (MongoCollection<GatewayProviderConfig>) mock(MongoCollection.class);
+        service.modelStore = MongoGatewayModelStore.of(gatewayModelCollection);
+        service.providerStore = MongoGatewayProviderStore.of(gatewayProviderCollection);
+        var users = (MongoCollection<User>) mock(MongoCollection.class);
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
+        when(users.get(user.id)).thenReturn(Optional.of(user));
+        when(gatewayModelCollection.find(any(Query.class))).thenReturn(List.of());
         if (provider != null) {
-            when(service.gatewayProviderCollection.get(provider.id)).thenReturn(Optional.of(provider));
-            when(service.gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of(provider));
+            when(gatewayProviderCollection.get(provider.id)).thenReturn(Optional.of(provider));
+            when(gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of(provider));
         } else {
-            when(service.gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
-            when(service.gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of());
+            when(gatewayProviderCollection.get("missing")).thenReturn(Optional.empty());
+            when(gatewayProviderCollection.find(any(Query.class))).thenReturn(List.of());
         }
         return service;
     }

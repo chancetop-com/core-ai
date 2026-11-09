@@ -2,13 +2,12 @@ package ai.core.server.project;
 
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentStatus;
-import ai.core.server.domain.Project;
 import ai.core.server.domain.WorkflowDefinition;
+import core.framework.mongo.MongoCollection;
 import ai.core.server.domain.WorkflowDefinitionStatus;
 import ai.core.server.domain.WorkflowVisibility;
 import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
 import java.util.ArrayList;
@@ -24,14 +23,14 @@ import java.util.List;
  */
 public class ProjectMemberQueryService {
     @Inject
-    MongoCollection<Project> projectCollection;
+    ProjectStore projectStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
     MongoCollection<WorkflowDefinition> workflowCollection;
 
     public List<ProjectQueryService.ProjectMember> members(String projectId) {
-        var project = projectCollection.get(projectId).orElse(null);
+        var project = projectStore.get(projectId).orElse(null);
         if (project == null || project.members == null) return List.of();
         return project.members.stream().map(m -> new ProjectQueryService.ProjectMember(m.id, m.name, m.type))
             .sorted(java.util.Comparator.comparing(m -> m.name() == null ? "" : m.name())).toList();
@@ -39,7 +38,7 @@ public class ProjectMemberQueryService {
 
     // Two single-field indexed queries per type, merged in memory (an OR filter would trip notablescan).
     public ProjectQueryService.MemberOptions memberOptions(String projectId) {
-        var project = projectCollection.get(projectId).orElse(null);
+        var project = projectStore.get(projectId).orElse(null);
         if (project == null) return new ProjectQueryService.MemberOptions(List.of(), List.of());
         return new ProjectQueryService.MemberOptions(availableAgents(project.userId), availableWorkflows(project.userId));
     }

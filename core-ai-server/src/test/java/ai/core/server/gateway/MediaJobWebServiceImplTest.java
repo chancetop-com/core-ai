@@ -5,7 +5,7 @@ import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.MediaJobInput;
 import ai.core.server.domain.User;
 import core.framework.mongo.MongoCollection;
-import org.bson.conversions.Bson;
+import core.framework.mongo.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -35,22 +35,22 @@ class MediaJobWebServiceImplTest {
         mediaJobService = mock(MediaJobService.class);
         userCollection = (MongoCollection<User>) mock(MongoCollection.class);
         service.mediaJobService = mediaJobService;
-        service.userCollection = userCollection;
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of());
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
+        when(userCollection.find(any(Query.class))).thenReturn(List.of());
     }
 
     @Test
     void listResolvesOwnerDisplayNames() {
         when(mediaJobService.list(anyInt(), anyInt(), any(), any(), any()))
             .thenReturn(new MediaJobService.MediaJobList(2, List.of(job("job-1", "user-1"), job("job-2", "user-2"))));
-        when(userCollection.find(any(Bson.class))).thenReturn(List.of(user("user-1", "Alice")));
+        when(userCollection.find(any(Query.class))).thenReturn(List.of(user("user-1", "Alice")));
 
         var response = service.list(new ListMediaJobsRequest());
 
         assertEquals(2, response.total);
         assertEquals("Alice", response.jobs.getFirst().userName);
         assertNull(response.jobs.get(1).userName);
-        verify(userCollection).find(any(Bson.class));
+        verify(userCollection).find(any(Query.class));
     }
 
     @Test
@@ -61,7 +61,7 @@ class MediaJobWebServiceImplTest {
         var response = service.list(new ListMediaJobsRequest());
 
         assertNull(response.jobs.getFirst().userName);
-        verify(userCollection, never()).find(any(Bson.class));
+        verify(userCollection, never()).find(any(Query.class));
     }
 
     @Test

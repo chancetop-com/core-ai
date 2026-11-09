@@ -174,7 +174,7 @@ class NotificationSettingsServiceTest {
         when(store.all()).thenAnswer(invocation -> Map.copyOf(channels));
         when(store.load(anyString())).thenAnswer(invocation -> channels.get((String) invocation.getArgument(0)));
 
-        service.userCollection = users;
+        service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.channelConfigStore = store;
         service.channelRegistry = registry;
         service.userChannelTargetStore = targets;

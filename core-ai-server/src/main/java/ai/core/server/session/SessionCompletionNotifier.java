@@ -14,8 +14,8 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.SessionNotice;
 import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +68,7 @@ public class SessionCompletionNotifier {
     @Inject
     SessionRegistry sessionRegistry;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
     @Inject
     ChannelConfigStore channelConfigStore;
     @Inject
@@ -91,7 +91,7 @@ public class SessionCompletionNotifier {
         // Only the web chat entry asks for this; channel/API/scheduled sessions already report back.
         if (session.source != null && !CHAT_SOURCE.equals(session.source)) return;
         if (!Boolean.TRUE.equals(session.notifyOnComplete)) return;
-        var user = userCollection.get(session.userId).orElse(null);
+        var user = userStore.get(session.userId).orElse(null);
         if (!hasTarget(user)) return;
         if (report.durationMs() < minMinutes(user) * 60_000L) return;
         send(session, user, report);

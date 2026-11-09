@@ -1,11 +1,10 @@
 package ai.core.server.web.session;
 
 import ai.core.server.apiuser.PermissionService;
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.internal.web.session.ReadOnlySession;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.UnauthorizedException;
 
@@ -33,7 +32,7 @@ public class SessionIdentity {
     @Inject
     PermissionService permissionService;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     /** Stores the resolved identity for the given internal user into the session. */
     public void setLoginSession(String userId) {
@@ -108,7 +107,7 @@ public class SessionIdentity {
     }
 
     private UserIdentity buildIdentity(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
                 .orElseThrow(() -> new UnauthorizedException("user not found: " + userId));
         var identity = new UserIdentity();
         identity.userId = user.id;

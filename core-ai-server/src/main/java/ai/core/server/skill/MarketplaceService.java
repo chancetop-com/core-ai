@@ -3,11 +3,7 @@ package ai.core.server.skill;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.NotFoundException;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -30,10 +26,10 @@ public class MarketplaceService {
     }
 
     @Inject
-    MongoCollection<MarketplaceRepo> repoCollection;
+    MarketplaceRepoStore repoStore;
 
     @Inject
-    MongoCollection<SkillDefinition> skillCollection;
+    SkillStore skillStore;
 
     @Inject
     SkillService skillService;
@@ -42,17 +38,15 @@ public class MarketplaceService {
         var repo = getRepo(repoId);
         String namespace = skillService.extractRepoOwner(repo.repoUrl);
         if (namespace == null) return false;
-        return skillCollection.count(Filters.eq("namespace", namespace)) > 0;
+        return skillStore.countByNamespace(namespace) > 0;
     }
 
     public List<MarketplaceRepo> listRepos() {
-        var query = new Query();
-        query.sort = Sorts.ascending("name");
-        return repoCollection.find(query);
+        return repoStore.listAll();
     }
 
     public MarketplaceRepo getRepo(String id) {
-        return repoCollection.get(id)
+        return repoStore.get(id)
             .orElseThrow(() -> new NotFoundException("marketplace repo not found, id=" + id));
     }
 
@@ -98,7 +92,7 @@ public class MarketplaceService {
         repo.featured = Boolean.FALSE;
         repo.createdAt = ZonedDateTime.now();
         repo.updatedAt = ZonedDateTime.now();
-        repoCollection.insert(repo);
+        repoStore.insert(repo);
 
         LOGGER.info("registered marketplace repo, id={}, name={}, skills={}, skillPath={}",
             repo.id, name, skills.size(), detectedSkillPath);
@@ -106,11 +100,11 @@ public class MarketplaceService {
     }
 
     public void delete(String id) {
-        repoCollection.delete(id);
+        repoStore.delete(id);
         LOGGER.info("deleted marketplace repo, id={}", id);
     }
 
     public long countUploadedSkills() {
-        return skillCollection.count(Filters.eq("source_type", SkillSourceType.UPLOAD));
+        return skillStore.countBySourceType(SkillSourceType.UPLOAD);
     }
 }

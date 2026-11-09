@@ -4,19 +4,13 @@ import ai.core.api.server.gateway.GatewayProviderRequest;
 import ai.core.api.server.gateway.GatewayProviderView;
 import ai.core.api.server.gateway.ListGatewayProvidersResponse;
 import ai.core.api.server.gateway.TestGatewayProviderResponse;
-import ai.core.server.domain.GatewayModelConfig;
-import ai.core.server.domain.GatewayProviderConfig;
-import ai.core.server.domain.User;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import ai.core.media.GoogleAccessTokenProvider;
+import ai.core.server.domain.GatewayProviderConfig;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
@@ -44,29 +38,25 @@ public class GatewayProviderService {
             .build();
 
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    GatewayProviderStore providerStore;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    GatewayModelStore modelStore;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     GatewaySecretProtector secretProtector;
     @Inject
     GatewayRoutingEngine gatewayRoutingEngine;
 
     public ListGatewayProvidersResponse list(String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
-        var query = new Query();
-        query.filter = Filters.empty();
-        query.sort = Sorts.ascending("name");
-
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var response = new ListGatewayProvidersResponse();
-        response.providers = gatewayProviderCollection.find(query).stream().map(this::toView).toList();
+        response.providers = providerStore.listAll().stream().map(this::toView).toList();
         return response;
     }
 
     public GatewayProviderView create(GatewayProviderRequest request, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         validate(request, true);
 
         var now = ZonedDateTime.now();
@@ -77,44 +67,44 @@ public class GatewayProviderService {
         entity.updatedBy = userId;
         entity.createdAt = now;
         entity.updatedAt = now;
-        gatewayProviderCollection.insert(entity);
+        providerStore.insert(entity);
         invalidateRouting();
         return toView(entity);
     }
 
     public GatewayProviderView update(String id, GatewayProviderRequest request, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         validate(request, false);
 
         var entity = getEntity(id);
         apply(entity, request, true);
         entity.updatedBy = userId;
         entity.updatedAt = ZonedDateTime.now();
-        gatewayProviderCollection.replace(entity);
+        providerStore.replace(entity);
         invalidateRouting();
         return toView(entity);
     }
 
     public void delete(String id, String userId, boolean cascadeModels) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         getEntity(id);
         if (hasModels(id)) {
             if (!cascadeModels) throw new BadRequestException("gateway provider has models configured: " + id);
-            gatewayModelCollection.delete(Filters.eq("provider_id", id));
+            modelStore.deleteByProviderId(id);
         }
-        gatewayProviderCollection.delete(id);
+        providerStore.delete(id);
         invalidateRouting();
     }
 
     public TestGatewayProviderResponse test(String id, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var entity = getEntity(id);
         var result = test(entity);
 
         entity.lastTestStatus = result.status;
         entity.lastTestMessage = result.message;
         entity.lastTestAt = ZonedDateTime.now();
-        gatewayProviderCollection.replace(entity);
+        providerStore.replace(entity);
         return result;
     }
 
@@ -183,10 +173,8 @@ public class GatewayProviderService {
     }
 
     private String probeModel(GatewayProviderConfig entity) {
-        if (gatewayModelCollection != null) {
-            var query = new Query();
-            query.filter = Filters.eq("provider_id", entity.id);
-            for (var model : gatewayModelCollection.find(query)) {
+        if (modelStore != null) {
+            for (var model : modelStore.listByProviderId(entity.id)) {
                 if (Boolean.TRUE.equals(model.enabled) && !isBlank(model.upstreamModel)) return model.upstreamModel;
             }
         }
@@ -220,15 +208,13 @@ public class GatewayProviderService {
     }
 
     private GatewayProviderConfig getEntity(String id) {
-        return gatewayProviderCollection.get(id)
+        return providerStore.get(id)
                 .orElseThrow(() -> new NotFoundException("gateway provider not found: " + id));
     }
 
     private boolean hasModels(String providerId) {
-        if (gatewayModelCollection == null) return false;
-        var query = new Query();
-        query.filter = Filters.eq("provider_id", providerId);
-        return !gatewayModelCollection.find(query).isEmpty();
+        if (modelStore == null) return false;
+        return !modelStore.listByProviderId(providerId).isEmpty();
     }
 
     private void apply(GatewayProviderConfig entity, GatewayProviderRequest request, boolean keepExistingSecret) {

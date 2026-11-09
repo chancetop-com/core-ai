@@ -42,7 +42,7 @@ import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.workflow.WorkflowRunner;
-import com.mongodb.client.model.Filters;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.mongo.MongoCollection;
@@ -73,7 +73,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowAgentOptionService agentOptionService;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Inject
     WorkflowPublishService publishService;
@@ -157,14 +157,14 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         Set<String> userIds = definitions.stream().map(d -> d.userId).filter(Objects::nonNull).collect(Collectors.toSet());
         if (userIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
-        for (User user : userCollection.find(Filters.in("_id", userIds))) {
+        for (User user : userStore.listByIds(userIds)) {
             map.put(user.id, user.name);
         }
         return map;
     }
 
     private boolean isAdmin(String userId) {
-        return userCollection.get(userId).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
+        return userStore.get(userId).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
     }
 
     @Override
@@ -195,7 +195,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         // an archived workflow opens read-only even for its owner (update would 409); it exists only for run history
         boolean editable = definition.userId.equals(userId)
             && WorkflowDefinitionService.statusOf(definition) != WorkflowDefinitionStatus.ARCHIVED;
-        var ownerName = editable ? null : userCollection.get(definition.userId).map(u -> u.name).orElse(null);
+        var ownerName = editable ? null : userStore.get(definition.userId).map(u -> u.name).orElse(null);
         var view = WorkflowViewMapper.toView(definition, ownerName);
         view.editable = editable;
         return view;

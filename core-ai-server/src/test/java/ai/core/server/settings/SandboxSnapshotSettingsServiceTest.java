@@ -5,31 +5,19 @@ import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.SystemSettings;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.RoleRegistry;
-import com.mongodb.MongoClientSettings;
 import com.mongodb.MongoException;
 import core.framework.internal.json.JSONClassValidator;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.impl.ZonedDateTimeCodec;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
-import org.bson.BsonDocument;
-import org.bson.codecs.configuration.CodecRegistries;
-import org.bson.codecs.configuration.CodecRegistry;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
-import java.time.Instant;
-import java.time.ZoneOffset;
-import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -49,19 +37,15 @@ import static org.mockito.Mockito.when;
  * @author xander
  */
 class SandboxSnapshotSettingsServiceTest {
-    private static final CodecRegistry CODECS = CodecRegistries.fromRegistries(
-            CodecRegistries.fromCodecs(new ZonedDateTimeCodec()), MongoClientSettings.getDefaultCodecRegistry());
-
     private SandboxSnapshotSettingsService service;
-    private MongoCollection<SystemSettings> settings;
+    private SystemSettingsStore settings;
     private final Map<String, SystemSettings> stored = new HashMap<>();
 
     @BeforeEach
-    @SuppressWarnings("unchecked")
     void setUp() {
         service = new SandboxSnapshotSettingsService();
-        settings = mock(MongoCollection.class);
-        service.systemSettingsCollection = settings;
+        settings = mock(SystemSettingsStore.class);
+        service.systemSettingsStore = settings;
         service.permissionService = mock(PermissionService.class);
         when(service.permissionService.permissionsOf("selected-user")).thenReturn(List.of(PermissionCodes.SANDBOX_SNAPSHOT_MANAGE));
         when(service.permissionService.permissionsOf("admin")).thenReturn(List.of(RoleRegistry.ALL_PERMISSIONS));
@@ -76,8 +60,6 @@ class SandboxSnapshotSettingsServiceTest {
             stored.put(entity.id, entity);
             return null;
         }).when(settings).replace(any(SystemSettings.class));
-        when(settings.update(any(Bson.class), any(Bson.class)))
-                .thenAnswer(invocation -> applyUpdate(invocation.getArgument(0), invocation.getArgument(1)));
     }
 
     @Test
@@ -118,18 +100,12 @@ class SandboxSnapshotSettingsServiceTest {
 
         service.update(request(7), "selected-user");
 
-        var filter = ArgumentCaptor.forClass(Bson.class);
-        var update = ArgumentCaptor.forClass(Bson.class);
-        verify(settings).update(filter.capture(), update.capture());
-        assertEquals("sandbox-snapshot", filter.getValue().toBsonDocument().getString("_id").getValue());
-        var fields = update.getValue().toBsonDocument(BsonDocument.class, CODECS).getDocument("$set");
-        assertEquals(Set.of("sandbox_snapshot_retention_days", "updated_by", "updated_at"), fields.keySet());
+        verify(settings).replace(existing);
         assertEquals(7, service.retentionDays());
         assertEquals("keep-model", existing.llmModel);
         assertEquals("keep-encrypted-key", existing.azureBlobAccountKey);
         assertEquals("{\"ops\":[\"sandbox.snapshot.manage\"]}", existing.rbacRoles);
         assertEquals(Boolean.TRUE, existing.sandboxSnapshotEnabled);
-        verify(settings, never()).replace(any(SystemSettings.class));
     }
 
     @Test
@@ -228,7 +204,7 @@ class SandboxSnapshotSettingsServiceTest {
 
         assertEquals(45, service.update(request(45), "selected-user").retentionDays);
         assertEquals("concurrently-configured-model", stored.get("sandbox-snapshot").llmModel);
-        verify(settings).update(any(Bson.class), any(Bson.class));
+        verify(settings).replace(any(SystemSettings.class));
     }
 
     @Test
@@ -236,18 +212,7 @@ class SandboxSnapshotSettingsServiceTest {
         doThrow(new MongoException(91, "database unavailable")).when(settings).insert(any(SystemSettings.class));
 
         assertThrows(MongoException.class, () -> service.update(request(30), "selected-user"));
-        verify(settings, never()).update(any(Bson.class), any(Bson.class));
-    }
-
-    private long applyUpdate(Bson filter, Bson update) {
-        var id = filter.toBsonDocument().getString("_id").getValue();
-        var entity = stored.get(id);
-        if (entity == null) return 0;
-        var values = update.toBsonDocument(BsonDocument.class, CODECS).getDocument("$set");
-        entity.sandboxSnapshotRetentionDays = values.getInt32("sandbox_snapshot_retention_days").getValue();
-        entity.updatedBy = values.getString("updated_by").getValue();
-        entity.updatedAt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(values.getDateTime("updated_at").getValue()), ZoneOffset.UTC);
-        return 1;
+        verify(settings, never()).replace(any(SystemSettings.class));
     }
 
     private SandboxSnapshotSettingsRequest request(Integer days) {

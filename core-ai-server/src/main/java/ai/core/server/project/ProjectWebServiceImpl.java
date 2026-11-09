@@ -35,12 +35,11 @@ import ai.core.api.server.project.UpdateProjectRequest;
 import ai.core.api.server.project.UpdateSubjectRequest;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectSubjectEvent;
-import ai.core.server.domain.User;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
@@ -78,7 +77,7 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     @Inject
     ProjectViewAssembler assembler;
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Override
     public ListProjectsResponse list(ListProjectsRequest request) {
@@ -432,7 +431,7 @@ public class ProjectWebServiceImpl implements ProjectWebService {
     }
 
     private boolean admin() {
-        return userCollection.get(userId()).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
+        return userStore.get(userId()).map(user -> "admin".equals(user.role)).orElse(Boolean.FALSE);
     }
 
     private int clampLimit(Integer limit) {

@@ -1,30 +1,35 @@
 package ai.core.server.channel;
 
-import com.mongodb.client.model.Filters;
-import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * @author stephen
  */
-public class ChannelConfigStore {
+public abstract class ChannelConfigStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChannelConfigStore.class);
 
-    @Inject
-    MongoCollection<ChannelConfigView> collection;
+    protected abstract Optional<ChannelConfigView> get(String channelId);
+
+    protected abstract List<ChannelConfigView> list();
+
+    protected abstract void insert(ChannelConfigView config);
+
+    protected abstract void replace(ChannelConfigView config);
+
+    protected abstract void delete(String channelId);
 
     public void store(ChannelConfigView config) {
         try {
-            var existing = collection.get(config.channelId).orElse(null);
-            if (existing == null) {
-                collection.insert(config);
+            if (get(config.channelId).isEmpty()) {
+                insert(config);
             } else {
-                collection.replace(config);
+                replace(config);
             }
         } catch (Exception e) {
             LOGGER.warn("failed to persist channel to db, channelId={}", config.channelId, e);
@@ -33,13 +38,12 @@ public class ChannelConfigStore {
     }
 
     public ChannelConfigView load(String channelId) {
-        return collection.get(channelId).orElse(null);
+        return get(channelId).orElse(null);
     }
 
     public Map<String, ChannelConfigView> all() {
-        var channels = collection.find(Filters.empty());
         var result = new LinkedHashMap<String, ChannelConfigView>();
-        for (var channel : channels) {
+        for (var channel : list()) {
             result.put(channel.channelId, channel);
         }
         return result;
@@ -47,7 +51,7 @@ public class ChannelConfigStore {
 
     public void remove(String channelId) {
         try {
-            collection.delete(channelId);
+            delete(channelId);
         } catch (Exception e) {
             LOGGER.warn("failed to delete channel from db, channelId={}", channelId, e);
         }

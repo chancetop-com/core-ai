@@ -54,7 +54,7 @@ class PermissionServiceTest {
 
     private PermissionService service(String role, List<String> permissions) {
         var service = new PermissionService();
-        service.userCollection = userCollection(role);
+        service.userStore = ai.core.server.user.MongoUserStore.of(userCollection(role));
         var registry = mock(RoleRegistry.class);
         when(registry.permissionsOf(role)).thenReturn(permissions);
         service.roleRegistry = registry;

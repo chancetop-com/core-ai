@@ -21,8 +21,6 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.run.ResponseSchemaConverter;
 import core.framework.http.HTTPClientException;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
@@ -35,10 +33,9 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GatewayLLMProviderTest {
     private static final String SCHEMA_JSON = """
@@ -49,13 +46,6 @@ class GatewayLLMProviderTest {
                 List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
                 new Usage(1, 1, 2)
         );
-    }
-
-    @SuppressWarnings("unchecked")
-    private static <T> MongoCollection<T> mockMongo(List<T> rows) {
-        var collection = (MongoCollection<T>) mock(MongoCollection.class);
-        when(collection.find(any(Query.class))).thenReturn(rows);
-        return collection;
     }
 
     @Test
@@ -324,8 +314,8 @@ class GatewayLLMProviderTest {
     void geminiResponsesEndpointIsRejected() {
         var provider = provider("google", "gemini", "https://aiplatform.googleapis.com/v1beta1");
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(List.of(provider));
-        routingEngine.gatewayModelCollection = mockMongo(List.of());
+        routingEngine.providerStore = GatewayStoreTestSupport.providerStore(List.of(provider));
+        routingEngine.modelStore = GatewayStoreTestSupport.modelStore(List.of());
         var realProvider = new GatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), null);
 
         assertThrows(BadRequestException.class, () -> realProvider.createUpstreamProvider(provider, "gemini-3.8-flash", "responses"));
@@ -600,8 +590,8 @@ class GatewayLLMProviderTest {
     @SuppressWarnings("unchecked")
     private ScriptedGateway scriptedGateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(providers);
-        routingEngine.gatewayModelCollection = mockMongo(models);
+        routingEngine.providerStore = GatewayStoreTestSupport.providerStore(providers);
+        routingEngine.modelStore = GatewayStoreTestSupport.modelStore(models);
         var gateway = new ScriptedGateway(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"));
         // the seed modality registry knows deepseek as text-only; failover tests must keep image content intact
         gateway.setModalityRegistry((model, modality) -> ModalitySupport.SUPPORTED);
@@ -611,8 +601,8 @@ class GatewayLLMProviderTest {
     @SuppressWarnings("unchecked")
     private TestGatewayLLMProvider gateway(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models, LiteLLMProvider fallback) {
         var routingEngine = new GatewayRoutingEngine();
-        routingEngine.gatewayProviderCollection = mockMongo(providers);
-        routingEngine.gatewayModelCollection = mockMongo(models);
+        routingEngine.providerStore = GatewayStoreTestSupport.providerStore(providers);
+        routingEngine.modelStore = GatewayStoreTestSupport.modelStore(models);
         return new TestGatewayLLMProvider(new LLMProviderConfig(null, null, null), routingEngine, new GatewaySecretProtector("test-secret"), fallback);
     }
 

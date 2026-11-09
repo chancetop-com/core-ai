@@ -118,6 +118,13 @@ public class ServerApp extends App {
 
         registerMongo();
 
+        load(new PostgresModule());
+        load(new UserStoreModule());
+        load(new GatewayStoreModule());
+        load(new ToolRegistryStoreModule());
+        load(new SkillStoreModule());
+        load(new ChannelStoreModule());
+        load(new ProjectDataStoreModule());
         load(new MultiAgentModule());
         load(new ServiceApiModule());
         load(new McpServerModule());

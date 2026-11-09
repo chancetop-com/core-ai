@@ -12,7 +12,6 @@ import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.comparison.domain.ComparisonVoteChoice;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.User;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -56,7 +55,7 @@ public class ComparisonSessionService {
     @Inject
     MongoCollection<ChatMessage> chatMessageCollection;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     AgentSessionManager sessionManager;
     @Inject
@@ -131,7 +130,7 @@ public class ComparisonSessionService {
         view.variant = meta.comparisonVariant;
         view.primarySessionId = sessionA != null ? sessionA.id : null;
         view.secondarySessionId = sessionB != null ? sessionB.id : null;
-        view.blind = !ComparisonAccess.canManage(userCollection, comparison, userId);
+        view.blind = !ComparisonAccess.canManage(userStore, comparison, userId);
         view.budgetUsd = comparison.budgetUsd;
         view.votes = pairVotes(comparison.id, sessionA);
         return view;

@@ -111,7 +111,7 @@ class SkillRepoManagerTest {
     }
 
     private SkillRepoManager manager() {
-        return new SkillRepoManager(skillCollection(), mock(SkillBlobStore.class));
+        return new SkillRepoManager(MongoSkillStore.of(skillCollection()), mock(SkillBlobStore.class));
     }
 
     private void gitPack(Path dir, FileTime lastModified) throws IOException {

@@ -1,7 +1,7 @@
 package ai.core.server.rbac;
 
 import ai.core.server.domain.SystemSettings;
-import core.framework.mongo.MongoCollection;
+import ai.core.server.settings.SystemSettingsStore;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
@@ -117,15 +117,14 @@ class RoleRegistryTest {
         return registry(systemSettingsCollection());
     }
 
-    private RoleRegistry registry(MongoCollection<SystemSettings> collection) {
+    private RoleRegistry registry(SystemSettingsStore collection) {
         var registry = new RoleRegistry();
-        registry.systemSettingsCollection = collection;
+        registry.systemSettingsStore = collection;
         return registry;
     }
 
-    @SuppressWarnings("unchecked")
-    private MongoCollection<SystemSettings> systemSettingsCollection() {
-        var collection = mock(MongoCollection.class);
+    private SystemSettingsStore systemSettingsCollection() {
+        var collection = mock(SystemSettingsStore.class);
         when(collection.get("default")).thenReturn(Optional.empty());
         return collection;
     }

@@ -31,7 +31,7 @@ class ApiUserQuotaServiceTest {
     void resetQuotaClearsConsumedCountersAndAdvancesWindow() {
         var collection = mockCollection();
         var service = new ApiUserQuotaService();
-        service.userCollection = collection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(collection);
 
         service.resetQuota("user-1");
 
@@ -42,7 +42,7 @@ class ApiUserQuotaServiceTest {
     void checkQuotaLazilyResetsWindowWhenDayChanges() {
         var collection = mockCollection();
         var service = new ApiUserQuotaService();
-        service.userCollection = collection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(collection);
 
         var user = new User();
         user.id = "user-1";
@@ -60,7 +60,7 @@ class ApiUserQuotaServiceTest {
     void checkQuotaRejectsWhenConsumedAtLimit() {
         var collection = mockCollection();
         var service = new ApiUserQuotaService();
-        service.userCollection = collection;
+        service.userStore = ai.core.server.user.MongoUserStore.of(collection);
 
         var user = new User();
         user.id = "user-1";

@@ -2,18 +2,13 @@ package ai.core.server.gateway;
 
 import ai.core.api.server.gateway.GatewayDiscoveredModelView;
 import ai.core.api.server.gateway.ListGatewayDiscoveredModelsResponse;
-import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
-import ai.core.server.domain.User;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.mongodb.client.model.Filters;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.http.HTTPResponse;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 
@@ -44,16 +39,16 @@ public class GatewayModelDiscoveryService {
             .build();
 
     @Inject
-    MongoCollection<GatewayProviderConfig> gatewayProviderCollection;
+    GatewayProviderStore providerStore;
     @Inject
-    MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    GatewayModelStore modelStore;
     @Inject
-    MongoCollection<User> userCollection;
+    ai.core.server.user.UserStore userStore;
     @Inject
     GatewaySecretProtector secretProtector;
 
     public ListGatewayDiscoveredModelsResponse discover(String providerId, String userId) {
-        GatewayAdminGuard.requireAdmin(userCollection, userId);
+        GatewayAdminGuard.requireAdmin(userStore, userId);
         var provider = provider(providerId);
         var discovered = discover(provider);
         var imported = importedUpstreamModels(providerId);
@@ -219,17 +214,15 @@ public class GatewayModelDiscoveryService {
     }
 
     private Set<String> importedUpstreamModels(String providerId) {
-        var query = new Query();
-        query.filter = Filters.eq("provider_id", providerId);
         var imported = new HashSet<String>();
-        gatewayModelCollection.find(query).forEach(model -> {
+        modelStore.listByProviderId(providerId).forEach(model -> {
             if (model.upstreamModel != null) imported.add(model.upstreamModel);
         });
         return imported;
     }
 
     private GatewayProviderConfig provider(String id) {
-        return gatewayProviderCollection.get(id)
+        return providerStore.get(id)
                 .orElseThrow(() -> new NotFoundException("gateway provider not found: " + id));
     }
 

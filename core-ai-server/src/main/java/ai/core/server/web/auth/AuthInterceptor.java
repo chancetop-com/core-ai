@@ -1,11 +1,10 @@
 package ai.core.server.web.auth;
 
 import ai.core.server.channel.ChannelConfigStore;
-import ai.core.server.domain.User;
+import ai.core.server.user.UserStore;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.web.session.SessionIdentity;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.Interceptor;
 import core.framework.web.Invocation;
 import core.framework.web.Response;
@@ -57,7 +56,7 @@ public class AuthInterceptor implements Interceptor {
     ChannelConfigStore channelConfigStore;
 
     @Inject
-    MongoCollection<User> userCollection;
+    UserStore userStore;
 
     @Inject
     SessionIdentity sessionIdentity;
@@ -121,7 +120,7 @@ public class AuthInterceptor implements Interceptor {
                     : requestAuthenticator.authenticate(request, gatewayAuthorization);
             invocation.context().put(AuthContext.USER_ID_KEY, userId);
             // 3. persist identity into session for internal users so subsequent requests skip key lookup
-            var user = userCollection.get(userId).orElse(null);
+            var user = userStore.get(userId).orElse(null);
             if (user != null && !USER_TYPE_API.equals(user.userType)) {
                 sessionIdentity.setLoginSession(userId);
             }
@@ -161,7 +160,7 @@ public class AuthInterceptor implements Interceptor {
     }
 
     private void requireAdmin(String userId) {
-        var user = userCollection.get(userId)
+        var user = userStore.get(userId)
                 .orElseThrow(() -> new ForbiddenException("admin required"));
         if (!"admin".equals(user.role)) {
             throw new ForbiddenException("admin required");
