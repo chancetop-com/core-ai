@@ -12,12 +12,17 @@ tasks.withType<AbstractFlywayTask> {
     val env = properties["env"] // use gradlew -Penv=${env} to pass
     val propertyFile = if (env == null) file("src/main/resources/flyway.properties") else file("conf/${env}/resources/flyway.properties")
     val properties = DBMigration.loadProperties(propertyFile)
+    val baselineVersion = System.getProperty("flyway.baselineVersion")
 
     doFirst {
         flyway {
             configurations = arrayOf("runtimeClasspath") // use runtimeOnly scope in actual db-migration project
             placeholderReplacement = false
             url = properties["flyway.url"]
+            if (baselineVersion != null) {
+                baselineOnMigrate = true
+                this.baselineVersion = baselineVersion
+            }
             val userValue = properties["flyway.user"]
             if (userValue == "iam/gcloud") {
                 val dialect = """jdbc:(\w+)://.+""".toRegex().matchEntire(url)!!.groups[1]!!.value

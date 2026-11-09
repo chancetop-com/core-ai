@@ -54,8 +54,8 @@ public class ProjectAnalysisService {
     public boolean claimAnalysis(String projectId) {
         var now = ZonedDateTime.now();
         return projectStore.updateIf(projectId,
-            project -> !ProjectService.ANALYSIS_RUNNING.equals(project.analysisStatus)
-                || project.analysisClaimedAt == null
+            project -> project.analysisClaimedAt == null
+                || !ProjectService.ANALYSIS_RUNNING.equals(project.analysisStatus)
                 || project.analysisClaimedAt.isBefore(now.minus(STALE_CLAIM)),
             project -> {
                 project.analysisStatus = ProjectService.ANALYSIS_RUNNING;

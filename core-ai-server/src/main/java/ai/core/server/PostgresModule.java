@@ -22,7 +22,7 @@ public class PostgresModule extends Module {
         var storeMode = property("sys.store.mode").orElse("mongo");
         var datasetStore = property("sys.dataset.store").orElse("mongo");
         var migrationEnabled = Boolean.parseBoolean(property("sys.dataset.migration.enabled").orElse("false"));
-        if (!"pg".equals(storeMode) && !"postgresql".equals(datasetStore) && !migrationEnabled) return;
+        if (!migrationEnabled && !"pg".equals(storeMode) && !"postgresql".equals(datasetStore)) return;
 
         var url = requiredProperty("sys.db.url");
         var user = requiredProperty("sys.db.user");

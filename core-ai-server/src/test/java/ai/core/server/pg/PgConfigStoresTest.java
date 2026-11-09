@@ -1,5 +1,9 @@
 package ai.core.server.pg;
 
+
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apimcp.serviceapi.service.PgServiceApiStore;
 import ai.core.server.domain.SystemPrompt;
@@ -30,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 @EnabledIfEnvironmentVariable(named = "CORE_AI_PG_TEST_URL", matches = ".+")
+@SuppressFBWarnings({"REC_CATCH_EXCEPTION", "SACM_STATIC_ARRAY_CREATED_IN_METHOD", "RFI_SET_ACCESSIBLE"})
 class PgConfigStoresTest {
     private static final DatabaseImpl DATABASE = database();
 

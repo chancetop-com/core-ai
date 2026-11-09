@@ -1,5 +1,9 @@
 package ai.core.server.user;
 
+
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import ai.core.server.domain.User;
 import core.framework.internal.db.DatabaseImpl;
 import org.junit.jupiter.api.AfterAll;
@@ -19,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 @EnabledIfEnvironmentVariable(named = "CORE_AI_PG_TEST_URL", matches = ".+")
+@SuppressFBWarnings({"REC_CATCH_EXCEPTION", "SACM_STATIC_ARRAY_CREATED_IN_METHOD", "RFI_SET_ACCESSIBLE"})
 class PgUserStoreTest {
     private static final DatabaseImpl DATABASE = database();
 

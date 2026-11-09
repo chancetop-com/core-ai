@@ -1,5 +1,9 @@
 package ai.core.server.project;
 
+
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
 import ai.core.server.domain.ProjectReportSource;
@@ -22,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 @EnabledIfEnvironmentVariable(named = "CORE_AI_PG_TEST_URL", matches = ".+")
+@SuppressFBWarnings({"REC_CATCH_EXCEPTION", "SACM_STATIC_ARRAY_CREATED_IN_METHOD", "RFI_SET_ACCESSIBLE"})
 class PgProjectStoreTest {
     private static final DatabaseImpl DATABASE = database();
 
@@ -101,8 +106,8 @@ class PgProjectStoreTest {
             var updated = store.get(id).orElseThrow();
             assertEquals("Renamed", updated.name);
             assertTrue(updated.members == null || updated.members.isEmpty());
-            assertEquals(1, store.count("user-1", false));
-            assertEquals(1, store.list("user-1", false, 0, 10).size());
+            assertEquals(1, store.count("user-1", Boolean.FALSE));
+            assertEquals(1, store.list("user-1", Boolean.FALSE, 0, 10).size());
         } finally {
             DATABASE.execute("DELETE FROM app.projects WHERE id = ?", id);
         }

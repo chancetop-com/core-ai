@@ -1,5 +1,9 @@
 package ai.core.server.pg;
 
+
+
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.gateway.PgGatewayModelStore;
@@ -22,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 @EnabledIfEnvironmentVariable(named = "CORE_AI_PG_TEST_URL", matches = ".+")
+@SuppressFBWarnings({"REC_CATCH_EXCEPTION", "SACM_STATIC_ARRAY_CREATED_IN_METHOD", "RFI_SET_ACCESSIBLE"})
 class PgGatewayStoresTest {
     private static final DatabaseImpl DATABASE = database();
 
