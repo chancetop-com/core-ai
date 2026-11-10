@@ -37,7 +37,8 @@ final class GatewayModelFailover {
             "connection reset|connection refused|connect timed out|read timed out|timed out|timeout|"
                     + "unexpected end of stream|stream was reset|broken pipe|"
                     + "bad gateway|gateway timeout|service unavailable|temporarily unavailable|"
-                    + "overloaded|rate limit|too many requests|超时|服务不可用|限流",
+                    + "overloaded|rate limit|too many requests|insufficient balance|insufficient quota|"
+                    + "billing hard limit|exceeded.*quota|quota.*exceeded|余额不足|额度不足|超时|服务不可用|限流",
             Pattern.CASE_INSENSITIVE);
 
     static boolean retryable(Throwable error) {
@@ -67,9 +68,9 @@ final class GatewayModelFailover {
     }
 
     private static boolean failoverStatus(int statusCode) {
-        // 401/403 = this provider's credentials are broken; another model can still serve the run.
-        // 400/404/413/422 are request/model specific, so switching models would only waste a call.
-        return statusCode == 401 || statusCode == 403 || statusCode == 408 || statusCode == 425
+        // 401/403 = this provider's credentials are broken; 402 = provider balance/quota is exhausted.
+        // 400/404/413/422 are request/model specific, so switching models would waste a call.
+        return statusCode == 401 || statusCode == 402 || statusCode == 403 || statusCode == 408 || statusCode == 425
                 || statusCode == 429 || statusCode >= 500;
     }
 

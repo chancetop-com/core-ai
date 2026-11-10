@@ -71,10 +71,13 @@ reasoning_effort/response_format/messages）→ 应用该模型自己的配置 �
 | `statusCode=5xx` | 是 | 上游故障 |
 | `statusCode=429` / `408` / `425` | 是 | 限流 / 超时 |
 | `statusCode=401` / `403` | 是 | 该 provider 凭证/配置坏了，别的模型还能服务 |
+| `statusCode=402` | 是 | 该 provider 余额/额度耗尽（如 DeepSeek `Insufficient Balance`），换模型可继续服务 |
 | `statusCode=400` / `404` / `413` / `422` | 否 | 请求或模型名本身的问题，换模型只会浪费一次调用 |
-| 流内 error event（`LLMStreamException`） | 视文案 | 命中 overloaded / timeout / rate limit / 服务不可用等瞬时模式才切换 |
+| 流内 error event（`LLMStreamException` / 错误文案） | 视文案 | 命中 overloaded / timeout / rate limit / 服务不可用 / insufficient balance / quota exceeded 等模式才切换 |
 | 取消（`CancellationException` / callback cancelled） | 否 | 用户意图 |
 | `INVALID_URL` | 否 | 配置错误 |
+
+为什么不是"任何错误都切换"：切换只在**换一个模型有机会成功**时才有意义。请求级错误（参数不合法、上下文超限、模型名不存在）换到备用模型会以另一个原因再失败一次，既掩盖真实错误又多付一次调用；已经输出过内容的失败切换则会让客户端收到重复的半截回答。状态码和上游错误文案因此一起作为判据：`402` 和 `insufficient balance` / `quota exceeded` 这类余额额度错误，本质上属于"这个 provider 暂时不能服务，别的模型还能"，所以归入可切换。
 
 ### 3.2 输出安全
 

@@ -567,6 +567,26 @@ class GatewayLLMProviderTest {
         assertEquals(List.of("deepseek-v4", "gpt-6", "gpt-6"), upstream.calledModels);
     }
 
+    @Test
+    void failsOverWhenPrimaryProviderReportsInsufficientBalance() {
+        var provider = provider("deepseek", "litellm", "https://deepseek.example.com");
+        var primary = model("deepseek-flash", provider.id, "deepseek-flash");
+        primary.fallbackModelIds = List.of("gpt-6-luna");
+        var gateway = scriptedGateway(List.of(provider),
+                List.of(primary, model("gpt-6-luna", provider.id, "gpt-6-luna")));
+        var upstream = gateway.upstream(provider.id);
+        upstream.fail("deepseek-flash", new HTTPClientException(
+                "invalid sse response, statusCode=402, content-type=application/json, "
+                        + "body={\"error\":{\"message\":\"Insufficient Balance\",\"type\":\"insufficient_balance_error\"}}",
+                "HTTP_REQUEST_FAILED"));
+        upstream.reply("gpt-6-luna", "served by fallback");
+
+        var response = gateway.completion(request("deepseek-flash"));
+
+        assertEquals("served by fallback", response.choices.getFirst().message.content);
+        assertEquals(List.of("deepseek-flash", "gpt-6-luna"), upstream.calledModels);
+    }
+
     private HTTPClientException unavailable() {
         return new HTTPClientException("invalid sse response, statusCode=503, content-type=text/html", "HTTP_REQUEST_FAILED");
     }

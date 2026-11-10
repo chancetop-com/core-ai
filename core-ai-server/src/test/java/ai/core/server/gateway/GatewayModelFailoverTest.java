@@ -25,6 +25,7 @@ class GatewayModelFailoverTest {
         assertTrue(GatewayModelFailover.retryable(statusError(503)));
         assertTrue(GatewayModelFailover.retryable(statusError(500)));
         assertTrue(GatewayModelFailover.retryable(statusError(429)));
+        assertTrue(GatewayModelFailover.retryable(statusError(402)));
         assertTrue(GatewayModelFailover.retryable(statusError(408)));
         assertTrue(GatewayModelFailover.retryable(statusError(401)));
         assertTrue(GatewayModelFailover.retryable(statusError(403)));
@@ -36,6 +37,8 @@ class GatewayModelFailoverTest {
         assertFalse(GatewayModelFailover.retryable(new HTTPClientException("uri is invalid, uri=::bad", "INVALID_URL")));
         assertFalse(GatewayModelFailover.retryable(new CancellationException()));
         assertTrue(GatewayModelFailover.retryable(new LLMStreamException("upstream overloaded, retry later")));
+        assertTrue(GatewayModelFailover.retryable(new LLMStreamException("Insufficient Balance")));
+        assertTrue(GatewayModelFailover.retryable(new LLMStreamException("insufficient quota")));
         assertFalse(GatewayModelFailover.retryable(new LLMStreamException("invalid request: context length exceeded")));
         assertFalse(GatewayModelFailover.retryable(new RuntimeException("no enabled gateway model matches model: x")));
     }
