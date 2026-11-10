@@ -190,11 +190,7 @@ public class AgentPortService {
         if (ref == null) return null;
         SkillDefinition skill = skillService.findOrNull(ref.id);
         if (skill != null) return skill;
-        skill = skillService.findByQualifiedNameOrNull(ref.qualifiedName);
-        if (skill != null) return skill;
-        if (Strings.isBlank(ref.name)) return null;
-        var matches = skillService.findByName(ref.name);
-        return matches.size() == 1 ? matches.get(0) : null;
+        return skillService.findByQualifiedNameOrNull(ref.qualifiedName);
     }
 
     private List<String> resolveSubAgentIds(ExportAgentResponse envelope, String userId,

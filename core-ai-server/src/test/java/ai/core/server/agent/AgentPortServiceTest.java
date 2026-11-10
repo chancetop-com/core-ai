@@ -114,7 +114,6 @@ class AgentPortServiceTest {
         var service = service();
         when(service.skillService.findOrNull(any())).thenReturn(null);
         when(service.skillService.findByQualifiedNameOrNull(any())).thenReturn(null);
-        when(service.skillService.findByName(any())).thenReturn(List.of());
         when(service.definitionService.create(any(), eq("user-1"))).thenReturn(new AgentDefinitionView());
 
         ImportAgentResponse response = service.port.importAgent("""
