@@ -119,7 +119,7 @@ class ApiDefinitionServiceTest {
         assertEquals("getUser", operation.description);
         assertNull(operation.example);
         assertNull(operation.pathParams.getFirst().description);
-        var field = api.types.stream().filter(type -> type.name.equals("GetUserRequest")).findFirst().orElseThrow().fields.getFirst();
+        var field = api.types.stream().filter(type -> "GetUserRequest".equals(type.name)).findFirst().orElseThrow().fields.getFirst();
         assertNull(field.description);
         assertNull(field.example);
         assertEquals(Boolean.TRUE, field.constraints.notNull);
@@ -136,7 +136,7 @@ class ApiDefinitionServiceTest {
         assertEquals("{\"id\":\"U1\"}", operation.example);
         assertEquals("User id", operation.pathParams.getFirst().description);
         assertEquals("U1", operation.pathParams.getFirst().example);
-        var field = api.types.stream().filter(type -> type.name.equals("GetUserRequest")).findFirst().orElseThrow().fields.getFirst();
+        var field = api.types.stream().filter(type -> "GetUserRequest".equals(type.name)).findFirst().orElseThrow().fields.getFirst();
         assertEquals("User name", field.description);
         assertEquals("Stephen", field.example);
     }
@@ -179,7 +179,7 @@ class ApiDefinitionServiceTest {
         assertEquals(Boolean.TRUE, operation.needAuth);
         assertEquals("Manual id", operation.pathParams.getFirst().description);
         assertEquals("M1", operation.pathParams.getFirst().example);
-        var field = api.types.stream().filter(type -> type.name.equals("GetUserRequest")).findFirst().orElseThrow().fields.getFirst();
+        var field = api.types.stream().filter(type -> "GetUserRequest".equals(type.name)).findFirst().orElseThrow().fields.getFirst();
         assertEquals("Manual name", field.description);
         assertEquals("Manual example", field.example);
     }
