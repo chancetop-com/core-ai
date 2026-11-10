@@ -119,7 +119,9 @@ public class GatewayProviderService {
             return result;
         }
         try {
-            if (isVertexMediaProvider(entity)) {
+            if (GatewayDecisionProbe.isDecisionProvider(entity, modelStore)) {
+                GatewayDecisionProbe.test(entity, secret(entity), modelStore, result);
+            } else if (isVertexMediaProvider(entity)) {
                 var apiKey = secret(entity);
                 if (!isBlank(apiKey) && "VERTEX_GEMINI_GENERATE_CONTENT".equals(entity.mediaProtocol)) {
                     testVertexApiKey(entity, apiKey, result);
@@ -236,7 +238,9 @@ public class GatewayProviderService {
         if (request.defaultResponsesModel != null) entity.defaultResponsesModel = trimToNull(request.defaultResponsesModel);
         if (request.defaultImageModel != null) entity.defaultImageModel = trimToNull(request.defaultImageModel);
         if (request.defaultVideoModel != null) entity.defaultVideoModel = trimToNull(request.defaultVideoModel);
+        if (request.defaultDecisionModel != null) entity.defaultDecisionModel = trimToNull(request.defaultDecisionModel);
         if (request.mediaProtocol != null) entity.mediaProtocol = normalizeMediaProtocol(request.mediaProtocol);
+        if (request.decisionProtocol != null) entity.decisionProtocol = normalizeDecisionProtocol(request.decisionProtocol);
         if (request.mediaAuthType != null) entity.mediaAuthType = normalizeMediaAuthType(request.mediaAuthType);
         if (request.googleCredentialsJson != null && (!keepExistingSecret || !request.googleCredentialsJson.isBlank())) {
             entity.googleCredentialsEncrypted = secretProtector.protect(request.googleCredentialsJson.trim());
@@ -261,6 +265,7 @@ public class GatewayProviderService {
         if (request.baseUrl != null && !request.baseUrl.isBlank()) GatewayNetworkGuard.validateHttpUrlSyntax(request.baseUrl.trim());
         if (request.type != null) normalizeType(request.type);
         if (request.mediaProtocol != null) normalizeMediaProtocol(request.mediaProtocol);
+        if (request.decisionProtocol != null) normalizeDecisionProtocol(request.decisionProtocol);
         if (request.mediaAuthType != null) normalizeMediaAuthType(request.mediaAuthType);
         if (request.googleCredentialsJson != null && !request.googleCredentialsJson.isBlank()) validateGoogleCredentials(request.googleCredentialsJson);
         if (request.requestExtraBody != null) validateExtraBody(request.requestExtraBody);
@@ -292,7 +297,9 @@ public class GatewayProviderService {
         view.defaultResponsesModel = entity.defaultResponsesModel;
         view.defaultImageModel = entity.defaultImageModel;
         view.defaultVideoModel = entity.defaultVideoModel;
+        view.defaultDecisionModel = entity.defaultDecisionModel;
         view.mediaProtocol = entity.mediaProtocol;
+        view.decisionProtocol = entity.decisionProtocol;
         view.mediaAuthType = entity.mediaAuthType;
         view.hasGoogleCredentials = !isBlank(entity.googleCredentialsEncrypted);
         view.vertexProjectId = entity.vertexProjectId;
@@ -356,6 +363,16 @@ public class GatewayProviderService {
         return switch (value) {
             case "API_KEY", "GOOGLE_APPLICATION_DEFAULT_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON" -> value;
             default -> throw new BadRequestException("unsupported media auth type: " + mediaAuthType);
+        };
+    }
+
+    private String normalizeDecisionProtocol(String decisionProtocol) {
+        var value = trimToNull(decisionProtocol);
+        if (value == null) return null;
+        value = value.toUpperCase(Locale.ROOT);
+        return switch (value) {
+            case "AZURE_FOUNDRY_DECISION", "SYSTEMONE", "OPENROUTER_DECISIONS" -> value;
+            default -> throw new BadRequestException("unsupported decision protocol: " + decisionProtocol);
         };
     }
 

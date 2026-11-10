@@ -10,6 +10,7 @@ import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.agent.profile.BuiltinAgentProfileProvider;
 import ai.core.cli.agent.profile.FilesystemAgentProfileProvider;
 import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.decision.DecisionSupport;
 import ai.core.cli.hook.HookConfig;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.hook.ScriptHookRunner;
@@ -44,6 +45,7 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.AddMcpServerTool;
 import ai.core.tool.tools.AskUserTool;
+import ai.core.tool.tools.DecideTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
@@ -65,6 +67,8 @@ public class CliAgent {
 
     public static Agent of(Config config) {
         var pluginManager = PluginManager.getInstance(Path.of(System.getProperty("user.home"), ".core-ai"));
+        var auth = AuthConfig.load();
+        var decisionSupport = DecisionSupport.create(auth);
         var toolRegistry = ToolRegistryFactory.create(buildFactoryContext(config));
         toolRegistry.registerProvider(new McpToolProvider());
         toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager), config.workspace.toAbsolutePath().toString()));
@@ -72,6 +76,9 @@ public class CliAgent {
         var mediaTools = mediaTools(config);
         if (!mediaTools.isEmpty()) {
             toolRegistry.registerProvider(ListToolProvider.of(mediaTools));
+        }
+        if (decisionSupport.available()) {
+            toolRegistry.registerProvider(ListToolProvider.of(List.of(decideTool(decisionSupport))));
         }
         toolRegistry.registerProvider(buildRemoteAgentProvider(config));
         var helperProvider = buildHelperProvider(config, toolRegistry);
@@ -96,17 +103,24 @@ public class CliAgent {
         var multiModalModel = config.providers.getDefaultProvider().config.getMultiModalModel();
         if (multiModalModel != null) builder.multiModalModel(multiModalModel);
         var agent = builder.build();
-        var auth = AuthConfig.load();
         // Login-gated, best-effort trace upload. Not logged in -> not attached -> zero overhead.
         if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
             agent.addLifecycle(new TraceCollectorLifecycle(
                     new HttpTraceUploader(auth.serverUrl(), auth.apiKey(), auth.insecure()), config.clientType));
         }
-        configureExecutionContext(agent, config, auth, hookOutput);
+        configureExecutionContext(agent, config, auth, decisionSupport, hookOutput);
         return agent;
     }
 
-    private static void configureExecutionContext(Agent agent, Config config, AuthConfig auth, String hookOutput) {
+    private static ToolCall decideTool(DecisionSupport decisionSupport) {
+        var description = DecideTool.buildDescription(decisionSupport.models());
+        var defaultModel = decisionSupport.defaultModel();
+        if (defaultModel != null) description += "\n\nDefault decision model for this session: " + defaultModel;
+        return DecideTool.builder().description(description).build();
+    }
+
+    private static void configureExecutionContext(Agent agent, Config config, AuthConfig auth,
+                                                  DecisionSupport decisionSupport, String hookOutput) {
         var imageProvider = config.imageMediaProvider != null ? config.imageMediaProvider : config.mediaProvider;
         var videoProvider = config.videoMediaProvider != null ? config.videoMediaProvider : config.mediaProvider;
         var imageModel = effectiveImageModel(imageProvider, config.defaultImageModel, config.mediaCatalog);
@@ -134,6 +148,7 @@ public class CliAgent {
         execCtx.setMediaProvider(config.mediaProvider);
         execCtx.setImageMediaProvider(config.imageMediaProvider);
         execCtx.setVideoMediaProvider(config.videoMediaProvider);
+        execCtx.setDecisionProvider(decisionSupport.provider());
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
         execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);

@@ -45,7 +45,7 @@ class LocalToolRuntimeTest {
         var runtime = runtime();
         var names = runtime.tools().stream().map(LocalToolRuntime.LocalBuiltinTool::name).toList();
         assertEquals(java.util.List.of("generate_image", "generate_video", "get_video_status",
-                "caption_image", "summarize_pdf", "understand_video"), names);
+                "caption_image", "summarize_pdf", "decide", "understand_video"), names);
         assertTrue(runtime.tool("generate_image").orElseThrow().description().contains("Default image model for this session: test-image"));
         assertTrue(runtime.tool("generate_video").orElseThrow().description().contains("Default video model for this session: test-video"));
         assertTrue(runtime.tool("understand_video").orElseThrow().description().contains("local video file path"));
@@ -62,6 +62,7 @@ class LocalToolRuntimeTest {
         assertNotNull(context.getLlmProvider());
         assertNotNull(context.getImageMediaProvider());
         assertNotNull(context.getVideoMediaProvider());
+        assertNotNull(context.getDecisionProvider());
         assertEquals("test-chat", context.getModel());
         assertEquals("test-vision", context.getMultiModalModel());
         assertEquals("test-image", context.getCustomVariables().get("media.image.model"));

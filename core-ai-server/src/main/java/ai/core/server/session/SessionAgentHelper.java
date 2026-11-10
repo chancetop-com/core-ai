@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.api.server.session.SessionConfig;
+import ai.core.decision.DecisionProvider;
 import ai.core.media.MediaProvider;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.comparison.domain.AgentComparison;
@@ -21,6 +22,8 @@ import java.util.List;
 public class SessionAgentHelper {
     @Inject
     MediaProvider mediaProvider;
+    @Inject
+    DecisionProvider decisionProvider;
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
     /** Read by SessionRebuildManager (through AgentSessionManager.Deps) to resolve comparison variants. */

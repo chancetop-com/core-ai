@@ -76,7 +76,7 @@ class SessionRebuildManagerTest {
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
+                null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var state = manager.buildStateFromDb("session-1");
 
@@ -115,7 +115,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
+            null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var state = manager.buildStateFromDb("session-1");
         var restored = SessionState.fromJson(state.toJson());
@@ -174,7 +174,7 @@ class SessionRebuildManagerTest {
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
             publicUrlConfiguration, null, null, systemSettingsService, users, memoryExperimentService(), agentMemoryService(), sessionSearchService(), mediaProvider,
-            mock(ApiUserQuotaService.class), null, null, null, null, null));
+            null, mock(ApiUserQuotaService.class), null, null, null, null, null));
         var state = new SessionState();
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;
         state.sandboxBindingSecurityVersion = SessionState.CURRENT_SANDBOX_BINDING_SECURITY_VERSION;
@@ -469,7 +469,7 @@ class SessionRebuildManagerTest {
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
                 chatMessageService, agents, skillManager, null, null, null, null, null,
-                null, null, null, null, null, null, null, users, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
+                null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var error = assertThrows(ForbiddenException.class,
                 () -> manager.buildStateFromDb("session-1"));
@@ -698,7 +698,7 @@ class SessionRebuildManagerTest {
                 mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users, memoryExperimentService(),
                 agentMemoryService(),
                 sessionSearchService(),
-                mock(MediaProvider.class), mock(ApiUserQuotaService.class), null, null, null, null, null));
+                mock(MediaProvider.class), null, mock(ApiUserQuotaService.class), null, null, null, null, null));
     }
 
     private SessionRebuildManager rebuildManager(ChatMessageService chatMessageService,
@@ -707,7 +707,7 @@ class SessionRebuildManagerTest {
         var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, agents, null, null, null, null, null, null,
-            null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
+            null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
     }
 
     private AgentMemoryExperimentService memoryExperimentService() {

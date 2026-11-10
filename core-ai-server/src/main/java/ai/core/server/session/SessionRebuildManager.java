@@ -113,7 +113,8 @@ public class SessionRebuildManager {
         this.turnStateRegistry = deps.turnStateRegistry;
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
-                systemSettingsService, deps.mediaProvider, deps.quotaService).withAsyncTaskManager(deps.asyncTaskManager);
+                systemSettingsService, deps.mediaProvider, deps.quotaService).withDecisionProvider(deps.decisionProvider)
+                .withAsyncTaskManager(deps.asyncTaskManager);
         this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
                 subAgentManager, agentDefinitionCollection);
     }
@@ -435,6 +436,7 @@ public class SessionRebuildManager {
                         AgentMemoryService agentMemoryService,
                                   SessionSearchService sessionSearchService,
                         MediaProvider mediaProvider,
+                        ai.core.decision.DecisionProvider decisionProvider,
                         ApiUserQuotaService quotaService,
                         TurnStateRegistry turnStateRegistry,
                         ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,

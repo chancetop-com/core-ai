@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.decision.DecisionProvider;
 import ai.core.media.MediaProvider;
 import ai.core.server.apiuser.ApiUserQuotaService;
 import ai.core.server.artifact.ChatArtifactSetup;
@@ -32,6 +33,7 @@ public final class SessionContextBuilder {
     private final PublicUrlConfiguration publicUrlConfiguration;
     private final SystemSettingsService systemSettingsService;
     private final MediaProvider mediaProvider;
+    private DecisionProvider decisionProvider;
     private final ApiUserQuotaService quotaService;
     private ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager;
 
@@ -53,6 +55,11 @@ public final class SessionContextBuilder {
         return this;
     }
 
+    public SessionContextBuilder withDecisionProvider(DecisionProvider decisionProvider) {
+        this.decisionProvider = decisionProvider;
+        return this;
+    }
+
     public ExecutionContext build(String sessionId, String userId) {
         // pending tool results are registered against this session; the server drives and notifies them
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
@@ -68,6 +75,7 @@ public final class SessionContextBuilder {
         // quota metering fires per LLM call (main turns, sub-agents and tool-internal calls all
         // share this context), so token usage is accounted against the session user synchronously
         context.setTokenCostCallback(usage -> quotaService.recordUsage(userId, usage.getPromptTokens(), usage.getCompletionTokens()));
+        context.setDecisionProvider(decisionProvider);
         if (mediaProvider instanceof GatewayMediaProvider gatewayMediaProvider) {
             var contextualProvider = new ContextualMediaProvider(gatewayMediaProvider, new MediaJobOwner(userId, sessionId, null));
             context.setImageMediaProvider(contextualProvider);

@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.api.server.gateway.GatewayAvailableModelView;
+import ai.core.decision.DecisionModelHint;
 import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.tool.tools.MediaModelHint;
@@ -159,6 +160,15 @@ public class GatewayRoutingEngine {
         return hints(registeredModels(snapshot(), endpoint).stream()
                 .filter(route -> route.model.endpointTypes != null && !route.model.endpointTypes.isEmpty())
                 .toList());
+    }
+
+    public List<DecisionModelHint> decisionModelHints() {
+        var hints = new LinkedHashMap<String, DecisionModelHint>();
+        for (var route : registeredModels(snapshot(), GatewayEndpointType.DECISION)) {
+            if (route.model.endpointTypes == null || route.model.endpointTypes.isEmpty()) continue;
+            hints.putIfAbsent(route.model.modelId, new DecisionModelHint(route.model.modelId, route.model.displayName, route.provider.name, route.model.upstreamModel));
+        }
+        return List.copyOf(hints.values());
     }
 
     private List<MediaModelHint> hints(List<RegisteredGatewayModel> routes) {
@@ -391,6 +401,7 @@ public class GatewayRoutingEngine {
             case RESPONSES -> provider.defaultResponsesModel;
             case IMAGE_GENERATION, IMAGE_EDIT -> provider.defaultImageModel;
             case VIDEO_GENERATION -> provider.defaultVideoModel;
+            case DECISION -> provider.defaultDecisionModel;
         };
     }
 

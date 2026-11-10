@@ -5,6 +5,7 @@ import ai.core.bootstrap.LLMProviderFactory;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.auth.AuthConfig;
+import ai.core.cli.decision.DecisionSupport;
 import ai.core.cli.hub.HubCredentialResolver;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.utils.PathUtils;
@@ -18,6 +19,7 @@ import ai.core.media.MediaProvider;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.CaptionImageTool;
+import ai.core.tool.tools.DecideTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
@@ -135,6 +137,7 @@ public final class LocalToolRuntime {
     private final MediaModelCatalog mediaCatalog;
     private final LLMProvider llmProvider;
     private final LLMProvider gatewayLlmProvider;
+    private final DecisionSupport decisionSupport;
     private final String imageModel;
     private final String imageEditModel;
     private final String videoModel;
@@ -156,6 +159,7 @@ public final class LocalToolRuntime {
         this.videoMediaProvider = providers.video();
         this.mediaCatalog = providers.catalog();
         this.llmProvider = providers.llm();
+        this.decisionSupport = DecisionSupport.create(auth);
         this.gatewayLlmProvider = gatewayLlmProvider(props, providers.llm());
         var imageProvider = providers.image() != null ? providers.image() : providers.media();
         var videoProvider = providers.video() != null ? providers.video() : providers.media();
@@ -204,6 +208,12 @@ public final class LocalToolRuntime {
         if (llmProvider != null) {
             add(builtins, CaptionImageTool.builder().build());
             add(builtins, SummarizePdfTool.builder().build());
+        }
+        if (decisionSupport.available()) {
+            var description = DecideTool.buildDescription(decisionSupport.models());
+            var defaultModel = decisionSupport.defaultModel();
+            if (defaultModel != null) description += "\n\nDefault decision model for this session: " + defaultModel;
+            add(builtins, DecideTool.builder().description(description).build());
         }
         if (credentials != null) {
             var tool = UnderstandVideoTool.builder(new HubVideoUnderstandingService(credentials)).build();
@@ -257,6 +267,7 @@ public final class LocalToolRuntime {
         context.setMediaProvider(mediaProvider);
         context.setImageMediaProvider(CliAppHelper.sessionMediaProvider(imageMediaProvider != null ? imageMediaProvider : mediaProvider, sessionId));
         context.setVideoMediaProvider(CliAppHelper.sessionMediaProvider(videoMediaProvider != null ? videoMediaProvider : mediaProvider, sessionId));
+        context.setDecisionProvider(decisionSupport.provider());
         return context;
     }
 

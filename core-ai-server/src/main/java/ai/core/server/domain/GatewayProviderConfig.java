@@ -50,8 +50,14 @@ public class GatewayProviderConfig {
     @Field(name = "default_video_model")
     public String defaultVideoModel;
 
+    @Field(name = "default_decision_model")
+    public String defaultDecisionModel;
+
     @Field(name = "media_protocol")
     public String mediaProtocol;
+
+    @Field(name = "decision_protocol")
+    public String decisionProtocol;
 
     @Field(name = "media_auth_type")
     public String mediaAuthType;

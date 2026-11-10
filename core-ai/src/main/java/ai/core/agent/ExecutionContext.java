@@ -3,6 +3,7 @@ package ai.core.agent;
 import ai.core.agent.budget.RunBudget;
 import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.subagent.SubagentThreadRegistry;
+import ai.core.decision.DecisionProvider;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Usage;
@@ -58,6 +59,7 @@ public final class ExecutionContext {
     private MediaProvider mediaProvider;
     private MediaProvider imageMediaProvider;
     private MediaProvider videoMediaProvider;
+    private DecisionProvider decisionProvider;
     private String model;
     private String multiModalModel;
     private boolean visionNative = true;
@@ -238,6 +240,15 @@ public final class ExecutionContext {
 
     public void setVideoMediaProvider(MediaProvider videoMediaProvider) {
         this.videoMediaProvider = videoMediaProvider;
+    }
+
+    /** Structured decision provider (System One decision models); null when no decision gateway is configured. */
+    public DecisionProvider getDecisionProvider() {
+        return decisionProvider;
+    }
+
+    public void setDecisionProvider(DecisionProvider decisionProvider) {
+        this.decisionProvider = decisionProvider;
     }
 
     public String getModel() {

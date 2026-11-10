@@ -3,15 +3,19 @@ package ai.core.server;
 import ai.core.api.server.gateway.GatewayModelWebService;
 import ai.core.api.server.gateway.GatewayProviderWebService;
 import ai.core.api.server.hubmedia.HubMediaUnderstandingWebService;
+import ai.core.api.server.hubmodels.HubDecisionModelWebService;
 import ai.core.api.server.hubmodels.HubMediaModelWebService;
 import ai.core.api.server.hubmodels.HubModelWebService;
 import ai.core.api.server.media.MediaJobWebService;
+import ai.core.decision.DecisionProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
+import ai.core.server.gateway.GatewayDecisionController;
+import ai.core.server.gateway.GatewayDecisionProvider;
 import ai.core.server.gateway.GatewayImageController;
 import ai.core.server.gateway.GatewayLLMProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
@@ -29,6 +33,8 @@ import ai.core.server.gateway.GatewayResponsesChannelListener;
 import ai.core.server.gateway.GatewayResponsesSseEvent;
 import ai.core.server.gateway.GatewayRoutingEngine;
 import ai.core.server.gateway.HubMediaUnderstandingWebServiceImpl;
+import ai.core.server.gateway.HubDecisionModelService;
+import ai.core.server.gateway.HubDecisionModelWebServiceImpl;
 import ai.core.server.gateway.HubModelService;
 import ai.core.server.gateway.HubModelWebServiceImpl;
 import ai.core.server.gateway.ImageModelCompareService;
@@ -41,8 +47,6 @@ import ai.core.server.gateway.MediaJobService;
 import ai.core.server.gateway.MediaJobWebServiceImpl;
 import ai.core.server.gateway.MediaPosterService;
 import ai.core.server.trace.service.MediaPricingService;
-import ai.core.server.domain.GeminiFileRepository;
-import ai.core.server.domain.SessionAttachmentRefRepository;
 import ai.core.server.domain.GeminiFileService;
 import ai.core.server.domain.GeminiFilesClient;
 import ai.core.server.domain.GeminiVideoUnderstandingService;
@@ -74,8 +78,6 @@ public class GatewayModule extends Module {
     private void configureGateway() {
         var gatewaySecretProtector = bean(GatewaySecretProtector.class);
         var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
-        bind(GeminiFileRepository.class);
-        bind(SessionAttachmentRefRepository.class);
         bind(GeminiFileService.class);
         var videoUnderstandingService = bind(GeminiVideoUnderstandingService.class);
         bind(UnderstandVideoTool.VideoUnderstandingService.class, videoUnderstandingService);
@@ -95,6 +97,7 @@ public class GatewayModule extends Module {
         var mediaJobService = bind(MediaJobService.class);
         bind(GatewayProxyService.class);
         bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
+        bindGatewayDecisionProvider(gatewayRoutingEngine, gatewaySecretProtector);
         bind(MediaArtifactService.class);
         schedule().fixedRate("media-artifact-materialization", bind(MediaArtifactMaterializationJob.class), Duration.ofMinutes(1));
         registerGatewayProviderRoutes();
@@ -129,6 +132,12 @@ public class GatewayModule extends Module {
         bind(MediaProvider.class, mediaProvider);
     }
 
+    private void bindGatewayDecisionProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
+        var decisionProvider = new GatewayDecisionProvider(routingEngine, secretProtector);
+        bind(GatewayDecisionProvider.class, decisionProvider);
+        bind(DecisionProvider.class, decisionProvider);
+    }
+
     private void registerGatewayProviderRoutes() {
         api().service(GatewayProviderWebService.class, bind(GatewayProviderWebServiceImpl.class));
     }
@@ -139,6 +148,8 @@ public class GatewayModule extends Module {
         api().service(HubModelWebService.class, bind(HubModelWebServiceImpl.class));
         bind(HubMediaModelService.class);
         api().service(HubMediaModelWebService.class, bind(HubMediaModelWebServiceImpl.class));
+        bind(HubDecisionModelService.class);
+        api().service(HubDecisionModelWebService.class, bind(HubDecisionModelWebServiceImpl.class));
         api().service(HubMediaUnderstandingWebService.class, bind(HubMediaUnderstandingWebServiceImpl.class));
     }
 
@@ -156,6 +167,7 @@ public class GatewayModule extends Module {
         http().route(HTTPMethod.POST, "/api/gateway/v1/videos", gatewayVideoController::generate);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id", gatewayVideoController::status);
         http().route(HTTPMethod.GET, "/api/gateway/v1/videos/:id/content", gatewayVideoController::content);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/decisions", bind(GatewayDecisionController.class)::decide);
         var registry = bean(SseEndpointRegistry.class);
         registry.register(HTTPMethod.POST, "/api/gateway/v1/chat/completions", GatewayChatCompletionsSseEvent.class,
                 bind(GatewayChatCompletionsChannelListener.class), true);

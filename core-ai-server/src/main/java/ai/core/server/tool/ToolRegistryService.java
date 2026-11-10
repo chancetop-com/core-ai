@@ -334,15 +334,15 @@ public class ToolRegistryService {
     // ── Delegates to ToolRefResolutionService ──────────────────────────────────
 
     public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs) {
-        return resolutionService.resolveToolRefs(toolRefs);
+        return resolveToolRefs(toolRefs, null, null);
     }
 
     public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId) {
-        return resolutionService.resolveToolRefs(toolRefs, sessionId);
+        return resolveToolRefs(toolRefs, sessionId, null);
     }
 
     public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
-        return resolutionService.resolveToolRefs(toolRefs, sessionId, callerUserId);
+        return GatewayDecisionToolEnhancer.enhance(resolutionService.resolveToolRefs(toolRefs, sessionId, callerUserId), gatewayRoutingEngine);
     }
 
     public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId) {

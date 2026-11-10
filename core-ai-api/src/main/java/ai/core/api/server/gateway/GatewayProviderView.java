@@ -50,8 +50,14 @@ public class GatewayProviderView {
     @Property(name = "defaultVideoModel")
     public String defaultVideoModel;
 
+    @Property(name = "defaultDecisionModel")
+    public String defaultDecisionModel;
+
     @Property(name = "mediaProtocol")
     public String mediaProtocol;
+
+    @Property(name = "decisionProtocol")
+    public String decisionProtocol;
 
     @Property(name = "mediaAuthType")
     public String mediaAuthType;

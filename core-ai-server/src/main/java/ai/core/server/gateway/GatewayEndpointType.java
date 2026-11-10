@@ -9,7 +9,8 @@ public enum GatewayEndpointType {
     MESSAGES("/messages", GatewayModelService.ENDPOINT_MESSAGES),
     IMAGE_GENERATION("/images/generations", GatewayModelService.ENDPOINT_IMAGE_GENERATION),
     IMAGE_EDIT("/images/edits", GatewayModelService.ENDPOINT_IMAGE_EDIT),
-    VIDEO_GENERATION("/videos", GatewayModelService.ENDPOINT_VIDEO_GENERATION);
+    VIDEO_GENERATION("/videos", GatewayModelService.ENDPOINT_VIDEO_GENERATION),
+    DECISION("/systemone", GatewayModelService.ENDPOINT_DECISION);
 
     private static final Map<String, GatewayEndpointType> ALIASES = Map.ofEntries(
             Map.entry("chat", CHAT_COMPLETIONS),
@@ -26,7 +27,10 @@ public enum GatewayEndpointType {
             Map.entry("image.edits", IMAGE_EDIT),
             Map.entry("video", VIDEO_GENERATION),
             Map.entry("video.generation", VIDEO_GENERATION),
-            Map.entry("video.generations", VIDEO_GENERATION)
+            Map.entry("video.generations", VIDEO_GENERATION),
+            Map.entry("decision", DECISION),
+            Map.entry("decision.systemone", DECISION),
+            Map.entry("systemone", DECISION)
     );
 
     static GatewayEndpointType fromAlias(String value) {

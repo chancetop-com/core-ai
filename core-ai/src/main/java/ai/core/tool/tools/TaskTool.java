@@ -253,6 +253,7 @@ public class TaskTool extends ToolCall {
         subContext.setSubagentThreads(context.getSubagentThreads());
         subContext.setLlmProvider(context.getLlmProvider());
         subContext.setModel(context.getModel());
+        subContext.setDecisionProvider(context.getDecisionProvider());
         subContext.setLifecycles(context.getLifecycle());
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         subContext.setSubAgentConfigs(context.getSubAgentConfigs());

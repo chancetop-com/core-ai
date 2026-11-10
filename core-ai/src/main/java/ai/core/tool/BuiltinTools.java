@@ -4,6 +4,7 @@ import ai.core.media.MediaProvider;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.CaptionImageTool;
+import ai.core.tool.tools.DecideTool;
 import ai.core.tool.tools.EditFileTool;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
@@ -126,6 +127,10 @@ public final class BuiltinTools {
             GetVideoStatusTool.builder().build()
     );
 
+    public static final List<ToolCall> DECISION = List.of(
+            DecideTool.builder().build()
+    );
+
     public static final List<ToolCall> EVENTS = List.of(
             SendCustomEventTool.builder().build(),
             PresentChoicesTool.builder().build()
@@ -143,6 +148,7 @@ public final class BuiltinTools {
             Map.entry(ToolProvider.BUILTIN_CODE_EXECUTION, CODE_EXECUTION),
             Map.entry(ToolProvider.BUILTIN_GITHUB, GITHUB),
             Map.entry(ToolProvider.BUILTIN_MEDIA_GENERATION, MEDIA_GENERATION),
+            Map.entry(ToolProvider.BUILTIN_DECISION, DECISION),
             Map.entry(ToolProvider.BUILTIN_EVENTS, EVENTS)
     );
 

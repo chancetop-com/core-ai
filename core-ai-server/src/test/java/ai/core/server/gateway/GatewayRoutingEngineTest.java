@@ -92,6 +92,36 @@ class GatewayRoutingEngineTest {
     }
 
     @Test
+    void decisionModelHintsListOnlyExplicitDecisionModelsAndDedupeFailoverRows() {
+        var primary = model("decision-1", false, 100);
+        primary.endpointTypes = List.of("decision");
+        var backup = model("decision-1", false, 200);
+        backup.id = "decision-1-backup";
+        backup.endpointTypes = List.of("decision");
+        var chat = model("gpt-6.1-sol", false, 150);
+        chat.endpointTypes = List.of("chat.completions");
+        var engine = engine(List.of(primary, backup, chat));
+
+        var hints = engine.decisionModelHints();
+
+        assertEquals(List.of("decision-1"), hints.stream().map(ai.core.decision.DecisionModelHint::modelId).toList());
+        assertEquals("decision-1", hints.getFirst().upstreamModel());
+    }
+
+    @Test
+    void defaultDecisionModelIsUsedWhenNoDecisionModelIsRegistered() {
+        var provider = provider(null);
+        provider.defaultDecisionModel = "Decision-1";
+        var engine = new GatewayRoutingEngine();
+        engine.providerStore = GatewayStoreTestSupport.providerStore(List.of(provider));
+        engine.modelStore = GatewayStoreTestSupport.modelStore(List.of());
+
+        var route = engine.route(null, GatewayEndpointType.DECISION);
+
+        assertEquals("Decision-1", route.upstreamModel());
+    }
+
+    @Test
     void routeRejectsDisabledModelInsteadOfFallingBackToTheProviderPrefix() {
         var disabled = model("gemini-3.1-flash-image", false, 100);
         disabled.endpointTypes = List.of("image.generations");

@@ -123,6 +123,8 @@ public class AgentRunBuilder {
     @Inject
     MediaProvider mediaProvider;
     @Inject
+    ai.core.decision.DecisionProvider decisionProvider;
+    @Inject
     SystemSettingsService systemSettingsService;
     @Inject
     GatewayRoutingEngine gatewayRoutingEngine;
@@ -230,6 +232,7 @@ public class AgentRunBuilder {
         // whole run's token usage is accounted against the run initiator (runEntity.userId) synchronously
         context.setTokenCostCallback(usage -> apiUserQuotaService.recordUsage(runEntity.userId,
                 usage.getPromptTokens(), usage.getCompletionTokens()));
+        context.setDecisionProvider(decisionProvider);
         // caller identity follows the run initiator (runEntity.userId), not the agent definition owner
         var caller = userStore.get(runEntity.userId).orElse(null);
         context.setCaller(CallerContexts.fromUser(caller));

@@ -109,6 +109,35 @@ class GatewayProviderServiceTest {
     }
 
     @Test
+    void normalizesDecisionProtocolAndKeepsTheDefaultDecisionModel() {
+        var service = serviceWithUser(admin("admin-1"));
+        var request = new GatewayProviderRequest();
+        request.name = "Foundry";
+        request.type = "azure";
+        request.baseUrl = "https://fbruatai.services.ai.azure.com";
+        request.apiKey = "decision-key";
+        request.decisionProtocol = "azure_foundry_decision";
+        request.defaultDecisionModel = "Decision-1";
+
+        var view = service.create(request, "admin-1");
+
+        assertEquals("AZURE_FOUNDRY_DECISION", view.decisionProtocol);
+        assertEquals("Decision-1", view.defaultDecisionModel);
+    }
+
+    @Test
+    void rejectsUnknownDecisionProtocol() {
+        var service = serviceWithUser(admin("admin-1"));
+        var request = new GatewayProviderRequest();
+        request.name = "Foundry";
+        request.type = "azure";
+        request.baseUrl = "https://fbruatai.services.ai.azure.com";
+        request.decisionProtocol = "MADE_UP";
+
+        assertThrows(BadRequestException.class, () -> service.create(request, "admin-1"));
+    }
+
+    @Test
     void rejectsInvalidExtraBodyJson() {
         var service = serviceWithUser(admin("admin-1"));
         var request = new GatewayProviderRequest();
