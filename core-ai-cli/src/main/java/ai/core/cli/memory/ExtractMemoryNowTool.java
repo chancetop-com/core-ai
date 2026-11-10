@@ -1,5 +1,6 @@
 package ai.core.cli.memory;
 
+import ai.core.agent.Agent;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -21,9 +22,11 @@ public final class ExtractMemoryNowTool extends ToolCall {
     }
 
     private final MemoryTriggerService service;
+    private final Agent sourceAgent;
 
-    public ExtractMemoryNowTool(MemoryTriggerService service) {
+    public ExtractMemoryNowTool(MemoryTriggerService service, Agent sourceAgent) {
         this.service = service;
+        this.sourceAgent = sourceAgent;
     }
 
     @Override
@@ -35,8 +38,7 @@ public final class ExtractMemoryNowTool extends ToolCall {
         } catch (RuntimeException ignored) {
             // malformed arguments — run the extraction without a focus hint
         }
-        service.runExplicitMemoryExtraction(focus);
-        int cursor = service.extractionCursor.get();
+        int cursor = service.runExplicitMemoryExtraction(sourceAgent, focus);
         String message = cursor >= 0
                 ? "Memory persisted: the extraction agent processed all unprocessed conversation through message "
                         + cursor + " and updated the knowledge wiki (.core-ai/knowledge/), MEMORY.md and log.md."
@@ -48,9 +50,15 @@ public final class ExtractMemoryNowTool extends ToolCall {
 
     public static final class Builder extends ToolCall.Builder<Builder, ExtractMemoryNowTool> {
         private MemoryTriggerService service;
+        private Agent sourceAgent;
 
         public Builder service(MemoryTriggerService service) {
             this.service = service;
+            return this;
+        }
+
+        public Builder sourceAgent(Agent sourceAgent) {
+            this.sourceAgent = sourceAgent;
             return this;
         }
 
@@ -62,6 +70,9 @@ public final class ExtractMemoryNowTool extends ToolCall {
         public ExtractMemoryNowTool build() {
             if (service == null) {
                 throw new IllegalStateException("service is required");
+            }
+            if (sourceAgent == null) {
+                throw new IllegalStateException("sourceAgent is required");
             }
             this.name(TOOL_NAME);
             this.description("""
@@ -82,7 +93,7 @@ public final class ExtractMemoryNowTool extends ToolCall {
                                     + "Pass it so the extraction guarantees this content is stored even if its "
                                     + "durability filters would normally skip it.")
             ));
-            var tool = new ExtractMemoryNowTool(service);
+            var tool = new ExtractMemoryNowTool(service, sourceAgent);
             build(tool);
             return tool;
         }

@@ -71,14 +71,14 @@ public class SessionCloseExtractor {
 
         var triggerService = MemoryTriggerService.getInstance(workspace);
         // set 0 to test
-        if (triggerService.getTurnCount() < 2) {
+        if (triggerService.getTurnCount(mainAgent) < 2) {
             return;
         }
 
         if (triggerService.isLockProcessingPending()) {
             triggerService.awaitLockProcessing();
         } else if (switchSessionId != null && switchSessionId.get() != null) {
-            triggerService.runIncrementalExtractionAndWait();
+            triggerService.runIncrementalExtractionAndWait(mainAgent);
         } else {
             doCloseExtraction(mainAgent, workspace);
         }
@@ -89,7 +89,7 @@ public class SessionCloseExtractor {
         try {
             int totalMessages = mainAgent.getHistory().size();
             var agent = AgentFork.fork(mainAgent, new AgentFork.ForkConfig("session-close", MAX_TURNS, TEMPERATURE, false, null));
-            agent.injectUserMessage(buildCloseExtractionPrompt(workspace, triggerService.extractionCursor.get(), totalMessages));
+            agent.injectUserMessage(buildCloseExtractionPrompt(workspace, triggerService.extractionCursor(mainAgent), totalMessages));
             agent.continueWithInjectedMessage();
         } catch (Exception e) {
             LOGGER.warn("Session close extraction failed", e);

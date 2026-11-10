@@ -130,7 +130,7 @@ public class AgentSessionRunner {
     private String runLocked() {
         if (!loadSession()) return null;
         if (memoryEnabled && agent.hasPersistenceProvider() && !agent.getHistory().isEmpty()) {
-            MemoryTriggerService.getInstance(workspace).resetCursorToEnd();
+            MemoryTriggerService.getInstance(workspace).resetCursorToEnd(agent);
         }
         recorder = createRecorder();
         var session = new InProcessAgentSession(sessionId, agent, autoApproveAll, permissionStore, false, recorder);
@@ -194,7 +194,7 @@ public class AgentSessionRunner {
         }
         awaitBackgroundWork(session);
         if (memoryEnabled && promptExtractionEnabled && shouldExtractMemory()) {
-            MemoryTriggerService.getInstance(workspace).runIncrementalExtractionAndWait();
+            MemoryTriggerService.getInstance(workspace).runIncrementalExtractionAndWait(agent);
         }
         listener.getPanel().stopSpinnerIfActive();
         saveSessionIfPersistable();

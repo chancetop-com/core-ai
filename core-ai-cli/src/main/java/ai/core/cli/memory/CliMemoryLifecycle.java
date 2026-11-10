@@ -25,6 +25,7 @@ public class CliMemoryLifecycle extends AbstractLifecycle {
 
     private final MemoryTriggerService service;
     private final boolean dailyLogsEnabled;
+    private Agent agent;
 
     public CliMemoryLifecycle(MemoryTriggerService service, boolean dailyLogsEnabled) {
         this.service = service;
@@ -33,22 +34,23 @@ public class CliMemoryLifecycle extends AbstractLifecycle {
 
     @Override
     public void afterAgentBuild(Agent agent) {
+        this.agent = agent;
         service.setDailyLogsEnabled(dailyLogsEnabled);
         service.init(agent);
         var tools = new ArrayList<>(service.buildMemoryTools(agent));
-        tools.add(ExtractMemoryNowTool.builder().service(service).build());
+        tools.add(ExtractMemoryNowTool.builder().service(service).sourceAgent(agent).build());
         agent.addTools(tools);
     }
 
     @Override
     public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
-        service.onAgentStart();
-        service.onUserActivity();
+        service.onAgentStart(agent);
+        service.onUserActivity(agent);
     }
 
     @Override
     public void afterAgentRun(String query, AtomicReference<String> result, ExecutionContext executionContext) {
-        service.onAgentEnd();
-        service.onTurnComplete();
+        service.onAgentEnd(agent);
+        service.onTurnComplete(agent);
     }
 }
