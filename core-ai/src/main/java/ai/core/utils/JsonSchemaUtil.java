@@ -146,7 +146,7 @@ public class JsonSchemaUtil {
     private static JsonSchema buildSchema(List<ToolCallParameter> parameters, ToolCallParameter parent) {
         var schema = new JsonSchema();
         schema.type = JsonSchema.PropertyType.OBJECT;
-        if (parent != null) {
+        if (parent != null && parent.getItemEnums() != null && !parent.getItemEnums().isEmpty()) {
             schema.enums = parent.getItemEnums();
         }
         var expandedParams = expandFlattenParameters(parameters);
@@ -177,7 +177,9 @@ public class JsonSchemaUtil {
         var property = new JsonSchema();
         property.description = p.getDescription();
         property.type = buildJsonSchemaType(p.getClassType());
-        property.enums = p.getEnums();
+        if (p.getEnums() != null && !p.getEnums().isEmpty()) {
+            property.enums = p.getEnums();
+        }
         property.format = p.getFormat();
         if (property.type == JsonSchema.PropertyType.ARRAY) {
             property.items = buildArrayItemSchema(p);
@@ -211,7 +213,9 @@ public class JsonSchemaUtil {
         }
         var itemSchema = new JsonSchema();
         itemSchema.type = toPropertyType(p.getItemType());
-        itemSchema.enums = p.getItemEnums();
+        if (p.getItemEnums() != null && !p.getItemEnums().isEmpty()) {
+            itemSchema.enums = p.getItemEnums();
+        }
         if (p.getItemType() != null && p.getItemType().isEnum()) {
             itemSchema.type = JsonSchema.PropertyType.STRING;
             if (itemSchema.enums == null || itemSchema.enums.isEmpty()) {

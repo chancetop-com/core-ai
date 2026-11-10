@@ -3,6 +3,8 @@ package ai.core.jsonschema;
 import ai.core.api.jsonschema.JsonSchema;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.tool.ToolCallParameter;
+import ai.core.tool.function.Functions;
+import ai.core.tool.tools.WriteTodosTool;
 import ai.core.utils.JsonSchemaUtil;
 import org.junit.jupiter.api.Test;
 
@@ -10,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,6 +46,31 @@ class JsonSchemaUtilTest {
         assertEquals(JsonSchema.PropertyType.STRING, statusProperty.type);
         assertNotNull(statusProperty.enums);
         assertTrue(statusProperty.enums.contains("A"));
+    }
+
+    @Test
+    void emptyEnumShouldBeOmitted() {
+        var param = ToolCallParameter.builder()
+            .name("todos")
+            .classType(List.class)
+            .itemType(String.class)
+            .enums(List.of())
+            .required(Boolean.TRUE)
+            .build();
+
+        var schema = JsonSchemaUtil.toJsonSchema(List.of(param));
+
+        assertNull(schema.properties.get("todos").enums);
+    }
+
+    @Test
+    void writeTodosSchemaShouldNotContainEmptyEnum() {
+        var tool = Functions.from(new WriteTodosTool(), "writeTodos").getFirst();
+        var todos = tool.toJsonSchema().properties.get("todos");
+
+        assertNotNull(todos);
+        assertEquals(JsonSchema.PropertyType.ARRAY, todos.type);
+        assertNull(todos.enums);
     }
 
     @Test

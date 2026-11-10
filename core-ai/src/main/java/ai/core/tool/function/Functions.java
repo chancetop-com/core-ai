@@ -112,7 +112,9 @@ public class Functions extends ArrayList<Function> {
         ToolCallParameterUtil.extractGenericItemType(methodParameter.getParameterizedType(), parameter);
 
         parameter.setRequired(functionParam.required());
-        parameter.setEnums(List.of(functionParam.enums()));
+        if (functionParam.enums().length > 0) {
+            parameter.setEnums(List.of(functionParam.enums()));
+        }
         return parameter;
     }
 
