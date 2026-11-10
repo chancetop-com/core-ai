@@ -6,6 +6,8 @@ import ai.core.decision.DecisionQuestion;
 import ai.core.decision.DecisionRequest;
 import ai.core.decision.DecisionResponse;
 import ai.core.decision.DecisionType;
+import ai.core.server.hub.HubCallAuditService;
+import core.framework.web.Request;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.TooManyRequestsException;
 import org.junit.jupiter.api.Test;
@@ -13,10 +15,13 @@ import org.mockito.ArgumentCaptor;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -72,6 +77,31 @@ class GatewayDecisionControllerTest {
         verify(provider).decide(captor.capture());
         assertThat(captor.getValue().questions()).hasSize(1);
         assertThat(response.answers().get("q").probability()).isEqualTo(0.25);
+    }
+
+    @Test
+    void auditsDecisionRequestsWithTheRequestedModel() {
+        var provider = mock(GatewayDecisionProvider.class);
+        var audit = mock(GatewayCallAuditService.class);
+        when(provider.decide(any())).thenReturn(new DecisionResponse(
+                Map.of("q", new DecisionAnswer("q", DecisionType.NOUL, 0.25, null, null, null, null, null)),
+                "microsoft-decision-1", null));
+        when(audit.begin(any(), any(), any(), any(), any(), any())).thenReturn("audit-1");
+        var request = mock(Request.class);
+        when(request.body()).thenReturn(Optional.of("""
+                {"model":"decision-1","state":"x","questions":{"q":{"type":"noul","instructions":"?"}}}
+                """.getBytes(StandardCharsets.UTF_8)));
+        var controller = new GatewayDecisionController();
+        controller.gatewayDecisionProvider = provider;
+        controller.gatewayCallAudit = audit;
+
+        controller.decide(request);
+
+        verify(audit).begin(eq(HubCallAuditService.KIND_DECISION), eq("decide"), eq("decision"),
+                eq("decision-1"), any(), isNull());
+        var result = ArgumentCaptor.forClass(GatewayCallAuditService.Result.class);
+        verify(audit).finish(eq("audit-1"), any(), result.capture());
+        assertThat(result.getValue().success()).isTrue();
     }
 
     @Test

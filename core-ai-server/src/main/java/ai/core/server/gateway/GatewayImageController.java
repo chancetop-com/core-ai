@@ -6,11 +6,13 @@ import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.Usage;
 import ai.core.media.reference.MediaReferenceParser;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
+import core.framework.util.StopWatch;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
@@ -30,10 +32,12 @@ public class GatewayImageController {
     @Inject
     GatewayMediaProvider gatewayMediaProvider;
     @Inject
+    GatewayCallAuditService gatewayCallAudit;
+    @Inject
     WebContext webContext;
 
     public Response generate(Request request) {
-        return generate(body(request), currentOwner(), false);
+        return generateAudited(imageRequest(body(request), false), currentOwner(), false);
     }
 
     Response generate(byte[] body, MediaJobOwner owner, boolean edit) {
@@ -42,7 +46,24 @@ public class GatewayImageController {
 
     public Response edit(Request request) {
         var imageRequest = request.files().isEmpty() ? imageRequest(body(request), true) : multipartImageRequest(request);
-        return json(gatewayMediaProvider.generateImage(imageRequest, currentOwner()));
+        return generateAudited(imageRequest, currentOwner(), true);
+    }
+
+    private Response generateAudited(ImageGenerationRequest imageRequest, MediaJobOwner owner, boolean edit) {
+        var auditId = gatewayCallAudit.begin(HubCallAuditService.KIND_MEDIA, edit ? "edit_image" : "generate_image",
+                "image", imageRequest.model(), gatewayCallAudit.imageArguments(imageRequest, edit), owner);
+        var watch = new StopWatch();
+        try {
+            var response = gatewayMediaProvider.generateImage(imageRequest, owner);
+            gatewayCallAudit.finish(auditId, watch, GatewayCallAuditService.Result.completed(
+                    gatewayCallAudit.imageOutputBytes(response), response.mediaId(),
+                    gatewayCallAudit.inputTokens(response.usage()), gatewayCallAudit.outputTokens(response.usage())));
+            return json(response);
+        } catch (RuntimeException e) {
+            gatewayCallAudit.finish(auditId, watch,
+                    GatewayCallAuditService.Result.failure(gatewayCallAudit.failureStatus(e), e.getMessage()));
+            throw e;
+        }
     }
 
     ImageGenerationRequest imageRequest(byte[] body, boolean edit) {

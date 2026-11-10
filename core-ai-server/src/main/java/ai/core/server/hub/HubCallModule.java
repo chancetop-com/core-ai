@@ -6,7 +6,8 @@ import core.framework.module.Module;
 /**
  * Read side of the hub call audit records ({@code hub_calls}): the observability "Hub Calls" list.
  * Loaded after the hub modules that write the records so the collection, its indexes and the read
- * endpoint stay in one place.
+ * endpoint stay in one place. The writer itself is bound by {@link HubCallAuditModule} before the
+ * gateway controllers, which also record into the same collection.
  *
  * @author stephen
  */

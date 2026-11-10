@@ -108,6 +108,18 @@ class HubCallQueryServiceTest {
     }
 
     @Test
+    void listAcceptsMediaAndDecisionKinds() {
+        when(callCollection.count(any(Bson.class))).thenReturn(0L);
+        when(callCollection.find(any(Query.class))).thenReturn(List.of());
+        var filter = filter();
+
+        filter.kind = HubCallAuditService.KIND_MEDIA;
+        service.list(filter);
+        filter.kind = HubCallAuditService.KIND_DECISION;
+        service.list(filter);
+    }
+
+    @Test
     void listRejectsUnknownKind() {
         var filter = filter();
         filter.kind = "workflow";

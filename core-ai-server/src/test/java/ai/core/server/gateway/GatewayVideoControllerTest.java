@@ -5,6 +5,7 @@ import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.MediaJob;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.web.Request;
 import core.framework.web.WebContext;
@@ -84,23 +85,34 @@ class GatewayVideoControllerTest {
     }
 
     @Test
-    void scopesTheMediaJobOwnerToTheClientSession() {
+    void auditsVideoGenerationRequests() {
         var provider = mock(GatewayMediaProvider.class);
+        var audit = mock(GatewayCallAuditService.class);
         var controller = new GatewayVideoController();
         controller.gatewayMediaProvider = provider;
+        controller.gatewayCallAudit = audit;
         var webContext = mock(WebContext.class);
         var request = mock(Request.class);
         controller.webContext = webContext;
         when(webContext.get(AuthContext.USER_ID_KEY)).thenReturn("user-1");
         when(webContext.request()).thenReturn(request);
         when(request.header("x-session-id")).thenReturn(Optional.of("session-7"));
-        when(request.pathParam("id")).thenReturn("gateway-media-v1.vid.abc");
-        when(provider.getVideoStatus(eq("gateway-media-v1.vid.abc"), any()))
-                .thenReturn(new VideoStatusResponse("gateway-media-v1.vid.abc", "running", 25, null, null));
+        when(request.body()).thenReturn(Optional.of("""
+                {"model":"seedance-2.5","prompt":"dance","seconds":5}
+                """.getBytes(StandardCharsets.UTF_8)));
+        when(audit.begin(any(), any(), any(), any(), any(), any())).thenReturn("audit-1");
+        when(provider.generateVideo(any(), any()))
+                .thenReturn(new VideoGenerationResponse("gateway-media-v1.vid.am9iLTE", "submitted", null, null));
 
-        controller.status(request);
+        controller.generate(request);
 
-        verify(provider).getVideoStatus("gateway-media-v1.vid.abc", new MediaJobOwner("user-1", "session-7", null));
+        verify(provider).generateVideo(any(), eq(new MediaJobOwner("user-1", "session-7", null)));
+        verify(audit).begin(eq(HubCallAuditService.KIND_MEDIA), eq("generate_video"), eq("video"),
+                eq("seedance-2.5"), any(), eq(new MediaJobOwner("user-1", "session-7", null)));
+        var result = ArgumentCaptor.forClass(GatewayCallAuditService.Result.class);
+        verify(audit).finish(eq("audit-1"), any(), result.capture());
+        assertThat(result.getValue().success()).isTrue();
+        assertThat(result.getValue().refId()).isEqualTo("gateway-media-v1.vid.am9iLTE");
     }
 
     @Test

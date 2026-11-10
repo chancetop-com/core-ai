@@ -57,6 +57,7 @@ import ai.core.server.domain.SystemSettings;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.HubCall;
+import ai.core.server.hub.HubCallAuditModule;
 import ai.core.server.hub.HubCallModule;
 import ai.core.server.hub.HubDatasetModule;
 import ai.core.server.mcphub.McpHubModule;
@@ -182,6 +183,8 @@ public class ServerApp extends App {
         load(new ProjectAttributionModule());
         load(new ObjectStorageModule());
         load(new SseTransportModule());
+        // gateway controllers record remote model calls into hub_calls, so the audit writer must be bound first
+        load(new HubCallAuditModule());
         load(new GatewayModule());
         load(new PromptModule());
         load(new AnalyticsModule());
@@ -219,7 +222,7 @@ public class ServerApp extends App {
         // schedule job keeps the hub catalog warm for later consumers (SessionModule etc.).
         load(new McpHubModule());
         load(new WebFoundationModule());
-        // API-Tool Hub needs ToolRegistryService + HubCallAuditService (McpHubModule); loads after
+        // API-Tool Hub needs ToolRegistryService + HubCallAuditService (HubCallAuditModule); loads after
         // WebFoundationModule so its /api/api-tools/mcp interceptor runs inside the auth chain.
         load(new ApiToolHubModule());
         // read side of the hub call audit records (hub_calls) — follows the modules that write them
@@ -227,7 +230,7 @@ public class ServerApp extends App {
         load(new AsyncToolTaskModule());
         load(new SessionModule());
         // Sandbox Hub serves the owning session's tools and needs AgentSessionManager (SessionModule)
-        // and HubCallAuditService (McpHubModule), so it follows both.
+        // and HubCallAuditService (HubCallAuditModule), so it follows both.
         load(new SandboxHubModule());
         // Hub dataset access for local scripts needs SessionRegistry (SessionModule) and DatasetRecordService
         // (DatasetModule), so it follows both.

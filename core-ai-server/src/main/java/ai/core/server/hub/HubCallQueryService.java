@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Read side of {@code hub_calls}: the filtered, paged list of hub tool executions behind the
+ * Read side of {@code hub_calls}: the filtered, paged list of hub tool and model executions behind the
  * observability "Hub Calls" page. Every query is anchored to the {@code created_at} window so
  * MongoDB (with {@code notablescan} on) always has an index to scan; the user visibility scope is
  * applied by the caller, not here.
@@ -30,7 +30,8 @@ import java.util.Set;
  */
 public class HubCallQueryService {
     public static final Set<String> KINDS = Set.of(HubCallAuditService.KIND_MCP_TOOL, HubCallAuditService.KIND_API_TOOL,
-            HubCallAuditService.KIND_AGENT, HubCallAuditService.KIND_SANDBOX_TOOL, HubCallAuditService.KIND_DATASET);
+            HubCallAuditService.KIND_AGENT, HubCallAuditService.KIND_SANDBOX_TOOL, HubCallAuditService.KIND_DATASET,
+            HubCallAuditService.KIND_MEDIA, HubCallAuditService.KIND_DECISION);
     private static final Set<String> STATES = Set.of("completed", "failed", "unknown");
 
     @Inject

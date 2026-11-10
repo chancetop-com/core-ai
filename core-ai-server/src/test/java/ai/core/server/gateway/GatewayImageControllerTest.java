@@ -2,6 +2,7 @@ package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationResponse;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.web.MultipartFile;
 import core.framework.web.Request;
@@ -116,8 +117,10 @@ class GatewayImageControllerTest {
     @Test
     void scopesTheMediaJobOwnerToTheClientSession() {
         var provider = mock(GatewayMediaProvider.class);
+        var audit = mock(GatewayCallAuditService.class);
         var controller = new GatewayImageController();
         controller.gatewayMediaProvider = provider;
+        controller.gatewayCallAudit = audit;
         var webContext = mock(WebContext.class);
         var request = mock(Request.class);
         controller.webContext = webContext;
@@ -125,13 +128,19 @@ class GatewayImageControllerTest {
         when(webContext.request()).thenReturn(request);
         when(request.header("x-session-id")).thenReturn(Optional.of("session-7"));
         when(request.body()).thenReturn(Optional.of("""
-                {"model":"gpt-image-2.5","prompt":"a cafe"}
+                {"model":"gpt-image-2","prompt":"a cafe"}
                 """.getBytes(StandardCharsets.UTF_8)));
+        when(audit.begin(any(), any(), any(), any(), any(), any())).thenReturn("audit-1");
         when(provider.generateImage(any(), any()))
                 .thenReturn(new ImageGenerationResponse(List.of(new ImageData("aW1n", null, null)), null));
 
         controller.generate(request);
 
         verify(provider).generateImage(any(), eq(new MediaJobOwner("user-1", "session-7", null)));
+        verify(audit).begin(eq(HubCallAuditService.KIND_MEDIA), eq("generate_image"), eq("image"),
+                eq("gpt-image-2"), any(), eq(new MediaJobOwner("user-1", "session-7", null)));
+        var result = ArgumentCaptor.forClass(GatewayCallAuditService.Result.class);
+        verify(audit).finish(eq("audit-1"), any(), result.capture());
+        assertThat(result.getValue().success()).isTrue();
     }
 }

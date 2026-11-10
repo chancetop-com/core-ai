@@ -8,11 +8,12 @@ import core.framework.mongo.Id;
 import java.time.ZonedDateTime;
 
 /**
- * Audit record of one Hub tool execution (kind: {@code mcp_tool} / {@code api_tool} /
- * {@code agent}). Full arguments/results are never stored (they may contain sensitive
- * data) — only a sha256 hash and a truncated preview. {@code target} is the qualified
- * name ({@code server/tool} or {@code app/service/operation}), {@code group} the owning
- * server/app and {@code name} the executed tool/operation name.
+ * Audit record of one Hub execution (kind: {@code mcp_tool} / {@code api_tool} / {@code agent} /
+ * {@code sandbox_tool} / {@code dataset} / {@code media} / {@code decision}). Full arguments/results
+ * are never stored (they may contain sensitive data) — only a sha256 hash and a truncated preview.
+ * {@code target} is the qualified name ({@code server/tool} or {@code app/service/operation}) or the
+ * requested model of a gateway call, {@code group} the owning server/app (or media family) and
+ * {@code name} the executed tool/operation name.
  * <p>
  * An agent run additionally records the A2A {@code task_id} of the turn, the {@code context_id}
  * that continues the conversation, and the token usage of the turn when it finished in-band.

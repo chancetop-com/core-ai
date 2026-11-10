@@ -1,7 +1,6 @@
 package ai.core.server.mcphub;
 
 import ai.core.api.server.McpHubWebService;
-import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.tool.ToolRegistryService;
 import core.framework.module.Module;
 
@@ -24,7 +23,7 @@ public class McpHubModule extends Module {
         onStartup(() -> toolRegistryService.setMcpCatalogInvalidator(catalog::invalidate));
 
         bind(McpHubAccessPolicy.class);
-        bind(HubCallAuditService.class);
+        // HubCallAuditService is bound by HubCallAuditModule before GatewayModule, so every hub surface shares it
         bind(McpHubService.class);
 
         api().service(McpHubWebService.class, bind(McpHubWebServiceImpl.class));

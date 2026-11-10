@@ -12,6 +12,7 @@ import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.media.MediaProvider;
+import ai.core.server.gateway.GatewayCallAuditService;
 import ai.core.server.gateway.GatewayChatCompletionsChannelListener;
 import ai.core.server.gateway.GatewayChatCompletionsSseEvent;
 import ai.core.server.gateway.GatewayDecisionController;
@@ -88,6 +89,7 @@ public class GatewayModule extends Module {
         bind(GatewayModelDiscoveryService.class);
         bind(GatewayModelService.class);
         bind(GatewayProviderService.class);
+        bind(GatewayCallAuditService.class);
         // media pricing must be bound before MediaJobService: core-ng bind() resolves @Inject eagerly and
         // GatewayModule loads before TraceModule (which owns ModelPricingService)
         bind(MediaPricingService.class);

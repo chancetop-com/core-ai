@@ -15,21 +15,23 @@ import java.util.ArrayList;
 import java.util.HexFormat;
 
 /**
- * Shared audit writer for every Hub execution path ({@code hub_calls}). MCP tool calls,
- * Service API operation calls and (later) agent runs all record into the same collection
- * with a {@code kind} discriminator.
+ * Shared audit writer for every Hub execution path ({@code hub_calls}). MCP tool calls, Service API
+ * operation calls, agent runs, sandbox tool calls, dataset operations and direct model-gateway calls
+ * (media generation and decisions) all record into the same collection with a {@code kind} discriminator.
  * <p>
- * A call is inserted by {@link #begin} before execution and completed by {@link #finish}
- * afterwards. Rows without a user id (auth disabled in dev) are skipped entirely.
+ * A call is inserted by {@link #begin} before execution and completed by {@link #finish} afterwards.
+ * Rows without a user id (auth disabled in dev) are skipped entirely.
  *
  * @author stephen
  */
 public class HubCallAuditService {
     public static final String KIND_MCP_TOOL = "mcp_tool";
     public static final String KIND_API_TOOL = "api_tool";
-    public static final String KIND_AGENT = "agent";   // reserved for later agent-run audit
+    public static final String KIND_AGENT = "agent";   // agent runs delegated through the Agent Hub
     public static final String KIND_SANDBOX_TOOL = "sandbox_tool";   // calls a script inside a sandbox makes for its session
     public static final String KIND_DATASET = "dataset";   // dataset ops a local script makes for its session
+    public static final String KIND_MEDIA = "media";   // direct image/video gateway calls made by remote clients
+    public static final String KIND_DECISION = "decision";   // direct decision gateway calls made by remote clients
 
     private static final int PREVIEW_MAX_CHARS = 512;
 
@@ -63,14 +65,25 @@ public class HubCallAuditService {
 
     public void finish(String callId, long durationMs, String outputText, boolean success,
                        Integer statusCode, String errorMessage) {
+        finishWithOutputBytes(callId, durationMs,
+                outputText == null ? null : outputText.getBytes(StandardCharsets.UTF_8).length,
+                success, statusCode, errorMessage);
+    }
+
+    /**
+     * Completion variant for callers that already know the output size (media responses carry binary
+     * payloads that must not be materialized as text just to count bytes).
+     */
+    public void finishWithOutputBytes(String callId, long durationMs, Integer outputBytes, boolean success,
+                                      Integer statusCode, String errorMessage) {
         if (callId == null) return;
         var sets = new ArrayList<Bson>();
         sets.add(Updates.set("success", success));
         sets.add(Updates.set("is_error", !success));
         sets.add(Updates.set("duration_ms", durationMs));
         sets.add(Updates.set("status_code", statusCode));
-        if (outputText != null) {
-            sets.add(Updates.set("output_bytes", outputText.getBytes(StandardCharsets.UTF_8).length));
+        if (outputBytes != null) {
+            sets.add(Updates.set("output_bytes", outputBytes));
         }
         if (errorMessage != null) {
             sets.add(Updates.set("error_message", truncate(errorMessage, PREVIEW_MAX_CHARS)));
@@ -87,6 +100,20 @@ public class HubCallAuditService {
         var sets = new ArrayList<Bson>();
         if (taskId != null) sets.add(Updates.set("task_id", taskId));
         if (contextId != null) sets.add(Updates.set("context_id", contextId));
+        if (inputTokens != null) sets.add(Updates.set("input_tokens", inputTokens));
+        if (outputTokens != null) sets.add(Updates.set("output_tokens", outputTokens));
+        if (sets.isEmpty()) return;
+        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+    }
+
+    /**
+     * Attaches result coordinates known only after execution: the produced artifact/job id of a media
+     * generation and the token usage of a model call.
+     */
+    public void attachResult(String callId, String refId, Long inputTokens, Long outputTokens) {
+        if (callId == null) return;
+        var sets = new ArrayList<Bson>();
+        if (refId != null) sets.add(Updates.set("ref_id", refId));
         if (inputTokens != null) sets.add(Updates.set("input_tokens", inputTokens));
         if (outputTokens != null) sets.add(Updates.set("output_tokens", outputTokens));
         if (sets.isEmpty()) return;

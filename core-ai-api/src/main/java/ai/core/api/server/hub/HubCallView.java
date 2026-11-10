@@ -7,6 +7,8 @@ import java.time.ZonedDateTime;
 /**
  * One hub call execution. Arguments/results are never stored in full, only a hash and a truncated
  * preview; {@code success} is null when the row was inserted but never completed (interrupted run).
+ * Gateway model calls use the same shape: {@code media} rows carry the produced media id in
+ * {@code refId} and {@code decision} rows carry the decision token usage.
  *
  * @author stephen
  */

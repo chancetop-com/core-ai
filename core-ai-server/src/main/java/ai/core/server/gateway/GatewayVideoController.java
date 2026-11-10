@@ -6,12 +6,14 @@ import ai.core.media.domain.VideoGenerationRequest;
 import ai.core.media.domain.VideoGenerationResponse;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.media.reference.MediaReferenceParser;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.web.auth.AuthContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.api.http.HTTPStatus;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
+import core.framework.util.StopWatch;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.WebContext;
@@ -28,16 +30,35 @@ public class GatewayVideoController {
     @Inject
     GatewayMediaProvider gatewayMediaProvider;
     @Inject
+    GatewayCallAuditService gatewayCallAudit;
+    @Inject
     MediaArtifactService mediaArtifactService;
     @Inject
     WebContext webContext;
 
     public Response generate(Request request) {
-        return generate(body(request), currentOwner());
+        return generateAudited(videoRequest(body(request)), currentOwner());
     }
 
     Response generate(byte[] body, MediaJobOwner owner) {
         return json(gatewayMediaProvider.generateVideo(videoRequest(body), owner));
+    }
+
+    private Response generateAudited(VideoGenerationRequest videoRequest, MediaJobOwner owner) {
+        var auditId = gatewayCallAudit.begin(HubCallAuditService.KIND_MEDIA, "generate_video", "video",
+                videoRequest.model(), gatewayCallAudit.videoArguments(videoRequest), owner);
+        var watch = new StopWatch();
+        try {
+            var response = gatewayMediaProvider.generateVideo(videoRequest, owner);
+            gatewayCallAudit.finish(auditId, watch, GatewayCallAuditService.Result.completed(
+                    null, response.id(), gatewayCallAudit.inputTokens(response.usage()),
+                    gatewayCallAudit.outputTokens(response.usage())));
+            return json(response);
+        } catch (RuntimeException e) {
+            gatewayCallAudit.finish(auditId, watch,
+                    GatewayCallAuditService.Result.failure(gatewayCallAudit.failureStatus(e), e.getMessage()));
+            throw e;
+        }
     }
 
     public Response status(Request request) {

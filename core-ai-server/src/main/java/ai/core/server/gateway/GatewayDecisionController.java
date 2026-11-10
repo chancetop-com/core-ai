@@ -6,10 +6,12 @@ import ai.core.decision.DecisionQuestion;
 import ai.core.decision.DecisionRequest;
 import ai.core.decision.DecisionResponse;
 import ai.core.decision.DecisionType;
+import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.rbac.PermissionsBypass;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import core.framework.http.ContentType;
 import core.framework.inject.Inject;
+import core.framework.util.StopWatch;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.exception.BadRequestException;
@@ -31,14 +33,34 @@ import java.util.Map;
 public class GatewayDecisionController {
     @Inject
     GatewayDecisionProvider gatewayDecisionProvider;
+    @Inject
+    GatewayCallAuditService gatewayCallAudit;
 
     public Response decide(Request request) {
-        return json(decide(body(request)));
+        var decisionRequest = decisionRequest(body(request));
+        var auditId = gatewayCallAudit.begin(HubCallAuditService.KIND_DECISION, "decide", "decision",
+                decisionRequest.model(), gatewayCallAudit.decisionArguments(decisionRequest), null);
+        var watch = new StopWatch();
+        try {
+            var response = decide(decisionRequest);
+            gatewayCallAudit.finish(auditId, watch, GatewayCallAuditService.Result.completed(
+                    gatewayCallAudit.decisionOutputBytes(response), null,
+                    gatewayCallAudit.inputTokens(response.usage()), gatewayCallAudit.outputTokens(response.usage())));
+            return json(response);
+        } catch (RuntimeException e) {
+            gatewayCallAudit.finish(auditId, watch,
+                    GatewayCallAuditService.Result.failure(gatewayCallAudit.failureStatus(e), e.getMessage()));
+            throw e;
+        }
     }
 
     DecisionResponse decide(byte[] body) {
+        return decide(decisionRequest(body));
+    }
+
+    DecisionResponse decide(DecisionRequest request) {
         try {
-            return gatewayDecisionProvider.decide(decisionRequest(body));
+            return gatewayDecisionProvider.decide(request);
         } catch (DecisionException e) {
             throw map(e);
         } catch (IllegalArgumentException e) {

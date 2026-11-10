@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentType, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Brain, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Database, HelpCircle, Info, Network, RotateCw, Wrench, XCircle } from 'lucide-react';
+import { Brain, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Copy, Database, HelpCircle, Image as ImageIcon, Info, Network, RotateCw, Scale, Wrench, XCircle } from 'lucide-react';
 import { adminApi, api, type HubCall, type HubCallFilter, type UserStatus } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { formatDuration, formatRelativeTime, formatTokenPair } from '../traces/traceViewModel';
@@ -14,6 +14,8 @@ const KIND_TABS: { key: string; label: string }[] = [
   { key: 'api_tool', label: 'API Tool' },
   { key: 'agent', label: 'Agent' },
   { key: 'dataset', label: 'Dataset' },
+  { key: 'media', label: 'Media' },
+  { key: 'decision', label: 'Decision' },
 ];
 
 const RANGE_OPTIONS: { key: string; label: string }[] = [
@@ -44,6 +46,8 @@ const KIND_ICONS: Record<string, { icon: ComponentType<{ size?: number }>; label
   api_tool: { icon: Wrench, label: 'API tool' },
   agent: { icon: Brain, label: 'Agent' },
   dataset: { icon: Database, label: 'Dataset' },
+  media: { icon: ImageIcon, label: 'Media generation' },
+  decision: { icon: Scale, label: 'Decision' },
 };
 
 interface HubCallFilters extends HubCallFilter {
@@ -246,7 +250,7 @@ export default function HubCalls() {
         <div>
           <h1 className="text-2xl font-semibold">Hub Calls</h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-            Hub tool executions by remote clients (CLI / MCP bridge / Agent Hub) — {total} in this window
+            Hub tool and model executions by remote clients (CLI / MCP bridge / Agent Hub) — {total} in this window
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -308,7 +312,8 @@ export default function HubCalls() {
         style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text-secondary)' }}>
         <Info size={14} className="shrink-0 mt-0.5" />
         <div>
-          These are executions made by remote clients against the hub endpoints directly, so they are not part of Traces.
+          These are executions made by remote clients against the hub endpoints directly — tools, agents, dataset
+          operations, media generations and decision calls — so they are not part of the agent trace pipeline.
           Arguments and results are never stored in full — only a sha256 hash and a 512-character preview — and records are
           retained for 90 days. Dataset calls record field names and sizes only, never the values. A call that started but
           never completed shows as <span className="font-medium">Incomplete</span>.
