@@ -7,19 +7,8 @@ import { useAuth } from '../../api/auth';
 import { useListState } from '../../hooks/useListState';
 import StatusBadge from '../../components/StatusBadge';
 
-const EXPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'temperature',
-  'max_turns', 'timeout_seconds', 'tool_ids', 'input_template', 'variables', 'response_schema'] as const;
 const DEFAULT_LIMIT = 10;
 const DEFAULT_SORT_BY = 'updated_at';
-
-function toExportData(a: AgentDefinition): Record<string, unknown> {
-  const raw = a as unknown as Record<string, unknown>;
-  const data: Record<string, unknown> = {};
-  for (const key of EXPORT_FIELDS) {
-    if (raw[key] != null) data[key] = raw[key];
-  }
-  return data;
-}
 
 type AgentTab = 'my' | 'other';
 type AgentTypeFilter = 'ALL' | 'AGENT' | 'LLM_CALL';
@@ -164,23 +153,27 @@ export default function AgentList() {
     }
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     const toExport = currentAgents.filter(a => selected.has(a.id));
     if (toExport.length === 0) return;
-    const exportData = toExport.map(toExportData);
-    const json = JSON.stringify(exportData.length === 1 ? exportData[0] : exportData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    const fileName = toExport.length === 1
-      ? `${toExport[0].name.replace(/\s+/g, '-').toLowerCase()}.agent.json`
-      : `agents-export-${new Date().toISOString().slice(0, 10)}.json`;
-    link.download = fileName;
-    link.click();
-    URL.revokeObjectURL(url);
-    setSelectMode(false);
-    setSelected(new Set());
+    try {
+      const envelopes = await Promise.all(toExport.map(a => api.agents.exportAgent(a.id)));
+      const json = JSON.stringify(envelopes.length === 1 ? envelopes[0] : envelopes, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      const fileName = toExport.length === 1
+        ? `${toExport[0].name.replace(/\s+/g, '-').toLowerCase()}.agent.json`
+        : `agents-export-${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+      setSelectMode(false);
+      setSelected(new Set());
+    } catch (err) {
+      alert(`Export failed: ${(err as Error).message}`);
+    }
   };
 
   const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,24 +184,29 @@ export default function AgentList() {
       const text = await file.text();
       const data = JSON.parse(text);
       const items = Array.isArray(data) ? data : [data];
-      const existingNames = new Set([...myAgents, ...otherAgents].map(a => a.name));
-      let created = 0;
+      const created: string[] = [];
+      const unresolved: string[] = [];
+      const failures: string[] = [];
       for (const item of items) {
-        if (!item.name) continue;
-        let name = item.name;
-        let suffix = 1;
-        while (existingNames.has(name)) {
-          name = `${item.name} (${suffix++})`;
-        }
-        existingNames.add(name);
+        const label = item && typeof item === 'object' && item.name ? String(item.name) : 'unnamed agent';
         try {
-          await api.agents.create({ ...item, name });
-          created++;
+          const res = await api.agents.importAgent(JSON.stringify(item));
+          if (res.agent) created.push(res.agent.name);
+          for (const ref of res.unresolved_references || []) {
+            const kind = ref.ref_type === 'SKILL' ? 'Skill' : 'Sub-agent';
+            unresolved.push(`${kind} "${ref.ref_name || ref.ref_id}" — ${ref.message}`);
+          }
         } catch (err) {
-          console.error(`Failed to import agent "${name}":`, err);
+          failures.push(`${label}: ${(err as Error).message}`);
         }
       }
-      alert(`Imported ${created} of ${items.length} agent(s)`);
+      const lines = [`Imported ${created.length} of ${items.length} agent(s).`];
+      if (created.length > 0) lines.push('', `Created: ${created.join(', ')}`);
+      if (unresolved.length > 0) {
+        lines.push('', `Skipped ${unresolved.length} unavailable reference(s):`, ...unresolved.map(u => `- ${u}`));
+      }
+      if (failures.length > 0) lines.push('', 'Failed:', ...failures.map(f => `- ${f}`));
+      alert(lines.join('\n'));
       loadMyAgents();
     } catch {
       alert('Invalid JSON file');

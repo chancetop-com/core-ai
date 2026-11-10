@@ -4,6 +4,9 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ExportAgentResponse;
+import ai.core.api.server.agent.ImportAgentRequest;
+import ai.core.api.server.agent.ImportAgentResponse;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
@@ -46,6 +49,14 @@ public interface AgentDefinitionWebService {
     @GET
     @Path("/api/agents/:id")
     AgentDefinitionView get(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/agents/:id/export")
+    ExportAgentResponse export(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/agents/import")
+    ImportAgentResponse importAgent(ImportAgentRequest request);
 
     @GET
     @Path("/api/agents/name/:name")

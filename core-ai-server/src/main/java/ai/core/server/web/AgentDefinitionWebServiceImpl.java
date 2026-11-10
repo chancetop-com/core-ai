@@ -5,12 +5,16 @@ import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
+import ai.core.api.server.agent.ExportAgentResponse;
+import ai.core.api.server.agent.ImportAgentRequest;
+import ai.core.api.server.agent.ImportAgentResponse;
 import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.api.server.utils.GenerateRequest;
 import ai.core.api.server.utils.GenerateResponse;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.agent.AgentPortService;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.rbac.PermissionCodes;
@@ -28,6 +32,8 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     WebContext webContext;
     @Inject
     AgentDefinitionService agentDefinitionService;
+    @Inject
+    AgentPortService agentPortService;
     @Inject
     JavaToSchemaService javaToSchemaService;
     @Inject
@@ -73,6 +79,20 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentDefinitionView get(String id) {
         return agentDefinitionService.get(id);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public ExportAgentResponse export(String id) {
+        return agentPortService.export(id);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
+    public ImportAgentResponse importAgent(ImportAgentRequest request) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentPortService.importAgent(request.content, request.name, Boolean.TRUE.equals(request.preview), userId);
     }
 
     @Override

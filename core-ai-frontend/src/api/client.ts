@@ -625,6 +625,76 @@ export interface AgentDefinition {
   favorite?: boolean;
 }
 
+export interface AgentSkillRef {
+  id?: string;
+  qualified_name?: string;
+  name?: string;
+}
+
+export interface AgentSubAgentRef {
+  id?: string;
+  name?: string;
+}
+
+export interface AgentExportView {
+  format?: string;
+  exported_at?: string;
+  name: string;
+  description?: string;
+  type?: string;
+  system_prompt?: string;
+  model?: string;
+  multi_modal_model?: string;
+  prefer_caption_path?: boolean;
+  temperature?: number;
+  thinking_effort?: string;
+  max_turns?: number;
+  timeout_seconds?: number;
+  tools?: ToolRef[];
+  skills?: AgentSkillRef[];
+  subagents?: AgentSubAgentRef[];
+  skill_ids?: string[];
+  subagent_ids?: string[];
+  input_template?: string;
+  variables?: Record<string, string>;
+  response_schema?: string;
+  enable_memory?: boolean;
+}
+
+export interface AgentImportConfig {
+  name: string;
+  description?: string;
+  type?: string;
+  system_prompt?: string;
+  model?: string;
+  multi_modal_model?: string;
+  prefer_caption_path?: boolean;
+  temperature?: number;
+  thinking_effort?: string;
+  max_turns?: number;
+  timeout_seconds?: number;
+  tools?: ToolRef[];
+  skill_ids?: string[];
+  subagent_ids?: string[];
+  input_template?: string;
+  variables?: Record<string, string>;
+  response_schema?: string;
+  enable_memory?: boolean;
+}
+
+export interface AgentUnresolvedReference {
+  ref_type: string;
+  ref_id?: string;
+  ref_name?: string;
+  message: string;
+}
+
+export interface AgentImportResponse {
+  agent?: AgentDefinition;
+  config: AgentImportConfig;
+  unresolved_references: AgentUnresolvedReference[];
+}
+
 export interface AgentMemoryView {
   id: string;
   agent_id: string;
@@ -2185,6 +2255,13 @@ export const api = {
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>
       request<AgentDefinition>('/api/agents', { method: 'POST', body: JSON.stringify(data) }),
+    exportAgent: (id: string) =>
+      request<AgentExportView>(`/api/agents/${id}/export`),
+    importAgent: (content: string, name?: string, preview?: boolean) =>
+      request<AgentImportResponse>('/api/agents/import', {
+        method: 'POST',
+        body: JSON.stringify({ content, name, preview }),
+      }),
     update: (id: string, data: Partial<AgentDefinition>) =>
       request<AgentDefinition>(`/api/agents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id: string) =>

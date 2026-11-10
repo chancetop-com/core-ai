@@ -4,6 +4,7 @@ import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.server.agent.AgentCallAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
+import ai.core.server.agent.AgentPortService;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.agent.PersonalAssistantService;
@@ -21,6 +22,7 @@ public class AgentDefinitionModule extends Module {
         // AgentRunnerModule, A2AModule, AgentHubModule, ChannelModule, TriggerModule)
         bind(PersonalAssistantService.class);
         bind(AgentDefinitionService.class);
+        bind(AgentPortService.class);
         // shared by every agent execution surface (A2AModule's ServerA2AService, AgentHubModule)
         bind(AgentCallAccessPolicy.class);
         // LLMCallExecutor must be bound before ToolRegistryModule, which injects it

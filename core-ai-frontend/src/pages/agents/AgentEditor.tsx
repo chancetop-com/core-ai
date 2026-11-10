@@ -194,6 +194,7 @@ export default function AgentEditor({ versionId }: { versionId?: string } = {}) 
   const importFileRef = useRef<HTMLInputElement>(null);
   const [showImportConfirm, setShowImportConfirm] = useState(false);
   const [pendingImportData, setPendingImportData] = useState<Record<string, unknown> | null>(null);
+  const [pendingImportWarnings, setPendingImportWarnings] = useState<string[]>([]);
 
   // runs
   const [runs, setRuns] = useState<AgentRun[]>([]);
@@ -853,31 +854,35 @@ The system prompt should define how this agent behaves, its capabilities, and it
     }
   };
 
-  const IMPORT_FIELDS = ['name', 'description', 'type', 'system_prompt', 'model', 'multi_modal_model', 'prefer_caption_path', 'temperature', 'thinking_effort',
-    'max_turns', 'timeout_seconds', 'tools', 'input_template', 'variables', 'response_schema', 'subagent_ids', 'skill_ids', 'enable_memory'] as const;
-
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    file.text().then(text => {
+    e.target.value = '';
+    file.text().then(async text => {
+      let item: unknown;
       try {
-        const data = JSON.parse(text);
-        const item = Array.isArray(data) ? data[0] : data;
-        if (!item || typeof item !== 'object') {
-          alert('Invalid agent JSON file');
-          return;
-        }
-        const filtered: Record<string, unknown> = {};
-        for (const key of IMPORT_FIELDS) {
-          if (item[key] != null) filtered[key] = item[key];
-        }
-        setPendingImportData(filtered);
-        setShowImportConfirm(true);
+        const parsed = JSON.parse(text);
+        item = Array.isArray(parsed) ? parsed[0] : parsed;
       } catch {
         alert('Invalid JSON file');
+        return;
+      }
+      if (!item || typeof item !== 'object') {
+        alert('Invalid agent JSON file');
+        return;
+      }
+      try {
+        const res = await api.agents.importAgent(JSON.stringify(item), undefined, true);
+        setPendingImportData(res.config as unknown as Record<string, unknown>);
+        setPendingImportWarnings((res.unresolved_references || []).map(ref => {
+          const kind = ref.ref_type === 'SKILL' ? 'Skill' : 'Sub-agent';
+          return `${kind} "${ref.ref_name || ref.ref_id}": ${ref.message}`;
+        }));
+        setShowImportConfirm(true);
+      } catch (err) {
+        alert(`Import failed: ${(err as Error).message}`);
       }
     });
-    e.target.value = '';
   };
 
   const applyImport = () => {
@@ -885,21 +890,42 @@ The system prompt should define how this agent behaves, its capabilities, and it
     setAgent({ ...agent, ...pendingImportData } as AgentDefinition);
     setShowImportConfirm(false);
     setPendingImportData(null);
+    setPendingImportWarnings([]);
   };
 
   const cancelImport = () => {
     setShowImportConfirm(false);
     setPendingImportData(null);
+    setPendingImportWarnings([]);
   };
 
   const handleExport = (a: AgentDefinition) => {
     const exportData = {
-      name: a.name, description: a.description, type: a.type,
-      system_prompt: a.system_prompt, model: a.model, multi_modal_model: a.multi_modal_model, prefer_caption_path: a.prefer_caption_path, temperature: a.temperature, thinking_effort: a.thinking_effort,
-      max_turns: a.max_turns, timeout_seconds: a.timeout_seconds,         tools: a.tools,
-      input_template: a.input_template, variables: a.variables, response_schema: a.response_schema,
-      subagent_ids: a.subagent_ids,
-      skill_ids: a.skill_ids,
+      format: 'core-ai-agent-export/v1',
+      exported_at: new Date().toISOString(),
+      name: a.name,
+      description: a.description,
+      type: a.type,
+      system_prompt: a.system_prompt,
+      model: a.model,
+      multi_modal_model: a.multi_modal_model,
+      prefer_caption_path: a.prefer_caption_path,
+      temperature: a.temperature,
+      thinking_effort: a.thinking_effort,
+      max_turns: a.max_turns,
+      timeout_seconds: a.timeout_seconds,
+      tools: a.tools,
+      skills: (a.skill_ids || []).map(skillId => {
+        const skill = allSkills.find(s => s.id === skillId);
+        return { id: skillId, qualified_name: skill?.qualified_name, name: skill?.name || skillId };
+      }),
+      subagents: (a.subagent_ids || []).map(agentId => {
+        const subAgent = allAgents.find(s => s.id === agentId);
+        return { id: agentId, name: subAgent?.name || agentId };
+      }),
+      input_template: a.input_template,
+      variables: a.variables,
+      response_schema: a.response_schema,
       enable_memory: a.enable_memory,
     };
     const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
@@ -1001,6 +1027,14 @@ The system prompt should define how this agent behaves, its capabilities, and it
               <p className="text-sm mb-4" style={{ color: 'var(--color-text-secondary)' }}>
                 Importing: <strong style={{ color: 'var(--color-text)' }}>{String(((pendingImportData as Record<string, unknown>)?.name as string) || '')}</strong>
               </p>
+            )}
+            {pendingImportWarnings.length > 0 && (
+              <div className="text-sm mb-4 p-2 rounded" style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--color-warning, #f59e0b)' }}>
+                <div className="font-medium mb-1">Unavailable in this environment — these references will be dropped:</div>
+                <ul className="list-disc ml-5">
+                  {pendingImportWarnings.map((warning, i) => <li key={i}>{warning}</li>)}
+                </ul>
+              </div>
             )}
             <p className="text-sm mb-4" style={{ color: 'var(--color-warning, #f59e0b)' }}>
               Unsaved changes will be lost. You can review and save after import.
