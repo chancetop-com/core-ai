@@ -67,7 +67,8 @@ final class LiteLLMResponsesStreamState {
             case "response.output_item.done" -> onOutputItemDone(eventItem(event), eventOutputIndex(event));
             case "response.completed" -> onCompleted(responseEvent(event), callback);
             case "response.incomplete" -> finish(FinishReason.LENGTH, callback);
-            case "response.failed" -> finish(FinishReason.STOP, callback);
+            case "response.failed" -> throw new LLMStreamException(errorMessage(responseEvent(event), "responses request failed"));
+            case "error" -> throw new LLMStreamException(errorMessage(event, "responses stream error"));
             case null, default -> {
                 if (isReasoningDelta(type)) onReasoningDelta(LiteLLMResponsesUtil.string(event.get("delta")), callback);
             }
@@ -102,6 +103,19 @@ final class LiteLLMResponsesStreamState {
 
     private Integer eventOutputIndex(Map<String, Object> event) {
         return LiteLLMResponsesUtil.intValue(event.get("output_index"));
+    }
+
+    private String errorMessage(Map<String, Object> event, String fallback) {
+        if (event == null) return fallback;
+        if (event.get("error") instanceof Map<?, ?> rawError) {
+            var error = LiteLLMResponsesUtil.asStringObjectMap(rawError);
+            var message = LiteLLMResponsesUtil.string(error.get("message"));
+            if (message != null && !message.isBlank()) return message;
+            var code = LiteLLMResponsesUtil.string(error.get("code"));
+            if (code != null && !code.isBlank()) return code;
+        }
+        var message = LiteLLMResponsesUtil.string(event.get("message"));
+        return message == null || message.isBlank() ? fallback : message;
     }
 
     private void onTextDelta(String delta, StreamingCallback callback) {

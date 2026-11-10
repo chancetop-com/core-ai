@@ -23,6 +23,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class LiteLLMResponsesBridgeTest {
@@ -235,6 +236,36 @@ class LiteLLMResponsesBridgeTest {
 
         assertEquals("Let me think step by step detailed chain of thought", response.choices.getFirst().message.reasoningContent);
         assertEquals("Final answer", response.choices.getFirst().message.content);
+    }
+
+    @Test
+    void failedResponseSurfacesUpstreamError() {
+        var state = new LiteLLMResponsesStreamState();
+        var callback = new CapturingCallback();
+
+        var error = assertThrows(LLMStreamException.class, () -> state.accept(event("""
+                {
+                  "type": "response.failed",
+                  "response": {
+                    "status": "failed",
+                    "error": {"code": "unknown", "message": "The model produced invalid content."}
+                  }
+                }
+                """), callback));
+
+        assertEquals("The model produced invalid content.", error.getMessage());
+    }
+
+    @Test
+    void errorEventSurfacesUpstreamError() {
+        var state = new LiteLLMResponsesStreamState();
+        var callback = new CapturingCallback();
+
+        var error = assertThrows(LLMStreamException.class, () -> state.accept(event("""
+                {"type":"error","error":{"type":"upstream_error","message":"The server is being maintained"}}
+                """), callback));
+
+        assertEquals("The server is being maintained", error.getMessage());
     }
 
     @SuppressWarnings("unchecked")

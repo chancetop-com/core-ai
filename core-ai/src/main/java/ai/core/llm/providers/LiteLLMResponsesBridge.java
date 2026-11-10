@@ -112,6 +112,9 @@ final class LiteLLMResponsesBridge {
             try {
                 response = consumeSSEStream(req, callback);
                 break;
+            } catch (LLMStreamException e) {
+                // an in-stream error event is a definitive upstream rejection; retrying cannot help
+                throw e;
             } catch (Exception e) {
                 if (callback.isCancelled()) break;
                 lastError = e;
