@@ -1,9 +1,8 @@
 package ai.core.server.artifact;
 
-import ai.core.server.domain.ChatSession;
 import ai.core.server.file.FileService;
+import ai.core.server.session.ChatSessionStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 /**
  * @author xander
@@ -12,11 +11,11 @@ public class ChatArtifactSetup {
     @Inject
     FileService fileService;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ChatSessionStore chatSessionStore;
     @Inject
     ai.core.server.project.ProjectArtifactBinder artifactBinder;
 
     public ArtifactSink createChatSessionSink(String sessionId) {
-        return new ChatSessionArtifactSink(sessionId, chatSessionCollection, artifactBinder);
+        return new ChatSessionArtifactSink(sessionId, chatSessionStore, artifactBinder);
     }
 }

@@ -2,20 +2,13 @@ package ai.core.server.session;
 
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 /**
@@ -38,13 +31,6 @@ public class SessionSearchService {
     private static final int SNIPPET_RADIUS = 80;
     private static final int SNIPPETS_PER_SESSION = 3;
     private static final int SNIPPETS_PER_SESSION_DRILL_DOWN = 10;
-    private static final String SESSION_ID = "session_id";
-    private static final String CONTENT = "content";
-    private static final String CREATED_AT = "created_at";
-    private static final String LAST_MESSAGE_AT = "last_message_at";
-    private static final String TITLE = "title";
-    private static final String ROLE = "role";
-    private static final Bson MESSAGE_PROJECTION = Projections.include("_id", SESSION_ID, ROLE, CONTENT, CREATED_AT);
     private static final Comparator<ScoredMessage> BY_SCORE_THEN_TIME = (left, right) -> {
         var byScore = Integer.compare(right.score(), left.score());
         return byScore != 0 ? byScore : right.time().compareTo(left.time());
@@ -55,9 +41,9 @@ public class SessionSearchService {
     };
 
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ChatMessageStore chatMessageStore;
 
     public List<SessionSearchHit> search(SessionSearchQuery request) {
         if (request.userId == null || request.userId.isBlank()) return List.of();
@@ -73,36 +59,28 @@ public class SessionSearchService {
 
     private List<ChatSession> candidateSessions(SessionSearchQuery request, int windowDays) {
         var drillDown = request.sessionId != null && !request.sessionId.isBlank();
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("user_id", request.userId));
-        if (request.agentId != null && !request.agentId.isBlank()) {
-            filters.add(Filters.eq("agent_id", request.agentId));
-        }
-        filters.add(Filters.eq("deleted_at", null));
+        var query = new ChatSessionQuery();
+        query.userId = request.userId;
+        if (request.agentId != null && !request.agentId.isBlank()) query.agentIds = List.of(request.agentId);
         if (drillDown) {
-            filters.add(Filters.eq("_id", request.sessionId));
+            query.ids = List.of(request.sessionId);
+            query.limit = 1;
         } else {
-            filters.add(Filters.gte(LAST_MESSAGE_AT, cutoff(windowDays)));
+            query.from = cutoff(windowDays);
+            query.limit = MAX_CANDIDATE_SESSIONS;
         }
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.projection = Projections.include("_id", TITLE, LAST_MESSAGE_AT);
-        query.sort = Sorts.descending(LAST_MESSAGE_AT);
-        query.limit = drillDown ? 1 : MAX_CANDIDATE_SESSIONS;
-        return chatSessionCollection.find(query).stream().filter(session -> !session.id.equals(request.currentSessionId)).toList();
+        return chatSessionStore.find(query).stream().filter(session -> !session.id.equals(request.currentSessionId)).toList();
     }
 
     private List<ChatMessage> matchedMessages(List<ChatSession> sessions, List<String> terms, int windowDays) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in(SESSION_ID, sessions.stream().map(session -> session.id).toList()));
-        filters.add(Filters.gte(CREATED_AT, cutoff(windowDays)));
-        filters.add(Filters.regex(CONTENT, anyTermPattern(terms), "i"));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.projection = MESSAGE_PROJECTION;
-        query.sort = Sorts.descending(CREATED_AT);
+        var query = new ChatMessageQuery();
+        query.sessionIds = sessions.stream().map(session -> session.id).toList();
+        query.from = cutoff(windowDays);
+        query.contentTerms = terms;
+        query.sortField = "created_at";
+        query.ascending = false;
         query.limit = MAX_MATCHED_MESSAGES;
-        return chatMessageCollection.find(query);
+        return chatMessageStore.find(query);
     }
 
     private List<SessionSearchHit> toHits(List<ChatSession> sessions, List<ChatMessage> messages, List<String> terms,
@@ -137,10 +115,6 @@ public class SessionSearchService {
             hit.snippets.add(snippet);
         }
         return hit;
-    }
-
-    private String anyTermPattern(List<String> terms) {
-        return terms.stream().map(Pattern::quote).collect(Collectors.joining("|", ".*(", ").*"));
     }
 
     private ZonedDateTime cutoff(int windowDays) {

@@ -8,11 +8,8 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.file.FileService;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,15 +54,15 @@ public class ProjectAnalysisMaterialLoader {
     }
 
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
     FileService fileService;
 
@@ -94,7 +91,10 @@ public class ProjectAnalysisMaterialLoader {
         var byTarget = byTarget(rows, ProjectAttributionStore.TARGET_SESSION);
         if (byTarget.isEmpty()) return;
         var found = new HashMap<String, ChatSession>();
-        for (var session : chatSessionCollection.find(Filters.in("_id", byTarget.keySet()))) found.put(session.id, session);
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.ids = new ArrayList<>(byTarget.keySet());
+        query.limit = Integer.MAX_VALUE;
+        for (var session : chatSessionStore.find(query)) found.put(session.id, session);
         for (var entry : byTarget.entrySet()) {
             var session = found.get(entry.getKey());
             if (session == null) {
@@ -154,11 +154,11 @@ public class ProjectAnalysisMaterialLoader {
     private void loadFiles(List<ProjectSubjectAttribution> rows, List<Item> items, List<Consumed> consumed) {
         var byTarget = byTarget(rows, ProjectAttributionStore.TARGET_FILE);
         if (byTarget.isEmpty()) return;
-        var query = new Query();
-        query.filter = Filters.in("_id", byTarget.keySet());
-        query.projection = Projections.exclude("data");
+        var query = new ai.core.server.file.FileRecordQuery();
+        query.ids = new ArrayList<>(byTarget.keySet());
+        query.limit = Integer.MAX_VALUE;
         var found = new HashMap<String, FileRecord>();
-        for (var file : fileRecordCollection.find(query)) found.put(file.id, file);
+        for (var file : fileRecordStore.find(query)) found.put(file.id, file);
         for (var entry : byTarget.entrySet()) {
             var file = found.get(entry.getKey());
             if (file == null) {
@@ -183,7 +183,7 @@ public class ProjectAnalysisMaterialLoader {
             || name.endsWith(".md") || name.endsWith(".txt") || name.endsWith(".csv") || name.endsWith(".json");
         if (!textual) return "";
         try {
-            var record = fileRecordCollection.get(file.id).orElse(file);   // full record: inline data when not in object storage
+            var record = fileRecordStore.get(file.id).orElse(file);   // full record: inline data when not in object storage
             var raw = new String(fileService.getBytes(record), StandardCharsets.UTF_8);
             return html ? htmlToText(raw) : raw;
         } catch (RuntimeException e) {
@@ -211,10 +211,10 @@ public class ProjectAnalysisMaterialLoader {
     }
 
     private List<ChatMessage> history(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.ascending("seq");
-        return chatMessageCollection.find(query);
+        var query = new ai.core.server.session.ChatMessageQuery();
+        query.sessionId = sessionId;
+        query.limit = Integer.MAX_VALUE;
+        return chatMessageStore.find(query);
     }
 
     private int compareAsc(ZonedDateTime left, ZonedDateTime right) {

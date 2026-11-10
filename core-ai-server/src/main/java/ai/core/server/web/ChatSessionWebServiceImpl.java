@@ -22,7 +22,6 @@ import ai.core.server.session.SessionCompletionNotifier;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
@@ -45,7 +44,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
     @Inject
     SandboxSnapshotService sandboxSnapshotService;
     @Inject
-    MongoCollection<SessionFeedback> sessionFeedbackCollection;
+    ai.core.server.session.SessionFeedbackStore sessionFeedbackStore;
     @Inject
     AgentMemoryExperimentService memoryExperimentService;
     @Inject
@@ -177,7 +176,7 @@ public class ChatSessionWebServiceImpl implements ChatSessionWebService {
         feedback.messageCount = request.messageCount;
         feedback.source = request.source;
 
-        sessionFeedbackCollection.insert(feedback);
+        sessionFeedbackStore.insert(feedback);
 
         // patch experiment run outcome
         memoryExperimentService.recordOutcome(sessionId, feedback.outcome, feedback.outcomeRating);

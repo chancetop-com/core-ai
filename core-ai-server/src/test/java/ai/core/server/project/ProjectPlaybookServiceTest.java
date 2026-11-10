@@ -55,15 +55,16 @@ class ProjectPlaybookServiceTest {
         var projects = (MongoCollection<Project>) mock(MongoCollection.class);
         service.projectStore = ProjectStoreTestSupport.store(projects);
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
-        service.chatSessionCollection = sessions;
+        var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
+        service.chatSessionStore = chatSessionStore;
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);
-        service.chatMessageCollection = messages;
+        service.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(messages);
         var runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         service.agentRunCollection = runs;
         var workflowRuns = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
         service.workflowRunCollection = workflowRuns;
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
-        service.fileRecordCollection = files;
+        service.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(files);
         agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         service.agentCollection = agents;
         workflows = (MongoCollection<WorkflowDefinition>) mock(MongoCollection.class);
@@ -80,7 +81,7 @@ class ProjectPlaybookServiceTest {
         when(sessions.find(any(Query.class))).thenReturn(List.of());
         when(runs.find(any(Query.class))).thenReturn(List.of());
         when(workflowRuns.find(any(Query.class))).thenReturn(List.of());
-        when(files.find(any(Bson.class))).thenReturn(List.of());
+        when(files.find(any(Query.class))).thenReturn(List.of());
         when(projectService.subjects("p-1")).thenReturn(List.of());
     }
 
@@ -93,7 +94,7 @@ class ProjectPlaybookServiceTest {
         when(messages.find(any(Query.class))).thenReturn(List.of(
             message("user", "run the monthly report for Acme Spa"),
             message("assistant", "done")));
-        when(files.find(any(Bson.class))).thenReturn(List.of(file("f-1", "Acme Spa 2026-08 report.html")));
+        when(files.find(any(Query.class))).thenReturn(List.of(file("f-1", "Acme Spa 2026-08 report.html")));
         when(executor.execute(any(), anyString(), any(), any())).thenReturn(new LLMCallExecutor.Result("# Playbook\n...", 10, 20));
 
         assertEquals("# Playbook\n...", service.generate("p-1"));

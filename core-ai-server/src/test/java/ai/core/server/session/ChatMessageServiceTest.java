@@ -28,12 +28,12 @@ class ChatMessageServiceTest {
     @Test
     void userMessagePersistsContentAndUpdatesExistingRegistryRow() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
 
         service.writeUserMessage("s-1", "hello");
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         assertEquals("s-1", captor.getValue().sessionId);
         assertEquals("user", captor.getValue().role);
         assertEquals("hello", captor.getValue().content);
@@ -44,12 +44,12 @@ class ChatMessageServiceTest {
     @Test
     void completedAgentTurnPersistsContentAndUpdatesExistingRegistryRow() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
 
         service.listener("s-1").onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         assertEquals("agent", captor.getValue().role);
         assertEquals("done", captor.getValue().content);
         verify(service.sessionRegistry).recordAgentMessage("s-1");
@@ -58,7 +58,7 @@ class ChatMessageServiceTest {
     @Test
     void flushPendingTurnSavesWorkFromATurnThatNeverCompleted() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
         listener.onToolStart(ToolStartEvent.of("s-1", "call-1", "run_bash_command", "{}"));
 
@@ -66,7 +66,7 @@ class ChatMessageServiceTest {
         service.flushPendingTurn("s-1");
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         assertEquals("agent", captor.getValue().role);
         assertEquals(1, captor.getValue().tools.size());
         assertEquals("run_bash_command", captor.getValue().tools.getFirst().name);
@@ -75,18 +75,18 @@ class ChatMessageServiceTest {
     @Test
     void flushPendingTurnWritesNothingWhenTheTurnAlreadyPersisted() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         service.listener("s-1").onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         service.flushPendingTurn("s-1");
 
-        verify(service.chatMessageCollection, times(1)).insert(any(ChatMessage.class));
+        verify(collection(service), times(1)).insert(any(ChatMessage.class));
     }
 
     @Test
     void completedAgentTurnPersistsLatestSandboxStateForHistoryReload() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
 
         listener.onSandbox(SandboxEvent.creating("s-1", "sandbox-1"));
@@ -95,7 +95,7 @@ class ChatMessageServiceTest {
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         var sandbox = captor.getValue().sandbox;
         assertNotNull(sandbox);
         assertEquals("ready", sandbox.sandboxType);
@@ -110,7 +110,7 @@ class ChatMessageServiceTest {
     @Test
     void finishedCompressionIsPersistedWithTheTurnItShortened() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
 
         listener.onCompression(CompressionEvent.of("s-1", 16, 16, false));
@@ -118,7 +118,7 @@ class ChatMessageServiceTest {
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         var compression = captor.getValue().compression;
         assertNotNull(compression);
         assertEquals(16, compression.beforeCount);
@@ -131,14 +131,14 @@ class ChatMessageServiceTest {
     @Test
     void unfinishedCompressionIsNotPersisted() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
 
         listener.onCompression(CompressionEvent.of("s-1", 16, 16, false));
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         assertNull(captor.getValue().compression);
     }
 
@@ -155,14 +155,14 @@ class ChatMessageServiceTest {
     @Test
     void customEventsAreBufferedAndPersistedWithTheTurn() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
 
         listener.onCustomEvent(CustomEvent.of("s-1", "menu_table", "{\"rows\":[]}", "{\"blocks\":[{\"type\":\"divider\"}]}", "call-1"));
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         var events = captor.getValue().events;
         assertNotNull(events);
         assertEquals(1, events.size());
@@ -175,14 +175,14 @@ class ChatMessageServiceTest {
     @Test
     void flushPendingTurnSavesBufferedEventsFromATurnThatNeverCompleted() {
         var service = service();
-        when(service.chatMessageCollection.find(any(Query.class))).thenReturn(List.of());
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
         var listener = service.listener("s-1");
         listener.onCustomEvent(CustomEvent.of("s-1", "state_update", "{}", null, null));
 
         service.flushPendingTurn("s-1");
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
-        verify(service.chatMessageCollection).insert(captor.capture());
+        verify(collection(service)).insert(captor.capture());
         var events = captor.getValue().events;
         assertNotNull(events, "an events-only buffer must not be treated as empty");
         assertEquals("state_update", events.getFirst().name);
@@ -192,8 +192,14 @@ class ChatMessageServiceTest {
         var service = new ChatMessageService();
         @SuppressWarnings("unchecked")
         MongoCollection<ChatMessage> collection = mock(MongoCollection.class);
-        service.chatMessageCollection = collection;
+        var store = new MongoChatMessageStore();
+        store.chatMessageCollection = collection;
+        service.chatMessageStore = store;
         service.sessionRegistry = mock(SessionRegistry.class);
         return service;
+    }
+
+    private MongoCollection<ChatMessage> collection(ChatMessageService service) {
+        return ((MongoChatMessageStore) service.chatMessageStore).chatMessageCollection;
     }
 }

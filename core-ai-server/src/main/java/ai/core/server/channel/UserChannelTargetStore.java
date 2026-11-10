@@ -1,12 +1,11 @@
 package ai.core.server.channel;
 
 import ai.core.server.domain.UserChannelTarget;
-import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
+import java.util.Optional;
 
 /**
  * Remembers where a user last talked from on each channel. Rows are keyed by (user, channel) and
@@ -14,15 +13,20 @@ import java.time.ZonedDateTime;
  *
  * @author stephen
  */
-public class UserChannelTargetStore {
+public abstract class UserChannelTargetStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(UserChannelTargetStore.class);
 
     private static boolean isSet(String value) {
         return value != null && !value.isBlank();
     }
 
-    @Inject
-    MongoCollection<UserChannelTarget> collection;
+    protected abstract Optional<UserChannelTarget> get(String id);
+
+    protected abstract void insert(UserChannelTarget target);
+
+    protected abstract void replace(UserChannelTarget target);
+
+    public abstract boolean insertIfAbsent(UserChannelTarget target);
 
     public void record(String userId, String channelId, String recipient) {
         if (!isSet(userId) || !isSet(channelId) || !isSet(recipient)) return; // nothing addressable to remember
@@ -33,10 +37,10 @@ public class UserChannelTargetStore {
         target.recipient = recipient;
         target.updatedAt = ZonedDateTime.now();
         try {
-            if (collection.get(target.id).isPresent()) {
-                collection.replace(target);
+            if (get(target.id).isPresent()) {
+                replace(target);
             } else {
-                collection.insert(target);
+                insert(target);
             }
         } catch (RuntimeException e) {
             // remembering an address must never break an inbound message
@@ -45,6 +49,6 @@ public class UserChannelTargetStore {
     }
 
     public UserChannelTarget load(String userId, String channelId) {
-        return collection.get(UserChannelTarget.idOf(userId, channelId)).orElse(null);
+        return get(UserChannelTarget.idOf(userId, channelId)).orElse(null);
     }
 }

@@ -30,7 +30,7 @@ class SessionReadServiceTest {
     @BeforeEach
     void wire() {
         service.sessionRegistry = sessionRegistry;
-        service.chatMessageCollection = chatMessageCollection;
+        service.chatMessageStore = MongoChatMessageStore.of(chatMessageCollection);
     }
 
     @Test

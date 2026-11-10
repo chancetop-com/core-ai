@@ -3,7 +3,6 @@ package ai.core.server.project;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.AgentSchedule;
-import ai.core.server.domain.ChatSession;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -39,7 +38,7 @@ public class ProjectArtifactBinder {
     @Inject
     MongoCollection<AgentSchedule> scheduleCollection;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
 
@@ -108,7 +107,7 @@ public class ProjectArtifactBinder {
 
     private ParentArtifacts parentArtifacts(String parentType, String parentId) {
         return switch (parentType) {
-            case ProjectAttributionStore.TARGET_SESSION -> chatSessionCollection.get(parentId)
+            case ProjectAttributionStore.TARGET_SESSION -> chatSessionStore.get(parentId)
                 .map(s -> new ParentArtifacts(s.agentId, s.artifacts != null ? s.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);
             case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(parentId)
                 .map(r -> new ParentArtifacts(r.agentId, r.artifacts != null ? r.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);

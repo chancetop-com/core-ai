@@ -1,14 +1,8 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -41,14 +35,12 @@ public class ProjectAttributionStore {
     public static final String SOURCE_MANUAL = "manual";
     public static final String SOURCE_UPLOAD = "upload";
 
-    private static final Bson FILE_TIME_PROJECTION = Projections.include("_id", "created_at");
-
     @Inject
     ProjectAttributionRepository attributionRepository;
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
 
     public Optional<ProjectSubject> subject(String subjectId) {
         if (subjectId == null || subjectId.isBlank()) return Optional.empty();
@@ -141,11 +133,7 @@ public class ProjectAttributionStore {
     }
 
     private ZonedDateTime fileCreatedAt(String fileId) {
-        var query = new Query();
-        query.filter = Filters.eq("_id", fileId);
-        query.projection = FILE_TIME_PROJECTION;
-        query.limit = 1;
-        var record = fileRecordCollection.find(query).stream().findFirst().orElse(null);
+        var record = fileRecordStore.get(fileId).orElse(null);
         if (record == null) return null;
         return record.createdAt != null ? record.createdAt : ZonedDateTime.now();
     }

@@ -3,8 +3,6 @@ package ai.core.server.project;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatMessage;
-import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.LLMCallExecutor;
@@ -62,15 +60,15 @@ public class ProjectAttributionStage {
     @Inject
     ProjectStore projectStore;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
@@ -163,8 +161,12 @@ public class ProjectAttributionStage {
     private void collectSessions(ProjectAttributionMaterial material, Project project, ZonedDateTime cursor) {
         var agentIds = memberIds(project, "agent");
         if (agentIds.isEmpty()) return;
-        var query = query(Filters.in("agent_id", agentIds), "last_message_at", cursor, MAX_SESSIONS);
-        var sessions = chatSessionCollection.find(query);
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.agentIds = agentIds;
+        query.from = cursor;
+        query.ascending = cursor != null;
+        query.limit = MAX_SESSIONS;
+        var sessions = chatSessionStore.find(query);
         seedCoverage(material, ProjectAttributionStore.TARGET_SESSION, cursor, sessions.isEmpty() ? null : sessions.getFirst().lastMessageAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_SESSION, sessions.stream().map(s -> s.id).toList());
         for (var session : sessions) {
@@ -343,10 +345,10 @@ public class ProjectAttributionStage {
 
     private boolean targetExists(String targetType, String targetId) {
         return switch (targetType) {
-            case ProjectAttributionStore.TARGET_SESSION -> chatSessionCollection.get(targetId).isPresent();
+            case ProjectAttributionStore.TARGET_SESSION -> chatSessionStore.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_WORKFLOW_RUN -> workflowRunCollection.get(targetId).isPresent();
-            case ProjectAttributionStore.TARGET_FILE -> fileRecordCollection.get(targetId).isPresent();
+            case ProjectAttributionStore.TARGET_FILE -> fileRecordStore.get(targetId).isPresent();
             default -> false;
         };
     }
@@ -376,10 +378,10 @@ public class ProjectAttributionStage {
     }
 
     private List<ChatMessage> history(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.ascending("seq");
-        return chatMessageCollection.find(query);
+        var query = new ai.core.server.session.ChatMessageQuery();
+        query.sessionId = sessionId;
+        query.limit = Integer.MAX_VALUE;
+        return chatMessageStore.find(query);
     }
 
     private List<String> memberIds(Project project, String type) {

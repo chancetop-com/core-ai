@@ -30,15 +30,16 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ArtifactPublisherTest {
-    private FileService fileService;
     private ArtifactPublisher publisher;
     private ObjectStorageService storage;
     private ObjectStorageServiceResolver resolver;
+    private MongoCollection<FileRecord> fileRecordCollection;
 
     @BeforeEach
     void setUp() {
-        fileService = new FileService();
-        fileService.fileRecordCollection = fileRecordCollection();
+        var fileService = new FileService();
+        fileRecordCollection = fileRecordCollection();
+        fileService.fileRecordStore = MongoFileRecordStore.of(fileRecordCollection);
         storage = mock(ObjectStorageService.class);
         resolver = mock(ObjectStorageServiceResolver.class);
         fileService.storageResolver = resolver;
@@ -55,14 +56,14 @@ class ArtifactPublisherTest {
         when(storage.headObject("static", "ai/uploads/x.mp4"))
                 .thenReturn(new ObjectStorageService.ObjectMetadata((long) payload.length, "etag", "video/mp4", "now"));
         downloadWrites("static", "ai/uploads/x.mp4", payload);
-        when(fileService.fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
 
         var record = publisher.copyToArtifact("user-1", "promo.mp4", null, "static", "ai/uploads/x.mp4", true);
 
         assertEquals("public-artifacts/artifacts/" + record.id + ".mp4", record.storagePath);
         assertEquals("video/mp4", record.contentType);
         verify(storage).uploadObject(eq("public-artifacts"), eq("artifacts/" + record.id + ".mp4"), any(Path.class), eq("video/mp4"));
-        verify(fileService.fileRecordCollection).insert(record);
+        verify(fileRecordCollection).insert(record);
     }
 
     @Test
@@ -74,12 +75,12 @@ class ArtifactPublisherTest {
         downloadWrites("static", "ai/uploads/x.mp4", "same video".getBytes(StandardCharsets.UTF_8));
         var existing = file("file-1");
         existing.storagePath = "public-artifacts/artifacts/file-1.mp4";
-        when(fileService.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
 
         var record = publisher.copyToArtifact("user-1", "promo.mp4", "video/mp4", "static", "ai/uploads/x.mp4", true);
 
         assertSame(existing, record);
-        verify(fileService.fileRecordCollection, never()).insert(any(FileRecord.class));
+        verify(fileRecordCollection, never()).insert(any(FileRecord.class));
     }
 
     @Test
@@ -111,7 +112,7 @@ class ArtifactPublisherTest {
         when(storage.headObject("artifacts", "artifacts/file-1.mp4"))
                 .thenReturn(new ObjectStorageService.ObjectMetadata(10L, "etag", "video/mp4", "now"));
         downloadWrites("artifacts", "artifacts/file-1.mp4", "same video".getBytes(StandardCharsets.UTF_8));
-        when(fileService.fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
 
         var published = publisher.publish(record, true);
 

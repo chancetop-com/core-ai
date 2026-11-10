@@ -51,13 +51,13 @@ class SessionRegistryTest {
         session.id = "s-1";
         session.userId = "user-1";
         session.notifyOnComplete = Boolean.TRUE;
-        when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(session));
+        when(collection(registry).get("s-1")).thenReturn(Optional.of(session));
         // core-ng's update reports the MODIFIED count, so writing the value a row already holds is 0
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(0L);
 
         registry.updateNotifyOnComplete("user-1", "s-1", true);
 
-        verify(registry.chatSessionCollection).update(any(Bson.class), any(Bson.class));
+        verify(collection(registry)).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -73,7 +73,7 @@ class SessionRegistryTest {
         var created = registry.create(registration);
 
         var captor = ArgumentCaptor.forClass(ChatSession.class);
-        verify(registry.chatSessionCollection).insert(captor.capture());
+        verify(collection(registry)).insert(captor.capture());
         var persisted = captor.getValue();
         assertSame(persisted, created);
         assertEquals("s-1", persisted.id);
@@ -99,8 +99,8 @@ class SessionRegistryTest {
                 "s-1", "user-1", "agent-1", "chat", null, null, null);
         var existing = session("s-1", "user-1", "agent-1");
         existing.source = "chat";
-        when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(existing));
-        org.mockito.Mockito.doThrow(duplicate).when(registry.chatSessionCollection).insert(any(ChatSession.class));
+        when(collection(registry).get("s-1")).thenReturn(Optional.of(existing));
+        org.mockito.Mockito.doThrow(duplicate).when(collection(registry)).insert(any(ChatSession.class));
 
         assertSame(existing, registry.create(registration));
     }
@@ -112,9 +112,9 @@ class SessionRegistryTest {
         when(duplicate.getCode()).thenReturn(11000);
         var registration = new SessionRegistry.SessionRegistration(
                 "s-1", "user-1", "agent-1", "chat", null, null, null);
-        when(registry.chatSessionCollection.get("s-1"))
+        when(collection(registry).get("s-1"))
                 .thenReturn(Optional.of(session("s-1", "another-user", "agent-1")));
-        org.mockito.Mockito.doThrow(duplicate).when(registry.chatSessionCollection).insert(any(ChatSession.class));
+        org.mockito.Mockito.doThrow(duplicate).when(collection(registry)).insert(any(ChatSession.class));
 
         assertThrows(IllegalStateException.class, () -> registry.create(registration));
     }
@@ -124,7 +124,7 @@ class SessionRegistryTest {
         var registry = registry();
         var failure = mock(MongoWriteException.class);
         when(failure.getCode()).thenReturn(91);
-        org.mockito.Mockito.doThrow(failure).when(registry.chatSessionCollection).insert(any(ChatSession.class));
+        org.mockito.Mockito.doThrow(failure).when(collection(registry)).insert(any(ChatSession.class));
 
         assertThrows(MongoWriteException.class, () -> registry.create(
                 new SessionRegistry.SessionRegistration("s-1", "user-1", null, "chat", null, null, null)));
@@ -136,9 +136,9 @@ class SessionRegistryTest {
         var active = session("active", "user-1", "agent-1");
         var deleted = session("deleted", "user-1", "agent-1");
         deleted.deletedAt = ZonedDateTime.now();
-        when(registry.chatSessionCollection.get("active")).thenReturn(Optional.of(active));
-        when(registry.chatSessionCollection.get("deleted")).thenReturn(Optional.of(deleted));
-        when(registry.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
+        when(collection(registry).get("active")).thenReturn(Optional.of(active));
+        when(collection(registry).get("deleted")).thenReturn(Optional.of(deleted));
+        when(collection(registry).get("missing")).thenReturn(Optional.empty());
 
         assertSame(active, registry.requireAccessible("active", "user-1"));
         assertThrows(ForbiddenException.class, () -> registry.requireAccessible("active", "user-2"));
@@ -150,29 +150,29 @@ class SessionRegistryTest {
     @Test
     void recordUserMessageUpdatesExistingRowWithoutCreatingStub() {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         registry.recordUserMessage("s-1", "  hello   registry  ");
 
         var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(registry.chatSessionCollection).update(any(Bson.class), captor.capture());
+        verify(collection(registry)).update(any(Bson.class), captor.capture());
         var update = bson(captor.getValue());
         assertEquals("hello registry", update.getDocument("$set").getString("title").getValue());
         assertTrue(update.getDocument("$set").containsKey("last_message_at"));
         assertEquals(1L, update.getDocument("$inc").getInt64("message_count").getValue());
-        verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
+        verify(collection(registry), never()).insert(any(ChatSession.class));
     }
 
     @Test
     void dependencyUpdateFailsWhenRegistryRowIsMissingInsteadOfInsertingStub() {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(0L);
         var tool = ToolRef.of("tool-1", ToolSourceType.BUILTIN, null);
 
         assertThrows(IllegalStateException.class,
                 () -> registry.addLoadedTools("missing", List.of(tool)));
 
-        verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
+        verify(collection(registry), never()).insert(any(ChatSession.class));
     }
 
     @Test
@@ -181,8 +181,8 @@ class SessionRegistryTest {
         var active = session("active", "user-1", "agent-1");
         var deleted = session("deleted", "user-1", "agent-1");
         deleted.deletedAt = ZonedDateTime.now();
-        when(registry.chatSessionCollection.get("active")).thenReturn(Optional.of(active));
-        when(registry.chatSessionCollection.get("deleted")).thenReturn(Optional.of(deleted));
+        when(collection(registry).get("active")).thenReturn(Optional.of(active));
+        when(collection(registry).get("deleted")).thenReturn(Optional.of(deleted));
 
         assertEquals("user-1", registry.requireUserId("active"));
         assertEquals("agent-1", registry.requireAgentId("active"));
@@ -192,7 +192,7 @@ class SessionRegistryTest {
     @Test
     void recordAgentMessageRequiresAnExistingRegistryRow() {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class)))
+        when(collection(registry).update(any(Bson.class), any(Bson.class)))
                 .thenReturn(1L, 0L);
 
         registry.recordAgentMessage("active");
@@ -228,7 +228,7 @@ class SessionRegistryTest {
     @Test
     void loadedResourceMutationsRejectMissingRegistryRowWithoutInsertingStub() {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(0L);
 
         assertThrows(IllegalStateException.class,
                 () -> registry.addLoadedSkillIds("missing", List.of(" skill-1 ", "skill-1", "")));
@@ -237,49 +237,49 @@ class SessionRegistryTest {
         assertThrows(IllegalStateException.class,
                 () -> registry.removeLoadedSkillIds("missing", List.of(" skill-1 ")));
 
-        verify(registry.chatSessionCollection, never()).insert(any(ChatSession.class));
+        verify(collection(registry), never()).insert(any(ChatSession.class));
     }
 
     @Test
     void softDeleteOnlyDeletesOwnedSession() {
         var registry = registry();
-        when(registry.chatSessionCollection.get("owned"))
+        when(collection(registry).get("owned"))
                 .thenReturn(Optional.of(session("owned", "user-1", null)));
-        when(registry.chatSessionCollection.get("foreign"))
+        when(collection(registry).get("foreign"))
                 .thenReturn(Optional.of(session("foreign", "user-2", null)));
-        when(registry.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(collection(registry).get("missing")).thenReturn(Optional.empty());
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         assertTrue(registry.softDelete("user-1", "owned"));
         assertFalse(registry.softDelete("user-1", "foreign"));
         assertFalse(registry.softDelete("user-1", "missing"));
-        verify(registry.chatSessionCollection).update(any(Bson.class), any(Bson.class));
+        verify(collection(registry)).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
     void updateTitleNormalizesTextAndEnforcesOwnership() {
         var registry = registry();
-        when(registry.chatSessionCollection.get("s-1"))
+        when(collection(registry).get("s-1"))
                 .thenReturn(Optional.of(session("s-1", "user-1", null)));
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         assertTrue(registry.updateTitle("user-1", "s-1", "  My  renamed  chat "));
         assertFalse(registry.updateTitle("user-2", "s-1", "not allowed"));
 
         var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(registry.chatSessionCollection).update(any(Bson.class), captor.capture());
+        verify(collection(registry)).update(any(Bson.class), captor.capture());
         assertEquals("My renamed chat", bson(captor.getValue()).getDocument("$set").getString("title").getValue());
     }
 
     @Test
     void batchSoftDeleteReturnsOnlyOwnedExistingIds() {
         var registry = registry();
-        when(registry.chatSessionCollection.get("owned"))
+        when(collection(registry).get("owned"))
                 .thenReturn(Optional.of(session("owned", "user-1", null)));
-        when(registry.chatSessionCollection.get("foreign"))
+        when(collection(registry).get("foreign"))
                 .thenReturn(Optional.of(session("foreign", "user-2", null)));
-        when(registry.chatSessionCollection.get("missing")).thenReturn(Optional.empty());
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(collection(registry).get("missing")).thenReturn(Optional.empty());
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         assertEquals(List.of("owned"),
                 registry.batchSoftDelete("user-1", List.of("owned", "foreign", "missing")));
@@ -290,9 +290,9 @@ class SessionRegistryTest {
         var registry = registry();
         var stored = session("s-1", "user-1", "agent-1");
         var listed = List.of(stored);
-        when(registry.chatSessionCollection.get("s-1")).thenReturn(Optional.of(stored));
-        when(registry.chatSessionCollection.count(any(Bson.class))).thenReturn(1L);
-        when(registry.chatSessionCollection.find(any(Query.class))).thenReturn(listed);
+        when(collection(registry).get("s-1")).thenReturn(Optional.of(stored));
+        when(collection(registry).count(any(Bson.class))).thenReturn(1L);
+        when(collection(registry).find(any(Query.class))).thenReturn(listed);
 
         assertSame(stored, registry.get("s-1"));
         assertEquals(1L, registry.countSessions("user-1", List.of("chat"), List.of("agent-1")));
@@ -304,8 +304,14 @@ class SessionRegistryTest {
         var registry = new SessionRegistry();
         @SuppressWarnings("unchecked")
         MongoCollection<ChatSession> collection = mock(MongoCollection.class);
-        registry.chatSessionCollection = collection;
+        var store = new MongoChatSessionStore();
+        store.chatSessionCollection = collection;
+        registry.chatSessionStore = store;
         return registry;
+    }
+
+    private MongoCollection<ChatSession> collection(SessionRegistry registry) {
+        return ((MongoChatSessionStore) registry.chatSessionStore).chatSessionCollection;
     }
 
     private ChatSession session(String id, String userId, String agentId) {
@@ -318,13 +324,13 @@ class SessionRegistryTest {
 
     private void assertInitializesNullCollectionBeforeMutation(String field, Consumer<SessionRegistry> mutation) {
         var registry = registry();
-        when(registry.chatSessionCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(collection(registry).update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         mutation.accept(registry);
 
         var filterCaptor = ArgumentCaptor.forClass(Bson.class);
         var updateCaptor = ArgumentCaptor.forClass(Bson.class);
-        verify(registry.chatSessionCollection, org.mockito.Mockito.times(2))
+        verify(collection(registry), org.mockito.Mockito.times(2))
                 .update(filterCaptor.capture(), updateCaptor.capture());
         var normalizationFilter = bson(filterCaptor.getAllValues().getFirst());
         assertEquals("s-1", normalizationFilter.getArray("$and").getFirst()

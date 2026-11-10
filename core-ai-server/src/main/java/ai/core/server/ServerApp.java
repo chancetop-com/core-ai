@@ -98,7 +98,9 @@ import java.time.Duration;
  */
 public class ServerApp extends App {
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerApp.class);
-    private static final Duration STARTUP_TIMEOUT = Duration.ofMinutes(3);
+    // large one-time data copies can exceed the default start budget; the canary overrides it
+    private static final Duration STARTUP_TIMEOUT = Duration.ofSeconds(
+        Math.max(60, Long.parseLong(System.getenv().getOrDefault("SYS_STARTUP_TIMEOUT_SECONDS", "180"))));
 
     @SuppressFBWarnings("MDM_RUNTIME_EXIT_OR_HALT")
     private static void halt() {
@@ -119,6 +121,12 @@ public class ServerApp extends App {
         registerMongo();
 
         load(new PostgresModule());
+        // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
+        load(new SessionStoreModule());
+        // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly
+        load(new FileStoreModule());
+        // small G2 collections are consumed by channel/session/gateway modules loaded below
+        load(new SmallCollectionStoreModule());
         load(new UserStoreModule());
         load(new GatewayStoreModule());
         load(new ToolRegistryStoreModule());

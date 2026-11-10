@@ -64,7 +64,8 @@ class ProjectArtifactBinderTest {
         runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         binder.store = store;
         binder.scheduleCollection = schedules;
-        binder.chatSessionCollection = sessions;
+        var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
+        binder.chatSessionStore = chatSessionStore;
         binder.agentRunCollection = runs;
         when(store.byTarget(anyString(), anyString())).thenReturn(List.of());
         when(store.attribute(any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);

@@ -36,6 +36,11 @@ public class PgDocumentStore<T> {
             id.apply(entity), JsonUtil.toJson(entity));
     }
 
+    public boolean insertIfAbsent(T entity) {
+        return database.execute("INSERT INTO " + table + " (id, data, updated_at) VALUES (?, ?::jsonb, now()) "
+            + "ON CONFLICT DO NOTHING", id.apply(entity), JsonUtil.toJson(entity)) > 0;
+    }
+
     public void replace(T entity) {
         database.execute("UPDATE " + table + " SET data = ?::jsonb, updated_at = now() WHERE id = ?",
             JsonUtil.toJson(entity), id.apply(entity));

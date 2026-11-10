@@ -172,8 +172,10 @@ class SessionSearchMongoTest {
 
     private SessionSearchService service() {
         var service = new SessionSearchService();
-        service.chatSessionCollection = chatSessionCollection;
-        service.chatMessageCollection = chatMessageCollection;
+        var store = new MongoChatSessionStore();
+        store.chatSessionCollection = chatSessionCollection;
+        service.chatSessionStore = store;
+        service.chatMessageStore = MongoChatMessageStore.of(chatMessageCollection);
         return service;
     }
 

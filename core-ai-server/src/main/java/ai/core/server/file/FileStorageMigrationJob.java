@@ -3,12 +3,7 @@ package ai.core.server.file;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -33,7 +28,7 @@ public class FileStorageMigrationJob implements Job {
     private static final String ARTIFACT_PREFIX = "artifacts/";
 
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    FileRecordStore fileRecordStore;
 
     @Inject
     ObjectStorageServiceResolver storageResolver;
@@ -47,14 +42,11 @@ public class FileStorageMigrationJob implements Job {
         }
         var container = storageResolver.artifactContainer();
 
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.type("data", "string"),
-                Filters.exists("storage_path", false));
-        query.sort = Sorts.ascending("created_at");
+        var query = new FileRecordQuery();
+        query.legacyInlineOnly = true;
+        query.ascending = true;
         query.limit = BATCH_SIZE;
-
-        var records = fileRecordCollection.find(query);
+        var records = fileRecordStore.find(query);
         if (records.isEmpty()) return;
 
         int migrated = 0;
@@ -78,9 +70,7 @@ public class FileStorageMigrationJob implements Job {
         try {
             Files.write(tempFile, Base64.getDecoder().decode(record.data));
             storage.uploadObject(container, blobName, tempFile, record.contentType);
-            fileRecordCollection.update(Filters.eq("_id", record.id), Updates.combine(
-                    Updates.set("storage_path", container + "/" + blobName),
-                    Updates.unset("data")));
+            fileRecordStore.markStored(record.id, container + "/" + blobName);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to write temp file for migration, id=" + record.id, e);
         } finally {

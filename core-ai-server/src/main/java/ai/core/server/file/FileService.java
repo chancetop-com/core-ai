@@ -4,12 +4,7 @@ import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageService.DownloadCredential;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.domain.FileRecord;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.util.Encodings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
@@ -72,7 +67,7 @@ public class FileService {
     }
 
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    FileRecordStore fileRecordStore;
 
     @Inject
     ObjectStorageServiceResolver storageResolver;
@@ -113,7 +108,7 @@ public class FileService {
         }
         deleteTempFile(tempFile);
 
-        fileRecordCollection.insert(record);
+        fileRecordStore.insert(record);
         LOGGER.info("file uploaded, id={}, fileName={}, size={}", id, fileName, record.size);
         return record;
     }
@@ -168,14 +163,12 @@ public class FileService {
         spellings.add(contentHash.toLowerCase(java.util.Locale.ROOT));
         // the compound index is not unique, so a user can own several records of identical content; findOne() raises
         // Error("more than one row returned") for those, which turned a dedupe hit into a failed submit_artifacts
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("user_id", userId),
-                Filters.in("content_hash", spellings),
-                Filters.type("content_hash", "string"));
-        query.sort = Sorts.ascending("created_at", "_id");
+        var query = new FileRecordQuery();
+        query.userId = userId;
+        query.contentHashes = new java.util.ArrayList<>(spellings);
+        query.ascending = true;
         query.limit = 1;
-        return fileRecordCollection.find(query).stream().findFirst();
+        return fileRecordStore.find(query).stream().findFirst();
     }
 
     String computeContentHash(Path tempFile) {
@@ -251,7 +244,7 @@ public class FileService {
             var thumbnail = ImageThumbnailer.thumbnail(getBytes(record), record.contentType);
             if (thumbnail == null) return null;
             var path = uploadThumbnail(storage, storageResolver.artifactContainer(), record.id, thumbnail);
-            fileRecordCollection.update(Filters.eq("_id", record.id), Updates.set("thumb_storage_path", path));
+            fileRecordStore.updateThumbStoragePath(record.id, path);
             record.thumbStoragePath = path;
             return thumbnail;
         } catch (IOException | RuntimeException e) {
@@ -285,7 +278,7 @@ public class FileService {
     }
 
     public FileRecord get(String id) {
-        return fileRecordCollection.get(id)
+        return fileRecordStore.get(id)
             .orElseThrow(() -> new NotFoundException("file not found, id=" + id));
     }
 
@@ -304,17 +297,8 @@ public class FileService {
 
         record.shareToken = newShareToken();
         record.sharedAt = ZonedDateTime.now();
-        var updated = fileRecordCollection.update(Filters.and(
-                Filters.eq("_id", id),
-                Filters.eq("user_id", userId),
-                Filters.or(
-                    Filters.exists("share_token", false),
-                    Filters.eq("share_token", null),
-                    Filters.eq("share_token", ""))),
-            Updates.combine(
-                Updates.set("share_token", record.shareToken),
-                Updates.set("shared_at", record.sharedAt)));
-        if (updated == 0) {
+        var updated = fileRecordStore.claimShareToken(id, userId, record.shareToken, record.sharedAt);
+        if (!updated) {
             var latest = get(id);
             ensureOwner(latest, userId);
             if (latest.shareToken != null && !latest.shareToken.isBlank()) {
@@ -322,6 +306,8 @@ public class FileService {
             }
             throw new NotFoundException("file not found, id=" + id);
         }
+        // claimShareToken returns only a success flag; the in-memory record already carries the token
+
         LOGGER.info("file share created, id={}, fileName={}", id, record.fileName);
         return record;
     }
@@ -336,9 +322,10 @@ public class FileService {
         if (token == null || token.isBlank()) {
             throw new NotFoundException("shared file not found");
         }
-        return fileRecordCollection.findOne(Filters.and(
-                Filters.eq("share_token", token),
-                Filters.type("share_token", "string")))
+        var query = new FileRecordQuery();
+        query.shareToken = token;
+        query.limit = 1;
+        return fileRecordStore.find(query).stream().findFirst()
             .orElseThrow(() -> new NotFoundException("shared file not found"));
     }
 
@@ -400,7 +387,7 @@ public class FileService {
     public FileRecord rename(String id, String fileName) {
         var name = validateFileName(fileName);
         var record = get(id);
-        fileRecordCollection.update(Filters.eq("_id", id), Updates.set("file_name", name));
+        fileRecordStore.updateFileName(id, name);
         record.fileName = name;
         LOGGER.info("file renamed, id={}, fileName={}", id, name);
         return record;
@@ -416,7 +403,7 @@ public class FileService {
     }
 
     public void delete(String id) {
-        var record = fileRecordCollection.get(id).orElse(null);
+        var record = fileRecordStore.get(id).orElse(null);
         if (record != null) {
             var storage = storageResolver.resolve();
             if (storage != null) {
@@ -424,7 +411,7 @@ public class FileService {
                 deleteObjectQuietly(storage, record.thumbStoragePath, id);
             }
         }
-        fileRecordCollection.delete(id);
+        fileRecordStore.delete(id);
         // a report that no longer exists must leave the project directories too, or its rows inflate counts/offsets
         if (attributionStore != null) attributionStore.removeFile(id);
     }

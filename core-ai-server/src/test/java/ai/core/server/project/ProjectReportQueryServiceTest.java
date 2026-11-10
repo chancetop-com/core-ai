@@ -83,9 +83,10 @@ class ProjectReportQueryServiceTest {
         var projects = (MongoCollection<Project>) mock(MongoCollection.class);
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         service.attributionStore = store;
-        service.fileRecordCollection = files;
+        service.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(files);
         service.agentRunCollection = runs;
-        service.chatSessionCollection = sessions;
+        var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
+        service.chatSessionStore = chatSessionStore;
         service.projectStore = ProjectStoreTestSupport.store(projects);
         service.agentCollection = agents;
 

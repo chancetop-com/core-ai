@@ -50,11 +50,13 @@ class FileServiceTest {
     private FileService service;
     private ObjectStorageService storage;
     private ObjectStorageServiceResolver resolver;
+    private MongoCollection<FileRecord> fileRecordCollection;
 
     @BeforeEach
     void setUp() {
         service = new FileService();
-        service.fileRecordCollection = fileRecordCollection();
+        fileRecordCollection = fileRecordCollection();
+        service.fileRecordStore = MongoFileRecordStore.of(fileRecordCollection);
         storage = mock(ObjectStorageService.class);
         resolver = mock(ObjectStorageServiceResolver.class);
         service.storageResolver = resolver;
@@ -64,15 +66,15 @@ class FileServiceTest {
     @Test
     void shareCreatesToken() {
         var record = file("file-1");
-        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
-        when(service.fileRecordCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        when(fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
+        when(fileRecordCollection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
 
         var shared = service.share("file-1", "user-1");
 
         assertSame(record, shared);
         assertNotNull(shared.shareToken);
         assertNotNull(shared.sharedAt);
-        verify(service.fileRecordCollection).update(any(Bson.class), any(Bson.class));
+        verify(fileRecordCollection).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -80,12 +82,12 @@ class FileServiceTest {
         var record = file("file-1");
         record.shareToken = "existing-token";
         record.sharedAt = ZonedDateTime.now();
-        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
+        when(fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
 
         var shared = service.share("file-1", "user-1");
 
         assertEquals("existing-token", shared.shareToken);
-        verify(service.fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -94,8 +96,8 @@ class FileServiceTest {
         var latest = file("file-1");
         latest.shareToken = "concurrent-token";
         latest.sharedAt = ZonedDateTime.now();
-        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record)).thenReturn(Optional.of(latest));
-        when(service.fileRecordCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
+        when(fileRecordCollection.get("file-1")).thenReturn(Optional.of(record)).thenReturn(Optional.of(latest));
+        when(fileRecordCollection.update(any(Bson.class), any(Bson.class))).thenReturn(0L);
 
         var shared = service.share("file-1", "user-1");
 
@@ -106,23 +108,23 @@ class FileServiceTest {
     void shareRejectsNonOwner() {
         var record = file("file-1");
         record.userId = "user-2";
-        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
+        when(fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
 
         assertThrows(ForbiddenException.class, () -> service.share("file-1", "user-1"));
-        verify(service.fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
     void getSharedFindsByToken() {
         var record = file("file-1");
-        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.of(record));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(record));
 
         assertSame(record, service.getShared("token"));
     }
 
     @Test
     void getSharedThrowsForMissingToken() {
-        when(service.fileRecordCollection.findOne(any(Bson.class))).thenReturn(Optional.empty());
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
 
         assertThrows(NotFoundException.class, () -> service.getShared("missing"));
     }
@@ -138,7 +140,7 @@ class FileServiceTest {
         assertEquals("artifacts/artifacts/" + record.id + ".mp4", record.storagePath);
         assertEquals(11L, record.size);
         verify(storage).uploadObject(eq("artifacts"), eq("artifacts/" + record.id + ".mp4"), any(Path.class), eq("video/mp4"));
-        verify(service.fileRecordCollection).insert(record);
+        verify(fileRecordCollection).insert(record);
     }
 
     @Test
@@ -218,14 +220,14 @@ class FileServiceTest {
         when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
         var existing = file("file-1");
         existing.storagePath = "artifacts/artifacts/file-1.html";
-        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
         var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
 
         var record = service.uploadIfAbsent("user-1", "page.html", "text/html", tempFile, true);
 
         assertNotSame(existing, record);
         assertTrue(record.storagePath.startsWith("public-artifacts/"));
-        verify(service.fileRecordCollection).insert(record);
+        verify(fileRecordCollection).insert(record);
     }
 
     @Test
@@ -233,13 +235,13 @@ class FileServiceTest {
         when(resolver.publicArtifactContainer()).thenReturn("public-artifacts");
         var existing = file("file-1");
         existing.storagePath = "public-artifacts/artifacts/file-1.html";
-        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
         var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
 
         var record = service.uploadIfAbsent("user-1", "page.html", "text/html", tempFile, true);
 
         assertSame(existing, record);
-        verify(service.fileRecordCollection, never()).insert(any(FileRecord.class));
+        verify(fileRecordCollection, never()).insert(any(FileRecord.class));
     }
 
     @Test
@@ -321,7 +323,7 @@ class FileServiceTest {
         assertNotNull(thumbnail);
         assertEquals("artifacts/artifacts/file-1.thumb.jpg", record.thumbStoragePath);
         verify(storage).uploadObject(eq("artifacts"), eq("artifacts/file-1.thumb.jpg"), any(Path.class), eq("image/jpeg"));
-        verify(service.fileRecordCollection).update(any(Bson.class), any(Bson.class));
+        verify(fileRecordCollection).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -351,7 +353,7 @@ class FileServiceTest {
         when(storage.downloadObject("artifacts", "artifacts/file-1.png")).thenReturn(new byte[200 * 1024]);
 
         assertNull(service.thumbnail(record));
-        verify(service.fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(fileRecordCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -359,13 +361,13 @@ class FileServiceTest {
         var record = file("file-1");
         record.storagePath = "uploads/artifacts/file-1.zip";
         record.thumbStoragePath = "uploads/artifacts/file-1.thumb.jpg";
-        when(service.fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
+        when(fileRecordCollection.get("file-1")).thenReturn(Optional.of(record));
 
         service.delete("file-1");
 
         verify(storage).deleteObject("uploads", "artifacts/file-1.zip");
         verify(storage).deleteObject("uploads", "artifacts/file-1.thumb.jpg");
-        verify(service.fileRecordCollection).delete("file-1");
+        verify(fileRecordCollection).delete("file-1");
     }
 
     @Test
@@ -382,39 +384,39 @@ class FileServiceTest {
     @Test
     void uploadIfAbsentReusesExistingRecordWhenContentMatches() throws IOException {
         var existing = file("file-1");
-        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(existing));
         var tempFile = tempFile("same content".getBytes(StandardCharsets.UTF_8));
 
         var record = service.uploadIfAbsent("user-1", "v.mp4", "video/mp4", tempFile);
 
         assertSame(existing, record);
-        verify(service.fileRecordCollection, never()).insert(any(FileRecord.class));
+        verify(fileRecordCollection, never()).insert(any(FileRecord.class));
         assertFalse(Files.exists(tempFile));
     }
 
     @Test
     void uploadIfAbsentUploadsWhenNoContentMatch() throws IOException {
-        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
         when(resolver.artifactContainer()).thenReturn("artifacts");
         var tempFile = tempFile("new content".getBytes(StandardCharsets.UTF_8));
 
         var record = service.uploadIfAbsent("user-1", "v.mp4", "video/mp4", tempFile);
 
         assertNotNull(record.id);
-        verify(service.fileRecordCollection).insert(record);
+        verify(fileRecordCollection).insert(record);
     }
 
     @Test
     void findByContentHashReturnsOldestRecordWhenDuplicatesExist() {
         var oldest = file("file-1");
         var duplicate = file("file-2");
-        when(service.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(oldest, duplicate));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(oldest, duplicate));
 
         var found = service.findByContentHash("user-1", "3eb9aacdd2227af48c8948c2c5d9f2fd");
 
         assertSame(oldest, found.orElseThrow());
         var query = ArgumentCaptor.forClass(Query.class);
-        verify(service.fileRecordCollection).find(query.capture());
+        verify(fileRecordCollection).find(query.capture());
         assertEquals(1, query.getValue().limit);
     }
 

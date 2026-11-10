@@ -23,7 +23,7 @@ class SessionAttachmentRefRepositoryTest {
     @Test
     void findsSandboxAttachmentsByOwnerNewestFirst() {
         var collection = (MongoCollection<SessionAttachmentRef>) mock(MongoCollection.class);
-        var repository = new SessionAttachmentRefRepository();
+        var repository = new MongoSessionAttachmentRefRepository();
         repository.collection = collection;
         var newest = new SessionAttachmentRef();
         newest.id = "new";
@@ -49,7 +49,7 @@ class SessionAttachmentRefRepositoryTest {
     @Test
     void findsOwnedReferencesByIdPrefix() {
         var collection = (MongoCollection<SessionAttachmentRef>) mock(MongoCollection.class);
-        var repository = new SessionAttachmentRefRepository();
+        var repository = new MongoSessionAttachmentRefRepository();
         repository.collection = collection;
         var clip = new SessionAttachmentRef();
         clip.id = "video_7bb80432-cf17-4742-933b-5049d55ce644";
@@ -72,7 +72,7 @@ class SessionAttachmentRefRepositoryTest {
     @Test
     void findsOwnedVideosNewestFirst() {
         var collection = (MongoCollection<SessionAttachmentRef>) mock(MongoCollection.class);
-        var repository = new SessionAttachmentRefRepository();
+        var repository = new MongoSessionAttachmentRefRepository();
         repository.collection = collection;
         when(collection.find(any(Query.class))).thenReturn(List.of());
 
@@ -94,7 +94,7 @@ class SessionAttachmentRefRepositoryTest {
     @Test
     void attachesTheFileBehindAReference() {
         var collection = (MongoCollection<SessionAttachmentRef>) mock(MongoCollection.class);
-        var repository = new SessionAttachmentRefRepository();
+        var repository = new MongoSessionAttachmentRefRepository();
         repository.collection = collection;
 
         repository.attachFile("video_1", "file-1");

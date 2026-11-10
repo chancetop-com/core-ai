@@ -4,6 +4,7 @@ import ai.core.server.sandbox.terminal.SandboxTerminalService;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionRegistry;
 import ai.core.utils.ImageDownscaler;
+import core.framework.async.Task;
 import core.framework.module.APIConfig;
 import core.framework.module.HTTPConfig;
 import core.framework.module.SchedulerConfig;
@@ -104,6 +105,11 @@ class SessionModuleTest {
             return mock(instanceClass);
         }
 
+        @Override
+        public <T> T bind(Class<? super T> instanceClass, T instance) {
+            return instance;
+        }
+
         // SessionModule also binds pre-built instances (e.g. new SessionActivityRegistry(...),
         // the SandboxTerminalService) rather than only class tokens; record the runtime type so
         // the ordering assertion still sees a harmless entry for them.
@@ -123,6 +129,11 @@ class SessionModuleTest {
         @Override
         public Optional<String> property(String key) {
             return Optional.empty();
+        }
+
+        @Override
+        public void onStartup(Task task) {
+            // no module context in this test; startup tasks are exercised by the application, not the wiring test
         }
 
         @Override
@@ -159,6 +170,11 @@ class SessionModuleTest {
         }
 
         @Override
+        public <T> T bind(Class<? super T> instanceClass, T instance) {
+            return instance;
+        }
+
+        @Override
         public <T> T bind(T instance) {
             if (instance instanceof SandboxTerminalService service) {
                 capturedService = service;
@@ -174,6 +190,11 @@ class SessionModuleTest {
         @Override
         public Optional<String> property(String key) {
             return Optional.ofNullable(PROPERTIES.get(key));
+        }
+
+        @Override
+        public void onStartup(Task task) {
+            // no module context in this test
         }
 
         @Override

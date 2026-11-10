@@ -3,9 +3,6 @@ package ai.core.server.project;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
-import ai.core.server.domain.ChatMessage;
-import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowRun;
@@ -47,15 +44,15 @@ public class ProjectPlaybookService {
     @Inject
     ProjectStore projectStore;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
@@ -139,11 +136,10 @@ public class ProjectPlaybookService {
     }
 
     private void appendSessions(StringBuilder text, List<String> agentIds, List<String> artifacts) {
-        var query = new Query();
-        query.filter = Filters.in("agent_id", agentIds);
-        query.sort = Sorts.descending("last_message_at");
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.agentIds = agentIds;
         query.limit = MAX_SESSIONS;
-        for (var session : chatSessionCollection.find(query)) {
+        for (var session : chatSessionStore.find(query)) {
             if (overCap(text)) return;
             text.append("## session \"").append(session.title).append("\" (agent: ").append(session.agentId).append(")\n");
             for (var message : userMessages(session.id)) {
@@ -189,7 +185,10 @@ public class ProjectPlaybookService {
         var unique = fileIds.stream().distinct().limit(MAX_ARTIFACT_NAMES).toList();
         if (unique.isEmpty()) return;
         var names = new ArrayList<String>();
-        for (var file : fileRecordCollection.find(byIds(unique))) {
+        var fileQuery = new ai.core.server.file.FileRecordQuery();
+        fileQuery.ids = unique;
+        fileQuery.limit = unique.size();
+        for (var file : fileRecordStore.find(fileQuery)) {
             if (file.fileName != null && !file.fileName.isBlank()) names.add(limit(file.fileName, 120));
         }
         if (names.isEmpty()) return;
@@ -197,10 +196,10 @@ public class ProjectPlaybookService {
     }
 
     private List<String> userMessages(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.ascending("seq");
-        var history = chatMessageCollection.find(query);
+        var query = new ai.core.server.session.ChatMessageQuery();
+        query.sessionId = sessionId;
+        query.limit = Integer.MAX_VALUE;
+        var history = chatMessageStore.find(query);
         var tail = history.size() > MAX_MESSAGES_PER_SESSION
             ? history.subList(history.size() - MAX_MESSAGES_PER_SESSION, history.size()) : history;
         var messages = new ArrayList<String>();

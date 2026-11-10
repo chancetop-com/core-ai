@@ -1,7 +1,6 @@
 package ai.core.server.project;
 
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.WorkflowRun;
@@ -52,7 +51,7 @@ public class ProjectQueryService {
     @Inject
     ProjectStore projectStore;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
@@ -133,7 +132,7 @@ public class ProjectQueryService {
         var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return 0;
         long total = 0;
-        if (type == null || "chat".equals(type)) total += chatSessionCollection.count(sessionFilter(scope, subjectId));
+        if (type == null || "chat".equals(type)) total += chatSessionStore.count(sessionQuery(scope, subjectId));
         if (type == null || "run".equals(type)) total += agentRunCollection.count(runFilter(scope, subjectId));
         if (type == null || "workflow".equals(type)) total += workflowRunCollection.count(workflowFilter(scope, subjectId));
         return total;
@@ -149,9 +148,9 @@ public class ProjectQueryService {
             if (entry != null) entries.add(entry);
         }
         var subjectBySession = subjectByTarget(scope, "session");
-        var sessions = sortedQuery(sessionFilter(scope, subjectId), "last_message_at");
+        var sessions = sessionQuery(scope, subjectId);
         sessions.limit = TIMELINE_MAX_ENTRIES;
-        for (var session : chatSessionCollection.find(sessions)) {
+        for (var session : chatSessionStore.find(sessions)) {
             if (session.title == null) continue;
             var at = session.lastMessageAt != null ? session.lastMessageAt : session.createdAt;
             entries.add(new TimelineEntry("session", session.title, null, subjectBySession.get(session.id), session.id, null, at));
@@ -181,10 +180,10 @@ public class ProjectQueryService {
     }
 
     private List<ProjectExecution> chatExecutions(ProjectScope scope, String subjectId, int offset, int limit) {
-        var query = sortedQuery(sessionFilter(scope, subjectId), "last_message_at");
-        query.skip = offset;
+        var query = sessionQuery(scope, subjectId);
+        query.offset = offset;
         query.limit = limit;
-        var sessions = chatSessionCollection.find(query);
+        var sessions = chatSessionStore.find(query);
         var costs = sessionCosts(sessions.stream().map(s -> s.id).toList());
         var subjectBySession = subjectByTarget(scope, "session");
         var rows = new ArrayList<ProjectExecution>();
@@ -262,15 +261,14 @@ public class ProjectQueryService {
         return result;
     }
 
-    private Bson sessionFilter(ProjectScope scope, String subjectId) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("agent_id", scope.agentIds));
+    private ai.core.server.session.ChatSessionQuery sessionQuery(ProjectScope scope, String subjectId) {
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.agentIds = scope.agentIds;
         if (subjectId != null) {
             var ids = attributionTargets(subjectId, "session");
-            filters.add(ids.isEmpty() ? Filters.eq("_id", "__none__") : Filters.in("_id", ids));
+            query.ids = ids.isEmpty() ? List.of("__none__") : ids;
         }
-        filters.add(Filters.or(Filters.exists("deleted_at", false), Filters.eq("deleted_at", null)));
-        return Filters.and(filters);
+        return query;
     }
 
     private Bson runFilter(ProjectScope scope, String subjectId) {

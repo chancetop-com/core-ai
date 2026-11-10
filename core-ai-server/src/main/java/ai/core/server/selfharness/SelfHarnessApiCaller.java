@@ -2,8 +2,6 @@ package ai.core.server.selfharness;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.FileRecord;
 import ai.core.server.project.ProjectAttributionRepository;
 import ai.core.server.project.ProjectStore;
 import ai.core.server.project.ProjectSubjectStore;
@@ -46,7 +44,7 @@ public class SelfHarnessApiCaller {
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     ai.core.server.apiuser.PermissionService permissionService;
     @Inject
@@ -56,7 +54,7 @@ public class SelfHarnessApiCaller {
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
     ProjectAttributionRepository attributionRepository;
 
@@ -76,16 +74,22 @@ public class SelfHarnessApiCaller {
 
     public Map<String, Object> searchSessions(String projectId, List<String> agentIds, String since, String subjectId, Boolean attributed, ExecutionContext context) {
         var scope = requireProject(projectId, context);
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("agent_id", agentIds != null && !agentIds.isEmpty() ? agentIds : scope.agentIds));
-        if (since != null) filters.add(Filters.gt("last_message_at", ZonedDateTime.parse(since)));
-        applyAttributionFilter(filters, projectId, subjectId, attributed, "session", "_id");
-        filters.add(Filters.or(Filters.exists("deleted_at", false), Filters.eq("deleted_at", null)));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("last_message_at");
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.agentIds = agentIds != null && !agentIds.isEmpty() ? agentIds : scope.agentIds;
+        query.from = since != null ? ZonedDateTime.parse(since) : null;
         query.limit = SEARCH_DEFAULT_LIMIT;
-        return Map.of("sessions", chatSessionCollection.find(query).stream().map(session -> {
+        if (subjectId != null) {
+            var targets = attributionTargets("session", subjectId);
+            query.ids = targets.isEmpty() ? List.of("__none__") : targets;
+        } else if (attributed != null) {
+            var targets = attributionTargets("session", subjectIdsOf(projectId).toArray(String[]::new));
+            if (Boolean.TRUE.equals(attributed)) {
+                query.ids = targets.isEmpty() ? List.of("__none__") : targets;
+            } else {
+                query.excludeIds = targets;
+            }
+        }
+        return Map.of("sessions", chatSessionStore.find(query).stream().map(session -> {
             var row = new LinkedHashMap<String, Object>();
             row.put("id", session.id);
             row.put("title", session.title);
@@ -145,18 +149,14 @@ public class SelfHarnessApiCaller {
 
     public Map<String, Object> listFiles(String since, String contentType, String keyword, Integer limit, ExecutionContext context) {
         var userId = requireUser(context);
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("user_id", userId));
-        if (since != null) filters.add(Filters.gt("created_at", ZonedDateTime.parse(since)));
-        if (contentType != null && !contentType.isBlank()) filters.add(Filters.eq("content_type", contentType));
-        if (keyword != null && !keyword.isBlank()) {
-            filters.add(Filters.regex("file_name", java.util.regex.Pattern.quote(keyword), "i"));
-        }
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("created_at");
+        var query = new ai.core.server.file.FileRecordQuery();
+        query.userId = userId;
+        query.excludeData = true;
+        if (since != null) query.createdAfter = ZonedDateTime.parse(since);
+        query.contentType = contentType;
+        query.fileNameKeyword = keyword;
         query.limit = clampLimit(limit);
-        return Map.of("files", fileRecordCollection.find(query).stream().map(file -> {
+        return Map.of("files", fileRecordStore.find(query).stream().map(file -> {
             var row = new LinkedHashMap<String, Object>();
             row.put("id", file.id);
             row.put("file_name", file.fileName);
@@ -169,7 +169,7 @@ public class SelfHarnessApiCaller {
 
     public Map<String, Object> getFileContent(String fileId, ExecutionContext context) {
         var userId = requireUser(context);
-        var file = fileRecordCollection.get(fileId)
+        var file = fileRecordStore.get(fileId)
             .orElseThrow(() -> new IllegalArgumentException("file not found, id=" + fileId));
         if (!userId.equals(file.userId)) throw new IllegalArgumentException("file does not belong to the current user");
         var row = new LinkedHashMap<String, Object>();

@@ -65,7 +65,7 @@ public class AgentMemoryService {
     MongoCollection<Trace> traceCollection;
 
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
 
     public List<AgentMemory> findByAgentId(String agentId) {
         var query = new Query();
@@ -233,15 +233,13 @@ public class AgentMemoryService {
     private List<ChatMessage> queryTraceMessages(Trace trace) {
         if (trace.sessionId == null || trace.sessionId.isBlank() || trace.startedAt == null) return List.of();
         var end = trace.completedAt != null ? trace.completedAt : trace.startedAt;
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("session_id", trace.sessionId),
-                Filters.gte("created_at", trace.startedAt.minusSeconds(EVIDENCE_LOOKBACK_SECONDS)),
-                Filters.lte("created_at", end.plusSeconds(EVIDENCE_LOOKAHEAD_SECONDS))
-        );
-        query.sort = Sorts.ascending("created_at");
+        var query = new ai.core.server.session.ChatMessageQuery();
+        query.sessionId = trace.sessionId;
+        query.from = trace.startedAt.minusSeconds(EVIDENCE_LOOKBACK_SECONDS);
+        query.to = end.plusSeconds(EVIDENCE_LOOKAHEAD_SECONDS);
+        query.sortField = "created_at";
         query.limit = EVIDENCE_MESSAGE_LIMIT;
-        return chatMessageCollection.find(query);
+        return chatMessageStore.find(query);
     }
 
     private void appendMessage(StringBuilder sb, ChatMessage message) {

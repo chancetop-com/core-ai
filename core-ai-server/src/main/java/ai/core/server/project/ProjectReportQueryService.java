@@ -2,15 +2,12 @@ package ai.core.server.project;
 
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -40,18 +37,17 @@ public class ProjectReportQueryService {
     static final int MAX_SOURCE_RECORDS = 1000;   // newest artifact-bearing sessions/runs considered per type
     static final int DEFAULT_LIMIT = 50;
     static final int MAX_LIMIT = 200;
-    private static final Bson FILE_META_PROJECTION = Projections.exclude("data", "storage_path");
 
     @Inject
     ProjectStore projectStore;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
     MongoCollection<AgentDefinition> agentCollection;
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
     ProjectAttributionStore attributionStore;
 
@@ -132,10 +128,10 @@ public class ProjectReportQueryService {
     private Map<String, FileRecord> fileRecords(Collection<String> ids) {
         var result = new HashMap<String, FileRecord>();
         if (ids.isEmpty()) return result;
-        var query = new Query();
-        query.filter = Filters.in("_id", ids);
-        query.projection = FILE_META_PROJECTION;
-        for (var record : fileRecordCollection.find(query)) result.put(record.id, record);
+        var query = new ai.core.server.file.FileRecordQuery();
+        query.ids = new ArrayList<>(ids);
+        query.limit = ids.size();
+        for (var record : fileRecordStore.find(query)) result.put(record.id, record);
         return result;
     }
 
@@ -149,12 +145,11 @@ public class ProjectReportQueryService {
     // only records that actually carry artifacts, newest first, bounded: the (agent_id, time) index
     // walks the member history in order and the artifacts filter drops the artifact-less bulk
     private void addSessionReports(Map<String, ProjectReport> byFile, ProjectScope scope, String agentId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.in("agent_id", scope.agentIds), Filters.exists("artifacts.0", true),
-            Filters.or(Filters.exists("deleted_at", false), Filters.eq("deleted_at", null)));
-        query.sort = Sorts.descending("last_message_at");
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.agentIds = scope.agentIds;
+        query.hasArtifacts = Boolean.TRUE;
         query.limit = MAX_SOURCE_RECORDS;
-        for (var session : chatSessionCollection.find(query)) {
+        for (var session : chatSessionStore.find(query)) {
             if (session.artifacts == null || !matchesAgent(session.agentId, agentId)) continue;
             for (var artifact : session.artifacts) {
                 if (artifact.fileId == null) continue;

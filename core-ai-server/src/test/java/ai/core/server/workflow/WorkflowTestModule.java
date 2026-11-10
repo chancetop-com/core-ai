@@ -33,6 +33,10 @@ import ai.core.server.project.ProjectService;
 import ai.core.server.project.ProjectStore;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.SessionRegistry;
+import ai.core.server.session.ChatSessionStore;
+import ai.core.server.session.MongoChatSessionStore;
+import ai.core.server.file.FileRecordStore;
+import ai.core.server.file.MongoFileRecordStore;
 import ai.core.server.gateway.GatewayModelStore;
 import ai.core.server.gateway.GatewayProviderStore;
 import ai.core.server.tool.ToolRegistryStore;
@@ -151,7 +155,9 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(ProjectStore.class, bind(MongoProjectStore.class));
         bindProjectDataStores();
         bind(ai.core.server.project.ProjectStateService.class);   // injected by ProjectService
+        bind(FileRecordStore.class, bind(MongoFileRecordStore.class));   // injected by ProjectAttributionStore
         bind(ai.core.server.project.ProjectAttributionStore.class);   // injected by ProjectService/ProjectArtifactBinder
+        bind(ChatSessionStore.class, bind(MongoChatSessionStore.class));
         bind(ai.core.server.project.ProjectArtifactBinder.class);
         bind(ProjectService.class);          // SessionRegistry/WorkflowRunService inject it eagerly at bind() time
         bind(SessionRegistry.class);

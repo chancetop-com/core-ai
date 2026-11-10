@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 class MediaJobArtifactStoreTest {
     private MediaJobArtifactStore store;
     private MongoCollection<MediaJob> collection;
+    private MongoCollection<FileRecord> fileRecordCollection;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
@@ -36,7 +37,8 @@ class MediaJobArtifactStoreTest {
         store = new MediaJobArtifactStore();
         collection = (MongoCollection<MediaJob>) mock(MongoCollection.class);
         store.mediaJobCollection = collection;
-        store.fileRecordCollection = (MongoCollection<FileRecord>) mock(MongoCollection.class);
+        fileRecordCollection = (MongoCollection<FileRecord>) mock(MongoCollection.class);
+        store.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(fileRecordCollection);
         store.fileService = mock(FileService.class);
     }
 
@@ -47,12 +49,12 @@ class MediaJobArtifactStoreTest {
         job.userId = "user-1";
         var record = new FileRecord();
         record.id = "file-1";
-        when(store.fileRecordCollection.find(any(Query.class))).thenReturn(List.of(record));
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of(record));
 
         assertSame(record, store.findSavedVideo(job).orElseThrow());
 
         var captor = ArgumentCaptor.forClass(Query.class);
-        verify(store.fileRecordCollection).find(captor.capture());
+        verify(fileRecordCollection).find(captor.capture());
         var filter = captor.getValue().filter.toString();
         assertTrue(filter.contains("video-" + GatewayVideoHandle.encode("job-1") + ".mp4"));
         assertTrue(filter.contains("video-" + GatewayVideoHandle.encodeLegacy("job-1") + ".mp4"));

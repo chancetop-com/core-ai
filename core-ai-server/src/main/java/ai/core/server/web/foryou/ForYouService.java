@@ -10,7 +10,6 @@ import ai.core.server.trace.domain.TraceDailyStats;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
@@ -40,13 +39,13 @@ public class ForYouService {
     }
 
     @Inject
-    MongoCollection<UserReport> reportCollection;
+    UserReportStore reportStore;
 
     @Inject
-    MongoCollection<UserTodo> todoCollection;
+    UserTodoStore todoStore;
 
     @Inject
-    MongoCollection<FileRecord> fileCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -61,35 +60,21 @@ public class ForYouService {
 
     public DashboardData dashboard(String userId) {
         var data = new DashboardData();
-        data.reportCount = reportCollection.count(Filters.eq("user_id", userId));
-        data.todoCount = todoCollection.count(Filters.eq("user_id", userId));
-        data.activeTodoCount = todoCollection.count(Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("completed", Boolean.FALSE)
-        ));
-        data.fileCount = fileCollection.count(Filters.eq("user_id", userId));
+        data.reportCount = reportStore.count(userId);
+        data.todoCount = todoStore.count(userId);
+        data.activeTodoCount = todoStore.activeCount(userId);
+        var fileQuery = new ai.core.server.file.FileRecordQuery();
+        fileQuery.userId = userId;
+        data.fileCount = fileRecordStore.count(fileQuery);
 
         data.recentSessions = chatMessageService.listSessions(userId, List.of("chat"), 0, 5);
 
-        var reportQuery = new Query();
-        reportQuery.filter = Filters.eq("user_id", userId);
-        reportQuery.sort = Sorts.descending("updated_at");
-        reportQuery.limit = 5;
-        data.recentReports = reportCollection.find(reportQuery);
+        data.recentReports = reportStore.recent(userId, 5);
 
-        var fileQuery = new Query();
-        fileQuery.filter = Filters.eq("user_id", userId);
-        fileQuery.sort = Sorts.descending("created_at");
         fileQuery.limit = 10;
-        data.recentFiles = fileCollection.find(fileQuery);
+        data.recentFiles = fileRecordStore.find(fileQuery);
 
-        var todoQuery = new Query();
-        todoQuery.filter = Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("completed", Boolean.FALSE)
-        );
-        todoQuery.sort = Sorts.ascending("created_at");
-        data.activeTodos = todoCollection.find(todoQuery);
+        data.activeTodos = todoStore.active(userId);
 
         return data;
     }
@@ -97,10 +82,7 @@ public class ForYouService {
     // --- Reports ---
 
     public List<UserReport> listReports(String userId) {
-        var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
-        query.sort = Sorts.descending("updated_at");
-        return reportCollection.find(query);
+        return reportStore.list(userId);
     }
 
     public UserReport createReport(String userId, String title, String content, String type, List<String> tags) {
@@ -113,36 +95,33 @@ public class ForYouService {
         report.tags = tags;
         report.createdAt = ZonedDateTime.now();
         report.updatedAt = report.createdAt;
-        reportCollection.insert(report);
+        reportStore.insert(report);
         return report;
     }
 
     public UserReport updateReport(String id, String userId, String title, String content, String type, List<String> tags) {
-        var report = reportCollection.get(id).orElse(null);
+        var report = reportStore.get(id).orElse(null);
         if (report == null || !userId.equals(report.userId)) return null;
         if (title != null) report.title = title;
         if (content != null) report.content = content;
         if (type != null) report.type = type;
         if (tags != null) report.tags = tags;
         report.updatedAt = ZonedDateTime.now();
-        reportCollection.replace(report);
+        reportStore.replace(report);
         return report;
     }
 
     public boolean deleteReport(String id, String userId) {
-        var report = reportCollection.get(id).orElse(null);
+        var report = reportStore.get(id).orElse(null);
         if (report == null || !userId.equals(report.userId)) return false;
-        reportCollection.delete(id);
+        reportStore.delete(id);
         return true;
     }
 
     // --- TODOs ---
 
     public List<UserTodo> listTodos(String userId) {
-        var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
-        query.sort = Sorts.ascending("created_at");
-        return todoCollection.find(query);
+        return todoStore.list(userId);
     }
 
     public UserTodo createTodo(String userId, String title, String description, String priority, ZonedDateTime dueDate) {
@@ -156,12 +135,12 @@ public class ForYouService {
         todo.dueDate = dueDate;
         todo.createdAt = ZonedDateTime.now();
         todo.updatedAt = todo.createdAt;
-        todoCollection.insert(todo);
+        todoStore.insert(todo);
         return todo;
     }
 
     public UserTodo updateTodo(UpdateTodoRequest request) {
-        var todo = todoCollection.get(request.id).orElse(null);
+        var todo = todoStore.get(request.id).orElse(null);
         if (todo == null || !request.userId.equals(todo.userId)) return null;
         if (request.title != null) todo.title = request.title;
         if (request.description != null) todo.description = request.description;
@@ -169,24 +148,24 @@ public class ForYouService {
         if (request.priority != null) todo.priority = request.priority;
         if (request.dueDate != null) todo.dueDate = request.dueDate;
         todo.updatedAt = ZonedDateTime.now();
-        todoCollection.replace(todo);
+        todoStore.replace(todo);
         return todo;
     }
 
     public boolean deleteTodo(String id, String userId) {
-        var todo = todoCollection.get(id).orElse(null);
+        var todo = todoStore.get(id).orElse(null);
         if (todo == null || !userId.equals(todo.userId)) return false;
-        todoCollection.delete(id);
+        todoStore.delete(id);
         return true;
     }
 
     // --- Files ---
 
     public List<FileRecord> listFiles(String userId) {
-        var query = new Query();
-        query.filter = Filters.eq("user_id", userId);
-        query.sort = Sorts.descending("created_at");
-        return fileCollection.find(query);
+        var query = new ai.core.server.file.FileRecordQuery();
+        query.userId = userId;
+        query.limit = Integer.MAX_VALUE;
+        return fileRecordStore.find(query);
     }
 
     // --- Token Usage ---

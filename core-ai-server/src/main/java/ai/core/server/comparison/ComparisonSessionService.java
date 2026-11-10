@@ -10,7 +10,6 @@ import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.comparison.domain.ComparisonVoteChoice;
-import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionRegistry;
@@ -51,9 +50,9 @@ public class ComparisonSessionService {
     @Inject
     MongoCollection<ComparisonVote> voteCollection;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     ai.core.server.user.UserStore userStore;
     @Inject
@@ -218,14 +217,14 @@ public class ComparisonSessionService {
 
     private List<ChatSession> pairSessions(String pairId) {
         if (pairId == null) return List.of();
-        var query = new Query();
-        query.filter = Filters.eq("comparison_pair_id", pairId);
-        return chatSessionCollection.find(query);
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.comparisonPairId = pairId;
+        return chatSessionStore.find(query);
     }
 
     private void validateMessage(String messageId, String sessionId) {
         if (messageId == null || messageId.isBlank() || sessionId == null) return;
-        var message = chatMessageCollection.get(messageId).orElse(null);
+        var message = chatMessageStore.get(messageId).orElse(null);
         if (message == null || !sessionId.equals(message.sessionId) || !"agent".equals(message.role)) {
             throw new BadRequestException("vote message does not belong to the session");
         }

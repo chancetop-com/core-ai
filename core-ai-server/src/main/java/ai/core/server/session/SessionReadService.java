@@ -3,11 +3,7 @@ package ai.core.server.session;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -36,7 +32,7 @@ public class SessionReadService {
     @Inject
     SessionRegistry sessionRegistry;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ChatMessageStore chatMessageStore;
 
     /** Null when the conversation does not exist or is not the caller's — the two are not told apart. */
     public SessionRead read(String callerUserId, String sessionId, int tail) {
@@ -57,11 +53,11 @@ public class SessionReadService {
     }
 
     private List<SessionRead.Line> messages(String sessionId, int tail, SessionRead read) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.descending("seq");
+        var query = new ChatMessageQuery();
+        query.sessionId = sessionId;
+        query.ascending = false;
         query.limit = tail;
-        var newestFirst = chatMessageCollection.find(query);
+        var newestFirst = chatMessageStore.find(query);
         read.moreMessages = newestFirst.size() >= tail;
         var lines = new ArrayList<SessionRead.Line>(newestFirst.size());
         var budget = MAX_TOTAL_CHARS;

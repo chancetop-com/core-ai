@@ -12,7 +12,6 @@ import ai.core.server.comparison.domain.ComparisonVote;
 import ai.core.server.comparison.domain.ComparisonVoteChoice;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
-import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import com.mongodb.client.model.Filters;
@@ -123,9 +122,9 @@ public class ComparisonViewAssembler {
     @Inject
     MongoCollection<ComparisonVote> voteCollection;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     MongoCollection<AgentDefinition> agentDefinitionCollection;
 
@@ -159,10 +158,11 @@ public class ComparisonViewAssembler {
     }
 
     public List<ComparisonSessionPairView> pairsOf(AgentComparison comparison) {
-        var query = new Query();
-        query.filter = Filters.eq("comparison_id", comparison.id);
+        var query = new ai.core.server.session.ChatSessionQuery();
+        query.comparisonId = comparison.id;
+        query.limit = Integer.MAX_VALUE;
         var grouped = new LinkedHashMap<String, List<ChatSession>>();
-        for (var session : chatSessionCollection.find(query)) {
+        for (var session : chatSessionStore.find(query)) {
             if (session.comparisonPairId == null) continue;
             grouped.computeIfAbsent(session.comparisonPairId, key -> new ArrayList<>()).add(session);
         }
@@ -234,8 +234,14 @@ public class ComparisonViewAssembler {
         var reference = sessionA != null ? sessionA : sessionB;
         view.userId = reference != null ? reference.userId : null;
         view.createdAt = createdAt;
-        view.turnCount = sessionA != null ? (int) chatMessageCollection.count(Filters.and(
-            Filters.eq("session_id", sessionA.id), Filters.eq("role", "user"))) : 0;
+        if (sessionA != null) {
+            var messageQuery = new ai.core.server.session.ChatMessageQuery();
+            messageQuery.sessionId = sessionA.id;
+            messageQuery.role = "user";
+            view.turnCount = (int) chatMessageStore.count(messageQuery);
+        } else {
+            view.turnCount = 0;
+        }
         view.voteCount = sessionA != null ? (int) voteCollection.count(Filters.and(
             Filters.eq("comparison_id", comparisonId), Filters.eq("session_a", sessionA.id))) : 0;
         return view;

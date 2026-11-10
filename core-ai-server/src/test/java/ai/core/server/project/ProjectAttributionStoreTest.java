@@ -12,6 +12,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,11 +54,11 @@ class ProjectAttributionStoreTest {
         store.attributionRepository = MongoProjectAttributionRepository.of(attributions);
         store.subjectStore = MongoProjectSubjectStore.of((MongoCollection<ProjectSubject>) mock(MongoCollection.class));
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
-        store.fileRecordCollection = files;
+        store.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(files);
         var record = new FileRecord();
         record.id = "f-1";
         record.createdAt = ZonedDateTime.parse("2026-08-15T08:00:00Z");
-        when(files.find(any(Query.class))).thenReturn(List.of(record));
+        when(files.get("f-1")).thenReturn(Optional.of(record));
         when(attributions.find(any(Query.class))).thenReturn(List.of());
         when(attributions.count(any(Bson.class))).thenReturn(0L);
     }
@@ -111,7 +112,7 @@ class ProjectAttributionStoreTest {
     @Test
     void missingFileWritesNoRow() {
         // the file expired / was deleted: homing it would create a row the list cannot render but the count would include
-        when(files.find(any(Query.class))).thenReturn(List.of());
+        when(files.get("f-gone")).thenReturn(Optional.empty());
 
         var result = store.attributeFile("p-1", "s-1", "f-gone", ProjectAttributionStore.SOURCE_CASCADE, "agent-1", null);
 

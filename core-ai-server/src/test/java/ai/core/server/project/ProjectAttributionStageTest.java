@@ -55,11 +55,12 @@ class ProjectAttributionStageTest {
         runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         stage.agentRunCollection = runs;
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
-        stage.chatSessionCollection = sessions;
+        var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
+        stage.chatSessionStore = chatSessionStore;
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);
-        stage.chatMessageCollection = messages;
+        stage.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(messages);
         stage.workflowRunCollection = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
-        stage.fileRecordCollection = (MongoCollection<FileRecord>) mock(MongoCollection.class);
+        stage.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of((MongoCollection<FileRecord>) mock(MongoCollection.class));
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         stage.agentCollection = agents;
         stage.attributionRepository = MongoProjectAttributionRepository.of((MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class));

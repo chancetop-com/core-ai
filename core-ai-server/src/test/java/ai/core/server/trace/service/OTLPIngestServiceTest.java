@@ -464,7 +464,9 @@ class OTLPIngestServiceTest {
         service.traceCollection = traceCollection();
         service.spanCollection = spanCollection();
         service.agentRunCollection = agentRunCollection();
-        service.chatSessionCollection = chatSessionCollection();
+        var chatSessionCollection = chatSessionCollection();
+        var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(chatSessionCollection);
+        service.chatSessionStore = chatSessionStore;
         service.modelPricingService = new ModelPricingService();
         gatewayModelCollection = gatewayModelCollection();
         service.modelPricingService.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(gatewayModelCollection);

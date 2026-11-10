@@ -23,7 +23,6 @@ import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -68,7 +67,7 @@ public class AgentMemoryConsolidationJob implements Job {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     MongoCollection<Span> spanCollection;
     @Inject
@@ -274,34 +273,29 @@ public class AgentMemoryConsolidationJob implements Job {
     }
 
     private List<ChatMessage> queryChatMessages(List<Trace> traces) {
-        var filters = new ArrayList<Bson>();
         var traceIds = traces.stream()
                 .map(t -> t.traceId)
                 .filter(s -> s != null && !s.isBlank())
                 .distinct()
                 .toList();
-        if (!traceIds.isEmpty()) {
-            filters.add(Filters.in("trace_id", traceIds));
-        }
+        var windows = new ArrayList<ai.core.server.session.ChatMessageQuery.SessionWindow>();
         for (var trace : traces) {
             if (trace.sessionId == null || trace.sessionId.isBlank() || trace.startedAt == null) continue;
             var end = trace.completedAt != null ? trace.completedAt : trace.startedAt;
-            filters.add(Filters.and(
-                    Filters.eq("session_id", trace.sessionId),
-                    Filters.gte("created_at", trace.startedAt.minusSeconds(MESSAGE_LOOKBACK_SECONDS)),
-                    Filters.lte("created_at", end.plusSeconds(MESSAGE_LOOKAHEAD_SECONDS))
-            ));
+            var window = new ai.core.server.session.ChatMessageQuery.SessionWindow();
+            window.sessionId = trace.sessionId;
+            window.from = trace.startedAt.minusSeconds(MESSAGE_LOOKBACK_SECONDS);
+            window.to = end.plusSeconds(MESSAGE_LOOKAHEAD_SECONDS);
+            windows.add(window);
         }
-        return queryChatMessagesByFilters(filters);
-    }
-
-    private List<ChatMessage> queryChatMessagesByFilters(List<Bson> filters) {
-        if (filters.isEmpty()) return List.of();
-        var query = new Query();
-        query.filter = filters.size() == 1 ? filters.getFirst() : Filters.or(filters);
-        query.sort = Sorts.ascending("created_at");
+        if (traceIds.isEmpty() && windows.isEmpty()) return List.of();
+        var query = new ai.core.server.session.ChatMessageQuery();
+        query.anyScope = true;
+        query.traceIds = traceIds;
+        query.sessionWindows = windows;
+        query.sortField = "created_at";
         query.limit = 500;
-        return chatMessageCollection.find(query);
+        return chatMessageStore.find(query);
     }
 
     private boolean hasMeaningfulInteractions(List<Trace> traces) {

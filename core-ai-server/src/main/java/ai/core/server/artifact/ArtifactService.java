@@ -1,16 +1,10 @@
 package ai.core.server.artifact;
 
-import ai.core.server.domain.ChatSession;
-import ai.core.server.domain.FileRecord;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
+import ai.core.server.file.FileRecordQuery;
+import ai.core.server.file.FileRecordStore;
+import ai.core.server.session.ChatSessionQuery;
+import ai.core.server.session.ChatSessionStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.Document;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -18,23 +12,17 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.regex.Pattern;
 
 public class ArtifactService {
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 100;
 
-    // listing only exposes metadata; the base64 file content in `data` is never part of a list payload
-    private static final org.bson.conversions.Bson FILE_LIST_PROJECTION = Projections.exclude("data", "storage_path");
-    private static final org.bson.conversions.Bson SESSION_LOOKUP_PROJECTION = Projections.include("_id", "title", "artifacts");
-    private static final org.bson.conversions.Bson SESSION_AGENT_LOOKUP_PROJECTION = Projections.include("artifacts");
+    // listing only exposes metadata; legacy inline content in `data` is never part of a list payload
+    @Inject
+    FileRecordStore fileRecordStore;
 
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
-
-    @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ChatSessionStore chatSessionStore;
 
     @Inject
     ai.core.server.user.UserStore userStore;
@@ -43,8 +31,9 @@ public class ArtifactService {
         int skip = offset != null && offset >= 0 ? offset : 0;
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("user_id", userId));
+        var query = new FileRecordQuery();
+        query.userId = userId;
+        query.excludeData = true;
         if (agentId != null && !agentId.isBlank()) {
             var fileIdsByAgent = findFileIdsByAgent(userId, agentId);
             if (fileIdsByAgent.isEmpty()) {
@@ -53,19 +42,14 @@ public class ArtifactService {
                 empty.artifacts = List.of();
                 return empty;
             }
-            filters.add(Filters.in("_id", fileIdsByAgent.toArray(new String[0])));
+            query.ids = fileIdsByAgent;
         }
-        var filter = Filters.and(filters);
 
-        var count = fileRecordCollection.count(filter);
+        var count = fileRecordStore.count(query);
 
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending("created_at");
-        query.skip = skip;
+        query.offset = skip;
         query.limit = take;
-        query.projection = FILE_LIST_PROJECTION;
-        var files = fileRecordCollection.find(query);
+        var files = fileRecordStore.find(query);
 
         // Build file_id -> session info map
         var fileIds = files.stream().map(f -> f.id).toList();
@@ -94,20 +78,11 @@ public class ArtifactService {
     private Map<String, SessionInfo> buildSessionMap(String userId, List<String> fileIds) {
         if (fileIds.isEmpty()) return Map.of();
 
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("user_id", userId));
-        if (fileIds.size() == 1) {
-            filters.add(Filters.eq("artifacts.file_id", fileIds.get(0)));
-        } else {
-            filters.add(Filters.in("artifacts.file_id", fileIds.toArray(new String[0])));
-        }
-
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("last_message_at");
+        var query = new ChatSessionQuery();
+        query.userId = userId;
+        query.artifactFileIds = fileIds;
         query.limit = Math.max(fileIds.size() * 3, 100);
-        query.projection = SESSION_LOOKUP_PROJECTION;
-        var sessions = chatSessionCollection.find(query);
+        var sessions = chatSessionStore.find(query);
 
         var fileIdSet = new HashSet<>(fileIds);
         Map<String, SessionInfo> map = new LinkedHashMap<>();
@@ -123,16 +98,11 @@ public class ArtifactService {
     }
 
     private List<String> findFileIdsByAgent(String userId, String agentId) {
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.eq("agent_id", agentId));
-        if (userId != null && !userId.isBlank()) {
-            filters.add(Filters.eq("user_id", userId));
-        }
-
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.projection = SESSION_AGENT_LOOKUP_PROJECTION;
-        var sessions = chatSessionCollection.find(query);
+        var query = new ChatSessionQuery();
+        query.agentIds = List.of(agentId);
+        if (userId != null && !userId.isBlank()) query.userId = userId;
+        query.limit = Integer.MAX_VALUE;
+        var sessions = chatSessionStore.find(query);
 
         var fileIds = new ArrayList<String>();
         for (var session : sessions) {
@@ -148,15 +118,11 @@ public class ArtifactService {
         int skip = offset != null && offset >= 0 ? offset : 0;
         int take = limit != null && limit > 0 ? Math.min(limit, MAX_LIMIT) : DEFAULT_LIMIT;
 
-        var filterList = new ArrayList<org.bson.conversions.Bson>();
-        filterList.add(Filters.type("share_token", "string"));
-
-        if (name != null && !name.isBlank()) {
-            filterList.add(Filters.regex("file_name", Pattern.quote(name), "i"));
-        }
-        if (userId != null && !userId.isBlank()) {
-            filterList.add(Filters.eq("user_id", userId));
-        }
+        var query = new FileRecordQuery();
+        query.sharedOnly = Boolean.TRUE;
+        query.excludeData = true;
+        query.fileNameKeyword = name;
+        if (userId != null && !userId.isBlank()) query.userId = userId;
         if (agentId != null && !agentId.isBlank()) {
             var fileIdsByAgent = findFileIdsByAgent(userId, agentId);
             if (fileIdsByAgent.isEmpty()) {
@@ -165,19 +131,15 @@ public class ArtifactService {
                 empty.artifacts = List.of();
                 return empty;
             }
-            filterList.add(Filters.in("_id", fileIdsByAgent.toArray(new String[0])));
+            query.ids = fileIdsByAgent;
         }
 
-        var filter = Filters.and(filterList);
-        var count = fileRecordCollection.count(filter);
+        var count = fileRecordStore.count(query);
 
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending("shared_at");
-        query.skip = skip;
+        query.sortField = "shared_at";
+        query.offset = skip;
         query.limit = take;
-        query.projection = FILE_LIST_PROJECTION;
-        var files = fileRecordCollection.find(query);
+        var files = fileRecordStore.find(query);
 
         var result = new SharedArtifactResult();
         result.total = count;
@@ -197,17 +159,7 @@ public class ArtifactService {
     }
 
     public List<SharedArtifactUser> listSharedUsers() {
-        var pipeline = List.of(
-            Aggregates.match(Filters.type("share_token", "string")),
-            Aggregates.group("$user_id"),
-            Aggregates.sort(Sorts.ascending("_id"))
-        );
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = pipeline;
-        var docs = fileRecordCollection.aggregate(aggregate);
-
-        var userIds = docs.stream().map(doc -> doc.getString("_id")).filter(Objects::nonNull).toList();
+        var userIds = fileRecordStore.sharedUserIds();
         if (userIds.isEmpty()) return List.of();
 
         var userMap = new HashMap<String, String>();

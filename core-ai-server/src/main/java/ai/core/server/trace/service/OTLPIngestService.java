@@ -17,7 +17,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ai.core.server.domain.AgentRun;
-import ai.core.server.domain.ChatSession;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -43,7 +42,7 @@ public class OTLPIngestService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<ChatSession> chatSessionCollection;
+    ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
@@ -381,7 +380,7 @@ public class OTLPIngestService {
         if (operationName != null && SYSTEM_OPERATIONS.contains(operationName)) return "system";
         // Agent trace with session_id — look up chat_sessions to find the session's source
         if (sessionId != null) {
-            var session = chatSessionCollection.get(sessionId).orElse(null);
+            var session = chatSessionStore.get(sessionId).orElse(null);
             if (session != null && session.source != null) return session.source;
         }
         // No semantic source available; leave null. The type field (resolveType) carries "llm_call" / "external" so the

@@ -54,7 +54,7 @@ public class MediaJobArtifactStore {
     MongoCollection<MediaJob> mediaJobCollection;
 
     @Inject
-    MongoCollection<FileRecord> fileRecordCollection;
+    ai.core.server.file.FileRecordStore fileRecordStore;
 
     @Inject
     FileService fileService;
@@ -69,13 +69,11 @@ public class MediaJobArtifactStore {
         var names = new ArrayList<String>(2);
         names.add("video-" + GatewayVideoHandle.encode(job.id) + ".mp4");
         names.add("video-" + GatewayVideoHandle.encodeLegacy(job.id) + ".mp4");
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("user_id", job.userId),
-                Filters.in("file_name", names));
-        query.sort = Sorts.descending("created_at");
+        var query = new ai.core.server.file.FileRecordQuery();
+        query.userId = job.userId;
+        query.fileNames = names;
         query.limit = 1;
-        return fileRecordCollection.find(query).stream().findFirst();
+        return fileRecordStore.find(query).stream().findFirst();
     }
 
     public FileRecord storeBytes(MediaJob job, byte[] bytes, String contentType) {

@@ -12,13 +12,8 @@ import ai.core.api.server.session.ErrorEvent;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -44,7 +39,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class ChatMessageService {
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatMessageService.class);
     @Inject
-    MongoCollection<ChatMessage> chatMessageCollection;
+    ChatMessageStore chatMessageStore;
     @Inject
     SessionRegistry sessionRegistry;
 
@@ -66,10 +61,10 @@ public class ChatMessageService {
     }
 
     public List<ChatMessage> history(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.ascending("seq");
-        return chatMessageCollection.find(query);
+        var query = new ChatMessageQuery();
+        query.sessionId = sessionId;
+        query.limit = Integer.MAX_VALUE;
+        return chatMessageStore.find(query);
     }
 
     public ChatSession getSessionMeta(String sessionId) {
@@ -207,27 +202,16 @@ public class ChatMessageService {
     }
 
     private AtomicLong seedSeq(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.descending("seq");
-        query.limit = 1;
-        var existing = chatMessageCollection.find(query);
-        long seed = existing.isEmpty() || existing.getFirst().seq == null ? 0L : existing.getFirst().seq;
-        return new AtomicLong(seed);
+        return new AtomicLong(chatMessageStore.latestSeq(sessionId));
     }
 
     private void insertWithRetry(ChatMessage msg, String sessionId) {
-        try {
-            chatMessageCollection.insert(msg);
-        } catch (MongoWriteException e) {
-            if (e.getCode() == 11000) {
-                LOGGER.warn("duplicate seq detected, re-seeding counter and retrying, sessionId={}, seq={}", sessionId, msg.seq);
-                seqBySession.remove(sessionId);
-                msg.seq = nextSeq(sessionId);
-                chatMessageCollection.insert(msg);
-            } else {
-                throw e;
-            }
+        if (chatMessageStore.insertIfAbsent(msg)) return;
+        LOGGER.warn("duplicate seq detected, re-seeding counter and retrying, sessionId={}, seq={}", sessionId, msg.seq);
+        seqBySession.remove(sessionId);
+        msg.seq = nextSeq(sessionId);
+        if (!chatMessageStore.insertIfAbsent(msg)) {
+            throw new IllegalStateException("failed to persist chat message after reseeding, sessionId=" + sessionId);
         }
     }
 

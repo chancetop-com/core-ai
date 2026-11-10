@@ -4,37 +4,36 @@ import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.project.ProjectArtifactBinder;
 import ai.core.server.project.ProjectAttributionStore;
-import core.framework.mongo.MongoCollection;
-
-import java.util.ArrayList;
+import ai.core.server.session.ChatSessionStore;
 
 /**
  * @author xander
  */
 public final class ChatSessionArtifactSink implements ArtifactSink {
     private final String sessionId;
-    private final MongoCollection<ChatSession> chatSessionCollection;
+    private final ChatSessionStore chatSessionStore;
     private final ProjectArtifactBinder binder;
 
-    public ChatSessionArtifactSink(String sessionId, MongoCollection<ChatSession> chatSessionCollection) {
-        this(sessionId, chatSessionCollection, null);
+    public ChatSessionArtifactSink(String sessionId, ChatSessionStore chatSessionStore) {
+        this(sessionId, chatSessionStore, null);
     }
 
-    public ChatSessionArtifactSink(String sessionId, MongoCollection<ChatSession> chatSessionCollection, ProjectArtifactBinder binder) {
+    public ChatSessionArtifactSink(String sessionId, ChatSessionStore chatSessionStore, ProjectArtifactBinder binder) {
         this.sessionId = sessionId;
-        this.chatSessionCollection = chatSessionCollection;
+        this.chatSessionStore = chatSessionStore;
         this.binder = binder;
     }
 
     @Override
     public void append(AgentRunArtifact artifact) {
-        var session = chatSessionCollection.get(sessionId)
+        if (binder == null) {
+            chatSessionStore.appendArtifact(sessionId, artifact);
+            return;
+        }
+        ChatSession session = chatSessionStore.get(sessionId)
             .orElseThrow(() -> new RuntimeException("chat session not found, id=" + sessionId));
-        var artifacts = session.artifacts != null ? new ArrayList<>(session.artifacts) : new ArrayList<AgentRunArtifact>();
-        artifacts.add(artifact);
-        session.artifacts = artifacts;
-        chatSessionCollection.replace(session);
+        chatSessionStore.appendArtifact(sessionId, artifact);
         // project attribution is inherited from the session once the artifact is persisted (never fails delivery)
-        if (binder != null) binder.onArtifact(ProjectAttributionStore.TARGET_SESSION, sessionId, artifact.fileId, session.agentId, artifact.createdAt);
+        binder.onArtifact(ProjectAttributionStore.TARGET_SESSION, sessionId, artifact.fileId, session.agentId, artifact.createdAt);
     }
 }
