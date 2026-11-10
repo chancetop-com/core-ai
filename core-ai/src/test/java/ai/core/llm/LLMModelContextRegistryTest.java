@@ -147,7 +147,7 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testEstimateCostUsdDeepSeekOffPeakWindowsIncludeCachedTokensAndWeekends() {
-        for (var model : new String[]{"deepseek-v4-pro", "openrouter/deepseek/deepseek-v4-pro-0813"}) {
+        for (var model : new String[]{"deepseek-v4-pro", "deepseek/deepseek-v4-pro"}) {
             for (var when : new String[]{"2026-08-18T00:00:00Z", "2026-08-18T04:00:00Z", "2026-08-18T10:00:00Z", "2026-08-22T02:00:00Z"}) {
                 var cost = registry.estimateCostUsd(model, 1_000, 200, 400, Instant.parse(when));
 
@@ -165,13 +165,14 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testEstimateCostUsdTencentOffPeakUsesCatalogHours() {
-        var offPeakCost = registry.estimateCostUsd("openrouter/tencent/hy3", 1_000, 200, 400, Instant.parse("2026-08-18T16:00:00Z"));
-        var peakCost = registry.estimateCostUsd("openrouter/tencent/hy3", 1_000, 200, 400, Instant.parse("2026-08-19T00:00:00Z"));
+        // tencent/deepseek-v4-pro-0813 carries its own off-peak block in the catalog
+        var offPeakCost = registry.estimateCostUsd("tencent/deepseek-v4-pro-0813", 1_000, 200, 400, Instant.parse("2026-08-18T16:00:00Z"));
+        var peakCost = registry.estimateCostUsd("tencent/deepseek-v4-pro-0813", 1_000, 200, 400, Instant.parse("2026-08-18T02:00:00Z"));
 
         assertNotNull(offPeakCost);
         assertNotNull(peakCost);
-        assertEquals(0.00012375, offPeakCost, 1e-12);
-        assertEquals(0.000198, peakCost, 1e-12);
+        assertEquals(0.0008008, offPeakCost, 1e-12);
+        assertEquals(0.0016016, peakCost, 1e-12);
     }
 
     @Test
