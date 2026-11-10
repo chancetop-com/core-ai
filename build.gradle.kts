@@ -289,6 +289,11 @@ project(":core-ai-cli") {
     tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsMain") {
         auxClassPaths.from(configurations.runtimeClasspath.get())
     }
+    // Test classes can reference those same types (an LLM provider subclass reaches core-ng and
+    // OpenTelemetry), so the test analysis needs the runtime classpath as well.
+    tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsTest") {
+        auxClassPaths.from(configurations.runtimeClasspath.get())
+    }
     tasks.withType<JavaExec> {
         standardInput = System.`in`
         jvmArgs("--enable-native-access=ALL-UNNAMED")
