@@ -1,5 +1,6 @@
 package ai.core.server.apimcp.serviceapi.service;
 
+import ai.core.api.apidefinition.AiApiDefinition;
 import ai.core.api.server.serviceapi.CreateApiRequest;
 import ai.core.api.server.serviceapi.FieldAdditionalView;
 import ai.core.api.server.serviceapi.ListServiceApiResponse;
@@ -15,13 +16,18 @@ import ai.core.server.apimcp.serviceapi.domain.PathParamAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apimcp.serviceapi.domain.TypeAdditional;
+import ai.core.utils.JsonUtil;
 import core.framework.async.Executor;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.inject.Inject;
+import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -30,6 +36,10 @@ import java.util.UUID;
  * @author stephen
  */
 public class ServiceApiService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServiceApiService.class);
+    private static final String FORMAT_CORE_NG = "core-ng";
+    private static final String FORMAT_CORE_AI = "core-ai";
+
     @Inject
     ServiceApiStore store;
     @Inject
@@ -70,6 +80,7 @@ public class ServiceApiService {
             serviceApi.baseUrl = request.baseUrl;
         }
         if (request.payload != null) {
+            serviceApi.definitionFormat = definitionFormat(request.payload);
             serviceApi.payload = request.payload;
         }
         if (request.serviceAdditional != null) {
@@ -85,15 +96,51 @@ public class ServiceApiService {
 
     public void updateFromSysApi(String id, String url, String operator) {
         var serviceApi = store.get(id).orElseThrow(() -> new NotFoundException("service api not found: " + id));
-        var client = HTTPClient.builder().trustAll().build();
-        var req = new HTTPRequest(HTTPMethod.GET, url);
-        req.headers.put("Content-Type", "application/json");
-        var rsp = client.execute(req);
+        var payload = fetchPayload(url);
+        var format = definitionFormat(payload);
         serviceApi.url = url;
-        serviceApi.payload = rsp.text();
+        serviceApi.payload = payload;
+        serviceApi.definitionFormat = format;
         serviceApi.updatedBy = operator;
         serviceApi.updatedAt = ZonedDateTime.now();
         store.replace(serviceApi);
+    }
+
+    private String fetchPayload(String url) {
+        var client = HTTPClient.builder()
+                .trustAll()
+                .connectTimeout(Duration.ofSeconds(5))
+                .timeout(Duration.ofSeconds(30))
+                .build();
+        var req = new HTTPRequest(HTTPMethod.GET, url);
+        req.headers.put("Accept", "application/json");
+        var rsp = client.execute(req);
+        if (rsp.statusCode < 200 || rsp.statusCode >= 300) {
+            throw new BadRequestException("update from sys api failed, status=" + rsp.statusCode + ", url=" + url, "SYS_API_IMPORT_FAILED");
+        }
+        return rsp.text();
+    }
+
+    String definitionFormat(String payload) {
+        AiApiDefinition definition;
+        try {
+            definition = JsonUtil.fromJson(AiApiDefinition.class, payload);
+        } catch (RuntimeException e) {
+            throw new BadRequestException("invalid api definition payload: " + e.getMessage(), "INVALID_API_DEFINITION", e);
+        }
+        if (definition.app == null || definition.app.isBlank()) {
+            throw new BadRequestException("api definition app is missing", "INVALID_API_DEFINITION");
+        }
+        if (definition.services == null || definition.services.isEmpty()) {
+            throw new BadRequestException("api definition services are missing", "INVALID_API_DEFINITION");
+        }
+        if (definition.schema == null || definition.schema.isBlank()) {
+            return FORMAT_CORE_NG;
+        }
+        if (AiApiDefinition.SCHEMA_V1.equals(definition.schema)) {
+            return FORMAT_CORE_AI;
+        }
+        throw new BadRequestException("unsupported api definition schema: " + definition.schema, "UNSUPPORTED_API_DEFINITION");
     }
 
     public void updateAllFromSysApi(String operator) {
@@ -101,7 +148,11 @@ public class ServiceApiService {
             var serviceApis = findAll();
             for (var serviceApi : serviceApis) {
                 if (serviceApi.url == null) continue;
-                updateFromSysApi(serviceApi.id, serviceApi.url, operator);
+                try {
+                    updateFromSysApi(serviceApi.id, serviceApi.url, operator);
+                } catch (RuntimeException e) {
+                    LOGGER.error("failed to update service api from sys api, id={}, name={}", serviceApi.id, serviceApi.name, e);
+                }
             }
         });
     }
@@ -151,6 +202,7 @@ public class ServiceApiService {
         view.baseUrl = serviceApi.baseUrl;
         view.url = serviceApi.url;
         view.version = serviceApi.version;
+        view.definitionFormat = serviceApi.definitionFormat;
         view.payload = serviceApi.payload;
         view.createdAt = serviceApi.createdAt;
         view.updatedAt = serviceApi.updatedAt;
@@ -218,6 +270,9 @@ public class ServiceApiService {
         var additional = new ServiceAdditional();
         additional.name = view.name;
         additional.description = view.description;
+        if (view.enabled != null) {
+            additional.enabled = view.enabled;
+        }
         if (view.operationAdditional != null) {
             additional.operationAdditional = view.operationAdditional.stream().map(this::fromOperationView).toList();
         }

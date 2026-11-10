@@ -58,13 +58,7 @@ public class InternalApiToolLoader {
             return List.of();
         }
         return apiDefinitionService.loadAll().stream()
-                .map(api -> {
-                    String description = null;
-                    if (api.services != null && !api.services.isEmpty()) {
-                        description = api.services.get(0).description;
-                    }
-                    return new ApiAppInfo(api.app, api.baseUrl, api.version, description);
-                })
+                .map(api -> new ApiAppInfo(api.app, api.baseUrl, api.version, appDescription(api)))
                 .toList();
     }
 
@@ -186,8 +180,7 @@ public class InternalApiToolLoader {
      */    public List<ApiAppCatalog> loadCatalog() {
         if (apiDefinitionService == null) return List.of();
         var apis = apiDefinitionService.loadAll();
-        return apis.stream().map(api -> new ApiAppCatalog(api.app, api.baseUrl, api.version,
-                api.services.isEmpty() ? null : api.services.getFirst().description,
+        return apis.stream().map(api -> new ApiAppCatalog(api.app, api.baseUrl, api.version, appDescription(api),
                 api.services.stream()
                         .map(service -> new ApiServiceCatalog(service.name, service.description,
                                 service.operations == null ? List.of() : service.operations.stream()
@@ -240,6 +233,13 @@ public class InternalApiToolLoader {
                 })
                 .filter(api -> !api.services.isEmpty())
                 .toList();
+    }
+
+    private String appDescription(ApiDefinition api) {
+        if (api.description != null) {
+            return api.description;
+        }
+        return api.services == null || api.services.isEmpty() ? null : api.services.getFirst().description;
     }
 
     private ApiOperationInfo toApiOperationInfo(ApiDefinition api, ApiDefinition.Service service, ApiDefinition.Operation operation) {

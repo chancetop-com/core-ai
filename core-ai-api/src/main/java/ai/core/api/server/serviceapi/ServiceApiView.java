@@ -27,6 +27,8 @@ public class ServiceApiView {
     public String url;
     @Property(name = "version")
     public String version;
+    @Property(name = "definition_format")
+    public String definitionFormat;
     @Property(name = "payload")
     public String payload;
     @Property(name = "service_additional")

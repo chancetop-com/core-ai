@@ -1142,6 +1142,7 @@ export interface ServiceApiView {
   base_url: string;
   url: string;
   version: string;
+  definition_format?: string;
   payload: string;
   service_additional: ServiceAdditionalView[];
   type_additional: TypeAdditionalView[];

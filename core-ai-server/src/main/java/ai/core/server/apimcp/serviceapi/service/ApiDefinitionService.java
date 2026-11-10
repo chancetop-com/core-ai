@@ -1,5 +1,6 @@
 package ai.core.server.apimcp.serviceapi.service;
 
+import ai.core.api.apidefinition.AiApiDefinition;
 import ai.core.api.apidefinition.ApiDefinition;
 import ai.core.api.apidefinition.ApiDefinitionType;
 import ai.core.api.server.apidefinition.SearchApiDefinitionRequest;
@@ -10,12 +11,13 @@ import ai.core.server.apimcp.serviceapi.domain.PathParamAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceAdditional;
 import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apimcp.serviceapi.domain.TypeAdditional;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
-import core.framework.internal.web.api.APIDefinitionResponse;
-import core.framework.internal.web.api.APIType;
-import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
@@ -25,11 +27,24 @@ import java.util.stream.Collectors;
  * @author stephen
  */
 public class ApiDefinitionService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiDefinitionService.class);
+
     @Inject
     ServiceApiService apiService;
 
     public List<ApiDefinition> loadAll() {
-        return apiService.findAll().stream().filter(v -> v.enabled).map(this::load).toList();
+        var apis = new ArrayList<ApiDefinition>();
+        for (var serviceApi : apiService.findAll()) {
+            if (!Boolean.TRUE.equals(serviceApi.enabled)) {
+                continue;
+            }
+            try {
+                apis.add(load(serviceApi));
+            } catch (RuntimeException e) {
+                LOGGER.error("failed to load api definition, name={}", serviceApi.name, e);
+            }
+        }
+        return apis;
     }
 
     public ApiDefinition load(String name) {
@@ -39,22 +54,23 @@ public class ApiDefinitionService {
     private ApiDefinition load(ServiceApi serviceApi) {
         ActionLogContext.put("load-api", serviceApi.name);
         var api = new ApiDefinition();
-        var apiDefinition = loadCoreApi(serviceApi.payload);
+        var apiDefinition = loadDefinition(serviceApi.payload);
         api.app = apiDefinition.app;
         api.baseUrl = serviceApi.baseUrl;
         api.version = serviceApi.version;
         var serviceMap = toMap(serviceApi.serviceAdditional, v -> v.name);
         var typeMap = toMap(serviceApi.typeAdditional, v -> v.name);
-        api.services = apiDefinition.services.stream().filter(v -> {
+        api.services = apiDefinition.services == null ? List.of() : apiDefinition.services.stream().filter(v -> {
             var apiService = getByName(v.name, serviceMap);
             return apiService == null || apiService.enabled;
         }).map(s -> toService(s, serviceMap)).toList();
-        api.types = apiDefinition.types.stream().map(t -> toType(t, typeMap)).toList();
+        api.types = apiDefinition.types == null ? List.of() : apiDefinition.types.stream().map(t -> toType(t, typeMap)).toList();
+        api.description = firstNonBlank(serviceApi.description, apiDefinition.description, firstServiceDescription(apiDefinition));
         return api;
     }
 
-    private APIDefinitionResponse loadCoreApi(String text) {
-        return JSON.fromJSON(APIDefinitionResponse.class, text);
+    private AiApiDefinition loadDefinition(String text) {
+        return JsonUtil.fromJson(AiApiDefinition.class, text);
     }
 
     public SearchApiDefinitionResponse search(SearchApiDefinitionRequest request) {
@@ -64,15 +80,16 @@ public class ApiDefinitionService {
         return rsp;
     }
 
-    private ApiDefinition.Service toService(APIDefinitionResponse.Service s, Map<String, ServiceAdditional> serviceMap) {
+    private ApiDefinition.Service toService(AiApiDefinition.Service s, Map<String, ServiceAdditional> serviceMap) {
         var service = new ApiDefinition.Service();
         service.name = s.name;
+        service.description = s.description;
         var apiService = getByName(s.name, serviceMap);
         if (apiService != null) {
-            service.description = apiService.description;
+            service.description = firstNonBlank(apiService.description, s.description);
         }
         var operationMap = apiService == null ? null : toMap(apiService.operationAdditional, v -> v.name);
-        service.operations = s.operations.stream().filter(v -> {
+        service.operations = s.operations == null ? List.of() : s.operations.stream().filter(v -> {
             if (operationMap == null) return true;
             var apiOperation = getByName(v.name, operationMap);
             return apiOperation == null || apiOperation.enabled;
@@ -80,7 +97,7 @@ public class ApiDefinitionService {
         return service;
     }
 
-    private ApiDefinitionType toType(APIType t, Map<String, TypeAdditional> typeMap) {
+    private ApiDefinitionType toType(AiApiDefinition.Type t, Map<String, TypeAdditional> typeMap) {
         var type = new ApiDefinitionType();
         type.name = t.name;
         type.type = t.type;
@@ -96,22 +113,17 @@ public class ApiDefinitionService {
         return type;
     }
 
-    private ApiDefinition.Operation toOperation(APIDefinitionResponse.Operation o, Map<String, OperationAdditional> operationMap) {
+    private ApiDefinition.Operation toOperation(AiApiDefinition.Operation o, Map<String, OperationAdditional> operationMap) {
         var operation = new ApiDefinition.Operation();
         operation.name = o.name;
         operation.method = o.method;
         operation.path = o.path;
         var apiOperation = getByName(o.name, operationMap);
-        if (apiOperation != null) {
-            operation.description = apiOperation.description;
-            operation.example = apiOperation.example;
-            operation.needAuth = apiOperation.needAuth;
-        }
-        if (operation.description == null) {
-            operation.description = operation.name;
-        }
+        operation.description = firstNonBlank(apiOperation == null ? null : apiOperation.description, o.description, o.name);
+        operation.example = firstNonBlank(apiOperation == null ? null : apiOperation.example, o.example);
+        operation.needAuth = apiOperation == null ? null : apiOperation.needAuth;
         var paramMap = apiOperation == null ? null : toMap(apiOperation.pathParamAdditional, v -> v.name);
-        operation.pathParams = o.pathParams.stream().map(p -> toPathParam(p, paramMap)).toList();
+        operation.pathParams = o.pathParams == null ? List.of() : o.pathParams.stream().map(p -> toPathParam(p, paramMap)).toList();
         operation.deprecated = o.deprecated;
         operation.optional = o.optional;
         operation.requestType = o.requestType;
@@ -119,38 +131,56 @@ public class ApiDefinitionService {
         return operation;
     }
 
-    private ApiDefinition.PathParam toPathParam(APIDefinitionResponse.PathParam p, Map<String, PathParamAdditional> paramMap) {
+    private ApiDefinition.PathParam toPathParam(AiApiDefinition.PathParam p, Map<String, PathParamAdditional> paramMap) {
         var pathParam = new ApiDefinition.PathParam();
         pathParam.name = p.name;
         pathParam.type = p.type;
         var apiPathParam = getByName(p.name, paramMap);
-        if (apiPathParam != null) {
-            pathParam.description = apiPathParam.description;
-            pathParam.example = apiPathParam.example;
-        }
+        pathParam.description = firstNonBlank(apiPathParam == null ? null : apiPathParam.description, p.description);
+        pathParam.example = firstNonBlank(apiPathParam == null ? null : apiPathParam.example, p.example);
         return pathParam;
     }
 
-    private ApiDefinitionType.Field toField(APIType.Field f, Map<String, FieldAdditional> fieldMap) {
+    private ApiDefinitionType.Field toField(AiApiDefinition.Field f, Map<String, FieldAdditional> fieldMap) {
         var field = new ApiDefinitionType.Field();
         field.name = f.name;
         field.type = f.type;
         field.constraints = new ApiDefinitionType.Constraints();
         field.typeParams = f.typeParams;
-        field.constraints.max = f.constraints.max;
-        field.constraints.min = f.constraints.min;
-        field.constraints.notBlank = f.constraints.notBlank;
-        field.constraints.notNull = f.constraints.notNull;
-        field.constraints.pattern = f.constraints.pattern;
+        var constraints = f.constraints == null ? new AiApiDefinition.Constraints() : f.constraints;
+        field.constraints.max = constraints.max;
+        field.constraints.min = constraints.min;
+        field.constraints.notBlank = constraints.notBlank;
+        field.constraints.notNull = constraints.notNull;
+        field.constraints.pattern = constraints.pattern;
         field.constraints.size = new ApiDefinitionType.Size();
-        field.constraints.size.min = f.constraints.size == null ? null : f.constraints.size.min;
-        field.constraints.size.max = f.constraints.size == null ? null : f.constraints.size.max;
+        field.constraints.size.min = constraints.size == null ? null : constraints.size.min;
+        field.constraints.size.max = constraints.size == null ? null : constraints.size.max;
         var apiField = getByName(f.name, fieldMap);
-        if (apiField != null) {
-            field.description = apiField.description;
-            field.example = apiField.example;
-        }
+        field.description = firstNonBlank(apiField == null ? null : apiField.description, f.description);
+        field.example = firstNonBlank(apiField == null ? null : apiField.example, f.example);
         return field;
+    }
+
+    private String firstServiceDescription(AiApiDefinition definition) {
+        if (definition.services == null) {
+            return null;
+        }
+        for (var service : definition.services) {
+            if (service.description != null && !service.description.isBlank()) {
+                return service.description;
+            }
+        }
+        return null;
+    }
+
+    private String firstNonBlank(String... values) {
+        for (var value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private <T> T getByName(String name, Map<String, T> map) {

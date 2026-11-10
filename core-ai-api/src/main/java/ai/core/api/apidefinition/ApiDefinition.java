@@ -13,6 +13,9 @@ public class ApiDefinition {
     @Property(name = "app")
     public String app;
 
+    @Property(name = "description")
+    public String description;
+
     @Property(name = "base_url")
     public String baseUrl;
 

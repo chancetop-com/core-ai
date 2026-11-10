@@ -70,7 +70,7 @@ export default function ApiTools() {
       load();
     } catch (err) {
       console.error('Failed to update from system API:', err);
-      alert('Failed to update from system API. Check console for details.');
+      alert(err instanceof Error ? err.message : 'Failed to update from system API. Check console for details.');
     } finally {
       setUpdatingFromSys(null);
     }
@@ -107,6 +107,16 @@ export default function ApiTools() {
   };
 
   const getOperationCount = (apiItem: ServiceApiView) => {
+    if (apiItem.payload) {
+      try {
+        const payload = JSON.parse(apiItem.payload) as { services?: { operations?: unknown[] }[] };
+        if (payload.services) {
+          return payload.services.reduce((sum, service) => sum + (service.operations?.length || 0), 0);
+        }
+      } catch {
+        // fall back to the manual overrides below
+      }
+    }
     if (!apiItem.service_additional) return 0;
     return apiItem.service_additional.reduce(
       (sum, s) => sum + (s.operation_additional?.length || 0),
@@ -187,6 +197,14 @@ export default function ApiTools() {
                   <span className="px-2 py-0.5 rounded text-xs font-mono"
                     style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                     {s.url}
+                  </span>
+                )}
+                {s.definition_format && (
+                  <span className="px-2 py-0.5 rounded text-xs font-mono"
+                    style={s.definition_format === 'core-ai'
+                      ? { background: '#1e3a8a', color: '#dbeafe' }
+                      : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                    {s.definition_format}
                   </span>
                 )}
               </div>

@@ -35,6 +35,8 @@ public class ServiceApi {
     public String url;
     @Field(name = "payload")
     public String payload;
+    @Field(name = "definition_format")
+    public String definitionFormat;
     @Field(name = "service_additional")
     public List<ServiceAdditional> serviceAdditional;
     @Field(name = "field_additional")

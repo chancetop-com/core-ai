@@ -21,6 +21,7 @@ interface ParsedOperation {
   method?: string;
   path?: string;
   description?: string;
+  example?: string;
   requestType?: string;
   responseType?: string;
   deprecated?: boolean;
@@ -117,6 +118,7 @@ export default function ApiToolDetail() {
   const [expandedOps, setExpandedOps] = useState<Set<string>>(new Set());
   const [services, setServices] = useState<EditableService[]>([]);
   const [types, setTypes] = useState<EditableType[]>([]);
+  const [original, setOriginal] = useState<{ services: ParsedService[]; types: ParsedType[] }>({ services: [], types: [] });
   const [apiAppName, setApiAppName] = useState('');
   const [activeTab, setActiveTab] = useState<'services' | 'types'>('services');
   const [dirty, setDirty] = useState(false);
@@ -149,10 +151,12 @@ export default function ApiToolDetail() {
         if (payload) {
           const parsedData = parsePayload(payload);
           setApiAppName(parsedData.app || res.name);
+          setOriginal({ services: parsedData.services, types: parsedData.types });
           setServices(buildEditableServices(parsedData.services, res.service_additional || []));
           setTypes(buildEditableTypes(parsedData.types, res.type_additional || []));
         } else {
           setApiAppName(res.name);
+          setOriginal({ services: [], types: [] });
           setServices([]);
           setTypes([]);
         }
@@ -239,33 +243,50 @@ export default function ApiToolDetail() {
     if (!data || !id) return;
     setSaving(true);
     try {
-      const serviceAdditional: ServiceAdditionalView[] = services.map(s => ({
-        name: s.name,
-        description: s.description || undefined,
-        enabled: s.enabled,
-        operation_additional: s.operations.map(op => ({
-          name: op.name,
-          description: op.description || undefined,
-          example: op.example || undefined,
-          enabled: op.enabled,
-          need_auth: op.needAuth || undefined,
-          path_param_additional: op.pathParams.map(pp => ({
-            name: pp.name,
-            description: pp.description || undefined,
-            example: pp.example || undefined,
-          })),
-        })),
-      }));
+      const originalServiceMap = new Map(original.services.map(s => [s.name, s]));
+      const serviceAdditional: ServiceAdditionalView[] = services.map(s => {
+        const originalService = originalServiceMap.get(s.name);
+        return {
+          name: s.name,
+          description: manualOverride(s.description, originalService?.description),
+          enabled: s.enabled,
+          operation_additional: s.operations.map(op => {
+            const originalOperation = originalService?.operations.find(o => o.name === op.name);
+            return {
+              name: op.name,
+              description: manualOverride(op.description, originalOperation?.description ?? op.name),
+              example: manualOverride(op.example, originalOperation?.example),
+              enabled: op.enabled,
+              need_auth: op.needAuth || undefined,
+              path_param_additional: op.pathParams.map(pp => {
+                const originalPathParam = originalOperation?.pathParams.find(p => p.name === pp.name);
+                return {
+                  name: pp.name,
+                  description: manualOverride(pp.description, originalPathParam?.description),
+                  example: manualOverride(pp.example, originalPathParam?.example),
+                };
+              }),
+            };
+          }),
+        };
+      });
 
-      const typeAdditional: TypeAdditionalView[] = types.map(t => ({
-        name: t.name,
-        description: t.description || undefined,
-        field_additional: t.fields.map(f => ({
-          name: f.name,
-          description: f.description || undefined,
-          example: f.example || undefined,
-        })),
-      }));
+      const originalTypeMap = new Map(original.types.map(t => [t.name, t]));
+      const typeAdditional: TypeAdditionalView[] = types.map(t => {
+        const originalType = originalTypeMap.get(t.name);
+        return {
+          name: t.name,
+          description: manualOverride(t.description, originalType?.description),
+          field_additional: t.fields.map(f => {
+            const originalField = originalType?.fields.find(ff => ff.name === f.name);
+            return {
+              name: f.name,
+              description: manualOverride(f.description, originalField?.description),
+              example: manualOverride(f.example, originalField?.example),
+            };
+          }),
+        };
+      });
 
       await api.serviceApis.update(id, {
         name: data.name,
@@ -310,7 +331,7 @@ export default function ApiToolDetail() {
       load();
     } catch (err) {
       console.error('Failed to update from system API:', err);
-      alert('Failed to update from system API. Check console for details.');
+      alert(err instanceof Error ? err.message : 'Failed to update from system API. Check console for details.');
     } finally {
       setUpdatingFromSys(false);
     }
@@ -378,6 +399,14 @@ export default function ApiToolDetail() {
                 style={data.enabled ? { background: '#065f46' } : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
                 {data.enabled ? 'Enabled' : 'Disabled'}
               </span>
+              {data.definition_format && (
+                <span className="px-2 py-0.5 rounded text-xs font-mono"
+                  style={data.definition_format === 'core-ai'
+                    ? { background: '#1e3a8a', color: '#dbeafe' }
+                    : { background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                  {data.definition_format}
+                </span>
+              )}
             </div>
             {data.description && (
               <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>{data.description}</p>
@@ -881,6 +910,7 @@ function parsePayload(raw: Record<string, unknown>): ParsedPayload {
         method: o.method as string | undefined,
         path: o.path as string | undefined,
         description: o.description as string | undefined,
+        example: o.example as string | undefined,
         requestType: o.requestType as string | undefined,
         responseType: o.responseType as string | undefined,
         deprecated: o.deprecated as boolean | undefined,
@@ -931,7 +961,7 @@ function buildEditableServices(parsed: ParsedService[], additional: ServiceAddit
             method: op.method,
             path: op.path,
             description: opAdd?.description || op.description || op.name,
-            example: opAdd?.example || '',
+            example: opAdd?.example || op.example || '',
             needAuth: opAdd?.need_auth ?? false,
             deprecated: op.deprecated,
             requestType: op.requestType,
@@ -970,6 +1000,12 @@ function buildEditableTypes(parsed: ParsedType[], additional: TypeAdditionalView
       }),
     };
   });
+}
+
+function manualOverride(value?: string, originalValue?: string): string | undefined {
+  const current = (value || '').trim();
+  const original = (originalValue || '').trim();
+  return current && current !== original ? value : undefined;
 }
 
 function buildApiArgsTemplate(operation: EditableOperation, types: EditableType[]): string {
