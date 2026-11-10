@@ -351,7 +351,9 @@ public class GatewayProviderService {
     }
 
     private String normalizeMediaProtocol(String mediaProtocol) {
-        var value = mediaProtocol.trim().toUpperCase(Locale.ROOT);
+        var value = trimToNull(mediaProtocol);
+        if (value == null) return null;
+        value = value.toUpperCase(Locale.ROOT);
         return switch (value) {
             case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE", "VOLCENGINE_ARK" -> value;
             default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
@@ -359,7 +361,9 @@ public class GatewayProviderService {
     }
 
     private String normalizeMediaAuthType(String mediaAuthType) {
-        var value = mediaAuthType.trim().toUpperCase(Locale.ROOT);
+        var value = trimToNull(mediaAuthType);
+        if (value == null) return null;
+        value = value.toUpperCase(Locale.ROOT);
         return switch (value) {
             case "API_KEY", "GOOGLE_APPLICATION_DEFAULT_CREDENTIALS", "GOOGLE_SERVICE_ACCOUNT_JSON" -> value;
             default -> throw new BadRequestException("unsupported media auth type: " + mediaAuthType);

@@ -32,6 +32,13 @@ const GOOGLE_AUTH_TYPES = [
   { value: 'GOOGLE_SERVICE_ACCOUNT_JSON', label: 'Service Account JSON' },
 ];
 
+const DECISION_PROTOCOLS = [
+  { value: '', label: 'Automatic (by provider type)' },
+  { value: 'AZURE_FOUNDRY_DECISION', label: 'Azure AI Foundry (api-key)' },
+  { value: 'SYSTEMONE', label: 'System One / TypeSafe (Bearer)' },
+  { value: 'OPENROUTER_DECISIONS', label: 'OpenRouter Decisions (Bearer)' },
+];
+
 const ENDPOINT_TYPES = [
   { value: 'chat.completions', label: 'Chat' },
   { value: 'responses', label: 'Responses' },
@@ -39,6 +46,7 @@ const ENDPOINT_TYPES = [
   { value: 'image.generations', label: 'Image Generation' },
   { value: 'image.edits', label: 'Image Edit' },
   { value: 'video.generations', label: 'Video' },
+  { value: 'decision', label: 'Decision (System One)' },
 ];
 
 type Tab = 'providers' | 'models';
@@ -57,7 +65,9 @@ type ProviderFormState = {
   defaultResponsesModel: string;
   defaultImageModel: string;
   defaultVideoModel: string;
+  defaultDecisionModel: string;
   mediaProtocol: string;
+  decisionProtocol: string;
   mediaAuthType: string;
   googleCredentialsJson: string;
   hasGoogleCredentials: boolean;
@@ -122,7 +132,9 @@ const emptyProviderForm: ProviderFormState = {
   defaultResponsesModel: '',
   defaultImageModel: '',
   defaultVideoModel: '',
+  defaultDecisionModel: '',
   mediaProtocol: '',
+  decisionProtocol: '',
   mediaAuthType: 'API_KEY',
   googleCredentialsJson: '',
   hasGoogleCredentials: false,
@@ -241,18 +253,20 @@ export default function GatewayProviders() {
       allowPrivateNetwork: provider.allowPrivateNetwork === true,
       modelPrefix: provider.modelPrefix || '',
       defaultChatModel: provider.defaultChatModel || '',
-       defaultResponsesModel: provider.defaultResponsesModel || '',
-       defaultImageModel: provider.defaultImageModel || '',
-       defaultVideoModel: provider.defaultVideoModel || '',
-       mediaProtocol: provider.mediaProtocol || '',
-       mediaAuthType: provider.mediaAuthType || 'API_KEY',
-       googleCredentialsJson: '',
-       hasGoogleCredentials: provider.hasGoogleCredentials === true,
-       vertexProjectId: provider.vertexProjectId || '',
-       vertexLocation: provider.vertexLocation || 'us-central1',
-       vertexGcsBucket: provider.vertexGcsBucket || '',
-       requestExtraBody: provider.requestExtraBody || '',
-       creditUsdRate: provider.creditUsdRate == null ? '' : String(provider.creditUsdRate),
+      defaultResponsesModel: provider.defaultResponsesModel || '',
+      defaultImageModel: provider.defaultImageModel || '',
+      defaultVideoModel: provider.defaultVideoModel || '',
+      defaultDecisionModel: provider.defaultDecisionModel || '',
+      mediaProtocol: provider.mediaProtocol || '',
+      decisionProtocol: provider.decisionProtocol || '',
+      mediaAuthType: provider.mediaAuthType || 'API_KEY',
+      googleCredentialsJson: '',
+      hasGoogleCredentials: provider.hasGoogleCredentials === true,
+      vertexProjectId: provider.vertexProjectId || '',
+      vertexLocation: provider.vertexLocation || 'us-central1',
+      vertexGcsBucket: provider.vertexGcsBucket || '',
+      requestExtraBody: provider.requestExtraBody || '',
+      creditUsdRate: provider.creditUsdRate == null ? '' : String(provider.creditUsdRate),
       timeoutSeconds: String(provider.timeoutSeconds || 120),
       connectTimeoutSeconds: String(provider.connectTimeoutSeconds || 10),
     });
@@ -283,16 +297,18 @@ export default function GatewayProviders() {
         allowPrivateNetwork: providerForm.allowPrivateNetwork,
         modelPrefix: providerForm.modelPrefix,
         defaultChatModel: providerForm.defaultChatModel,
-         defaultResponsesModel: providerForm.defaultResponsesModel,
-         defaultImageModel: providerForm.defaultImageModel,
-         defaultVideoModel: providerForm.defaultVideoModel,
-         mediaProtocol: providerForm.mediaProtocol,
-         mediaAuthType: providerForm.mediaAuthType,
-         googleCredentialsJson: providerForm.googleCredentialsJson,
-         vertexProjectId: providerForm.vertexProjectId,
-         vertexLocation: providerForm.vertexLocation,
-         vertexGcsBucket: providerForm.vertexGcsBucket,
-         requestExtraBody: providerForm.requestExtraBody,
+        defaultResponsesModel: providerForm.defaultResponsesModel,
+        defaultImageModel: providerForm.defaultImageModel,
+        defaultVideoModel: providerForm.defaultVideoModel,
+        defaultDecisionModel: providerForm.defaultDecisionModel,
+        mediaProtocol: providerForm.mediaProtocol,
+        decisionProtocol: providerForm.decisionProtocol,
+        mediaAuthType: providerForm.mediaAuthType,
+        googleCredentialsJson: providerForm.googleCredentialsJson,
+        vertexProjectId: providerForm.vertexProjectId,
+        vertexLocation: providerForm.vertexLocation,
+        vertexGcsBucket: providerForm.vertexGcsBucket,
+        requestExtraBody: providerForm.requestExtraBody,
         timeoutSeconds: Number(providerForm.timeoutSeconds || 120),
         connectTimeoutSeconds: Number(providerForm.connectTimeoutSeconds || 10),
       };
@@ -932,6 +948,15 @@ function renderProviderPanel(props: {
            )}
          </div>
 
+         <Field
+           label="Decision Protocol"
+           hint="Profile for System One decision models. Automatic resolves azure → Azure AI Foundry, openai/openai-compatible → System One, openrouter → OpenRouter Decisions. Leave Automatic when this provider serves both chat and decision models."
+         >
+           <select className={inputClass} style={inputStyle} value={form.decisionProtocol} onChange={e => setForm({ ...form, decisionProtocol: e.target.value })}>
+             {DECISION_PROTOCOLS.map(protocol => <option key={protocol.value} value={protocol.value}>{protocol.label}</option>)}
+           </select>
+         </Field>
+
           <Field
             label={form.id ? 'Credit USD Rate (leave empty to keep current)' : 'Credit USD Rate'}
             hint="USD value of one upstream credit, used to price credit-metered media providers (KIE: 1 credit = 0.005)"
@@ -981,6 +1006,9 @@ function renderProviderPanel(props: {
            </Field>
            <Field label="Video Model">
              <input className={inputClass} style={inputStyle} value={form.defaultVideoModel} onChange={e => setForm({ ...form, defaultVideoModel: e.target.value })} />
+           </Field>
+           <Field label="Decision Model">
+             <input className={inputClass} style={inputStyle} value={form.defaultDecisionModel} onChange={e => setForm({ ...form, defaultDecisionModel: e.target.value })} placeholder="e.g. Decision-1" />
            </Field>
          </div>
 
@@ -1085,7 +1113,7 @@ function renderModelPanel(props: {
           </Checkbox>
         </Field>
 
-        <Field label="Endpoints">
+        <Field label="Endpoints" hint="A decision model must be registered with the Decision endpoint only — chat endpoints send chat-shaped requests and cannot serve System One.">
           <div className="grid grid-cols-2 gap-2">
             {ENDPOINT_TYPES.map(endpoint => (
               <Checkbox

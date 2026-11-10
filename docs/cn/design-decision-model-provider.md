@@ -1,6 +1,6 @@
 # 决策模型（Decision Model）接入技术设计 —— System One 契约，首发 Microsoft-Decision-1 + Jev
 
-> 状态：已实现（2026-11-10）。dev E2E 已通过：`azure-decision` provider + `decision-1` 模型在 dev 注册，hub 发现、`/api/gateway/v1/decisions`（noul/choice/score）、默认路由、CLI `decide` 工具均已实测（见 `docs/validation/2026-11-10-dev-decision-model-e2e.md`）。已完成：`ai.core.decision` SPI + `SystemOneDecisionProvider`（3 profile）、`GatewayEndpointType.DECISION` / `decisionProtocol`、`GatewayDecisionProvider` + 适配器工厂、`decide` 工具与 `builtin-decision` 工具组、server session/run 装配、`POST /api/gateway/v1/decisions` 外部接口、`GET /api/hub/decision-models` hub 发现接口，以及 CLI/desktop 引擎的 hub 决策 provider + 模型目录。尚未实现：trace/计价（P1，见 D18）、前端 gateway 表单的 decision 字段（P1）、§8 旁路命令安全检测（P1）、429/529 退避重试（D11 仍为 P0 透传）。
+> 状态：已实现（2026-11-10）。dev E2E 已通过：`azure-decision` provider + `decision-1` 模型在 dev 注册，hub 发现、`/api/gateway/v1/decisions`（noul/choice/score）、默认路由、CLI `decide` 工具均已实测（见 `docs/validation/2026-11-10-dev-decision-model-e2e.md`）。已完成：`ai.core.decision` SPI + `SystemOneDecisionProvider`（3 profile）、`GatewayEndpointType.DECISION` / `decisionProtocol`、`GatewayDecisionProvider` + 适配器工厂、`decide` 工具与 `builtin-decision` 工具组、server session/run 装配、`POST /api/gateway/v1/decisions` 外部接口、`GET /api/hub/decision-models` hub 发现接口，以及 CLI/desktop 引擎的 hub 决策 provider + 模型目录。尚未实现：trace/计价（P1，见 D18）、§8 旁路命令安全检测（P1）、429/529 退避重试（D11 仍为 P0 透传）。
 > 范围：core-ai（新 SPI + 工具 + 装配）+ core-ai-server（gateway 适配 + 路由）
 > 需求：把"决策模型"作为与 chat LLM / 媒体模型并列的**第三类模型能力**接入；**同时支持 Microsoft-Decision-1（Azure Foundry，fbruatai 已部署 deployment `Decision-1`）与 Jev 1.13（TypeSafe AI）**，即"决策模型"这一族 API。
 > 一句话结论：**决策模型不是 LLM，不能塞进 `LLMProvider`；且 Jev 与 Microsoft-Decision-1 同属"System One"契约（同一 `state + questions → answers` wire 协议）→ 用一套 SPI + 一个适配器 + 多个 vendor profile 同时覆盖两者**，照媒体模型（MediaProvider）的成熟骨架落地，不触碰 chat 链路。
@@ -249,7 +249,7 @@ agent 工具 decide(...)            server 内部服务（P1）
 | 14 | server | `session/SessionContextBuilder.java` + `run/AgentRunBuilder.java` 装配 `decisionProvider` | ~15 行 |
 | 15 | 测试 | adapter 单测（本地 `com.sun.net.httpserver.HttpServer` stub，照 `OpenAIImageMediaProviderTest`；含三 profile 的请求断言 + 应答规范化）+ `decisionProtocol` 按 type 兜底 + 路由 endpoint 过滤 + `DecideTool` + `ExecutionContext` 装配 | ~250 行 |
 
-集合：复用 `gateway_provider` / `gateway_model`，**无需新增 Mongo 集合与迁移**（新增 `decision_protocol` 字段对存量文档为 null，天然兼容）。**P0 注册方式**：前端表单 P0 不提供 `decision` endpointType 选项与 `decisionProtocol` 字段，故 P0 用裸 API 注册（`POST /api/gateway/providers` / `POST /api/gateway/models`）；`decisionProtocol` 可省略（按 `type` 兜底）。前端 P1 才在模型表单 endpointTypes 选项里加 `decision`、在 provider 表单加 `decisionProtocol`。
+集合：复用 `gateway_provider` / `gateway_model`，**无需新增 Mongo 集合与迁移**（新增 `decision_protocol` 字段对存量文档为 null，天然兼容）。**注册方式**：前端 gateway 表单已提供 `decisionProtocol` / `defaultDecisionModel` 字段与模型表单的 `decision` endpointType；也可继续用裸 API 注册（`POST /api/gateway/providers` / `POST /api/gateway/models`），`decisionProtocol` 可省略（按 `type` 兜底）。
 
 ---
 
@@ -308,7 +308,7 @@ agent 工具 decide(...)            server 内部服务（P1）
 > - ⏳ Jev 侧未实测（无 key），字段以文档为准（与 MS 实测相同）；如拿到 key 可照 §6.1 同法闭环。
 
 ### 6.2 dev 端到端（coreai-dev profile）
-1. 注册两个 provider + 两个模型（**P0 无前端字段，走裸 API**：`POST /api/gateway/providers` / `POST /api/gateway/models`）：
+1. 注册两个 provider + 两个模型（前端表单或裸 API：`POST /api/gateway/providers` / `POST /api/gateway/models`）：
    - MS：`type=azure` + `decisionProtocol=AZURE_FOUNDRY_DECISION`（可省略，按 type 兜底）+ `baseUrl` + `apiKey`；模型 `modelId=decision-1`、`upstreamModel=Decision-1`、`endpointTypes=["decision"]`。
    - Jev：`type=openai` + `decisionProtocol=SYSTEMONE`（可省略）+ `baseUrl=https://api.typesafe.ai` + `apiKey`；模型 `modelId=jev`、`upstreamModel=jev-latest`、`endpointTypes=["decision"]`。
    - （可选）OpenRouter：`type=openrouter` + `decisionProtocol=OPENROUTER_DECISIONS` + `baseUrl=https://openrouter.ai`，一条 provider 同时挂两个模型。

@@ -44,9 +44,21 @@ public class DecisionProviderAdapterFactory {
         return AZURE_FOUNDRY_DECISION.equals(protocol) ? "api-key" : "Authorization";
     }
 
+    /**
+     * Azure chat providers point at {@code .../openai/v1}; the System One endpoint is resource-level, so
+     * reuse of an existing Azure provider requires stripping the chat API suffix.
+     */
+    static String baseUrl(GatewayProviderConfig provider, String protocol) {
+        var baseUrl = GatewaySupport.stripTrailingSlash(provider.baseUrl);
+        if (!AZURE_FOUNDRY_DECISION.equals(protocol)) return baseUrl;
+        if (baseUrl.endsWith("/openai/v1")) return baseUrl.substring(0, baseUrl.length() - "/openai/v1".length());
+        if (baseUrl.endsWith("/openai")) return baseUrl.substring(0, baseUrl.length() - "/openai".length());
+        return baseUrl;
+    }
+
     public DecisionProvider create(GatewayProviderConfig provider, String apiKey) {
         var protocol = protocol(provider);
         GatewayNetworkGuard.validateOutboundUrl(provider.baseUrl, Boolean.TRUE.equals(provider.allowPrivateNetwork));
-        return new SystemOneDecisionProvider(provider.baseUrl, apiKey, credentialHeader(protocol), path(protocol));
+        return new SystemOneDecisionProvider(baseUrl(provider, protocol), apiKey, credentialHeader(protocol), path(protocol));
     }
 }

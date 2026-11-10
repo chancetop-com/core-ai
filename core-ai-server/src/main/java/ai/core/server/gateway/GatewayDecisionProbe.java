@@ -19,7 +19,9 @@ import static ai.core.server.gateway.GatewaySupport.isBlank;
  */
 final class GatewayDecisionProbe {
     static boolean isDecisionProvider(GatewayProviderConfig provider, GatewayModelStore modelStore) {
-        return !isBlank(provider.decisionProtocol) || !decisionModels(provider.id, modelStore).isEmpty();
+        return !isBlank(provider.decisionProtocol)
+                || !isBlank(provider.defaultDecisionModel)
+                || !decisionModels(provider.id, modelStore).isEmpty();
     }
 
     static void test(GatewayProviderConfig provider, String apiKey, GatewayModelStore modelStore,

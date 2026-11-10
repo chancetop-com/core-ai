@@ -34,6 +34,19 @@ class DecisionProviderAdapterFactoryTest {
         assertThrows(BadRequestException.class, () -> DecisionProviderAdapterFactory.protocol(provider("gemini")));
     }
 
+    @Test
+    void stripsTheAzureChatApiSuffixFromTheResourceBaseUrl() {
+        var provider = provider("azure");
+        provider.baseUrl = "https://fbruatai.services.ai.azure.com/openai/v1/";
+        assertEquals("https://fbruatai.services.ai.azure.com", DecisionProviderAdapterFactory.baseUrl(provider, "AZURE_FOUNDRY_DECISION"));
+
+        provider.baseUrl = "https://fbruatai.services.ai.azure.com/openai";
+        assertEquals("https://fbruatai.services.ai.azure.com", DecisionProviderAdapterFactory.baseUrl(provider, "AZURE_FOUNDRY_DECISION"));
+
+        provider.baseUrl = "https://fbruatai.services.ai.azure.com";
+        assertEquals("https://fbruatai.services.ai.azure.com", DecisionProviderAdapterFactory.baseUrl(provider, "AZURE_FOUNDRY_DECISION"));
+    }
+
     private GatewayProviderConfig provider(String type) {
         var provider = new GatewayProviderConfig();
         provider.id = "p";

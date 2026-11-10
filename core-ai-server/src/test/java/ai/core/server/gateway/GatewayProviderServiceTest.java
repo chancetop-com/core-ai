@@ -126,6 +126,27 @@ class GatewayProviderServiceTest {
     }
 
     @Test
+    void createTreatsBlankProtocolsAsAutomatic() {
+        var service = serviceWithUser(admin("admin-1"));
+        var request = new GatewayProviderRequest();
+        request.name = "azure-decision";
+        request.type = "azure";
+        request.baseUrl = "https://fbruatai.services.ai.azure.com";
+        request.apiKey = "decision-key";
+        request.mediaProtocol = "";
+        request.mediaAuthType = "";
+        request.decisionProtocol = "";
+        request.defaultDecisionModel = "Decision-1";
+
+        var view = service.create(request, "admin-1");
+
+        assertNull(view.mediaProtocol);
+        assertNull(view.mediaAuthType);
+        assertNull(view.decisionProtocol);
+        assertEquals("Decision-1", view.defaultDecisionModel);
+    }
+
+    @Test
     void rejectsUnknownDecisionProtocol() {
         var service = serviceWithUser(admin("admin-1"));
         var request = new GatewayProviderRequest();

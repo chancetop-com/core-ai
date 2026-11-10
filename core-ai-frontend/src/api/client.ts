@@ -1721,7 +1721,9 @@ export interface GatewayProvider {
   defaultResponsesModel?: string;
   defaultImageModel?: string;
   defaultVideoModel?: string;
+  defaultDecisionModel?: string;
   mediaProtocol?: string;
+  decisionProtocol?: string;
   mediaAuthType?: string;
   hasGoogleCredentials?: boolean;
   googleCredentialsJson?: string;
@@ -1754,7 +1756,9 @@ export interface GatewayProviderRequest {
   defaultResponsesModel?: string;
   defaultImageModel?: string;
   defaultVideoModel?: string;
+  defaultDecisionModel?: string;
   mediaProtocol?: string;
+  decisionProtocol?: string;
   mediaAuthType?: string;
   hasGoogleCredentials?: boolean;
   googleCredentialsJson?: string;
