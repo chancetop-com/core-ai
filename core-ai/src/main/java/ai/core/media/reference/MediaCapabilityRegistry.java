@@ -31,8 +31,9 @@ public final class MediaCapabilityRegistry {
             new Entry("doubao-seedance-2-5", new MediaModelCapabilities("doubao-seedance-2-5", 30, 10, 10, null, AT_TOKEN, true)),
             new Entry("doubao-seedance-2", new MediaModelCapabilities("doubao-seedance-2", 9, 3, 3, 15, AT_TOKEN, true)),
             new Entry("bytedance/seedance-1", new MediaModelCapabilities("bytedance/seedance-1", 2, 0, 0, 2, NONE, false)),
-            // MiniMax H3 reference-to-video addresses as <Picture 1> / <Video 1>
+            // MiniMax H3 reference-to-video addresses as <Picture 1> / <Video 1>; image editing takes 1-4 pictures
             new Entry("minimax-h3/reference-to-video", new MediaModelCapabilities("minimax-h3/reference-to-video", 4, 2, 1, 4, ANGLE_SUBJECT, true)),
+            new Entry("minimax-h3/image-edit", new MediaModelCapabilities("minimax-h3/image-edit", 4, 0, 0, 4, ANGLE_SUBJECT, false)),
             new Entry("minimax-h3/image-to-video", new MediaModelCapabilities("minimax-h3/image-to-video", 2, 0, 0, 2, NONE, false)),
             new Entry("minimax-h3/text-to-video", new MediaModelCapabilities("minimax-h3/text-to-video", 0, 0, 0, 0, NONE, false)),
             new Entry("wan/2-7-r2v", new MediaModelCapabilities("wan/2-7-r2v", 5, 5, 1, 5, NONE, true)),

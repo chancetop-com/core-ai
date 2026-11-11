@@ -56,20 +56,11 @@ public class KieMediaProvider implements MediaProvider {
             new ModelFamily("happyhorse", KieVideoReferenceRouter.Mode.ARRAY, "image_urls", DurationType.INT)
     );
 
-    // KIE image models take a fixed aspect_ratio enum instead of a pixel size; the widest ratio first
-    // only matters for readability, the nearest match is picked by log distance
-    private static final List<String> IMAGE_ASPECT_RATIOS = List.of("21:9", "16:9", "3:2", "4:3", "1:1", "3:4", "2:3", "9:16");
-    // seedream/nano-banana/flux image editing on KIE all take the references as an image_urls array
-    private static final String IMAGE_REFERENCE_FIELD = "image_urls";
-    private static final int MAX_IMAGE_REFERENCES = 10;
-    private static final String DEFAULT_IMAGE_ASPECT_RATIO = "1:1";
-    private static final String DEFAULT_IMAGE_QUALITY = "basic";
-    // Seedream 5.5 dropped the quality enum for a resolution tier
-    private static final String SEEDREAM_55_PREFIX = "seedream/5-5-";
     // consecutive transient poll failures tolerated before giving up on a running task
     private static final int MAX_IMAGE_POLL_FAILURES = 3;
 
     private final Map<String, Object> defaultInputParams;
+    private final KieImageInputMapper imageInputMapper;
     private final KieTaskClient client;
     // image tasks are async on KIE but the MediaProvider contract is synchronous, so generateImage polls;
     // package-private so tests do not have to wait on the production cadence
@@ -88,6 +79,7 @@ public class KieMediaProvider implements MediaProvider {
 
     public KieMediaProvider(String baseUrl, String uploadBaseUrl, String token, String requestExtraBody) {
         this.defaultInputParams = defaultInputParams(requestExtraBody);
+        this.imageInputMapper = new KieImageInputMapper(defaultInputParams, this::referenceUrls);
         this.client = new KieTaskClient(baseUrl, uploadBaseUrl, token);
     }
 
@@ -118,7 +110,7 @@ public class KieMediaProvider implements MediaProvider {
 
         var body = new LinkedHashMap<String, Object>();
         body.put("model", request.model());
-        var input = imageInput(request);
+        var input = imageInputMapper.input(request);
         body.put("input", input);
         mergeProviderExtra(body, input, request.providerExtra());
 
@@ -127,103 +119,6 @@ public class KieMediaProvider implements MediaProvider {
         if (taskId == null || taskId.isBlank()) throw new IllegalStateException("KIE image task response is missing taskId");
         var images = awaitImages(taskId, request.model());
         return new ImageGenerationResponse(images, new Usage(null, images.size(), null));
-    }
-
-    private Map<String, Object> imageInput(ImageGenerationRequest request) {
-        var input = new LinkedHashMap<>(defaultInputParams);
-        input.put("prompt", request.prompt());
-        if (request.inputImages() != null && !request.inputImages().isEmpty()) {
-            if (request.model().contains("text-to-image"))
-                throw new IllegalArgumentException(request.model() + " does not accept input images, use the image-to-image model instead");
-            var urls = referenceUrls(request.inputImages());
-            if (urls.size() > MAX_IMAGE_REFERENCES)
-                throw new IllegalArgumentException(request.model() + " accepts at most " + MAX_IMAGE_REFERENCES + " input images, got " + urls.size());
-            input.put(IMAGE_REFERENCE_FIELD, urls);
-        }
-        var aspectRatio = imageAspectRatio(request.size());
-        if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
-        if (request.model().startsWith(SEEDREAM_55_PREFIX)) {
-            var sizeTier = imageSizeTier(request.quality());
-            if (sizeTier != null) input.put("size", sizeTier);
-            if (request.background() != null && !request.background().isBlank())
-                input.put("background", request.background().trim().toLowerCase(Locale.ROOT));
-        } else {
-            var quality = imageQuality(request.quality());
-            if (quality != null) input.put("quality", quality);
-            // KIE marks both as required; fall back only when neither the request nor the provider defaults set them
-            input.putIfAbsent("quality", DEFAULT_IMAGE_QUALITY);
-        }
-        if (request.outputFormat() != null && !request.outputFormat().isBlank())
-            input.put("output_format", request.outputFormat().trim().toLowerCase(Locale.ROOT));
-        input.putIfAbsent("aspect_ratio", DEFAULT_IMAGE_ASPECT_RATIO);
-        return input;
-    }
-
-    /**
-     * KIE image models accept an aspect_ratio enum, not a pixel size. Callers speak the OpenAI
-     * "1024x1536" dialect, so map to the nearest supported ratio; an aspect ratio passed through
-     * verbatim is accepted as-is.
-     */
-    private String imageAspectRatio(String size) {
-        var ratio = ratio(size);
-        if (ratio == null) return null;
-        String nearest = null;
-        var nearestDistance = Double.MAX_VALUE;
-        for (var candidate : IMAGE_ASPECT_RATIOS) {
-            var candidateRatio = ratio(candidate);
-            var distance = Math.abs(Math.log(ratio) - Math.log(candidateRatio));
-            if (distance < nearestDistance) {
-                nearestDistance = distance;
-                nearest = candidate;
-            }
-        }
-        return nearest;
-    }
-
-    // accepts both the OpenAI "1024x1536" pixel size and a bare "3:2" aspect ratio
-    private Double ratio(String value) {
-        if (value == null || value.isBlank()) return null;
-        var dimensions = value.trim().toLowerCase(Locale.ROOT).split(value.indexOf(':') >= 0 ? ":" : "x");
-        if (dimensions.length != 2) return null;
-        try {
-            var width = Double.parseDouble(dimensions[0].trim());
-            var height = Double.parseDouble(dimensions[1].trim());
-            return width <= 0 || height <= 0 ? null : width / height;
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
-    /**
-     * KIE grades images as basic/high (Seedream 5.0 Pro) or basic/high/ultra (Seedream 5.0 Lite).
-     * The OpenAI-style low/medium/high/auto values are folded onto that scale; "ultra" is only
-     * reachable by asking for it explicitly so a plain "high" never silently upgrades the tier.
-     */
-    private String imageQuality(String quality) {
-        if (quality == null || quality.isBlank()) return null;
-        return switch (quality.trim().toLowerCase(Locale.ROOT)) {
-            case "basic", "low", "medium" -> "basic";
-            case "high" -> "high";
-            case "ultra" -> "ultra";
-            case "auto" -> null;
-            default -> throw new IllegalArgumentException("unsupported image quality: " + quality + ", expected basic/high/ultra");
-        };
-    }
-
-    /**
-     * Seedream 5.5 takes a resolution tier instead of the quality enum. The OpenAI-style values
-     * callers speak are folded onto that scale; "auto" (and an omitted value) leaves the choice
-     * to the model, which defaults to 2K.
-     */
-    private String imageSizeTier(String quality) {
-        if (quality == null || quality.isBlank()) return null;
-        return switch (quality.trim().toLowerCase(Locale.ROOT)) {
-            case "1k", "basic", "low" -> "1K";
-            case "1.5k", "medium" -> "1.5K";
-            case "2k", "high", "ultra" -> "2K";
-            case "auto" -> null;
-            default -> throw new IllegalArgumentException("unsupported image quality: " + quality + ", expected 1K/1.5K/2K or low/medium/high/auto");
-        };
     }
 
     private List<ImageData> awaitImages(String taskId, String model) {

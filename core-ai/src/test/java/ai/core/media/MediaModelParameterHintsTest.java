@@ -94,4 +94,14 @@ class MediaModelParameterHintsTest {
         assertTrue(hint.contains("background"), hint);
         assertFalse(hint.contains("quality (basic/high"), hint);
     }
+
+    @Test
+    void minimaxH3ImageEditUsesPictureAddressingAndResolutionTiers() {
+        var hint = MediaModelParameterHints.imageHint("minimax-h3/image-edit");
+
+        assertTrue(hint.contains("<Picture 1>"), hint);
+        assertTrue(hint.contains("resolution 1K/2K/4K"), hint);
+        assertTrue(hint.contains("1-4 reference images"), hint);
+        assertFalse(hint.contains("quality (basic/high"), hint);
+    }
 }

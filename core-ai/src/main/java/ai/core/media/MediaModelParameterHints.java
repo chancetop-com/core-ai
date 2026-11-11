@@ -36,6 +36,15 @@ public final class MediaModelParameterHints {
             + "image_urls (image-to-image only, up to 10 images, use the -image-to-image model); "
             + "nsfw_checker (bool) via provider_extra; one image per task (n>1 is not supported)";
 
+    // MiniMax H3 image editing: 1-4 references addressed as <Picture N>, resolution tiers instead of quality
+    private static final String KIE_MINIMAX_H3_IMAGE_EDIT_HINT = "image_urls (1-4 reference images, required; refer to them "
+            + "in the prompt as <Picture 1>, <Picture 2>, … in array order); "
+            + "aspect_ratio auto/21:9/16:9/3:2/5:4/4:3/1:1/4:5/3:4/2:3/9:16 (default auto follows the first reference); "
+            + "resolution 1K/2K/4K (default 2K — quality low/basic maps to 1K, medium/high to 2K, ultra/xhigh/max to 4K); "
+            + "expand_prompt (bool, default true) and seed (0-2147483647) via provider_extra; output_format (png/jpeg); "
+            + "a custom width+height passed via provider_extra replaces size and must not be combined with resolution/aspect_ratio; "
+            + "one image per task (n>1 is not supported)";
+
     private static final String SEEDANCE_2_HINT = "first_frame_url/last_frame_url (first/last-frame image-to-video); "
             + "reference_image_urls/reference_video_urls/reference_audio_urls (multimodal reference); "
             + "IMPORTANT: frame mode and reference mode are MUTUALLY EXCLUSIVE — when using "
@@ -187,6 +196,7 @@ public final class MediaModelParameterHints {
             return "quality (low/medium/high/auto), " + OPENAI_IMAGE_OPTIONS_HINT;
         }
         if (upstreamModel.startsWith("seedream/5-5")) return KIE_SEEDREAM_5_5_HINT;
+        if (upstreamModel.startsWith("minimax-h3/image-edit")) return KIE_MINIMAX_H3_IMAGE_EDIT_HINT;
         if (upstreamModel.startsWith("seedream/")) return KIE_SEEDREAM_HINT;
         if (upstreamModel.startsWith("seedream")) {
             return "n (1-4), size; negative prompt via provider_extra";

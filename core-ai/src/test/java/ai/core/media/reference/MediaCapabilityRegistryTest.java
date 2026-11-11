@@ -39,6 +39,16 @@ class MediaCapabilityRegistryTest {
     }
 
     @Test
+    void minimaxH3ImageEditTakesFourPicturesWithAngleSubjects() {
+        var caps = MediaCapabilityRegistry.lookup("minimax-h3/image-edit");
+
+        assertEquals(4, caps.maxImages(), "MiniMax H3 image editing accepts 1-4 reference pictures");
+        assertEquals(0, caps.maxVideos());
+        assertFalse(caps.acceptsAudioRef());
+        assertEquals(MediaAddressingSyntax.ANGLE_SUBJECT, caps.addressingSyntax(), "prompts address pictures as <Picture 1>");
+    }
+
+    @Test
     void longestPrefixWins() {
         assertEquals(3, MediaCapabilityRegistry.lookup("gemini-omni-flash").maxVideos(), "omni is more specific than gemini-");
         assertEquals(0, MediaCapabilityRegistry.lookup("gemini-2.5-flash").maxVideos(), "plain gemini takes images only");

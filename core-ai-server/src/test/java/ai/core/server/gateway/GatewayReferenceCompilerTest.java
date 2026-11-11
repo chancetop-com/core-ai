@@ -51,6 +51,8 @@ class GatewayReferenceCompilerTest {
         // Seedance and MiniMax both arrive via KIE yet address references differently
         assertEquals("<Picture 1> smiles", compiler.compile("@char_lin smiles", references,
                 MediaModality.IMAGE, "minimax-h3/reference-to-video", null).prompt());
+        assertEquals("<Picture 1> smiles", compiler.compile("@char_lin smiles", references,
+                MediaModality.IMAGE, "minimax-h3/image-edit", null).prompt());
         assertEquals("@Image1 smiles", compiler.compile("@char_lin smiles", references,
                 MediaModality.IMAGE, "bytedance/seedance-2-5", null).prompt());
         // gemini omni counts from zero: the first image is <IMAGE_REF_0>, a video reference <VIDEO_REF_0>

@@ -549,6 +549,75 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void generateImageMapsMiniMaxH3ImageEditContract() {
+        imageTask();
+        var source = new MediaReference("https://example.com/source.png", null);
+        var style = new MediaReference("https://example.com/style.png", null);
+
+        provider.generateImage(imageRequest("minimax-h3/image-edit", "put <Picture 1> on a beach in the style of <Picture 2>",
+                "1024x1280", "high", List.of(source, style)));
+
+        var input = createTaskInput();
+        assertEquals("4:5", input.get("aspect_ratio"));
+        assertEquals("2K", input.get("resolution"));
+        assertFalse(input.containsKey("quality"), "MiniMax H3 does not accept the quality parameter");
+        assertEquals(List.of("https://example.com/source.png", "https://example.com/style.png"), input.get("image_urls"));
+    }
+
+    @Test
+    void generateImageRequiresReferencesForMiniMaxH3ImageEdit() {
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateImage(imageRequest("minimax-h3/image-edit", "an edit", null, null, null)));
+
+        assertTrue(error.getMessage().contains("requires at least one input image"));
+    }
+
+    @Test
+    void generateImageLimitsMiniMaxH3ImageEditToFourReferences() {
+        var references = List.of(
+                new MediaReference("https://example.com/1.png", null),
+                new MediaReference("https://example.com/2.png", null),
+                new MediaReference("https://example.com/3.png", null),
+                new MediaReference("https://example.com/4.png", null),
+                new MediaReference("https://example.com/5.png", null));
+
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> provider.generateImage(imageRequest("minimax-h3/image-edit", "an edit", null, null, references)));
+
+        assertTrue(error.getMessage().contains("at most 4 input images"));
+    }
+
+    @Test
+    void generateImageMapsMiniMaxQualityToResolutionTier() {
+        imageTask();
+        var source = new MediaReference("https://example.com/source.png", null);
+
+        provider.generateImage(imageRequest("minimax-h3/image-edit", "low", "1024x1024", "low", List.of(source)));
+        provider.generateImage(imageRequest("minimax-h3/image-edit", "max", "1024x1024", "max", List.of(source)));
+        provider.generateImage(imageRequest("minimax-h3/image-edit", "auto", "1024x1024", "auto", List.of(source)));
+
+        assertEquals("1K", createTaskInput(0).get("resolution"));
+        assertEquals("4K", createTaskInput(1).get("resolution"));
+        assertFalse(createTaskInput(2).containsKey("resolution"), "an omitted or auto tier is left to the model");
+    }
+
+    @Test
+    void generateImageOmitsDerivedSizeForMiniMaxCustomFrame() {
+        imageTask();
+        var source = new MediaReference("https://example.com/source.png", null);
+        var request = new ImageGenerationRequest("minimax-h3/image-edit", "an edit", 1, "1024x1024", null,
+                null, null, null, List.of(source), null, "{\"input\":{\"width\":1920,\"height\":1080}}", null);
+
+        provider.generateImage(request);
+
+        var input = createTaskInput();
+        assertFalse(input.containsKey("aspect_ratio"), "a custom frame must not be combined with aspect_ratio");
+        assertFalse(input.containsKey("resolution"), "a custom frame must not be combined with resolution");
+        assertEquals(1920, input.get("width"));
+        assertEquals(1080, input.get("height"));
+    }
+
+    @Test
     void generateImageUploadsBase64InputImageToImageUrls() {
         imageTask();
         var reference = new MediaReference(null, "aGVsbG8=");
@@ -673,6 +742,18 @@ class KieMediaProviderTest {
 
         assertTrue(error.getMessage().contains("Allowed parameters for seedream/5-5-image-to-image"));
         assertTrue(error.getMessage().contains("size (1K/1.5K/2K"));
+    }
+
+    @Test
+    void generateImageAppendsMiniMaxH3ImageEditHintToParameterError() {
+        taskRejectMsg.set("aspect_ratio is not within the range of allowed options");
+        var source = new MediaReference("https://example.com/source.png", null);
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateImage(imageRequest("minimax-h3/image-edit", "an edit", null, null, List.of(source))));
+
+        assertTrue(error.getMessage().contains("Allowed parameters for minimax-h3/image-edit"));
+        assertTrue(error.getMessage().contains("<Picture 1>"));
     }
 
     private String fileExtension(Object fileName) {
