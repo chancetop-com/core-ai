@@ -28,6 +28,14 @@ public final class MediaModelParameterHints {
             + "image_urls (image-to-image only, up to 10 images, use the -image-to-image model); "
             + "nsfw_checker (bool) via provider_extra; one image per task (n>1 is not supported)";
 
+    // Seedream 5.5 replaced the quality enum with a resolution tier, and added a background option
+    private static final String KIE_SEEDREAM_5_5_HINT = "aspect_ratio (1:1/4:3/3:4/16:9/9:16/2:3/3:2/21:9; "
+            + "image-to-image also accepts auto); size (1K/1.5K/2K, default 2K — quality low/basic maps to 1K, "
+            + "medium to 1.5K, high/ultra to 2K); output_format (png/jpeg); "
+            + "background (auto/transparent/opaque, transparent requires png); "
+            + "image_urls (image-to-image only, up to 10 images, use the -image-to-image model); "
+            + "nsfw_checker (bool) via provider_extra; one image per task (n>1 is not supported)";
+
     private static final String SEEDANCE_2_HINT = "first_frame_url/last_frame_url (first/last-frame image-to-video); "
             + "reference_image_urls/reference_video_urls/reference_audio_urls (multimodal reference); "
             + "IMPORTANT: frame mode and reference mode are MUTUALLY EXCLUSIVE — when using "
@@ -178,6 +186,7 @@ public final class MediaModelParameterHints {
         if (upstreamModel.startsWith("gpt-image") || upstreamModel.startsWith("dall-e")) {
             return "quality (low/medium/high/auto), " + OPENAI_IMAGE_OPTIONS_HINT;
         }
+        if (upstreamModel.startsWith("seedream/5-5")) return KIE_SEEDREAM_5_5_HINT;
         if (upstreamModel.startsWith("seedream/")) return KIE_SEEDREAM_HINT;
         if (upstreamModel.startsWith("seedream")) {
             return "n (1-4), size; negative prompt via provider_extra";

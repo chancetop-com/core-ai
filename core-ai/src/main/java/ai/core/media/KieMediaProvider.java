@@ -64,6 +64,8 @@ public class KieMediaProvider implements MediaProvider {
     private static final int MAX_IMAGE_REFERENCES = 10;
     private static final String DEFAULT_IMAGE_ASPECT_RATIO = "1:1";
     private static final String DEFAULT_IMAGE_QUALITY = "basic";
+    // Seedream 5.5 dropped the quality enum for a resolution tier
+    private static final String SEEDREAM_55_PREFIX = "seedream/5-5-";
     // consecutive transient poll failures tolerated before giving up on a running task
     private static final int MAX_IMAGE_POLL_FAILURES = 3;
 
@@ -140,13 +142,20 @@ public class KieMediaProvider implements MediaProvider {
         }
         var aspectRatio = imageAspectRatio(request.size());
         if (aspectRatio != null) input.put("aspect_ratio", aspectRatio);
-        var quality = imageQuality(request.quality());
-        if (quality != null) input.put("quality", quality);
+        if (request.model().startsWith(SEEDREAM_55_PREFIX)) {
+            var sizeTier = imageSizeTier(request.quality());
+            if (sizeTier != null) input.put("size", sizeTier);
+            if (request.background() != null && !request.background().isBlank())
+                input.put("background", request.background().trim().toLowerCase(Locale.ROOT));
+        } else {
+            var quality = imageQuality(request.quality());
+            if (quality != null) input.put("quality", quality);
+            // KIE marks both as required; fall back only when neither the request nor the provider defaults set them
+            input.putIfAbsent("quality", DEFAULT_IMAGE_QUALITY);
+        }
         if (request.outputFormat() != null && !request.outputFormat().isBlank())
             input.put("output_format", request.outputFormat().trim().toLowerCase(Locale.ROOT));
-        // KIE marks both as required; fall back only when neither the request nor the provider defaults set them
         input.putIfAbsent("aspect_ratio", DEFAULT_IMAGE_ASPECT_RATIO);
-        input.putIfAbsent("quality", DEFAULT_IMAGE_QUALITY);
         return input;
     }
 
@@ -198,6 +207,22 @@ public class KieMediaProvider implements MediaProvider {
             case "ultra" -> "ultra";
             case "auto" -> null;
             default -> throw new IllegalArgumentException("unsupported image quality: " + quality + ", expected basic/high/ultra");
+        };
+    }
+
+    /**
+     * Seedream 5.5 takes a resolution tier instead of the quality enum. The OpenAI-style values
+     * callers speak are folded onto that scale; "auto" (and an omitted value) leaves the choice
+     * to the model, which defaults to 2K.
+     */
+    private String imageSizeTier(String quality) {
+        if (quality == null || quality.isBlank()) return null;
+        return switch (quality.trim().toLowerCase(Locale.ROOT)) {
+            case "1k", "basic", "low" -> "1K";
+            case "1.5k", "medium" -> "1.5K";
+            case "2k", "high", "ultra" -> "2K";
+            case "auto" -> null;
+            default -> throw new IllegalArgumentException("unsupported image quality: " + quality + ", expected 1K/1.5K/2K or low/medium/high/auto");
         };
     }
 

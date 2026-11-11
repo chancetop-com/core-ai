@@ -493,6 +493,62 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void generateImageUsesSizeTierForSeedream55() {
+        imageTask();
+        var reference = new MediaReference("https://example.com/ref.png", null);
+
+        provider.generateImage(imageRequest("seedream/5-5-image-to-image", "make it glass", "1024x1536", "high", List.of(reference)));
+
+        var input = createTaskInput();
+        assertEquals("2K", input.get("size"));
+        assertFalse(input.containsKey("quality"), "Seedream 5.5 does not accept the quality parameter");
+        assertEquals("2:3", input.get("aspect_ratio"));
+        assertEquals(List.of("https://example.com/ref.png"), input.get("image_urls"));
+    }
+
+    @Test
+    void generateImageSendsSeedream55Background() {
+        imageTask();
+        var request = new ImageGenerationRequest("seedream/5-5-image-to-image", "make it transparent", 1, "1024x1024",
+                null, "png", null, "transparent", null, null, null, null);
+
+        provider.generateImage(request);
+
+        assertEquals("transparent", createTaskInput().get("background"));
+        assertEquals("png", createTaskInput().get("output_format"));
+    }
+
+    @Test
+    void generateImageFoldsQualityOntoSeedream55SizeTier() {
+        imageTask();
+
+        provider.generateImage(imageRequest("seedream/5-5-text-to-image", "a cafe", null, "low", null));
+        provider.generateImage(imageRequest("seedream/5-5-text-to-image", "a cafe", null, "medium", null));
+
+        assertEquals("1K", createTaskInput(0).get("size"));
+        assertEquals("1.5K", createTaskInput(1).get("size"));
+    }
+
+    @Test
+    void generateImageLeavesSeedream55SizeTierToTheModelWhenQualityIsAbsentOrAuto() {
+        imageTask();
+
+        provider.generateImage(imageRequest("seedream/5-5-text-to-image", "a cafe", null, null, null));
+        provider.generateImage(imageRequest("seedream/5-5-text-to-image", "a cafe", null, "auto", null));
+
+        assertFalse(createTaskInput(0).containsKey("size"));
+        assertFalse(createTaskInput(0).containsKey("quality"));
+        assertFalse(createTaskInput(1).containsKey("size"));
+        assertEquals("1:1", createTaskInput(1).get("aspect_ratio"));
+    }
+
+    @Test
+    void generateImageRejectsUnknownSeedream55SizeTier() {
+        assertThrows(IllegalArgumentException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-5-image-to-image", "edit", null, "cinematic", null)));
+    }
+
+    @Test
     void generateImageUploadsBase64InputImageToImageUrls() {
         imageTask();
         var reference = new MediaReference(null, "aGVsbG8=");
@@ -606,6 +662,17 @@ class KieMediaProviderTest {
 
         assertTrue(error.getMessage().contains("Allowed parameters for seedream/5-pro-text-to-image"));
         assertTrue(error.getMessage().contains("quality (basic/high"));
+    }
+
+    @Test
+    void generateImageAppendsSeedream55HintToParameterError() {
+        taskRejectMsg.set("aspect_ratio is not within the range of allowed options");
+
+        var error = assertThrows(IllegalStateException.class,
+                () -> provider.generateImage(imageRequest("seedream/5-5-image-to-image", "an edit", null, null, null)));
+
+        assertTrue(error.getMessage().contains("Allowed parameters for seedream/5-5-image-to-image"));
+        assertTrue(error.getMessage().contains("size (1K/1.5K/2K"));
     }
 
     private String fileExtension(Object fileName) {

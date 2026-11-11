@@ -85,4 +85,13 @@ class MediaModelParameterHintsTest {
         assertTrue(gptImage25.contains("xhigh"), "2.5-only quality tiers must stay on the 2.5 hint");
         assertFalse(gptImage2.contains("xhigh"), gptImage2);
     }
+
+    @Test
+    void seedream55UsesTheSizeTierContract() {
+        var hint = MediaModelParameterHints.imageHint("seedream/5-5-image-to-image");
+
+        assertTrue(hint.contains("size (1K/1.5K/2K"), hint);
+        assertTrue(hint.contains("background"), hint);
+        assertFalse(hint.contains("quality (basic/high"), hint);
+    }
 }
