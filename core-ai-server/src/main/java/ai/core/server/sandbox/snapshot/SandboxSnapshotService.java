@@ -3,13 +3,7 @@ package ai.core.server.sandbox.snapshot;
 import ai.core.server.blob.MinioObjectStorageService;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.settings.SandboxSnapshotSettingsService;
-import com.mongodb.MongoException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,9 +38,9 @@ public class SandboxSnapshotService {
     }
 
     @Inject
-    MongoCollection<SandboxSnapshotDoc> snapshotCollection;
+    SandboxSnapshotStore snapshotStore;
     @Inject
-    MongoCollection<SandboxEpochDoc> epochCollection;
+    SandboxEpochStore epochStore;
     @Inject
     SandboxSnapshotPolicy policy;
     @Inject
@@ -79,26 +73,20 @@ public class SandboxSnapshotService {
             return 0;
         }
         while (true) {
-            var existing = epochCollection.get(sessionId);
+            var existing = epochStore.get(sessionId);
             if (existing.isPresent()) {
                 var current = existing.get().epoch;
                 var next = current + 1;
-                var update = Updates.combine(
-                        Updates.set("epoch", next), Updates.set("updated_at", ZonedDateTime.now()));
-                long modified = epochCollection.update(Filters.and(
-                        Filters.eq("_id", sessionId), Filters.eq("epoch", current)), update);
-                if (modified == 1) return next;
+                if (epochStore.compareAndIncrement(sessionId, current, next)) return next;
                 continue;
             }
             var doc = new SandboxEpochDoc();
             doc.id = sessionId;
             doc.epoch = 1L;
             doc.updatedAt = ZonedDateTime.now();
-            try {
-                epochCollection.insert(doc);
-                return 1L;
-            } catch (MongoException e) {
-                if (epochCollection.get(sessionId).isEmpty()) throw e;
+            if (epochStore.insertIfAbsent(doc)) return 1L;
+            if (epochStore.get(sessionId).isEmpty()) {
+                throw new IllegalStateException("failed to create sandbox epoch, sessionId=" + sessionId);
             }
         }
     }
@@ -175,10 +163,10 @@ public class SandboxSnapshotService {
             tmp = Files.createTempFile("sandbox-capture-", ".tar.gz");
             var captured = client.capture(ip, port, tmp);
             var doc = newUploadingSnapshot(sessionId, userId, epoch, image, captured);
-            snapshotCollection.insert(doc);
+            snapshotStore.insert(doc);
             storage.uploadObject(container, doc.blobKey, tmp);
 
-            long currentEpoch = epochCollection.get(sessionId).map(d -> d.epoch).orElse(-1L);
+            long currentEpoch = epochStore.get(sessionId).map(d -> d.epoch).orElse(-1L);
             if (currentEpoch != epoch) {
                 // The session already resumed on a newer sandbox: this capture is stale.
                 tombstone(doc.id);
@@ -186,10 +174,7 @@ public class SandboxSnapshotService {
                         sessionId, doc.id, epoch, currentEpoch);
                 return true;
             }
-            long updated = snapshotCollection.update(
-                    Filters.and(Filters.eq("_id", doc.id), Filters.eq("status", SandboxSnapshotDoc.STATUS_UPLOADING)),
-                    Updates.set("status", SandboxSnapshotDoc.STATUS_AVAILABLE));
-            if (updated == 0) return false;
+            if (!snapshotStore.markAvailable(doc.id)) return false;
             LOGGER.info("snapshot available: session={}, snapshot={}, files={}, size={}",
                     sessionId, doc.id, doc.fileCount, doc.sizeBytes);
             deletePreviousGenerations(sessionId, doc.id, storage, container);
@@ -230,15 +215,12 @@ public class SandboxSnapshotService {
         }
         var storage = decision.storage();
         var container = container(storage);
-        var query = new Query();
-        query.filter = Filters.lt("expires_at", ZonedDateTime.now());
-        query.limit = 100;
-        var expired = snapshotCollection.find(query);
+        var expired = snapshotStore.listExpired(ZonedDateTime.now(), 100);
         int cleaned = 0;
         for (var doc : expired) {
             try {
                 storage.deleteObject(container, doc.blobKey);
-                snapshotCollection.delete(doc.id);
+                snapshotStore.delete(doc.id);
                 cleaned++;
             } catch (Exception e) {
                 LOGGER.warn("snapshot cleanup failed, will retry next cycle: snapshot={}", doc.id, e);
@@ -257,9 +239,7 @@ public class SandboxSnapshotService {
         var storage = decision.storage();
         var container = container(storage);
         try {
-            var query = new Query();
-            query.filter = Filters.eq("session_id", sessionId);
-            for (var doc : snapshotCollection.find(query)) {
+            for (var doc : snapshotStore.listBySession(sessionId)) {
                 deleteOrTombstone(doc, storage, container);
             }
         } catch (Exception e) {
@@ -268,14 +248,7 @@ public class SandboxSnapshotService {
     }
 
     private SandboxSnapshotDoc findLatestAvailable(String sessionId) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("session_id", sessionId),
-                Filters.eq("status", SandboxSnapshotDoc.STATUS_AVAILABLE));
-        query.sort = Sorts.descending("created_at");
-        query.limit = 1;
-        var docs = snapshotCollection.find(query);
-        return docs.isEmpty() ? null : docs.getFirst();
+        return snapshotStore.findLatestAvailable(sessionId);
     }
 
     private void downloadVerifyAndRestore(SandboxSnapshotDoc doc, String ip, int port,
@@ -295,12 +268,8 @@ public class SandboxSnapshotService {
 
     private void deletePreviousGenerations(String sessionId, String currentId,
                                            ObjectStorageService storage, String container) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("session_id", sessionId),
-                Filters.eq("status", SandboxSnapshotDoc.STATUS_AVAILABLE));
-        for (var doc : snapshotCollection.find(query)) {
-            if (currentId.equals(doc.id)) continue;
+        for (var doc : snapshotStore.listBySession(sessionId)) {
+            if (!SandboxSnapshotDoc.STATUS_AVAILABLE.equals(doc.status) || currentId.equals(doc.id)) continue;
             deleteOrTombstone(doc, storage, container);
         }
     }
@@ -310,7 +279,7 @@ public class SandboxSnapshotService {
     private void deleteOrTombstone(SandboxSnapshotDoc doc, ObjectStorageService storage, String container) {
         try {
             storage.deleteObject(container, doc.blobKey);
-            snapshotCollection.delete(doc.id);
+            snapshotStore.delete(doc.id);
         } catch (Exception e) {
             tombstone(doc.id);
         }
@@ -318,9 +287,7 @@ public class SandboxSnapshotService {
 
     /** Mark DELETED and force-expire so the cleanup job retries the blob deletion. */
     private void tombstone(String snapshotId) {
-        snapshotCollection.update(Filters.eq("_id", snapshotId), Updates.combine(
-                Updates.set("status", SandboxSnapshotDoc.STATUS_DELETED),
-                Updates.set("expires_at", ZonedDateTime.now())));
+        snapshotStore.tombstone(snapshotId);
     }
 
     private void logInactive(String operation, SandboxSnapshotPolicy.Decision decision) {
@@ -363,3 +330,4 @@ public class SandboxSnapshotService {
     public record RestoreResult(RestoreOutcome outcome, ZonedDateTime snapshotCreatedAt) {
     }
 }
+

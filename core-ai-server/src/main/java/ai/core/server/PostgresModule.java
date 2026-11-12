@@ -84,8 +84,18 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.notification.PgNotificationCountRow.class);
         db().view(ai.core.server.notification.PgNotificationMigrationLockRow.class);
         db().view(ai.core.server.notification.PgNotificationMigrationMarkerRow.class);
+        db().view(ai.core.server.costalert.PgCostAlertRuleRow.class);
+        db().view(ai.core.server.costalert.PgCostAlertEventRow.class);
+        db().view(ai.core.server.costalert.PgCostAlertMigrationLockRow.class);
+        db().view(ai.core.server.costalert.PgCostAlertMigrationMarkerRow.class);
+        db().view(ai.core.server.sandbox.snapshot.PgSandboxSnapshotRow.class);
+        db().view(ai.core.server.sandbox.snapshot.PgSandboxEpochRow.class);
+        db().view(ai.core.server.sandbox.snapshot.PgSandboxSnapshotMigrationLockRow.class);
+        db().view(ai.core.server.sandbox.snapshot.PgSandboxSnapshotMigrationMarkerRow.class);
     }
 }
+
+
 
 
 

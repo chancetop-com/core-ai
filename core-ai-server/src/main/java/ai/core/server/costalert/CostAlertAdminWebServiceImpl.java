@@ -10,12 +10,8 @@ import ai.core.api.server.costalert.response.ListCostAlertRulesResponse;
 import ai.core.server.channel.ChannelConfigStore;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import org.bson.types.ObjectId;
@@ -41,9 +37,9 @@ public class CostAlertAdminWebServiceImpl implements CostAlertAdminWebService {
     private static final int MAX_EVENTS = 200;
 
     @Inject
-    MongoCollection<CostAlertRule> ruleCollection;
+    CostAlertRuleStore ruleStore;
     @Inject
-    MongoCollection<CostAlertEvent> eventCollection;
+    CostAlertEventStore eventStore;
     @Inject
     ChannelConfigStore channelConfigStore;
 
@@ -51,7 +47,7 @@ public class CostAlertAdminWebServiceImpl implements CostAlertAdminWebService {
     public ListCostAlertRulesResponse list() {
         var response = new ListCostAlertRulesResponse();
         response.rules = new ArrayList<>(16);
-        for (var rule : ruleCollection.find(new Query())) {
+        for (var rule : ruleStore.list()) {
             response.rules.add(toRuleView(rule));
         }
         return response;
@@ -64,56 +60,45 @@ public class CostAlertAdminWebServiceImpl implements CostAlertAdminWebService {
         rule.createdAt = ZonedDateTime.now(UTC);
         rule.updatedAt = rule.createdAt;
         applyRequest(rule, request);
-        ruleCollection.insert(rule);
+        ruleStore.insert(rule);
         LOGGER.info("cost alert rule created, id={}, name={}, metric={}, scope={}", rule.id, rule.name, rule.metric, rule.scope);
         return toRuleView(rule);
     }
 
     @Override
     public CostAlertRuleView get(String id) {
-        var rule = ruleCollection.get(id).orElseThrow(() -> new NotFoundException("cost alert rule not found: " + id));
+        var rule = ruleStore.get(id).orElseThrow(() -> new NotFoundException("cost alert rule not found: " + id));
         return toRuleView(rule);
     }
 
     @Override
     public CostAlertRuleView update(String id, SaveCostAlertRuleRequest request) {
-        var rule = ruleCollection.get(id).orElseThrow(() -> new NotFoundException("cost alert rule not found: " + id));
+        var rule = ruleStore.get(id).orElseThrow(() -> new NotFoundException("cost alert rule not found: " + id));
         applyRequest(rule, request);
         rule.updatedAt = ZonedDateTime.now(UTC);
-        ruleCollection.replace(rule);
+        ruleStore.replace(rule);
         LOGGER.info("cost alert rule updated, id={}", id);
         return toRuleView(rule);
     }
 
     @Override
     public void delete(String id) {
-        if (ruleCollection.get(id).isEmpty()) throw new NotFoundException("cost alert rule not found: " + id);
-        ruleCollection.delete(id);
+        if (ruleStore.get(id).isEmpty()) throw new NotFoundException("cost alert rule not found: " + id);
+        ruleStore.delete(id);
         LOGGER.info("cost alert rule deleted, id={}", id);
     }
 
     @Override
     public ListCostAlertEventsResponse events(ListCostAlertEventsRequest request) {
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        if (request.ruleId != null && !request.ruleId.isBlank()) filters.add(Filters.eq("rule_id", request.ruleId));
-        if (request.dateFrom != null && !request.dateFrom.isBlank()) {
-            filters.add(Filters.gte("date", LocalDate.parse(request.dateFrom).atStartOfDay(UTC)));
-        }
-        if (request.dateTo != null && !request.dateTo.isBlank()) {
-            filters.add(Filters.lt("date", LocalDate.parse(request.dateTo).plusDays(1).atStartOfDay(UTC)));
-        }
+        var from = request.dateFrom != null && !request.dateFrom.isBlank()
+            ? LocalDate.parse(request.dateFrom).atStartOfDay(UTC) : null;
+        var to = request.dateTo != null && !request.dateTo.isBlank()
+            ? LocalDate.parse(request.dateTo).plusDays(1).atStartOfDay(UTC) : null;
         int limit = request.limit == null ? 100 : Math.clamp(request.limit, 1, MAX_EVENTS);
 
-        var query = new Query();
-        if (!filters.isEmpty()) query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("created_at");
-        query.limit = limit;
-
         var response = new ListCostAlertEventsResponse();
-        response.events = new ArrayList<>(16);
-        for (var event : eventCollection.find(query)) {
-            response.events.add(toEventView(event));
-        }
+        response.events = eventStore.list(request.ruleId, from, to, limit)
+            .stream().map(this::toEventView).toList();
         return response;
     }
 
@@ -234,3 +219,6 @@ public class CostAlertAdminWebServiceImpl implements CostAlertAdminWebService {
         return view;
     }
 }
+
+
+

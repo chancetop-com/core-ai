@@ -8,7 +8,6 @@ import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationType;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.trace.domain.Trace;
-import com.mongodb.DuplicateKeyException;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
@@ -16,7 +15,6 @@ import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -56,9 +54,9 @@ public class CostAlertService {
     }
 
     @Inject
-    MongoCollection<CostAlertRule> ruleCollection;
+    CostAlertRuleStore ruleStore;
     @Inject
-    MongoCollection<CostAlertEvent> eventCollection;
+    CostAlertEventStore eventStore;
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
@@ -73,7 +71,7 @@ public class CostAlertService {
      */
     public void check(LocalDate today) {
         var yesterday = today.minusDays(1);
-        List<CostAlertRule> rules = ruleCollection.find(new Query());
+        List<CostAlertRule> rules = ruleStore.list();
         for (var rule : rules) {
             if (!Boolean.TRUE.equals(rule.enabled)) continue;
             checkWindow(rule, yesterday, yesterday.atStartOfDay(UTC), today.atStartOfDay(UTC));
@@ -144,13 +142,9 @@ public class CostAlertService {
             "total_tokens", usage.totalTokens,
             "call_count", usage.callCount));
         event.createdAt = ZonedDateTime.now(UTC);
-        try {
-            eventCollection.insert(event);
-            return true;
-        } catch (DuplicateKeyException e) {
-            LOGGER.debug("cost alert already fired, ruleId={}, date={}, scope={}", rule.id, date, rule.scopeValue);
-            return false;
-        }
+        if (eventStore.insertIfAbsent(event)) return true;
+        LOGGER.debug("cost alert already fired, ruleId={}, date={}, scope={}", rule.id, date, rule.scopeValue);
+        return false;
     }
 
     @SuppressWarnings("unchecked")
@@ -228,3 +222,4 @@ public class CostAlertService {
     record UsageAgg(double costUsd, long totalTokens, long inputTokens, long outputTokens, long callCount) {
     }
 }
+

@@ -56,8 +56,8 @@ class SandboxSnapshotServiceTest {
         epochs = mock(MongoCollection.class);
         storage = mock(ObjectStorageService.class);
         client = mock(SandboxSnapshotClient.class);
-        service.snapshotCollection = snapshots;
-        service.epochCollection = epochs;
+        service.snapshotStore = MongoSandboxSnapshotStore.of(snapshots);
+        service.epochStore = MongoSandboxEpochStore.of(epochs);
         service.client = client;
         policy = mock(SandboxSnapshotPolicy.class);
         when(policy.decision()).thenReturn(decision(true, storage));
@@ -363,3 +363,4 @@ class SandboxSnapshotServiceTest {
         verify(client, never()).restore(anyString(), anyInt(), any(Path.class), anyString());
     }
 }
+
