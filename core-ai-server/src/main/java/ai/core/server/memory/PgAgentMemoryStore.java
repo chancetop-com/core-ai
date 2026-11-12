@@ -140,7 +140,7 @@ public class PgAgentMemoryStore implements AgentMemoryStore {
             memory.id,
             memory.agentId,
             memory.type,
-            memory.layer != null ? memory.layer.mongoValue() : null,
+            memory.layer != null ? memory.layer.mongoValue() : "methods",
             JsonSanitizer.text(memory.content),
             memory.createdAt,
             memory.updatedAt,
@@ -148,4 +148,5 @@ public class PgAgentMemoryStore implements AgentMemoryStore {
         };
     }
 }
+
 
