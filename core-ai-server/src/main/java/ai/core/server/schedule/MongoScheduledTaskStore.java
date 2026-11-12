@@ -3,6 +3,8 @@ package ai.core.server.schedule;
 import ai.core.schedule.CronExpression;
 import ai.core.schedule.ScheduledTask;
 import ai.core.schedule.ScheduledTaskStore;
+import core.framework.mongo.Query;
+import com.mongodb.client.model.Sorts;
 import ai.core.server.domain.SessionSchedule;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -20,7 +22,7 @@ import java.util.List;
  *
  * @author stephen
  */
-public class MongoScheduledTaskStore implements ScheduledTaskStore {
+public class MongoScheduledTaskStore implements SessionScheduleStore {
     @Inject
     MongoCollection<SessionSchedule> sessionScheduleCollection;
 
@@ -49,6 +51,41 @@ public class MongoScheduledTaskStore implements ScheduledTaskStore {
     @Override
     public boolean delete(String id) {
         return sessionScheduleCollection.delete(id);
+    }
+
+    @Override
+    public List<ScheduledTask> listPage(int offset, int limit) {
+        var query = new Query();
+        query.sort = Sorts.descending("created_at");
+        query.skip = offset;
+        query.limit = limit;
+        return sessionScheduleCollection.find(query).stream().map(this::toTask).toList();
+    }
+
+    @Override
+    public long count() {
+        return sessionScheduleCollection.count(Filters.empty());
+    }
+
+    @Override
+    public ScheduledTask updateEnabled(String id, boolean enabled) {
+        var entity = sessionScheduleCollection.get(id).orElse(null);
+        if (entity == null) return null;
+        entity.enabled = enabled;
+        entity.updatedAt = ZonedDateTime.now();
+        sessionScheduleCollection.replace(entity);
+        return toTask(entity);
+    }
+
+    @Override
+    public boolean insertIfAbsent(ScheduledTask task) {
+        try {
+            sessionScheduleCollection.insert(toEntity(task));
+            return true;
+        } catch (com.mongodb.MongoWriteException e) {
+            if (e.getCode() == 11000) return false;
+            throw e;
+        }
     }
 
     @Override
@@ -103,3 +140,5 @@ public class MongoScheduledTaskStore implements ScheduledTaskStore {
         return task;
     }
 }
+
+

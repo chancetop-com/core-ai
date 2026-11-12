@@ -1,6 +1,5 @@
 package ai.core.server;
 
-import ai.core.schedule.ScheduledTaskStore;
 import ai.core.server.a2a.A2AEventRelay;
 import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.messaging.EventPublisher;
@@ -8,7 +7,6 @@ import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
-import ai.core.server.schedule.MongoScheduledTaskStore;
 import ai.core.server.web.PodLocalExecutor;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
@@ -35,9 +33,6 @@ class MessagingInfrastructureModule extends Module {
         bind(PodLocalExecutor.class);
         bind(JedisPool.class, jedisPool);
         onShutdown(jedisPool::close);
-        // bound early so session/tool assembly paths (AgentSessionManager, ToolRegistryService)
-        // can @Inject the store before SessionSchedulerModule loads; the interface binding is
-        // required because core-ng resolves dependencies by exact type
-        bind(ScheduledTaskStore.class, bind(MongoScheduledTaskStore.class));
     }
 }
+

@@ -7,9 +7,7 @@ import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.schedule.CronExpression;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 
 import java.time.ZoneId;
@@ -21,7 +19,7 @@ import java.util.UUID;
  */
 public class AgentScheduleService {
     @Inject
-    MongoCollection<AgentSchedule> agentScheduleCollection;
+    AgentScheduleStore agentScheduleStore;
     @Inject
     ai.core.server.project.ProjectSubjectStore subjectStore;
 
@@ -50,26 +48,26 @@ public class AgentScheduleService {
         var cron = new CronExpression(entity.cronExpression);
         entity.nextRunAt = cron.nextAfter(ZonedDateTime.now(), zone);
 
-        agentScheduleCollection.insert(entity);
+        agentScheduleStore.insert(entity);
         return toView(entity);
     }
 
     public ListSchedulesResponse listByAgent(String agentId) {
-        var schedules = agentScheduleCollection.find(Filters.eq("agent_id", agentId));
+        var schedules = agentScheduleStore.listByAgentId(agentId);
         var response = new ListSchedulesResponse();
         response.schedules = schedules.stream().map(this::toView).toList();
         return response;
     }
 
     public ListSchedulesResponse list() {
-        var schedules = agentScheduleCollection.find(Filters.empty());
+        var schedules = agentScheduleStore.list();
         var response = new ListSchedulesResponse();
         response.schedules = schedules.stream().map(this::toView).toList();
         return response;
     }
 
     public AgentScheduleView update(String id, UpdateScheduleRequest request) {
-        var entity = agentScheduleCollection.get(id)
+        var entity = agentScheduleStore.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
         if (request.name != null) entity.name = request.name;
@@ -101,7 +99,7 @@ public class AgentScheduleService {
             entity.nextRunAt = cron.nextAfter(ZonedDateTime.now(), zone);
         }
 
-        agentScheduleCollection.replace(entity);
+        agentScheduleStore.replace(entity);
         return toView(entity);
     }
 
@@ -123,7 +121,7 @@ public class AgentScheduleService {
     }
 
     public void delete(String id) {
-        agentScheduleCollection.delete(id);
+        agentScheduleStore.delete(id);
     }
 
     private AgentScheduleView toView(AgentSchedule entity) {
@@ -148,3 +146,6 @@ public class AgentScheduleService {
         return view;
     }
 }
+
+
+

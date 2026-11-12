@@ -67,5 +67,12 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgAgentVersionCountRow.class);
         db().view(ai.core.server.comparison.PgAgentVersionMigrationLockRow.class);
         db().view(ai.core.server.comparison.PgAgentVersionMigrationMarkerRow.class);
+        db().view(ai.core.server.schedule.PgAgentScheduleRow.class);
+        db().view(ai.core.server.schedule.PgAgentScheduleMigrationLockRow.class);
+        db().view(ai.core.server.schedule.PgAgentScheduleMigrationMarkerRow.class);
+        db().view(ai.core.server.schedule.PgSessionScheduleRow.class);
+        db().view(ai.core.server.schedule.PgSessionScheduleCountRow.class);
+        db().view(ai.core.server.schedule.PgSessionScheduleMigrationLockRow.class);
+        db().view(ai.core.server.schedule.PgSessionScheduleMigrationMarkerRow.class);
     }
 }

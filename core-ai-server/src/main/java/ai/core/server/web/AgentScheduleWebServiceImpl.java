@@ -13,23 +13,19 @@ import ai.core.api.server.schedule.SessionScheduleView;
 import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.api.server.schedule.UpdateSessionScheduleRequest;
 import ai.core.server.agent.PersonalAssistantService;
-import ai.core.server.domain.AgentSchedule;
-import ai.core.server.domain.SessionSchedule;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.schedule.ScheduledTask;
 import ai.core.server.schedule.AgentScheduleService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
+import ai.core.server.schedule.AgentScheduleStore;
+import ai.core.server.schedule.SessionScheduleStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.WebContext;
 
-import java.time.ZonedDateTime;
 
 /**
  * @author stephen
@@ -42,11 +38,11 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     @Inject
     AgentRunner agentRunner;
     @Inject
-    MongoCollection<AgentSchedule> agentScheduleCollection;
+    AgentScheduleStore agentScheduleStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<SessionSchedule> sessionScheduleCollection;
+    SessionScheduleStore sessionScheduleStore;
     @Inject
     PersonalAssistantService personalAssistantService;
 
@@ -75,14 +71,10 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     public ListSessionSchedulesResponse listSessionSchedules(ListSessionSchedulesRequest request) {
         int limit = request.limit == null ? 50 : Math.clamp(request.limit, 1, 200);
         int offset = request.offset == null ? 0 : Math.max(request.offset, 0);
-        var query = new Query();
-        query.sort = Sorts.descending("created_at");
-        query.skip = offset;
-        query.limit = limit;
         var response = new ListSessionSchedulesResponse();
-        response.sessionSchedules = sessionScheduleCollection.find(query)
+        response.sessionSchedules = sessionScheduleStore.listPage(offset, limit)
                 .stream().map(this::toSessionScheduleView).toList();
-        response.total = sessionScheduleCollection.count(Filters.empty());
+        response.total = sessionScheduleStore.count();
         return response;
     }
 
@@ -91,15 +83,12 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     public SessionScheduleView updateSessionSchedule(String id, UpdateSessionScheduleRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        var entity = sessionScheduleCollection.get(id)
-                .orElseThrow(() -> new RuntimeException("session schedule not found, id=" + id));
-        entity.enabled = request.enabled;
-        entity.updatedAt = ZonedDateTime.now();
-        sessionScheduleCollection.replace(entity);
-        return toSessionScheduleView(entity);
+        var task = sessionScheduleStore.updateEnabled(id, request.enabled);
+        if (task == null) throw new RuntimeException("session schedule not found, id=" + id);
+        return toSessionScheduleView(task);
     }
 
-    private SessionScheduleView toSessionScheduleView(SessionSchedule entity) {
+    private SessionScheduleView toSessionScheduleView(ScheduledTask entity) {
         var view = new SessionScheduleView();
         view.id = entity.id;
         view.sessionId = entity.sessionId;
@@ -137,7 +126,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
 
-        var schedule = agentScheduleCollection.get(id)
+        var schedule = agentScheduleStore.get(id)
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
         var agentId = personalAssistantService.resolve(schedule.agentId, schedule.userId);
@@ -161,3 +150,6 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
         return response;
     }
 }
+
+
+

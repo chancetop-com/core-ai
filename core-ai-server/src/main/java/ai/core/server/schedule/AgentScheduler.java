@@ -10,8 +10,6 @@ import ai.core.server.domain.ConcurrencyPolicy;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -28,7 +26,7 @@ public class AgentScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(AgentScheduler.class);
 
     @Inject
-    MongoCollection<AgentSchedule> agentScheduleCollection;
+    AgentScheduleStore agentScheduleStore;
 
     @Inject
     AgentDefinitionStore agentDefinitionStore;
@@ -44,12 +42,7 @@ public class AgentScheduler {
 
     public void evaluate() {
         var now = ZonedDateTime.now();
-        var dueSchedules = agentScheduleCollection.find(
-            Filters.and(
-                Filters.eq("enabled", Boolean.TRUE),
-                Filters.lte("next_run_at", now)
-            )
-        );
+        var dueSchedules = agentScheduleStore.listDue(now);
 
         int dueCount = 0;
         for (var schedule : dueSchedules) {
@@ -75,16 +68,10 @@ public class AgentScheduler {
         var cron = new CronExpression(schedule.cronExpression);
         var nextRunAt = cron.nextAfter(now, zone);
 
-        long updated = agentScheduleCollection.update(
-            Filters.and(
-                Filters.eq("_id", schedule.id),
-                Filters.lte("next_run_at", now)
-            ),
-            Updates.set("next_run_at", nextRunAt)
-        );
+        boolean updated = agentScheduleStore.claim(schedule.id, now, nextRunAt);
 
         // If updated == 0, another replica already claimed this schedule
-        if (updated == 0) return;
+        if (!updated) return;
 
         try {
             fireClaimed(schedule);
@@ -129,13 +116,7 @@ public class AgentScheduler {
         try {
             // CAS guarded by the claimed value so a concurrent user edit (which recomputes
             // next_run_at) is never overwritten by the rollback.
-            agentScheduleCollection.update(
-                Filters.and(
-                    Filters.eq("_id", schedule.id),
-                    Filters.eq("next_run_at", claimedNextRunAt)
-                ),
-                Updates.set("next_run_at", schedule.nextRunAt)
-            );
+            agentScheduleStore.rollback(schedule.id, claimedNextRunAt, schedule.nextRunAt);
             LOGGER.warn("rolled back schedule claim for retry on next tick, scheduleId={}", schedule.id);
         } catch (Exception e) {
             LOGGER.error("failed to roll back schedule claim, occurrence lost, scheduleId={}", schedule.id, e);
@@ -157,3 +138,5 @@ public class AgentScheduler {
         agentRunCollection.insert(run);
     }
 }
+
+

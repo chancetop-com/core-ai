@@ -2,7 +2,7 @@ package ai.core.server.project;
 
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
-import ai.core.server.domain.AgentSchedule;
+import ai.core.server.schedule.AgentScheduleStore;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
@@ -36,7 +36,7 @@ public class ProjectArtifactBinder {
     @Inject
     ProjectAttributionStore store;
     @Inject
-    MongoCollection<AgentSchedule> scheduleCollection;
+    AgentScheduleStore scheduleStore;
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
@@ -126,7 +126,7 @@ public class ProjectArtifactBinder {
     }
 
     private Binding scheduleBinding(String scheduleId) {
-        var schedule = scheduleCollection.get(scheduleId).orElse(null);
+        var schedule = scheduleStore.get(scheduleId).orElse(null);
         if (schedule == null || schedule.subjectId == null || schedule.subjectId.isBlank()) return null;
         var subject = store.subject(schedule.subjectId).orElse(null);
         if (subject == null) return null;
@@ -141,3 +141,5 @@ public class ProjectArtifactBinder {
         static final ParentArtifacts EMPTY = new ParentArtifacts(null, List.of());
     }
 }
+
+

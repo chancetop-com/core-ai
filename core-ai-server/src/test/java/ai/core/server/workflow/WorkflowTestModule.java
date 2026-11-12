@@ -2,6 +2,8 @@ package ai.core.server.workflow;
 
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.agent.MongoAgentDefinitionStore;
+import ai.core.server.schedule.AgentScheduleStore;
+import ai.core.server.schedule.MongoAgentScheduleStore;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
@@ -200,6 +202,7 @@ public class WorkflowTestModule extends AbstractTestModule {
 
     private void bindProjectDataStores() {
         bind(AgentDefinitionStore.class, bind(MongoAgentDefinitionStore.class));
+        bind(AgentScheduleStore.class, bind(MongoAgentScheduleStore.class));
         bind(ai.core.server.project.ProjectSubjectStore.class, bind(ai.core.server.project.MongoProjectSubjectStore.class));
         bind(ai.core.server.project.ProjectEventStore.class, bind(ai.core.server.project.MongoProjectEventStore.class));
         bind(ai.core.server.project.ProjectAttributionRepository.class, bind(ai.core.server.project.MongoProjectAttributionRepository.class));
@@ -208,3 +211,4 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(ai.core.server.project.ProjectStatsStore.class, bind(ai.core.server.project.MongoProjectStatsStore.class));
     }
 }
+

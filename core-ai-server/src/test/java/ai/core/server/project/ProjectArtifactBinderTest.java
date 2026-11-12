@@ -63,7 +63,7 @@ class ProjectArtifactBinderTest {
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
         runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         binder.store = store;
-        binder.scheduleCollection = schedules;
+        binder.scheduleStore = ai.core.server.schedule.MongoAgentScheduleStore.of(schedules);
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
         binder.chatSessionStore = chatSessionStore;
         binder.agentRunCollection = runs;
@@ -187,3 +187,4 @@ class ProjectArtifactBinderTest {
         verify(store, never()).attributeFile(any(), any(), any(), any(), any(), any());
     }
 }
+

@@ -16,6 +16,8 @@ import ai.core.server.comparison.ComparisonModule;
 import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonVote;
+import ai.core.server.schedule.AgentScheduleStoreModule;
+import ai.core.server.schedule.SessionScheduleStoreModule;
 import ai.core.server.costalert.CostAlertEvent;
 import ai.core.server.costalert.CostAlertModule;
 import ai.core.server.costalert.CostAlertRule;
@@ -126,6 +128,8 @@ public class ServerApp extends App {
         // agent definitions are read by project attribution/session runtime during startup wiring
         load(new AgentDefinitionStoreModule());
         load(new AgentVersionStoreModule());
+        load(new AgentScheduleStoreModule());
+        load(new SessionScheduleStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly
@@ -379,4 +383,6 @@ public class ServerApp extends App {
         mongo.view(ArtifactRef.class);
     }
 }
+
+
 
