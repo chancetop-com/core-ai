@@ -74,5 +74,18 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.schedule.PgSessionScheduleCountRow.class);
         db().view(ai.core.server.schedule.PgSessionScheduleMigrationLockRow.class);
         db().view(ai.core.server.schedule.PgSessionScheduleMigrationMarkerRow.class);
+        db().view(ai.core.server.task.PgBackgroundTaskRow.class);
+        db().view(ai.core.server.task.PgBackgroundTaskMigrationLockRow.class);
+        db().view(ai.core.server.task.PgBackgroundTaskMigrationMarkerRow.class);
+        db().view(ai.core.server.asynctask.PgAsyncTaskRow.class);
+        db().view(ai.core.server.asynctask.PgAsyncTaskMigrationLockRow.class);
+        db().view(ai.core.server.asynctask.PgAsyncTaskMigrationMarkerRow.class);
+        db().view(ai.core.server.notification.PgNotificationRow.class);
+        db().view(ai.core.server.notification.PgNotificationCountRow.class);
+        db().view(ai.core.server.notification.PgNotificationMigrationLockRow.class);
+        db().view(ai.core.server.notification.PgNotificationMigrationMarkerRow.class);
     }
 }
+
+
+

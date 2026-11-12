@@ -130,6 +130,8 @@ public class ServerApp extends App {
         load(new AgentVersionStoreModule());
         load(new AgentScheduleStoreModule());
         load(new SessionScheduleStoreModule());
+        load(new BackgroundTaskStoreModule());
+        load(new NotificationStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly
@@ -383,6 +385,9 @@ public class ServerApp extends App {
         mongo.view(ArtifactRef.class);
     }
 }
+
+
+
 
 
 

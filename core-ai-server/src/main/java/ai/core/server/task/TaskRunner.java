@@ -1,12 +1,7 @@
 package ai.core.server.task;
 
 import ai.core.server.domain.BackgroundTask;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +47,7 @@ public class TaskRunner {
     }
 
     @Inject
-    MongoCollection<BackgroundTask> taskCollection;
+    BackgroundTaskStore taskStore;
 
     private final String podName;
     private final Map<String, AbstractTask> tasks = new ConcurrentHashMap<>();
@@ -88,14 +83,9 @@ public class TaskRunner {
         record.startedAt = ZonedDateTime.now();
         record.retryCount = 0;
 
-        try {
-            taskCollection.insert(record);
-        } catch (MongoWriteException e) {
-            if (e.getCode() == 11000) { // DuplicateKey
-                LOGGER.debug("task already claimed, skipping, taskId={}", taskId);
-                return;
-            }
-            throw e;
+        if (!taskStore.insertIfAbsent(record)) {
+            LOGGER.debug("task already claimed, skipping, taskId={}", taskId);
+            return;
         }
 
         executeAndUpdate(task, taskId, record, 0);
@@ -108,26 +98,15 @@ public class TaskRunner {
      * @return true if the retry was accepted (task was in FAILED state), false otherwise
      */
     public boolean retry(AbstractTask task, String taskId) {
-        var existing = taskCollection.get(taskId);
+        var existing = taskStore.get(taskId);
         if (existing.isEmpty() || existing.get().status != TaskStatus.FAILED) {
             return false;
         }
 
         var record = existing.get();
-        long updated = taskCollection.update(
-            Filters.and(
-                Filters.eq("_id", taskId),
-                Filters.eq("status", TaskStatus.FAILED)
-            ),
-            Updates.combine(
-                Updates.set("status", TaskStatus.RUNNING),
-                Updates.set("claimed_by", podName),
-                Updates.set("started_at", ZonedDateTime.now()),
-                Updates.inc("retry_count", 1)
-            )
-        );
+        boolean updated = taskStore.retryClaim(taskId, podName, ZonedDateTime.now());
 
-        if (updated == 0) {
+        if (!updated) {
             LOGGER.debug("task retry race lost, taskId={}", taskId);
             return false;
         }
@@ -146,13 +125,7 @@ public class TaskRunner {
      * List tasks, ordered by id descending (newest first), with optional type filter.
      */
     public List<BackgroundTask> list(String type, int limit) {
-        var query = new Query();
-        if (type != null && !type.isBlank()) {
-            query.filter = Filters.eq("type", type);
-        }
-        query.sort = com.mongodb.client.model.Sorts.descending("_id");
-        query.limit = Math.min(limit, 100);
-        return taskCollection.find(query);
+        return taskStore.list(type, limit);
     }
 
     private void executeAndUpdate(AbstractTask task, String taskId, BackgroundTask record, int retryCount) {
@@ -181,6 +154,7 @@ public class TaskRunner {
         record.completedAt = ZonedDateTime.now();
         record.logs = ctx.logs();
         record.taskState = ctx.state();
-        taskCollection.replace(record);
+        taskStore.replace(record);
     }
 }
+

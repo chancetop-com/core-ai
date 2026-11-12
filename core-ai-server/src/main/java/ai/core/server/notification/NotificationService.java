@@ -4,12 +4,7 @@ import ai.core.server.domain.Notification;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationStatus;
 import ai.core.server.domain.NotificationType;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,7 +19,7 @@ public class NotificationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(NotificationService.class);
 
     @Inject
-    MongoCollection<Notification> notificationCollection;
+    NotificationStore notificationStore;
     @Inject
     NotificationEventPublisher eventPublisher;
 
@@ -41,7 +36,7 @@ public class NotificationService {
         notification.sessionId = ctx.sessionId;
         notification.status = NotificationStatus.UNREAD;
         notification.createdAt = ZonedDateTime.now();
-        notificationCollection.insert(notification);
+        notificationStore.insert(notification);
         LOGGER.info("notification created, id={}, userId={}, type={}, title={}", notification.id, userId, type, title);
 
         eventPublisher.push(userId, notification);
@@ -50,59 +45,30 @@ public class NotificationService {
 
     public List<Notification> list(String userId, NotificationCategory category,
                                     NotificationStatus status, int offset, int limit) {
-        var filters = Filters.eq("user_id", userId);
-        if (category != null) {
-            filters = Filters.and(filters, Filters.eq("category", category));
-        }
-        if (status != null) {
-            filters = Filters.and(filters, Filters.eq("status", status));
-        }
-        var query = new Query();
-        query.filter = filters;
-        query.sort = Sorts.descending("created_at");
-        query.skip = offset;
-        query.limit = limit;
-        return notificationCollection.find(query);
+        return notificationStore.list(userId, category, status, offset, limit);
     }
 
     public long count(String userId, NotificationCategory category, NotificationStatus status) {
-        var filters = Filters.eq("user_id", userId);
-        if (category != null) {
-            filters = Filters.and(filters, Filters.eq("category", category));
-        }
-        if (status != null) {
-            filters = Filters.and(filters, Filters.eq("status", status));
-        }
-        return notificationCollection.count(filters);
+        return notificationStore.count(userId, category, status);
     }
 
     public long unreadCount(String userId) {
-        var filters = Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("status", NotificationStatus.UNREAD));
-        return notificationCollection.count(filters);
+        return notificationStore.unreadCount(userId);
     }
 
     public void markRead(String notificationId, String userId) {
-        long updated = notificationCollection.update(
-            Filters.and(Filters.eq("_id", notificationId), Filters.eq("user_id", userId)),
-            Updates.combine(
-                Updates.set("status", NotificationStatus.READ),
-                Updates.set("read_at", ZonedDateTime.now())));
-        if (updated > 0) {
-            LOGGER.debug("notification marked read, id={}, userId={}", notificationId, userId);
-        }
+        notificationStore.markRead(notificationId, userId);
+        LOGGER.debug("notification marked read, id={}, userId={}", notificationId, userId);
     }
 
     public void markAllRead(String userId) {
-        long updated = notificationCollection.update(
-            Filters.and(Filters.eq("user_id", userId), Filters.eq("status", NotificationStatus.UNREAD)),
-            Updates.combine(
-                Updates.set("status", NotificationStatus.READ),
-                Updates.set("read_at", ZonedDateTime.now())));
+        long updated = notificationStore.markAllRead(userId);
         LOGGER.info("notifications marked all read, userId={}, count={}", userId, updated);
     }
 
     public record CreateContext(String agentId, String sessionId) {
     }
 }
+
+
+

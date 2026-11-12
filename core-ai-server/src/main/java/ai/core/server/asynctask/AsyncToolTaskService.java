@@ -1,5 +1,6 @@
 package ai.core.server.asynctask;
 
+import ai.core.persistence.PersistenceProvider;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
@@ -36,7 +37,7 @@ public class AsyncToolTaskService {
     private static final int MAX_NOTIFICATION_RESULT_LENGTH = 30 * 1024;
 
     @Inject
-    MongoAsyncTaskPersistence persistence;
+    PersistenceProvider persistence;
     @Inject
     ToolRegistryService toolRegistryService;
     @Inject
@@ -155,7 +156,7 @@ public class AsyncToolTaskService {
     static final class ServerAsyncTaskManager extends ToolCallAsyncTaskManager {
         private final ToolRegistryService toolRegistryService;
 
-        ServerAsyncTaskManager(MongoAsyncTaskPersistence persistence, ToolRegistryService toolRegistryService) {
+        ServerAsyncTaskManager(PersistenceProvider persistence, ToolRegistryService toolRegistryService) {
             super(persistence);
             this.toolRegistryService = toolRegistryService;
         }
@@ -167,3 +168,4 @@ public class AsyncToolTaskService {
         }
     }
 }
+
