@@ -4,7 +4,6 @@ import ai.core.api.server.session.SessionConfig;
 import ai.core.decision.DecisionProvider;
 import ai.core.media.MediaProvider;
 import ai.core.server.agent.AgentDefinitionService;
-import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
@@ -28,7 +27,7 @@ public class SessionAgentHelper {
     SessionOwnershipRegistry ownershipRegistry;
     /** Read by SessionRebuildManager (through AgentSessionManager.Deps) to resolve comparison variants. */
     @Inject
-    MongoCollection<AgentComparison> agentComparisonCollection;
+    ai.core.server.comparison.AgentComparisonStore agentComparisonStore;
 
     List<AgentDatasetConfig> resolveDatasetConfig(AgentDefinition definition, SessionConfig config, SessionConfig overrides) {
         var datasetConfig = AgentDefinitionService.resolveDatasetConfig(definition);
@@ -67,3 +66,6 @@ public class SessionAgentHelper {
         if (ownershipRegistry != null) ownershipRegistry.release(sessionId);
     }
 }
+
+
+

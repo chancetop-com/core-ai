@@ -8,15 +8,11 @@ import ai.core.api.server.comparison.ListAgentVersionsResponse;
 import ai.core.api.server.comparison.UpdateAgentVersionRequest;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentExecutableConfigFactory;
-import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
@@ -50,7 +46,7 @@ public class AgentVersionService {
     @Inject
     AgentVersionStore agentVersionStore;
     @Inject
-    MongoCollection<AgentComparison> comparisonCollection;
+    AgentComparisonStore comparisonStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
@@ -114,9 +110,10 @@ public class AgentVersionService {
         requireAgentOwnerOrAdmin(version.agentId, userId);
         // a version feeding a live experiment must survive until that experiment ends (its sides are
         // re-resolved at start), so only completed experiments let go of their references
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", version.agentId);
-        for (var comparison : comparisonCollection.find(query)) {
+        var query = new AgentComparisonQuery();
+        query.agentId = version.agentId;
+        query.limit = 1000;
+        for (var comparison : comparisonStore.find(query)) {
             if (comparison.status == ComparisonStatus.ENDED) continue;
             if (id.equals(comparison.versionAId) || id.equals(comparison.versionBId)) {
                 throw new BadRequestException("version is used by an unfinished experiment");
@@ -154,5 +151,8 @@ public class AgentVersionService {
         throw new ForbiddenException("only the agent owner or admin can manage versions");
     }
 }
+
+
+
 
 

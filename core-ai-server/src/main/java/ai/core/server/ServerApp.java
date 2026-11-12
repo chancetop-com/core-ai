@@ -138,6 +138,7 @@ public class ServerApp extends App {
         load(new HubCallStoreModule());
         load(new AgentRunStoreModule());
         load(new AgentMemoryStoreModule());
+        load(new AgentComparisonStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly
@@ -391,6 +392,7 @@ public class ServerApp extends App {
         mongo.view(ArtifactRef.class);
     }
 }
+
 
 
 

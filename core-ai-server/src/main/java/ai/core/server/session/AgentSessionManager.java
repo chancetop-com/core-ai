@@ -132,7 +132,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionStore, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonCollection));
+                    ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonStore));
         }
         return rebuildManager;
     }
@@ -444,3 +444,4 @@ public class AgentSessionManager {
     public record SessionCreationResult(String sessionId, List<String> loadedSubAgentIds, List<String> loadedSkillIds, AgentDefinition executableDefinition) { }
     private record AgentBuildResult(Agent agent, InProcessAgentSession[] sessionRef) { }
 }
+

@@ -16,11 +16,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -122,7 +118,7 @@ public class ComparisonViewAssembler {
     }
 
     @Inject
-    MongoCollection<ComparisonVote> voteCollection;
+    ComparisonVoteStore voteStore;
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
@@ -176,10 +172,7 @@ public class ComparisonViewAssembler {
     }
 
     public List<ComparisonVoteView> votesOf(String comparisonId) {
-        var query = new Query();
-        query.filter = Filters.eq("comparison_id", comparisonId);
-        query.sort = Sorts.ascending("created_at");
-        return voteCollection.find(query).stream().map(ComparisonViewAssembler::toVoteView).toList();
+        return voteStore.findByComparison(comparisonId).stream().map(ComparisonViewAssembler::toVoteView).toList();
     }
 
     private AgentComparisonView baseView(AgentComparison comparison) {
@@ -244,8 +237,7 @@ public class ComparisonViewAssembler {
         } else {
             view.turnCount = 0;
         }
-        view.voteCount = sessionA != null ? (int) voteCollection.count(Filters.and(
-            Filters.eq("comparison_id", comparisonId), Filters.eq("session_a", sessionA.id))) : 0;
+        view.voteCount = sessionA != null ? (int) voteStore.countBySessionA(comparisonId, sessionA.id) : 0;
         return view;
     }
 
@@ -260,3 +252,5 @@ public class ComparisonViewAssembler {
         return agent != null && Objects.equals(agent.updatedAt, comparison.adoptAgentUpdatedAt);
     }
 }
+
+

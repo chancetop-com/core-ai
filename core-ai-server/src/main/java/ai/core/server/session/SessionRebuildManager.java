@@ -16,7 +16,6 @@ import ai.core.server.file.FileService;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.UserIdentityPrompt;
 import ai.core.server.comparison.ComparisonVariantDefinitionFactory;
-import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatSession;
@@ -83,7 +82,7 @@ public class SessionRebuildManager {
     private final AgentMemoryService agentMemoryService;
     private final SessionSearchService sessionSearchService;
     private final SessionReadService sessionReadService;
-    private final MongoCollection<AgentComparison> comparisonCollection;
+    private final ai.core.server.comparison.AgentComparisonStore comparisonStore;
     private final SessionRestoreHelper restoreHelper;
     private final SessionContextBuilder contextBuilder;
     private final TurnStateRegistry turnStateRegistry;
@@ -111,7 +110,7 @@ public class SessionRebuildManager {
         this.agentMemoryService = deps.agentMemoryService;
         this.sessionSearchService = deps.sessionSearchService;
         this.sessionReadService = deps.sessionReadService;
-        this.comparisonCollection = deps.comparisonCollection;
+        this.comparisonStore = deps.comparisonStore;
         this.turnStateRegistry = deps.turnStateRegistry;
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
@@ -175,8 +174,8 @@ public class SessionRebuildManager {
      * agent instead of going dark.
      */
     private AgentDefinition comparisonVariantDefinition(ChatSession meta) {
-        if (comparisonCollection == null) return null;
-        var comparison = comparisonCollection.get(meta.comparisonId).orElse(null);
+        if (comparisonStore == null) return null;
+        var comparison = comparisonStore.get(meta.comparisonId).orElse(null);
         var variant = comparison != null
                 ? ComparisonVariantDefinitionFactory.variantOf(comparison, meta.comparisonVariant)
                 : null;
@@ -444,6 +443,10 @@ public class SessionRebuildManager {
                         ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
                         SessionCompletionNotifier sessionCompletionNotifier,
                                   SessionReadService sessionReadService,
-                        MongoCollection<AgentComparison> comparisonCollection) {
+                        ai.core.server.comparison.AgentComparisonStore comparisonStore) {
     }
 }
+
+
+
+

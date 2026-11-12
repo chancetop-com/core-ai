@@ -82,7 +82,7 @@ class AgentComparisonServiceTest {
 
     @BeforeEach
     void setUp() {
-        service.comparisonCollection = comparisons;
+        service.comparisonStore = MongoAgentComparisonStore.of(comparisons);
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
         service.assembler = assembler;
         service.adoptionService = adoptionService;
@@ -175,3 +175,4 @@ class AgentComparisonServiceTest {
         verify(adoptionService, never()).revert(any(), any());
     }
 }
+

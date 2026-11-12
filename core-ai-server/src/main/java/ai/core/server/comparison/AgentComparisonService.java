@@ -21,16 +21,11 @@ import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.Comparator;
@@ -55,7 +50,7 @@ public class AgentComparisonService {
     }
 
     @Inject
-    MongoCollection<AgentComparison> comparisonCollection;
+    AgentComparisonStore comparisonStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
@@ -106,7 +101,7 @@ public class AgentComparisonService {
         comparison.createdBy = userId;
         comparison.createdAt = ZonedDateTime.now();
         comparison.updatedAt = comparison.createdAt;
-        comparisonCollection.insert(comparison);
+        comparisonStore.insert(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -124,29 +119,29 @@ public class AgentComparisonService {
         if (request != null && request.agentId != null && !request.agentId.isBlank()) {
             var agent = agentDefinitionService.getEntity(request.agentId);
             requireAgentOwnerOrAdmin(agent, userId);
-            return findComparisons(Filters.eq("agent_id", agent.id), 100);
+            return findComparisons(query(query -> query.agentId = agent.id, 100));
         }
         if (ComparisonAccess.isAdmin(userStore, userId)) {
-            var query = new Query();
-            query.sort = Sorts.descending("created_at");
-            query.limit = 200;
-            return comparisonCollection.find(query);
+            return findComparisons(query(null, 200));
         }
         var merged = new LinkedHashMap<String, AgentComparison>();
-        for (var comparison : findComparisons(Filters.eq("created_by", userId), 100)) merged.put(comparison.id, comparison);
-        for (var comparison : findComparisons(Filters.eq("participant_user_ids", userId), 100)) merged.put(comparison.id, comparison);
+        for (var comparison : findComparisons(query(query -> query.createdBy = userId, 100))) merged.put(comparison.id, comparison);
+        for (var comparison : findComparisons(query(query -> query.participantUserId = userId, 100))) merged.put(comparison.id, comparison);
         return merged.values().stream()
             .sorted(Comparator.comparing((AgentComparison comparison) -> comparison.createdAt, Comparator.nullsLast(Comparator.reverseOrder())))
             .limit(200)
             .toList();
     }
 
-    private List<AgentComparison> findComparisons(Bson filter, int limit) {
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending("created_at");
+    private AgentComparisonQuery query(java.util.function.Consumer<AgentComparisonQuery> customizer, int limit) {
+        var query = new AgentComparisonQuery();
         query.limit = limit;
-        return comparisonCollection.find(query);
+        if (customizer != null) customizer.accept(query);
+        return query;
+    }
+
+    private List<AgentComparison> findComparisons(AgentComparisonQuery query) {
+        return comparisonStore.find(query);
     }
 
     /**
@@ -186,7 +181,7 @@ public class AgentComparisonService {
             applyUpdate(comparison, request);
         }
         comparison.updatedAt = ZonedDateTime.now();
-        comparisonCollection.replace(comparison);
+        comparisonStore.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -247,7 +242,7 @@ public class AgentComparisonService {
         comparison.status = ComparisonStatus.RUNNING;
         comparison.startedAt = ZonedDateTime.now();
         comparison.updatedAt = comparison.startedAt;
-        comparisonCollection.replace(comparison);
+        comparisonStore.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -271,7 +266,7 @@ public class AgentComparisonService {
         comparison.status = ComparisonStatus.ENDED;
         comparison.endedAt = ZonedDateTime.now();
         comparison.updatedAt = comparison.endedAt;
-        comparisonCollection.replace(comparison);
+        comparisonStore.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -292,7 +287,7 @@ public class AgentComparisonService {
         comparison.status = ComparisonStatus.RUNNING;
         comparison.endedAt = null;
         comparison.updatedAt = ZonedDateTime.now();
-        comparisonCollection.replace(comparison);
+        comparisonStore.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -315,7 +310,7 @@ public class AgentComparisonService {
         comparison.preAdoptConfig = null;
         comparison.adoptAgentUpdatedAt = null;
         comparison.updatedAt = ZonedDateTime.now();
-        comparisonCollection.replace(comparison);
+        comparisonStore.replace(comparison);
         return assembler.toDetailView(comparison, true);
     }
 
@@ -325,7 +320,7 @@ public class AgentComparisonService {
         if (comparison.status != ComparisonStatus.DRAFT) {
             throw new BadRequestException("only a draft comparison can be deleted; end a running test instead");
         }
-        comparisonCollection.delete(id);
+        comparisonStore.delete(id);
     }
 
     private ComparisonVariant newVariant(String label, AgentPublishedConfig config) {
@@ -400,15 +395,17 @@ public class AgentComparisonService {
     }
 
     private Optional<AgentComparison> runningComparison(String agentId, String excludeId) {
-        var comparison = comparisonCollection.findOne(Filters.and(
-            Filters.eq("agent_id", agentId),
-            Filters.eq("status", ComparisonStatus.RUNNING.name()))).orElse(null);
+        var query = new AgentComparisonQuery();
+        query.agentId = agentId;
+        query.status = ComparisonStatus.RUNNING;
+        query.limit = 1;
+        var comparison = comparisonStore.findOne(query).orElse(null);
         if (comparison == null || comparison.id.equals(excludeId)) return Optional.empty();
         return Optional.of(comparison);
     }
 
     private AgentComparison requireComparison(String id) {
-        return comparisonCollection.get(id)
+        return comparisonStore.get(id)
             .orElseThrow(() -> new NotFoundException("comparison not found, id=" + id));
     }
 
@@ -417,4 +414,7 @@ public class AgentComparisonService {
         throw new ForbiddenException("only the agent owner or admin can manage comparisons");
     }
 }
+
+
+
 

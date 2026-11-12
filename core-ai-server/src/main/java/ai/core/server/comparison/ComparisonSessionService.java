@@ -14,11 +14,7 @@ import ai.core.server.domain.ChatSession;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.systemprompt.SystemPromptService;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -34,7 +30,6 @@ import java.util.UUID;
  * @author stephen
  */
 public class ComparisonSessionService {
-    private static final int DUPLICATE_KEY_CODE = 11000;
 
     private static ComparisonVoteChoice parseChoice(String value) {
         if (value == null || value.isBlank()) throw new BadRequestException("chosen required");
@@ -46,9 +41,9 @@ public class ComparisonSessionService {
     }
 
     @Inject
-    MongoCollection<AgentComparison> comparisonCollection;
+    AgentComparisonStore comparisonStore;
     @Inject
-    MongoCollection<ComparisonVote> voteCollection;
+    ComparisonVoteStore voteStore;
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
@@ -113,7 +108,7 @@ public class ComparisonSessionService {
             plain.agentId = meta.agentId;
             return plain;
         }
-        var comparison = comparisonCollection.get(meta.comparisonId).orElse(null);
+        var comparison = comparisonStore.get(meta.comparisonId).orElse(null);
         if (comparison == null) throw new NotFoundException("comparison not found, id=" + meta.comparisonId);
 
         var pairRows = pairSessions(meta.comparisonPairId);
@@ -176,43 +171,33 @@ public class ComparisonSessionService {
         if (isNew) {
             insertVote(vote, comparisonId, sessionA.id, request.turn);
         } else {
-            voteCollection.replace(vote);
+            voteStore.replace(vote);
         }
         return ComparisonViewAssembler.toVoteView(vote);
     }
 
     private void insertVote(ComparisonVote vote, String comparisonId, String sessionAId, Long turn) {
-        try {
-            voteCollection.insert(vote);
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
-            // concurrent vote on the same turn: the unique anchor made one of them lose, fold into it
-            var existing = findVote(comparisonId, sessionAId, turn);
-            if (existing == null) throw e;
-            existing.pairId = vote.pairId;
-            existing.sessionB = vote.sessionB;
-            existing.chosen = vote.chosen;
-            existing.comment = vote.comment;
-            existing.messageA = vote.messageA;
-            existing.messageB = vote.messageB;
-            voteCollection.replace(existing);
-        }
+        if (voteStore.insertIfAbsent(vote)) return;
+        // concurrent vote on the same turn: the unique anchor made one of them lose, fold into it
+        var existing = findVote(comparisonId, sessionAId, turn);
+        if (existing == null) throw new IllegalStateException("concurrent comparison vote disappeared");
+        existing.pairId = vote.pairId;
+        existing.sessionB = vote.sessionB;
+        existing.chosen = vote.chosen;
+        existing.comment = vote.comment;
+        existing.messageA = vote.messageA;
+        existing.messageB = vote.messageB;
+        voteStore.replace(existing);
     }
 
     private ComparisonVote findVote(String comparisonId, String sessionAId, Long turn) {
-        return voteCollection.findOne(Filters.and(
-            Filters.eq("comparison_id", comparisonId),
-            Filters.eq("session_a", sessionAId),
-            Filters.eq("turn", turn))).orElse(null);
+        return voteStore.find(comparisonId, sessionAId, turn).orElse(null);
     }
 
     private List<ComparisonVoteView> pairVotes(String comparisonId, ChatSession sessionA) {
         if (sessionA == null) return List.of();
-        var query = new Query();
-        query.filter = Filters.and(
-            Filters.eq("comparison_id", comparisonId),
-            Filters.eq("session_a", sessionA.id));
-        return voteCollection.find(query).stream().map(ComparisonViewAssembler::toVoteView).toList();
+        return voteStore.findBySessionA(comparisonId, sessionA.id).stream()
+            .map(ComparisonViewAssembler::toVoteView).toList();
     }
 
     private List<ChatSession> pairSessions(String pairId) {
@@ -231,7 +216,12 @@ public class ComparisonSessionService {
     }
 
     private AgentComparison requireComparison(String id) {
-        return comparisonCollection.get(id)
+        return comparisonStore.get(id)
             .orElseThrow(() -> new NotFoundException("comparison not found, id=" + id));
     }
 }
+
+
+
+
+
