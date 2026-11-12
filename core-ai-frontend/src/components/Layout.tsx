@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -227,7 +227,17 @@ export default function Layout() {
         </nav>
 
         {/* Footer */}
-        <div className="p-2 border-t space-y-1" style={{ borderColor: 'var(--color-border)' }}>
+        <div className="p-2 border-t space-y-1 shrink-0" style={{ borderColor: 'var(--color-border)' }}>
+          <a href="/downloads/desktop"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Download core-ai-desktop"
+            title="Download core-ai-desktop (Windows x64 / macOS Apple Silicon)"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white w-full transition-opacity cursor-pointer hover:opacity-90 ${collapsed ? 'justify-center' : ''}`}
+            style={{ background: 'var(--color-primary)' }}>
+            <Download size={16} />
+            {!collapsed && 'Download Desktop'}
+          </a>
           {user && !collapsed && (
             <div className="px-3 py-1.5 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
               {user.name || user.userId}

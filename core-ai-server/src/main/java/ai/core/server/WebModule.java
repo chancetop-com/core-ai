@@ -1,5 +1,7 @@
 package ai.core.server;
 
+import ai.core.server.web.DesktopDownloadController;
+import ai.core.server.web.DesktopReleaseService;
 import ai.core.server.web.SpaRoutes;
 import ai.core.server.web.StaticFileController;
 import ai.core.server.web.WebAssetsUploader;
@@ -17,7 +19,13 @@ public class WebModule extends Module {
 
     @Override
     protected void initialize() {
+        registerDesktopDownload();
         registerStaticFiles();
+    }
+
+    private void registerDesktopDownload() {
+        bind(DesktopReleaseService.class);
+        http().route(HTTPMethod.GET, "/downloads/desktop", bind(DesktopDownloadController.class));
     }
 
     private void registerWebAssetsUploader(Path webDir, StaticFileController controller) {
