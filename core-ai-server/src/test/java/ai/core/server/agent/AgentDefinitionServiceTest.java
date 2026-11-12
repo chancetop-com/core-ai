@@ -14,6 +14,7 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
+import ai.core.server.user.UserStore;
 import ai.core.skill.SkillMetadata;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -248,6 +249,28 @@ class AgentDefinitionServiceTest {
         assertEquals(List.of("assistant:user-1", "recent-agent"), response.agents.stream().map(a -> a.id).toList());
         assertEquals("assistant:user-1", response.agents.get(0).id);
         assertEquals(2, response.total);
+    }
+
+    @Test
+    void listWithUnpaginatedRequestAcceptsReadOnlyStoreResults() {
+        var service = new AgentDefinitionService();
+        service.agentDefinitionStore = mock(AgentDefinitionStore.class);
+        service.userStore = mock(UserStore.class);
+        service.skillService = mock(SkillService.class);
+        service.systemPromptService = mock(SystemPromptService.class);
+        service.personalAssistantService = mock(PersonalAssistantService.class);
+        var recent = definition("recent-agent", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(service.agentDefinitionStore.find(any(AgentDefinitionQuery.class))).thenReturn(List.of(recent, assistant));
+        when(service.agentDefinitionStore.count(any(AgentDefinitionQuery.class))).thenReturn(2L);
+        when(service.userStore.get("user-1")).thenReturn(Optional.empty());
+        when(service.userStore.listByIds(any())).thenReturn(List.of());
+        when(service.personalAssistantService.findOrFork(any(), eq("user-1"))).thenReturn(assistant);
+
+        var response = service.list("user-1", new ListAgentsRequest());
+
+        assertEquals(List.of("assistant:user-1", "recent-agent"), response.agents.stream().map(a -> a.id).toList());
     }
 
     @Test

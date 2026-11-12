@@ -86,7 +86,8 @@ final class AgentListHelper {
 
     List<AgentDefinition> listWithAssistantFirst(AgentDefinitionQuery query, Integer skip, Integer limit, AgentDefinition assistant) {
         if (limit == null) {
-            var agents = findAgents(query, null, null);
+            // the pg store returns an immutable list, and prioritizeAssistant reorders in place
+            var agents = new ArrayList<>(findAgents(query, null, null));
             prioritizeAssistant(agents, assistant.id);
             return agents;
         }
