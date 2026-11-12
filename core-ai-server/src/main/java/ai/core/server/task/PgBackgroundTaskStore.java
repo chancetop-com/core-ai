@@ -43,7 +43,7 @@ public class PgBackgroundTaskStore implements BackgroundTaskStore {
 
     @Override
     public List<BackgroundTask> list(String type, int limit) {
-        var sql = new StringBuilder(512);
+        var sql = new StringBuilder(512).append(SELECT);
         var params = new java.util.ArrayList<>();
         if (type != null && !type.isBlank()) {
             sql.append(" WHERE type = ?");
@@ -90,4 +90,5 @@ public class PgBackgroundTaskStore implements BackgroundTaskStore {
         };
     }
 }
+
 
