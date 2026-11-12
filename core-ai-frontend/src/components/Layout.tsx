@@ -228,16 +228,6 @@ export default function Layout() {
 
         {/* Footer */}
         <div className="p-2 border-t space-y-1 shrink-0" style={{ borderColor: 'var(--color-border)' }}>
-          <a href="/downloads/desktop"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Download core-ai-desktop"
-            title="Download core-ai-desktop (Windows x64 / macOS Apple Silicon)"
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white w-full transition-opacity cursor-pointer hover:opacity-90 ${collapsed ? 'justify-center' : ''}`}
-            style={{ background: 'var(--color-primary)' }}>
-            <Download size={16} />
-            {!collapsed && 'Download Desktop'}
-          </a>
           {user && !collapsed && (
             <div className="px-3 py-1.5 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
               {user.name || user.userId}
@@ -277,6 +267,16 @@ export default function Layout() {
             <LogOut size={16} />
             {!collapsed && 'Sign Out'}
           </button>
+          <a href="/downloads/desktop"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Download core-ai-desktop"
+            title="Download core-ai-desktop (Windows x64 / macOS Apple Silicon)"
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white w-full transition-opacity cursor-pointer hover:opacity-90 ${collapsed ? 'justify-center' : ''}`}
+            style={{ background: 'var(--color-primary)' }}>
+            <Download size={16} />
+            {!collapsed && 'Download Desktop'}
+          </a>
         </div>
       </aside>
       <main className="flex-1 overflow-auto" style={{ background: 'var(--color-bg)' }}>
