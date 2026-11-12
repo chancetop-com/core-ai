@@ -1,6 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agent.AgentDefinitionQuery;
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.WorkflowDefinition;
 import core.framework.mongo.MongoCollection;
@@ -25,7 +26,7 @@ public class ProjectMemberQueryService {
     @Inject
     ProjectStore projectStore;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<WorkflowDefinition> workflowCollection;
 
@@ -45,14 +46,15 @@ public class ProjectMemberQueryService {
 
     private List<ProjectQueryService.ProjectMember> availableAgents(String ownerUserId) {
         var byId = new LinkedHashMap<String, ProjectQueryService.ProjectMember>();
-        var ownQuery = new Query();
-        ownQuery.filter = Filters.eq("user_id", ownerUserId);
-        for (var agent : agentCollection.find(ownQuery)) {
+        var ownQuery = new AgentDefinitionQuery();
+        ownQuery.scope = AgentDefinitionQuery.Scope.DIRECT;
+        ownQuery.userId = ownerUserId;
+        for (var agent : agentDefinitionStore.find(ownQuery)) {
             byId.putIfAbsent(agent.id, new ProjectQueryService.ProjectMember(agent.id, agent.name, "agent"));
         }
-        var sharedQuery = new Query();
-        sharedQuery.filter = Filters.eq("status", AgentStatus.PUBLISHED);
-        for (var agent : agentCollection.find(sharedQuery)) {
+        var sharedQuery = new AgentDefinitionQuery();
+        sharedQuery.status = AgentStatus.PUBLISHED.name();
+        for (var agent : agentDefinitionStore.find(sharedQuery)) {
             byId.putIfAbsent(agent.id, new ProjectQueryService.ProjectMember(agent.id, agent.name, "agent"));
         }
         var result = new ArrayList<>(byId.values());

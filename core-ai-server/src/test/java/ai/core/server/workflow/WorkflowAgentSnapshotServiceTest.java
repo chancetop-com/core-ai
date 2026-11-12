@@ -42,7 +42,7 @@ class WorkflowAgentSnapshotServiceTest {
 
     @BeforeEach
     void setUp() {
-        service.agentDefinitionCollection = collection;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(collection);
         service.skillService = skillService;
     }
 

@@ -1,6 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agent.AgentDefinitionQuery;
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.Project;
@@ -54,7 +55,7 @@ public class ProjectPlaybookService {
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<WorkflowDefinition> workflowCollection;
     @Inject
@@ -65,7 +66,7 @@ public class ProjectPlaybookService {
     public String generate(String projectId) {
         var project = projectStore.get(projectId)
             .orElseThrow(() -> new IllegalStateException("project not found, id=" + projectId));
-        var definition = agentCollection.get("builtin-" + ProjectBuiltinAgents.PLAYBOOK_WRITER).orElse(null);
+        var definition = agentDefinitionStore.get("builtin-" + ProjectBuiltinAgents.PLAYBOOK_WRITER).orElse(null);
         if (definition == null) {
             throw new IllegalStateException("playbook writer definition is missing; reset builtin agents to restore it");
         }
@@ -231,7 +232,7 @@ public class ProjectPlaybookService {
 
     private Map<String, String> agentDescriptions(List<String> memberIds) {
         var byId = new HashMap<String, String>();
-        for (var definition : agentCollection.find(byIds(memberIds))) byId.put(definition.id, definition.description);
+        for (var definition : agentDefinitionStore.find(byAgentIds(memberIds))) byId.put(definition.id, definition.description);
         return byId;
     }
 
@@ -255,6 +256,13 @@ public class ProjectPlaybookService {
 
     private Bson byIds(List<String> values) {
         return Filters.in("_id", values);
+    }
+
+    private AgentDefinitionQuery byAgentIds(List<String> values) {
+        var query = new AgentDefinitionQuery();
+        query.ids = values;
+        query.limit = values.size();
+        return query;
     }
 
     private boolean overCap(StringBuilder text) {

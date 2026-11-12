@@ -62,7 +62,7 @@ class ProjectAttributionStageTest {
         stage.workflowRunCollection = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
         stage.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of((MongoCollection<FileRecord>) mock(MongoCollection.class));
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
-        stage.agentCollection = agents;
+        stage.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         stage.attributionRepository = MongoProjectAttributionRepository.of((MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class));
         projectService = mock(ProjectService.class);
         stage.projectService = projectService;

@@ -35,7 +35,7 @@ class AgentPortServiceTest {
         fixture.port.definitionService = fixture.definitionService;
         fixture.port.skillService = fixture.skillService;
         fixture.port.systemPromptService = fixture.systemPromptService;
-        fixture.port.agentDefinitionCollection = fixture.collection;
+        fixture.port.agentDefinitionStore = MongoAgentDefinitionStore.of(fixture.collection);
         when(fixture.collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
         return fixture;
     }

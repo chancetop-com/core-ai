@@ -4,7 +4,6 @@ import ai.core.agent.ExecutionContext;
 import ai.core.prompt.PromptInject;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.User;
-import core.framework.mongo.MongoCollection;
 
 import java.util.ArrayList;
 
@@ -39,9 +38,9 @@ public final class UserIdentityPrompt implements PromptInject {
     }
 
     /** Session rebuild only knows the agent id, the definition decides whether the section applies. */
-    public static void attach(ExecutionContext context, String agentId, MongoCollection<AgentDefinition> agentDefinitionCollection, User user) {
-        if (context == null || agentId == null || agentDefinitionCollection == null) return;
-        attach(context, agentDefinitionCollection.get(agentId).orElse(null), user);
+    public static void attach(ExecutionContext context, String agentId, AgentDefinitionStore agentDefinitionStore, User user) {
+        if (context == null || agentId == null || agentDefinitionStore == null) return;
+        attach(context, agentDefinitionStore.get(agentId).orElse(null), user);
     }
 
     /** Returns null when the user is unknown or carries no identity field, so no empty section is attached. */

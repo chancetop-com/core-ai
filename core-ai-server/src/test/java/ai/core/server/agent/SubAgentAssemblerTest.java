@@ -178,7 +178,7 @@ class SubAgentAssemblerTest {
         MongoCollection<AgentDefinition> collection = mock(MongoCollection.class);
         var draft = definition("draft-sub", DefinitionType.AGENT, AgentStatus.DRAFT);
         when(collection.get(draft.id)).thenReturn(Optional.of(draft));
-        assembler.agentDefinitionCollection = collection;
+        assembler.agentDefinitionStore = MongoAgentDefinitionStore.of(collection);
         assembler.toolRegistryService = mock(ToolRegistryService.class);
 
         var tools = assembler.assemble(List.of(draft.id), "run-1", "caller-1");
@@ -194,7 +194,7 @@ class SubAgentAssemblerTest {
         var llm = definition("llm-sub", DefinitionType.LLM_CALL, AgentStatus.PUBLISHED);
         llm.publishedConfig = new AgentPublishedConfig();
         when(collection.get(llm.id)).thenReturn(Optional.of(llm));
-        assembler.agentDefinitionCollection = collection;
+        assembler.agentDefinitionStore = MongoAgentDefinitionStore.of(collection);
         assembler.toolRegistryService = mock(ToolRegistryService.class);
 
         var tools = assembler.assemble(List.of(llm.id), "run-1", "caller-1");

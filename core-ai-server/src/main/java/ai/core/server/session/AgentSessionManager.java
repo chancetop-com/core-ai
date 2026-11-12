@@ -1,5 +1,7 @@
 package ai.core.server.session;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.agent.Agent;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.apiuser.ApiUserQuotaService;
@@ -36,7 +38,6 @@ import ai.core.server.memory.experiment.AgentMemoryExperimentService;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
@@ -62,7 +63,7 @@ public class AgentSessionManager {
     @Inject
     MongoSkillProvider mongoSkillProvider;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     UserStore userStore;
     @Inject
@@ -129,7 +130,7 @@ public class AgentSessionManager {
     }
     private SessionRebuildManager rebuildManager() {
         if (rebuildManager == null) {
-            rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionCollection, skillManager(), subAgentManager(), sandboxService,
+            rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionStore, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
                     ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonCollection));
         }

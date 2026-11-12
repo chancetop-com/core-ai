@@ -1,6 +1,7 @@
 package ai.core.server.workflow;
 
 import ai.core.api.server.workflow.ListWorkflowAgentOptionsRequest;
+import ai.core.server.agent.MongoAgentDefinitionStore;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
@@ -32,6 +33,7 @@ import static org.mockito.Mockito.when;
 
 class WorkflowAgentOptionServiceTest {
     private static final String USER_ID = "user-1";
+    private MongoCollection<AgentDefinition> agentDefinitionCollection;
 
     @Test
     void mineFilterAllowsOwnedDraftsAndExcludesSystemDefaults() {
@@ -100,7 +102,7 @@ class WorkflowAgentOptionServiceTest {
         service.list(USER_ID, request);
 
         var query = ArgumentCaptor.forClass(Query.class);
-        verify(service.agentDefinitionCollection).find(query.capture());
+        verify(agentDefinitionCollection).find(query.capture());
         assertEquals(20, query.getValue().skip);
         assertEquals(20, query.getValue().limit);
         var sort = bson(query.getValue().sort);
@@ -112,7 +114,7 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void selectedResolutionDoesNotReturnInaccessibleDraft() {
         var service = service();
-        when(service.agentDefinitionCollection.get("private-agent"))
+        when(agentDefinitionCollection.get("private-agent"))
             .thenReturn(Optional.of(agent("private-agent", "other", DefinitionType.AGENT, AgentStatus.DRAFT, false, false)));
         var request = request("mine", "AGENT");
         request.selectedId = "private-agent";
@@ -125,7 +127,7 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void selectedResolutionAllowsOwnedDraftIndependentOfCurrentScope() {
         var service = service();
-        when(service.agentDefinitionCollection.get("owned-draft"))
+        when(agentDefinitionCollection.get("owned-draft"))
             .thenReturn(Optional.of(agent("owned-draft", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false)));
         var request = request("shared", "AGENT");
         request.selectedId = "owned-draft";
@@ -139,7 +141,7 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void selectedResolutionRequiresMatchingType() {
         var service = service();
-        when(service.agentDefinitionCollection.get("owned-llm"))
+        when(agentDefinitionCollection.get("owned-llm"))
             .thenReturn(Optional.of(agent("owned-llm", USER_ID, DefinitionType.LLM_CALL, AgentStatus.DRAFT, false, false)));
         var request = request("mine", "AGENT");
         request.selectedId = "owned-llm";
@@ -152,9 +154,9 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void selectedResolutionRequiresUsablePublishedConfigForOtherOwner() {
         var service = service();
-        when(service.agentDefinitionCollection.get("published-without-config"))
+        when(agentDefinitionCollection.get("published-without-config"))
             .thenReturn(Optional.of(agent("published-without-config", "other", DefinitionType.AGENT, AgentStatus.PUBLISHED, false, false)));
-        when(service.agentDefinitionCollection.get("published-with-config"))
+        when(agentDefinitionCollection.get("published-with-config"))
             .thenReturn(Optional.of(agent("published-with-config", "other", DefinitionType.AGENT, AgentStatus.PUBLISHED, false, true)));
 
         var unavailable = request("mine", "AGENT");
@@ -201,8 +203,8 @@ class WorkflowAgentOptionServiceTest {
     void listMapsMinimalItemsAndPagingMetadata() {
         var service = service();
         var item = agent("a1", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false);
-        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(item));
-        when(service.agentDefinitionCollection.count(any(Bson.class))).thenReturn(7L);
+        when(agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(item));
+        when(agentDefinitionCollection.count(any(Bson.class))).thenReturn(7L);
 
         var response = service.list(USER_ID, request("mine", "AGENT"));
 
@@ -215,7 +217,7 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void mineListDropsRowsOutsideOwnedEditableAndRequestedType() {
         var service = service();
-        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
+        when(agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
             agent("owned-agent", USER_ID, DefinitionType.AGENT, AgentStatus.DRAFT, false, false),
             agent("other-agent", "other", DefinitionType.AGENT, AgentStatus.DRAFT, false, false),
             agent("owned-system", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, true, true),
@@ -229,7 +231,7 @@ class WorkflowAgentOptionServiceTest {
     @Test
     void sharedListDropsRowsOutsidePublishedSharedPlacementAndRequestedType() {
         var service = service();
-        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
+        when(agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of(
             agent("system-agent", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, true, true),
             agent("other-agent", "other", DefinitionType.AGENT, AgentStatus.PUBLISHED, false, true),
             agent("owned-agent", USER_ID, DefinitionType.AGENT, AgentStatus.PUBLISHED, false, true),
@@ -283,7 +285,7 @@ class WorkflowAgentOptionServiceTest {
         var response = service.list(USER_ID, request);
 
         var query = ArgumentCaptor.forClass(Query.class);
-        verify(service.agentDefinitionCollection).find(query.capture());
+        verify(agentDefinitionCollection).find(query.capture());
         assertEquals(expectedLimit, query.getValue().limit);
         assertEquals((requestedPage - 1) * expectedSkipUnit, query.getValue().skip);
         assertEquals(expectedLimit, response.limit);
@@ -292,9 +294,10 @@ class WorkflowAgentOptionServiceTest {
     @SuppressWarnings("unchecked")
     private WorkflowAgentOptionService service() {
         var service = new WorkflowAgentOptionService();
-        service.agentDefinitionCollection = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
-        when(service.agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of());
-        when(service.agentDefinitionCollection.count(any(Bson.class))).thenReturn(0L);
+        agentDefinitionCollection = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
+        service.agentDefinitionStore = MongoAgentDefinitionStore.of(agentDefinitionCollection);
+        when(agentDefinitionCollection.find(any(Query.class))).thenReturn(List.of());
+        when(agentDefinitionCollection.count(any(Bson.class))).thenReturn(0L);
         return service;
     }
 

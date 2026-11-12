@@ -1,6 +1,7 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agent.AgentDefinitionQuery;
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.FileRecord;
 import com.mongodb.client.model.Filters;
@@ -45,7 +46,7 @@ public class ProjectReportQueryService {
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
@@ -138,7 +139,10 @@ public class ProjectReportQueryService {
     private Map<String, String> agentNames(List<String> agentIds) {
         var names = new HashMap<String, String>();
         if (agentIds.isEmpty()) return names;
-        agentCollection.find(Filters.in("_id", agentIds)).forEach(a -> names.put(a.id, a.name));
+        var query = new AgentDefinitionQuery();
+        query.ids = agentIds;
+        query.limit = agentIds.size();
+        for (var agent : agentDefinitionStore.find(query)) names.put(agent.id, agent.name);
         return names;
     }
 

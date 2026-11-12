@@ -1,5 +1,7 @@
 package ai.core.server.session;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.llm.domain.ReasoningEffort;
@@ -62,7 +64,7 @@ public class SessionRebuildManager {
     private final Logger logger = LoggerFactory.getLogger(SessionRebuildManager.class);
 
     private final ChatMessageService chatMessageService;
-    private final MongoCollection<AgentDefinition> agentDefinitionCollection;
+    private final AgentDefinitionStore agentDefinitionStore;
     private final SessionSkillManager skillManager;
     private final SessionSubAgentManager subAgentManager;
     private final SandboxService sandboxService;
@@ -90,7 +92,7 @@ public class SessionRebuildManager {
 
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
-        this.agentDefinitionCollection = deps.agentDefinitionCollection;
+        this.agentDefinitionStore = deps.agentDefinitionStore;
         this.skillManager = deps.skillManager;
         this.subAgentManager = deps.subAgentManager;
         this.sandboxService = deps.sandboxService;
@@ -116,7 +118,7 @@ public class SessionRebuildManager {
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withDecisionProvider(deps.decisionProvider)
                 .withAsyncTaskManager(deps.asyncTaskManager);
         this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
-                subAgentManager, agentDefinitionCollection);
+                subAgentManager, agentDefinitionStore);
     }
 
     private SessionDatasetHelper datasetHelper() {
@@ -151,7 +153,7 @@ public class SessionRebuildManager {
             logger.warn("comparison variant unavailable, rebuilding from the live agent definition, sessionId={}, comparisonId={}",
                     meta.id, meta.comparisonId);
         }
-        var definition = agentDefinitionCollection.get(meta.agentId).orElse(null);
+        var definition = agentDefinitionStore.get(meta.agentId).orElse(null);
         if (definition == null) {
             throw new IllegalArgumentException("agent is unavailable");
         }
@@ -221,7 +223,7 @@ public class SessionRebuildManager {
                         callerUserId, chatMessageService);
                 sandboxService.invalidateSandboxBinding(sessionId);
                 var safeState = SessionAgentSnapshotSecurity.rederiveLegacyState(sessionId, identity,
-                        agentDefinitionCollection, skillManager);
+                        agentDefinitionStore, skillManager);
                 return rebuildFromSnapshot(sessionId, safeState.agentConfig, safeState.userId, safeState, false);
             }
             return rebuildFromConfig(sessionId, state.config, state.userId, state);
@@ -273,7 +275,7 @@ public class SessionRebuildManager {
     private PromptInject attachMemory(ToolRegistry toolRegistry, ExecutionContext context, String agentId) {
         if (!hasText(agentId)) return null;
         if (context != null) {
-            MemoryCapability.attach(toolRegistry, context, agentDefinitionCollection.get(agentId).orElse(null), agentMemoryService, sessionSearchService, sessionReadService);
+            MemoryCapability.attach(toolRegistry, context, agentDefinitionStore.get(agentId).orElse(null), agentMemoryService, sessionSearchService, sessionReadService);
         }
         var injectionResult = memoryExperimentService.prepareInjection(agentId);
         return injectionResult.injected ? injectionResult.promptInject : null;
@@ -284,7 +286,7 @@ public class SessionRebuildManager {
         if (context != null) {
             var user = userStore.get(userId).orElse(null);
             context.setCaller(CallerContexts.fromUser(user));
-            UserIdentityPrompt.attach(context, agentId, agentDefinitionCollection, user);
+            UserIdentityPrompt.attach(context, agentId, agentDefinitionStore, user);
         }
         var sandboxOn = context != null && sandboxService.isSandboxEnabled(sandboxConfig);
         var sessionRef = new InProcessAgentSession[1];
@@ -417,7 +419,7 @@ public class SessionRebuildManager {
     }
 
     public record Deps(ChatMessageService chatMessageService,
-                        MongoCollection<AgentDefinition> agentDefinitionCollection,
+                        AgentDefinitionStore agentDefinitionStore,
                         SessionSkillManager skillManager,
                         SessionSubAgentManager subAgentManager,
                         SandboxService sandboxService,

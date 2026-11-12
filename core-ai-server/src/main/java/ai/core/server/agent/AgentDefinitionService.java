@@ -13,15 +13,13 @@ import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.util.IdLists;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -42,7 +40,7 @@ public class AgentDefinitionService {
     }
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     UserStore userStore;
@@ -66,9 +64,7 @@ public class AgentDefinitionService {
     }
 
     public AgentDefinitionView create(CreateAgentRequest request, String userId) {
-        var existing = agentDefinitionCollection.findOne(Filters.and(
-                Filters.eq("user_id", userId),
-                Filters.eq("name", request.name)));
+        var existing = agentDefinitionStore.findOne(directQuery(userId, request.name));
         if (existing.isPresent()) {
             throw new RuntimeException("agent name already exists: " + request.name);
         }
@@ -112,7 +108,7 @@ public class AgentDefinitionService {
         entity.updatedBy = userId;
 
         requireAccessibleSkills(entity.skillIds, userId);
-        agentDefinitionCollection.insert(entity);
+        agentDefinitionStore.insert(entity);
         notifyCatalogChanged();
         return toView(entity);
     }
@@ -124,25 +120,22 @@ public class AgentDefinitionService {
     public ListAgentsResponse list(String userId, ListAgentsRequest request) {
         var effectiveRequest = request != null ? request : new ListAgentsRequest();
         boolean summary = Boolean.TRUE.equals(effectiveRequest.summary);
-        var accessFilter = AgentQueryHelper.buildAccessFilter(userId, effectiveRequest);
-        var typeFilter = AgentQueryHelper.buildTypeFilter(effectiveRequest.type);
-        var combinedFilter = AgentQueryHelper.combineFilters(accessFilter, typeFilter);
-        combinedFilter = AgentQueryHelper.combineFilters(combinedFilter, AgentQueryHelper.buildIdsFilter(effectiveRequest.ids));
-
         boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
         int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
         int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
         Integer skip = paginated ? (pageNum - 1) * pageSize : null;
         Integer limit = paginated ? pageSize : null;
-        String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
 
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
+        var listHelper = new AgentListHelper(agentDefinitionStore, userStore);
         String keyword = AgentQueryHelper.trimToNull(effectiveRequest.query);
         List<AgentDefinition> paged;
         long total;
         if (keyword != null) {
+            String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
+            var query = query(userId, effectiveRequest);
+            query.limit = Integer.MAX_VALUE;
             var assistant = personalAssistantService.findPersonalAssistant(userId);
-            paged = listHelper.searchAgents(combinedFilter, keyword, sortField,
+            paged = listHelper.searchAgents(query, keyword, sortField,
                 assistant != null ? assistant.id : PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
             total = paged.size();
             if (skip != null) {
@@ -150,12 +143,12 @@ public class AgentDefinitionService {
                 paged = paged.subList(from, Math.min(from + limit, paged.size()));
             }
         } else {
-            Bson projection = summary ? AgentQueryHelper.SUMMARY_PROJECTION : null;
+            var query = query(userId, effectiveRequest);
             var assistant = forkPersonalAssistant(listHelper, userId, effectiveRequest);
             paged = assistant != null
-                ? listHelper.listWithAssistantFirst(combinedFilter, sortField, skip, limit, assistant, projection)
-                : listHelper.findAgents(combinedFilter, sortField, skip, limit, projection);
-            total = agentDefinitionCollection.count(combinedFilter);
+                ? listHelper.listWithAssistantFirst(query, skip, limit, assistant)
+                : listHelper.findAgents(query, skip, limit);
+            total = agentDefinitionStore.count(query(userId, effectiveRequest));
         }
 
         var response = new ListAgentsResponse();
@@ -177,41 +170,93 @@ public class AgentDefinitionService {
     // the list hides the shared template in favour of the caller's own copy, so the fork lookup reads the template
     // through the visibility filter alone: re-applying the list's template exclusion makes the query unsatisfiable
     private AgentDefinition forkPersonalAssistant(AgentListHelper listHelper, String userId, ListAgentsRequest request) {
-        var lookupFilter = AgentQueryHelper.buildAssistantLookupFilter(userId, request);
-        return personalAssistantService.findOrFork(listHelper.findDefaultAssistant(lookupFilter), userId);
+        var query = new AgentDefinitionQuery();
+        query.scope = AgentDefinitionQuery.Scope.VISIBLE;
+        query.userId = userId;
+        query.type = blankToNull(request.type);
+        query.limit = 1;
+        var requestedIds = splitIds(request.ids);
+        if (!requestedIds.isEmpty() && !requestedIds.contains(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)) {
+            query.ids = List.of("__none__");
+        } else {
+            query.ids = List.of(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
+        }
+        return personalAssistantService.findOrFork(listHelper.findDefaultAssistant(query), userId);
+    }
+
+    private AgentDefinitionQuery query(String userId, ListAgentsRequest request) {
+        var query = new AgentDefinitionQuery();
+        Boolean myAgents = AgentQueryHelper.myAgentsFilter(request.myAgents);
+        if (myAgents != null && myAgents) {
+            query.scope = Boolean.FALSE.equals(request.includeSystemDefault)
+                ? AgentDefinitionQuery.Scope.OWNED_NO_SYSTEM
+                : AgentDefinitionQuery.Scope.OWNED_OR_SYSTEM;
+        } else if (myAgents != null) {
+            query.scope = AgentDefinitionQuery.Scope.SHARED;
+        } else {
+            query.scope = AgentDefinitionQuery.Scope.VISIBLE;
+        }
+        query.userId = userId;
+        query.excludeIds = new ArrayList<>(PersonalAssistantService.forkableTemplateIds());
+        query.type = blankToNull(request.type);
+        var ids = splitIds(request.ids);
+        if (!ids.isEmpty()) query.ids = ids;
+        query.sortField = AgentQueryHelper.sortField(request.sort);
+        query.summaryOnly = Boolean.TRUE.equals(request.summary);
+        return query;
+    }
+
+    private AgentDefinitionQuery directQuery(String userId, String name) {
+        var query = new AgentDefinitionQuery();
+        query.scope = AgentDefinitionQuery.Scope.DIRECT;
+        query.userId = userId;
+        query.name = name;
+        return query;
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private List<String> splitIds(String ids) {
+        if (ids == null || ids.isBlank()) return List.of();
+        var values = new ArrayList<String>();
+        for (var id : ids.split(",")) {
+            var clean = id.trim();
+            if (!clean.isEmpty()) values.add(clean);
+        }
+        return values;
     }
 
     public void favorite(String agentId, String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
+        var listHelper = new AgentListHelper(agentDefinitionStore, userStore);
         listHelper.favorite(agentId, userId);
     }
 
     public void unfavorite(String agentId, String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
+        var listHelper = new AgentListHelper(agentDefinitionStore, userStore);
         listHelper.unfavorite(agentId, userId);
     }
 
     public ListAgentsResponse favorites(String userId) {
-        var listHelper = new AgentListHelper(agentDefinitionCollection, userStore);
+        var listHelper = new AgentListHelper(agentDefinitionStore, userStore);
         return listHelper.listFavorites(userId);
     }
 
     public AgentDefinitionView get(String id) {
-        var entity = agentDefinitionCollection.get(id)
+        var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         return toView(entity);
     }
 
     public AgentDefinitionView getByName(String name, String userId) {
-        var entity = agentDefinitionCollection.findOne(Filters.and(
-                Filters.eq("user_id", userId),
-                Filters.eq("name", name)))
+        var entity = agentDefinitionStore.findOne(directQuery(userId, name))
                 .orElseThrow(() -> new RuntimeException("agent not found, name=" + name));
         return toView(entity);
     }
 
     public AgentDefinition getEntity(String id) {
-        return agentDefinitionCollection.get(id)
+        return agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
     }
 
@@ -219,12 +264,12 @@ public class AgentDefinitionService {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("LLM call tool is unavailable");
         }
-        AgentDefinition definition = agentDefinitionCollection.get(id).orElse(null);
+        AgentDefinition definition = agentDefinitionStore.get(id).orElse(null);
         return AgentDependencyAccessPolicy.executableLlmCall(definition, callerUserId);
     }
 
     public AgentDefinitionView update(String id, UpdateAgentRequest request, String userId) {
-        var entity = agentDefinitionCollection.get(id)
+        var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
@@ -264,13 +309,13 @@ public class AgentDefinitionService {
         entity.updatedAt = ZonedDateTime.now();
         entity.updatedBy = userId;
 
-        agentDefinitionCollection.replace(entity);
+        agentDefinitionStore.replace(entity);
         notifyCatalogChanged();
         return toView(entity);
     }
 
     public AgentDefinitionView publish(String id, String userId) {
-        var entity = agentDefinitionCollection.get(id)
+        var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
@@ -293,7 +338,7 @@ public class AgentDefinitionService {
         entity.updatedAt = entity.publishedAt;
         entity.updatedBy = userId;
 
-        agentDefinitionCollection.replace(entity);
+        agentDefinitionStore.replace(entity);
         notifyCatalogChanged();
         return toView(entity);
     }
@@ -308,7 +353,7 @@ public class AgentDefinitionService {
             } catch (IllegalArgumentException e) {
                 throw new BadRequestException("agent has an unavailable LLM call dependency", "BAD_REQUEST", e);
             }
-            AgentDefinition dependency = agentDefinitionCollection.get(definitionId).orElse(null);
+            AgentDefinition dependency = agentDefinitionStore.get(definitionId).orElse(null);
             if (!AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(dependency)) {
                 throw new BadRequestException("agent has an unavailable LLM call dependency");
             }
@@ -318,7 +363,7 @@ public class AgentDefinitionService {
     private void requirePublishedSubAgentDependencies(AgentDefinition entity) {
         if (entity.type != DefinitionType.AGENT) return;
         for (String subAgentId : IdLists.clean(entity.subAgentIds)) {
-            AgentDefinition dependency = agentDefinitionCollection.get(subAgentId).orElse(null);
+            AgentDefinition dependency = agentDefinitionStore.get(subAgentId).orElse(null);
             if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(dependency)) {
                 throw new BadRequestException("agent has an unavailable sub-agent dependency");
             }
@@ -332,66 +377,26 @@ public class AgentDefinitionService {
     }
 
     public void delete(String id, String userId) {
-        var entity = agentDefinitionCollection.get(id)
+        var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         requireAdminForSystemDefault(entity, userId);
         requireAdminForPersonalAssistant(entity, userId);
         requireOwnerOrAdminForDelete(entity, userId);
-        agentDefinitionCollection.delete(id);
+        agentDefinitionStore.delete(id);
         notifyCatalogChanged();
     }
 
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     AgentDefinitionView toView(AgentDefinition entity) {
-        var view = AgentViewHelper.buildView(entity, Map.of(), Map.of());
-        view.createdBy = resolveUserName(entity.userId);
-        view.updatedBy = resolveUserName(lastModifiedBy(entity));
-        if (view.subAgents != null) {
-            view.subAgents = view.subAgents.stream().map(sa -> {
-                sa.name = resolveAgentName(sa.id);
-                return sa;
-            }).toList();
-        }
-        if (view.skills != null) {
-            view.skills = view.skills.stream().map(s -> {
-                s.name = resolveSkillName(s.id);
-                return s;
-            }).toList();
-        }
-        return view;
+        return AgentViewHelper.buildDetailedView(entity, agentDefinitionStore, userStore, skillService);
     }
 
     AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = AgentViewHelper.buildView(entity, subAgentNameMap, skillNameMap);
         view.createdBy = userNameMap.getOrDefault(entity.userId, entity.userId);
-        var updatedBy = lastModifiedBy(entity);
+        var updatedBy = AgentViewHelper.lastModifiedBy(entity);
         view.updatedBy = userNameMap.getOrDefault(updatedBy, updatedBy);
         return view;
-    }
-
-    private String lastModifiedBy(AgentDefinition entity) {
-        return entity.updatedBy != null ? entity.updatedBy : entity.userId;
-    }
-
-    private String resolveUserName(String userId) {
-        if (userId == null) return null;
-        return userStore.get(userId).map(u -> u.name).orElse(userId);
-    }
-
-    private String resolveAgentName(String agentId) {
-        try {
-            return agentDefinitionCollection.get(agentId).map(a -> a.name).orElse(agentId);
-        } catch (Exception e) {
-            return agentId;
-        }
-    }
-
-    private String resolveSkillName(String skillId) {
-        try {
-            return skillService.get(skillId).name;
-        } catch (Exception e) {
-            return skillId;
-        }
     }
 
     private void requireAdminForSystemDefault(AgentDefinition entity, String userId) {

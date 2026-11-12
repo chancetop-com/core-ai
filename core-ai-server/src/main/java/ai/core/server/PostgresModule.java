@@ -48,6 +48,10 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.small.PgSmallMigrationLockRow.class);
         db().view(ai.core.server.small.PgSmallMigrationMarkerRow.class);
         db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
+        db().view(ai.core.server.agent.PgAgentDefinitionRow.class);
+        db().view(ai.core.server.agent.PgAgentCountRow.class);
+        db().view(ai.core.server.agent.PgAgentMigrationLockRow.class);
+        db().view(ai.core.server.agent.PgAgentMigrationMarkerRow.class);
         db().view(PgApiKeyRow.class);
         db().view(PgProjectRow.class);
         db().view(PgProjectCountRow.class);

@@ -77,7 +77,7 @@ class ComparisonAdoptionServiceTest {
 
     @BeforeEach
     void setUp() {
-        service.agentDefinitionCollection = agents;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         service.agentDefinitionService = agentDefinitionService;
     }
 

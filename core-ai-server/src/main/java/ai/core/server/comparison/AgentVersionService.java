@@ -1,5 +1,7 @@
 package ai.core.server.comparison;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.comparison.AgentVersionView;
 import ai.core.api.server.comparison.CreateAgentVersionRequest;
 import ai.core.api.server.comparison.ListAgentVersionsResponse;
@@ -51,13 +53,13 @@ public class AgentVersionService {
     @Inject
     MongoCollection<AgentComparison> comparisonCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     ai.core.server.user.UserStore userStore;
 
     public AgentVersionView create(CreateAgentVersionRequest request, String userId) {
         if (request == null || Strings.isBlank(request.agentId)) throw new BadRequestException("agent_id required");
-        var agent = agentDefinitionCollection.get(request.agentId)
+        var agent = agentDefinitionStore.get(request.agentId)
             .orElseThrow(() -> new BadRequestException("agent is unavailable"));
         requireAgentOwnerOrAdmin(agent, userId);
         var config = Strings.isBlank(request.copyFromVersionId)
@@ -146,7 +148,7 @@ public class AgentVersionService {
     }
 
     private void requireAgentOwnerOrAdmin(String agentId, String userId) {
-        var agent = agentDefinitionCollection.get(agentId).orElse(null);
+        var agent = agentDefinitionStore.get(agentId).orElse(null);
         if (agent == null) {
             if (ComparisonAccess.isAdmin(userStore, userId)) return;
             throw new ForbiddenException("agent is unavailable");

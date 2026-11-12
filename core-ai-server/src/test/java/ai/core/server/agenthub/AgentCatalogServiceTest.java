@@ -52,7 +52,7 @@ class AgentCatalogServiceTest {
         skillService = mock(SkillService.class);
         when(skillService.batchResolve(any())).thenReturn(Map.of());
         catalog = new AgentCatalogService();
-        catalog.agentDefinitionCollection = collection;
+        catalog.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(collection);
         catalog.skillService = skillService;
     }
 

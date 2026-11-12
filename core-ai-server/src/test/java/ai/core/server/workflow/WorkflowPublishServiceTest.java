@@ -36,7 +36,7 @@ class WorkflowPublishServiceTest {
         when(definitionCollection.get(workflow.id)).thenReturn(Optional.of(workflow));
         when(agentCollection.get(agent.id)).thenReturn(Optional.of(agent));
         var snapshots = new WorkflowAgentSnapshotService();
-        snapshots.agentDefinitionCollection = agentCollection;
+        snapshots.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agentCollection);
         publishService = new WorkflowPublishService();
         publishService.definitionCollection = definitionCollection;
         publishService.versionCollection = versionCollection;

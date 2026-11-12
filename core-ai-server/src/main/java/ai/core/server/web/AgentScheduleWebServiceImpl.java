@@ -1,5 +1,7 @@
 package ai.core.server.web;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.AgentScheduleWebService;
 import ai.core.api.server.run.TriggerRunResponse;
 import ai.core.api.server.schedule.AgentScheduleView;
@@ -11,7 +13,6 @@ import ai.core.api.server.schedule.SessionScheduleView;
 import ai.core.api.server.schedule.UpdateScheduleRequest;
 import ai.core.api.server.schedule.UpdateSessionScheduleRequest;
 import ai.core.server.agent.PersonalAssistantService;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.SessionSchedule;
 import ai.core.server.domain.TriggerType;
@@ -43,7 +44,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
     @Inject
     MongoCollection<AgentSchedule> agentScheduleCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<SessionSchedule> sessionScheduleCollection;
     @Inject
@@ -140,7 +141,7 @@ public class AgentScheduleWebServiceImpl implements AgentScheduleWebService {
             .orElseThrow(() -> new RuntimeException("schedule not found, id=" + id));
 
         var agentId = personalAssistantService.resolve(schedule.agentId, schedule.userId);
-        var definition = agentDefinitionCollection.get(agentId)
+        var definition = agentDefinitionStore.get(agentId)
             .orElseThrow(() -> new RuntimeException("agent not found, agentId=" + agentId));
 
         if (definition.publishedConfig == null) {

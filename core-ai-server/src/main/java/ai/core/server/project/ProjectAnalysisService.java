@@ -1,19 +1,24 @@
 package ai.core.server.project;
 
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.ProjectSubject;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.async.Executor;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Pipeline driver of the two project analysis stages. The high-frequency attribution run assigns
@@ -36,7 +41,7 @@ public class ProjectAnalysisService {
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     ProjectAttributionStage attributionStage;
     @Inject
@@ -199,7 +204,7 @@ public class ProjectAnalysisService {
     // restores the builtin definitions to their defaults (admin action; user edits are overwritten)
     public void resetBuiltinAgents() {
         var now = new java.util.Date();
-        var docs = java.util.Map.of(
+        var docs = Map.of(
             ProjectBuiltinAgents.ATTRIBUTOR, ProjectBuiltinAgents.writerDoc("builtin-" + ProjectBuiltinAgents.ATTRIBUTOR,
                 ProjectBuiltinAgents.ATTRIBUTOR, ProjectBuiltinAgents.ATTRIBUTOR_DESCRIPTION,
                 ProjectBuiltinAgents.attributorPrompt(), ProjectBuiltinAgents.attributionSchema(), now),
@@ -208,15 +213,51 @@ public class ProjectAnalysisService {
                 ProjectBuiltinAgents.subjectAnalyzerPrompt(), ProjectBuiltinAgents.subjectAnalysisSchema(), now),
             ProjectBuiltinAgents.PLAYBOOK_WRITER, ProjectBuiltinAgents.playbookWriterDoc(now),
             ProjectBuiltinAgents.REPORT_RENDERER, ProjectBuiltinAgents.reportRendererDoc(now));
-        for (var entry : docs.entrySet()) {
-            var doc = entry.getValue();
-            var set = new org.bson.Document();
-            doc.forEach((key, value) -> {
-                if (!"_id".equals(key)) set.append(key, value);
-            });
-            agentCollection.update(Filters.eq("_id", doc.getString("_id")), Updates.combine(
-                new org.bson.Document("$set", set)));
+        for (var doc : docs.values()) {
+            agentDefinitionStore.upsert(toDefinition(doc));
         }
+    }
+
+    private AgentDefinition toDefinition(org.bson.Document doc) {
+        var definition = new AgentDefinition();
+        definition.id = doc.getString("_id");
+        definition.userId = doc.getString("user_id");
+        definition.name = doc.getString("name");
+        definition.nameKey = doc.getString("name_key");
+        definition.description = doc.getString("description");
+        definition.systemPrompt = doc.getString("system_prompt");
+        definition.responseSchema = doc.getString("response_schema");
+        definition.maxTurns = doc.getInteger("max_turns");
+        definition.timeoutSeconds = doc.getInteger("timeout_seconds");
+        definition.systemDefault = doc.getBoolean("system_default");
+        definition.type = DefinitionType.valueOf(doc.getString("type"));
+        definition.status = AgentStatus.valueOf(doc.getString("status"));
+        definition.tools = tools(doc.getList("tools", org.bson.Document.class));
+        definition.publishedAt = zoned(doc.getDate("published_at"));
+        definition.createdAt = zoned(doc.getDate("created_at"));
+        definition.updatedAt = zoned(doc.getDate("updated_at"));
+        var published = doc.get("published_config", org.bson.Document.class);
+        if (published != null) {
+            var config = new AgentPublishedConfig();
+            config.systemPrompt = published.getString("system_prompt");
+            config.responseSchema = published.getString("response_schema");
+            config.maxTurns = published.getInteger("max_turns");
+            config.timeoutSeconds = published.getInteger("timeout_seconds");
+            config.tools = tools(published.getList("tools", org.bson.Document.class));
+            definition.publishedConfig = config;
+        }
+        return definition;
+    }
+
+    private List<ToolRef> tools(List<org.bson.Document> docs) {
+        if (docs == null) return null;
+        return docs.stream()
+            .map(doc -> ToolRef.of(doc.getString("id"), ToolSourceType.valueOf(doc.getString("type"))))
+            .toList();
+    }
+
+    private ZonedDateTime zoned(java.util.Date date) {
+        return date == null ? null : ZonedDateTime.ofInstant(date.toInstant(), ZoneOffset.UTC);
     }
 
     public record AnalysisResult(int attributed, int analyzed, int updated) {

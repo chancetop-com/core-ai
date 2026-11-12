@@ -1,5 +1,7 @@
 package ai.core.server.run;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.run.AgentCallRequest;
 import ai.core.api.server.run.AgentCallResponse;
 import ai.core.api.server.run.AgentRunDetailView;
@@ -44,7 +46,7 @@ public class AgentRunService {
     @Inject
     LLMCallExecutor llmCallExecutor;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
@@ -64,7 +66,7 @@ public class AgentRunService {
         var resolvedAgentId = personalAssistantService.resolve(agentId, callerUserId);
         permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, resolvedAgentId);
         apiUserQuotaService.checkQuota(callerUserId);
-        var source = agentDefinitionCollection.get(resolvedAgentId).orElse(null);
+        var source = agentDefinitionStore.get(resolvedAgentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelAgent(
             source, callerUserId);
         requireAccessibleEditableSkills(source, definition, callerUserId);
@@ -110,7 +112,7 @@ public class AgentRunService {
         permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, id);
         apiUserQuotaService.checkQuota(callerUserId);
         var definition = AgentDependencyAccessPolicy.executablePublishedLlmCall(
-            agentDefinitionCollection.get(id).orElse(null), callerUserId);
+            agentDefinitionStore.get(id).orElse(null), callerUserId);
 
         var result = llmCallExecutor.execute(definition, request.input, request.attachments);
         // direct LLM_CALL execution bypasses the agent node tree, so token usage never reaches the
@@ -130,7 +132,7 @@ public class AgentRunService {
         var resolvedAgentId = personalAssistantService.resolve(agentId, callerUserId);
         permissionService.check(callerUserId, PermissionService.RESOURCE_TYPE_AGENT, resolvedAgentId);
         apiUserQuotaService.checkQuota(callerUserId);
-        var source = agentDefinitionCollection.get(resolvedAgentId).orElse(null);
+        var source = agentDefinitionStore.get(resolvedAgentId).orElse(null);
         var definition = AgentDependencyAccessPolicy.executableTopLevelCallable(
             source, callerUserId);
         requireAccessibleEditableSkills(source, definition, callerUserId);
@@ -209,7 +211,7 @@ public class AgentRunService {
     private boolean canReadAgentRuns(String callerUserId, String agentId) {
         if (callerUserId == null) return true;
         if (permissionService.has(callerUserId, PermissionCodes.AGENT_MANAGE)) return true;
-        var definition = agentDefinitionCollection.get(agentId).orElse(null);
+        var definition = agentDefinitionStore.get(agentId).orElse(null);
         return definition != null && callerUserId.equals(definition.userId);
     }
 

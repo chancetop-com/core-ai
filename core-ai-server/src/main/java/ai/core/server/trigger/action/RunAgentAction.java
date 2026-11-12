@@ -1,8 +1,9 @@
 package ai.core.server.trigger.action;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.PersonalAssistantService;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.skill.SkillService;
@@ -10,7 +11,6 @@ import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.trigger.filter.EventFilter;
 import ai.core.server.util.IdLists;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,7 +24,7 @@ public class RunAgentAction implements TriggerAction {
     private static final Logger LOGGER = LoggerFactory.getLogger(RunAgentAction.class);
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     AgentRunner agentRunner;
@@ -49,7 +49,7 @@ public class RunAgentAction implements TriggerAction {
         }
         var resolvedAgentId = personalAssistantService.resolve(agentId, trigger.userId);
 
-        var storedDefinition = agentDefinitionCollection.get(resolvedAgentId)
+        var storedDefinition = agentDefinitionStore.get(resolvedAgentId)
                 .orElse(null);
         if (storedDefinition == null) {
             LOGGER.warn("agent not found for trigger {}, agentId={}", trigger.id, resolvedAgentId);

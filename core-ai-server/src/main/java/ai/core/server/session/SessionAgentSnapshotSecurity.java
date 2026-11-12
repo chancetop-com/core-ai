@@ -1,9 +1,10 @@
 package ai.core.server.session;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.util.IdLists;
-import core.framework.mongo.MongoCollection;
 
 /**
  * Security boundary for persisted agent session snapshots.
@@ -42,9 +43,9 @@ final class SessionAgentSnapshotSecurity {
     }
 
     static SessionState rederiveLegacyState(String sessionId, LegacyIdentity identity,
-                                            MongoCollection<AgentDefinition> agentDefinitionCollection,
+                                            AgentDefinitionStore agentDefinitionStore,
                                             SessionSkillManager skillManager) {
-        var currentDefinition = agentDefinitionCollection.get(identity.agentId()).orElse(null);
+        var currentDefinition = agentDefinitionStore.get(identity.agentId()).orElse(null);
         var ownedEditable = AgentDependencyAccessPolicy.isOwnedEditable(currentDefinition, identity.userId());
         var executable = AgentDependencyAccessPolicy.executableSessionAgent(currentDefinition,
                 identity.userId());

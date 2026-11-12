@@ -75,7 +75,7 @@ class SessionRebuildManagerTest {
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var skillManager = mock(SessionSkillManager.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
-                chatMessageService, agents, skillManager, null, null, null, null, null,
+                chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), skillManager, null, null, null, null, null,
                 null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var state = manager.buildStateFromDb("session-1");
@@ -114,7 +114,7 @@ class SessionRebuildManagerTest {
         definition.publishedConfig = new AgentPublishedConfig();
         when(agents.get("agent-1")).thenReturn(Optional.of(definition));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
-            chatMessageService, agents, null, null, null, null, null, null,
+            chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), null, null, null, null, null, null,
             null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var state = manager.buildStateFromDb("session-1");
@@ -170,7 +170,7 @@ class SessionRebuildManagerTest {
         var systemSettingsService = mock(SystemSettingsService.class);
         var mediaProvider = mock(MediaProvider.class);
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
-            chatMessageService, agents, mock(SessionSkillManager.class), subAgentManager,
+            chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), mock(SessionSkillManager.class), subAgentManager,
             sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
             publicUrlConfiguration, null, null, systemSettingsService, users, memoryExperimentService(), agentMemoryService(), sessionSearchService(), mediaProvider,
@@ -468,7 +468,7 @@ class SessionRebuildManagerTest {
         when(skillManager.resolveAccessibleDefinitionSkills(any(), eq("owner")))
                 .thenThrow(new ForbiddenException("skill is unavailable"));
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
-                chatMessageService, agents, skillManager, null, null, null, null, null,
+                chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), skillManager, null, null, null, null, null,
                 null, null, null, null, null, null, null, users, null, null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
 
         var error = assertThrows(ForbiddenException.class,
@@ -692,7 +692,7 @@ class SessionRebuildManagerTest {
         @SuppressWarnings("unchecked")
         var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
-                chatMessageService, agents, skillManager, subAgentManager, sandboxService,
+                chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), skillManager, subAgentManager, sandboxService,
                 mock(ChatArtifactSetup.class), toolRegistryService, mock(SystemPromptService.class),
                 mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
                 mock(PublicUrlConfiguration.class), null, null, mock(SystemSettingsService.class), users, memoryExperimentService(),
@@ -706,7 +706,7 @@ class SessionRebuildManagerTest {
         @SuppressWarnings("unchecked")
         var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(
-            chatMessageService, agents, null, null, null, null, null, null,
+            chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), null, null, null, null, null, null,
             null, null, null, null, null, null, null, users, memoryExperimentService(), null, null, null, null, mock(ApiUserQuotaService.class), null, null, null, null, null));
     }
 

@@ -1,5 +1,7 @@
 package ai.core.server.comparison;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.comparison.AgentComparisonView;
 import ai.core.api.server.comparison.ComparisonCountsView;
 import ai.core.api.server.comparison.ComparisonSessionPairView;
@@ -126,7 +128,7 @@ public class ComparisonViewAssembler {
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     public AgentComparisonView toListView(AgentComparison comparison) {
         var view = baseView(comparison);
@@ -137,7 +139,7 @@ public class ComparisonViewAssembler {
 
     public AgentComparisonView toDetailView(AgentComparison comparison, boolean manager) {
         var view = baseView(comparison);
-        var agent = agentDefinitionCollection.get(comparison.agentId).orElse(null);
+        var agent = agentDefinitionStore.get(comparison.agentId).orElse(null);
         view.agentChanged = agentChanged(comparison, agent);
         view.adoptRevertable = adoptRevertable(comparison, agent);
         if (manager) {

@@ -27,7 +27,6 @@ import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.tools.SubAgentToolCall;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -52,7 +51,7 @@ public class SubAgentAssembler {
     private final Logger logger = LoggerFactory.getLogger(SubAgentAssembler.class);
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     ToolRegistryService toolRegistryService;
     @Inject
@@ -95,7 +94,7 @@ public class SubAgentAssembler {
         var tools = new ArrayList<SubAgentToolCall>();
         for (var id : ids) {
             try {
-                var definition = agentDefinitionCollection.get(id)
+                var definition = agentDefinitionStore.get(id)
                         .orElseThrow(() -> new RuntimeException("subagent not found, id=" + id));
                 var subAgent = buildSubAgent(definition, sessionId, callerUserId);
                 tools.add(SubAgentToolCall.builder().subAgent(subAgent).build());

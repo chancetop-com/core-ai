@@ -12,9 +12,7 @@ import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -60,7 +58,7 @@ public class PersonalAssistantService {
     }
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     UserStore userStore;
     @Inject
@@ -73,14 +71,14 @@ public class PersonalAssistantService {
         if (personal != null) return personal.id;
         var user = forkableUser(userId);
         if (user == null) return agentId;
-        var template = agentDefinitionCollection.get(agentId).orElse(null);
+        var template = agentDefinitionStore.get(agentId).orElse(null);
         if (template == null) return agentId;
         return fork(template, user).id;
     }
 
     public AgentDefinition findPersonalAssistant(String userId) {
         if (userId == null || userId.isBlank()) return null;
-        return agentDefinitionCollection.get(personalAssistantId(userId)).orElse(null);
+        return agentDefinitionStore.get(personalAssistantId(userId)).orElse(null);
     }
 
     /**
@@ -106,7 +104,7 @@ public class PersonalAssistantService {
     private AgentDefinition fork(AgentDefinition template, User user) {
         var fork = buildFork(template, user);
         try {
-            agentDefinitionCollection.insert(fork);
+            agentDefinitionStore.insert(fork);
         } catch (MongoWriteException e) {
             if (e.getCode() != DUPLICATE_KEY_CODE) throw e;
             var existing = findPersonalAssistant(user.id);
@@ -196,7 +194,7 @@ public class PersonalAssistantService {
     private boolean hasUsableLlmCall(ToolRef ref) {
         var definitionId = llmCallDefinitionId(ref);
         if (definitionId == null) return false;
-        var definition = agentDefinitionCollection.get(definitionId).orElse(null);
+        var definition = agentDefinitionStore.get(definitionId).orElse(null);
         return AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(definition);
     }
 
@@ -233,7 +231,7 @@ public class PersonalAssistantService {
         if (cleaned.isEmpty()) return null;
         var usable = new ArrayList<String>(cleaned.size());
         for (var subAgentId : cleaned) {
-            var definition = agentDefinitionCollection.get(subAgentId).orElse(null);
+            var definition = agentDefinitionStore.get(subAgentId).orElse(null);
             if (AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(definition)) {
                 usable.add(subAgentId);
             } else {
@@ -253,9 +251,11 @@ public class PersonalAssistantService {
     }
 
     private boolean nameExists(String userId, String name) {
-        return agentDefinitionCollection.findOne(Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("name", name))).isPresent();
+        var query = new AgentDefinitionQuery();
+        query.scope = AgentDefinitionQuery.Scope.DIRECT;
+        query.userId = userId;
+        query.name = name;
+        return agentDefinitionStore.findOne(query).isPresent();
     }
 
     private String displayName(User user) {

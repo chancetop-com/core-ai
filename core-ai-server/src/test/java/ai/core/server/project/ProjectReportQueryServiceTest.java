@@ -10,7 +10,6 @@ import ai.core.server.domain.ProjectMemberRef;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -88,7 +87,7 @@ class ProjectReportQueryServiceTest {
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
         service.chatSessionStore = chatSessionStore;
         service.projectStore = ProjectStoreTestSupport.store(projects);
-        service.agentCollection = agents;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
 
         var project = new Project();
         project.id = "p-1";
@@ -97,7 +96,7 @@ class ProjectReportQueryServiceTest {
         member.id = "agent-1";
         project.members = List.of(member);
         when(projects.get("p-1")).thenReturn(Optional.of(project));
-        when(agents.find(any(Bson.class))).thenReturn(List.of());
+        when(agents.find(any(Query.class))).thenReturn(List.of());
         when(runs.find(any(Query.class))).thenReturn(List.of());
         when(sessions.find(any(Query.class))).thenReturn(List.of());
         when(files.find(any(Query.class))).thenReturn(List.of());

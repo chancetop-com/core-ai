@@ -66,7 +66,7 @@ class ProjectPlaybookServiceTest {
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         service.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(files);
         agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
-        service.agentCollection = agents;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         workflows = (MongoCollection<WorkflowDefinition>) mock(MongoCollection.class);
         service.workflowCollection = workflows;
         projectService = mock(ProjectService.class);
@@ -76,7 +76,7 @@ class ProjectPlaybookServiceTest {
 
         when(projects.get("p-1")).thenReturn(Optional.of(project()));
         when(agents.get("builtin-" + ProjectBuiltinAgents.PLAYBOOK_WRITER)).thenReturn(Optional.of(new AgentDefinition()));
-        when(agents.find(any(Bson.class))).thenReturn(List.of());
+        when(agents.find(any(Query.class))).thenReturn(List.of());
         when(workflows.find(any(Bson.class))).thenReturn(List.of());
         when(sessions.find(any(Query.class))).thenReturn(List.of());
         when(runs.find(any(Query.class))).thenReturn(List.of());
@@ -88,7 +88,7 @@ class ProjectPlaybookServiceTest {
     @Test
     void draftIsBuiltFromMembersSubjectsAndMaterial() {
         when(projectService.subjects("p-1")).thenReturn(List.of(subject("Acme Spa", "monthly spa ads")));
-        when(agents.find(any(Bson.class))).thenReturn(List.of(agent("a-1", "runs Meta campaigns for spa clients")));
+        when(agents.find(any(Query.class))).thenReturn(List.of(agent("a-1", "runs Meta campaigns for spa clients")));
         when(workflows.find(any(Bson.class))).thenReturn(List.of(workflow("w-1", "collects weekly performance data")));
         when(sessions.find(any(Query.class))).thenReturn(List.of(session("c-1", "Acme Spa campaign", "a-1")));
         when(messages.find(any(Query.class))).thenReturn(List.of(

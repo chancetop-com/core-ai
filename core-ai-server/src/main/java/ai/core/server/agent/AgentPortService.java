@@ -13,10 +13,8 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.util.IdLists;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
 import core.framework.util.Strings;
 import core.framework.web.exception.BadRequestException;
 
@@ -74,7 +72,7 @@ public class AgentPortService {
     SystemPromptService systemPromptService;
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     public ExportAgentResponse export(String id) {
         AgentDefinition definition = definitionService.getEntity(id);
@@ -153,7 +151,7 @@ public class AgentPortService {
         for (String id : IdLists.clean(subAgentIds)) {
             var ref = new AgentSubAgentRefView();
             ref.id = id;
-            ref.name = agentDefinitionCollection.get(id).map(agent -> agent.name).orElse(null);
+            ref.name = agentDefinitionStore.get(id).map(agent -> agent.name).orElse(null);
             refs.add(ref);
         }
         return refs;
@@ -211,7 +209,7 @@ public class AgentPortService {
         if (envelope.subAgentIds != null) {
             for (String id : IdLists.clean(envelope.subAgentIds)) {
                 if (ids.contains(id)) continue;
-                AgentDefinition agent = agentDefinitionCollection.get(id).orElse(null);
+                AgentDefinition agent = agentDefinitionStore.get(id).orElse(null);
                 if (canReference(agent, userId)) {
                     ids.add(id);
                 } else {
@@ -224,12 +222,14 @@ public class AgentPortService {
 
     private AgentDefinition resolveSubAgent(AgentSubAgentRefView ref, String userId) {
         if (ref == null) return null;
-        AgentDefinition agent = ref.id != null ? agentDefinitionCollection.get(ref.id).orElse(null) : null;
+        AgentDefinition agent = ref.id != null ? agentDefinitionStore.get(ref.id).orElse(null) : null;
         if (canReference(agent, userId)) return agent;
         if (Strings.isBlank(ref.name)) return null;
-        agent = agentDefinitionCollection.findOne(Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("name_key", AgentNameKey.normalize(ref.name)))).orElse(null);
+        var byNameKey = new AgentDefinitionQuery();
+        byNameKey.scope = AgentDefinitionQuery.Scope.DIRECT;
+        byNameKey.userId = userId;
+        byNameKey.nameKey = AgentNameKey.normalize(ref.name);
+        agent = agentDefinitionStore.findOne(byNameKey).orElse(null);
         return canReference(agent, userId) ? agent : null;
     }
 
@@ -243,9 +243,12 @@ public class AgentPortService {
         String base = Strings.isBlank(requested) ? "Imported agent" : requested.trim();
         String candidate = base;
         int suffix = 1;
-        while (agentDefinitionCollection.findOne(Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.eq("name", candidate))).isPresent()) {
+        while (true) {
+            var query = new AgentDefinitionQuery();
+            query.scope = AgentDefinitionQuery.Scope.DIRECT;
+            query.userId = userId;
+            query.name = candidate;
+            if (agentDefinitionStore.findOne(query).isEmpty()) break;
             candidate = base + " (" + suffix++ + ")";
         }
         return candidate;

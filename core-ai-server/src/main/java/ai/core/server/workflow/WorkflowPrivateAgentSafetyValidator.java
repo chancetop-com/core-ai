@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -8,7 +10,6 @@ import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,7 +21,7 @@ import java.util.List;
  */
 public class WorkflowPrivateAgentSafetyValidator {
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     public List<String> validate(WorkflowPublishedVersion version) {
         if (version.agentSnapshotSources == null) {
@@ -149,11 +150,11 @@ public class WorkflowPrivateAgentSafetyValidator {
             return false;
         }
         for (String subAgentId : config.subAgentIds) {
-            if (subAgentId == null || subAgentId.isBlank() || agentDefinitionCollection == null) {
+            if (subAgentId == null || subAgentId.isBlank() || agentDefinitionStore == null) {
                 return true;
             }
             try {
-                AgentDefinition subAgent = agentDefinitionCollection.get(subAgentId).orElse(null);
+                AgentDefinition subAgent = agentDefinitionStore.get(subAgentId).orElse(null);
                 if (!WorkflowAgentAccessPolicy.hasUsablePublishedSubAgent(subAgent)) {
                     return true;
                 }

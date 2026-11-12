@@ -1,11 +1,12 @@
 package ai.core.server.memory;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.server.agent.PersonalAssistantService;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.domain.Span;
@@ -71,7 +72,7 @@ public class AgentMemoryConsolidationJob implements Job {
     @Inject
     MongoCollection<Span> spanCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     AgentMemoryService agentMemoryService;
     @Inject
@@ -152,7 +153,7 @@ public class AgentMemoryConsolidationJob implements Job {
 
     @SuppressFBWarnings("VA_FORMAT_STRING_USES_NEWLINE")
     private void processAgent(String agentId) {
-        var definition = agentDefinitionCollection.get(agentId).orElse(null);
+        var definition = agentDefinitionStore.get(agentId).orElse(null);
         if (definition == null) {
             LOGGER.debug("agent={} definition not found, skipping extraction", agentId);
             return;
@@ -370,4 +371,3 @@ public class AgentMemoryConsolidationJob implements Job {
         return "";
     }
 }
-

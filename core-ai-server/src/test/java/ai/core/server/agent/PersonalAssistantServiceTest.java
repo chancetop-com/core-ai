@@ -10,6 +10,7 @@ import ai.core.server.domain.User;
 import ai.core.server.skill.SkillService;
 import com.mongodb.MongoWriteException;
 import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -32,6 +33,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PersonalAssistantServiceTest {
+    private MongoCollection<AgentDefinition> agentDefinitionCollection;
+
     @Test
     void onlyTheSharedTemplateIsExcludedFromMemoryExtraction() {
         assertTrue(PersonalAssistantService.isForkableTemplate(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID));
@@ -67,7 +70,7 @@ class PersonalAssistantServiceTest {
         var service = service();
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID))
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID))
                 .thenReturn(Optional.of(template()));
         when(users.get("system")).thenReturn(Optional.empty());
         when(users.get("api-1")).thenReturn(Optional.of(user("api-1", "api")));
@@ -77,7 +80,7 @@ class PersonalAssistantServiceTest {
         assertEquals(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "api-1"));
         assertEquals(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "ghost"));
         assertEquals(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, null));
-        verify(service.agentDefinitionCollection, never()).insert(any());
+        verify(agentDefinitionCollection, never()).insert(any());
     }
 
     @Test
@@ -88,7 +91,7 @@ class PersonalAssistantServiceTest {
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
 
         assertEquals(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1"));
-        verify(service.agentDefinitionCollection, never()).insert(any());
+        verify(agentDefinitionCollection, never()).insert(any());
     }
 
     @Test
@@ -99,12 +102,12 @@ class PersonalAssistantServiceTest {
         var template = template();
         template.publishedConfig = published("template prompt");
         template.publishedConfig.datasetConfig = null;
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
 
         var first = service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
-        var fork = capturedFork(service);
-        when(service.agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(fork));
+        var fork = capturedFork();
+        when(agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(fork));
         var second = service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
         assertEquals("assistant:user-1", first);
@@ -129,12 +132,12 @@ class PersonalAssistantServiceTest {
         var service = service();
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
         when(users.get("user-1")).thenReturn(Optional.of(user("user-1", "internal")));
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
-        assertEquals("alice's Assistant", capturedFork(service).name);
+        assertEquals("alice's Assistant", capturedFork().name);
     }
 
     @Test
@@ -142,15 +145,15 @@ class PersonalAssistantServiceTest {
         var service = service();
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
-        when(service.agentDefinitionCollection.findOne(any(Bson.class)))
-                .thenReturn(Optional.of(new AgentDefinition()))
-                .thenReturn(Optional.empty());
+        when(agentDefinitionCollection.find(any(Query.class)))
+                .thenReturn(List.of(new AgentDefinition()))
+                .thenReturn(List.of());
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
-        assertEquals("Alice's Assistant 2", capturedFork(service).name);
+        assertEquals("Alice's Assistant 2", capturedFork().name);
     }
 
     @Test
@@ -161,7 +164,7 @@ class PersonalAssistantServiceTest {
         var restricted = platformUser("user-1");
         restricted.permissions = List.of(permission("skill", "skill-1"));
         when(users.get("user-1")).thenReturn(Optional.of(restricted));
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
@@ -176,7 +179,7 @@ class PersonalAssistantServiceTest {
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
@@ -191,7 +194,7 @@ class PersonalAssistantServiceTest {
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template()));
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
@@ -206,12 +209,12 @@ class PersonalAssistantServiceTest {
         var users = users();
         service.userStore = ai.core.server.user.MongoUserStore.of(users);
         var template = template();
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
         when(users.get("user-1")).thenReturn(Optional.of(platformUser("user-1")));
         var winner = new AgentDefinition();
         winner.id = "assistant:user-1";
-        doThrow(duplicateKey()).when(service.agentDefinitionCollection).insert(any());
-        when(service.agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(winner));
+        doThrow(duplicateKey()).when(agentDefinitionCollection).insert(any());
+        when(agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(winner));
 
         assertEquals("assistant:user-1", service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1"));
         verify(users, never()).update(any(Bson.class), any(Bson.class));
@@ -228,13 +231,13 @@ class PersonalAssistantServiceTest {
         var template = template();
         template.skillIds = List.of("kept-skill", "missing-skill");
         template.subAgentIds = List.of("missing-sub-agent");
-        when(service.agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
+        when(agentDefinitionCollection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
         when(skills.get("kept-skill")).thenReturn(mock(SkillDefinition.class));
         when(skills.get("missing-skill")).thenThrow(new RuntimeException("skill not found"));
 
         service.resolve(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, "user-1");
 
-        var fork = capturedFork(service);
+        var fork = capturedFork();
         assertEquals(List.of("kept-skill"), fork.skillIds);
         assertNull(fork.subAgentIds);
     }
@@ -248,7 +251,7 @@ class PersonalAssistantServiceTest {
 
         assertNull(service.findOrFork(null, "user-1"));
         assertNull(service.findOrFork(definition("agent-1"), "user-1"));
-        verify(service.agentDefinitionCollection, never()).insert(any());
+        verify(agentDefinitionCollection, never()).insert(any());
     }
 
     @Test
@@ -256,18 +259,18 @@ class PersonalAssistantServiceTest {
         var service = service();
         var existing = new AgentDefinition();
         existing.id = "assistant:user-1";
-        when(service.agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(existing));
+        when(agentDefinitionCollection.get("assistant:user-1")).thenReturn(Optional.of(existing));
 
         assertSame(existing, service.findPersonalAssistant("user-1"));
         assertSame(existing, service.findOrFork(template(), "user-1"));
         assertNull(service.findPersonalAssistant(null));
         assertNull(service.findPersonalAssistant(" "));
-        verify(service.agentDefinitionCollection, never()).insert(any());
+        verify(agentDefinitionCollection, never()).insert(any());
     }
 
-    private AgentDefinition capturedFork(PersonalAssistantService service) {
+    private AgentDefinition capturedFork() {
         var captor = ArgumentCaptor.forClass(AgentDefinition.class);
-        verify(service.agentDefinitionCollection).insert(captor.capture());
+        verify(agentDefinitionCollection).insert(captor.capture());
         return captor.getValue();
     }
 
@@ -281,7 +284,8 @@ class PersonalAssistantServiceTest {
     @SuppressWarnings("unchecked")
     private PersonalAssistantService service() {
         var service = new PersonalAssistantService();
-        service.agentDefinitionCollection = mock(MongoCollection.class);
+        agentDefinitionCollection = mock(MongoCollection.class);
+        service.agentDefinitionStore = MongoAgentDefinitionStore.of(agentDefinitionCollection);
         service.userStore = ai.core.server.user.MongoUserStore.of(users());
         service.skillService = mock(SkillService.class);
         return service;

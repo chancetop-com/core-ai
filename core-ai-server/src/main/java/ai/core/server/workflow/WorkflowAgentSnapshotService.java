@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.server.agent.AgentExecutableConfigFactory;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
@@ -12,7 +14,6 @@ import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.ForbiddenException;
 
 import java.time.ZonedDateTime;
@@ -26,7 +27,7 @@ import java.util.Map;
  */
 public class WorkflowAgentSnapshotService {
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     SkillService skillService;
@@ -42,7 +43,7 @@ public class WorkflowAgentSnapshotService {
                 errors.add("node " + node.id() + " is missing agent_id");
                 continue;
             }
-            AgentDefinition agent = agentDefinitionCollection.get(agentId).orElse(null);
+            AgentDefinition agent = agentDefinitionStore.get(agentId).orElse(null);
             if (agent == null) {
                 errors.add("node " + node.id() + " references an unknown agent/LLM definition: " + agentId);
                 continue;
@@ -112,7 +113,7 @@ public class WorkflowAgentSnapshotService {
             return true;
         }
         for (String subAgentId : config.subAgentIds) {
-            AgentDefinition subAgent = agentDefinitionCollection.get(subAgentId).orElse(null);
+            AgentDefinition subAgent = agentDefinitionStore.get(subAgentId).orElse(null);
             if (!WorkflowAgentAccessPolicy.hasUsablePublishedSubAgent(subAgent)) {
                 errors.add("node " + node.id() + " references sub-agent without a usable published config: " + subAgentId);
                 return false;

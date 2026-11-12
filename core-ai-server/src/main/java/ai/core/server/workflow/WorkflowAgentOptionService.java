@@ -1,17 +1,17 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.workflow.ListWorkflowAgentOptionsRequest;
 import ai.core.api.server.workflow.ListWorkflowAgentOptionsResponse;
 import ai.core.api.server.workflow.WorkflowAgentOptionView;
+import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentNameKey;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import org.bson.conversions.Bson;
 
@@ -59,7 +59,7 @@ public class WorkflowAgentOptionService {
     }
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     public ListWorkflowAgentOptionsResponse list(String userId, ListWorkflowAgentOptionsRequest request) {
         if (request == null) throw new BadRequestException("invalid scope: null");
@@ -67,24 +67,27 @@ public class WorkflowAgentOptionService {
         var type = type(request.type);
         int page = request.page == null ? 1 : Math.max(1, request.page);
         int limit = request.limit == null ? DEFAULT_LIMIT : Math.min(MAX_LIMIT, Math.max(1, request.limit));
-        var filter = filter(scope, type, request.query, userId);
         long offset = ((long) page - 1) * limit;
         if (offset > Integer.MAX_VALUE) {
             throw new BadRequestException("page offset exceeds supported range");
         }
 
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.ascending("name_key", "_id");
-        query.skip = (int) offset;
+        var query = new AgentDefinitionQuery();
+        query.scope = "mine".equals(scope) ? AgentDefinitionQuery.Scope.WORKFLOW_MINE : AgentDefinitionQuery.Scope.WORKFLOW_SHARED;
+        query.userId = userId;
+        query.type = type.name();
+        query.nameKeyPrefix = AgentNameKey.normalize(request.query);
+        query.sortField = "name_key";
+        query.ascending = true;
+        query.offset = (int) offset;
         query.limit = limit;
 
         var response = new ListWorkflowAgentOptionsResponse();
-        response.items = agentDefinitionCollection.find(query).stream()
+        response.items = agentDefinitionStore.find(query).stream()
             .filter(agent -> canList(agent, scope, type, userId))
             .map(agent -> toView(agent, userId))
             .toList();
-        response.total = agentDefinitionCollection.count(filter);
+        response.total = agentDefinitionStore.count(query);
         response.page = page;
         response.limit = limit;
         response.selected = selected(request.selectedId, type, userId);
@@ -103,7 +106,7 @@ public class WorkflowAgentOptionService {
 
     private WorkflowAgentOptionView selected(String selectedId, DefinitionType type, String userId) {
         if (selectedId == null || selectedId.isBlank()) return null;
-        return agentDefinitionCollection.get(selectedId)
+        return agentDefinitionStore.get(selectedId)
             .filter(agent -> agent.type == type)
             .filter(agent -> WorkflowAgentAccessPolicy.canReference(agent, userId))
             .map(agent -> toView(agent, userId))

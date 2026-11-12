@@ -5,11 +5,6 @@ import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -77,49 +72,59 @@ final class AgentListHelper {
         }
     }
 
-    private final MongoCollection<AgentDefinition> agentDefinitionCollection;
+    private final AgentDefinitionStore agentDefinitionStore;
     private final UserStore userStore;
 
-    AgentListHelper(MongoCollection<AgentDefinition> agentDefinitionCollection, UserStore userStore) {
-        this.agentDefinitionCollection = agentDefinitionCollection;
+    AgentListHelper(AgentDefinitionStore agentDefinitionStore, UserStore userStore) {
+        this.agentDefinitionStore = agentDefinitionStore;
         this.userStore = userStore;
     }
 
-    AgentDefinition findDefaultAssistant(Bson filter) {
-        return agentDefinitionCollection.findOne(AgentQueryHelper.combineFilters(filter,
-            Filters.eq("_id", PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID))).orElse(null);
+    AgentDefinition findDefaultAssistant(AgentDefinitionQuery query) {
+        return agentDefinitionStore.findOne(query).orElse(null);
     }
 
-    List<AgentDefinition> listWithAssistantFirst(Bson filter, String sortField, Integer skip, Integer limit, AgentDefinition assistant, Bson projection) {
+    List<AgentDefinition> listWithAssistantFirst(AgentDefinitionQuery query, Integer skip, Integer limit, AgentDefinition assistant) {
         if (limit == null) {
-            var agents = findAgents(filter, sortField, null, null, projection);
+            var agents = findAgents(query, null, null);
             prioritizeAssistant(agents, assistant.id);
             return agents;
         }
         if (skip != null && skip > 0) {
-            return findAgents(excludeAssistant(filter, assistant.id), sortField, skip - 1, limit, projection);
+            excludeAssistant(query, assistant.id);
+            return findAgents(query, skip - 1, limit);
         }
-        var agents = limit > 1 ? findAgents(excludeAssistant(filter, assistant.id), sortField, 0, limit - 1, projection) : new ArrayList<AgentDefinition>();
+        List<AgentDefinition> agents;
+        if (limit > 1) {
+            excludeAssistant(query, assistant.id);
+            agents = findAgents(query, 0, limit - 1);
+        } else {
+            agents = new ArrayList<>();
+        }
         agents.add(0, assistant);
         return agents;
     }
 
-    List<AgentDefinition> findAgents(Bson filter, String sortField, Integer skip, Integer limit, Bson projection) {
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending(sortField);
-        if (skip != null) query.skip = skip;
-        if (limit != null) query.limit = limit;
-        if (projection != null) query.projection = projection;
-        return agentDefinitionCollection.find(query);
+    private void excludeAssistant(AgentDefinitionQuery query, String assistantId) {
+        var excludeIds = query.excludeIds == null ? new ArrayList<String>() : new ArrayList<>(query.excludeIds);
+        excludeIds.add(assistantId);
+        query.excludeIds = excludeIds;
+    }
+
+    List<AgentDefinition> findAgents(AgentDefinitionQuery query, Integer skip, Integer limit) {
+        query.offset = skip != null ? skip : 0;
+        query.limit = limit != null ? limit : Integer.MAX_VALUE;
+        return agentDefinitionStore.find(query);
     }
 
     // Mongo cannot use an index for an unanchored case-insensitive regex, so keyword search is rejected by
     // notablescan. Fetch the index-backed access matches and filter in Java instead, like TraceService does.
-    List<AgentDefinition> searchAgents(Bson filter, String keyword, String sortField, String priorityAgentId) {
+    List<AgentDefinition> searchAgents(AgentDefinitionQuery query, String keyword, String sortField, String priorityAgentId) {
         var lower = keyword.toLowerCase(Locale.ROOT);
+        query.sortField = sortField;
+        query.limit = Integer.MAX_VALUE;
         var matches = new ArrayList<AgentDefinition>();
-        for (var agent : findAgents(filter, sortField, null, null, null)) {
+        for (var agent : agentDefinitionStore.find(query)) {
             if (contains(agent.name, lower) || contains(agent.description, lower)) matches.add(agent);
         }
         prioritizeAssistant(matches, priorityAgentId);
@@ -135,7 +140,7 @@ final class AgentListHelper {
     }
 
     void favorite(String agentId, String userId) {
-        agentDefinitionCollection.get(agentId)
+        agentDefinitionStore.get(agentId)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + agentId));
         addFavorite(userStore, userId, agentId);
     }
@@ -156,9 +161,11 @@ final class AgentListHelper {
         var ordered = new ArrayList<AgentDefinition>();
         if (!favoriteIds.isEmpty()) {
             var byId = new HashMap<String, AgentDefinition>();
-            var lookupFilter = AgentQueryHelper.combineFilters(Filters.in("_id", favoriteIds),
-                AgentQueryHelper.excludeOtherUsersForksFilter(userId));
-            for (var agent : agentDefinitionCollection.find(lookupFilter)) {
+            var query = new AgentDefinitionQuery();
+            query.ids = favoriteIds;
+            query.forkVisibilityUserId = userId;
+            query.limit = Integer.MAX_VALUE;
+            for (var agent : agentDefinitionStore.find(query)) {
                 byId.put(agent.id, agent);
             }
             for (int i = favoriteIds.size() - 1; i >= 0; i--) {
@@ -186,7 +193,10 @@ final class AgentListHelper {
         }
         if (agentIds.isEmpty()) return Map.of();
         var map = new HashMap<String, String>();
-        for (var agent : agentDefinitionCollection.find(new org.bson.Document("_id", new org.bson.Document("$in", new ArrayList<>(agentIds))))) {
+        var query = new AgentDefinitionQuery();
+        query.ids = new ArrayList<>(agentIds);
+        query.limit = agentIds.size();
+        for (var agent : agentDefinitionStore.find(query)) {
             map.put(agent.id, agent.name);
         }
         return map;
@@ -206,7 +216,4 @@ final class AgentListHelper {
         return map;
     }
 
-    private Bson excludeAssistant(Bson filter, String assistantId) {
-        return AgentQueryHelper.combineFilters(filter, Filters.ne("_id", assistantId));
-    }
 }

@@ -87,7 +87,7 @@ class RunAgentActionTest {
         var runner = mock(AgentRunner.class);
         var skillService = mock(SkillService.class);
         var action = new RunAgentAction();
-        action.agentDefinitionCollection = collection;
+        action.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(collection);
         action.agentRunner = runner;
         action.skillService = skillService;
         action.personalAssistantService = PersonalAssistantStubs.passThrough();

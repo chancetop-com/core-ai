@@ -103,7 +103,7 @@ class UserIdentityPromptTest {
         when(collection.get("assistant:user-1")).thenReturn(Optional.of(personalAssistant()));
         var context = context();
 
-        UserIdentityPrompt.attach(context, "assistant:user-1", collection, user("Alice", "alice@example.com"));
+        UserIdentityPrompt.attach(context, "assistant:user-1", MongoAgentDefinitionStore.of(collection), user("Alice", "alice@example.com"));
 
         assertEquals(1, context.getPromptSections().size());
     }
@@ -117,9 +117,9 @@ class UserIdentityPromptTest {
         when(collection.get(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)).thenReturn(Optional.of(template));
         var context = context();
 
-        UserIdentityPrompt.attach(context, PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, collection, user("Alice", "alice@example.com"));
-        UserIdentityPrompt.attach(context, "missing-agent", collection, user("Alice", "alice@example.com"));
-        UserIdentityPrompt.attach(context, null, collection, user("Alice", "alice@example.com"));
+        UserIdentityPrompt.attach(context, PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID, MongoAgentDefinitionStore.of(collection), user("Alice", "alice@example.com"));
+        UserIdentityPrompt.attach(context, "missing-agent", MongoAgentDefinitionStore.of(collection), user("Alice", "alice@example.com"));
+        UserIdentityPrompt.attach(context, null, MongoAgentDefinitionStore.of(collection), user("Alice", "alice@example.com"));
 
         assertTrue(context.getPromptSections().isEmpty());
     }

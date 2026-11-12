@@ -1,5 +1,6 @@
 package ai.core.server.project;
 
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
@@ -61,7 +62,7 @@ public class ProjectService {
     @Inject
     ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<WorkflowDefinition> workflowCollection;
     @Inject
@@ -157,7 +158,7 @@ public class ProjectService {
         for (var ref : refs) {
             String name;
             if ("agent".equals(ref.type())) {
-                var agent = agentCollection.get(ref.id()).orElseThrow(() -> new NotFoundException("agent not found, id=" + ref.id()));
+                var agent = agentDefinitionStore.get(ref.id()).orElseThrow(() -> new NotFoundException("agent not found, id=" + ref.id()));
                 if (!isAddableAgent(agent, ownerUserId)) throw new ForbiddenException("agent is not published and does not belong to the project owner");
                 name = agent.name;
             } else if ("workflow".equals(ref.type())) {
@@ -299,7 +300,7 @@ public class ProjectService {
         var project = require(projectId);
         requireAccess(project, userId, admin);
         if ("agent".equals(type)) {
-            var agent = agentCollection.get(memberId).orElseThrow(() -> new NotFoundException("agent not found, id=" + memberId));
+            var agent = agentDefinitionStore.get(memberId).orElseThrow(() -> new NotFoundException("agent not found, id=" + memberId));
             if (!isAddableAgent(agent, project.userId)) throw new ForbiddenException("agent is not published and does not belong to the project owner");
             pushMember(project, type, memberId, agent.name);
         } else if ("workflow".equals(type)) {

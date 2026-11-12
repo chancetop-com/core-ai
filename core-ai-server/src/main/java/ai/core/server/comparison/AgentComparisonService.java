@@ -1,5 +1,7 @@
 package ai.core.server.comparison;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.comparison.AgentComparisonView;
 import ai.core.api.server.comparison.CreateAgentComparisonRequest;
 import ai.core.api.server.comparison.EndAgentComparisonRequest;
@@ -56,7 +58,7 @@ public class AgentComparisonService {
     @Inject
     MongoCollection<AgentComparison> comparisonCollection;
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<AgentVersion> versionCollection;
     @Inject
@@ -211,7 +213,7 @@ public class AgentComparisonService {
     private void switchSources(AgentComparison comparison, UpdateAgentComparisonRequest request) {
         if (request.versionAId != null) comparison.versionAId = normalizeRef(request.versionAId);
         if (request.versionBId != null) comparison.versionBId = normalizeRef(request.versionBId);
-        var agent = agentDefinitionCollection.get(comparison.agentId)
+        var agent = agentDefinitionStore.get(comparison.agentId)
             .orElseThrow(() -> new BadRequestException("agent is unavailable"));
         var sourceA = comparison.versionAId != null
             ? requireVersionConfig(comparison.agentId, comparison.versionAId)
@@ -235,7 +237,7 @@ public class AgentComparisonService {
         if (runningComparison(comparison.agentId, comparison.id).isPresent()) {
             throw new BadRequestException("agent already has a running comparison");
         }
-        var agent = agentDefinitionCollection.get(comparison.agentId)
+        var agent = agentDefinitionStore.get(comparison.agentId)
             .orElseThrow(() -> new BadRequestException("agent is unavailable"));
         refreshForStart(comparison, agent);
         freezeVariant(comparison.variantA, request != null ? request.effectiveToolsA : null, userId);
@@ -385,13 +387,13 @@ public class AgentComparisonService {
             } catch (IllegalArgumentException e) {
                 throw new BadRequestException("variant has an unavailable LLM call dependency", "BAD_REQUEST", e);
             }
-            var dependency = agentDefinitionCollection.get(definitionId).orElse(null);
+            var dependency = agentDefinitionStore.get(definitionId).orElse(null);
             if (!AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(dependency)) {
                 throw new BadRequestException("variant has an unavailable LLM call dependency");
             }
         }
         for (var subAgentId : IdLists.clean(variant.config.subAgentIds)) {
-            var dependency = agentDefinitionCollection.get(subAgentId).orElse(null);
+            var dependency = agentDefinitionStore.get(subAgentId).orElse(null);
             if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(dependency)) {
                 throw new BadRequestException("variant has an unavailable sub-agent dependency");
             }

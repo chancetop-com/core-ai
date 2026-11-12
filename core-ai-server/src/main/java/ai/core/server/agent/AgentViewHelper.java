@@ -13,7 +13,10 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
+import ai.core.server.skill.SkillService;
+import ai.core.server.user.UserStore;
 import ai.core.server.util.IdLists;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.List;
 import java.util.Locale;
@@ -26,6 +29,45 @@ import java.util.Map;
  * @author stephen
  */
 final class AgentViewHelper {
+
+    @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
+    static AgentDefinitionView buildDetailedView(AgentDefinition entity, AgentDefinitionStore store, UserStore userStore, SkillService skillService) {
+        var view = buildView(entity, Map.of(), Map.of());
+        view.createdBy = userName(userStore, entity.userId);
+        view.updatedBy = userName(userStore, lastModifiedBy(entity));
+        if (view.subAgents != null) {
+            view.subAgents.forEach(sa -> sa.name = agentName(store, sa.id));
+        }
+        if (view.skills != null) {
+            view.skills.forEach(s -> s.name = skillName(skillService, s.id));
+        }
+        return view;
+    }
+
+    static String lastModifiedBy(AgentDefinition entity) {
+        return entity.updatedBy != null ? entity.updatedBy : entity.userId;
+    }
+
+    private static String userName(UserStore userStore, String userId) {
+        if (userId == null) return null;
+        return userStore.get(userId).map(u -> u.name).orElse(userId);
+    }
+
+    private static String agentName(AgentDefinitionStore store, String agentId) {
+        try {
+            return store.get(agentId).map(a -> a.name).orElse(agentId);
+        } catch (Exception e) {
+            return agentId;
+        }
+    }
+
+    private static String skillName(SkillService skillService, String skillId) {
+        try {
+            return skillService.get(skillId).name;
+        } catch (Exception e) {
+            return skillId;
+        }
+    }
 
     static AgentDefinitionView buildView(AgentDefinition entity, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = new AgentDefinitionView();

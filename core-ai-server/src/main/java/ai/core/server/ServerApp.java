@@ -122,6 +122,8 @@ public class ServerApp extends App {
         registerMongo();
 
         load(new PostgresModule());
+        // agent definitions are read by project attribution/session runtime during startup wiring
+        load(new AgentDefinitionStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly

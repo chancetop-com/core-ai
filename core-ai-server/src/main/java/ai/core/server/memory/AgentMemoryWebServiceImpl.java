@@ -1,5 +1,7 @@
 package ai.core.server.memory;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.memory.AgentMemoryExperimentConfigView;
 import ai.core.api.server.memory.AgentMemoryView;
 import ai.core.api.server.memory.AgentMemoryWebService;
@@ -13,7 +15,6 @@ import ai.core.api.server.memory.ListExperimentRunsRequest;
 import ai.core.api.server.memory.ListExperimentRunsResponse;
 import ai.core.api.server.memory.MemoryLayerView;
 import ai.core.api.server.memory.RankingStrategyView;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.memory.experiment.AgentMemoryExperimentService;
@@ -26,7 +27,6 @@ import ai.core.server.rbac.RoleRegistry;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -148,7 +148,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     AgentMemoryExperimentService agentMemoryExperimentService;
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     UserStore userStore;
@@ -160,7 +160,7 @@ public class AgentMemoryWebServiceImpl implements AgentMemoryWebService {
     // belonged to a shared agent, so no ownership check existed.
     private void requireAgentAccess(String agentId) {
         if (agentId == null || agentId.isBlank()) return;
-        var definition = agentDefinitionCollection.get(agentId)
+        var definition = agentDefinitionStore.get(agentId)
             .orElseThrow(() -> new NotFoundException("agent not found: " + agentId));
         if (Boolean.TRUE.equals(definition.systemDefault)) return;
         var userId = AuthContext.userId(webContext);

@@ -1,6 +1,6 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectReportDraft;
@@ -56,7 +56,7 @@ public class ProjectReportStage {
     @Inject
     ProjectEventStore eventStore;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
     @Inject
@@ -86,7 +86,7 @@ public class ProjectReportStage {
         if (events.isEmpty()) {
             throw new IllegalStateException("subject has no events yet — run an analysis first");
         }
-        var definition = agentCollection.get("builtin-" + ProjectBuiltinAgents.REPORT_RENDERER).orElse(null);
+        var definition = agentDefinitionStore.get("builtin-" + ProjectBuiltinAgents.REPORT_RENDERER).orElse(null);
         if (definition == null) {
             throw new IllegalStateException("report renderer definition is missing; reset builtin agents to restore it");
         }

@@ -37,6 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -256,7 +257,6 @@ class AgentDefinitionServiceTest {
         assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
         when(collection.find(any(Query.class))).thenReturn(new ArrayList<>(List.of(assistant)));
         when(collection.count(any(Bson.class))).thenReturn(1L);
-        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(assistant));
         var service = service(collection);
         when(service.personalAssistantService.findOrFork(any(), eq("user-1"))).thenReturn(assistant);
         var request = new ListAgentsRequest();
@@ -264,10 +264,12 @@ class AgentDefinitionServiceTest {
 
         service.list("user-1", request);
 
-        var filters = ArgumentCaptor.forClass(Bson.class);
-        verify(collection).findOne(filters.capture());
-        var lookupFilter = filters.getValue().toBsonDocument().toJson();
-        assertTrue(lookupFilter.contains(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID));
+        var queries = ArgumentCaptor.forClass(Query.class);
+        verify(collection, atLeastOnce()).find(queries.capture());
+        var lookupFilter = queries.getAllValues().stream()
+            .map(query -> query.filter.toBsonDocument().toJson())
+            .filter(filter -> filter.contains(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID))
+            .findFirst().orElseThrow();
         assertFalse(lookupFilter.contains("$nin"),
             "the chat selector hides the shared template, so the fork lookup must not re-apply that exclusion: " + lookupFilter);
     }
@@ -451,7 +453,7 @@ class AgentDefinitionServiceTest {
         var collection = agentCollection();
         var first = definition("agent-first", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
         var second = definition("agent-second", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
-        when(collection.find(any(Bson.class))).thenReturn(List.of(first, second));
+        when(collection.find(any(Query.class))).thenReturn(List.of(first, second));
         var service = service(collection);
         var user = new User();
         user.id = "user-1";
@@ -468,7 +470,7 @@ class AgentDefinitionServiceTest {
     @Test
     void favoritesLookupExcludesOtherUsersPersonalAssistantForks() {
         var collection = agentCollection();
-        when(collection.find(any(Bson.class))).thenReturn(List.of());
+        when(collection.find(any(Query.class))).thenReturn(List.of());
         var service = service(collection);
         var user = new User();
         user.id = "user-1";
@@ -477,9 +479,9 @@ class AgentDefinitionServiceTest {
 
         service.favorites("user-1");
 
-        var filters = ArgumentCaptor.forClass(Bson.class);
-        verify(collection).find(filters.capture());
-        var lookupFilter = filters.getValue().toBsonDocument().toJson();
+        var queries = ArgumentCaptor.forClass(Query.class);
+        verify(collection).find(queries.capture());
+        var lookupFilter = queries.getValue().filter.toBsonDocument().toJson();
         assertTrue(lookupFilter.contains("\"forked_from\": null"), lookupFilter);
         assertTrue(lookupFilter.contains("\"user_id\": \"user-1\""), lookupFilter);
     }
@@ -776,7 +778,7 @@ class AgentDefinitionServiceTest {
     @SuppressWarnings("unchecked")
     private AgentDefinitionService service(MongoCollection<AgentDefinition> collection) {
         var service = new AgentDefinitionService();
-        service.agentDefinitionCollection = collection;
+        service.agentDefinitionStore = MongoAgentDefinitionStore.of(collection);
         userCollection = mock(MongoCollection.class);
         service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         service.skillService = mock(SkillService.class);

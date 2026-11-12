@@ -1,6 +1,9 @@
 package ai.core.server.agenthub;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentVisibility;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
@@ -8,10 +11,7 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import ai.core.tool.ToolSearchScorer;
-import com.mongodb.client.model.Projections;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -46,7 +46,7 @@ public class AgentCatalogService {
     private static final String SOURCE_SERVER = "server";
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     SkillService skillService;
 
@@ -113,7 +113,7 @@ public class AgentCatalogService {
     }
 
     private CatalogAgent loadMissing(String userId, String id) {
-        var definition = agentDefinitionCollection.get(id).orElse(null);
+        var definition = agentDefinitionStore.get(id).orElse(null);
         if (definition == null) return null;
         if (!AgentVisibility.isVisible(definition, userId) || !AgentVisibility.isRunnable(definition, userId)) return null;
         var definitions = List.of(definition);
@@ -211,11 +211,12 @@ public class AgentCatalogService {
     }
 
     private Snapshot loadSnapshot() {
-        var query = new Query();
-        query.projection = Projections.exclude("system_prompt", "published_config.system_prompt", "variables");
+        var query = new AgentDefinitionQuery();
+        query.limit = Integer.MAX_VALUE;
+        query.excludeSystemPrompt = true;
         List<AgentDefinition> definitions;
         try {
-            definitions = agentDefinitionCollection.find(query);
+            definitions = agentDefinitionStore.find(query);
         } catch (RuntimeException e) {
             LOGGER.warn("agent catalog refresh failed: {}", e.getMessage());
             return new Snapshot(List.of());

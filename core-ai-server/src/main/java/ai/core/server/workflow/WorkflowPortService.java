@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.api.server.workflow.ExportWorkflowResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
@@ -51,7 +53,7 @@ public class WorkflowPortService {
     WorkflowDefinitionService definitionService;
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     MongoCollection<WorkflowDefinition> definitionCollection;
@@ -116,7 +118,7 @@ public class WorkflowPortService {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", null, "node is missing agent_id"));
             return;
         }
-        AgentDefinition agent = agentDefinitionCollection.get(String.valueOf(agentId)).orElse(null);
+        AgentDefinition agent = agentDefinitionStore.get(String.valueOf(agentId)).orElse(null);
         if (agent == null) {
             unresolved.add(new UnresolvedReference(node.id(), node.type(), "AGENT", String.valueOf(agentId), "references an unknown agent"));
         } else if (agent.type != expectedDefinitionType(node)) {

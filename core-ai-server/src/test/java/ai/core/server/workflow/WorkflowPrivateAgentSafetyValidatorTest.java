@@ -38,7 +38,7 @@ class WorkflowPrivateAgentSafetyValidatorTest {
 
     @BeforeEach
     void setUp() {
-        validator.agentDefinitionCollection = agentCollection;
+        validator.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agentCollection);
     }
 
     @Test

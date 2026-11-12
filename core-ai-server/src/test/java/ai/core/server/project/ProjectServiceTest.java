@@ -69,7 +69,7 @@ class ProjectServiceTest {
         attributions = (MongoCollection<ProjectSubjectAttribution>) mock(MongoCollection.class);
         service.attributionRepository = MongoProjectAttributionRepository.of(attributions);
         agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
-        service.agentCollection = agents;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         var workflowCollection = (MongoCollection<WorkflowDefinition>) mock(MongoCollection.class);
         service.workflowCollection = workflowCollection;
         service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);

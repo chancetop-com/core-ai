@@ -1,8 +1,9 @@
 package ai.core.server.schedule;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.schedule.CronExpression;
 import ai.core.server.agent.PersonalAssistantService;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentSchedule;
 import ai.core.server.domain.ConcurrencyPolicy;
@@ -30,7 +31,7 @@ public class AgentScheduler {
     MongoCollection<AgentSchedule> agentScheduleCollection;
 
     @Inject
-    MongoCollection<AgentDefinition> agentDefinitionCollection;
+    AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     MongoCollection<AgentRun> agentRunCollection;
@@ -104,7 +105,7 @@ public class AgentScheduler {
             return;
         }
 
-        var definition = agentDefinitionCollection.get(agentId);
+        var definition = agentDefinitionStore.get(agentId);
         if (definition.isEmpty()) {
             recordSkippedRun(schedule, "agent not found, agentId=" + agentId);
             LOGGER.warn("agent not found for schedule, scheduleId={}, agentId={}", schedule.id, agentId);

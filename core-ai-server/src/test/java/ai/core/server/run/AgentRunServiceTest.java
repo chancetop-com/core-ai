@@ -230,7 +230,7 @@ class AgentRunServiceTest {
         when(definitionCollection.get(definition.id)).thenReturn(Optional.of(definition));
         var service = new AgentRunService();
         service.agentRunner = runner;
-        service.agentDefinitionCollection = definitionCollection;
+        service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(definitionCollection);
         service.agentRunCollection = runCollection;
         service.skillService = mock(SkillService.class);
         service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);

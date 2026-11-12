@@ -1,13 +1,13 @@
 package ai.core.server.session;
 
+import ai.core.server.agent.AgentDefinitionStore;
+
 import ai.core.agent.Agent;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
-import ai.core.server.domain.AgentDefinition;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -27,16 +27,16 @@ class SessionRestoreHelper {
     private final ToolRegistryService toolRegistryService;
     private final SessionSkillManager skillManager;
     private final SessionSubAgentManager subAgentManager;
-    private final MongoCollection<AgentDefinition> agentDefinitionCollection;
+    private final AgentDefinitionStore agentDefinitionStore;
 
     SessionRestoreHelper(ChatMessageService chatMessageService, ToolRegistryService toolRegistryService,
                          SessionSkillManager skillManager, SessionSubAgentManager subAgentManager,
-                         MongoCollection<AgentDefinition> agentDefinitionCollection) {
+                         AgentDefinitionStore agentDefinitionStore) {
         this.chatMessageService = chatMessageService;
         this.toolRegistryService = toolRegistryService;
         this.skillManager = skillManager;
         this.subAgentManager = subAgentManager;
-        this.agentDefinitionCollection = agentDefinitionCollection;
+        this.agentDefinitionStore = agentDefinitionStore;
     }
 
     void restoreDynamicallyLoaded(SessionState state, String sessionId, InProcessAgentSession session,
@@ -67,7 +67,7 @@ class SessionRestoreHelper {
         if (state.subAgentIds != null && !state.subAgentIds.isEmpty()) {
             try {
                 var definitions = IdLists.clean(state.subAgentIds).stream()
-                        .map(id -> agentDefinitionCollection.get(id).orElse(null))
+                        .map(id -> agentDefinitionStore.get(id).orElse(null))
                         .filter(def -> def != null)
                         .toList();
                 if (!definitions.isEmpty()) {

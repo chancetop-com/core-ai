@@ -1,13 +1,12 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,7 +36,7 @@ public class ProjectSubjectAnalysisStage {
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<AgentDefinition> agentCollection;
+    AgentDefinitionStore agentDefinitionStore;
     @Inject
     ProjectAttributionRepository attributionRepository;
     @Inject
@@ -64,7 +63,7 @@ public class ProjectSubjectAnalysisStage {
             markAnalyzed(material.consumed(), subject);   // targets gone / unreadable: consumed anyway (cursor progress)
             return new SubjectAnalysisResult(material.consumed().size(), 0);
         }
-        var definition = agentCollection.get("builtin-" + ProjectBuiltinAgents.SUBJECT_ANALYZER).orElse(null);
+        var definition = agentDefinitionStore.get("builtin-" + ProjectBuiltinAgents.SUBJECT_ANALYZER).orElse(null);
         if (definition == null) {
             throw new IllegalStateException("subject analyzer definition is missing; reset builtin agents to restore it");
         }
