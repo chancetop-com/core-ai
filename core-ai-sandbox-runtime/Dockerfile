@@ -106,6 +106,17 @@ RUN RUNTIME_VERSION="$(cat /tmp/core-ai-session-sdk/VERSION)" \
     && python -c "import core_ai_session; print('core-ai-session SDK', core_ai_session.sdk_version())" \
     && rm -rf /tmp/core-ai-session-sdk
 
+# Isolate audit dependencies while retaining access to the bundled session SDK.
+COPY core-ai-sandbox-runtime/seo-audit-requirements.txt /opt/restaurant-local-seo-requirements.txt
+RUN python -m venv --system-site-packages /opt/restaurant-local-seo \
+    && /opt/restaurant-local-seo/bin/python -m pip install --no-user --no-cache-dir -r /opt/restaurant-local-seo-requirements.txt \
+    && /opt/restaurant-local-seo/bin/python -c "import core_ai_session, yaml, bs4, lxml, requests, httpx, PIL, nodriver, openpyxl, shiv, fuzzywuzzy, Levenshtein; print('SEO audit dependencies ready')" \
+    && PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=true npm install -g --cache /tmp/seo-build-cache @seomator/seo-audit@5.1.0 \
+    && node -e "const p=require('/usr/local/lib/node_modules/@seomator/seo-audit/package.json'); if(p.version!=='5.1.0') process.exit(1)" \
+    && node -e "const DB=require('/usr/local/lib/node_modules/@seomator/seo-audit/node_modules/better-sqlite3'); const db=new DB(':memory:'); db.prepare('SELECT 1').get(); db.close()" \
+    && seomator --help >/dev/null \
+    && rm -rf /tmp/seo-build-cache
+
 # python:3.12-slim has pyvenv.cfg which makes pip refuse --user installs
 RUN rm -f /usr/local/pyvenv.cfg
 
