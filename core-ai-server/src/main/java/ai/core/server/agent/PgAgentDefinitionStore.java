@@ -1,6 +1,7 @@
 package ai.core.server.agent;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -161,7 +162,7 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
             definition.userId, definition.name, definition.nameKey, definition.type != null ? definition.type.name() : null,
             definition.status != null ? definition.status.name() : null, definition.systemDefault, definition.forkedFrom,
             definition.publishedConfig != null, definition.createdAt, definition.updatedAt,
-            JsonUtil.toJson(definition), definition.id);
+            JsonSanitizer.json(JsonUtil.toJson(definition)), definition.id);
     }
 
     @Override
@@ -199,7 +200,8 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
             definition.publishedConfig != null,
             definition.createdAt,
             definition.updatedAt,
-            JsonUtil.toJson(definition)
+            JsonSanitizer.json(JsonUtil.toJson(definition))
         };
     }
 }
+

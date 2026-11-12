@@ -1,6 +1,7 @@
 package ai.core.server.schedule;
 
 import ai.core.server.domain.AgentSchedule;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -76,7 +77,7 @@ public class PgAgentScheduleStore implements AgentScheduleStore {
         database.execute("UPDATE " + TABLE + " SET agent_id = ?, user_id = ?, enabled = ?, next_run_at = ?, "
                 + "created_at = ?, updated_at = ?, data = ?::jsonb WHERE id = ?",
             schedule.agentId, schedule.userId, schedule.enabled, schedule.nextRunAt, schedule.createdAt,
-            schedule.updatedAt, JsonUtil.toJson(schedule), schedule.id);
+            schedule.updatedAt, JsonSanitizer.json(JsonUtil.toJson(schedule)), schedule.id);
     }
 
     @Override
@@ -105,7 +106,8 @@ public class PgAgentScheduleStore implements AgentScheduleStore {
             schedule.nextRunAt,
             schedule.createdAt,
             schedule.updatedAt,
-            JsonUtil.toJson(schedule)
+            JsonSanitizer.json(JsonUtil.toJson(schedule))
         };
     }
 }
+

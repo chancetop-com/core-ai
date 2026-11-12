@@ -1,6 +1,8 @@
 package ai.core.server.notification;
 
 import ai.core.server.domain.Notification;
+import ai.core.server.util.JsonSanitizer;
+import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -72,10 +74,12 @@ public class NotificationMigrationService {
                     notification.type != null ? notification.type.name() : null,
                     notification.title, notification.message, notification.agentId, notification.sessionId,
                     notification.status != null ? notification.status.name() : null,
-                    notification.createdAt, notification.readAt, ai.core.utils.JsonUtil.toJson(notification));
+                    notification.createdAt, notification.readAt, JsonSanitizer.json(JsonUtil.toJson(notification)));
                 lastId = notification.id;
                 count++;
             }
         }
     }
 }
+
+

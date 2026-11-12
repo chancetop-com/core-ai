@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.server.domain.MediaJob;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -69,7 +70,7 @@ public class PgMediaJobStore implements MediaJobStore {
             job.userId, job.sessionId, job.agentRunId, job.state, job.mediaType, job.costSource, job.fileId,
             job.artifactState, job.artifactAttempts, job.artifactClaimedAt, job.artifactNextAttemptAt,
             job.posterFileId, job.posterAttemptedAt, job.artifactStoredAt, job.updatedAt, job.createdAt,
-            job.completedAt, JsonUtil.toJson(job), job.id);
+            job.completedAt, JsonSanitizer.json(JsonUtil.toJson(job)), job.id);
     }
 
     @Override
@@ -231,7 +232,8 @@ public class PgMediaJobStore implements MediaJobStore {
             job.updatedAt,
             job.createdAt,
             job.completedAt,
-            JsonUtil.toJson(job)
+            JsonSanitizer.json(JsonUtil.toJson(job))
         };
     }
 }
+

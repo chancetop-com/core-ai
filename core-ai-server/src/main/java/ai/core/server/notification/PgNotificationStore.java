@@ -3,6 +3,7 @@ package ai.core.server.notification;
 import ai.core.server.domain.Notification;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationStatus;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -115,9 +116,10 @@ public class PgNotificationStore implements NotificationStore {
             notification.status != null ? notification.status.name() : null,
             notification.createdAt,
             notification.readAt,
-            JsonUtil.toJson(notification)
+            JsonSanitizer.json(JsonUtil.toJson(notification))
         };
     }
 }
+
 
 

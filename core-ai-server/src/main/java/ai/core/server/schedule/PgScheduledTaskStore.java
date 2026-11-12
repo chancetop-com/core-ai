@@ -3,6 +3,7 @@ package ai.core.server.schedule;
 import ai.core.schedule.CronExpression;
 import ai.core.schedule.ScheduledTask;
 import ai.core.server.domain.SessionSchedule;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -114,7 +115,7 @@ public class PgScheduledTaskStore implements SessionScheduleStore {
         task.enabled = enabled;
         task.updatedAt = ZonedDateTime.now();
         database.execute("UPDATE " + TABLE + " SET enabled = ?, updated_at = ?, data = ?::jsonb WHERE id = ?",
-            task.enabled, task.updatedAt, JsonUtil.toJson(fromTask(task)), task.id);
+            task.enabled, task.updatedAt, JsonSanitizer.json(JsonUtil.toJson(fromTask(task))), task.id);
         return task;
     }
 
@@ -153,8 +154,9 @@ public class PgScheduledTaskStore implements SessionScheduleStore {
             entity.nextRunAt,
             entity.createdAt,
             entity.updatedAt,
-            JsonUtil.toJson(entity)
+            JsonSanitizer.json(JsonUtil.toJson(entity))
         };
     }
 }
+
 

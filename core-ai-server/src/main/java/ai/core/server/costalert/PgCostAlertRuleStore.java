@@ -1,5 +1,6 @@
 package ai.core.server.costalert;
 
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -63,7 +64,7 @@ public class PgCostAlertRuleStore implements CostAlertRuleStore {
                 + "threshold = ?, created_at = ?, updated_at = ?, data = ?::jsonb WHERE id = ?",
             rule.name, rule.enabled, rule.metric != null ? rule.metric.name() : null,
             rule.scope != null ? rule.scope.name() : null, rule.scopeValue, rule.threshold,
-            rule.createdAt, rule.updatedAt, JsonUtil.toJson(rule), rule.id);
+            rule.createdAt, rule.updatedAt, JsonSanitizer.json(JsonUtil.toJson(rule)), rule.id);
     }
 
     @Override
@@ -82,7 +83,8 @@ public class PgCostAlertRuleStore implements CostAlertRuleStore {
             rule.threshold,
             rule.createdAt,
             rule.updatedAt,
-            JsonUtil.toJson(rule)
+            JsonSanitizer.json(JsonUtil.toJson(rule))
         };
     }
 }
+

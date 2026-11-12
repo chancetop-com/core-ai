@@ -1,6 +1,7 @@
 package ai.core.server.comparison;
 
 import ai.core.server.comparison.domain.AgentVersion;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -61,7 +62,7 @@ public class PgAgentVersionStore implements AgentVersionStore {
         database.execute("UPDATE " + TABLE + " SET agent_id = ?, agent_name = ?, created_by = ?, created_at = ?, "
                 + "updated_at = ?, data = ?::jsonb WHERE id = ?",
             version.agentId, version.agentName, version.createdBy, version.createdAt, version.updatedAt,
-            JsonUtil.toJson(version), version.id);
+            JsonSanitizer.json(JsonUtil.toJson(version)), version.id);
     }
 
     @Override
@@ -77,7 +78,8 @@ public class PgAgentVersionStore implements AgentVersionStore {
             version.createdBy,
             version.createdAt,
             version.updatedAt,
-            JsonUtil.toJson(version)
+            JsonSanitizer.json(JsonUtil.toJson(version))
         };
     }
 }
+

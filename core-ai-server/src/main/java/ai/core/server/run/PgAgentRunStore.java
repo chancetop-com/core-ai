@@ -2,6 +2,7 @@ package ai.core.server.run;
 
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -60,8 +61,8 @@ public class PgAgentRunStore implements AgentRunStore {
                 + "output = ?, error = ?, data = ?::jsonb WHERE id = ?",
             run.agentId, run.userId, run.triggeredBy != null ? run.triggeredBy.name() : null,
             run.status != null ? run.status.name() : null, run.scheduleId, run.traceId, run.startedAt,
-            run.queuedAt, run.completedAt, run.artifacts != null && !run.artifacts.isEmpty(), run.output, run.error,
-            JsonUtil.toJson(run), run.id);
+            run.queuedAt, run.completedAt, run.artifacts != null && !run.artifacts.isEmpty(), JsonSanitizer.text(run.output), JsonSanitizer.text(run.error),
+            JsonSanitizer.json(JsonUtil.toJson(run)), run.id);
     }
 
     @Override
@@ -196,10 +197,11 @@ public class PgAgentRunStore implements AgentRunStore {
             run.queuedAt,
             run.completedAt,
             run.artifacts != null && !run.artifacts.isEmpty(),
-            run.output,
-            run.error,
-            JsonUtil.toJson(run)
+            JsonSanitizer.text(run.output),
+            JsonSanitizer.text(run.error),
+            JsonSanitizer.json(JsonUtil.toJson(run))
         };
     }
 }
+
 

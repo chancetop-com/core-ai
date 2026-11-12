@@ -1,5 +1,6 @@
 package ai.core.server.sandbox.snapshot;
 
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -96,7 +97,8 @@ public class PgSandboxSnapshotStore implements SandboxSnapshotStore {
             doc.runtimeVersion,
             doc.createdAt,
             doc.expiresAt,
-            JsonUtil.toJson(doc)
+            JsonSanitizer.json(JsonUtil.toJson(doc))
         };
     }
 }
+

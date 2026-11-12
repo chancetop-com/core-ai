@@ -1,6 +1,7 @@
 package ai.core.server.hub;
 
 import ai.core.server.domain.HubCall;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -152,8 +153,9 @@ public class PgHubCallStore implements HubCallStore {
             call.inputTokens,
             call.outputTokens,
             call.createdAt,
-            JsonUtil.toJson(call)
+            JsonSanitizer.json(JsonUtil.toJson(call))
         };
     }
 }
+
 

@@ -1,5 +1,6 @@
 package ai.core.server.costalert;
 
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -80,7 +81,8 @@ public class PgCostAlertEventStore implements CostAlertEventStore {
             event.actualValue,
             event.status,
             event.createdAt,
-            JsonUtil.toJson(event)
+            JsonSanitizer.json(JsonUtil.toJson(event))
         };
     }
 }
+

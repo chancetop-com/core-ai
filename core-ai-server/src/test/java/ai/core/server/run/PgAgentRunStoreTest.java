@@ -109,6 +109,19 @@ class PgAgentRunStoreTest {
         assertEquals("output", store.get("run-2").orElseThrow().output);
     }
 
+    @Test
+    void nulCharactersInOutputAndTranscriptAreRemoved() {
+        var store = new PgAgentRunStore();
+        store.database = DATABASE;
+        var run = run("run-1", RunStatus.COMPLETED);
+        run.output = "a\0b";
+        run.transcript = List.of(new ai.core.server.domain.TranscriptEntry());
+        run.transcript.getFirst().content = "x\0y";
+        store.insert(run);
+        assertEquals("ab", store.get("run-1").orElseThrow().output);
+        assertEquals("xy", store.get("run-1").orElseThrow().transcript.getFirst().content);
+    }
+
     private AgentRun run(String id, RunStatus status) {
         var run = new AgentRun();
         run.id = id;
@@ -120,5 +133,6 @@ class PgAgentRunStoreTest {
         return run;
     }
 }
+
 
 

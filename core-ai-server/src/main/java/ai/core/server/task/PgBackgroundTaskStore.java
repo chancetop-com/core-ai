@@ -1,6 +1,7 @@
 package ai.core.server.task;
 
 import ai.core.server.domain.BackgroundTask;
+import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
@@ -73,7 +74,7 @@ public class PgBackgroundTaskStore implements BackgroundTaskStore {
         database.execute("UPDATE " + TABLE + " SET type = ?, status = ?, status_text = ?, claimed_by = ?, "
                 + "started_at = ?, completed_at = ?, retry_count = ?, data = ?::jsonb WHERE id = ?",
             task.type, task.status != null ? task.status.name() : null, task.statusText, task.claimedBy,
-            task.startedAt, task.completedAt, task.retryCount, JsonUtil.toJson(task), task.id);
+            task.startedAt, task.completedAt, task.retryCount, JsonSanitizer.json(JsonUtil.toJson(task)), task.id);
     }
 
     private Object[] params(BackgroundTask task) {
@@ -86,9 +87,10 @@ public class PgBackgroundTaskStore implements BackgroundTaskStore {
             task.startedAt,
             task.completedAt,
             task.retryCount,
-            JsonUtil.toJson(task)
+            JsonSanitizer.json(JsonUtil.toJson(task))
         };
     }
 }
+
 
 
