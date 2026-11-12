@@ -1,6 +1,8 @@
 package ai.core.server;
 
 import ai.core.api.server.CapabilitiesWebService;
+import ai.core.api.server.speech.SpeechTranscriptSegmentView;
+import ai.core.api.server.speech.SpeechTranscriptionView;
 import ai.core.api.server.speech.SpeechWebService;
 import ai.core.server.speech.SpeechTranscriptionController;
 import ai.core.server.speech.SpeechTranscriptionService;
@@ -23,6 +25,9 @@ public class PlatformApiModule extends Module {
         // the transcription service must be bound before the WebService impl resolves its @Inject fields
         bind(SpeechTranscriptionService.class);
         api().service(SpeechWebService.class, bind(SpeechWebServiceImpl.class));
+        // the raw multipart controller returns this bean directly; api() service registration does not cover it
+        http().bean(SpeechTranscriptionView.class);
+        http().bean(SpeechTranscriptSegmentView.class);
         http().route(HTTPMethod.POST, "/api/speech/transcriptions",
                 bind(SpeechTranscriptionController.class)::transcribe);
     }
