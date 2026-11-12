@@ -1,7 +1,10 @@
 package ai.core.server.selfharness;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.agent.ExecutionContext;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.project.ProjectAttributionRepository;
 import ai.core.server.project.ProjectStore;
 import ai.core.server.project.ProjectSubjectStore;
@@ -50,7 +53,7 @@ public class SelfHarnessApiCaller {
     @Inject
     UserStore userStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
@@ -103,15 +106,12 @@ public class SelfHarnessApiCaller {
 
     public Map<String, Object> searchRuns(String projectId, List<String> agentIds, String since, String subjectId, Boolean attributed, ExecutionContext context) {
         var scope = requireProject(projectId, context);
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("agent_id", agentIds != null && !agentIds.isEmpty() ? agentIds : scope.agentIds));
-        if (since != null) filters.add(Filters.gt("started_at", ZonedDateTime.parse(since)));
-        applyAttributionFilter(filters, projectId, subjectId, attributed, "run", "_id");
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("started_at");
-        query.limit = SEARCH_DEFAULT_LIMIT;
-        return Map.of("runs", agentRunCollection.find(query).stream().map(run -> {
+        var runQuery = new AgentRunQuery();
+        runQuery.agentIds = agentIds != null && !agentIds.isEmpty() ? agentIds : scope.agentIds;
+        if (since != null) runQuery.from = ZonedDateTime.parse(since);
+        applyRunAttributionFilter(runQuery, projectId, subjectId, attributed);
+        runQuery.limit = SEARCH_DEFAULT_LIMIT;
+        return Map.of("runs", agentRunStore.find(runQuery).stream().map(run -> {
             var row = new LinkedHashMap<String, Object>();
             row.put("id", run.id);
             row.put("agent_id", run.agentId);
@@ -212,6 +212,22 @@ public class SelfHarnessApiCaller {
         return userId;
     }
 
+    private void applyRunAttributionFilter(AgentRunQuery query, String projectId, String subjectId, Boolean attributed) {
+        if (subjectId != null) {
+            var targets = attributionTargets("run", subjectId);
+            query.ids = targets.isEmpty() ? List.of("__none__") : targets;
+            return;
+        }
+        if (attributed != null) {
+            var targets = attributionTargets("run", subjectIdsOf(projectId).toArray(String[]::new));
+            if (Boolean.TRUE.equals(attributed)) {
+                query.ids = targets.isEmpty() ? List.of("__none__") : targets;
+            } else if (!targets.isEmpty()) {
+                query.excludeIds = targets;
+            }
+        }
+    }
+
     private void applyAttributionFilter(List<Bson> filters, String projectId, String subjectId, Boolean attributed, String targetType, String targetField) {
         if (subjectId != null) {
             var targets = attributionTargets(targetType, subjectId);
@@ -269,3 +285,6 @@ public class SelfHarnessApiCaller {
     private record ProjectScope(List<String> agentIds, List<String> workflowIds) {
     }
 }
+
+
+

@@ -6,10 +6,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.TriggerType;
 import ai.core.telemetry.TelemetryConfig;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.SpanBuilder;
 import io.opentelemetry.api.trace.SpanKind;
@@ -58,7 +55,7 @@ public class AgentRunTracer {
     @Inject
     TelemetryConfig telemetryConfig;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     ApiUserQuotaService apiUserQuotaService;
 
@@ -140,12 +137,7 @@ public class AgentRunTracer {
     private void setRunTraceId(AgentRun runEntity, String traceId) {
         if (traceId == null || traceId.isBlank()) return;
         runEntity.traceId = traceId;
-        agentRunCollection.update(
-                Filters.and(
-                        Filters.eq("_id", runEntity.id),
-                        Filters.or(Filters.exists("trace_id", false), Filters.eq("trace_id", null), Filters.eq("trace_id", ""))
-                ),
-                Updates.set("trace_id", traceId)
-        );
+        agentRunStore.claimTraceId(runEntity.id, traceId);
     }
 }
+

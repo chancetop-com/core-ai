@@ -66,7 +66,7 @@ class ProjectArtifactBinderTest {
         binder.scheduleStore = ai.core.server.schedule.MongoAgentScheduleStore.of(schedules);
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
         binder.chatSessionStore = chatSessionStore;
-        binder.agentRunCollection = runs;
+        binder.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(runs);
         when(store.byTarget(anyString(), anyString())).thenReturn(List.of());
         when(store.attribute(any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);
         when(store.attributeFile(any(), any(), any(), any(), any(), any())).thenReturn(ProjectAttributionStore.Result.INSERTED);
@@ -187,4 +187,5 @@ class ProjectArtifactBinderTest {
         verify(store, never()).attributeFile(any(), any(), any(), any(), any(), any());
     }
 }
+
 

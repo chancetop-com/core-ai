@@ -270,11 +270,12 @@ class AgentRunnerTest {
     private RunnerHarness runnerHarness() {
         var runner = new AgentRunner();
         runner.skillService = mock(SkillService.class);
-        runner.agentRunCollection = mock(MongoCollection.class);
+        var runCollection = mock(MongoCollection.class);
+        runner.agentRunStore = MongoAgentRunStore.of(runCollection);
         runner.artifactBinder = mock(ai.core.server.project.ProjectArtifactBinder.class);
         runner.sandboxService = mock(SandboxService.class);
         runner.builder = mock(AgentRunBuilder.class);
-        return new RunnerHarness(runner, runner.skillService, runner.agentRunCollection,
+        return new RunnerHarness(runner, runner.skillService, runCollection,
             runner.sandboxService, runner.builder);
     }
 
@@ -285,7 +286,8 @@ class AgentRunnerTest {
         var builder = new RecordingRunBuilder(agent);
         var tracer = mock(AgentRunTracer.class);
         runner.skillService = mock(SkillService.class);
-        runner.agentRunCollection = mock(MongoCollection.class);
+        var runCollection = mock(MongoCollection.class);
+        runner.agentRunStore = MongoAgentRunStore.of(runCollection);
         runner.artifactBinder = mock(ai.core.server.project.ProjectArtifactBinder.class);
         runner.sandboxService = mock(SandboxService.class);
         runner.builder = builder;
@@ -362,3 +364,4 @@ class AgentRunnerTest {
         }
     }
 }
+

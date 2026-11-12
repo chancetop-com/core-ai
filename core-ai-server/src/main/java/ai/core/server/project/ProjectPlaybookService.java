@@ -1,8 +1,11 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentDefinitionStore;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.WorkflowDefinition;
@@ -49,7 +52,7 @@ public class ProjectPlaybookService {
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
@@ -151,11 +154,10 @@ public class ProjectPlaybookService {
     }
 
     private void appendRuns(StringBuilder text, List<String> agentIds, List<String> artifacts) {
-        var query = new Query();
-        query.filter = Filters.in("agent_id", agentIds);
-        query.sort = Sorts.descending("started_at");
-        query.limit = MAX_RUNS;
-        for (var run : agentRunCollection.find(query)) {
+        var runQuery = new AgentRunQuery();
+        runQuery.agentIds = agentIds;
+        runQuery.limit = MAX_RUNS;
+        for (var run : agentRunStore.find(runQuery)) {
             if (overCap(text)) return;
             text.append("## run (agent: ").append(run.agentId).append(")\ninput: ").append(limit(run.input, 700)).append('\n');
             collectArtifacts(artifacts, run.artifacts);
@@ -278,3 +280,6 @@ public class ProjectPlaybookService {
         return value.length() > maxChars ? value.substring(0, maxChars) + "...(truncated)" : value;
     }
 }
+
+
+

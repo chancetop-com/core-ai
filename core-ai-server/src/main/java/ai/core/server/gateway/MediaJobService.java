@@ -13,24 +13,16 @@ import ai.core.server.domain.MediaJobInput;
 import ai.core.server.file.FileService;
 import ai.core.server.trace.service.MediaPricingService;
 import ai.core.telemetry.TelemetryConfig;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
@@ -48,7 +40,7 @@ public class MediaJobService {
     static final Set<String> COST_SOURCES = Set.of("gateway_model", "upstream", "model_catalog", "unavailable");
 
     @Inject
-    MongoCollection<MediaJob> mediaJobCollection;
+    MediaJobStore mediaJobStore;
     @Inject
     MediaCostSettler costSettler;
     @Inject
@@ -82,7 +74,7 @@ public class MediaJobService {
         job.requestedSeconds = submission.requestedSeconds();
         job.createdAt = now;
         job.updatedAt = now;
-        mediaJobCollection.insert(job);
+        mediaJobStore.insert(job);
         return job;
     }
 
@@ -124,7 +116,7 @@ public class MediaJobService {
             if (image != null && hasText(image.url())) job.upstreamAssetUrl = image.url();
             storeImage(job, image);
         }
-        mediaJobCollection.insert(job);
+        mediaJobStore.insert(job);
         MediaGenerationTrace.record(telemetryConfig, job);
         return job;
     }
@@ -179,7 +171,7 @@ public class MediaJobService {
     }
 
     public MediaJob get(String jobId) {
-        return mediaJobCollection.get(jobId)
+        return mediaJobStore.get(jobId)
                 .orElseThrow(() -> new NotFoundException("media job not found, id=" + jobId));
     }
 
@@ -198,31 +190,15 @@ public class MediaJobService {
      */
     public Optional<MediaJob> findLatestCompleted(MediaJobOwner owner, MediaModality modality) {
         var jobOwner = owner == null ? MediaJobOwner.UNKNOWN : owner;
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("state", "completed"));
-        filters.add(mediaTypeFilter(modality));
-        if (!hasText(jobOwner.sessionId()) && !hasText(jobOwner.userId())) return Optional.empty();
-        if (hasText(jobOwner.sessionId())) filters.add(Filters.eq("session_id", jobOwner.sessionId()));
-        if (hasText(jobOwner.userId())) filters.add(Filters.eq("user_id", jobOwner.userId()));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("completed_at");
-        query.limit = 1;
-        var jobs = mediaJobCollection.find(query);
-        return jobs.isEmpty() ? Optional.empty() : Optional.of(jobs.getFirst());
-    }
-
-    private Bson mediaTypeFilter(MediaModality modality) {
-        // legacy video jobs predate media_type; a missing field means video
-        return modality == MediaModality.VIDEO
-                ? Filters.in("media_type", Arrays.asList("video", null))
-                : Filters.eq("media_type", "image");
+        String sessionId = hasText(jobOwner.sessionId()) ? jobOwner.sessionId() : null;
+        String userId = hasText(jobOwner.userId()) ? jobOwner.userId() : null;
+        return mediaJobStore.findLatestCompleted(sessionId, userId, modality == MediaModality.VIDEO ? "video" : "image");
     }
 
     /** Resolves a handle to a job the caller owns, with the failure the agent can act on. */
     public MediaJob resolveReference(String mediaId, MediaJobOwner owner) {
         var handle = GatewayMediaHandle.decode(mediaId);
-        var job = mediaJobCollection.get(handle.jobId())
+        var job = mediaJobStore.get(handle.jobId())
                 .orElseThrow(() -> new BadRequestException("unknown media reference: " + mediaId));
         var userId = owner == null ? null : owner.userId();
         if (hasText(job.userId) && !job.userId.equals(userId)) {
@@ -244,7 +220,7 @@ public class MediaJobService {
         if (!GatewayMediaHandle.isHandle(mediaId)) return Optional.empty();
         try {
             var handle = GatewayMediaHandle.decode(mediaId);
-            var job = mediaJobCollection.get(handle.jobId()).orElse(null);
+            var job = mediaJobStore.get(handle.jobId()).orElse(null);
             if (job == null || !"completed".equals(job.state)) return Optional.empty();
             return fileRecord(job);
         } catch (BadRequestException e) {
@@ -279,71 +255,43 @@ public class MediaJobService {
     }
 
     public MediaJobList list(int offset, int limit, String mediaType, String costSource, String userId) {
-        var filters = new ArrayList<Bson>();
+        String type = null;
         if (hasText(mediaType)) {
-            var type = mediaType.trim().toLowerCase(Locale.ROOT);
+            type = mediaType.trim().toLowerCase(Locale.ROOT);
             if (!"image".equals(type) && !"video".equals(type)) {
                 throw new BadRequestException("mediaType must be image or video");
             }
-            // legacy video jobs predate media_type; a missing field means video
-            filters.add("video".equals(type) ? Filters.in("media_type", Arrays.asList("video", null)) : Filters.eq("media_type", "image"));
         }
+        String source = null;
         if (hasText(costSource)) {
-            var source = costSource.trim().toLowerCase(Locale.ROOT);
+            source = costSource.trim().toLowerCase(Locale.ROOT);
             if (!COST_SOURCES.contains(source)) {
                 throw new BadRequestException("costSource must be one of " + COST_SOURCES);
             }
-            filters.add(Filters.eq("cost_source", source));
         }
-        if (hasText(userId)) {
-            filters.add(Filters.eq("user_id", userId.trim()));
-        }
-        var filter = filters.isEmpty() ? Filters.empty()
-                : filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
-        var total = mediaJobCollection.count(filter);
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending("created_at");
-        query.skip = offset;
-        query.limit = limit;
-        return new MediaJobList(total, mediaJobCollection.find(query));
+        var page = mediaJobStore.list(type, source, hasText(userId) ? userId.trim() : null, offset, limit);
+        return new MediaJobList(page.total(), page.jobs());
     }
 
     public void updateVideoStatus(MediaJob job, VideoStatusResponse status) {
         var now = ZonedDateTime.now();
         var state = normalizeState(status.status());
         var completed = job.completedAt == null && "completed".equals(state);
-        var updates = Updates.combine(
-                Updates.set("state", state),
-                Updates.set("progress", status.progress()),
-                Updates.set("error", status.error()),
-                Updates.set("updated_at", now));
-        if (status.creditsConsumed() != null) {
-            updates = Updates.combine(updates, Updates.set("credits_consumed", status.creditsConsumed()));
-        }
-        MediaPricingService.MediaPrice settled = null;
-        if (completed) {
-            updates = Updates.combine(updates, Updates.set("completed_at", now));
-            if (!hasText(job.fileId)) {
-                updates = Updates.combine(updates, Updates.set("artifact_state", "pending"));
-            }
-            settled = settlePrice(job, status);
-            updates = applyPrice(updates, settled);
-        }
-        mediaJobCollection.update(Filters.eq("_id", job.id), updates);
         job.state = state;
         job.progress = status.progress();
         job.error = status.error();
         job.updatedAt = now;
+        if (status.creditsConsumed() != null) job.creditsConsumed = status.creditsConsumed();
+        MediaPricingService.MediaPrice settled = null;
         if (completed) {
             job.completedAt = now;
             if (!hasText(job.fileId)) job.artifactState = "pending";
+            settled = settlePrice(job, status);
+            if (settled != null) applyPriceToJob(job, settled);
         }
+        mediaJobStore.replace(job);
         // only a settled generation is reported: an unsettled one would misreport its cost
-        if (settled != null) {
-            applyPriceToJob(job, settled);
-            MediaGenerationTrace.record(telemetryConfig, job);
-        }
+        if (settled != null) MediaGenerationTrace.record(telemetryConfig, job);
     }
 
     private void applyPriceToJob(MediaJob job, MediaPricingService.MediaPrice price) {
@@ -352,17 +300,6 @@ public class MediaJobService {
         if (price.costUsd() != null) job.costUsd = price.costUsd();
         if (price.units() != null) job.mediaUnits = price.units();
         if (price.unitType() != null) job.mediaUnitType = price.unitType();
-    }
-
-    private Bson applyPrice(Bson updates, MediaPricingService.MediaPrice price) {
-        if (price == null) return updates;
-        var priced = Updates.combine(updates,
-                Updates.set("cost_source", price.source()),
-                Updates.set("pricing_model_id", price.pricingModelId()));
-        if (price.costUsd() != null) priced = Updates.combine(priced, Updates.set("cost_usd", price.costUsd()));
-        if (price.units() != null) priced = Updates.combine(priced, Updates.set("media_units", price.units()));
-        if (price.unitType() != null) priced = Updates.combine(priced, Updates.set("media_unit_type", price.unitType()));
-        return priced;
     }
 
     private MediaPricingService.MediaPrice settlePrice(MediaJob job, VideoStatusResponse status) {
@@ -404,3 +341,4 @@ public class MediaJobService {
                                      ImageGenerationResponse response, List<MediaJobInput> inputs) {
     }
 }
+

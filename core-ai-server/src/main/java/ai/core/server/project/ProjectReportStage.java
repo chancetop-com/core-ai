@@ -1,7 +1,8 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.agent.AgentDefinitionStore;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectReportDraft;
 import ai.core.server.domain.ProjectSubject;
@@ -12,7 +13,6 @@ import ai.core.server.file.FileService;
 import ai.core.server.run.AgentRunner;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -58,7 +58,7 @@ public class ProjectReportStage {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     ProjectReportDraftStore draftStore;
     @Inject
@@ -120,7 +120,7 @@ public class ProjectReportStage {
     public void complete(String subjectId) {
         var subject = subjectStore.get(subjectId).orElse(null);
         if (subject == null || subject.reportRunId == null) return;
-        var run = agentRunCollection.get(subject.reportRunId).orElse(null);
+        var run = agentRunStore.get(subject.reportRunId).orElse(null);
         if (run == null || run.status == null) {
             finish(subject, "report render run not found, runId=" + subject.reportRunId, null);
             return;
@@ -330,3 +330,5 @@ public class ProjectReportStage {
     private record ReportFile(String fileId, String shareToken) {
     }
 }
+
+

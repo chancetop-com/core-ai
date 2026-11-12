@@ -3,13 +3,7 @@ package ai.core.server.gateway;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.file.FileService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -17,7 +11,6 @@ import java.nio.file.Files;
 import java.time.Duration;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
@@ -34,24 +27,8 @@ public class MediaJobArtifactStore {
     private static final int MAX_ARTIFACT_ATTEMPTS = 5;
     private static final int MAX_ARTIFACT_ERROR_LENGTH = 500;
 
-    // core-ng writes unset optional fields as explicit nulls. Mongo's $lt/$lte are type-bracketed,
-    // so a null value would never match those operators and the job would never be claimed.
-    private static Bson attemptsAllowed() {
-        return Filters.or(
-                Filters.exists("artifact_attempts", false),
-                Filters.eq("artifact_attempts", null),
-                Filters.lt("artifact_attempts", MAX_ARTIFACT_ATTEMPTS));
-    }
-
-    private static Bson nextAttemptAllowed(ZonedDateTime now) {
-        return Filters.or(
-                Filters.exists("artifact_next_attempt_at", false),
-                Filters.eq("artifact_next_attempt_at", null),
-                Filters.lte("artifact_next_attempt_at", now));
-    }
-
     @Inject
-    MongoCollection<MediaJob> mediaJobCollection;
+    MediaJobStore mediaJobStore;
 
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
@@ -90,63 +67,30 @@ public class MediaJobArtifactStore {
     }
 
     public boolean claim(String jobId) {
-        var now = ZonedDateTime.now();
-        // $inc refuses a null, which is how core-ng persists an unset counter on a fresh job
-        mediaJobCollection.update(
-                Filters.and(Filters.eq("_id", jobId), Filters.eq("artifact_attempts", null)),
-                Updates.set("artifact_attempts", 0));
-        var updated = mediaJobCollection.update(
-                Filters.and(
-                        Filters.eq("_id", jobId),
-                        Filters.eq("state", "completed"),
-                        Filters.eq("file_id", null),
-                        Filters.in("media_type", Arrays.asList("video", null)),
-                        Filters.or(
-                                Filters.exists("artifact_state", false),
-                                Filters.eq("artifact_state", null),
-                                Filters.in("artifact_state", List.of("pending", "failed"))),
-                        attemptsAllowed(),
-                        nextAttemptAllowed(now)),
-                Updates.combine(
-                        Updates.set("artifact_state", "storing"),
-                        Updates.set("artifact_claimed_at", now),
-                        Updates.set("updated_at", now),
-                        Updates.inc("artifact_attempts", 1)));
-        return updated > 0;
+        return mediaJobStore.claimArtifact(jobId);
     }
 
     public void markStored(MediaJob job, FileRecord record) {
         var now = ZonedDateTime.now();
-        mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                Updates.set("file_id", record.id),
-                Updates.set("file_name", record.fileName),
-                Updates.set("content_type", record.contentType),
-                Updates.set("artifact_state", "stored"),
-                Updates.set("artifact_size", record.size),
-                Updates.set("artifact_stored_at", now),
-                Updates.set("updated_at", now),
-                Updates.unset("artifact_error"),
-                Updates.unset("artifact_claimed_at"),
-                Updates.unset("artifact_next_attempt_at")));
         job.fileId = record.id;
         job.fileName = record.fileName;
         job.contentType = record.contentType;
         job.artifactState = "stored";
         job.artifactSize = record.size;
         job.artifactStoredAt = now;
+        job.updatedAt = now;
         job.artifactError = null;
         job.artifactClaimedAt = null;
         job.artifactNextAttemptAt = null;
+        mediaJobStore.replace(job);
     }
 
     public void markPoster(MediaJob job, FileRecord record) {
         var now = ZonedDateTime.now();
-        mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                Updates.set("poster_file_id", record.id),
-                Updates.set("poster_attempted_at", now),
-                Updates.set("updated_at", now)));
         job.posterFileId = record.id;
         job.posterAttemptedAt = now;
+        job.updatedAt = now;
+        mediaJobStore.replace(job);
     }
 
     /**
@@ -154,40 +98,23 @@ public class MediaJobArtifactStore {
      */
     public void markPosterAttempted(MediaJob job) {
         var now = ZonedDateTime.now();
-        mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                Updates.set("poster_attempted_at", now),
-                Updates.set("updated_at", now)));
         job.posterAttemptedAt = now;
+        job.updatedAt = now;
+        mediaJobStore.replace(job);
     }
 
     public List<MediaJob> posterCandidates(int limit) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.in("media_type", Arrays.asList("video", null)),
-                Filters.eq("state", "completed"),
-                Filters.ne("file_id", null),
-                Filters.eq("poster_file_id", null),
-                Filters.or(
-                        Filters.exists("poster_attempted_at", false),
-                        Filters.eq("poster_attempted_at", null),
-                        Filters.lt("poster_attempted_at", ZonedDateTime.now().minusDays(1))));
-        query.sort = Sorts.ascending("artifact_stored_at");
-        query.limit = limit;
-        return mediaJobCollection.find(query);
+        return mediaJobStore.posterCandidates(limit);
     }
 
     public void markUnavailable(MediaJob job, String error) {
         var message = truncate(error);
-        mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                Updates.set("artifact_state", "expired"),
-                Updates.set("artifact_error", message),
-                Updates.set("updated_at", ZonedDateTime.now()),
-                Updates.unset("artifact_claimed_at"),
-                Updates.unset("artifact_next_attempt_at")));
         job.artifactState = "expired";
         job.artifactError = message;
+        job.updatedAt = ZonedDateTime.now();
         job.artifactClaimedAt = null;
         job.artifactNextAttemptAt = null;
+        mediaJobStore.replace(job);
     }
 
     public void markFailed(MediaJob job, String error) {
@@ -195,70 +122,32 @@ public class MediaJobArtifactStore {
         var message = truncate(error);
         var attempts = job.artifactAttempts == null ? 1 : job.artifactAttempts;
         var terminal = attempts >= MAX_ARTIFACT_ATTEMPTS;
-        var nextAttempt = terminal ? null : now.plus(backoff(attempts));
-        var updates = Updates.combine(
-                Updates.set("artifact_state", terminal ? "expired" : "failed"),
-                Updates.set("artifact_error", message),
-                Updates.set("updated_at", now),
-                Updates.unset("artifact_claimed_at"));
-        updates = nextAttempt == null
-                ? Updates.combine(updates, Updates.unset("artifact_next_attempt_at"))
-                : Updates.combine(updates, Updates.set("artifact_next_attempt_at", nextAttempt));
-        mediaJobCollection.update(Filters.eq("_id", job.id), updates);
         job.artifactState = terminal ? "expired" : "failed";
         job.artifactError = message;
+        job.updatedAt = now;
         job.artifactClaimedAt = null;
-        job.artifactNextAttemptAt = nextAttempt;
+        job.artifactNextAttemptAt = terminal ? null : now.plus(backoff(attempts));
+        mediaJobStore.replace(job);
     }
 
     public void reset(MediaJob job) {
-        mediaJobCollection.update(Filters.eq("_id", job.id), Updates.combine(
-                Updates.set("file_id", null),
-                Updates.set("artifact_state", "pending"),
-                Updates.set("updated_at", ZonedDateTime.now()),
-                Updates.unset("artifact_claimed_at")));
         job.fileId = null;
         job.artifactState = "pending";
+        job.updatedAt = ZonedDateTime.now();
+        job.artifactClaimedAt = null;
+        mediaJobStore.replace(job);
     }
 
     public void releaseStaleClaims() {
-        mediaJobCollection.update(
-                Filters.and(
-                        Filters.eq("artifact_state", "storing"),
-                        Filters.lt("artifact_claimed_at", ZonedDateTime.now().minusMinutes(10))),
-                Updates.combine(
-                        Updates.set("artifact_state", "pending"),
-                        Updates.unset("artifact_claimed_at")));
+        mediaJobStore.releaseStaleClaims();
     }
 
     public List<MediaJob> backfillCandidates(int limit) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.in("media_type", Arrays.asList("video", null)),
-                Filters.eq("state", "completed"),
-                Filters.eq("file_id", null),
-                Filters.or(
-                        Filters.exists("artifact_state", false),
-                        Filters.eq("artifact_state", null),
-                        Filters.in("artifact_state", List.of("pending", "failed"))),
-                attemptsAllowed(),
-                nextAttemptAllowed(ZonedDateTime.now()));
-        query.sort = Sorts.ascending("completed_at");
-        query.limit = limit;
-        return mediaJobCollection.find(query);
+        return mediaJobStore.backfillCandidates(limit);
     }
 
     public List<MediaJob> staleVideoJobs(int limit) {
-        var now = ZonedDateTime.now();
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.in("media_type", Arrays.asList("video", null)),
-                Filters.in("state", List.of("submitted", "queued", "processing")),
-                Filters.lt("updated_at", now.minusMinutes(2)),
-                Filters.gte("created_at", now.minusDays(7)));
-        query.sort = Sorts.ascending("updated_at");
-        query.limit = limit;
-        return mediaJobCollection.find(query);
+        return mediaJobStore.staleVideoJobs(limit);
     }
 
     private String truncate(String error) {
@@ -277,3 +166,4 @@ public class MediaJobArtifactStore {
         };
     }
 }
+

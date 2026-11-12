@@ -49,6 +49,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.small.PgSmallMigrationMarkerRow.class);
         db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
         registerAgentViews();
+        registerRuntimeViews();
         db().view(PgApiKeyRow.class);
         db().view(PgProjectRow.class);
         db().view(PgProjectCountRow.class);
@@ -80,6 +81,9 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.asynctask.PgAsyncTaskRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationLockRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationMarkerRow.class);
+    }
+
+    private void registerRuntimeViews() {
         db().view(ai.core.server.notification.PgNotificationRow.class);
         db().view(ai.core.server.notification.PgNotificationCountRow.class);
         db().view(ai.core.server.notification.PgNotificationMigrationLockRow.class);
@@ -92,8 +96,23 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.sandbox.snapshot.PgSandboxEpochRow.class);
         db().view(ai.core.server.sandbox.snapshot.PgSandboxSnapshotMigrationLockRow.class);
         db().view(ai.core.server.sandbox.snapshot.PgSandboxSnapshotMigrationMarkerRow.class);
+        db().view(ai.core.server.gateway.PgMediaJobRow.class);
+        db().view(ai.core.server.gateway.PgMediaJobCountRow.class);
+        db().view(ai.core.server.gateway.PgMediaJobMigrationLockRow.class);
+        db().view(ai.core.server.gateway.PgMediaJobMigrationMarkerRow.class);
+        db().view(ai.core.server.hub.PgHubCallRow.class);
+        db().view(ai.core.server.hub.PgHubCallCountRow.class);
+        db().view(ai.core.server.hub.PgHubCallMigrationLockRow.class);
+        db().view(ai.core.server.hub.PgHubCallMigrationMarkerRow.class);
+        db().view(ai.core.server.run.PgAgentRunRow.class);
+        db().view(ai.core.server.run.PgAgentRunCountRow.class);
+        db().view(ai.core.server.run.PgAgentRunMigrationLockRow.class);
+        db().view(ai.core.server.run.PgAgentRunMigrationMarkerRow.class);
     }
 }
+
+
+
 
 
 

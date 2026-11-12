@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -36,7 +37,7 @@ class MediaJobArtifactStoreTest {
     void setUp() {
         store = new MediaJobArtifactStore();
         collection = (MongoCollection<MediaJob>) mock(MongoCollection.class);
-        store.mediaJobCollection = collection;
+        store.mediaJobStore = MongoMediaJobStore.of(collection);
         fileRecordCollection = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         store.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(fileRecordCollection);
         store.fileService = mock(FileService.class);
@@ -79,10 +80,9 @@ class MediaJobArtifactStoreTest {
         assertEquals("file-1", job.fileId);
         assertEquals("stored", job.artifactState);
         assertEquals(11L, job.artifactSize);
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='file_id', operator='$set', value=file-1"));
-        assertTrue(update.contains("fieldName='artifact_state', operator='$set', value=stored"));
-        assertTrue(update.contains("fieldName='artifact_size', operator='$set', value=11"));
+        assertEquals("file-1", capturedReplace().fileId);
+        assertEquals("stored", capturedReplace().artifactState);
+        assertEquals(11L, capturedReplace().artifactSize);
     }
 
     @Test
@@ -117,15 +117,16 @@ class MediaJobArtifactStoreTest {
 
         store.markUnavailable(job, "HTTP 404: gone");
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='artifact_state', operator='$set', value=expired"));
-        assertTrue(update.contains("fieldName='artifact_error', operator='$set', value=HTTP 404: gone"));
+        assertEquals("expired", capturedReplace().artifactState);
+        assertEquals("HTTP 404: gone", capturedReplace().artifactError);
         assertEquals("expired", job.artifactState);
     }
 
-    private String capturedUpdateText() {
-        ArgumentCaptor<Bson> captor = ArgumentCaptor.forClass(Bson.class);
-        verify(collection).update(any(Bson.class), captor.capture());
-        return captor.getValue().toString();
+    private MediaJob capturedReplace() {
+        var captor = ArgumentCaptor.forClass(MediaJob.class);
+        verify(collection, atLeastOnce()).replace(captor.capture());
+        return captor.getValue();
     }
 }
+
+

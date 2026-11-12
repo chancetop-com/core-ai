@@ -1,17 +1,12 @@
 package ai.core.server.hub;
 
 import ai.core.server.domain.HubCall;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import org.bson.conversions.Bson;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.HexFormat;
 
 /**
@@ -36,7 +31,7 @@ public class HubCallAuditService {
     private static final int PREVIEW_MAX_CHARS = 512;
 
     @Inject
-    MongoCollection<HubCall> callCollection;
+    HubCallStore callStore;
 
     /**
      * @return the audit row id, or null when the call cannot be attributed (userId missing)
@@ -59,7 +54,7 @@ public class HubCallAuditService {
         audit.argsHash = sha256(request.argumentsJson());
         audit.argsPreview = truncate(request.argumentsJson(), PREVIEW_MAX_CHARS);
         audit.createdAt = ZonedDateTime.now();
-        callCollection.insert(audit);
+        callStore.insert(audit);
         return audit.id;
     }
 
@@ -77,18 +72,7 @@ public class HubCallAuditService {
     public void finishWithOutputBytes(String callId, long durationMs, Integer outputBytes, boolean success,
                                       Integer statusCode, String errorMessage) {
         if (callId == null) return;
-        var sets = new ArrayList<Bson>();
-        sets.add(Updates.set("success", success));
-        sets.add(Updates.set("is_error", !success));
-        sets.add(Updates.set("duration_ms", durationMs));
-        sets.add(Updates.set("status_code", statusCode));
-        if (outputBytes != null) {
-            sets.add(Updates.set("output_bytes", outputBytes));
-        }
-        if (errorMessage != null) {
-            sets.add(Updates.set("error_message", truncate(errorMessage, PREVIEW_MAX_CHARS)));
-        }
-        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+        callStore.finish(callId, durationMs, outputBytes, success, statusCode, truncate(errorMessage, PREVIEW_MAX_CHARS));
     }
 
     /**
@@ -97,13 +81,8 @@ public class HubCallAuditService {
      */
     public void attachRun(String callId, String taskId, String contextId, Long inputTokens, Long outputTokens) {
         if (callId == null) return;
-        var sets = new ArrayList<Bson>();
-        if (taskId != null) sets.add(Updates.set("task_id", taskId));
-        if (contextId != null) sets.add(Updates.set("context_id", contextId));
-        if (inputTokens != null) sets.add(Updates.set("input_tokens", inputTokens));
-        if (outputTokens != null) sets.add(Updates.set("output_tokens", outputTokens));
-        if (sets.isEmpty()) return;
-        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+        if (taskId == null && contextId == null && inputTokens == null && outputTokens == null) return;
+        callStore.attachRun(callId, taskId, contextId, inputTokens, outputTokens);
     }
 
     /**
@@ -112,12 +91,8 @@ public class HubCallAuditService {
      */
     public void attachResult(String callId, String refId, Long inputTokens, Long outputTokens) {
         if (callId == null) return;
-        var sets = new ArrayList<Bson>();
-        if (refId != null) sets.add(Updates.set("ref_id", refId));
-        if (inputTokens != null) sets.add(Updates.set("input_tokens", inputTokens));
-        if (outputTokens != null) sets.add(Updates.set("output_tokens", outputTokens));
-        if (sets.isEmpty()) return;
-        callCollection.update(Filters.eq("_id", callId), Updates.combine(sets.toArray(new Bson[0])));
+        if (refId == null && inputTokens == null && outputTokens == null) return;
+        callStore.attachResult(callId, refId, inputTokens, outputTokens);
     }
 
     private String sha256(String value) {
@@ -143,3 +118,4 @@ public class HubCallAuditService {
                                String sandboxId, String toolKind, String sessionId) {
     }
 }
+

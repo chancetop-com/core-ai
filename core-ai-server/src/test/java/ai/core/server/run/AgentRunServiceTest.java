@@ -231,7 +231,7 @@ class AgentRunServiceTest {
         var service = new AgentRunService();
         service.agentRunner = runner;
         service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(definitionCollection);
-        service.agentRunCollection = runCollection;
+        service.agentRunStore = MongoAgentRunStore.of(runCollection);
         service.skillService = mock(SkillService.class);
         service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);
         service.apiUserQuotaService = mock(ai.core.server.apiuser.ApiUserQuotaService.class);
@@ -247,3 +247,4 @@ class AgentRunServiceTest {
         return definition;
     }
 }
+

@@ -1,10 +1,11 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.schedule.AgentScheduleStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,7 +41,7 @@ public class ProjectArtifactBinder {
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
 
     /** schedule → run: called right after the run record is inserted */
     public void bindRun(AgentRun run) {
@@ -66,7 +67,7 @@ public class ProjectArtifactBinder {
             var subjectsByProject = subjectsByProject(parentType, parentId);
             if (subjectsByProject.isEmpty() && ProjectAttributionStore.TARGET_RUN.equals(parentType)) {
                 // run created before the schedule was bound, or bindRun failed: resolve the schedule now
-                var run = agentRunCollection.get(parentId).orElse(null);
+                var run = agentRunStore.get(parentId).orElse(null);
                 if (run != null && run.scheduleId != null) {
                     bindRun(run);
                     subjectsByProject = subjectsByProject(parentType, parentId);
@@ -109,7 +110,7 @@ public class ProjectArtifactBinder {
         return switch (parentType) {
             case ProjectAttributionStore.TARGET_SESSION -> chatSessionStore.get(parentId)
                 .map(s -> new ParentArtifacts(s.agentId, s.artifacts != null ? s.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);
-            case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(parentId)
+            case ProjectAttributionStore.TARGET_RUN -> agentRunStore.get(parentId)
                 .map(r -> new ParentArtifacts(r.agentId, r.artifacts != null ? r.artifacts : List.<AgentRunArtifact>of())).orElse(ParentArtifacts.EMPTY);
             default -> ParentArtifacts.EMPTY;
         };
@@ -141,5 +142,7 @@ public class ProjectArtifactBinder {
         static final ParentArtifacts EMPTY = new ParentArtifacts(null, List.of());
     }
 }
+
+
 
 

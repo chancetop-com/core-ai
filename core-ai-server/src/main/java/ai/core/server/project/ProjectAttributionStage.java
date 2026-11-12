@@ -1,7 +1,10 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.agent.AgentDefinitionStore;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.Project;
 import ai.core.server.domain.WorkflowRun;
@@ -62,7 +65,7 @@ public class ProjectAttributionStage {
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
@@ -130,8 +133,12 @@ public class ProjectAttributionStage {
     private void collectRuns(ProjectAttributionMaterial material, Project project, ZonedDateTime cursor) {
         var agentIds = memberIds(project, "agent");
         if (agentIds.isEmpty()) return;
-        var query = query(Filters.in("agent_id", agentIds), "started_at", cursor, MAX_RUNS);
-        var runs = agentRunCollection.find(query);
+        var runQuery = new AgentRunQuery();
+        runQuery.agentIds = agentIds;
+        runQuery.from = cursor;
+        runQuery.ascending = cursor != null;
+        runQuery.limit = MAX_RUNS;
+        var runs = agentRunStore.find(runQuery);
         seedCoverage(material, ProjectAttributionStore.TARGET_RUN, cursor, runs.isEmpty() ? null : runs.getFirst().startedAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_RUN, runs.stream().map(r -> r.id).toList());
         for (var run : runs) {
@@ -346,7 +353,7 @@ public class ProjectAttributionStage {
     private boolean targetExists(String targetType, String targetId) {
         return switch (targetType) {
             case ProjectAttributionStore.TARGET_SESSION -> chatSessionStore.get(targetId).isPresent();
-            case ProjectAttributionStore.TARGET_RUN -> agentRunCollection.get(targetId).isPresent();
+            case ProjectAttributionStore.TARGET_RUN -> agentRunStore.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_WORKFLOW_RUN -> workflowRunCollection.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_FILE -> fileRecordStore.get(targetId).isPresent();
             default -> false;
@@ -398,3 +405,6 @@ public class ProjectAttributionStage {
         return value.length() > maxChars ? value.substring(0, maxChars) + "...(truncated)" : value;
     }
 }
+
+
+

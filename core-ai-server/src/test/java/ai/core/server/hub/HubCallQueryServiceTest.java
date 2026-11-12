@@ -49,7 +49,7 @@ class HubCallQueryServiceTest {
         service = new HubCallQueryService();
         callCollection = (MongoCollection<HubCall>) mock(MongoCollection.class);
         userCollection = (MongoCollection<User>) mock(MongoCollection.class);
-        service.callCollection = callCollection;
+        service.hubCallStore = MongoHubCallStore.of(callCollection);
         service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
     }
 
@@ -219,3 +219,4 @@ class HubCallQueryServiceTest {
         return bson.toBsonDocument(BsonDocument.class, CODEC_REGISTRY).toJson();
     }
 }
+

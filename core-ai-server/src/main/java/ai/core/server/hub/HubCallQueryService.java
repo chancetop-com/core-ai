@@ -3,17 +3,10 @@ package ai.core.server.hub;
 import ai.core.api.server.hub.HubCallView;
 import ai.core.api.server.hub.ListHubCallsResponse;
 import ai.core.server.domain.HubCall;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
-import org.bson.BsonNull;
-import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,49 +28,37 @@ public class HubCallQueryService {
     private static final Set<String> STATES = Set.of("completed", "failed", "unknown");
 
     @Inject
-    MongoCollection<HubCall> callCollection;
+    HubCallStore hubCallStore;
     @Inject
     UserStore userStore;
 
     public ListHubCallsResponse list(HubCallListFilter filter) {
-        var mongoFilter = mongoFilter(filter);
+        normalize(filter);
+        var page = hubCallStore.list(filter);
         var response = new ListHubCallsResponse();
-        response.total = callCollection.count(mongoFilter);
-        var query = new Query();
-        query.filter = mongoFilter;
-        query.sort = Sorts.descending("created_at");
-        query.skip = filter.offset;
-        query.limit = filter.limit;
-        response.calls = toViews(callCollection.find(query));
+        response.total = page.total();
+        response.calls = toViews(page.calls());
         return response;
     }
 
-    private Bson mongoFilter(HubCallListFilter filter) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.gte("created_at", filter.startFrom));
-        if (filter.startTo != null) filters.add(Filters.lte("created_at", filter.startTo));
-        addKindFilter(filters, filter.kind);
-        if (hasText(filter.userId)) filters.add(Filters.eq("user_id", filter.userId.trim()));
-        if (hasText(filter.source)) filters.add(Filters.eq("source", filter.source.trim().toLowerCase(Locale.ROOT)));
-        addStateFilter(filters, filter.state);
-        return Filters.and(filters);
-    }
-
-    private void addKindFilter(List<Bson> filters, String kind) {
-        if (!hasText(kind)) return;
-        var value = kind.trim().toLowerCase(Locale.ROOT);
-        if (!KINDS.contains(value)) throw new BadRequestException("kind must be one of " + KINDS);
-        filters.add(Filters.eq("kind", value));
-    }
-
-    // success is null (or absent) on rows whose call never completed — reported as state=unknown
-    private void addStateFilter(List<Bson> filters, String state) {
-        if (!hasText(state)) return;
-        switch (state.trim().toLowerCase(Locale.ROOT)) {
-            case "completed" -> filters.add(Filters.eq("success", Boolean.TRUE));
-            case "failed" -> filters.add(Filters.eq("success", Boolean.FALSE));
-            case "unknown" -> filters.add(Filters.eq("success", BsonNull.VALUE));
-            default -> throw new BadRequestException("state must be one of " + STATES);
+    private void normalize(HubCallListFilter filter) {
+        if (hasText(filter.kind)) {
+            var value = filter.kind.trim().toLowerCase(Locale.ROOT);
+            if (!KINDS.contains(value)) throw new BadRequestException("kind must be one of " + KINDS);
+            filter.kind = value;
+        } else {
+            filter.kind = null;
+        }
+        if (hasText(filter.userId)) filter.userId = filter.userId.trim();
+        else filter.userId = null;
+        if (hasText(filter.source)) filter.source = filter.source.trim().toLowerCase(Locale.ROOT);
+        else filter.source = null;
+        if (hasText(filter.state)) {
+            var value = filter.state.trim().toLowerCase(Locale.ROOT);
+            if (!STATES.contains(value)) throw new BadRequestException("state must be one of " + STATES);
+            filter.state = value;
+        } else {
+            filter.state = null;
         }
     }
 

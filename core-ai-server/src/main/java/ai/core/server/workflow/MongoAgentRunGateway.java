@@ -1,5 +1,7 @@
 package ai.core.server.workflow;
 
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.domain.AgentDefinition;
@@ -79,7 +81,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     AgentRunner agentRunner;
 
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
 
     @Inject
     MongoCollection<WorkflowPublishedVersion> versionCollection;
@@ -106,7 +108,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     public AgentRunResult awaitResult(String childRunId) {
         long deadline = System.currentTimeMillis() + MAX_WAIT_MS;
         while (System.currentTimeMillis() < deadline) {
-            AgentRun child = agentRunCollection.get(childRunId).orElse(null);
+            AgentRun child = agentRunStore.get(childRunId).orElse(null);
             if (child != null) {
                 if (TERMINAL.contains(child.status)) {
                     return child.status == RunStatus.COMPLETED
@@ -159,3 +161,5 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         return snapshot;
     }
 }
+
+

@@ -21,9 +21,7 @@ import ai.core.server.sandbox.StagedFile;
 import ai.core.server.sandboxhub.RunAgentRegistry;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,7 +81,7 @@ public class AgentRunner {
     ChannelRegistry channelRegistry;
 
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     ai.core.server.project.ProjectArtifactBinder artifactBinder;
 
@@ -141,7 +139,7 @@ public class AgentRunner {
         }
         var runEntity = createRunRecord(
             params.definition, params.input, params.trigger, params.scheduleId, params.callerUserId);
-        agentRunCollection.insert(runEntity);
+        agentRunStore.insert(runEntity);
         rejectWhenRunQueueFull(runEntity);
         artifactBinder.bindRun(runEntity);   // schedule → subject binding, deterministic (no-op without a bound schedule)
 
@@ -292,7 +290,7 @@ public class AgentRunner {
             runEntity.output = result.output();
             runEntity.completedAt = ZonedDateTime.now();
             runEntity.transcript = builder.buildLLMCallTranscript(systemPrompt, runEntity.input, result.output());
-            agentRunCollection.replace(runEntity);
+            agentRunStore.replace(runEntity);
             builder.extractDatasetRecords(result.output(), definition, runEntity.id, runEntity.agentId, runEntity.startedAt);
         } catch (Exception e) {
             LOGGER.error("llm run failed, runId={}", runEntity.id, e);
@@ -302,7 +300,7 @@ public class AgentRunner {
 
     private void markRunFailedIfUnfinished(AgentRun runEntity, Throwable error) {
         var cause = error instanceof CompletionException && error.getCause() != null ? error.getCause() : error;
-        var latest = agentRunCollection.get(runEntity.id).orElse(runEntity);
+        var latest = agentRunStore.get(runEntity.id).orElse(runEntity);
         if (latest.status != RunStatus.RUNNING && latest.status != RunStatus.PENDING) return;
         LOGGER.error("agent run failed asynchronously, runId={}", latest.id, cause);
         builder.updateRunStatus(latest, RunStatus.FAILED, null, AgentRunErrors.message(cause), AgentRunErrors.stackTrace(cause), null);
@@ -322,25 +320,24 @@ public class AgentRunner {
         if (future != null) {
             future.cancel(true);
         }
-        agentRunCollection.get(runId).ifPresent(run -> {
+        agentRunStore.get(runId).ifPresent(run -> {
             if (run.status == RunStatus.RUNNING) {
                 run.status = RunStatus.CANCELLED;
                 run.completedAt = ZonedDateTime.now();
-                agentRunCollection.replace(run);
+                agentRunStore.replace(run);
             }
         });
     }
 
     public boolean isRunning(String agentId, String scheduleId) {
         var threshold = ZonedDateTime.now().minusSeconds(STALE_RUN_THRESHOLD_SECONDS);
-        return agentRunCollection.findOne(
-                Filters.and(
-                        Filters.eq("agent_id", agentId),
-                        Filters.eq("schedule_id", scheduleId),
-                        Filters.in("status", List.of(RunStatus.RUNNING, RunStatus.PENDING)),
-                        Filters.gte("started_at", threshold)
-                )
-        ).isPresent();
+        var query = new AgentRunQuery();
+        query.agentId = agentId;
+        query.scheduleId = scheduleId;
+        query.statuses = List.of(RunStatus.RUNNING, RunStatus.PENDING);
+        query.from = threshold;
+        query.limit = 1;
+        return agentRunStore.findOne(query).isPresent();
     }
 
     /** Runs executing on this pod right now (observation only — the pool bound itself is not yet enforced). */
@@ -374,7 +371,7 @@ public class AgentRunner {
         runEntity.status = RunStatus.REJECTED;
         runEntity.completedAt = ZonedDateTime.now();
         runEntity.error = "rejected by runtime admission: " + scope;
-        agentRunCollection.replace(runEntity);
+        agentRunStore.replace(runEntity);
         LOGGER.warn("run rejected by runtime admission, runId={}, scope={}, queued={}", runEntity.id, scope, admission.queued());
     }
 
@@ -382,7 +379,7 @@ public class AgentRunner {
     private void markRunning(AgentRun runEntity) {
         runEntity.status = RunStatus.RUNNING;
         runEntity.startedAt = ZonedDateTime.now();
-        agentRunCollection.replace(runEntity);
+        agentRunStore.replace(runEntity);
     }
 
     private RunChannelDelivery channelDelivery() {
@@ -434,3 +431,4 @@ public class AgentRunner {
                                       ChannelTarget channel, boolean staged, List<LLMCallRequest.Attachment> attachments) {
     }
 }
+

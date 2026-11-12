@@ -41,7 +41,7 @@ class MediaJobInputRecorderTest {
         var mediaJobService = new MediaJobService();
         mediaJobs = (MongoCollection<MediaJob>) mock(MongoCollection.class);
         fileService = mock(FileService.class);
-        mediaJobService.mediaJobCollection = mediaJobs;
+        mediaJobService.mediaJobStore = MongoMediaJobStore.of(mediaJobs);
         mediaJobService.fileService = fileService;
         remoteMediaLoader = mock(RemoteMediaLoader.class);
         recorder = new MediaJobInputRecorder(mediaJobService, remoteMediaLoader);
@@ -163,3 +163,4 @@ class MediaJobInputRecorderTest {
         return "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(value.getBytes(StandardCharsets.UTF_8));
     }
 }
+

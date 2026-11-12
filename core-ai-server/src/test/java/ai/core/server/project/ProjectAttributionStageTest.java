@@ -53,7 +53,7 @@ class ProjectAttributionStageTest {
         projects = (MongoCollection<Project>) mock(MongoCollection.class);
         stage.projectStore = ProjectStoreTestSupport.store(projects);
         runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
-        stage.agentRunCollection = runs;
+        stage.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(runs);
         sessions = (MongoCollection<ChatSession>) mock(MongoCollection.class);
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(sessions);
         stage.chatSessionStore = chatSessionStore;
@@ -232,3 +232,4 @@ class ProjectAttributionStageTest {
             {"attributions":[],"new_subjects":[{"name":"%s","description":"the spa account","reason":"run mentions acme","targets":[{"target_type":"%s","target_id":"%s"}]}]}""".formatted(name, targetType, targetId);
     }
 }
+

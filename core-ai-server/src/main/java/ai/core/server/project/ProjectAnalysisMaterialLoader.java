@@ -1,5 +1,9 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
@@ -58,7 +62,7 @@ public class ProjectAnalysisMaterialLoader {
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
@@ -121,7 +125,10 @@ public class ProjectAnalysisMaterialLoader {
         var byTarget = byTarget(rows, ProjectAttributionStore.TARGET_RUN);
         if (byTarget.isEmpty()) return;
         var found = new HashMap<String, AgentRun>();
-        for (var run : agentRunCollection.find(Filters.in("_id", byTarget.keySet()))) found.put(run.id, run);
+        var runQuery = new AgentRunQuery();
+        runQuery.ids = new ArrayList<>(byTarget.keySet());
+        runQuery.limit = runQuery.ids.size();
+        for (var run : agentRunStore.find(runQuery)) found.put(run.id, run);
         for (var entry : byTarget.entrySet()) {
             var run = found.get(entry.getKey());
             if (run == null) {
@@ -243,3 +250,6 @@ public class ProjectAnalysisMaterialLoader {
     private record Item(ProjectSubjectAttribution row, ZonedDateTime at, String text) {
     }
 }
+
+
+

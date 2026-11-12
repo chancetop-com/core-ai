@@ -1,6 +1,9 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentRun;
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.WorkflowRun;
@@ -53,7 +56,7 @@ public class ProjectQueryService {
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<WorkflowRun> workflowRunCollection;
     @Inject
@@ -133,7 +136,7 @@ public class ProjectQueryService {
         if (scope == null) return 0;
         long total = 0;
         if (type == null || "chat".equals(type)) total += chatSessionStore.count(sessionQuery(scope, subjectId));
-        if (type == null || "run".equals(type)) total += agentRunCollection.count(runFilter(scope, subjectId));
+        if (type == null || "run".equals(type)) total += agentRunStore.count(runQuery(scope, subjectId, 0, 1000));
         if (type == null || "workflow".equals(type)) total += workflowRunCollection.count(workflowFilter(scope, subjectId));
         return total;
     }
@@ -198,10 +201,8 @@ public class ProjectQueryService {
     }
 
     private List<ProjectExecution> runExecutions(ProjectScope scope, String subjectId, int offset, int limit) {
-        var query = sortedQuery(runFilter(scope, subjectId), "started_at");
-        query.skip = offset;
-        query.limit = limit;
-        var runs = agentRunCollection.find(query);
+        var query = runQuery(scope, subjectId, offset, limit);
+        var runs = agentRunStore.find(query);
         var costs = traceCosts(runs.stream().map(r -> r.traceId).filter(id -> id != null).toList());
         var subjectByRun = subjectByTarget(scope, "run");
         var rows = new ArrayList<ProjectExecution>();
@@ -271,14 +272,16 @@ public class ProjectQueryService {
         return query;
     }
 
-    private Bson runFilter(ProjectScope scope, String subjectId) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("agent_id", scope.agentIds));
+    private AgentRunQuery runQuery(ProjectScope scope, String subjectId, int offset, int limit) {
+        var query = new AgentRunQuery();
+        query.agentIds = scope.agentIds;
         if (subjectId != null) {
             var ids = attributionTargets(subjectId, "run");
-            filters.add(ids.isEmpty() ? Filters.eq("_id", "__none__") : Filters.in("_id", ids));
+            query.ids = ids.isEmpty() ? List.of("__none__") : ids;
         }
-        return Filters.and(filters);
+        query.offset = offset;
+        query.limit = limit;
+        return query;
     }
 
     private Bson workflowFilter(ProjectScope scope, String subjectId) {
@@ -351,3 +354,6 @@ public class ProjectQueryService {
     private record TraceCost(Double cost, String traceId) {
     }
 }
+
+
+

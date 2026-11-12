@@ -463,7 +463,7 @@ class OTLPIngestServiceTest {
         var service = new OTLPIngestService();
         service.traceCollection = traceCollection();
         service.spanCollection = spanCollection();
-        service.agentRunCollection = agentRunCollection();
+        service.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(agentRunCollection());
         var chatSessionCollection = chatSessionCollection();
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(chatSessionCollection);
         service.chatSessionStore = chatSessionStore;
@@ -531,3 +531,4 @@ class OTLPIngestServiceTest {
         return (MongoCollection<ChatSession>) mock(MongoCollection.class);
     }
 }
+

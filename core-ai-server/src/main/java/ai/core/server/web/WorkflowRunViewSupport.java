@@ -2,10 +2,10 @@ package ai.core.server.web;
 
 import ai.core.api.server.workflow.NodeRunView;
 import ai.core.api.server.workflow.WorkflowRunView;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.WorkflowRunService;
+import ai.core.server.run.AgentRunStore;
 import core.framework.mongo.MongoCollection;
 
 /**
@@ -25,7 +25,7 @@ final class WorkflowRunViewSupport {
         return view;
     }
 
-    static NodeRunView toNodeRunView(WorkflowNodeRun nodeRun, MongoCollection<WorkflowRun> runCollection, MongoCollection<AgentRun> agentRunCollection) {
+    static NodeRunView toNodeRunView(WorkflowNodeRun nodeRun, MongoCollection<WorkflowRun> runCollection, AgentRunStore agentRunStore) {
         var view = new NodeRunView();
         view.nodeId = nodeRun.nodeId;
         view.nodeType = nodeRun.nodeType;
@@ -46,7 +46,7 @@ final class WorkflowRunViewSupport {
                 runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
             } else {
                 view.childRunType = "AGENT";
-                resolveAgentTraceId(view, nodeRun.childRunId, agentRunCollection);
+                resolveAgentTraceId(view, nodeRun.childRunId, agentRunStore);
             }
         }
         view.spanId = nodeRun.spanId;
@@ -55,12 +55,15 @@ final class WorkflowRunViewSupport {
         return view;
     }
 
-    private static void resolveAgentTraceId(NodeRunView view, String childRunId, MongoCollection<AgentRun> agentRunCollection) {
+    private static void resolveAgentTraceId(NodeRunView view, String childRunId, AgentRunStore agentRunStore) {
         if (view.traceId == null || view.traceId.isBlank()) {
-            agentRunCollection.get(childRunId).ifPresent(child -> view.traceId = child.traceId);
+            agentRunStore.get(childRunId).ifPresent(child -> view.traceId = child.traceId);
         }
     }
 
     private WorkflowRunViewSupport() {
     }
 }
+
+
+

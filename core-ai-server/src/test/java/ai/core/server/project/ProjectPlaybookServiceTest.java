@@ -60,7 +60,7 @@ class ProjectPlaybookServiceTest {
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);
         service.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(messages);
         var runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
-        service.agentRunCollection = runs;
+        service.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(runs);
         var workflowRuns = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
         service.workflowRunCollection = workflowRuns;
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
@@ -201,3 +201,4 @@ class ProjectPlaybookServiceTest {
         return record;
     }
 }
+

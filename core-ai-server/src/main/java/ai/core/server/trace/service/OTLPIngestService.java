@@ -1,5 +1,7 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.run.AgentRunStore;
+
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
@@ -16,7 +18,6 @@ import io.opentelemetry.proto.trace.v1.ScopeSpans;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import ai.core.server.domain.AgentRun;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -44,7 +45,7 @@ public class OTLPIngestService {
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     MongoCollection<Span> spanCollection;
     @Inject
@@ -91,13 +92,7 @@ public class OTLPIngestService {
     private void linkAgentRun(String traceId, Map<String, String> attrs) {
         var runId = attrs.get(OTLPTraceMetadata.CORE_AI_RUN_ID);
         if (runId == null || runId.isBlank()) return;
-        agentRunCollection.update(
-            Filters.and(
-                Filters.eq("_id", runId),
-                Filters.or(Filters.exists("trace_id", false), Filters.eq("trace_id", null), Filters.eq("trace_id", ""))
-            ),
-            Updates.set("trace_id", traceId)
-        );
+        agentRunStore.claimTraceId(runId, traceId);
     }
 
     /**
@@ -432,3 +427,5 @@ public class OTLPIngestService {
     }
 
 }
+
+

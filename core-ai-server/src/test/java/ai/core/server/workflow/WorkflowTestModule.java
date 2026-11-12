@@ -4,6 +4,8 @@ import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.agent.MongoAgentDefinitionStore;
 import ai.core.server.notification.MongoNotificationStore;
 import ai.core.server.notification.NotificationStore;
+import ai.core.server.run.AgentRunStore;
+import ai.core.server.run.MongoAgentRunStore;
 import ai.core.server.schedule.AgentScheduleStore;
 import ai.core.server.schedule.MongoAgentScheduleStore;
 import ai.core.server.domain.AgentDefinition;
@@ -205,6 +207,7 @@ public class WorkflowTestModule extends AbstractTestModule {
     private void bindProjectDataStores() {
         bind(AgentDefinitionStore.class, bind(MongoAgentDefinitionStore.class));
         bind(AgentScheduleStore.class, bind(MongoAgentScheduleStore.class));
+        bind(AgentRunStore.class, bind(MongoAgentRunStore.class));
         bind(NotificationStore.class, bind(MongoNotificationStore.class));
         bind(ai.core.server.project.ProjectSubjectStore.class, bind(ai.core.server.project.MongoProjectSubjectStore.class));
         bind(ai.core.server.project.ProjectEventStore.class, bind(ai.core.server.project.MongoProjectEventStore.class));
@@ -214,5 +217,6 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(ai.core.server.project.ProjectStatsStore.class, bind(ai.core.server.project.MongoProjectStatsStore.class));
     }
 }
+
 
 

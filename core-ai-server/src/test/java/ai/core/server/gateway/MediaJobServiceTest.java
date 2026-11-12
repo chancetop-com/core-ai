@@ -26,7 +26,6 @@ import java.util.Base64;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -51,7 +50,7 @@ class MediaJobServiceTest {
         service = new MediaJobService();
         collection = (MongoCollection<MediaJob>) mock(MongoCollection.class);
         costSettler = mock(MediaCostSettler.class);
-        service.mediaJobCollection = collection;
+        service.mediaJobStore = MongoMediaJobStore.of(collection);
         service.costSettler = costSettler;
         service.fileService = mock(FileService.class);
     }
@@ -175,15 +174,13 @@ class MediaJobServiceTest {
 
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, 12.5, null, null));
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='completed_at'"));
-        assertTrue(update.contains("fieldName='cost_usd', operator='$set', value=3.2"));
-        assertTrue(update.contains("fieldName='cost_source', operator='$set', value=model_catalog"));
-        assertTrue(update.contains("fieldName='pricing_model_id', operator='$set', value=gemini/veo-3.1-generate-001"));
-        assertTrue(update.contains("fieldName='media_units', operator='$set', value=8.0"));
-        assertTrue(update.contains("fieldName='media_unit_type', operator='$set', value=second"));
-        assertTrue(update.contains("fieldName='credits_consumed', operator='$set', value=12.5"));
         assertNotNull(job.completedAt);
+        assertEquals(3.2, job.costUsd);
+        assertEquals("model_catalog", job.costSource);
+        assertEquals("gemini/veo-3.1-generate-001", job.pricingModelId);
+        assertEquals(8.0, job.mediaUnits);
+        assertEquals("second", job.mediaUnitType);
+        assertEquals(12.5, job.creditsConsumed);
     }
 
     @Test
@@ -197,9 +194,8 @@ class MediaJobServiceTest {
 
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='cost_source', operator='$set', value=unavailable"));
-        assertFalse(update.contains("cost_usd"));
+        assertEquals("unavailable", job.costSource);
+        assertNull(job.costUsd);
     }
 
     @Test
@@ -211,7 +207,7 @@ class MediaJobServiceTest {
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
         verify(costSettler, never()).settleVideo(any(), any());
-        assertFalse(capturedUpdateText().contains("cost_usd"));
+        assertNull(job.costUsd);
     }
 
     @Test
@@ -223,11 +219,9 @@ class MediaJobServiceTest {
 
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='state', operator='$set', value=completed"));
-        assertTrue(update.contains("fieldName='completed_at'"));
-        assertFalse(update.contains("cost_usd"));
+        assertEquals("completed", job.state);
         assertNotNull(job.completedAt);
+        assertNull(job.costUsd);
     }
 
     @Test
@@ -237,10 +231,9 @@ class MediaJobServiceTest {
 
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "processing", 50, null, null, 3.0, null, null));
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='state', operator='$set', value=processing"));
-        assertTrue(update.contains("fieldName='credits_consumed', operator='$set', value=3.0"));
-        assertFalse(update.contains("cost_usd"));
+        assertEquals("processing", job.state);
+        assertEquals(3.0, job.creditsConsumed);
+        assertNull(job.costUsd);
         assertNull(job.completedAt);
     }
 
@@ -315,14 +308,9 @@ class MediaJobServiceTest {
 
         service.updateVideoStatus(job, new VideoStatusResponse("upstream", "completed", 100, null, null, null, null, null));
 
-        var update = capturedUpdateText();
-        assertTrue(update.contains("fieldName='artifact_state', operator='$set', value=pending"));
         assertEquals("pending", job.artifactState);
     }
-
-    private String capturedUpdateText() {
-        ArgumentCaptor<Bson> captor = ArgumentCaptor.forClass(Bson.class);
-        verify(collection).update(any(Bson.class), captor.capture());
-        return captor.getValue().toString();
-    }
 }
+
+
+

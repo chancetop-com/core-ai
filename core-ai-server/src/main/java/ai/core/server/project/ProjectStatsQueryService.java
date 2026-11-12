@@ -1,6 +1,9 @@
 package ai.core.server.project;
 
-import ai.core.server.domain.AgentRun;
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.domain.ProjectStatsData;
 import ai.core.server.domain.ProjectStatsEntity;
 import ai.core.server.domain.ProjectStatsItem;
@@ -13,7 +16,6 @@ import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
 import org.bson.conversions.Bson;
 
@@ -37,7 +39,7 @@ public class ProjectStatsQueryService {
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     ProjectAttributionRepository attributionRepository;
     @Inject
@@ -183,8 +185,12 @@ public class ProjectStatsQueryService {
     private List<String> attributionRunTraceIds(String subjectId) {
         var runIds = attributionTargets(subjectId, "run");
         if (runIds.isEmpty()) return List.of();
-        var query = new Query();
-        query.filter = Filters.in("_id", runIds);
-        return agentRunCollection.find(query).stream().map(r -> r.traceId).filter(id -> id != null).toList();
+        var query = new AgentRunQuery();
+        query.ids = runIds;
+        query.limit = runIds.size();
+        return agentRunStore.find(query).stream().map(r -> r.traceId).filter(id -> id != null).toList();
     }
 }
+
+
+

@@ -26,15 +26,9 @@ import ai.core.server.file.FileService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.ForbiddenException;
-import org.bson.conversions.Bson;
 
-import java.util.ArrayList;
 import java.util.Map;
 
 /**
@@ -48,7 +42,7 @@ public class AgentRunService {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     FileService fileService;
     @Inject
@@ -81,28 +75,25 @@ public class AgentRunService {
     }
 
     public ListRunsResponse listByAgent(String agentId, ListRunsRequest request, String callerUserId) {
-        var query = new Query();
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("agent_id", agentId));
+        var query = new AgentRunQuery();
+        query.agentId = agentId;
         if (request.status != null && !request.status.isBlank()) {
-            filters.add(Filters.eq("status", RunStatus.valueOf(request.status)));
+            query.status = RunStatus.valueOf(request.status);
         }
         if (!canReadAgentRuns(callerUserId, agentId)) {
-            filters.add(Filters.eq("user_id", callerUserId));
+            query.userId = callerUserId;
         }
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("started_at");
         query.limit = request.limit != null ? request.limit : 20;
 
-        var runs = agentRunCollection.find(query);
+        var runs = agentRunStore.find(query);
         var response = new ListRunsResponse();
         response.runs = runs.stream().map(this::toView).toList();
-        response.total = agentRunCollection.count(query.filter);
+        response.total = agentRunStore.count(query);
         return response;
     }
 
     public AgentRunDetailView get(String id, String callerUserId) {
-        var entity = agentRunCollection.get(id)
+        var entity = agentRunStore.get(id)
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
         checkRunAccess(entity, callerUserId);
         return toDetailView(entity);
@@ -155,7 +146,7 @@ public class AgentRunService {
         // Wait for completion
         var maxWait = 600;
         for (int i = 0; i < maxWait; i++) {
-            var run = agentRunCollection.get(runId).orElse(null);
+            var run = agentRunStore.get(runId).orElse(null);
             if (run != null && run.status != RunStatus.RUNNING && run.status != RunStatus.PENDING) {
                 var response = new AgentCallResponse();
                 response.runId = runId;
@@ -194,7 +185,7 @@ public class AgentRunService {
     }
 
     public void cancel(String id, String callerUserId) {
-        var entity = agentRunCollection.get(id)
+        var entity = agentRunStore.get(id)
             .orElseThrow(() -> new RuntimeException("run not found, id=" + id));
         checkRunAccess(entity, callerUserId);
         agentRunner.cancel(id);
@@ -288,3 +279,4 @@ public class AgentRunService {
         return view;
     }
 }
+

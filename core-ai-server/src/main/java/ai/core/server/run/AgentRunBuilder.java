@@ -52,7 +52,6 @@ import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -135,7 +134,7 @@ public class AgentRunBuilder {
     @Inject
     AgentTracer agentTracer;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     ai.core.server.project.ProjectArtifactBinder artifactBinder;
     @Inject
@@ -194,7 +193,7 @@ public class AgentRunBuilder {
         }
         if (sandbox != null) {
             builder.addAgentLifecycle(new SandboxLifecycle(fileService,
-                    new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration,
+                    new AgentRunArtifactSink(runEntity.id, agentRunStore, artifactBinder), publicUrlConfiguration,
                     attachmentRepository));
         }
         var agent = builder.build();
@@ -222,10 +221,10 @@ public class AgentRunBuilder {
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(definition.userId, fileService,
-                                new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration))
+                                new AgentRunArtifactSink(runEntity.id, agentRunStore, artifactBinder), publicUrlConfiguration))
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(definition.userId, fileService,
-                                new AgentRunArtifactSink(runEntity.id, agentRunCollection, artifactBinder), publicUrlConfiguration))
+                                new AgentRunArtifactSink(runEntity.id, agentRunStore, artifactBinder), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
         // quota metering per LLM call: sub-agents and tool-internal calls share this context, so the
@@ -302,7 +301,7 @@ public class AgentRunBuilder {
     }
 
     void updateRunStatus(AgentRun runEntity, RunStatus status, String output, String error, String errorStack, Agent agent) {
-        var latestRun = agentRunCollection.get(runEntity.id).orElse(runEntity);
+        var latestRun = agentRunStore.get(runEntity.id).orElse(runEntity);
         runEntity.artifacts = latestRun.artifacts;
         if ((runEntity.traceId == null || runEntity.traceId.isBlank()) && latestRun.traceId != null && !latestRun.traceId.isBlank()) {
             runEntity.traceId = latestRun.traceId;
@@ -323,7 +322,7 @@ public class AgentRunBuilder {
             runEntity.transcript = buildTranscript(agent);
         }
 
-        agentRunCollection.replace(runEntity);
+        agentRunStore.replace(runEntity);
     }
 
     List<TranscriptEntry> buildTranscript(Agent agent) {
@@ -432,3 +431,5 @@ public class AgentRunBuilder {
                 .tracer(agentTracer);
     }
 }
+
+

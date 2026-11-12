@@ -1,14 +1,13 @@
 package ai.core.server.project;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentDefinitionStore;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.FileRecord;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -44,7 +43,7 @@ public class ProjectReportQueryService {
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
@@ -164,11 +163,11 @@ public class ProjectReportQueryService {
     }
 
     private void addRunReports(Map<String, ProjectReport> byFile, ProjectScope scope, String agentId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.in("agent_id", scope.agentIds), Filters.exists("artifacts.0", true));
-        query.sort = Sorts.descending("started_at");
-        query.limit = MAX_SOURCE_RECORDS;
-        for (var run : agentRunCollection.find(query)) {
+        var runQuery = new AgentRunQuery();
+        runQuery.agentIds = scope.agentIds;
+        runQuery.hasArtifacts = true;
+        runQuery.limit = MAX_SOURCE_RECORDS;
+        for (var run : agentRunStore.find(runQuery)) {
             if (run.artifacts == null || !matchesAgent(run.agentId, agentId)) continue;
             for (var artifact : run.artifacts) {
                 if (artifact.fileId == null) continue;
@@ -208,3 +207,6 @@ public class ProjectReportQueryService {
         }
     }
 }
+
+
+

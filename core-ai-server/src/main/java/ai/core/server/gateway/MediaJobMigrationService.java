@@ -1,0 +1,77 @@
+package ai.core.server.gateway;
+
+import ai.core.server.domain.MediaJob;
+import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Sorts;
+import core.framework.db.Database;
+import core.framework.inject.Inject;
+import core.framework.mongo.MongoCollection;
+import core.framework.mongo.Query;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+
+/**
+ * @author stephen
+ */
+public class MediaJobMigrationService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(MediaJobMigrationService.class);
+    private static final String MARKER = "media_jobs_v1";
+    private static final String LOCK_KEY = "media_job_migration";
+    private static final int PAGE_SIZE = 200;
+
+    @Inject
+    MongoCollection<MediaJob> mediaJobCollection;
+    @Inject
+    MediaJobStore mediaJobStore;
+    @Inject
+    Database database;
+
+    public void migrate() {
+        try (var transaction = database.beginTransaction()) {
+            var lock = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired",
+                    PgMediaJobMigrationLockRow.class, LOCK_KEY).orElse(null);
+            if (lock == null || !Boolean.TRUE.equals(lock.acquired)) {
+                transaction.rollback();
+                LOGGER.info("media job migration skipped, another instance holds the lock");
+                return;
+            }
+            if (migrationDone()) {
+                transaction.commit();
+                return;
+            }
+            long count = copy();
+            database.execute("INSERT INTO app.g2_migration_markers (id, completed_at) VALUES (?, now())", MARKER);
+            transaction.commit();
+            LOGGER.info("media job migration finished, jobs={}", count);
+        }
+    }
+
+    private boolean migrationDone() {
+        return database.selectOne("SELECT id FROM app.g2_migration_markers WHERE id = ?",
+                PgMediaJobMigrationMarkerRow.class, MARKER).isPresent();
+    }
+
+    private long copy() {
+        long count = 0;
+        String lastId = "";
+        while (true) {
+            var query = new Query();
+            query.filter = Filters.gt("_id", lastId);
+            query.sort = Sorts.ascending("_id");
+            query.limit = PAGE_SIZE;
+            List<MediaJob> page = mediaJobCollection.find(query);
+            if (page.isEmpty()) return count;
+            for (var job : page) {
+                try {
+                    mediaJobStore.insert(job);
+                } catch (RuntimeException e) {
+                    LOGGER.debug("media job already migrated, id={}", job.id);
+                }
+                lastId = job.id;
+                count++;
+            }
+        }
+    }
+}

@@ -1,5 +1,7 @@
 package ai.core.server.schedule;
 
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.agent.AgentDefinitionStore;
 
 import ai.core.schedule.CronExpression;
@@ -11,7 +13,6 @@ import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.run.AgentRunner;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,7 +33,7 @@ public class AgentScheduler {
     AgentDefinitionStore agentDefinitionStore;
 
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
 
     @Inject
     AgentRunner agentRunner;
@@ -135,8 +136,10 @@ public class AgentScheduler {
         run.error = reason;
         run.startedAt = ZonedDateTime.now();
         run.completedAt = run.startedAt;
-        agentRunCollection.insert(run);
+        agentRunStore.insert(run);
     }
 }
+
+
 
 

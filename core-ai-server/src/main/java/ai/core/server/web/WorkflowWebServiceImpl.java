@@ -1,5 +1,7 @@
 package ai.core.server.web;
 
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.api.server.workflow.CloneWorkflowResponse;
 import ai.core.api.server.workflow.CreateRunRequest;
 import ai.core.api.server.workflow.CreateRunResponse;
@@ -25,7 +27,6 @@ import ai.core.api.server.workflow.WorkflowRunView;
 import ai.core.api.server.workflow.WorkflowVersionView;
 import ai.core.api.server.workflow.WorkflowView;
 import ai.core.api.server.workflow.WorkflowWebService;
-import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.User;
@@ -88,7 +89,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     MongoCollection<WorkflowRun> runCollection;
 
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
 
     @Inject
     WorkflowPortService portService;
@@ -375,7 +376,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
         response.nodeRuns = runService.listNodeRuns(runId, userId, isAdmin(userId)).stream()
-            .map(nodeRun -> WorkflowRunViewSupport.toNodeRunView(nodeRun, runCollection, agentRunCollection)).toList();
+            .map(nodeRun -> WorkflowRunViewSupport.toNodeRunView(nodeRun, runCollection, agentRunStore)).toList();
         return response;
     }
 
@@ -423,3 +424,6 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         return response;
     }
 }
+
+
+

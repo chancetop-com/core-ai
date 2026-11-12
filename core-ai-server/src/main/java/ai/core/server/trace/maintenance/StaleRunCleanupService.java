@@ -1,5 +1,9 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.run.AgentRunQuery;
+
+import ai.core.server.run.AgentRunStore;
+
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.trace.domain.Trace;
@@ -38,7 +42,7 @@ public class StaleRunCleanupService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<AgentRun> agentRunCollection;
+    AgentRunStore agentRunStore;
 
     public void cleanup() {
         var cutoff = ZonedDateTime.now().minus(STALE_AFTER);
@@ -86,13 +90,12 @@ public class StaleRunCleanupService {
     }
 
     List<AgentRun> unfinishedRunsStartedBefore(ZonedDateTime cutoff) {
-        var query = new Query();
-        query.filter = Filters.and(
-            Filters.in("status", RunStatus.RUNNING, RunStatus.PENDING),
-            Filters.lt("started_at", cutoff));
-        query.sort = Sorts.ascending("started_at");
+        var query = new AgentRunQuery();
+        query.statuses = List.of(RunStatus.RUNNING, RunStatus.PENDING);
+        query.to = cutoff;
+        query.ascending = true;
         query.limit = MAX_BATCH;
-        return agentRunCollection.find(query);
+        return agentRunStore.find(query);
     }
 
     private Trace traceOf(String traceId) {
@@ -117,28 +120,15 @@ public class StaleRunCleanupService {
 
     private void reconcile(AgentRun run, Trace trace) {
         var completed = trace.status == TraceStatus.COMPLETED;
-        var updates = new ArrayList<Bson>();
-        updates.add(Updates.set("status", completed ? RunStatus.COMPLETED : RunStatus.FAILED));
-        updates.add(Updates.set("output", completed ? trace.output : null));
-        updates.add(Updates.set("error", completed ? null : trace.errorMessage));
-        updates.add(Updates.set("completed_at", trace.completedAt != null ? trace.completedAt : ZonedDateTime.now()));
-        agentRunCollection.update(unfinishedRun(run), Updates.combine(updates));
+        agentRunStore.reconcileIfUnfinished(run.id, completed, trace.output, trace.errorMessage,
+            trace.completedAt != null ? trace.completedAt : ZonedDateTime.now());
         LOGGER.info("reconciled run from its trace, runId={}, traceId={}, traceStatus={}", run.id, trace.traceId, trace.status);
     }
 
     private void fail(AgentRun run, Trace trace) {
-        var updates = new ArrayList<Bson>();
-        updates.add(Updates.set("status", RunStatus.FAILED));
-        updates.add(Updates.set("error", INTERRUPTED));
-        updates.add(Updates.set("completed_at", ZonedDateTime.now()));
-        agentRunCollection.update(unfinishedRun(run), Updates.combine(updates));
+        agentRunStore.failIfUnfinished(run.id, INTERRUPTED, ZonedDateTime.now());
         LOGGER.info("failed interrupted run, runId={}, traceId={}, lastTraceActivity={}",
             run.id, run.traceId, trace != null ? trace.updatedAt : null);
-    }
-
-    // a run that finished while this batch was being read must not be overwritten with an interrupted status
-    private Bson unfinishedRun(AgentRun run) {
-        return Filters.and(Filters.eq("_id", run.id), Filters.in("status", RunStatus.RUNNING, RunStatus.PENDING));
     }
 
     private boolean isTerminal(TraceStatus status) {
@@ -149,3 +139,6 @@ public class StaleRunCleanupService {
         return updatedAt == null || updatedAt.isBefore(cutoff);
     }
 }
+
+
+
