@@ -48,6 +48,10 @@ public class SubAgentAssembler {
         return effort != null ? effort.name().toLowerCase(Locale.ROOT) : null;
     }
 
+    private static String normalizedAgentName(String name) {
+        return name != null && !name.isBlank() ? name.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant";
+    }
+
     private final Logger logger = LoggerFactory.getLogger(SubAgentAssembler.class);
 
     @Inject
@@ -198,10 +202,6 @@ public class SubAgentAssembler {
         if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(definition)) {
             throw new IllegalArgumentException("sub-agent is unavailable");
         }
-    }
-
-    private static String normalizedAgentName(String name) {
-        return name != null && !name.isBlank() ? name.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant";
     }
 
     public Agent buildAgent(BuildAgentConfig c) {
