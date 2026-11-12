@@ -38,21 +38,6 @@ public class DesktopReleaseService {
     private static final Duration FAILURE_TTL = Duration.ofMinutes(1);
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(10);
 
-    private final HttpClient httpClient = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofSeconds(5))
-            .build();
-
-    private volatile CachedAssets cache;
-
-    /**
-     * @param platform normalized by {@link #platform(String, String)}, null when the caller's OS is unknown
-     */
-    public String downloadUrl(String platform) {
-        if (platform == null) return FALLBACK_URL;
-        var url = assets().get(platform);
-        return url != null ? url : FALLBACK_URL;
-    }
-
     static String platform(String requested, String userAgent) {
         if (requested != null && !requested.isBlank()) {
             return switch (requested.toLowerCase(Locale.ROOT)) {
@@ -117,27 +102,20 @@ public class DesktopReleaseService {
         return index < parts.length ? Integer.parseInt(parts[index]) : 0;
     }
 
-    private Map<String, String> assets() {
-        var current = cache;
-        if (current != null && current.fresh()) return current.assets();
-        return refresh().assets();
-    }
+    private final Object refreshLock = new Object();
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(5))
+            .build();
 
-    private synchronized CachedAssets refresh() {
-        var current = cache;
-        if (current != null && current.fresh()) return current;
-        try {
-            var assets = selectAssets(fetchReleaseList());
-            var refreshed = new CachedAssets(assets, Instant.now().plus(CACHE_TTL));
-            cache = refreshed;
-            return refreshed;
-        } catch (Exception e) {
-            LOGGER.warn("failed to resolve the latest core-ai-desktop release, the download will fall back to the releases page: {}", e.getMessage());
-            if (current != null) return current;
-            var failed = new CachedAssets(Map.of(), Instant.now().plus(FAILURE_TTL));
-            cache = failed;
-            return failed;
-        }
+    private volatile CachedAssets cache;
+
+    /**
+     * @param platform normalized by {@link #platform(String, String)}, null when the caller's OS is unknown
+     */
+    public String downloadUrl(String platform) {
+        if (platform == null) return FALLBACK_URL;
+        var url = assets().get(platform);
+        return url != null ? url : FALLBACK_URL;
     }
 
     protected String fetchReleaseList() throws Exception {
@@ -153,6 +131,31 @@ public class DesktopReleaseService {
             throw new IllegalStateException("GitHub releases API returned HTTP " + response.statusCode());
         }
         return response.body();
+    }
+
+    private Map<String, String> assets() {
+        var current = cache;
+        if (current != null && current.fresh()) return current.assets();
+        return refresh().assets();
+    }
+
+    private CachedAssets refresh() {
+        synchronized (refreshLock) {
+            var current = cache;
+            if (current != null && current.fresh()) return current;
+            try {
+                var assets = selectAssets(fetchReleaseList());
+                var refreshed = new CachedAssets(assets, Instant.now().plus(CACHE_TTL));
+                cache = refreshed;
+                return refreshed;
+            } catch (Exception e) {
+                LOGGER.warn("failed to resolve the latest core-ai-desktop release, the download will fall back to the releases page: {}", e.getMessage());
+                if (current != null) return current;
+                var failed = new CachedAssets(Map.of(), Instant.now().plus(FAILURE_TTL));
+                cache = failed;
+                return failed;
+            }
+        }
     }
 
     private record CachedAssets(Map<String, String> assets, Instant expiresAt) {
