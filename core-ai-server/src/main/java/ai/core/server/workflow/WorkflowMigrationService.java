@@ -4,6 +4,7 @@ import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -77,6 +78,7 @@ public class WorkflowMigrationService {
                 try {
                     insert.accept(item);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("workflow row already migrated, marker={}", marker, e);
                 }
                 lastId = idOf(item);

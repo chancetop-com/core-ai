@@ -1,6 +1,7 @@
 package ai.core.server.gateway;
 
 import ai.core.server.domain.MediaJob;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -67,6 +68,7 @@ public class MediaJobMigrationService {
                 try {
                     mediaJobStore.insert(job);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("media job already migrated, id={}", job.id);
                 }
                 lastId = job.id;

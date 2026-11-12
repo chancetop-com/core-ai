@@ -2,6 +2,7 @@ package ai.core.server.comparison;
 
 import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.comparison.domain.ComparisonVote;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -81,6 +82,7 @@ public class AgentComparisonMigrationService {
                 try {
                     comparisonStore.insert(comparison);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("comparison already migrated, id={}", comparison.id);
                 }
                 lastId = comparison.id;

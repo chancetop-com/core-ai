@@ -2,6 +2,7 @@ package ai.core.server.replay;
 
 import ai.core.server.replay.domain.ReplayExperiment;
 import ai.core.server.replay.domain.ReplayRun;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -64,6 +65,7 @@ public class ReplayMigrationService {
                 try {
                     insert.accept(item);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("replay row already migrated, marker={}", marker, e);
                 }
                 lastId = idOf(item);

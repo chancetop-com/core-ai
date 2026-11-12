@@ -1,5 +1,6 @@
 package ai.core.server.sandbox.snapshot;
 
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -79,6 +80,7 @@ public class SandboxSnapshotMigrationService {
                 try {
                     snapshotStore.insert(doc);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("snapshot already migrated, id={}", doc.id);
                 }
                 lastId = doc.id;

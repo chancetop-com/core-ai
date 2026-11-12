@@ -1,5 +1,6 @@
 package ai.core.server.memory;
 
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -77,6 +78,7 @@ public class AgentMemoryMigrationService {
                 try {
                     memoryStore.insert(memory);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("agent memory already migrated, id={}", memory.id);
                 }
                 lastId = memory.id;

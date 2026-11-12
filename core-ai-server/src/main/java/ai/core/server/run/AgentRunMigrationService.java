@@ -1,6 +1,7 @@
 package ai.core.server.run;
 
 import ai.core.server.domain.AgentRun;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -67,6 +68,7 @@ public class AgentRunMigrationService {
                 try {
                     agentRunStore.insert(run);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("agent run already migrated, id={}", run.id);
                 }
                 lastId = run.id;

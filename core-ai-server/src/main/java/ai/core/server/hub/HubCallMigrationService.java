@@ -1,6 +1,7 @@
 package ai.core.server.hub;
 
 import ai.core.server.domain.HubCall;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -67,6 +68,7 @@ public class HubCallMigrationService {
                 try {
                     callStore.insert(call);
                 } catch (RuntimeException e) {
+                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
                     LOGGER.debug("hub call already migrated, id={}", call.id);
                 }
                 lastId = call.id;
