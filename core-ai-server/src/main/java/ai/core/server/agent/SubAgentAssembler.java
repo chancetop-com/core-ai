@@ -96,14 +96,26 @@ public class SubAgentAssembler {
             try {
                 var definition = agentDefinitionStore.get(id)
                         .orElseThrow(() -> new RuntimeException("subagent not found, id=" + id));
-                var subAgent = buildSubAgent(definition, sessionId, callerUserId);
-                tools.add(SubAgentToolCall.builder().subAgent(subAgent).build());
-                logger.info("assembled subagent {} (id={})", definition.name, id);
+                tools.add(lazySubAgentTool(definition, sessionId, callerUserId));
+                logger.info("assembled subagent lazily {} (id={})", definition.name, id);
             } catch (Exception e) {
                 logger.warn("failed to assemble subagent id={}: {}", id, e.getMessage());
             }
         }
         return tools;
+    }
+
+    /**
+     * Exposes the subagent as a callable tool without building the agent. Building it resolves its tool
+     * registry, which starts sandbox-hosted MCP servers — that must happen on first use, not when the
+     * parent session or run is created.
+     */
+    public SubAgentToolCall lazySubAgentTool(AgentDefinition definition, String sessionId, String callerUserId) {
+        requireUsablePublishedSubAgent(definition);
+        return SubAgentToolCall.builder()
+                .lazySubAgent(normalizedAgentName(definition.name), definition.description,
+                        () -> buildSubAgent(definition, sessionId, callerUserId))
+                .build();
     }
 
     public Agent buildSubAgent(AgentDefinition definition, String sessionId) {
@@ -188,10 +200,14 @@ public class SubAgentAssembler {
         }
     }
 
+    private static String normalizedAgentName(String name) {
+        return name != null && !name.isBlank() ? name.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant";
+    }
+
     public Agent buildAgent(BuildAgentConfig c) {
         var llmProvider = llmProviders.getProvider();
         var builder = Agent.builder()
-                .name(c.agentName != null && !c.agentName.isBlank() ? c.agentName.trim().replaceAll("[\\s<|\\\\/>]+", "-") : "assistant")
+                .name(normalizedAgentName(c.agentName))
                 .llmProvider(llmProvider)
                 .toolRegistry(c.toolRegistry)
                 .temperature(c.config != null && c.config.temperature != null ? c.config.temperature : 0.8)

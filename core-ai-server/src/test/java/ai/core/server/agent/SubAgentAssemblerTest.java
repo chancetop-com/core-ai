@@ -41,6 +41,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -185,6 +186,28 @@ class SubAgentAssemblerTest {
 
         assertTrue(tools.isEmpty());
         verifyNoInteractions(assembler.toolRegistryService);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void assemblyDefersSubAgentToolResolution() {
+        var definition = definition("devops-sub", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        definition.name = "devops-sub";
+        definition.description = "devops helper";
+        definition.publishedConfig = new AgentPublishedConfig();
+        definition.publishedConfig.tools = List.of(ToolRef.fromLegacyToolId("builtin-all"));
+        MongoCollection<AgentDefinition> collection = mock(MongoCollection.class);
+        when(collection.get(definition.id)).thenReturn(Optional.of(definition));
+        assembler.agentDefinitionStore = MongoAgentDefinitionStore.of(collection);
+        var registryService = mock(ToolRegistryService.class);
+        assembler.toolRegistryService = registryService;
+
+        var tools = assembler.assemble(List.of(definition.id), "run-1", "caller-1");
+
+        assertEquals(1, tools.size());
+        assertEquals("devops-sub", tools.getFirst().getName());
+        assertNull(tools.getFirst().getSubAgent());
+        verifyNoInteractions(registryService);
     }
 
     @Test

@@ -70,13 +70,13 @@ class SessionSubAgentManagerTest {
         var definition = new AgentDefinition();
         definition.id = "sub-1";
         definition.name = "Sub One";
-        var subAgent = mock(ai.core.agent.Agent.class);
-        when(subAgent.getName()).thenReturn("Sub One");
-        when(subAgent.getDescription()).thenReturn("A sub-agent");
-        when(assembler.buildSubAgent(definition, "s-1", "caller-1")).thenReturn(subAgent);
+        var subAgentTool = mock(SubAgentToolCall.class);
+        when(subAgentTool.getName()).thenReturn("Sub One");
+        when(assembler.lazySubAgentTool(definition, "s-1", "caller-1")).thenReturn(subAgentTool);
 
         manager.loadSubAgents(session, List.of(definition), "caller-1");
 
-        verify(assembler).buildSubAgent(definition, "s-1", "caller-1");
+        verify(assembler).lazySubAgentTool(definition, "s-1", "caller-1");
+        verify(session).loadTools(List.of(subAgentTool));
     }
 }

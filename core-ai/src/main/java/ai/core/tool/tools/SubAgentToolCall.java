@@ -55,8 +55,11 @@ public class SubAgentToolCall extends ToolCall {
         }, executor);
     }
 
-    private Agent subAgent;
+    private volatile Agent subAgent;
     private Supplier<Agent> agentFactory;
+    // singleton but lazy: the agent (and therefore its MCP servers and tool registry) is built on first use,
+    // so merely exposing the subagent tool on a parent session costs nothing
+    private Supplier<Agent> lazySubAgent;
     private ContextPolicy contextPolicy = ContextPolicy.SESSION;
     // serializes FRESH runs on the singleton instance; the registry gates SESSION runs
     private final AtomicBoolean freshRunning = new AtomicBoolean(false);
@@ -145,7 +148,7 @@ public class SubAgentToolCall extends ToolCall {
     }
 
     private boolean keepsSessionThread() {
-        return contextPolicy == ContextPolicy.SESSION && agentFactory == null && subAgent != null;
+        return contextPolicy == ContextPolicy.SESSION && agentFactory == null && (subAgent != null || lazySubAgent != null);
     }
 
     /**
@@ -168,7 +171,7 @@ public class SubAgentToolCall extends ToolCall {
         if (thread != null) {
             return !registry.tryAcquire(thread);
         }
-        return registry == null && contextPolicy == ContextPolicy.FRESH && agentFactory == null
+        return registry == null && contextPolicy == ContextPolicy.FRESH && agentFactory == null && lazySubAgent == null
                 && !freshRunning.compareAndSet(false, true);
     }
 
@@ -306,7 +309,15 @@ public class SubAgentToolCall extends ToolCall {
 
     private Agent resolveAgent() {
         if (agentFactory != null) return agentFactory.get();
-        return this.subAgent;
+        var agent = this.subAgent;
+        if (agent != null) return agent;
+        if (lazySubAgent == null) return null;
+        synchronized (this) {
+            if (subAgent == null) {
+                subAgent = lazySubAgent.get();
+            }
+            return subAgent;
+        }
     }
 
     public Agent getSubAgent() {
@@ -339,6 +350,7 @@ public class SubAgentToolCall extends ToolCall {
     public static class Builder extends ToolCall.Builder<Builder, SubAgentToolCall> {
         private Agent subAgent;
         private Supplier<Agent> agentFactory;
+        private Supplier<Agent> lazySubAgent;
         private ContextPolicy contextPolicy = ContextPolicy.SESSION;
 
         // singleton mode
@@ -361,6 +373,21 @@ public class SubAgentToolCall extends ToolCall {
             name(subAgent.getName());
             description(subAgent.getDescription());
             parameters(parameters);
+            return this;
+        }
+
+        // lazy singleton mode: one agent instance per tool, built on first execution
+
+        public Builder lazySubAgent(String name, String description, Supplier<Agent> supplier) {
+            this.lazySubAgent = supplier;
+            name(name);
+            description(description);
+            parameters(List.of(ToolCallParameter.builder()
+                    .name("query")
+                    .description("The query or instruction to send to the sub-agent.")
+                    .required(Boolean.TRUE)
+                    .build()
+            ));
             return this;
         }
 
@@ -391,17 +418,19 @@ public class SubAgentToolCall extends ToolCall {
         }
 
         public SubAgentToolCall build() {
-            if (subAgent == null && agentFactory == null) {
-                throw new RuntimeException("Either subAgent or agentFactory is required for SubAgentToolCall");
+            if (subAgent == null && agentFactory == null && lazySubAgent == null) {
+                throw new RuntimeException("Either subAgent, lazySubAgent or agentFactory is required for SubAgentToolCall");
             }
             sourceType("agent");
             var toolCall = new SubAgentToolCall();
             super.build(toolCall);
             toolCall.subAgent = this.subAgent;
             toolCall.agentFactory = this.agentFactory;
+            toolCall.lazySubAgent = this.lazySubAgent;
             toolCall.contextPolicy = this.contextPolicy;
-            if (subAgent != null && contextPolicy == ContextPolicy.SESSION) {
-                toolCall.setDescription(toolCall.getDescription()
+            if ((subAgent != null || lazySubAgent != null) && contextPolicy == ContextPolicy.SESSION) {
+                var description = toolCall.getDescription() != null ? toolCall.getDescription() : "";
+                toolCall.setDescription(description
                         + "\nThis subagent keeps its conversation context between calls in this session — after it answers, ask a follow-up with the same tool and it will remember what it did before.");
             }
             return toolCall;

@@ -381,6 +381,46 @@ class SubAgentToolCallTest {
     }
 
     @Test
+    void testLazySubAgentIsBuiltOnFirstExecutionAndReused() {
+        var subAgentResponse = CompletionResponse.of(
+                List.of(Choice.of(
+                        FinishReason.STOP,
+                        Message.of(RoleType.ASSISTANT, "result")
+                )),
+                new Usage(10, 10, 20)
+        );
+        when(subAgentLlmProvider.completionStream(any(CompletionRequest.class), any(StreamingCallback.class), any()))
+                .thenReturn(subAgentResponse);
+
+        var callCount = new AtomicInteger(0);
+        var toolCall = SubAgentToolCall.builder()
+                .lazySubAgent("lazy-agent", "Lazy agent", () -> {
+                    callCount.incrementAndGet();
+                    return Agent.builder()
+                            .name("lazy-agent")
+                            .description("Lazy agent")
+                            .systemPrompt("You are a test agent")
+                            .llmProvider(subAgentLlmProvider)
+                            .build();
+                })
+                .build();
+
+        assertEquals("lazy-agent", toolCall.getName());
+        assertTrue(toolCall.getDescription().contains("Lazy agent"));
+        assertNull(toolCall.getSubAgent());
+        assertEquals(0, callCount.get());
+
+        var first = toolCall.execute("{\"query\": \"first call\"}", ExecutionContext.empty());
+        assertFalse(first.isFailed());
+        assertEquals(1, callCount.get());
+        assertNotNull(toolCall.getSubAgent());
+
+        var second = toolCall.execute("{\"query\": \"second call\"}", ExecutionContext.empty());
+        assertFalse(second.isFailed());
+        assertEquals(1, callCount.get());
+    }
+
+    @Test
     void testFactoryModeEachCallCreatesNewInstance() {
         var subAgentResponse = CompletionResponse.of(
                 List.of(Choice.of(

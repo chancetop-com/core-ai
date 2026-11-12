@@ -13,7 +13,6 @@ import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
-import ai.core.tool.tools.SubAgentToolCall;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -89,9 +88,7 @@ public class SessionSubAgentManager {
                                          String callerUserId) {
         var names = new ArrayList<String>();
         for (var definition : definitions) {
-            var subAgent = subAgentAssembler.buildSubAgent(definition, session.id(), callerUserId);
-            var subAgentToolCall = SubAgentToolCall.builder().subAgent(subAgent).build();
-            session.loadTools(List.of(subAgentToolCall));
+            session.loadTools(List.of(subAgentAssembler.lazySubAgentTool(definition, session.id(), callerUserId)));
             names.add(definition.name);
         }
         return names;
