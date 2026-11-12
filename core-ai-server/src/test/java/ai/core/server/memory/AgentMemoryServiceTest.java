@@ -196,7 +196,7 @@ class AgentMemoryServiceTest {
 
     private AgentMemoryService service() {
         var service = new AgentMemoryService();
-        service.memoryCollection = memoryCollection;
+        service.memoryStore = MongoAgentMemoryStore.of(memoryCollection, cursorCollection());
         service.traceCollection = traceCollection;
         service.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(chatMessageCollection);
         return service;
@@ -204,6 +204,11 @@ class AgentMemoryServiceTest {
 
     @SuppressWarnings("unchecked")
     private MongoCollection<AgentMemory> memoryCollection() {
+        return mock(MongoCollection.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    private MongoCollection<AgentMemoryExtractionCursor> cursorCollection() {
         return mock(MongoCollection.class);
     }
 
@@ -217,3 +222,5 @@ class AgentMemoryServiceTest {
         return mock(MongoCollection.class);
     }
 }
+
+

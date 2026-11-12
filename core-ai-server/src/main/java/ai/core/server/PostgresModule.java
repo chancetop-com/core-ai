@@ -108,8 +108,14 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.run.PgAgentRunCountRow.class);
         db().view(ai.core.server.run.PgAgentRunMigrationLockRow.class);
         db().view(ai.core.server.run.PgAgentRunMigrationMarkerRow.class);
+        db().view(ai.core.server.memory.PgAgentMemoryRow.class);
+        db().view(ai.core.server.memory.PgAgentMemoryAgentRow.class);
+        db().view(ai.core.server.memory.PgAgentMemoryCursorRow.class);
+        db().view(ai.core.server.memory.PgAgentMemoryMigrationLockRow.class);
+        db().view(ai.core.server.memory.PgAgentMemoryMigrationMarkerRow.class);
     }
 }
+
 
 
 

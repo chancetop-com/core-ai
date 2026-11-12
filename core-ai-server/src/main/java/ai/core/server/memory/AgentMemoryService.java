@@ -7,17 +7,13 @@ import ai.core.server.domain.ChatMessage;
 import ai.core.server.memory.experiment.MemoryLayer;
 import ai.core.server.trace.domain.Trace;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -56,10 +52,7 @@ public class AgentMemoryService {
     }
 
     @Inject
-    MongoCollection<AgentMemory> memoryCollection;
-
-    @Inject
-    MongoCollection<AgentMemoryExtractionCursor> cursorCollection;
+    AgentMemoryStore memoryStore;
 
     @Inject
     MongoCollection<Trace> traceCollection;
@@ -68,41 +61,16 @@ public class AgentMemoryService {
     ai.core.server.session.ChatMessageStore chatMessageStore;
 
     public List<AgentMemory> findByAgentId(String agentId) {
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        query.sort = Sorts.descending("created_at");
-        return memoryCollection.find(query);
+        return memoryStore.findByAgentId(agentId);
     }
 
     public List<AgentMemory> findByAgentIdAndLayer(String agentId, String layer) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("layer", layer)
-        );
-        query.sort = Sorts.ascending("created_at");
-        return memoryCollection.find(query);
+        return memoryStore.findByAgentIdAndLayer(agentId, layer);
     }
 
     /** Distinct agent ids with at least one memory row; used by the daily maintenance task. */
     public List<String> findAgentIdsWithMemories() {
-        var ids = new LinkedHashSet<String>();
-        int pageSize = 1000;
-        int skip = 0;
-        while (true) {
-            var query = new Query();
-            query.projection = Projections.include("agent_id");
-            query.sort = Sorts.ascending("agent_id");
-            query.skip = skip;
-            query.limit = pageSize;
-            var page = memoryCollection.find(query);
-            for (var memory : page) {
-                if (memory.agentId != null && !memory.agentId.isBlank()) ids.add(memory.agentId);
-            }
-            if (page.size() < pageSize) break;
-            skip += pageSize;
-        }
-        return new ArrayList<>(ids);
+        return memoryStore.findAgentIdsWithMemories();
     }
 
     /**
@@ -181,14 +149,14 @@ public class AgentMemoryService {
         memory.content = normalized;
         memory.createdAt = now;
         memory.updatedAt = now;
-        memoryCollection.insert(memory);
+        memoryStore.insert(memory);
         return RememberResult.created(memory);
     }
 
     /** Reads one memory, scoped to its owner: an id belonging to another agent resolves to nothing. */
     public AgentMemory find(String agentId, String memoryId) {
         if (agentId == null || memoryId == null || memoryId.isBlank()) return null;
-        var memory = memoryCollection.get(memoryId).orElse(null);
+        var memory = memoryStore.get(memoryId).orElse(null);
         if (memory == null || !agentId.equals(memory.agentId)) return null;
         return memory;
     }
@@ -289,7 +257,7 @@ public class AgentMemoryService {
                 memory.id = UUID.randomUUID().toString();
             }
             memory.agentId = agentId;
-            memoryCollection.insert(memory);
+            memoryStore.insert(memory);
             if (memory.layer == MemoryLayer.METHODS) {
                 hasLayer2 = true;
             }
@@ -301,17 +269,11 @@ public class AgentMemoryService {
     }
 
     private void evictLayer2Excess(String agentId) {
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("layer", MemoryLayer.METHODS.mongoValue())
-        );
-        query.sort = Sorts.ascending("created_at");
-        var all = memoryCollection.find(query);
+        var all = memoryStore.findByAgentIdAndLayer(agentId, MemoryLayer.METHODS.mongoValue());
         if (all.size() > LAYER2_MAX_SIZE) {
             int toRemove = all.size() - LAYER2_MAX_SIZE;
             for (int i = 0; i < toRemove; i++) {
-                memoryCollection.delete(all.get(i).id);
+                memoryStore.delete(all.get(i).id);
             }
         }
     }
@@ -322,47 +284,17 @@ public class AgentMemoryService {
      * Returns up to {@code limit} results sorted by recency.
      */
     public List<AgentMemory> searchMemories(String agentId, String query, String layer, int limit) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("agent_id", agentId));
-
-        if ("methods".equals(layer)) {
-            filters.add(Filters.eq("layer", MemoryLayer.METHODS.mongoValue()));
-        } else if ("trajectories".equals(layer)) {
-            filters.add(Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue()));
-        } else {
-            // "all": search both Layer 2 and Layer 3
-            filters.add(Filters.or(
-                    Filters.eq("layer", MemoryLayer.METHODS.mongoValue()),
-                    Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue())
-            ));
-        }
-
-        // keyword filter on content
-        var lowerQuery = query.toLowerCase(Locale.ROOT);
-        filters.add(Filters.regex("content", ".*" + java.util.regex.Pattern.quote(lowerQuery) + ".*", "i"));
-
-        var mongoQuery = new Query();
-        mongoQuery.filter = Filters.and(filters);
-        mongoQuery.sort = Sorts.descending("created_at");
-        mongoQuery.limit = limit;
-        return memoryCollection.find(mongoQuery);
+        String storeLayer = "methods".equals(layer) ? MemoryLayer.METHODS.mongoValue()
+            : "trajectories".equals(layer) ? MemoryLayer.TRAJECTORIES.mongoValue() : null;
+        return memoryStore.search(agentId, query.toLowerCase(Locale.ROOT), storeLayer, limit);
     }
 
     /**
      * Removes all Layer 3 trajectories older than retentionDays.
      */
     public int cleanupOldTrajectories(String agentId, int retentionDays) {
-        var cutoff = ZonedDateTime.now().minusDays(retentionDays);
-        var filter = Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("layer", MemoryLayer.TRAJECTORIES.mongoValue()),
-                Filters.lt("created_at", cutoff)
-        );
-        var count = memoryCollection.count(filter);
-        if (count > 0) {
-            memoryCollection.delete(filter);
-        }
-        return (int) count;
+        return (int) memoryStore.deleteLayerBefore(agentId, MemoryLayer.TRAJECTORIES.mongoValue(),
+            ZonedDateTime.now().minusDays(retentionDays));
     }
 
     /**
@@ -379,7 +311,7 @@ public class AgentMemoryService {
                 if (layer == MemoryLayer.KNOWLEDGE) key = key.toLowerCase(Locale.ROOT);
                 var previous = seen.put(key, memory);
                 if (previous != null && previous.id != null) {
-                    memoryCollection.delete(previous.id);
+                    memoryStore.delete(previous.id);
                     removed++;
                 }
             }
@@ -390,29 +322,25 @@ public class AgentMemoryService {
     // Legacy support: replaceAll still works but V2 uses appendMemories instead.
     // Kept for migration compatibility.
     public void replaceAll(String agentId, List<AgentMemory> memories) {
-        memoryCollection.delete(Filters.eq("agent_id", agentId));
+        memoryStore.deleteByAgentId(agentId);
         for (var memory : memories) {
             if (memory.id == null) {
                 memory.id = UUID.randomUUID().toString();
             }
-            memoryCollection.insert(memory);
+            memoryStore.insert(memory);
         }
     }
 
     public boolean deleteMemory(String id) {
-        return memoryCollection.delete(id);
+        return memoryStore.delete(id);
     }
 
     public long deleteAllByAgentId(String agentId) {
-        return memoryCollection.delete(Filters.eq("agent_id", agentId));
+        return memoryStore.deleteByAgentId(agentId);
     }
 
     public AgentMemoryExtractionCursor getCursor(String agentId) {
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        query.limit = 1;
-        var results = cursorCollection.find(query);
-        return results.isEmpty() ? null : results.getFirst();
+        return memoryStore.getCursor(agentId);
     }
 
     public void upsertCursor(AgentMemoryExtractionCursor cursor) {
@@ -420,10 +348,11 @@ public class AgentMemoryService {
         var existing = getCursor(cursor.agentId);
         if (existing != null) {
             cursor.id = existing.id;
-            cursorCollection.replace(cursor);
         } else {
             cursor.id = UUID.randomUUID().toString();
-            cursorCollection.insert(cursor);
         }
+        memoryStore.saveCursor(cursor);
     }
 }
+
+
