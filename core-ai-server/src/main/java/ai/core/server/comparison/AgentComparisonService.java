@@ -14,7 +14,6 @@ import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentExecutableConfigFactory;
 import ai.core.server.comparison.domain.AgentComparison;
-import ai.core.server.comparison.domain.AgentVersion;
 import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.comparison.domain.ComparisonVariant;
 import ai.core.server.domain.AgentDefinition;
@@ -60,7 +59,7 @@ public class AgentComparisonService {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<AgentVersion> versionCollection;
+    AgentVersionStore agentVersionStore;
     @Inject
     ai.core.server.user.UserStore userStore;
     @Inject
@@ -372,7 +371,7 @@ public class AgentComparisonService {
     }
 
     private AgentPublishedConfig requireVersionConfig(String agentId, String versionId) {
-        var version = versionCollection.get(versionId)
+        var version = agentVersionStore.get(versionId)
             .orElseThrow(() -> new BadRequestException("version is unavailable, id=" + versionId));
         if (!agentId.equals(version.agentId)) throw new BadRequestException("version does not belong to the agent");
         return AgentExecutableConfigFactory.fromPublishedConfig(version.config);
@@ -418,3 +417,4 @@ public class AgentComparisonService {
         throw new ForbiddenException("only the agent owner or admin can manage comparisons");
     }
 }
+

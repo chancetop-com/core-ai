@@ -48,10 +48,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.small.PgSmallMigrationLockRow.class);
         db().view(ai.core.server.small.PgSmallMigrationMarkerRow.class);
         db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
-        db().view(ai.core.server.agent.PgAgentDefinitionRow.class);
-        db().view(ai.core.server.agent.PgAgentCountRow.class);
-        db().view(ai.core.server.agent.PgAgentMigrationLockRow.class);
-        db().view(ai.core.server.agent.PgAgentMigrationMarkerRow.class);
+        registerAgentViews();
         db().view(PgApiKeyRow.class);
         db().view(PgProjectRow.class);
         db().view(PgProjectCountRow.class);
@@ -59,5 +56,16 @@ public class PostgresModule extends Module {
         db().view(PgSkillCountRow.class);
         db().view(PgUserRow.class);
         db().view(PgUserIdRow.class);
+    }
+
+    private void registerAgentViews() {
+        db().view(ai.core.server.agent.PgAgentDefinitionRow.class);
+        db().view(ai.core.server.agent.PgAgentCountRow.class);
+        db().view(ai.core.server.agent.PgAgentMigrationLockRow.class);
+        db().view(ai.core.server.agent.PgAgentMigrationMarkerRow.class);
+        db().view(ai.core.server.comparison.PgAgentVersionRow.class);
+        db().view(ai.core.server.comparison.PgAgentVersionCountRow.class);
+        db().view(ai.core.server.comparison.PgAgentVersionMigrationLockRow.class);
+        db().view(ai.core.server.comparison.PgAgentVersionMigrationMarkerRow.class);
     }
 }

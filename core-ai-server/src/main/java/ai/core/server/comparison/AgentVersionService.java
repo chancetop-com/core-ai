@@ -14,7 +14,6 @@ import ai.core.server.comparison.domain.ComparisonStatus;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -49,7 +48,7 @@ public class AgentVersionService {
     }
 
     @Inject
-    MongoCollection<AgentVersion> versionCollection;
+    AgentVersionStore agentVersionStore;
     @Inject
     MongoCollection<AgentComparison> comparisonCollection;
     @Inject
@@ -74,19 +73,15 @@ public class AgentVersionService {
         version.createdBy = userId;
         version.createdAt = ZonedDateTime.now();
         version.updatedAt = version.createdAt;
-        versionCollection.insert(version);
+        agentVersionStore.insert(version);
         return toView(version);
     }
 
     public ListAgentVersionsResponse list(String agentId, String userId) {
         if (Strings.isBlank(agentId)) throw new BadRequestException("agent_id required");
         requireAgentOwnerOrAdmin(agentId, userId);
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        query.sort = Sorts.descending("created_at");
-        query.limit = 100;
         var response = new ListAgentVersionsResponse();
-        response.versions = versionCollection.find(query).stream().map(AgentVersionService::toView).toList();
+        response.versions = agentVersionStore.listByAgentId(agentId, 100).stream().map(AgentVersionService::toView).toList();
         return response;
     }
 
@@ -104,7 +99,7 @@ public class AgentVersionService {
             if (request.config != null) ComparisonViews.applyConfigPatch(version.config, request.config);
         }
         version.updatedAt = ZonedDateTime.now();
-        versionCollection.replace(version);
+        agentVersionStore.replace(version);
         return toView(version);
     }
 
@@ -127,11 +122,11 @@ public class AgentVersionService {
                 throw new BadRequestException("version is used by an unfinished experiment");
             }
         }
-        versionCollection.delete(id);
+        agentVersionStore.delete(id);
     }
 
     private AgentVersion requireVersion(String id) {
-        return versionCollection.get(id).orElseThrow(() -> new NotFoundException("version not found, id=" + id));
+        return agentVersionStore.get(id).orElseThrow(() -> new NotFoundException("version not found, id=" + id));
     }
 
     private AgentPublishedConfig liveConfigSnapshot(AgentDefinition agent) {
@@ -142,9 +137,7 @@ public class AgentVersionService {
     }
 
     private String defaultLabel(String agentId) {
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        return "v" + (versionCollection.count(query.filter) + 1);
+        return "v" + (agentVersionStore.countByAgentId(agentId) + 1);
     }
 
     private void requireAgentOwnerOrAdmin(String agentId, String userId) {
@@ -161,3 +154,5 @@ public class AgentVersionService {
         throw new ForbiddenException("only the agent owner or admin can manage versions");
     }
 }
+
+

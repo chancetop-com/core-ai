@@ -11,6 +11,7 @@ import ai.core.server.apimcp.serviceapi.domain.ServiceApi;
 import ai.core.server.apitoolhub.ApiToolHubModule;
 import ai.core.server.channel.ChannelConfigView;
 import ai.core.server.channel.openclaw.OcgConfigView;
+import ai.core.server.comparison.AgentVersionStoreModule;
 import ai.core.server.comparison.ComparisonModule;
 import ai.core.server.comparison.domain.AgentComparison;
 import ai.core.server.comparison.domain.AgentVersion;
@@ -124,6 +125,7 @@ public class ServerApp extends App {
         load(new PostgresModule());
         // agent definitions are read by project attribution/session runtime during startup wiring
         load(new AgentDefinitionStoreModule());
+        load(new AgentVersionStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly
@@ -377,3 +379,4 @@ public class ServerApp extends App {
         mongo.view(ArtifactRef.class);
     }
 }
+
