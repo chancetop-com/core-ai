@@ -3,13 +3,7 @@ package ai.core.server.project;
 import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentStatus;
-import ai.core.server.domain.WorkflowDefinition;
-import core.framework.mongo.MongoCollection;
-import ai.core.server.domain.WorkflowDefinitionStatus;
-import ai.core.server.domain.WorkflowVisibility;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.Query;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,7 +22,7 @@ public class ProjectMemberQueryService {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<WorkflowDefinition> workflowCollection;
+    ai.core.server.workflow.WorkflowDefinitionStore workflowDefinitionStore;
 
     public List<ProjectQueryService.ProjectMember> members(String projectId) {
         var project = projectStore.get(projectId).orElse(null);
@@ -64,22 +58,17 @@ public class ProjectMemberQueryService {
 
     private List<ProjectQueryService.ProjectMember> availableWorkflows(String ownerUserId) {
         var byId = new LinkedHashMap<String, ProjectQueryService.ProjectMember>();
-        var ownQuery = new Query();
-        ownQuery.filter = Filters.eq("user_id", ownerUserId);
-        for (var workflow : workflowCollection.find(ownQuery)) {
+        for (var workflow : workflowDefinitionStore.listOwned(ownerUserId)) {
             byId.putIfAbsent(workflow.id, new ProjectQueryService.ProjectMember(workflow.id, workflow.name, "workflow"));
         }
-        var sharedQuery = new Query();
-        sharedQuery.filter = Filters.and(
-            Filters.eq("visibility", WorkflowVisibility.PUBLIC),
-            Filters.eq("status", WorkflowDefinitionStatus.ACTIVE));
-        for (var workflow : workflowCollection.find(sharedQuery)) {
-            if (workflow.publishedVersionId != null) {
-                byId.putIfAbsent(workflow.id, new ProjectQueryService.ProjectMember(workflow.id, workflow.name, "workflow"));
-            }
+        for (var workflow : workflowDefinitionStore.listPublicActive()) {
+            byId.putIfAbsent(workflow.id, new ProjectQueryService.ProjectMember(workflow.id, workflow.name, "workflow"));
         }
         var result = new ArrayList<>(byId.values());
         result.sort(java.util.Comparator.comparing(m -> m.name() == null ? "" : m.name()));
         return result;
     }
 }
+
+
+

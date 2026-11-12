@@ -6,7 +6,7 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.WorkflowRunService;
 import ai.core.server.run.AgentRunStore;
-import core.framework.mongo.MongoCollection;
+import ai.core.server.workflow.WorkflowRunStore;
 
 /**
  * View mapping helpers for workflow runs and node runs, kept out of
@@ -25,7 +25,7 @@ final class WorkflowRunViewSupport {
         return view;
     }
 
-    static NodeRunView toNodeRunView(WorkflowNodeRun nodeRun, MongoCollection<WorkflowRun> runCollection, AgentRunStore agentRunStore) {
+    static NodeRunView toNodeRunView(WorkflowNodeRun nodeRun, WorkflowRunStore runStore, AgentRunStore agentRunStore) {
         var view = new NodeRunView();
         view.nodeId = nodeRun.nodeId;
         view.nodeType = nodeRun.nodeType;
@@ -43,7 +43,7 @@ final class WorkflowRunViewSupport {
         if (nodeRun.childRunId != null && !nodeRun.childRunId.isBlank()) {
             if ("WORKFLOW".equals(nodeRun.nodeType)) {
                 view.childRunType = "WORKFLOW";
-                runCollection.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
+                runStore.get(nodeRun.childRunId).ifPresent(child -> view.childWorkflowId = child.workflowId);
             } else {
                 view.childRunType = "AGENT";
                 resolveAgentTraceId(view, nodeRun.childRunId, agentRunStore);
@@ -64,6 +64,7 @@ final class WorkflowRunViewSupport {
     private WorkflowRunViewSupport() {
     }
 }
+
 
 
 

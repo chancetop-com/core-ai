@@ -3,7 +3,6 @@ package ai.core.server.workflow;
 import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowNode;
-import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -23,17 +22,15 @@ class MongoWorkflowRunGatewayTest {
         var version = new WorkflowPublishedVersion();
         version.id = "child-workflow:v1";
         version.workflowId = "child-workflow";
-        @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowPublishedVersion> versions = mock(MongoCollection.class);
-        @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowRun> runs = mock(MongoCollection.class);
+        WorkflowVersionStore versions = mock(WorkflowVersionStore.class);
+        WorkflowRunStore runs = mock(WorkflowRunStore.class);
         when(versions.get(version.id)).thenReturn(Optional.of(version));
         var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
         var blocked = new WorkflowValidationException(List.of("node n1 has an unsafe legacy snapshot"));
         doThrow(blocked).when(validator).requireSafe(version);
-        var gateway = new MongoWorkflowRunGateway();
-        gateway.versionCollection = versions;
-        gateway.runCollection = runs;
+        var gateway = new StoreWorkflowRunGateway();
+        gateway.versionStore = versions;
+        gateway.runStore = runs;
         gateway.privateAgentSafetyValidator = validator;
         var parent = new WorkflowRun();
         parent.id = "parent-run";
@@ -49,3 +46,4 @@ class MongoWorkflowRunGatewayTest {
         verifyNoInteractions(runs);
     }
 }
+

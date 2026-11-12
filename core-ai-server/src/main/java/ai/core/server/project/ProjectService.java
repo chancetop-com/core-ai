@@ -6,12 +6,10 @@ import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
 import ai.core.server.domain.ProjectReportSource;
 import ai.core.server.domain.ProjectSubject;
-import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.user.UserStore;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.workflow.WorkflowDefinitionService;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
@@ -64,7 +62,7 @@ public class ProjectService {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<WorkflowDefinition> workflowCollection;
+    ai.core.server.workflow.WorkflowDefinitionStore workflowDefinitionStore;
     @Inject
     UserStore userStore;
     @Inject
@@ -162,7 +160,7 @@ public class ProjectService {
                 if (!isAddableAgent(agent, ownerUserId)) throw new ForbiddenException("agent is not published and does not belong to the project owner");
                 name = agent.name;
             } else if ("workflow".equals(ref.type())) {
-                var workflow = workflowCollection.get(ref.id()).orElseThrow(() -> new NotFoundException("workflow not found, id=" + ref.id()));
+                var workflow = workflowDefinitionStore.get(ref.id()).orElseThrow(() -> new NotFoundException("workflow not found, id=" + ref.id()));
                 if (!ownerUserId.equals(workflow.userId) && !WorkflowDefinitionService.isPublicActive(workflow)) throw new ForbiddenException("workflow is not public and does not belong to the project owner");
                 name = workflow.name;
             } else {
@@ -304,7 +302,7 @@ public class ProjectService {
             if (!isAddableAgent(agent, project.userId)) throw new ForbiddenException("agent is not published and does not belong to the project owner");
             pushMember(project, type, memberId, agent.name);
         } else if ("workflow".equals(type)) {
-            var workflow = workflowCollection.get(memberId).orElseThrow(() -> new NotFoundException("workflow not found, id=" + memberId));
+            var workflow = workflowDefinitionStore.get(memberId).orElseThrow(() -> new NotFoundException("workflow not found, id=" + memberId));
             if (!project.userId.equals(workflow.userId) && !WorkflowDefinitionService.isPublicActive(workflow)) throw new ForbiddenException("workflow is not public and does not belong to the project owner");
             pushMember(project, type, memberId, workflow.name);
         } else {
@@ -414,3 +412,6 @@ public class ProjectService {
     public record SubjectFields(String name, String description, String externalLink, String status) {
     }
 }
+
+
+

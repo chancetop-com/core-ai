@@ -6,10 +6,10 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowNode;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+
+
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,14 +25,14 @@ import java.util.UUID;
  *
  * @author Xander
  */
-public class MongoWorkflowRunGateway implements WorkflowRunGateway {
-    private static final Logger LOGGER = LoggerFactory.getLogger(MongoWorkflowRunGateway.class);
+public class StoreWorkflowRunGateway implements WorkflowRunGateway {
+    private static final Logger LOGGER = LoggerFactory.getLogger(StoreWorkflowRunGateway.class);
 
     @Inject
-    MongoCollection<WorkflowRun> runCollection;
+    WorkflowRunStore runStore;
 
     @Inject
-    MongoCollection<WorkflowPublishedVersion> versionCollection;
+    WorkflowVersionStore versionStore;
 
     @Inject
     WorkflowPrivateAgentSafetyValidator privateAgentSafetyValidator;
@@ -40,7 +40,7 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
     @Override
     public String submitChildRun(WorkflowRun parent, WorkflowNode node, String input, int childDepth) {
         String versionId = String.valueOf(node.config().get("version_id"));
-        WorkflowPublishedVersion version = versionCollection.get(versionId)
+        WorkflowPublishedVersion version = versionStore.get(versionId)
             .orElseThrow(() -> new IllegalStateException("referenced workflow version not found: " + versionId));
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new IllegalStateException("referenced workflow version is disabled: " + versionId);
@@ -68,7 +68,7 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
         run.depth = childDepth;
         run.leaseUntil = now;
         run.createdAt = now;
-        runCollection.insert(run);
+        runStore.insert(run);
         LOGGER.info("submitted child workflow run, childRunId={}, parentRunId={}, versionId={}", run.id, parent.id, version.id);
         return run.id;
     }
@@ -77,15 +77,14 @@ public class MongoWorkflowRunGateway implements WorkflowRunGateway {
     public void cancelSubtree(String childRunId) {
         // best-effort: mark this child CANCELLED (its driver polls status and stops; its terminal then settles the
         // parent node), then recurse into its own children. Guarded on non-terminal so a finished run is untouched.
-        WorkflowRun child = runCollection.get(childRunId).orElse(null);
+        WorkflowRun child = runStore.get(childRunId).orElse(null);
         if (child == null) {
             return;
         }
-        runCollection.update(
-            Filters.and(Filters.eq("_id", childRunId), Filters.eq("completed_at", null)),
-            Updates.set("status", RunStatus.CANCELLED));
-        for (WorkflowRun grandchild : runCollection.find(Filters.eq("parent_run_id", childRunId))) {
+        runStore.cancelIfUnfinished(childRunId);
+        for (WorkflowRun grandchild : runStore.findChildren(childRunId)) {
             cancelSubtree(grandchild.id);
         }
     }
 }
+

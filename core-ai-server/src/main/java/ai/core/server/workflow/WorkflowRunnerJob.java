@@ -1,13 +1,9 @@
 package ai.core.server.workflow;
 
-import ai.core.server.domain.NodeRunStatus;
 import ai.core.server.domain.RunStatus;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import org.slf4j.Logger;
@@ -34,10 +30,10 @@ public class WorkflowRunnerJob implements Job {
     }
 
     @Inject
-    MongoCollection<WorkflowRun> runCollection;
+    WorkflowRunStore runStore;
 
     @Inject
-    MongoCollection<WorkflowNodeRun> nodeRunCollection;
+    WorkflowNodeRunStore nodeRunStore;
 
     @Inject
     WorkflowRunner workflowRunner;
@@ -45,10 +41,7 @@ public class WorkflowRunnerJob implements Job {
     @Override
     public void execute(JobContext context) {
         var now = ZonedDateTime.now();
-        var claimable = runCollection.find(Filters.and(
-            Filters.in("status", RunStatus.PENDING, RunStatus.RUNNING),
-            Filters.lte("lease_until", now)));
-        for (WorkflowRun run : claimable) {
+        for (WorkflowRun run : runStore.findClaimable(now)) {
             workflowRunner.submit(run.id);
         }
         recoverStrandedPausedRuns(now);
@@ -60,20 +53,14 @@ public class WorkflowRunnerJob implements Job {
     // Flip it back to PENDING so the claim path re-drives it. Gated on an expired lease (status,lease_until index)
     // so we only ever touch a run whose driver is long gone, never one mid-pause.
     private void recoverStrandedPausedRuns(ZonedDateTime now) {
-        var stalePaused = runCollection.find(Filters.and(
-            Filters.eq("status", RunStatus.PAUSED),
-            Filters.lte("lease_until", now)));
-        for (WorkflowRun run : stalePaused) {
+        for (WorkflowRun run : runStore.findStalePaused(now)) {
             if (recoverTerminalChildWaits(run)) {
                 continue;
             }
             if (hasWaitingNode(run.id)) {
                 continue;   // a genuine human gate is still open — leave it parked
             }
-            long woken = runCollection.update(
-                Filters.and(Filters.eq("_id", run.id), Filters.eq("status", RunStatus.PAUSED)),
-                Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", now)));
-            if (woken == 1) {
+            if (runStore.wakePaused(run.id, now)) {
                 LOGGER.warn("recovered stranded PAUSED run with no waiting node (resume settle/park race), runId={}", run.id);
                 workflowRunner.submit(run.id);
             }
@@ -84,14 +71,11 @@ public class WorkflowRunnerJob implements Job {
     // WAITING WORKFLOW node forever. Replaying the wake is idempotent and settles that parked node.
     private boolean recoverTerminalChildWaits(WorkflowRun parent) {
         boolean recovered = false;
-        var waits = nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", parent.id),
-            Filters.eq("status", NodeRunStatus.WAITING)));
-        for (WorkflowNodeRun wait : waits) {
+        for (WorkflowNodeRun wait : nodeRunStore.findWaitingByRun(parent.id)) {
             if (wait.childRunId == null || wait.childRunId.isBlank()) {
                 continue;
             }
-            WorkflowRun child = runCollection.get(wait.childRunId).orElse(null);
+            WorkflowRun child = runStore.get(wait.childRunId).orElse(null);
             if (child == null || !isTerminal(child.status) || child.completedAt == null) {
                 continue;
             }
@@ -104,9 +88,6 @@ public class WorkflowRunnerJob implements Job {
     }
 
     private boolean hasWaitingNode(String runId) {
-        return !nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", runId),
-            Filters.eq("status", NodeRunStatus.WAITING))).isEmpty();
+        return !nodeRunStore.findWaitingByRun(runId).isEmpty();
     }
-
 }

@@ -8,15 +8,8 @@ import ai.core.server.agent.AgentDefinitionQuery;
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentRunArtifact;
 import ai.core.server.domain.Project;
-import ai.core.server.domain.WorkflowDefinition;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.LLMCallExecutor;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,13 +47,13 @@ public class ProjectPlaybookService {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
-    MongoCollection<WorkflowDefinition> workflowCollection;
+    ai.core.server.workflow.WorkflowDefinitionStore workflowDefinitionStore;
     @Inject
     ProjectService projectService;
     @Inject
@@ -166,11 +159,10 @@ public class ProjectPlaybookService {
 
     private void appendWorkflowRuns(StringBuilder text, List<String> workflowIds) {
         if (workflowIds.isEmpty()) return;
-        var query = new Query();
-        query.filter = Filters.in("workflow_id", workflowIds);
-        query.sort = Sorts.descending("started_at");
+        var query = new ai.core.server.workflow.WorkflowRunQuery();
+        query.workflowIds = workflowIds;
         query.limit = MAX_WORKFLOW_RUNS;
-        for (var run : workflowRunCollection.find(query)) {
+        for (var run : workflowRunStore.find(query)) {
             if (overCap(text)) return;
             text.append("## workflow run (workflow: ").append(run.workflowId).append(")\ninput: ")
                 .append(limit(run.input, 900)).append('\n');
@@ -240,7 +232,7 @@ public class ProjectPlaybookService {
 
     private Map<String, String> workflowDescriptions(List<String> memberIds) {
         var byId = new HashMap<String, String>();
-        for (var definition : workflowCollection.find(byIds(memberIds))) byId.put(definition.id, definition.description);
+        for (var definition : workflowDefinitionStore.findByIds(memberIds)) byId.put(definition.id, definition.description);
         return byId;
     }
 
@@ -254,10 +246,6 @@ public class ProjectPlaybookService {
         for (var artifact : source) {
             if (artifact.fileId != null) artifacts.add(artifact.fileId);
         }
-    }
-
-    private Bson byIds(List<String> values) {
-        return Filters.in("_id", values);
     }
 
     private AgentDefinitionQuery byAgentIds(List<String> values) {
@@ -280,6 +268,9 @@ public class ProjectPlaybookService {
         return value.length() > maxChars ? value.substring(0, maxChars) + "...(truncated)" : value;
     }
 }
+
+
+
 
 
 

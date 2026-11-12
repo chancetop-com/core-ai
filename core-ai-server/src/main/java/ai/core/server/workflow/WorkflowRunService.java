@@ -12,16 +12,16 @@ import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.domain.WorkflowVisibility;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+
+
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
+
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
+
 
 import java.time.ZonedDateTime;
 import java.util.List;
@@ -38,8 +38,7 @@ import java.util.UUID;
 public class WorkflowRunService {
     private static final String ROOT_SCOPE_KEY = "";   // P0 drives root scope only; resume mirrors that
 
-    private static Bson settleHumanNode(WorkflowNode node, Boolean approve, String input) {
-        var now = ZonedDateTime.now();
+    private static HumanSettlement settleHumanNode(WorkflowNode node, Boolean approve, String input) {
         String mode = node.config().get("mode") instanceof String value ? value : "approval";
         if ("approval".equals(mode)) {
             boolean approved = Boolean.TRUE.equals(approve);
@@ -47,17 +46,10 @@ public class WorkflowRunService {
             if (!(node.config().get(edgeKey) instanceof String edgeId) || edgeId.isBlank()) {
                 throw new BadRequestException("human-input node has no " + edgeKey);
             }
-            return Updates.combine(
-                Updates.set("status", NodeRunStatus.COMPLETED),
-                Updates.set("chosen_edge_ids", List.of(edgeId)),   // human acts as the branch decision
-                Updates.set("output", JSON.toJSON(Map.of("approved", approved))),
-                Updates.set("completed_at", now));
+            return new HumanSettlement(JSON.toJSON(Map.of("approved", approved)), List.of(edgeId));
         }
         // input mode: the human's value becomes the node output, read downstream as nodes.<id>.output
-        return Updates.combine(
-            Updates.set("status", NodeRunStatus.COMPLETED),
-            Updates.set("output", input == null || input.isBlank() ? "{}" : input),
-            Updates.set("completed_at", now));
+        return new HumanSettlement(input == null || input.isBlank() ? "{}" : input, null);
     }
 
     public static WorkflowVisibility visibilityOf(WorkflowVisibility visibility) {
@@ -70,16 +62,16 @@ public class WorkflowRunService {
     }
 
     @Inject
-    MongoCollection<WorkflowDefinition> definitionCollection;
+    WorkflowDefinitionStore definitionStore;
 
     @Inject
-    MongoCollection<WorkflowPublishedVersion> versionCollection;
+    WorkflowVersionStore versionStore;
 
     @Inject
-    MongoCollection<WorkflowRun> runCollection;
+    WorkflowRunStore runStore;
 
     @Inject
-    MongoCollection<WorkflowNodeRun> nodeRunCollection;
+    WorkflowNodeRunStore nodeRunStore;
 
     @Inject
     WorkflowPublishService publishService;
@@ -95,7 +87,7 @@ public class WorkflowRunService {
     }
 
     public WorkflowRun createRun(String workflowId, String input, TriggerType triggeredBy, String userId, WorkflowVisibility visibility) {
-        WorkflowDefinition definition = definitionCollection.get(workflowId)
+        WorkflowDefinition definition = definitionStore.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
         // Only active public workflows expose the external run API. Unpublishing keeps the pinned version available
         // for existing parent workflows, but removes this direct entry point.
@@ -105,7 +97,7 @@ public class WorkflowRunService {
             }
             throw new BadRequestException("workflow is not public: " + workflowId);
         }
-        WorkflowPublishedVersion version = versionCollection.get(definition.publishedVersionId)
+        WorkflowPublishedVersion version = versionStore.get(definition.publishedVersionId)
             .orElseThrow(() -> new IllegalStateException("published version missing: " + definition.publishedVersionId));
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
@@ -119,7 +111,7 @@ public class WorkflowRunService {
 
     /** Run the current DRAFT without publishing: snapshot it into a throwaway preview version and run that. */
     public WorkflowRun createPreviewRun(String workflowId, String input, TriggerType triggeredBy, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(workflowId)
+        WorkflowDefinition definition = definitionStore.get(workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + workflowId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + workflowId);
@@ -140,19 +132,19 @@ public class WorkflowRunService {
             throw new BadRequestException("source run has no pinned version, cannot resume: " + sourceRunId);
         }
         // A preview source run's version snapshot is TTL'd after a day; resuming it then has no graph to seed against.
-        if (versionCollection.get(source.versionId).isEmpty()) {
+        if (versionStore.get(source.versionId).isEmpty()) {
             throw new BadRequestException("source run's version snapshot has expired, cannot resume: " + sourceRunId);
         }
         WorkflowGraph graph = graphLoader.load(source.versionId);
         if (graph.node(resumeNodeId) == null) {
             throw new BadRequestException("node not found in run graph: " + resumeNodeId);
         }
-        List<WorkflowNodeRun> priorRuns = nodeRunCollection.find(Filters.eq("run_id", sourceRunId));
+        List<WorkflowNodeRun> priorRuns = nodeRunStore.listByRun(sourceRunId);
         requireExecuted(priorRuns, resumeNodeId, sourceRunId);
 
         Set<String> rerun = graph.descendantsInclusive(resumeNodeId);   // resume node + its forward cone re-run fresh
         String nextRunId = UUID.randomUUID().toString();
-        var journal = new MongoWorkflowJournal(nodeRunCollection);
+        var journal = new StoreWorkflowJournal(nodeRunStore);
         for (WorkflowNodeRun prior : priorRuns) {
             if (rerun.contains(prior.nodeId) || !ROOT_SCOPE_KEY.equals(prior.scopePathKey)) {
                 continue;   // re-run set carries no seed; container scopes are out of scope for P0
@@ -197,7 +189,7 @@ public class WorkflowRunService {
         run.resumeFromNodeId = resumeNodeId;
         run.leaseUntil = now;   // claimable immediately by the runner job
         run.createdAt = now;
-        runCollection.insert(run);
+        runStore.insert(run);
         return run;
     }
 
@@ -218,7 +210,7 @@ public class WorkflowRunService {
         run.preview = Boolean.TRUE.equals(version.preview);   // co-expire with the throwaway preview version
         run.leaseUntil = now;   // claimable immediately by the runner job
         run.createdAt = now;
-        runCollection.insert(run);
+        runStore.insert(run);
         return run;
     }
 
@@ -227,7 +219,7 @@ public class WorkflowRunService {
     }
 
     public WorkflowRun getRun(String runId, String userId, boolean admin) {
-        WorkflowRun run = runCollection.get(runId)
+        WorkflowRun run = runStore.get(runId)
             .orElseThrow(() -> new NotFoundException("workflow run not found: " + runId));
         if (!admin && !canRead(run, userId)) {
             throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
@@ -236,7 +228,7 @@ public class WorkflowRunService {
     }
 
     private WorkflowRun getOwnedRun(String runId, String userId) {
-        WorkflowRun run = runCollection.get(runId)
+        WorkflowRun run = runStore.get(runId)
             .orElseThrow(() -> new NotFoundException("workflow run not found: " + runId));
         if (!run.userId.equals(userId)) {
             throw new ForbiddenException("workflow run does not belong to the current user: " + runId);
@@ -249,12 +241,7 @@ public class WorkflowRunService {
     }
 
     public List<WorkflowRun> listRuns(String workflowId, String userId, boolean admin) {
-        if (admin) {
-            return runCollection.find(Filters.eq("workflow_id", workflowId));
-        }
-        return runCollection.find(Filters.and(
-            Filters.eq("workflow_id", workflowId),
-            Filters.or(Filters.eq("visibility", WorkflowVisibility.PUBLIC), Filters.eq("user_id", userId))));
+        return runStore.listByWorkflow(workflowId, userId, admin);
     }
 
     public List<WorkflowNodeRun> listNodeRuns(String runId, String userId) {
@@ -263,7 +250,7 @@ public class WorkflowRunService {
 
     public List<WorkflowNodeRun> listNodeRuns(String runId, String userId, boolean admin) {
         getRun(runId, userId, admin);   // ownership check
-        return nodeRunCollection.find(Filters.eq("run_id", runId));
+        return nodeRunStore.listByRun(runId);
     }
 
     /**
@@ -284,17 +271,15 @@ public class WorkflowRunService {
         }
         WorkflowNode node = resolveHumanNode(run, nodeId);
         HumanInputProtocol.validate(node, approve, input);   // mode + form schema enforced before settling
-        long settled = nodeRunCollection.update(
-            Filters.and(Filters.eq("run_id", runId), Filters.eq("node_id", nodeId), Filters.eq("status", NodeRunStatus.WAITING)),
-            settleHumanNode(node, approve, input));
-        if (settled == 0) {
+        var settlement = settleHumanNode(node, approve, input);
+        boolean settled = nodeRunStore.settleWaiting(runId, nodeId, NodeRunStatus.COMPLETED,
+            settlement.output(), settlement.chosenEdgeIds(), ZonedDateTime.now());
+        if (!settled) {
             throw new ConflictException("node is not awaiting human input (already settled by a concurrent resume?): " + nodeId);
         }
         // wake: PAUSED -> PENDING, claimable now (guarded on PAUSED so a concurrent resume only wakes once, and so a
         // RUNNING run's live driver is left to re-fold the settle itself)
-        runCollection.update(
-            Filters.and(Filters.eq("_id", runId), Filters.eq("status", RunStatus.PAUSED)),
-            Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", ZonedDateTime.now())));
+        runStore.wakePaused(runId, ZonedDateTime.now());
     }
 
     /** The self-describing waits of a PAUSED run, so a single GET tells an API caller how to resume. */
@@ -302,8 +287,7 @@ public class WorkflowRunService {
         if (run.status != RunStatus.PAUSED) {
             return List.of();
         }
-        List<WorkflowNodeRun> waiting = nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", run.id), Filters.eq("status", NodeRunStatus.WAITING)));
+        List<WorkflowNodeRun> waiting = nodeRunStore.findWaitingByRun(run.id);
         if (waiting.isEmpty()) {
             return List.of();
         }
@@ -334,13 +318,17 @@ public class WorkflowRunService {
 
     public String getRunGraph(String runId, String userId, boolean admin) {
         WorkflowRun run = getRun(runId, userId, admin);
-        WorkflowPublishedVersion version = versionCollection.get(run.versionId)
+        WorkflowPublishedVersion version = versionStore.get(run.versionId)
             .orElseThrow(() -> new NotFoundException("workflow version not found for run: " + runId));
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new ForbiddenException("workflow version is disabled: " + version.id);
         }
-        WorkflowDefinition definition = definitionCollection.get(run.workflowId)
+        WorkflowDefinition definition = definitionStore.get(run.workflowId)
             .orElseThrow(() -> new NotFoundException("workflow not found for run: " + run.workflowId));
         return definition.userId.equals(userId) ? version.graph : WorkflowGraphSanitizer.sanitize(version.graph);
     }
+
+    private record HumanSettlement(String output, List<String> chosenEdgeIds) {
+    }
 }
+

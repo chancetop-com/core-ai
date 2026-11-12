@@ -6,7 +6,6 @@ import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowDefinitionStatus;
-import ai.core.server.domain.WorkflowPublishedVersion;
 import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -23,23 +22,23 @@ import static org.mockito.Mockito.when;
 
 class WorkflowPublishServiceTest {
     private WorkflowPublishService publishService;
-    private MongoCollection<WorkflowPublishedVersion> versionCollection;
+    private WorkflowVersionStore versionStore;
 
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        MongoCollection<WorkflowDefinition> definitionCollection = mock(MongoCollection.class);
+        WorkflowDefinitionStore definitionStore = mock(WorkflowDefinitionStore.class);
         MongoCollection<AgentDefinition> agentCollection = mock(MongoCollection.class);
-        versionCollection = mock(MongoCollection.class);
+        versionStore = mock(WorkflowVersionStore.class);
         var workflow = workflow();
         var agent = agent();
-        when(definitionCollection.get(workflow.id)).thenReturn(Optional.of(workflow));
+        when(definitionStore.get(workflow.id)).thenReturn(Optional.of(workflow));
         when(agentCollection.get(agent.id)).thenReturn(Optional.of(agent));
         var snapshots = new WorkflowAgentSnapshotService();
         snapshots.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agentCollection);
         publishService = new WorkflowPublishService();
-        publishService.definitionCollection = definitionCollection;
-        publishService.versionCollection = versionCollection;
+        publishService.definitionStore = definitionStore;
+        publishService.versionStore = versionStore;
         publishService.agentSnapshotService = snapshots;
     }
 
@@ -51,7 +50,7 @@ class WorkflowPublishServiceTest {
         assertEquals(
             "workflow validation failed: node agent_node agent snapshot contains an unsupported LLM call tool dependency",
             error.getMessage());
-        verifyNoInteractions(versionCollection);
+        verifyNoInteractions(versionStore);
     }
 
     @Test
@@ -62,7 +61,7 @@ class WorkflowPublishServiceTest {
         assertEquals(
             "workflow validation failed: node agent_node agent snapshot contains an unsupported LLM call tool dependency",
             error.getMessage());
-        verifyNoInteractions(versionCollection);
+        verifyNoInteractions(versionStore);
     }
 
     private WorkflowDefinition workflow() {
@@ -97,3 +96,5 @@ class WorkflowPublishServiceTest {
         return agent;
     }
 }
+
+

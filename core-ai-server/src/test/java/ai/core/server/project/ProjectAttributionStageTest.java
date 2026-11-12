@@ -59,7 +59,7 @@ class ProjectAttributionStageTest {
         stage.chatSessionStore = chatSessionStore;
         messages = (MongoCollection<ChatMessage>) mock(MongoCollection.class);
         stage.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(messages);
-        stage.workflowRunCollection = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
+        stage.workflowRunStore = ai.core.server.workflow.MongoWorkflowRunStore.of((MongoCollection<WorkflowRun>) mock(MongoCollection.class));
         stage.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of((MongoCollection<FileRecord>) mock(MongoCollection.class));
         var agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         stage.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
@@ -232,4 +232,5 @@ class ProjectAttributionStageTest {
             {"attributions":[],"new_subjects":[{"name":"%s","description":"the spa account","reason":"run mentions acme","targets":[{"target_type":"%s","target_id":"%s"}]}]}""".formatted(name, targetType, targetId);
     }
 }
+
 

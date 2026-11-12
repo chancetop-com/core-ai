@@ -23,7 +23,6 @@ import ai.core.server.sandbox.StagedFile;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -84,7 +83,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     AgentRunStore agentRunStore;
 
     @Inject
-    MongoCollection<WorkflowPublishedVersion> versionCollection;
+    WorkflowVersionStore versionStore;
 
     @Inject
     FileService fileService;
@@ -147,7 +146,7 @@ public class MongoAgentRunGateway implements AgentRunGateway {
     }
 
     private AgentPublishedConfig loadSnapshot(String versionId, String nodeId, boolean requirePublicSafety) {
-        WorkflowPublishedVersion version = versionCollection.get(versionId)
+        WorkflowPublishedVersion version = versionStore.get(versionId)
             .orElseThrow(() -> new IllegalStateException("published workflow version not found: " + versionId));
         if (requirePublicSafety) privateAgentSafetyValidator.requireSafe(version);
         String snapshotJson = version.agentSnapshots != null ? version.agentSnapshots.get(nodeId) : null;
@@ -161,5 +160,6 @@ public class MongoAgentRunGateway implements AgentRunGateway {
         return snapshot;
     }
 }
+
 
 

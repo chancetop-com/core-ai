@@ -9,16 +9,15 @@ import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.notification.NotificationService;
 import ai.core.server.sandbox.SandboxService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+
+
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import org.bson.conversions.Bson;
+
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -56,10 +55,10 @@ public class WorkflowRunner {
     private final String workerId = UUID.randomUUID().toString();
 
     @Inject
-    MongoCollection<WorkflowRun> runCollection;
+    WorkflowRunStore runStore;
 
     @Inject
-    MongoCollection<WorkflowNodeRun> nodeRunCollection;
+    WorkflowNodeRunStore nodeRunStore;
 
     @Inject
     NodeExecutor nodeExecutor;
@@ -102,9 +101,9 @@ public class WorkflowRunner {
         try {
             heartbeat = heartbeatScheduler.scheduleAtFixedRate(
                 () -> renewLease(runId, lostLease), HEARTBEAT_PERIOD_SECONDS, HEARTBEAT_PERIOD_SECONDS, TimeUnit.SECONDS);
-            run = runCollection.get(runId).orElseThrow(() -> new IllegalStateException("run not found: " + runId));
+            run = runStore.get(runId).orElseThrow(() -> new IllegalStateException("run not found: " + runId));
             var graph = graphLoader.load(run.versionId);
-            var journal = new MongoWorkflowJournal(nodeRunCollection);
+            var journal = new StoreWorkflowJournal(nodeRunStore);
             RunStatus status = WorkflowAdvancer.drive(graph, run, journal,
                 new WorkflowAdvancer.ExecCtx(nodeExecutor, nodePool),
                 () -> isCancelled(runId), () -> !lostLease.get());
@@ -123,7 +122,7 @@ public class WorkflowRunner {
                     new NotificationService.CreateContext(null, run.sessionId));
             }
             if (finalized && run != null && run.parentRunId != null) {
-                runCollection.get(runId).ifPresent(this::wakeParent);
+                runStore.get(runId).ifPresent(this::wakeParent);
             }
             return true;
         } finally {
@@ -140,23 +139,11 @@ public class WorkflowRunner {
     // or a run whose lease has expired can be claimed; updated != 1 means another replica owns it.
     private boolean claim(String runId) {
         var now = ZonedDateTime.now();
-        long updated = runCollection.update(
-            Filters.and(
-                Filters.eq("_id", runId),
-                Filters.in("status", RunStatus.PENDING, RunStatus.RUNNING),
-                Filters.lte("lease_until", now)),
-            Updates.combine(
-                Updates.set("claimed_by", workerId),
-                Updates.set("status", RunStatus.RUNNING),
-                Updates.set("lease_until", now.plusSeconds(LEASE_SECONDS))));
-        if (updated != 1) {
+        if (!runStore.claim(runId, workerId, now, now.plusSeconds(LEASE_SECONDS))) {
             return false;
         }
-        // stamp the first claim only; guarded on null because insert writes started_at as an explicit null,
-        // which $min would keep (null sorts below dates in BSON) — re-claims (resume / lease takeover) no-op
-        runCollection.update(
-            Filters.and(Filters.eq("_id", runId), Filters.eq("started_at", null)),
-            Updates.set("started_at", now));
+        // stamp the first claim only; a re-claim (resume / lease takeover) must not move it
+        runStore.markStartedIfNull(runId, now);
         return true;
     }
 
@@ -170,12 +157,9 @@ public class WorkflowRunner {
             return;
         }
         try {
-            long updated = runCollection.update(
-                Filters.and(Filters.eq("_id", runId), Filters.eq("claimed_by", workerId)),
-                Updates.set("lease_until", ZonedDateTime.now().plusSeconds(LEASE_SECONDS)));
-            if (updated != 1) {
+            if (!runStore.renewLease(runId, workerId, ZonedDateTime.now().plusSeconds(LEASE_SECONDS))) {
                 lostLease.set(true);
-                LOGGER.warn("lease lost (renew matched {} rows), runId={}", updated, runId);
+                LOGGER.warn("lease lost, runId={}", runId);
             }
         } catch (RuntimeException e) {
             LOGGER.warn("lease renew failed, will retry next tick, runId={}", runId, e);
@@ -186,10 +170,7 @@ public class WorkflowRunner {
     // a stolen lease can't park someone else's run. PAUSED is excluded from the claim filter, so the job won't
     // pick it up — only the resume endpoint flips it back to PENDING.
     private void pause(String runId) {
-        long updated = runCollection.update(
-            Filters.and(Filters.eq("_id", runId), Filters.eq("claimed_by", workerId), Filters.eq("status", RunStatus.RUNNING)),
-            Updates.set("status", RunStatus.PAUSED));
-        if (updated == 0) {
+        if (!runStore.pause(runId, workerId)) {
             LOGGER.warn("workflow run not paused (lost claim or already terminal), runId={}", runId);
         } else {
             LOGGER.info("workflow run paused on human input, runId={}", runId);
@@ -198,12 +179,7 @@ public class WorkflowRunner {
 
     // Settle node-runs left RUNNING by a previous owner (lease lost / crash). updateMany; 0 rows on a fresh claim.
     private void resetOrphanNodeRuns(String runId) {
-        long reset = nodeRunCollection.update(
-            Filters.and(Filters.eq("run_id", runId), Filters.eq("status", NodeRunStatus.RUNNING)),
-            Updates.combine(
-                Updates.set("status", NodeRunStatus.FAILED_RETRYABLE),
-                Updates.set("error", "node interrupted: the previous run owner lost its lease or crashed"),
-                Updates.set("completed_at", ZonedDateTime.now())));
+        int reset = nodeRunStore.resetRunningByRun(runId, ZonedDateTime.now());
         if (reset > 0) {
             LOGGER.warn("reset {} orphaned RUNNING node-run(s) on claim, runId={}", reset, runId);
         }
@@ -213,7 +189,7 @@ public class WorkflowRunner {
     // A transient read failure must not fail the run — a one-tick miss is harmless, we re-read next iteration.
     private boolean isCancelled(String runId) {
         try {
-            return runCollection.get(runId).map(run -> run.status == RunStatus.CANCELLED).orElse(Boolean.FALSE);
+            return runStore.get(runId).map(run -> run.status == RunStatus.CANCELLED).orElse(Boolean.FALSE);
         } catch (RuntimeException e) {
             LOGGER.warn("cancel poll read failed, treating as not-cancelled, runId={}", runId, e);
             return false;
@@ -224,26 +200,9 @@ public class WorkflowRunner {
     // Guarding on completed_at (rather than status == RUNNING) also lets a CANCELLED run be finalized with a
     // completed_at, while still no-op'ing on a stolen lease (claimed_by changed) or a double-finalize.
     private boolean terminate(String runId, RunStatus status, String error, String output, List<ArtifactRef> artifacts) {
-        var now = ZonedDateTime.now();
-        var sets = new ArrayList<Bson>();
-        sets.add(Updates.set("status", status));
-        sets.add(Updates.set("completed_at", now));
-        if (error != null) {
-            sets.add(Updates.set("error", error));
-        }
-        if (output != null) {
-            sets.add(Updates.set("output", output));
-        }
-        if (artifacts != null && !artifacts.isEmpty()) {
-            sets.add(Updates.set("artifacts", artifacts));
-        }
-        long updated = runCollection.update(
-            Filters.and(
-                Filters.eq("_id", runId),
-                Filters.eq("claimed_by", workerId),
-                Filters.eq("completed_at", null)),
-            Updates.combine(sets));
-        if (updated == 0) {
+        boolean updated = runStore.terminate(runId, workerId,
+            new WorkflowRunStore.RunTermination(status, error, output, artifacts, ZonedDateTime.now()));
+        if (!updated) {
             LOGGER.warn("workflow run not finalized (lost claim or already terminal), runId={}, status={}", runId, status);
             return false;
         }
@@ -259,36 +218,29 @@ public class WorkflowRunner {
             return false;
         }
         var now = ZonedDateTime.now();
-        var settle = new ArrayList<Bson>();
-        settle.add(Updates.set("completed_at", now));
+        NodeRunStatus status;
+        String output = null;
+        List<ArtifactRef> artifacts = null;
+        String error = null;
         if (child.status == RunStatus.COMPLETED) {
             WorkflowNodeRun endRun = endNodeRun(child.id);
-            settle.add(Updates.set("status", NodeRunStatus.COMPLETED));
-            settle.add(Updates.set("output", endRun != null ? endRun.output : null));
-            if (endRun != null && endRun.artifacts != null && !endRun.artifacts.isEmpty()) {
-                settle.add(Updates.set("artifacts", endRun.artifacts));
-            }
+            status = NodeRunStatus.COMPLETED;
+            output = endRun != null ? endRun.output : null;
+            artifacts = endRun != null ? endRun.artifacts : null;
         } else {
             // child FAILED / CANCELLED / TIMEOUT -> the parent WORKFLOW node fails (run fails), per design no auto re-run
-            settle.add(Updates.set("status", NodeRunStatus.FAILED_RETRYABLE));
-            settle.add(Updates.set("error", "sub-workflow " + child.status + " (child run " + child.id + ")"));
+            status = NodeRunStatus.FAILED_RETRYABLE;
+            error = "sub-workflow " + child.status + " (child run " + child.id + ")";
         }
-        long settled = nodeRunCollection.update(
-            Filters.and(
-                Filters.eq("run_id", child.parentRunId),
-                Filters.eq("node_id", child.parentNodeId),
-                Filters.eq("child_run_id", child.id),
-                Filters.eq("status", NodeRunStatus.WAITING)),
-            Updates.combine(settle));
-        if (settled == 0) {
+        boolean settled = nodeRunStore.settleWaitingChild(child.parentRunId, child.parentNodeId,
+            new WorkflowNodeRunStore.ChildSettlement(child.id, status, output, artifacts, error, now));
+        if (!settled) {
             LOGGER.warn("parent WORKFLOW node not settled (already settled or gone), parentRunId={}, nodeId={}",
                 child.parentRunId, child.parentNodeId);
             return false;
         }
         // wake: PAUSED -> PENDING, claimable now. Guarded on PAUSED so a concurrent waker only wakes once.
-        runCollection.update(
-            Filters.and(Filters.eq("_id", child.parentRunId), Filters.eq("status", RunStatus.PAUSED)),
-            Updates.combine(Updates.set("status", RunStatus.PENDING), Updates.set("lease_until", now)));
+        runStore.wakePaused(child.parentRunId, now);
         LOGGER.info("woke parent run on sub-workflow terminal, parentRunId={}, childRunId={}, status={}",
             child.parentRunId, child.id, child.status);
         return true;
@@ -298,15 +250,13 @@ public class WorkflowRunner {
     // they finish as orphaned RUNNING. Each direct child is found by parent_run_id; the gateway recurses into its
     // own descendants. cancelSubtree no-ops on already-terminal children.
     private void cancelChildren(String runId) {
-        for (WorkflowRun child : runCollection.find(Filters.eq("parent_run_id", runId))) {
+        for (WorkflowRun child : runStore.findChildren(runId)) {
             workflowRunGateway.cancelSubtree(child.id);
         }
     }
 
     private String failureSummary(String runId) {
-        for (WorkflowNodeRun nodeRun : nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", runId),
-            Filters.eq("status", NodeRunStatus.FAILED_RETRYABLE)))) {
+        for (WorkflowNodeRun nodeRun : nodeRunStore.findFailedRetryableByRun(runId)) {
             if (nodeRun.error != null && !nodeRun.error.isBlank()) {
                 return failedNodeLabel(nodeRun) + " failed: " + nodeRun.error;
             }
@@ -329,10 +279,7 @@ public class WorkflowRunner {
     // node's file is lifted to the run result only when END's output/artifacts references it — otherwise it
     // stays visible per node-run in the trace only.
     private WorkflowNodeRun endNodeRun(String runId) {
-        var nodeRuns = nodeRunCollection.find(Filters.and(
-            Filters.eq("run_id", runId),
-            Filters.eq("node_type", "END"),
-            Filters.eq("status", NodeRunStatus.COMPLETED)));
+        var nodeRuns = nodeRunStore.findByRunTypeAndStatus(runId, "END", NodeRunStatus.COMPLETED);
         return nodeRuns.isEmpty() ? null : nodeRuns.get(0);
     }
 
@@ -362,7 +309,7 @@ public class WorkflowRunner {
                 new NotificationService.CreateContext(null, run.sessionId));
         }
         if (finalized && run.parentRunId != null) {
-            runCollection.get(runId).ifPresent(this::wakeParent);
+            runStore.get(runId).ifPresent(this::wakeParent);
         }
         if (finalized && status == RunStatus.CANCELLED) {
             cancelChildren(runId);
@@ -370,3 +317,5 @@ public class WorkflowRunner {
         return true;
     }
 }
+
+

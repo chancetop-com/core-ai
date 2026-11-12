@@ -1,10 +1,9 @@
 package ai.core.server.trace.service;
 
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.workflow.WorkflowRunService;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
+import ai.core.server.workflow.WorkflowRunStore;
 
 /**
  * Trace read authorization shared by the trace views and replay experiments.
@@ -17,7 +16,7 @@ import core.framework.mongo.MongoCollection;
  */
 public class TraceAccessControl {
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    WorkflowRunStore workflowRunStore;
 
     public boolean canRead(Trace trace, String userId, TraceVisibility visibility) {
         if (trace == null) return false;
@@ -26,8 +25,10 @@ public class TraceAccessControl {
         if (trace.metadata == null) return false;
         var workflowRunId = trace.metadata.get("workflow_run_id");
         if (workflowRunId == null || workflowRunId.isBlank()) return false;
-        return workflowRunCollection.get(workflowRunId)
+        return workflowRunStore.get(workflowRunId)
             .map(run -> WorkflowRunService.canRead(run, userId))
             .orElse(Boolean.FALSE);
     }
 }
+
+

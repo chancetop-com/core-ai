@@ -10,7 +10,7 @@ import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
+
 import core.framework.web.exception.BadRequestException;
 
 import java.time.ZonedDateTime;
@@ -56,7 +56,7 @@ public class WorkflowPortService {
     AgentDefinitionStore agentDefinitionStore;
 
     @Inject
-    MongoCollection<WorkflowDefinition> definitionCollection;
+    WorkflowDefinitionStore definitionStore;
 
     @Inject
     ai.core.server.tool.ToolRegistryStore toolRegistryStore;
@@ -80,7 +80,7 @@ public class WorkflowPortService {
         if (envelope.description != null && !envelope.description.isBlank()) {
             definition.description = envelope.description;
             definition.updatedAt = ZonedDateTime.now();
-            definitionCollection.replace(definition);
+            definitionStore.replace(definition);
         }
         List<UnresolvedReference> unresolved = scanReferences(envelope.graph, userId);
         return new WorkflowImportResult(definition, unresolved);
@@ -151,3 +151,5 @@ public class WorkflowPortService {
     public record WorkflowImportResult(WorkflowDefinition definition, List<UnresolvedReference> unresolved) {
     }
 }
+
+

@@ -3,7 +3,7 @@ package ai.core.server.trace.service;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.WorkflowVisibility;
 import ai.core.server.trace.domain.Trace;
-import core.framework.mongo.MongoCollection;
+import ai.core.server.workflow.WorkflowRunStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -33,12 +33,12 @@ class TraceAccessControlTest {
     }
 
     @SuppressWarnings("unchecked")
-    private final MongoCollection<WorkflowRun> workflowRunCollection = mock(MongoCollection.class);
+    private final WorkflowRunStore workflowRunStore = mock(WorkflowRunStore.class);
     private final TraceAccessControl control;
 
     TraceAccessControlTest() {
         control = new TraceAccessControl();
-        control.workflowRunCollection = workflowRunCollection;
+        control.workflowRunStore = workflowRunStore;
     }
 
     @Test
@@ -80,10 +80,10 @@ class TraceAccessControlTest {
         run.id = "run-1";
         run.userId = "user-2";
         run.visibility = WorkflowVisibility.PRIVATE;
-        when(workflowRunCollection.get("run-1")).thenReturn(Optional.of(run));
+        when(workflowRunStore.get("run-1")).thenReturn(Optional.of(run));
 
         assertTrue(control.canRead(trace, "user-2", TraceVisibility.of(Set.of("user-2"))));
-        verify(workflowRunCollection).get("run-1");
+        verify(workflowRunStore).get("run-1");
     }
 
     @Test
@@ -93,7 +93,7 @@ class TraceAccessControlTest {
         run.id = "run-1";
         run.userId = "user-2";
         run.visibility = WorkflowVisibility.PRIVATE;
-        when(workflowRunCollection.get("run-1")).thenReturn(Optional.of(run));
+        when(workflowRunStore.get("run-1")).thenReturn(Optional.of(run));
 
         assertFalse(control.canRead(trace, "user-3", TraceVisibility.of(Set.of("user-3"))));
     }
@@ -101,15 +101,17 @@ class TraceAccessControlTest {
     @Test
     void missingWorkflowRunDeniedWithoutLookup() {
         var trace = trace("user-1", "run-1");
-        when(workflowRunCollection.get("run-1")).thenReturn(Optional.empty());
+        when(workflowRunStore.get("run-1")).thenReturn(Optional.empty());
 
         assertFalse(control.canRead(trace, "user-2", TraceVisibility.of(Set.of("user-2"))));
-        verify(workflowRunCollection).get("run-1");
+        verify(workflowRunStore).get("run-1");
     }
 
     @Test
     void nullTraceDenied() {
         assertFalse(control.canRead(null, "user-1", TraceVisibility.all()));
-        verify(workflowRunCollection, never()).get(any());
+        verify(workflowRunStore, never()).get(any());
     }
 }
+
+

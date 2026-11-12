@@ -9,7 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-class MongoWorkflowJournalSuspendedTest {
+class StoreWorkflowJournalSuspendedTest {
     // Local run factory mirroring AgentExecutorTest's private run().
     private static WorkflowRun run() {
         var run = new WorkflowRun();

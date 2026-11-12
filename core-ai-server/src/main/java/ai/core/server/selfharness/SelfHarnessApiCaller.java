@@ -9,15 +9,9 @@ import ai.core.server.project.ProjectAttributionRepository;
 import ai.core.server.project.ProjectStore;
 import ai.core.server.project.ProjectSubjectStore;
 import ai.core.server.user.UserStore;
-import ai.core.server.domain.WorkflowRun;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,7 +49,7 @@ public class SelfHarnessApiCaller {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
@@ -126,16 +120,24 @@ public class SelfHarnessApiCaller {
 
     public Map<String, Object> searchWorkflowRuns(String projectId, List<String> workflowIds, String since, String subjectId, Boolean attributed, ExecutionContext context) {
         var scope = requireProject(projectId, context);
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("workflow_id", workflowIds != null && !workflowIds.isEmpty() ? workflowIds : scope.workflowIds));
-        if (since != null) filters.add(Filters.gt("started_at", ZonedDateTime.parse(since)));
-        applyAttributionFilter(filters, projectId, subjectId, attributed, "workflow_run", "_id");
-        filters.add(Filters.or(Filters.exists("preview", false), Filters.eq("preview", Boolean.FALSE)));
-        var query = new Query();
-        query.filter = Filters.and(filters);
-        query.sort = Sorts.descending("started_at");
+        var query = new ai.core.server.workflow.WorkflowRunQuery();
+        query.workflowIds = workflowIds != null && !workflowIds.isEmpty() ? workflowIds : scope.workflowIds;
+        if (since != null) {
+            query.from = ZonedDateTime.parse(since);
+            query.exclusiveFrom = true;
+        }
+        if (subjectId != null) {
+            query.ids = attributionTargets("workflow_run", subjectId);
+        } else if (attributed != null) {
+            var targets = attributionTargets("workflow_run", subjectIdsOf(projectId).toArray(String[]::new));
+            if (Boolean.TRUE.equals(attributed)) {
+                query.ids = targets;
+            } else {
+                query.excludeIds = targets;
+            }
+        }
         query.limit = SEARCH_DEFAULT_LIMIT;
-        return Map.of("workflow_runs", workflowRunCollection.find(query).stream().map(run -> {
+        return Map.of("workflow_runs", workflowRunStore.find(query).stream().map(run -> {
             var row = new LinkedHashMap<String, Object>();
             row.put("id", run.id);
             row.put("workflow_id", run.workflowId);
@@ -228,23 +230,6 @@ public class SelfHarnessApiCaller {
         }
     }
 
-    private void applyAttributionFilter(List<Bson> filters, String projectId, String subjectId, Boolean attributed, String targetType, String targetField) {
-        if (subjectId != null) {
-            var targets = attributionTargets(targetType, subjectId);
-            filters.add(targets.isEmpty() ? Filters.eq(targetField, "__none__") : Filters.in(targetField, targets));
-            return;
-        }
-        if (attributed != null) {
-            var subjectIds = subjectIdsOf(projectId);
-            var targets = attributionTargets(targetType, subjectIds.toArray(String[]::new));
-            if (Boolean.TRUE.equals(attributed)) {
-                filters.add(targets.isEmpty() ? Filters.eq(targetField, "__none__") : Filters.in(targetField, targets));
-            } else {
-                filters.add(targets.isEmpty() ? Filters.exists(targetField) : Filters.nin(targetField, targets));
-            }
-        }
-    }
-
     private List<String> subjectIdsOf(String projectId) {
         return subjectStore.listByProject(projectId).stream().map(s -> s.id).toList();
     }
@@ -285,6 +270,8 @@ public class SelfHarnessApiCaller {
     private record ProjectScope(List<String> agentIds, List<String> workflowIds) {
     }
 }
+
+
 
 
 

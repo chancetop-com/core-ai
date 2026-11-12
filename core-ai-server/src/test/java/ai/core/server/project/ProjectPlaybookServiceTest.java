@@ -10,6 +10,8 @@ import ai.core.server.domain.Project;
 import ai.core.server.domain.ProjectMemberRef;
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.WorkflowDefinition;
+import ai.core.server.workflow.MongoWorkflowDefinitionStore;
+import ai.core.server.workflow.MongoWorkflowRunStore;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.LLMCallExecutor;
 import core.framework.mongo.MongoCollection;
@@ -62,13 +64,13 @@ class ProjectPlaybookServiceTest {
         var runs = (MongoCollection<AgentRun>) mock(MongoCollection.class);
         service.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(runs);
         var workflowRuns = (MongoCollection<WorkflowRun>) mock(MongoCollection.class);
-        service.workflowRunCollection = workflowRuns;
+        service.workflowRunStore = MongoWorkflowRunStore.of(workflowRuns);
         files = (MongoCollection<FileRecord>) mock(MongoCollection.class);
         service.fileRecordStore = ai.core.server.file.MongoFileRecordStore.of(files);
         agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         workflows = (MongoCollection<WorkflowDefinition>) mock(MongoCollection.class);
-        service.workflowCollection = workflows;
+        service.workflowDefinitionStore = MongoWorkflowDefinitionStore.of(workflows);
         projectService = mock(ProjectService.class);
         service.projectService = projectService;
         executor = mock(LLMCallExecutor.class);
@@ -201,4 +203,6 @@ class ProjectPlaybookServiceTest {
         return record;
     }
 }
+
+
 

@@ -7,11 +7,11 @@ import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.domain.WorkflowVisibility;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import ai.core.server.workflow.engine.WorkflowNode;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
+
+
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
+
+
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.ForbiddenException;
@@ -58,10 +58,10 @@ public class WorkflowPublishService {
     }
 
     @Inject
-    MongoCollection<WorkflowDefinition> definitionCollection;
+    WorkflowDefinitionStore definitionStore;
 
     @Inject
-    MongoCollection<WorkflowPublishedVersion> versionCollection;
+    WorkflowVersionStore versionStore;
 
     @Inject
     WorkflowAgentSnapshotService agentSnapshotService;
@@ -77,7 +77,7 @@ public class WorkflowPublishService {
     }
 
     public WorkflowPublishedVersion saveVersion(String definitionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new IllegalStateException("workflow not found: " + definitionId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
@@ -89,7 +89,7 @@ public class WorkflowPublishService {
     }
 
     public WorkflowDefinition publishVersion(String definitionId, String versionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
@@ -97,7 +97,7 @@ public class WorkflowPublishService {
         if (WorkflowDefinitionService.statusOf(definition) != WorkflowDefinitionStatus.ACTIVE) {
             throw new ConflictException("workflow is not active: " + definitionId);
         }
-        WorkflowPublishedVersion version = versionCollection.get(versionId)
+        WorkflowPublishedVersion version = versionStore.get(versionId)
             .orElseThrow(() -> new NotFoundException("workflow version not found: " + versionId));
         requirePublishableVersion(definitionId, version);
         requireVersionReferencesPublishable(definition, version);
@@ -106,12 +106,12 @@ public class WorkflowPublishService {
         definition.visibility = WorkflowVisibility.PUBLIC;
         definition.status = WorkflowDefinitionStatus.ACTIVE;
         definition.updatedAt = ZonedDateTime.now();
-        definitionCollection.replace(definition);
+        definitionStore.replace(definition);
         return definition;
     }
 
     public WorkflowDefinition unpublish(String definitionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
@@ -121,12 +121,12 @@ public class WorkflowPublishService {
         }
         definition.visibility = WorkflowVisibility.PRIVATE;
         definition.updatedAt = ZonedDateTime.now();
-        definitionCollection.replace(definition);
+        definitionStore.replace(definition);
         return definition;
     }
 
     public WorkflowDefinition restoreVersionToDraft(String definitionId, String versionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
@@ -134,7 +134,7 @@ public class WorkflowPublishService {
         if (WorkflowDefinitionService.statusOf(definition) != WorkflowDefinitionStatus.ACTIVE) {
             throw new ConflictException("workflow is not active: " + definitionId);
         }
-        WorkflowPublishedVersion version = versionCollection.get(versionId)
+        WorkflowPublishedVersion version = versionStore.get(versionId)
             .orElseThrow(() -> new NotFoundException("workflow version not found: " + versionId));
         if (!definitionId.equals(version.workflowId) || Boolean.TRUE.equals(version.preview)) {
             throw new BadRequestException("workflow version does not belong to workflow: " + versionId);
@@ -144,28 +144,26 @@ public class WorkflowPublishService {
         }
         definition.draftGraph = version.graph;
         definition.updatedAt = ZonedDateTime.now();
-        definitionCollection.replace(definition);
+        definitionStore.replace(definition);
         return definition;
     }
 
     public List<WorkflowPublishedVersion> listVersions(String definitionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
         boolean owner = definition.userId.equals(userId);
         if (!owner && !WorkflowDefinitionService.isPublicActive(definition)) {
             throw new ForbiddenException("workflow version list is not readable: " + definitionId);
         }
-        var query = new Query();
-        query.filter = owner
-            ? Filters.and(Filters.eq("workflow_id", definitionId), Filters.ne("preview", Boolean.TRUE))
-            : Filters.eq("_id", definition.publishedVersionId);
-        query.sort = Sorts.descending("version");
-        return versionCollection.find(query);
+        if (owner) {
+            return versionStore.listNonPreview(definitionId);
+        }
+        return versionStore.get(definition.publishedVersionId).stream().toList();
     }
 
     /** Snapshot the draft into an immutable version WITHOUT promoting it — used to run the draft (preview). */
     public WorkflowPublishedVersion createPreviewVersion(String definitionId, String userId) {
-        WorkflowDefinition definition = definitionCollection.get(definitionId)
+        WorkflowDefinition definition = definitionStore.get(definitionId)
             .orElseThrow(() -> new NotFoundException("workflow not found: " + definitionId));
         if (!definition.userId.equals(userId)) {
             throw new ForbiddenException("workflow does not belong to the current user: " + definitionId);
@@ -204,7 +202,7 @@ public class WorkflowPublishService {
         published.toolDigests = Map.of();
         published.publishedBy = publishedBy;
         published.publishedAt = ZonedDateTime.now();
-        versionCollection.insert(published);
+        versionStore.insert(published);
         return published;
     }
 
@@ -268,7 +266,7 @@ public class WorkflowPublishService {
                 errors.add("node " + node.id() + " (WORKFLOW) cannot reference its own workflow");
                 continue;
             }
-            WorkflowDefinition childDefinition = definitionCollection.get(sourceWorkflowId).orElse(null);
+            WorkflowDefinition childDefinition = definitionStore.get(sourceWorkflowId).orElse(null);
             if (childDefinition == null) {
                 errors.add("node " + node.id() + " (WORKFLOW) references an unknown workflow: " + sourceWorkflowId);
                 continue;
@@ -281,7 +279,7 @@ public class WorkflowPublishService {
             if (versionId == null) {
                 continue;
             }
-            WorkflowPublishedVersion childVersion = versionCollection.get(versionId).orElse(null);
+            WorkflowPublishedVersion childVersion = versionStore.get(versionId).orElse(null);
             if (childVersion == null) {
                 errors.add("node " + node.id() + " (WORKFLOW) references an unknown workflow version: " + versionId);
                 continue;
@@ -316,7 +314,7 @@ public class WorkflowPublishService {
 
     private int nextVersion(String workflowId) {
         int max = 0;
-        for (WorkflowPublishedVersion existing : versionCollection.find(Filters.eq("workflow_id", workflowId))) {
+        for (WorkflowPublishedVersion existing : versionStore.listAll(workflowId)) {
             if (existing.version != null && !Boolean.TRUE.equals(existing.preview)) {
                 max = Math.max(max, existing.version);
             }
@@ -336,3 +334,4 @@ public class WorkflowPublishService {
         }
     }
 }
+

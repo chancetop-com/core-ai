@@ -7,8 +7,8 @@ import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.WorkflowWebServiceImpl;
 import ai.core.server.workflow.AgentRunGateway;
 import ai.core.server.workflow.MongoAgentRunGateway;
-import ai.core.server.workflow.MongoWorkflowGraphLoader;
-import ai.core.server.workflow.MongoWorkflowRunGateway;
+import ai.core.server.workflow.StoreWorkflowGraphLoader;
+import ai.core.server.workflow.StoreWorkflowRunGateway;
 import ai.core.server.workflow.NodeExecutor;
 import ai.core.server.workflow.NodeExecutorRegistry;
 import ai.core.server.workflow.NodeType;
@@ -57,7 +57,7 @@ public class WorkflowModule extends Module {
         var privateAgentSafetyValidator = bind(WorkflowPrivateAgentSafetyValidator.class);
         var agentRunGateway = bind(new MongoAgentRunGateway(privateAgentSafetyValidator));
         bind(AgentRunGateway.class, agentRunGateway);
-        var graphLoader = bind(MongoWorkflowGraphLoader.class);
+        var graphLoader = bind(StoreWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
 
         // AGENT/LLM, the two tool nodes and HTTP get synchronous retry-on-transient-failure; START/END/IF_ELSE/CODE don't.
@@ -65,7 +65,7 @@ public class WorkflowModule extends Module {
         var mcpToolExecutor = new RetryingNodeExecutor(new McpToolExecutor(toolRegistryService));
         var apiToolExecutor = new RetryingNodeExecutor(new ApiToolExecutor(toolRegistryService));
         var httpExecutor = new RetryingNodeExecutor(new HttpExecutor());
-        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
+        var workflowRunGateway = bind(StoreWorkflowRunGateway.class);
         bind(WorkflowRunGateway.class, workflowRunGateway);
         var workflowExecutor = new WorkflowExecutor(workflowRunGateway, 5);   // depth cap 5 (design default)
         var registry = new NodeExecutorRegistry(Map.ofEntries(

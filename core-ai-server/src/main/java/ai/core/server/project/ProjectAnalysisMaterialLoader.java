@@ -11,9 +11,7 @@ import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.file.FileService;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -64,7 +62,7 @@ public class ProjectAnalysisMaterialLoader {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
@@ -145,7 +143,7 @@ public class ProjectAnalysisMaterialLoader {
         var byTarget = byTarget(rows, ProjectAttributionStore.TARGET_WORKFLOW_RUN);
         if (byTarget.isEmpty()) return;
         var found = new HashMap<String, WorkflowRun>();
-        for (var run : workflowRunCollection.find(Filters.in("_id", byTarget.keySet()))) found.put(run.id, run);
+        for (var run : workflowRunStore.findByIds(new ArrayList<>(byTarget.keySet()))) found.put(run.id, run);
         for (var entry : byTarget.entrySet()) {
             var run = found.get(entry.getKey());
             if (run == null) {
@@ -250,6 +248,10 @@ public class ProjectAnalysisMaterialLoader {
     private record Item(ProjectSubjectAttribution row, ZonedDateTime at, String text) {
     }
 }
+
+
+
+
 
 
 

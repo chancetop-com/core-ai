@@ -6,7 +6,6 @@ import ai.core.server.run.AgentRunStore;
 
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.trace.domain.Trace;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Accumulators;
@@ -16,9 +15,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -58,7 +55,7 @@ public class ProjectQueryService {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
@@ -137,7 +134,7 @@ public class ProjectQueryService {
         long total = 0;
         if (type == null || "chat".equals(type)) total += chatSessionStore.count(sessionQuery(scope, subjectId));
         if (type == null || "run".equals(type)) total += agentRunStore.count(runQuery(scope, subjectId, 0, 1000));
-        if (type == null || "workflow".equals(type)) total += workflowRunCollection.count(workflowFilter(scope, subjectId));
+        if (type == null || "workflow".equals(type)) total += workflowRunStore.count(workflowQuery(scope, subjectId, 0, 1000));
         return total;
     }
 
@@ -216,12 +213,10 @@ public class ProjectQueryService {
     }
 
     private List<ProjectExecution> workflowExecutions(ProjectScope scope, String subjectId, int offset, int limit) {
-        var query = sortedQuery(workflowFilter(scope, subjectId), "started_at");
-        query.skip = offset;
-        query.limit = limit;
+        var query = workflowQuery(scope, subjectId, offset, limit);
         var subjectByWorkflowRun = subjectByTarget(scope, "workflow_run");
         var rows = new ArrayList<ProjectExecution>();
-        for (var run : workflowRunCollection.find(query)) {
+        for (var run : workflowRunStore.find(query)) {
             rows.add(new ProjectExecution(run.id, "workflow", run.input, run.workflowId, run.status != null ? run.status.name() : null,
                 run.startedAt, run.tokenUsage != null ? run.tokenUsage.input : null,
                 run.tokenUsage != null ? run.tokenUsage.output : null, null, null, subjectByWorkflowRun.get(run.id)));
@@ -284,15 +279,15 @@ public class ProjectQueryService {
         return query;
     }
 
-    private Bson workflowFilter(ProjectScope scope, String subjectId) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("workflow_id", scope.workflowIds));
+    private ai.core.server.workflow.WorkflowRunQuery workflowQuery(ProjectScope scope, String subjectId, int offset, int limit) {
+        var query = new ai.core.server.workflow.WorkflowRunQuery();
+        query.workflowIds = scope.workflowIds;
         if (subjectId != null) {
-            var ids = attributionTargets(subjectId, "workflow_run");
-            filters.add(ids.isEmpty() ? Filters.eq("_id", "__none__") : Filters.in("_id", ids));
+            query.ids = attributionTargets(subjectId, "workflow_run");
         }
-        filters.add(Filters.or(Filters.exists("preview", false), Filters.eq("preview", Boolean.FALSE)));
-        return Filters.and(filters);
+        query.offset = offset;
+        query.limit = limit;
+        return query;
     }
 
     private List<String> attributionTargets(String subjectId, String targetType) {
@@ -305,13 +300,6 @@ public class ProjectQueryService {
             result.putIfAbsent(attribution.targetId, attribution.subjectId);
         }
         return result;
-    }
-
-    private Query sortedQuery(Bson filter, String sortField) {
-        var query = new Query();
-        query.filter = filter;
-        query.sort = Sorts.descending(sortField);
-        return query;
     }
 
     private int compareDesc(ZonedDateTime left, ZonedDateTime right) {
@@ -354,6 +342,9 @@ public class ProjectQueryService {
     private record TraceCost(Double cost, String traceId) {
     }
 }
+
+
+
 
 
 

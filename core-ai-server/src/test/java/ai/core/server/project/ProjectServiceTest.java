@@ -71,7 +71,7 @@ class ProjectServiceTest {
         agents = (MongoCollection<AgentDefinition>) mock(MongoCollection.class);
         service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agents);
         var workflowCollection = (MongoCollection<WorkflowDefinition>) mock(MongoCollection.class);
-        service.workflowCollection = workflowCollection;
+        service.workflowDefinitionStore = ai.core.server.workflow.MongoWorkflowDefinitionStore.of(workflowCollection);
         service.permissionService = mock(ai.core.server.apiuser.PermissionService.class);
         var userCollection = (MongoCollection<ai.core.server.domain.User>) mock(MongoCollection.class);
         service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
@@ -246,3 +246,4 @@ class ProjectServiceTest {
         verify(projects, never()).replace(any());
     }
 }
+

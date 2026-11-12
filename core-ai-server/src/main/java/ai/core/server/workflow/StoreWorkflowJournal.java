@@ -5,23 +5,17 @@ import ai.core.server.domain.ScopeFrame;
 import ai.core.server.domain.WorkflowNodeRun;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowNode;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import core.framework.mongo.MongoCollection;
 
 import java.time.ZonedDateTime;
 import java.util.List;
 
 /**
- * Mongo-backed journal. Race-safe append relies on the deterministic _id (run|node|scope): a concurrent insert
- * of the same node-run hits the implicit _id unique constraint (duplicate-key 11000), the same idiom as
- * IngestService.saveSpan. The (run_id, node_id, scope_path_key) secondary index serves the run_id fold query only.
+ * Store-backed journal. Race-safe append relies on the unique (run_id, node_id, scope_path_key): a concurrent insert
+ * of the same node-run is ignored by the store, the same idiom as an insert-if-absent.
  *
  * @author Xander
  */
-public class MongoWorkflowJournal implements WorkflowJournal {
-    private static final int DUPLICATE_KEY = 11000;
-
+public class StoreWorkflowJournal implements WorkflowJournal {
     private static WorkflowNodeRun newNodeRun(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeRunStatus status) {
         var now = ZonedDateTime.now();
         var nodeRun = new WorkflowNodeRun();
@@ -44,43 +38,34 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         return runId + "|" + nodeId + "|" + ScopeFrame.canonicalKey(scopePath);
     }
 
-    private final MongoCollection<WorkflowNodeRun> collection;
+    private final WorkflowNodeRunStore store;
 
-    public MongoWorkflowJournal(MongoCollection<WorkflowNodeRun> collection) {
-        this.collection = collection;
+    public StoreWorkflowJournal(WorkflowNodeRunStore store) {
+        this.store = store;
     }
 
     @Override
     public List<WorkflowNodeRun> nodeRuns(String runId) {
-        return collection.find(Filters.eq("run_id", runId));
+        return store.listByRun(runId);
     }
 
     @Override
     public boolean appendRunning(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
-        WorkflowNodeRun nodeRun = newNodeRun(run, node, scopePath, NodeRunStatus.RUNNING);
-        try {
-            collection.insert(nodeRun);
-            return true;
-        } catch (MongoWriteException e) {
-            if (e.getCode() == DUPLICATE_KEY) {
-                return false;   // another dispatcher already claimed this node-run
-            }
-            throw e;
-        }
+        return store.insertIfAbsent(newNodeRun(run, node, scopePath, NodeRunStatus.RUNNING));
     }
 
     @Override
     public void recordInput(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, String inputJson) {
         String id = nodeRunId(run.id, node.id(), scopePath);
-        WorkflowNodeRun nodeRun = collection.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));
+        WorkflowNodeRun nodeRun = store.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));
         nodeRun.inputJson = inputJson;
-        collection.replace(nodeRun);
+        store.replace(nodeRun);
     }
 
     @Override
     public void recordOutcome(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath, NodeOutcome outcome) {
         String id = nodeRunId(run.id, node.id(), scopePath);
-        WorkflowNodeRun nodeRun = collection.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));
+        WorkflowNodeRun nodeRun = store.get(id).orElseThrow(() -> new IllegalStateException("node-run not found: " + id));
         switch (outcome) {
             case NodeOutcome.Normal normal -> {
                 nodeRun.status = NodeRunStatus.COMPLETED;
@@ -117,14 +102,14 @@ public class MongoWorkflowJournal implements WorkflowJournal {
             }
         }
         nodeRun.completedAt = ZonedDateTime.now();
-        collection.replace(nodeRun);
+        store.replace(nodeRun);
     }
 
     /**
      * Seed a frozen prefix node-run into a new (resume) run: copy a source run's terminal fact verbatim under the
      * target run's id, so the planner re-derives the exact same edge verdicts and the resume frontier lands on the
      * chosen node. Only COMPLETED / SKIPPED facts are seeded (the re-run set carries no fact and runs fresh); the
-     * deterministic _id keeps it idempotent if a seed is retried.
+     * deterministic id keeps it idempotent if a seed is retried.
      */
     public void seed(String targetRunId, boolean preview, WorkflowNodeRun prior) {
         var now = ZonedDateTime.now();
@@ -148,25 +133,13 @@ public class MongoWorkflowJournal implements WorkflowJournal {
         seeded.startedAt = now;
         seeded.completedAt = now;
         seeded.createdAt = now;
-        try {
-            collection.insert(seeded);
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY) {
-                throw e;
-            }
-        }
+        store.insertIfAbsent(seeded);
     }
 
     @Override
     public void appendSkipped(WorkflowRun run, WorkflowNode node, List<ScopeFrame> scopePath) {
         WorkflowNodeRun nodeRun = newNodeRun(run, node, scopePath, NodeRunStatus.SKIPPED);
         nodeRun.completedAt = nodeRun.startedAt;
-        try {
-            collection.insert(nodeRun);
-        } catch (MongoWriteException e) {
-            if (e.getCode() != DUPLICATE_KEY) {
-                throw e;
-            }
-        }
+        store.insertIfAbsent(nodeRun);
     }
 }

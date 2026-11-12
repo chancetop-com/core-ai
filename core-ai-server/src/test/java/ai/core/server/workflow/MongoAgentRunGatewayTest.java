@@ -6,7 +6,6 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowRun;
 import ai.core.server.workflow.engine.WorkflowNode;
 import core.framework.json.JSON;
-import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -46,13 +45,13 @@ class MongoAgentRunGatewayTest {
         version.id = "workflow-1:v1";
         version.agentSnapshots = Map.of("agent-node", JSON.toJSON(snapshot));
         @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowPublishedVersion> versions = mock(MongoCollection.class);
+        WorkflowVersionStore versions = mock(WorkflowVersionStore.class);
         when(versions.get(version.id)).thenReturn(Optional.of(version));
         var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
         var blocked = new WorkflowValidationException(List.of("node agent-node has an unsafe legacy snapshot"));
         doThrow(blocked).when(validator).requireSafe(version);
         var gateway = new MongoAgentRunGateway(validator);
-        gateway.versionCollection = versions;
+        gateway.versionStore = versions;
         gateway.agentRunner = mock(ai.core.server.run.AgentRunner.class);
         var run = new WorkflowRun();
         run.versionId = version.id;
@@ -74,11 +73,11 @@ class MongoAgentRunGatewayTest {
         version.id = "workflow-1:v1";
         version.agentSnapshots = Map.of("agent-node", JSON.toJSON(snapshot));
         @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowPublishedVersion> versions = mock(MongoCollection.class);
+        WorkflowVersionStore versions = mock(WorkflowVersionStore.class);
         when(versions.get(version.id)).thenReturn(Optional.of(version));
         var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
         var gateway = new MongoAgentRunGateway(validator);
-        gateway.versionCollection = versions;
+        gateway.versionStore = versions;
         gateway.agentRunner = mock(ai.core.server.run.AgentRunner.class);
         var run = new WorkflowRun();
         run.versionId = version.id;
@@ -93,3 +92,4 @@ class MongoAgentRunGatewayTest {
         verifyNoInteractions(validator);
     }
 }
+

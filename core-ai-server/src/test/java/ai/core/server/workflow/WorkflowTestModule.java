@@ -161,7 +161,7 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(ai.core.server.rbac.RoleRegistry.class);
         bind(ai.core.server.apiuser.PermissionService.class);
         bind(ProjectStore.class, bind(MongoProjectStore.class));
-        bindProjectDataStores();
+        bindDataStores();
         bind(ai.core.server.project.ProjectStateService.class);   // injected by ProjectService
         bind(FileRecordStore.class, bind(MongoFileRecordStore.class));   // injected by ProjectAttributionStore
         bind(ai.core.server.project.ProjectAttributionStore.class);   // injected by ProjectService/ProjectArtifactBinder
@@ -185,11 +185,11 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowPublishService.class);
         // bind the graph-loader seam before WorkflowRunService: the framework injects eagerly at bind() time, so a
         // dependency must already be registered when its dependent is bound.
-        var graphLoader = bind(MongoWorkflowGraphLoader.class);
+        var graphLoader = bind(StoreWorkflowGraphLoader.class);
         bind(WorkflowGraphLoader.class, graphLoader);
         bind(WorkflowRunService.class);
         // bind the sub-workflow gateway before the executor/runner that depend on it because injection is eager
-        var workflowRunGateway = bind(MongoWorkflowRunGateway.class);
+        var workflowRunGateway = bind(StoreWorkflowRunGateway.class);
         bind(WorkflowRunGateway.class, workflowRunGateway);
         var registry = new NodeExecutorRegistry(Map.of(
             NodeType.START, new StartExecutor(),
@@ -204,7 +204,11 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
     }
 
-    private void bindProjectDataStores() {
+    private void bindDataStores() {
+        bind(WorkflowDefinitionStore.class, bind(MongoWorkflowDefinitionStore.class));
+        bind(WorkflowVersionStore.class, bind(MongoWorkflowVersionStore.class));
+        bind(WorkflowRunStore.class, bind(MongoWorkflowRunStore.class));
+        bind(WorkflowNodeRunStore.class, bind(MongoWorkflowNodeRunStore.class));
         bind(AgentDefinitionStore.class, bind(MongoAgentDefinitionStore.class));
         bind(AgentScheduleStore.class, bind(MongoAgentScheduleStore.class));
         bind(AgentRunStore.class, bind(MongoAgentRunStore.class));

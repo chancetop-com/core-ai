@@ -9,7 +9,7 @@ import java.util.List;
 
 /**
  * The persistence seam the advance loop drives: read the node-runs to fold, and append/settle node-runs.
- * Mongo-backed in production ({@link MongoWorkflowJournal}); faked in tests so the drive loop is unit-testable.
+ * Store-backed in production ({@link StoreWorkflowJournal}); faked in tests so the drive loop is unit-testable.
  *
  * @author Xander
  */

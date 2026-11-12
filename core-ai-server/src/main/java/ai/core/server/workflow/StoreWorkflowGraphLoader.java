@@ -4,7 +4,6 @@ import ai.core.server.domain.WorkflowPublishedVersion;
 import ai.core.server.domain.WorkflowVersionStatus;
 import ai.core.server.workflow.engine.WorkflowGraph;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 /**
  * Loads the engine graph for a pinned published version: fetch the immutable snapshot, verify its sha256
@@ -13,13 +12,13 @@ import core.framework.mongo.MongoCollection;
  *
  * @author Xander
  */
-public class MongoWorkflowGraphLoader implements WorkflowGraphLoader {
+public class StoreWorkflowGraphLoader implements WorkflowGraphLoader {
     @Inject
-    MongoCollection<WorkflowPublishedVersion> versionCollection;
+    WorkflowVersionStore versionStore;
 
     @Override
     public WorkflowGraph load(String versionId) {
-        WorkflowPublishedVersion version = versionCollection.get(versionId)
+        WorkflowPublishedVersion version = versionStore.get(versionId)
             .orElseThrow(() -> new IllegalStateException("published workflow version not found: " + versionId));
         if (version.status == WorkflowVersionStatus.DISABLED) {
             throw new IllegalStateException("workflow version is disabled: " + versionId);

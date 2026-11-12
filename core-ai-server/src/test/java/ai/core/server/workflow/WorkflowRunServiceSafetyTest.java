@@ -3,9 +3,7 @@ package ai.core.server.workflow;
 import ai.core.server.domain.TriggerType;
 import ai.core.server.domain.WorkflowDefinition;
 import ai.core.server.domain.WorkflowPublishedVersion;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.domain.WorkflowVisibility;
-import core.framework.mongo.MongoCollection;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,21 +27,18 @@ class WorkflowRunServiceSafetyTest {
         var version = new WorkflowPublishedVersion();
         version.id = definition.publishedVersionId;
         version.workflowId = definition.id;
-        @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowDefinition> definitions = mock(MongoCollection.class);
-        @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowPublishedVersion> versions = mock(MongoCollection.class);
-        @SuppressWarnings("unchecked")
-        MongoCollection<WorkflowRun> runs = mock(MongoCollection.class);
+        WorkflowDefinitionStore definitions = mock(WorkflowDefinitionStore.class);
+        WorkflowVersionStore versions = mock(WorkflowVersionStore.class);
+        WorkflowRunStore runs = mock(WorkflowRunStore.class);
         when(definitions.get(definition.id)).thenReturn(Optional.of(definition));
         when(versions.get(version.id)).thenReturn(Optional.of(version));
         var validator = mock(WorkflowPrivateAgentSafetyValidator.class);
         var blocked = new WorkflowValidationException(List.of("node n1 has an unsafe legacy snapshot"));
         doThrow(blocked).when(validator).requireSafe(version);
         var service = new WorkflowRunService();
-        service.definitionCollection = definitions;
-        service.versionCollection = versions;
-        service.runCollection = runs;
+        service.definitionStore = definitions;
+        service.versionStore = versions;
+        service.runStore = runs;
         service.privateAgentSafetyValidator = validator;
 
         var actual = assertThrows(WorkflowValidationException.class,
@@ -53,3 +48,4 @@ class WorkflowRunServiceSafetyTest {
         verifyNoInteractions(runs);
     }
 }
+

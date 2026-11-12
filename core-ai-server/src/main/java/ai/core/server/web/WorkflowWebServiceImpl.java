@@ -42,11 +42,11 @@ import ai.core.server.workflow.WorkflowDefinitionService;
 import ai.core.server.workflow.WorkflowPortService;
 import ai.core.server.workflow.WorkflowPublishService;
 import ai.core.server.workflow.WorkflowRunService;
+import ai.core.server.workflow.WorkflowRunStore;
 import ai.core.server.workflow.WorkflowRunner;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.WebContext;
 
 import java.util.HashMap;
@@ -86,7 +86,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
     WorkflowRunner runner;
 
     @Inject
-    MongoCollection<WorkflowRun> runCollection;
+    WorkflowRunStore runStore;
 
     @Inject
     AgentRunStore agentRunStore;
@@ -376,7 +376,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         var userId = AuthContext.userId(webContext);
         var response = new ListNodeRunsResponse();
         response.nodeRuns = runService.listNodeRuns(runId, userId, isAdmin(userId)).stream()
-            .map(nodeRun -> WorkflowRunViewSupport.toNodeRunView(nodeRun, runCollection, agentRunStore)).toList();
+            .map(nodeRun -> WorkflowRunViewSupport.toNodeRunView(nodeRun, runStore, agentRunStore)).toList();
         return response;
     }
 
@@ -424,6 +424,7 @@ public class WorkflowWebServiceImpl implements WorkflowWebService {
         return response;
     }
 }
+
 
 
 

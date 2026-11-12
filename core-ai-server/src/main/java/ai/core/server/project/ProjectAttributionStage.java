@@ -7,15 +7,9 @@ import ai.core.server.run.AgentRunStore;
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.Project;
-import ai.core.server.domain.WorkflowRun;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,7 +61,7 @@ public class ProjectAttributionStage {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<WorkflowRun> workflowRunCollection;
+    ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
     @Inject
@@ -153,8 +147,12 @@ public class ProjectAttributionStage {
     private void collectWorkflowRuns(ProjectAttributionMaterial material, Project project, ZonedDateTime cursor) {
         var workflowIds = memberIds(project, "workflow");
         if (workflowIds.isEmpty()) return;
-        var query = query(Filters.in("workflow_id", workflowIds), "started_at", cursor, MAX_WORKFLOW_RUNS);
-        var runs = workflowRunCollection.find(query);
+        var query = new ai.core.server.workflow.WorkflowRunQuery();
+        query.workflowIds = workflowIds;
+        query.from = cursor;
+        query.ascending = cursor != null;
+        query.limit = MAX_WORKFLOW_RUNS;
+        var runs = workflowRunStore.find(query);
         seedCoverage(material, ProjectAttributionStore.TARGET_WORKFLOW_RUN, cursor, runs.isEmpty() ? null : runs.getFirst().startedAt);
         var states = scanStore.states(material.projectId(), ProjectAttributionStore.TARGET_WORKFLOW_RUN, runs.stream().map(r -> r.id).toList());
         for (var run : runs) {
@@ -194,14 +192,6 @@ public class ProjectAttributionStage {
             material.append(text.toString());
             for (var artifact : artifactsOf(session.artifacts != null ? session.artifacts : List.of())) material.addFile(artifact);
         }
-    }
-
-    private Query query(Bson memberFilter, String timeField, ZonedDateTime cursor, int limit) {
-        var query = new Query();
-        query.filter = cursor == null ? memberFilter : Filters.and(memberFilter, Filters.gte(timeField, cursor));
-        query.sort = cursor == null ? Sorts.descending(timeField) : Sorts.ascending(timeField);
-        query.limit = limit;
-        return query;
     }
 
     // forward mode only: the oldest record the (ascending) query returned is the point the type's walk
@@ -354,7 +344,7 @@ public class ProjectAttributionStage {
         return switch (targetType) {
             case ProjectAttributionStore.TARGET_SESSION -> chatSessionStore.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_RUN -> agentRunStore.get(targetId).isPresent();
-            case ProjectAttributionStore.TARGET_WORKFLOW_RUN -> workflowRunCollection.get(targetId).isPresent();
+            case ProjectAttributionStore.TARGET_WORKFLOW_RUN -> workflowRunStore.get(targetId).isPresent();
             case ProjectAttributionStore.TARGET_FILE -> fileRecordStore.get(targetId).isPresent();
             default -> false;
         };
@@ -405,6 +395,9 @@ public class ProjectAttributionStage {
         return value.length() > maxChars ? value.substring(0, maxChars) + "...(truncated)" : value;
     }
 }
+
+
+
 
 
 
