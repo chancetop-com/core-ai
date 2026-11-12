@@ -118,6 +118,18 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgComparisonVoteCountRow.class);
         db().view(ai.core.server.comparison.PgComparisonMigrationLockRow.class);
         db().view(ai.core.server.comparison.PgComparisonMigrationMarkerRow.class);
+        registerWorkflowViews();
+    }
+
+    private void registerWorkflowViews() {
+        db().view(ai.core.server.workflow.PgWorkflowDefinitionRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowDefinitionCountRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowVersionRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowRunRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowRunCountRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowNodeRunRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowMigrationLockRow.class);
+        db().view(ai.core.server.workflow.PgWorkflowMigrationMarkerRow.class);
     }
 }
 
