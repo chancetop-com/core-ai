@@ -1,6 +1,8 @@
 package ai.core.server.replay.service;
 
 import ai.core.api.server.replay.CreateReplayRunRequest;
+import ai.core.server.replay.ReplayExperimentStore;
+import ai.core.server.replay.ReplayRunStore;
 import ai.core.server.replay.domain.ReplayExperiment;
 import ai.core.server.replay.domain.ReplayExperimentOrigin;
 import ai.core.server.replay.domain.ReplayRun;
@@ -15,16 +17,16 @@ import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.service.TraceVisibilityResolver;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
+
+
+
+
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
+
+
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.conversions.Bson;
+
 
 import java.nio.charset.StandardCharsets;
 import java.time.ZonedDateTime;
@@ -104,9 +106,9 @@ public class ReplayService {
     }
 
     @Inject
-    MongoCollection<ReplayExperiment> experimentCollection;
+    ReplayExperimentStore experimentStore;
     @Inject
-    MongoCollection<ReplayRun> runCollection;
+    ReplayRunStore runStore;
     @Inject
     TraceService traceService;
     @Inject
@@ -132,7 +134,7 @@ public class ReplayService {
         if (isBlank(traceId) && isBlank(spanId)) {
             experiment.origin = ReplayExperimentOrigin.BLANK;
             experiment.draftRequest = BLANK_DRAFT;
-            experimentCollection.insert(experiment);
+            experimentStore.insert(experiment);
             return experiment;
         }
         if (isBlank(traceId) || isBlank(spanId)) {
@@ -167,25 +169,20 @@ public class ReplayService {
         experiment.originalParams = span.attributes != null ? span.attributes.get(MODEL_PARAMETERS_ATTR) : null;
         experiment.originalUsage = toUsage(span);
         experiment.traceSnapshot = buildTraceSnapshot(trace.traceId);
-        experimentCollection.insert(experiment);
+        experimentStore.insert(experiment);
         return experiment;
     }
 
     public List<ReplayExperiment> list(String userId, boolean admin, String agentId, ReplayExperimentOrigin origin, int offset, int limit) {
-        var query = new Query();
-        query.filter = listFilter(userId, admin, agentId, origin);
-        query.sort = Sorts.descending("created_at");
-        query.skip = Math.max(offset, 0);
-        query.limit = Math.clamp(limit, 1, MAX_LIST_LIMIT);
-        return experimentCollection.find(query);
+        return experimentStore.find(userId, admin, agentId, origin, offset, limit);
     }
 
     public long count(String userId, boolean admin, String agentId, ReplayExperimentOrigin origin) {
-        return experimentCollection.count(listFilter(userId, admin, agentId, origin));
+        return experimentStore.count(userId, admin, agentId, origin);
     }
 
     public ReplayExperiment get(String id) {
-        return experimentCollection.get(id).orElse(null);
+        return experimentStore.get(id).orElse(null);
     }
 
     /**
@@ -197,14 +194,14 @@ public class ReplayService {
         if (draftRequest != null) experiment.draftRequest = draftRequest;
         if (note != null) experiment.note = note;
         experiment.updatedAt = ZonedDateTime.now();
-        experimentCollection.replace(experiment);
+        experimentStore.replace(experiment);
         return experiment;
     }
 
     public void delete(String id, String userId, boolean admin) {
         var experiment = requireOwned(id, userId, admin);
-        runCollection.delete(Filters.eq("experiment_id", experiment.id));
-        experimentCollection.delete(Filters.eq("_id", experiment.id));
+        runStore.deleteByExperiment(experiment.id);
+        experimentStore.delete(experiment.id);
     }
 
     public ReplayRun createRun(String experimentId, String userId, boolean admin, CreateReplayRunRequest request) {
@@ -246,20 +243,19 @@ public class ReplayService {
         }
         run.status = ReplayRunStatus.RUNNING;
         run.createdAt = now;
-        runCollection.insert(run);
+        runStore.insert(run);
 
-        experimentCollection.update(Filters.eq("_id", experiment.id),
-                Updates.combine(Updates.inc("run_count", 1), Updates.set("updated_at", now)));
+        experimentStore.incrementRunCount(experiment.id, now);
         replayExecutor.submit(run);
         return run;
     }
 
     public ReplayRun getRun(String runId) {
-        return runCollection.get(runId).orElse(null);
+        return runStore.get(runId).orElse(null);
     }
 
     public void cancelRun(String runId, String userId, boolean admin) {
-        var run = runCollection.get(runId).orElse(null);
+        var run = runStore.get(runId).orElse(null);
         if (run == null) throw new NotFoundException("replay run not found");
         if (!admin && !userId.equals(run.userId)) throw new NotFoundException("replay run not found");
         replayExecutor.cancel(runId);
@@ -271,42 +267,16 @@ public class ReplayService {
      */
     public long cleanupAbandonedBlankExperiments() {
         var cutoff = ZonedDateTime.now().minusDays(BLANK_RETENTION_DAYS);
-        return experimentCollection.delete(Filters.and(
-                untouchedBlankFilter(),
-                Filters.lt("created_at", cutoff)));
-    }
-
-    private Bson untouchedBlankFilter() {
-        return Filters.and(
-                Filters.eq("origin", "blank"),
-                Filters.eq("run_count", 0),
-                Filters.eq("note", null),
-                Filters.or(Filters.eq("draft_request", null), Filters.eq("draft_request", BLANK_DRAFT)));
+        return experimentStore.deleteUntouchedBlankBefore(cutoff, BLANK_DRAFT);
     }
 
     /** Summary rows for one experiment, excluding the heavy request/samples payloads. */
     public List<ReplayRun> runSummaries(String experimentId) {
-        var query = new Query();
-        query.filter = Filters.eq("experiment_id", experimentId);
-        query.sort = Sorts.descending("created_at");
-        query.projection = Projections.exclude("request", "samples");
-        return runCollection.find(query);
-    }
-
-    private Bson listFilter(String userId, boolean admin, String agentId, ReplayExperimentOrigin origin) {
-        var filters = new ArrayList<Bson>();
-        if (!admin) filters.add(Filters.eq("user_id", userId));
-        if (agentId != null && !agentId.isBlank()) filters.add(Filters.eq("agent_id", agentId));
-        // origin equality is index-backed via (origin, created_at); trace_id presence
-        // checks ($ne null / $eq null) have no index path and fail 291 on admin counts
-        if (origin == ReplayExperimentOrigin.SPAN) filters.add(Filters.eq("origin", "span"));
-        if (origin == ReplayExperimentOrigin.BLANK) filters.add(Filters.eq("origin", "blank"));
-        if (filters.isEmpty()) return Filters.empty();
-        return filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
+        return runStore.summaries(experimentId);
     }
 
     private ReplayExperiment requireOwned(String id, String userId, boolean admin) {
-        var experiment = experimentCollection.get(id).orElse(null);
+        var experiment = experimentStore.get(id).orElse(null);
         if (experiment == null || !admin && !userId.equals(experiment.userId)) {
             throw new NotFoundException("replay experiment not found");
         }
@@ -326,3 +296,5 @@ public class ReplayService {
         return JsonUtil.toJson(snapshot);
     }
 }
+
+

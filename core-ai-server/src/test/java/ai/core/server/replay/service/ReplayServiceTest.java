@@ -1,6 +1,8 @@
 package ai.core.server.replay.service;
 
 import ai.core.api.server.replay.CreateReplayRunRequest;
+import ai.core.server.replay.MongoReplayExperimentStore;
+import ai.core.server.replay.MongoReplayRunStore;
 import ai.core.server.replay.domain.ReplayExperiment;
 import ai.core.server.replay.domain.ReplayExperimentOrigin;
 import ai.core.server.replay.domain.ReplayRun;
@@ -106,8 +108,8 @@ class ReplayServiceTest {
     ReplayServiceTest() {
         var traceVisibilityResolver = mock(TraceVisibilityResolver.class);
         service = new ReplayService();
-        service.experimentCollection = experimentCollection;
-        service.runCollection = runCollection;
+        service.experimentStore = MongoReplayExperimentStore.of(experimentCollection);
+        service.runStore = MongoReplayRunStore.of(runCollection);
         service.traceService = traceService;
         service.traceAccessControl = traceAccessControl;
         service.traceVisibilityResolver = traceVisibilityResolver;
@@ -339,7 +341,7 @@ class ReplayServiceTest {
         service.delete("exp-1", "user-1", false);
 
         verify(runCollection).delete(any());
-        verify(experimentCollection).delete(any());
+        verify(experimentCollection).delete("exp-1");
     }
 
     @Test

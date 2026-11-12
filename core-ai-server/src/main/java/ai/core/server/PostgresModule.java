@@ -119,6 +119,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgComparisonMigrationLockRow.class);
         db().view(ai.core.server.comparison.PgComparisonMigrationMarkerRow.class);
         registerWorkflowViews();
+        registerReplayViews();
     }
 
     private void registerWorkflowViews() {
@@ -130,6 +131,14 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.workflow.PgWorkflowNodeRunRow.class);
         db().view(ai.core.server.workflow.PgWorkflowMigrationLockRow.class);
         db().view(ai.core.server.workflow.PgWorkflowMigrationMarkerRow.class);
+    }
+
+    private void registerReplayViews() {
+        db().view(ai.core.server.replay.PgReplayExperimentRow.class);
+        db().view(ai.core.server.replay.PgReplayExperimentCountRow.class);
+        db().view(ai.core.server.replay.PgReplayRunRow.class);
+        db().view(ai.core.server.replay.PgReplayMigrationLockRow.class);
+        db().view(ai.core.server.replay.PgReplayMigrationMarkerRow.class);
     }
 }
 

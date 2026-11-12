@@ -1,6 +1,8 @@
 package ai.core.server.replay.service;
 
 import ai.core.llm.LLMProviders;
+import ai.core.server.replay.ReplayRunStore;
+import ai.core.server.replay.ReplaySampleUpdate;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.streaming.DefaultStreamingCallback;
@@ -11,21 +13,20 @@ import ai.core.server.replay.domain.ReplaySampleStatus;
 import ai.core.server.trace.service.ModelPricingService;
 import ai.core.telemetry.TelemetryConfig;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
+
+
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
+
 import core.framework.util.Strings;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
 import io.opentelemetry.api.trace.StatusCode;
-import org.bson.conversions.Bson;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -66,7 +67,7 @@ public class ReplayExecutor {
     private final Map<String, AtomicInteger> pendingSamples = new ConcurrentHashMap<>();
 
     @Inject
-    MongoCollection<ReplayRun> runCollection;
+    ReplayRunStore runStore;
     @Inject
     LLMProviders llmProviders;
     @Inject
@@ -87,17 +88,9 @@ public class ReplayExecutor {
         if (callbacks != null) {
             callbacks.forEach((index, callback) -> callback.cancelConnection());
         }
-        var run = runCollection.get(runId).orElse(null);
+        var run = runStore.get(runId).orElse(null);
         if (run == null || run.samples == null) return;
-        var updates = new ArrayList<Bson>();
-        for (var sample : run.samples) {
-            if (sample.status == ReplaySampleStatus.RUNNING) {
-                updates.add(Updates.set("samples." + sample.index + ".status", ReplaySampleStatus.CANCELLED));
-            }
-        }
-        if (!updates.isEmpty()) {
-            runCollection.update(Filters.eq("_id", runId), Updates.combine(updates));
-        }
+        runStore.cancelRunningSamples(runId);
     }
 
     public void shutdown() {
@@ -115,22 +108,25 @@ public class ReplayExecutor {
             var request = buildRequest(run);
             var response = llmProviders.getProvider().completionStream(request, callback, null, true);
             if (callback.isCancelled() || response == null) {
-                updateSample(run.id, Updates.set("samples." + index + ".status", ReplaySampleStatus.CANCELLED));
+                var update = new ReplaySampleUpdate();
+                update.status = ReplaySampleStatus.CANCELLED;
+                runStore.updateSample(run.id, index, update);
                 span.setStatus(StatusCode.ERROR, "cancelled");
             } else {
                 var traceId = span.getSpanContext().isValid() ? span.getSpanContext().getTraceId() : null;
                 recordSuccess(new SampleContext(run.id, index, startedAt, startedMs, traceId), request, response);
             }
         } catch (RuntimeException e) {
+            var update = new ReplaySampleUpdate();
             if (callback.isCancelled()) {
-                updateSample(run.id, Updates.set("samples." + index + ".status", ReplaySampleStatus.CANCELLED));
+                update.status = ReplaySampleStatus.CANCELLED;
             } else {
                 span.setStatus(StatusCode.ERROR, e.getMessage());
                 span.recordException(e);
-                updateSample(run.id,
-                        Updates.set("samples." + index + ".status", ReplaySampleStatus.ERROR),
-                        Updates.set("samples." + index + ".error_message", truncate(e.getMessage())));
+                update.status = ReplaySampleStatus.ERROR;
+                update.errorMessage = truncate(e.getMessage());
             }
+            runStore.updateSample(run.id, index, update);
         } finally {
             span.end();
             var callbacks = activeCallbacks.get(run.id);
@@ -157,16 +153,16 @@ public class ReplayExecutor {
         var cost = modelPricingService.resolve(request.model, inputTokens, outputTokens, cachedTokens, context.startedAt, null).costUsd();
         var durationMs = System.currentTimeMillis() - context.startedMs;
 
-        var updates = new ArrayList<Bson>();
-        updates.add(Updates.set("samples." + context.index + ".status", ReplaySampleStatus.COMPLETED));
-        if (output != null) updates.add(Updates.set("samples." + context.index + ".output", output));
-        if (inputTokens != null) updates.add(Updates.set("samples." + context.index + ".input_tokens", inputTokens));
-        if (outputTokens != null) updates.add(Updates.set("samples." + context.index + ".output_tokens", outputTokens));
-        if (cachedTokens != null) updates.add(Updates.set("samples." + context.index + ".cached_tokens", cachedTokens));
-        if (cost != null) updates.add(Updates.set("samples." + context.index + ".cost_usd", cost));
-        updates.add(Updates.set("samples." + context.index + ".duration_ms", durationMs));
-        if (context.traceId != null) updates.add(Updates.set("samples." + context.index + ".replay_trace_id", context.traceId));
-        updateSample(context.runId, updates.toArray(new Bson[0]));
+        var update = new ReplaySampleUpdate();
+        update.status = ReplaySampleStatus.COMPLETED;
+        update.output = output;
+        update.inputTokens = inputTokens;
+        update.outputTokens = outputTokens;
+        update.cachedTokens = cachedTokens;
+        update.costUsd = cost;
+        update.durationMs = durationMs;
+        update.replayTraceId = context.traceId;
+        runStore.updateSample(context.runId, context.index, update);
     }
 
     CompletionRequest buildRequest(ReplayRun run) {
@@ -192,20 +188,14 @@ public class ReplayExecutor {
                 .startSpan();
     }
 
-    private void updateSample(String runId, Bson... updates) {
-        runCollection.update(Filters.eq("_id", runId), Updates.combine(updates));
-    }
-
     private void finishSample(String runId) {
         var pending = pendingSamples.get(runId);
         if (pending == null) return;
         if (pending.decrementAndGet() > 0) return;
         pendingSamples.remove(runId);
-        var run = runCollection.get(runId).orElse(null);
+        var run = runStore.get(runId).orElse(null);
         if (run == null || run.samples == null || run.samples.isEmpty()) return;
-        runCollection.update(Filters.eq("_id", runId), Updates.combine(
-                Updates.set("status", aggregate(run.samples)),
-                Updates.set("completed_at", ZonedDateTime.now())));
+        runStore.complete(runId, aggregate(run.samples), ZonedDateTime.now());
     }
 
     ReplayRunStatus aggregate(List<ReplaySample> samples) {
@@ -247,3 +237,5 @@ public class ReplayExecutor {
         }
     }
 }
+
+
