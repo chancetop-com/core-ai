@@ -97,7 +97,7 @@ final class AgentListHelper {
         List<AgentDefinition> agents;
         if (limit > 1) {
             excludeAssistant(query, assistant.id);
-            agents = findAgents(query, 0, limit - 1);
+            agents = new ArrayList<>(findAgents(query, 0, limit - 1));
         } else {
             agents = new ArrayList<>();
         }
