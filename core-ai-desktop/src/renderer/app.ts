@@ -28,6 +28,7 @@ import {
 } from './transcript/reducer';
 import { reasoningItems, summaryText, textItems } from './transcript/selectors';
 import { messageTimeLabel } from './transcript/time';
+import { VoiceRecorder, bytesToBase64 } from './voice';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -457,6 +458,8 @@ const state: {
   colorScheme: string;
   update: UpdateState | null;
   capabilities: string[];
+  voiceReady: boolean;
+  voiceHint: string;
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -489,6 +492,8 @@ const state: {
   colorScheme: 'system',
   update: null,
   capabilities: [],
+  voiceReady: false,
+  voiceHint: 'Voice input',
 };
 
 let chatView: HTMLElement | null = null;
@@ -501,6 +506,9 @@ let disposeSessionMenu: (() => void) | null = null;
 let composerInput: HTMLTextAreaElement | null = null;
 let composerControlsEl: HTMLElement | null = null;
 let composerAttachEl: HTMLElement | null = null;
+let composerMicEl: HTMLButtonElement | null = null;
+let voiceRecorder: VoiceRecorder | null = null;
+let voiceStatus: 'idle' | 'recording' | 'transcribing' = 'idle';
 let composerAutoGrow: (() => void) | null = null;
 /** Per-session view state: composer draft, right-dock tab, artifact selection/unread/scope. */
 const surfaces = new SessionSurfaces();
@@ -1050,6 +1058,7 @@ const ICONS = {
   memory: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
   plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  mic: '<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>',
   'chevron-left': '<polyline points="15 18 9 12 15 6"/>',
   'chevron-right': '<polyline points="9 18 15 12 9 6"/>',
   'chevron-down': '<polyline points="6 9 12 15 18 9"/>',
@@ -2195,6 +2204,7 @@ async function connect(workspace: string): Promise<void> {
   sessionStackEl = null;
   chatTitleEl = null;
   applyComposerStatus('idle');
+  void refreshVoiceState();
   if (!state.workspaces.includes(workspace)) {
     state.workspaces = [workspace, ...state.workspaces].slice(0, 8);
   }
@@ -2500,7 +2510,12 @@ function buildComposer(): HTMLElement {
   attach.append(icon('plus'));
   attach.title = 'Attach images or files — a pasted screenshot becomes an image attachment';
   attach.onclick = () => void chooseAttachments();
-  inputRow.append(attach, composerInput);
+  composerMicEl = el('button', 'composer-mic-btn') as HTMLButtonElement;
+  composerMicEl.append(icon('mic'));
+  composerMicEl.setAttribute('aria-label', 'Voice input');
+  composerMicEl.onclick = () => void toggleVoiceInput();
+  inputRow.append(attach, composerInput, composerMicEl);
+  updateComposerMic();
   composerAttachEl = el('div', 'composer-attachments');
   composerAttachEl.hidden = true;
   composerControlsEl = el('div', 'composer-controls');
@@ -2583,6 +2598,138 @@ function openAttachmentLightbox(src: string, name: string, size: number): void {
   };
   document.addEventListener('keydown', onKey);
   overlay.addEventListener('click', close);
+}
+
+// --- voice input: record locally, transcribe on the server through the engine. The engine owns the
+// login credentials, so the renderer only sends the base64 clip and gets text back.
+
+function updateComposerMic(): void {
+  if (!composerMicEl) return;
+  composerMicEl.classList.toggle('recording', voiceStatus === 'recording');
+  composerMicEl.classList.toggle('busy', voiceStatus === 'transcribing');
+  if (voiceStatus === 'recording') {
+    composerMicEl.disabled = false;
+    composerMicEl.title = 'Recording — click to stop and transcribe';
+    return;
+  }
+  if (voiceStatus === 'transcribing') {
+    composerMicEl.disabled = true;
+    composerMicEl.title = 'Transcribing…';
+    return;
+  }
+  composerMicEl.disabled = !state.voiceReady;
+  composerMicEl.title = state.voiceReady ? 'Voice input — click to record' : state.voiceHint;
+}
+
+async function refreshVoiceState(): Promise<void> {
+  if (!state.workspace || !state.capabilities.includes('speech')) {
+    state.voiceReady = false;
+    state.voiceHint = 'Voice input needs a newer engine';
+    updateComposerMic();
+    return;
+  }
+  const envelope = await callEnvelope('speech/models');
+  if (!envelope.ok) {
+    state.voiceReady = false;
+    state.voiceHint = 'Voice input is unavailable: ' + (envelope.error?.message ?? 'engine error');
+    updateComposerMic();
+    return;
+  }
+  const result = envelope.result as { signedIn?: boolean; models?: unknown[]; error?: string } | undefined;
+  const models = Array.isArray(result?.models) ? result.models : [];
+  state.voiceReady = result?.signedIn === true && models.length > 0;
+  if (result?.signedIn !== true) {
+    state.voiceHint = 'Sign in to use voice input';
+  } else if (result.error) {
+    state.voiceHint = `Voice input unavailable: ${result.error}`;
+  } else {
+    state.voiceHint = 'Speech transcription is not configured on the server';
+  }
+  updateComposerMic();
+}
+
+async function toggleVoiceInput(): Promise<void> {
+  if (voiceStatus === 'transcribing') return;
+  if (voiceStatus === 'recording') {
+    await stopVoiceInput();
+    return;
+  }
+  if (!state.voiceReady) {
+    toast(state.voiceHint, 'error');
+    return;
+  }
+  try {
+    const recorder = new VoiceRecorder({
+      maxMs: 4 * 60 * 1000,
+      onTick: (elapsed) => {
+        if (composerMicEl && voiceStatus === 'recording') {
+          composerMicEl.title = `Recording ${fmtClock(elapsed)} — click to stop and transcribe`;
+        }
+      },
+      onAutoStop: () => {
+        toast('Recording limit reached — transcribing');
+        void stopVoiceInput();
+      },
+    });
+    await recorder.start();
+    voiceRecorder = recorder;
+    voiceStatus = 'recording';
+    updateComposerMic();
+  } catch (error) {
+    voiceRecorder = null;
+    voiceStatus = 'idle';
+    updateComposerMic();
+    toast(`Microphone unavailable: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  }
+}
+
+async function stopVoiceInput(): Promise<void> {
+  if (voiceStatus !== 'recording' || !voiceRecorder) return;
+  const recorder = voiceRecorder;
+  voiceRecorder = null;
+  voiceStatus = 'transcribing';
+  updateComposerMic();
+  try {
+    const clip = await recorder.stop();
+    const result = await call('speech/transcribe', {
+      audio: bytesToBase64(clip.bytes),
+      mimeType: clip.mimeType,
+      fileName: 'voice.wav',
+      // The UI locale is the best available hint; the server still auto-detects on OpenAI models.
+      language: navigator.language || undefined,
+    });
+    const text = typeof result?.text === 'string' ? result.text.trim() : '';
+    if (text) insertDictation(text);
+    else if (result) toast('No speech detected');
+  } catch (error) {
+    toast(`Transcription failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+  } finally {
+    voiceStatus = 'idle';
+    updateComposerMic();
+    composerInput?.focus();
+  }
+}
+
+/** Inserts the transcript at the caret, keeping the surrounding text separated by one space. */
+function insertDictation(text: string): void {
+  if (!composerInput) return;
+  const value = composerInput.value;
+  const start = composerInput.selectionStart ?? value.length;
+  const end = composerInput.selectionEnd ?? start;
+  const leading = start > 0 && !/\s$/.test(value.slice(0, start)) ? ' ' : '';
+  const trailing = end < value.length && !/^\s/.test(value.slice(end)) ? ' ' : '';
+  const insertion = `${leading}${text}${trailing}`;
+  composerInput.value = value.slice(0, start) + insertion + value.slice(end);
+  const caret = start + insertion.length;
+  composerInput.setSelectionRange(caret, caret);
+  composerInput.focus();
+  surface.draft = composerInput.value;
+  composerAutoGrow?.();
+}
+
+function fmtClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 function renderComposerAttachments(): void {

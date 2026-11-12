@@ -2,8 +2,11 @@ package ai.core.server;
 
 import ai.core.api.server.CapabilitiesWebService;
 import ai.core.api.server.speech.SpeechWebService;
+import ai.core.server.speech.SpeechTranscriptionController;
+import ai.core.server.speech.SpeechTranscriptionService;
 import ai.core.server.web.CapabilitiesWebServiceImpl;
 import ai.core.server.web.SpeechWebServiceImpl;
+import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
 
 /**
@@ -17,7 +20,11 @@ public class PlatformApiModule extends Module {
     }
 
     private void configureSpeechToken() {
+        // the transcription service must be bound before the WebService impl resolves its @Inject fields
+        bind(SpeechTranscriptionService.class);
         api().service(SpeechWebService.class, bind(SpeechWebServiceImpl.class));
+        http().route(HTTPMethod.POST, "/api/speech/transcriptions",
+                bind(SpeechTranscriptionController.class)::transcribe);
     }
 
     private void registerCapabilities() {

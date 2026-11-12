@@ -8,6 +8,7 @@ import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.decision.DecisionSupport;
 import ai.core.cli.hub.HubCredentialResolver;
 import ai.core.cli.media.MediaModelCatalog;
+import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
@@ -25,6 +26,7 @@ import ai.core.tool.tools.GenerateVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.MediaModelHint;
 import ai.core.tool.tools.SummarizePdfTool;
+import ai.core.tool.tools.TranscribeAudioTool;
 import ai.core.tool.tools.UnderstandVideoTool;
 import ai.core.utils.JsonUtil;
 
@@ -208,6 +210,10 @@ public final class LocalToolRuntime {
         if (llmProvider != null) {
             add(builtins, CaptionImageTool.builder().build());
             add(builtins, SummarizePdfTool.builder().build());
+        }
+        if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
+            add(builtins, TranscribeAudioTool.builder(
+                    new SpeechClient(auth.serverUrl(), auth.apiKey(), auth.insecure())).build());
         }
         if (decisionSupport.available()) {
             var description = DecideTool.buildDescription(decisionSupport.models());

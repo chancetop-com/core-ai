@@ -355,7 +355,7 @@ public class GatewayProviderService {
         if (value == null) return null;
         value = value.toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE", "VOLCENGINE_ARK" -> value;
+            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "OPENAI_AUDIO", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE", "VOLCENGINE_ARK" -> value;
             default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
         };
     }

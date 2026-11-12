@@ -186,7 +186,11 @@ public class GatewayModelDiscoveryService {
         var mode = firstText(source, "mode", "endpoint", "endpoint_type", "model_type");
         if (mode == null) return null;
         var value = mode.toLowerCase(Locale.ROOT);
-        if (containsAny(value, "embedding", "audio", "moderation")) return List.of();
+        if (containsAny(value, "embedding", "moderation")) return List.of();
+        if (value.contains("transcription") || value.contains("speech_to_text") || value.contains("speech-to-text")) {
+            return List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION);
+        }
+        if (value.contains("audio")) return List.of();
         var endpoints = new LinkedHashSet<String>();
         if (value.contains("image")) endpoints.add(GatewayModelService.ENDPOINT_IMAGE_GENERATION);
         if (value.contains("video")) endpoints.add(GatewayModelService.ENDPOINT_VIDEO_GENERATION);

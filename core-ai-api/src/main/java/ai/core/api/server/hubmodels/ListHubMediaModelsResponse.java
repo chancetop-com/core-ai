@@ -19,4 +19,7 @@ public class ListHubMediaModelsResponse {
 
     @Property(name = "videoModels")
     public List<HubMediaModelView> videoModels;
+
+    @Property(name = "transcriptionModels")
+    public List<HubMediaModelView> transcriptionModels;
 }

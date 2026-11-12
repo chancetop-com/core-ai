@@ -342,6 +342,24 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.speech.SpeechCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.speech.SpeechModelsCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "ai.core.cli.speech.SpeechTranscribeCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.appserver.AppServerCommand",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,

@@ -10,6 +10,7 @@ public enum GatewayEndpointType {
     IMAGE_GENERATION("/images/generations", GatewayModelService.ENDPOINT_IMAGE_GENERATION),
     IMAGE_EDIT("/images/edits", GatewayModelService.ENDPOINT_IMAGE_EDIT),
     VIDEO_GENERATION("/videos", GatewayModelService.ENDPOINT_VIDEO_GENERATION),
+    AUDIO_TRANSCRIPTION("/audio/transcriptions", GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION),
     DECISION("/systemone", GatewayModelService.ENDPOINT_DECISION);
 
     private static final Map<String, GatewayEndpointType> ALIASES = Map.ofEntries(
@@ -28,6 +29,12 @@ public enum GatewayEndpointType {
             Map.entry("video", VIDEO_GENERATION),
             Map.entry("video.generation", VIDEO_GENERATION),
             Map.entry("video.generations", VIDEO_GENERATION),
+            Map.entry("audio", AUDIO_TRANSCRIPTION),
+            Map.entry("audio.transcription", AUDIO_TRANSCRIPTION),
+            Map.entry("audio.transcriptions", AUDIO_TRANSCRIPTION),
+            Map.entry("transcription", AUDIO_TRANSCRIPTION),
+            Map.entry("transcribe", AUDIO_TRANSCRIPTION),
+            Map.entry("stt", AUDIO_TRANSCRIPTION),
             Map.entry("decision", DECISION),
             Map.entry("decision.systemone", DECISION),
             Map.entry("systemone", DECISION)

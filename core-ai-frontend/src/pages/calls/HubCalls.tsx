@@ -46,7 +46,7 @@ const KIND_ICONS: Record<string, { icon: ComponentType<{ size?: number }>; label
   api_tool: { icon: Wrench, label: 'API tool' },
   agent: { icon: Brain, label: 'Agent' },
   dataset: { icon: Database, label: 'Dataset' },
-  media: { icon: ImageIcon, label: 'Media generation' },
+  media: { icon: ImageIcon, label: 'Media / speech' },
   decision: { icon: Scale, label: 'Decision' },
 };
 

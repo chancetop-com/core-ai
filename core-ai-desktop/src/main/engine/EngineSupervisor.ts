@@ -14,12 +14,16 @@ export interface EngineSupervisorOptions {
 }
 interface EngineState { client: RpcClient; approvalPolicy: string; capabilities: string[]; ready: Promise<void> }
 
+// Long-running calls get their own budget; speech transcription uploads the whole clip and waits
+// for the upstream model, so the default two-minute RPC timeout is too tight for a long recording.
+const CALL_TIMEOUTS: Record<string, number> = { 'speech/transcribe': 10 * 60_000 };
+
 export class EngineSupervisor {
   private readonly engines = new Map<string, EngineState>();
   constructor(private readonly options: EngineSupervisorOptions) {}
 
   async call(workspace: string, method: string, params: Record<string, unknown> = {}, approvalPolicy = 'ask'): Promise<unknown> {
-    return (await this.acquire(workspace, approvalPolicy)).client.call(method, params);
+    return (await this.acquire(workspace, approvalPolicy)).client.call(method, params, CALL_TIMEOUTS[method]);
   }
   async restart(workspace: string): Promise<void> { await this.dispose(workspace); }
   async shutdownAll(): Promise<void> { await Promise.all([...this.engines.keys()].map((workspace) => this.dispose(workspace))); }

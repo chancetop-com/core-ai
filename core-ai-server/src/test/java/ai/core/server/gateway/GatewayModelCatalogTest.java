@@ -32,6 +32,16 @@ class GatewayModelCatalogTest {
     }
 
     @Test
+    void infersAudioTranscriptionForWhisperAndTranscribeModels() {
+        assertEquals(java.util.List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION),
+                GatewayModelCatalog.enrich(metadata("whisper-1", null, null)).endpointTypes());
+        assertEquals(java.util.List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION),
+                GatewayModelCatalog.enrich(metadata("gpt-4o-transcribe", null, null)).endpointTypes());
+        assertEquals(java.util.List.of(),
+                GatewayModelCatalog.enrich(metadata("tts-1", null, null)).endpointTypes());
+    }
+
+    @Test
     void unknownModelKeepsCapabilitiesNull() {
         var enriched = GatewayModelCatalog.enrich(metadata("totally-unknown-model", null, null));
 

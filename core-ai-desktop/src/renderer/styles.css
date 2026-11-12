@@ -1255,6 +1255,37 @@ select.rich-card-input[multiple] { padding: 3px; }
 .composer-attach-btn:hover { background: var(--bg-elev); color: var(--text); border-color: var(--accent); }
 .composer-attach-btn .ic { width: 15px; height: 15px; }
 
+/* Voice input sits at the right edge of the text row; recording turns it into the stop control. */
+.composer-mic-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  margin-top: 1px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.composer-mic-btn:hover:not(:disabled) { background: var(--bg-elev); color: var(--text); border-color: var(--accent); }
+.composer-mic-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.composer-mic-btn .ic { width: 15px; height: 15px; }
+.composer-mic-btn.recording { color: #fff; background: var(--red); border-color: var(--red); animation: voice-pulse 1.2s ease-out infinite; }
+.composer-mic-btn.recording:hover { background: var(--red); color: #fff; border-color: var(--red); }
+.composer-mic-btn.busy { color: var(--accent); border-color: var(--accent); }
+
+@keyframes voice-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45); }
+  70% { box-shadow: 0 0 0 9px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
 .composer-attachments { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 10px 0; }
 .composer-attachments[hidden] { display: none; }
 

@@ -2,6 +2,7 @@ package ai.core.server;
 
 import ai.core.server.web.CapabilitiesWebServiceImpl;
 import core.framework.module.APIConfig;
+import core.framework.module.HTTPConfig;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -96,6 +97,11 @@ class PlatformApiModuleTest {
         @Override
         public APIConfig api() {
             return mock(APIConfig.class);
+        }
+
+        @Override
+        public HTTPConfig http() {
+            return mock(HTTPConfig.class);
         }
     }
 }

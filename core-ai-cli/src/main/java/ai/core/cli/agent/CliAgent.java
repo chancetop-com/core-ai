@@ -20,6 +20,7 @@ import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.plugin.PluginManager;
+import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
 import ai.core.cli.a2a.RemoteAgentToolProvider;
@@ -50,6 +51,7 @@ import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GenerateVideoTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.MediaModelHint;
+import ai.core.tool.tools.TranscribeAudioTool;
 import ai.core.utils.SystemUtil;
 
 import java.nio.file.Files;
@@ -79,6 +81,10 @@ public class CliAgent {
         }
         if (decisionSupport.available()) {
             toolRegistry.registerProvider(ListToolProvider.of(List.of(decideTool(decisionSupport))));
+        }
+        if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
+            toolRegistry.registerProvider(ListToolProvider.of(List.of(TranscribeAudioTool.builder(
+                    new SpeechClient(auth.serverUrl(), auth.apiKey(), auth.insecure())).build())));
         }
         toolRegistry.registerProvider(buildRemoteAgentProvider(config));
         var helperProvider = buildHelperProvider(config, toolRegistry);

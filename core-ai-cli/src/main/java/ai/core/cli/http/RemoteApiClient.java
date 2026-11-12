@@ -169,20 +169,48 @@ public class RemoteApiClient {
     }
 
     public String postMultipart(String path, Map<String, Path> files) {
+        var mapped = new java.util.LinkedHashMap<String, MultipartFile>();
+        files.forEach((name, file) -> mapped.put(name, new MultipartFile(file, null, "application/octet-stream")));
+        return postMultipart(path, Map.of(), mapped);
+    }
+
+    /** Multipart upload with text fields; used by speech transcription (audio + model/language). */
+    public String postMultipart(String path, Map<String, String> fields, Map<String, MultipartFile> files) {
+        var request = multipartRequest(path, fields, files);
+        return request == null ? null : send(request);
+    }
+
+    /** Same as {@link #postMultipart} but a failed request raises instead of returning null. */
+    public String postMultipartRequired(String path, Map<String, String> fields, Map<String, MultipartFile> files) {
+        var request = multipartRequest(path, fields, files);
+        if (request == null) throw new IllegalStateException("failed to read files for multipart upload");
+        return sendRequired(request);
+    }
+
+    private HttpRequest multipartRequest(String path, Map<String, String> fields, Map<String, MultipartFile> files) {
         var boundary = UUID.randomUUID().toString();
         try {
             var parts = new ArrayList<byte[]>();
+            for (var entry : fields.entrySet()) {
+                if (entry.getValue() == null) continue;
+                var header = "--" + boundary + "\r\n"
+                    + "Content-Disposition: form-data; name=\"" + entry.getKey() + "\"\r\n\r\n";
+                parts.add(header.getBytes(StandardCharsets.UTF_8));
+                parts.add(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                parts.add("\r\n".getBytes(StandardCharsets.UTF_8));
+            }
             for (var entry : files.entrySet()) {
                 var fieldName = entry.getKey();
                 var file = entry.getValue();
-                Path fileNamePath = file.getFileName();
+                Path fileNamePath = file.path().getFileName();
                 if (fileNamePath == null) continue;
-                var fileName = fileNamePath.toString();
+                var fileName = file.fileName() != null ? file.fileName() : fileNamePath.toString();
+                var contentType = file.contentType() == null ? "application/octet-stream" : file.contentType();
                 var header = "--" + boundary + "\r\n"
                     + "Content-Disposition: form-data; name=\"" + fieldName + "\"; filename=\"" + fileName + "\"\r\n"
-                    + "Content-Type: application/octet-stream\r\n\r\n";
+                    + "Content-Type: " + contentType + "\r\n\r\n";
                 parts.add(header.getBytes(StandardCharsets.UTF_8));
-                parts.add(Files.readAllBytes(file));
+                parts.add(Files.readAllBytes(file.path()));
                 parts.add("\r\n".getBytes(StandardCharsets.UTF_8));
             }
             parts.add(("--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
@@ -195,11 +223,10 @@ public class RemoteApiClient {
                 offset += part.length;
             }
 
-            var request = textRequest(path)
+            return textRequest(path)
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body))
                 .build();
-            return send(request);
         } catch (IOException e) {
             LOGGER.warn("failed to read files for multipart upload", e);
             return null;
@@ -319,5 +346,8 @@ public class RemoteApiClient {
     }
 
     public record BinaryResponse(byte[] body, Map<String, String> headers) {
+    }
+
+    public record MultipartFile(Path path, String fileName, String contentType) {
     }
 }

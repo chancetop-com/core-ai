@@ -241,6 +241,30 @@ Agents: when a sub-task fits a specialist better than you, delegate:
 Exit code 0 = success; parse stdout as JSON. On 4 (permission) stop and tell the user.
 ```
 
+## Speech transcription (`core-ai-cli speech`)
+
+Speech-to-text is a server capability: the CLI uploads the audio clip to
+`POST /api/speech/transcriptions` and prints the transcript. The server picks a model that declares
+the `audio.transcriptions` gateway endpoint, or falls back to its Azure Speech credential; if neither
+is configured the command fails with `speech transcription is not configured on this server`.
+
+```bash
+core-ai-cli speech models                                   # what the server can use, plus default
+core-ai-cli speech transcribe meeting.m4a --language zh-CN  # text to stdout, metadata to stderr
+                                                           # (omit --language: gateway models auto-detect; Azure uses zh-CN)
+core-ai-cli speech transcribe interview.mp3 --output interview.txt
+core-ai-cli speech transcribe clip.wav --json               # full view: text, language, segments
+```
+
+Supported input formats are wav, mp3, m4a/mp4, ogg/opus, webm and flac (9 MB limit, set by the server's
+10 MB multipart budget). `--model` pins one
+of the ids from `speech models`; omit it for the server default. When an agent needs a transcript, it
+calls the `transcribe_audio` builtin (`file`, optional `language`/`model`/`prompt`, and `timestamps:true`
+for `[mm:ss]` lines) — the same model catalog and the same endpoint.
+
+The desktop composer uses this path from its microphone button: it records 16 kHz mono WAV locally,
+the engine forwards it to the same endpoint, and the transcript is inserted into the draft.
+
 ## Inside a core-ai sandbox (`core-ai-sandbox`)
 
 Code running inside a server agent's sandbox (skill scripts, ad-hoc python, shell) can use **exactly what the agent has configured**: its MCP servers, API tools, LLM_CALL definitions, sub-agents, and non-sandboxed builtin tools. There is no raw LLM endpoint — a script reaches an LLM only through an LLM_CALL definition the agent author attached.
@@ -346,7 +370,8 @@ server and per API app; a CLI without `tool` simply has no local builtins (the S
 not flag a gap). Either way the local catalog is best effort: a source the server could not refresh is
 flagged (`catalog_gaps`), and the sandbox catalogs are authoritative.
 
-The local builtin surface is the same six tools a media-capable agent has:
+The local builtin surface is the media/multimodal tools a media-capable agent has (plus
+`transcribe_audio` when you are signed in):
 
 ```bash
 core-ai-cli tool list --json                  # what this machine can run, with input_schema
@@ -380,7 +405,7 @@ The script API is unified; the identity and the reach are not, deliberately and 
 | Identity | the session's caller; backend data scoping applies | you — caller headers, permissions and data scoping are yours |
 | `llm_call` / `agent` | everything the agent mounts | only what you can run yourself |
 | `mcp.call` permission | comes with the agent's mount | admin-only until granted to your role, so a local 403 is not a production 403 |
-| `builtin` tools | `web_search`, `submit_artifacts`, `files.publish` plus the agent's media/multimodal tools | the media/multimodal tools from `core-ai-cli tool list` (`generate_image`, `generate_video`, `get_video_status`, `caption_image`, `understand_video`, `summarize_pdf`); session/UI builtins (`submit_artifacts`, `web_search`, …) are absent and raise `ToolNotFoundError`, never a fake success |
+| `builtin` tools | `web_search`, `submit_artifacts`, `files.publish` plus the agent's media/multimodal tools | the media/multimodal tools from `core-ai-cli tool list` (`generate_image`, `generate_video`, `get_video_status`, `caption_image`, `understand_video`, `summarize_pdf`, and `transcribe_audio` when signed in); session/UI builtins (`submit_artifacts`, `web_search`, …) are absent and raise `ToolNotFoundError`, never a fake success |
 | Call timeout | up to 600 s | mcp/api/agent: capped at 300 s by `--timeout` (the SDK clamps with one warning, returns a `Task`, and the work keeps running); builtins use the tool's own timeout (up to 1800 s) |
 | Quota and traces | the session's | yours |
 | Windows argv limits | n/a (Linux pod) | names, JSON arguments and task text travel on **stdin** (`--args-file -`, `--task-file -`); nothing long ever goes into argv |

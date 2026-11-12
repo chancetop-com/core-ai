@@ -89,6 +89,24 @@ class GatewayModelDiscoveryServiceTest {
     }
 
     @Test
+    void discoversAudioTranscriptionModelsOnlyForThatEndpoint() {
+        var provider = provider("provider-1", "litellm", "https://litellm.example.com");
+        var service = service(provider, """
+                {"data":[
+                  {"model_name":"whisper-1","model_info":{"mode":"audio_transcription"}},
+                  {"model_name":"tts-1","model_info":{"mode":"audio_speech"}}
+                ]}
+                """);
+
+        var response = service.discover("provider-1", "admin-1");
+
+        // audio_speech (TTS) is not a transcription endpoint and is filtered out of the import list
+        assertEquals(1, response.models.size());
+        assertEquals("whisper-1", response.models.get(0).id);
+        assertEquals(List.of("audio.transcriptions"), response.models.get(0).endpointTypes);
+    }
+
+    @Test
     void discoversAnthropicModelsAsMessagesModels() {
         var provider = provider("provider-1", "anthropic", "https://api.anthropic.com");
         var service = service(provider, """

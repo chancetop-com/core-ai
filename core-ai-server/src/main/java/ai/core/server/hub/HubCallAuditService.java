@@ -25,7 +25,7 @@ public class HubCallAuditService {
     public static final String KIND_AGENT = "agent";   // agent runs delegated through the Agent Hub
     public static final String KIND_SANDBOX_TOOL = "sandbox_tool";   // calls a script inside a sandbox makes for its session
     public static final String KIND_DATASET = "dataset";   // dataset ops a local script makes for its session
-    public static final String KIND_MEDIA = "media";   // direct image/video gateway calls made by remote clients
+    public static final String KIND_MEDIA = "media";   // direct image/video/speech gateway calls made by remote clients
     public static final String KIND_DECISION = "decision";   // direct decision gateway calls made by remote clients
 
     private static final int PREVIEW_MAX_CHARS = 512;

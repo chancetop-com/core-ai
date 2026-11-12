@@ -24,6 +24,8 @@ class HubMediaModelServiceTest {
                 new MediaModelHint("seedream-5-edit", "seedream/5-pro-image-to-image", "kie", "Seedream 5 Edit")));
         when(routing.explicitMediaModelHints(GatewayEndpointType.VIDEO_GENERATION)).thenReturn(List.of(
                 new MediaModelHint("seedance-2.5", "doubao-seedance-2-5", "volcengine", "Seedance 2.5")));
+        when(routing.explicitMediaModelHints(GatewayEndpointType.AUDIO_TRANSCRIPTION)).thenReturn(List.of(
+                new MediaModelHint("whisper-1", "whisper-1", "azure-openai", "Whisper")));
         var service = new HubMediaModelService();
         service.gatewayRoutingEngine = routing;
 
@@ -35,6 +37,8 @@ class HubMediaModelServiceTest {
                 .containsExactly("gpt-image-2.5", "seedream-5-edit");
         assertThat(response.videoModels).extracting(model -> model.modelId)
                 .containsExactly("seedance-2.5");
+        assertThat(response.transcriptionModels).extracting(model -> model.modelId)
+                .containsExactly("whisper-1");
         assertThat(response.imageModels.getFirst().displayName).isEqualTo("GPT Image 2.5");
         assertThat(response.imageModels.getFirst().upstreamModel).isEqualTo("gpt-image-2.5");
         assertThat(response.imageModels.getFirst().providerName).isEqualTo("azure-uat");

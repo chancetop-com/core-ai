@@ -10,4 +10,8 @@ public interface SpeechWebService {
     @GET
     @Path("/api/speech/token")
     SpeechTokenView getToken();
+
+    @GET
+    @Path("/api/speech/models")
+    ListSpeechModelsResponse models();
 }

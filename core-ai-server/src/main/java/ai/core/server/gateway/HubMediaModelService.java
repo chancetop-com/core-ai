@@ -24,6 +24,7 @@ public class HubMediaModelService {
         response.imageModels = hints(GatewayEndpointType.IMAGE_GENERATION);
         response.imageEditModels = hints(GatewayEndpointType.IMAGE_EDIT);
         response.videoModels = hints(GatewayEndpointType.VIDEO_GENERATION);
+        response.transcriptionModels = hints(GatewayEndpointType.AUDIO_TRANSCRIPTION);
         return response;
     }
 

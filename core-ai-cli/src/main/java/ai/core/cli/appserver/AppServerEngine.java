@@ -81,6 +81,7 @@ public class AppServerEngine implements EngineApi {
     private final EngineScheduler scheduler;
     private final SchedulesApi schedulesApi;
     private final MediaSettingsApi mediaSettings;
+    private final SpeechApi speechApi = new SpeechApi();
     private final HubBridge hubBridge = new HubBridge();
     private final HelperBridge helperBridge = new HelperBridge();
     private final Set<String> supportedMethods;
@@ -136,6 +137,7 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("custom_events");
         capabilities.add("scheduled_tasks");
         capabilities.add("transcript");
+        capabilities.add("speech");
         node.put("workspace", bootstrap.workspace.toString());
         scheduler.start();
         return node;
@@ -160,8 +162,7 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/list", registry::list), Map.entry("session/create", registry::create),
                 Map.entry("session/resume", registry::resume), Map.entry("session/history", registry::history),
                 Map.entry("session/records", registry::records), Map.entry("session/recordPayload", registry::recordPayload),
-                Map.entry("session/send", registry::send),
-                Map.entry("session/save", registry::save),
+                Map.entry("session/send", registry::send), Map.entry("session/save", registry::save),
                 Map.entry("session/close", registry::close),
                 Map.entry("session/cancel", registry::cancel),
                 Map.entry("session/approve", registry::approve),
@@ -183,8 +184,8 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("thinking/set", this::thinkingSet),
                 Map.entry("maxturn/get", ignored -> maxTurnGet()),
                 Map.entry("maxturn/set", this::maxTurnSet),
-                Map.entry("media/get", ignored -> mediaSettings.get()),
-                Map.entry("media/set", mediaSettings::set),
+                Map.entry("media/get", ignored -> mediaSettings.get()), Map.entry("media/set", mediaSettings::set),
+                Map.entry("speech/models", ignored -> speechApi.models()), Map.entry("speech/transcribe", speechApi::transcribe),
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),

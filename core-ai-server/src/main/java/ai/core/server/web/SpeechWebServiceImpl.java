@@ -1,11 +1,13 @@
 package ai.core.server.web;
 
+import ai.core.api.server.speech.ListSpeechModelsResponse;
 import ai.core.api.server.speech.SpeechTokenView;
 import ai.core.api.server.speech.SpeechWebService;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.speech.SpeechTranscriptionService;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -23,8 +25,15 @@ public class SpeechWebServiceImpl implements SpeechWebService {
 
     @Inject
     SystemSettingsService settingsService;
+    @Inject
+    SpeechTranscriptionService transcriptionService;
 
     private final HTTPClient httpClient = new PatchedHTTPClientBuilder().build();
+
+    @Override
+    public ListSpeechModelsResponse models() {
+        return transcriptionService.models();
+    }
 
     private String tokenUrl(String speechEndpoint, String speechRegion) {
         if (speechEndpoint != null && !speechEndpoint.isBlank()) {

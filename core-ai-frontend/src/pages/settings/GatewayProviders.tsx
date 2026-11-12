@@ -19,6 +19,7 @@ const MEDIA_PROTOCOLS = [
   { value: '', label: 'Automatic' },
   { value: 'OPENAI_IMAGES', label: 'OpenAI Images' },
   { value: 'OPENAI_COMPATIBLE', label: 'OpenAI Compatible' },
+  { value: 'OPENAI_AUDIO', label: 'OpenAI Audio (transcriptions)' },
   { value: 'GEMINI_GENERATE_CONTENT', label: 'Gemini generateContent' },
   { value: 'VERTEX_GEMINI_GENERATE_CONTENT', label: 'Vertex Gemini generateContent' },
   { value: 'VERTEX_GEMINI_INTERACTIONS', label: 'Vertex Gemini Interactions (video)' },
@@ -46,6 +47,7 @@ const ENDPOINT_TYPES = [
   { value: 'image.generations', label: 'Image Generation' },
   { value: 'image.edits', label: 'Image Edit' },
   { value: 'video.generations', label: 'Video' },
+  { value: 'audio.transcriptions', label: 'Speech to Text' },
   { value: 'decision', label: 'Decision (System One)' },
 ];
 

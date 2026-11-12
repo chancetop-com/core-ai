@@ -1,6 +1,6 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, session, shell, Tray } from 'electron';
 import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -520,6 +520,25 @@ async function runDesktopInstaller(installerPath: string): Promise<void> {
   app.exit(0);
 }
 function send(channel: string, payload: unknown): void { mainWindow?.webContents.send(channel, payload); }
+
+/**
+ * The composer's voice button records through getUserMedia. Electron grants no media permission by
+ * default once a handler is installed, so allow audio capture for this app and deny the rest.
+ */
+function allowMicrophonePermission(): void {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    // Non-media permissions keep Electron's default (granted) behavior; only the camera is narrowed.
+    if (permission !== 'media') {
+      callback(true);
+      return;
+    }
+    const mediaTypes = 'mediaTypes' in details && Array.isArray(details.mediaTypes) ? details.mediaTypes : [];
+    callback(mediaTypes.length === 0 || (mediaTypes.includes('audio') && !mediaTypes.includes('video')));
+  });
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, _origin, details) => {
+    return permission !== 'media' || details.mediaType !== 'video';
+  });
+}
 
 function createWindow(): void {
   const windowIcon = path.join(__dirname, 'logo.png');
@@ -1056,6 +1075,7 @@ else {
   });
   void app.whenReady().then(() => {
     settings = loadSettings();
+    allowMicrophonePermission();
     applyColorScheme();
     nativeTheme.on('updated', () => mainWindow?.setBackgroundColor(windowBackground()));
     browserManager = new BrowserManager({
