@@ -42,7 +42,6 @@ import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistry;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -446,7 +445,3 @@ public class SessionRebuildManager {
                         ai.core.server.comparison.AgentComparisonStore comparisonStore) {
     }
 }
-
-
-
-

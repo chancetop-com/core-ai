@@ -9,7 +9,6 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
 import java.util.List;
 
@@ -66,6 +65,7 @@ public class SessionAgentHelper {
         if (ownershipRegistry != null) ownershipRegistry.release(sessionId);
     }
 }
+
 
 
 
