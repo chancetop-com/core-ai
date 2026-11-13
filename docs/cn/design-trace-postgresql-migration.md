@@ -175,3 +175,25 @@ Mongo 实现把 `TraceQuery` 翻成 Bson（现有逻辑原样搬过去）；PG �
   - dev（镜像 2.0.229）：回填 321 条，`traces_v1` marker 写入、进度行删除；列表 / facets / 详情 / session summary / analytics realtime 全部经 API 验证；手工 ingest 一条验证写入路径后删除。
   - UAT（镜像 2.0.229）：回填 19,707 条，marker 写入；列表与 analytics 各维度 API 验证通过；PG 内存 ~1.0 GiB / 2 GiB。
 
+## 10. G5c 实施记录（2026-11-14）
+
+范围：`runtime_samples`、`trace_daily_stats`、`analytics_daily_stats`。
+
+- Flyway **V36**（dev/UAT 均已执行）：
+  - `app.runtime_samples`（51 列，5 个 JSONB 桶分布列）+ `runtime_samples_collected_idx`
+  - `app.trace_daily_stats` + `(user_id, date)`、`(date)` 两个索引
+  - `app.analytics_daily_stats` + `(date)`、`(user_id, date)` 两个索引
+- 新增 store（Mongo / PG 双实现）：
+  - `RuntimeSampleStore`：`insert` / `bulkInsert` / `range`
+  - `TraceDailyStatsStore`：`upsert` / `countByDate` / `dailyUsage`
+  - `AnalyticsStatsStore`：`upsert` / `stats` / `trend` / `dimensionTrend`
+- 开关：`sys.runtime.store.mode`（auto/mongo/pg）+ `sys.runtime.migration`（copy/skip）；两张日汇总表跟随 `sys.trace.store.mode`，避免 trace 与 rollup 落在不同存储上。
+- 回填抽了共享基类 `PagedBackfill`：游标 + advisory lock + marker + “整页失败则逐行重试并跳过坏行”。三个新回填都复用它。
+- 踩坑记录：
+  1. `Database.beginTransaction()` 必须 close（try-with-resources）才会清理 ThreadLocal，否则同一线程后续查询报 `db access is not allowed after transaction ended`。
+  2. `dailyRollup` 曾多绑一个参数（`GROUP BY` 用序号后不再需要第二个占位符），只在每日任务真正执行时暴露；已补 `PgTraceSqlParamsTest` / `PgRuntimeSampleSqlParamsTest`，对每条生成的 SQL 断言占位符数 == 绑定参数数。
+  3. core-ng 的 `@Column(json=true)` 只接受 bean/list，`Map<String, Integer>` 不行，桶分布列的 Map 按 JSON 文本存 + Jackson 转换。
+- 验证结果：
+  - dev（镜像 2.0.233）：`runtime_samples` 86,712、`trace_daily_stats` 1,607、`analytics_daily_stats` 264，三个 marker 均写入；`/api/admin/runtime/{pods,stats,series}`、`/api/for-you/token-usage`、analytics history 全维度通过；手工触发 `TRACE_DAILY_MAINTENANCE:2026-11-12` 成功（traceDailyStats=1、analyticsDailyStats=1）。
+  - UAT（镜像 2.0.233）：`runtime_samples` 86,456、`trace_daily_stats` 3,064、`analytics_daily_stats` 2,651，marker 全部写入；同上 API 通过；手工触发每日任务成功（traceDailyStats=39、analyticsDailyStats=56）；PG 内存 ~0.9 GiB / 2 GiB。
+
