@@ -8,12 +8,10 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationType;
 import ai.core.server.notification.NotificationService;
-import ai.core.server.trace.MongoTraceAggregateRow;
-import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.TraceAggregateRow;
+import ai.core.server.trace.TraceAggregation;
+import ai.core.server.trace.TraceStore;
 import core.framework.json.JSON;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import org.bson.Document;
 import org.junit.jupiter.api.Test;
 
 import java.time.LocalDate;
@@ -37,20 +35,12 @@ import static org.mockito.Mockito.when;
  * @author stephen
  */
 class CostAlertServiceTest {
-    private static final org.bson.codecs.configuration.CodecRegistry CODEC_REGISTRY =
-        org.bson.codecs.configuration.CodecRegistries.fromRegistries(
-            org.bson.codecs.configuration.CodecRegistries.fromCodecs(
-                new core.framework.mongo.impl.ZonedDateTimeCodec(),
-                new core.framework.mongo.impl.LocalDateCodec(),
-                new core.framework.mongo.impl.LocalDateTimeCodec()),
-            com.mongodb.MongoClientSettings.getDefaultCodecRegistry());
-
     private static String notificationTargets() {
         return JSON.toJSON(List.of(Map.of("type", "notification", "userId", "user-1")));
     }
 
-    private static MongoTraceAggregateRow row(double costUsd) {
-        var row = new MongoTraceAggregateRow();
+    private static TraceAggregateRow row(double costUsd) {
+        var row = new TraceAggregateRow();
         row.costUsd = costUsd;
         row.totalTokens = 2000L;
         row.inputTokens = 1500L;
@@ -59,22 +49,15 @@ class CostAlertServiceTest {
         return row;
     }
 
-    private static boolean filtersBy(Aggregate<?> aggregate, String field, String value) {
-        var doc = aggregate.pipeline.get(0).toBsonDocument(org.bson.BsonDocument.class, CODEC_REGISTRY);
-        var match = (org.bson.BsonDocument) doc.get("$match");
-        if (match.containsKey("$and")) {
-            var merged = new org.bson.BsonDocument();
-            for (var clause : match.getArray("$and")) {
-                merged.putAll((org.bson.BsonDocument) clause);
-            }
-            match = merged;
-        }
-        return match.containsKey(field) && value.equals(match.getString(field).getValue());
+    private static boolean filtersBy(TraceAggregation aggregation, String field, String value) {
+        if ("user_id".equals(field)) return value.equals(aggregation.query.userId);
+        if ("agent_id".equals(field)) return value.equals(aggregation.query.agentId);
+        return false;
     }
 
     private final CostAlertRuleStore ruleStore;
     private final CostAlertEventStore eventStore;
-    private final MongoCollection<Trace> traceCollection;
+    private final TraceStore traceStore;
     private final ChannelConfigStore channelConfigStore;
     private final ChannelRegistry channelRegistry;
     private final NotificationService notificationService;
@@ -84,9 +67,7 @@ class CostAlertServiceTest {
     CostAlertServiceTest() {
         ruleStore = mock(CostAlertRuleStore.class);
         eventStore = mock(CostAlertEventStore.class);
-        @SuppressWarnings("unchecked")
-        MongoCollection<Trace> traces = mock(MongoCollection.class);
-        traceCollection = traces;
+        traceStore = mock(TraceStore.class);
         channelConfigStore = mock(ChannelConfigStore.class);
         channelRegistry = mock(ChannelRegistry.class);
         notificationService = mock(NotificationService.class);
@@ -95,7 +76,7 @@ class CostAlertServiceTest {
         service = new CostAlertService();
         service.ruleStore = ruleStore;
         service.eventStore = eventStore;
-        service.traceCollection = traceCollection;
+        service.traceStore = traceStore;
         service.channelConfigStore = channelConfigStore;
         service.channelRegistry = channelRegistry;
         service.notificationService = notificationService;
@@ -107,7 +88,7 @@ class CostAlertServiceTest {
     @Test
     void belowThresholdDoesNotFire() {
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0, notificationTargets());
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(50.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(50.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
 
@@ -118,7 +99,7 @@ class CostAlertServiceTest {
     @Test
     void costExceedsThresholdFiresForYesterdayAndToday() {
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0, notificationTargets());
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(150.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(150.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
 
@@ -131,7 +112,7 @@ class CostAlertServiceTest {
     @Test
     void duplicateEventSkipsResend() {
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0, notificationTargets());
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(150.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(150.0)));
         when(eventStore.insertIfAbsent(any())).thenReturn(Boolean.FALSE);
 
         service.check(LocalDate.of(2026, 8, 12));
@@ -143,7 +124,7 @@ class CostAlertServiceTest {
     void userScopeAggregatesByUserId() {
         rule(CostAlertMetric.COST_USD, CostAlertScope.USER, "u-1", 100.0, notificationTargets());
         // aggregate result depends on the user filter: only a user-scoped match returns an over-threshold row
-        when(traceCollection.aggregate(any())).thenAnswer(inv ->
+        when(traceStore.aggregate(any())).thenAnswer(inv ->
             filtersBy(inv.getArgument(0), "user_id", "u-1") ? List.of(row(150.0)) : List.of(row(50.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
@@ -154,7 +135,7 @@ class CostAlertServiceTest {
     @Test
     void agentScopeAggregatesByAgentId() {
         rule(CostAlertMetric.TOTAL_TOKENS, CostAlertScope.AGENT, "agent-1", 1000.0, notificationTargets());
-        when(traceCollection.aggregate(any())).thenAnswer(inv ->
+        when(traceStore.aggregate(any())).thenAnswer(inv ->
             filtersBy(inv.getArgument(0), "agent_id", "agent-1") ? List.of(row(2000.0)) : List.of(row(500.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
@@ -174,7 +155,7 @@ class CostAlertServiceTest {
 
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0,
             JSON.toJSON(List.of(Map.of("type", "channel", "channelId", "c1", "recipient", "C123"))));
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(150.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(150.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
 
@@ -193,7 +174,7 @@ class CostAlertServiceTest {
 
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0,
             JSON.toJSON(List.of(Map.of("type", "channel", "channelId", "c1", "recipient", "C123"))));
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(150.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(150.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
 
@@ -203,7 +184,7 @@ class CostAlertServiceTest {
     @Test
     void invalidTargetsJsonDoesNotBreakCheck() {
         rule(CostAlertMetric.COST_USD, CostAlertScope.GLOBAL, "", 100.0, "{not-json");
-        when(traceCollection.aggregate(any())).thenReturn(List.of(row(150.0)));
+        when(traceStore.aggregate(any())).thenReturn(List.of(row(150.0)));
 
         service.check(LocalDate.of(2026, 8, 12));
 

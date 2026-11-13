@@ -38,7 +38,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TraceArchiveServiceTest {
-    private MongoCollection<Trace> traceCollection;
 
     @Test
     void archivesLandInThePrivateArtifactContainerByDefault() {
@@ -110,7 +109,7 @@ class TraceArchiveServiceTest {
         var remainingSpans = new ArrayList<>(spans);
         var tracePageSize = new int[]{0};
 
-        traceCollection = mockCollection();
+        MongoCollection<Trace> traceCollection = mockCollection();
         service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         when(traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
@@ -160,7 +159,7 @@ class TraceArchiveServiceTest {
 
         service.statsCollection = mockCollection();
         when(service.statsCollection.count(any(Bson.class))).thenReturn(1L);
-        traceCollection = mockCollection();
+        MongoCollection<Trace> traceCollection = mockCollection();
         service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         when(traceCollection.count(any(Bson.class))).thenReturn((long) traces.size());
         when(traceCollection.find(any(Query.class))).thenAnswer(invocation -> {

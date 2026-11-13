@@ -303,7 +303,7 @@ public class MongoTraceStore implements TraceStore {
     }
 
     private List<Bson> buildFilters(TraceQuery criteria) {
-        List<Bson> filters = new ArrayList<>();
+        List<Bson> filters = new ArrayList<>(24);
         addIdFilter(filters, criteria);
         if (hasText(criteria.type)) filters.add(Filters.eq("type", criteria.type));
         addSourceFilter(filters, criteria.source);

@@ -32,8 +32,8 @@ class StaleRunCleanupServiceTest {
         var started = ZonedDateTime.now().minusMinutes(45);
         var lastSpan = ZonedDateTime.now().minusMinutes(40);
         var trace = trace("t-1", TraceStatus.RUNNING, started, lastSpan);
-        stubStaleTraceScan(service, trace);
-        stubTraceLookup(service, trace);
+        stubStaleTraceScan(trace);
+        stubTraceLookup(trace);
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of(run("run-1", RunStatus.RUNNING, started, "t-1")));
 
         service.cleanup();
@@ -60,7 +60,7 @@ class StaleRunCleanupServiceTest {
         trace.completedAt = finishedAt;
         trace.output = "the answer";
         when(traceCollection.find(any(Query.class))).thenReturn(List.of());
-        stubTraceLookup(service, trace);
+        stubTraceLookup(trace);
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of(run("run-1", RunStatus.RUNNING, started, "t-1")));
 
         service.cleanup();
@@ -76,8 +76,8 @@ class StaleRunCleanupServiceTest {
         var service = service();
         var started = ZonedDateTime.now().minusMinutes(45);
         var trace = trace("t-1", TraceStatus.RUNNING, started, ZonedDateTime.now().minusMinutes(1));
-        stubStaleTraceScan(service, trace);
-        stubTraceLookup(service, trace);
+        stubStaleTraceScan(trace);
+        stubTraceLookup(trace);
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of(run("run-1", RunStatus.RUNNING, started, "t-1")));
 
         service.cleanup();
@@ -91,7 +91,7 @@ class StaleRunCleanupServiceTest {
         var service = service();
         var started = ZonedDateTime.now().minusHours(2);
         var trace = trace("t-1", TraceStatus.RUNNING, started, ZonedDateTime.now());
-        stubStaleTraceScan(service, trace);
+        stubStaleTraceScan(trace);
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.cleanup();
@@ -117,11 +117,11 @@ class StaleRunCleanupServiceTest {
         return update.getValue().toString();
     }
 
-    private void stubStaleTraceScan(StaleRunCleanupService service, Trace trace) {
+    private void stubStaleTraceScan(Trace trace) {
         when(traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
     }
 
-    private void stubTraceLookup(StaleRunCleanupService service, Trace trace) {
+    private void stubTraceLookup(Trace trace) {
         when(traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
     }
 

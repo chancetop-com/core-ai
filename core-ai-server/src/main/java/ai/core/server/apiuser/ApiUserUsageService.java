@@ -21,7 +21,6 @@ import java.util.List;
  */
 public class ApiUserUsageService {
     private static final int MAX_RANGE_DAYS = 90;
-    private static final String DATE_FORMAT = "%Y-%m-%d";
 
     @Inject
     TraceStore traceStore;
