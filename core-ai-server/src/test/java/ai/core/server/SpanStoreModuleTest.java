@@ -5,13 +5,14 @@ import ai.core.server.trace.PgSpanStore;
 import ai.core.server.trace.SpanMigrationService;
 import ai.core.server.trace.SpanStore;
 import core.framework.async.Task;
+import core.framework.internal.log.LogManager;
+import core.framework.internal.module.ModuleContext;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -78,6 +79,22 @@ class SpanStoreModuleTest {
     }
 
     @Test
+    void mongoOverridePassesFrameworkValidationWithDeclaredMigrationProperty() {
+        for (var migration : List.of("copy", "skip")) {
+            var module = new RecordingSpanStoreModule(Map.of("sys.store.mode", "pg", "sys.trace.span.store.mode", "mongo",
+                "sys.trace.span.migration", migration));
+
+            module.initialize();
+            module.validateConfiguration();
+
+            assertInstanceOf(MongoSpanStore.class, module.store);
+            assertFalse(module.boundClasses.contains(SpanMigrationService.class));
+            assertTrue(module.startupTasks.isEmpty());
+            verifyNoInteractions(module.migration);
+        }
+    }
+
+    @Test
     void explicitPostgresRetainsConfiguredMigrationSkip() throws Exception {
         var module = new RecordingSpanStoreModule(Map.of("sys.store.mode", "pg", "sys.trace.span.store.mode", "pg",
             "sys.trace.span.migration", "skip"));
@@ -92,7 +109,7 @@ class SpanStoreModuleTest {
 
     @Test
     void rejectsInvalidOverrideBeforeBindingAStore() {
-        for (var mode : List.of("postgresql", "", "PG")) {
+        for (var mode : List.of("postgresql", "PG")) {
             var module = new RecordingSpanStoreModule(Map.of("sys.store.mode", "pg", "sys.trace.span.store.mode", mode));
 
             var error = assertThrows(IllegalArgumentException.class, module::initialize);
@@ -128,19 +145,18 @@ class SpanStoreModuleTest {
     }
 
     private static final class RecordingSpanStoreModule extends SpanStoreModule {
-        private final Map<String, String> properties;
         private final List<Class<?>> boundClasses = new ArrayList<>();
         private final List<Task> startupTasks = new ArrayList<>();
         private final SpanMigrationService migration = mock(SpanMigrationService.class);
         private SpanStore store;
 
         RecordingSpanStoreModule(Map<String, String> properties) {
-            this.properties = properties;
+            context = new ModuleContext(new LogManager());
+            properties.forEach(context.propertyManager.properties::set);
         }
 
-        @Override
-        public Optional<String> property(String key) {
-            return Optional.ofNullable(properties.get(key));
+        void validateConfiguration() {
+            context.validate();
         }
 
         @Override

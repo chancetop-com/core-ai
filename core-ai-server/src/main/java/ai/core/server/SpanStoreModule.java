@@ -12,9 +12,13 @@ import core.framework.module.Module;
 public class SpanStoreModule extends Module {
     @Override
     protected void initialize() {
+        registerStore(property("sys.trace.span.migration").orElse("copy"));
+    }
+
+    private void registerStore(String spanMigration) {
         if (postgresStore()) {
             bind(SpanStore.class, bind(PgSpanStore.class));
-            boolean copyLegacySpans = !"skip".equals(property("sys.trace.span.migration").orElse("copy"));
+            boolean copyLegacySpans = !"skip".equals(spanMigration);
             var migration = bind(SpanMigrationService.class);
             onStartup(() -> migration.start(copyLegacySpans));
         } else {
