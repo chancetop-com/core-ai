@@ -5,6 +5,7 @@ import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
 import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.BsonField;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
@@ -14,6 +15,7 @@ import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
@@ -238,6 +240,68 @@ public class MongoTraceStore implements TraceStore {
         return traceCollection.delete(Filters.in("_id", ids));
     }
 
+    @Override
+    public List<TraceAggregateRow> aggregate(TraceAggregation aggregation) {
+        var filters = buildFilters(aggregation.query);
+        var pipeline = new ArrayList<Bson>();
+        pipeline.add(Aggregates.match(filters.isEmpty() ? Filters.empty()
+            : filters.size() == 1 ? filters.getFirst() : Filters.and(filters)));
+        if (aggregation.latestFirst) pipeline.add(Aggregates.sort(Sorts.descending("started_at")));
+        if (aggregation.group == TraceAggregation.Group.DAY_BY_CREATED) {
+            pipeline.add(Aggregates.project(Projections.fields(
+                Projections.include("total_tokens", "input_tokens", "output_tokens", "cached_tokens", "cost_usd"),
+                Projections.computed("day", new Document("$dateToString",
+                    new Document("format", "%Y-%m-%d").append("date", "$created_at"))))));
+        }
+        var accumulators = new ArrayList<BsonField>();
+        accumulators.add(Accumulators.sum("input_tokens", "$input_tokens"));
+        accumulators.add(Accumulators.sum("output_tokens", "$output_tokens"));
+        accumulators.add(Accumulators.sum("total_tokens", "$total_tokens"));
+        accumulators.add(Accumulators.sum("cached_tokens", "$cached_tokens"));
+        accumulators.add(Accumulators.sum("cost_usd", "$cost_usd"));
+        accumulators.add(Accumulators.sum("count", 1L));
+        if (aggregation.firstField != null) {
+            accumulators.add(Accumulators.first("first_value", firstFieldColumn(aggregation.firstField)));
+        }
+        pipeline.add(Aggregates.group(groupField(aggregation.group), accumulators));
+        if (aggregation.limit > 0) pipeline.add(Aggregates.limit(aggregation.limit));
+
+        var aggregate = new Aggregate<MongoTraceAggregateRow>();
+        aggregate.resultClass = MongoTraceAggregateRow.class;
+        aggregate.pipeline = pipeline;
+        return traceCollection.aggregate(aggregate).stream()
+            .map(row -> {
+                var value = new TraceAggregateRow();
+                value.group = row.group;
+                value.firstValue = row.firstValue;
+                value.inputTokens = row.inputTokens;
+                value.outputTokens = row.outputTokens;
+                value.totalTokens = row.totalTokens;
+                value.cachedTokens = row.cachedTokens;
+                value.count = row.count;
+                value.costUsd = row.costUsd;
+                return value;
+            })
+            .toList();
+    }
+
+    private String groupField(TraceAggregation.Group group) {
+        return switch (group) {
+            case NONE -> null;
+            case DAY_BY_CREATED -> "$day";
+            case SESSION_ID -> "$session_id";
+            case TRACE_ID -> "$trace_id";
+            case AGENT_ID -> "$agent_id";
+        };
+    }
+
+    private String firstFieldColumn(TraceAggregation.FirstField firstField) {
+        return switch (firstField) {
+            case TRACE_ID -> "$trace_id";
+            case AGENT_NAME -> "$agent_name";
+        };
+    }
+
     private List<Bson> buildFilters(TraceQuery criteria) {
         List<Bson> filters = new ArrayList<>();
         addIdFilter(filters, criteria);
@@ -245,10 +309,19 @@ public class MongoTraceStore implements TraceStore {
         addSourceFilter(filters, criteria.source);
         if (hasText(criteria.agentName)) filters.add(Filters.eq("agent_name", criteria.agentName));
         if (hasText(criteria.agentId)) filters.add(Filters.eq("agent_id", criteria.agentId));
+        if (criteria.agentIds != null) filters.add(Filters.in("agent_id", criteria.agentIds));
         if (hasText(criteria.model)) filters.add(Filters.eq("model", criteria.model));
         if (hasText(criteria.status)) filters.add(Filters.eq("status", TraceStatus.valueOf(criteria.status)));
         if (hasText(criteria.sessionId)) filters.add(Filters.eq("session_id", criteria.sessionId));
+        if (criteria.sessionIds != null) filters.add(Filters.in("session_id", criteria.sessionIds));
         if (criteria.traceIds != null) filters.add(Filters.in("trace_id", criteria.traceIds));
+        if (criteria.anySessionIds != null || criteria.anyTraceIds != null) {
+            var anyOf = new ArrayList<Bson>();
+            if (criteria.anySessionIds != null) anyOf.add(Filters.in("session_id", criteria.anySessionIds));
+            if (criteria.anyTraceIds != null) anyOf.add(Filters.in("trace_id", criteria.anyTraceIds));
+            filters.add(Filters.or(anyOf));
+        }
+        if (criteria.matchNothing) filters.add(Filters.eq("_id", "__none__"));
         if (criteria.agentIdPresent) {
             filters.add(Filters.ne("agent_id", null));
             filters.add(Filters.ne("agent_id", ""));
@@ -257,6 +330,8 @@ public class MongoTraceStore implements TraceStore {
         // an empty list must stay $in: [] (match nothing); null means "not scoped"
         else if (criteria.userIds != null) filters.add(Filters.in("user_id", criteria.userIds));
         if (criteria.extraUserIds != null) filters.add(Filters.in("user_id", criteria.extraUserIds));
+        if (criteria.createdFrom != null) filters.add(Filters.gte("created_at", criteria.createdFrom));
+        if (criteria.createdTo != null) filters.add(Filters.lte("created_at", criteria.createdTo));
         if (criteria.startFrom != null) filters.add(Filters.gte("started_at", criteria.startFrom));
         if (criteria.startAfter != null) filters.add(Filters.gt("started_at", criteria.startAfter));
         if (criteria.startTo != null) filters.add(Filters.lte("started_at", criteria.startTo));

@@ -6,16 +6,11 @@ import ai.core.server.run.AgentRunStore;
 
 import ai.core.server.domain.ProjectSubject;
 import ai.core.server.domain.ProjectSubjectEvent;
-import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.TraceAggregation;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.utils.JsonUtil;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import org.bson.Document;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -57,7 +52,7 @@ public class ProjectQueryService {
     @Inject
     ai.core.server.workflow.WorkflowRunStore workflowRunStore;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     ProjectSubjectStore subjectStore;
     @Inject
@@ -228,16 +223,15 @@ public class ProjectQueryService {
     private Map<String, TraceCost> sessionCosts(List<String> sessionIds) {
         var result = new HashMap<String, TraceCost>();
         if (sessionIds.isEmpty()) return result;
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.in("session_id", sessionIds)),
-            Aggregates.sort(Sorts.descending("started_at")),
-            Aggregates.group("$session_id",
-                Accumulators.sum("cost", "$cost_usd"),
-                Accumulators.first("trace_id", "$trace_id")));
-        for (var doc : traceCollection.aggregate(aggregate)) {
-            result.put(doc.getString("_id"), new TraceCost(doc.getDouble("cost"), doc.getString("trace_id")));
+        var query = new TraceQuery();
+        query.sessionIds = sessionIds;
+        var aggregation = new TraceAggregation();
+        aggregation.query = query;
+        aggregation.group = TraceAggregation.Group.SESSION_ID;
+        aggregation.firstField = TraceAggregation.FirstField.TRACE_ID;
+        aggregation.latestFirst = true;
+        for (var row : traceStore.aggregate(aggregation)) {
+            result.put(row.group, new TraceCost(row.costUsd, row.firstValue));
         }
         return result;
     }
@@ -245,14 +239,13 @@ public class ProjectQueryService {
     private Map<String, TraceCost> traceCosts(List<String> traceIds) {
         var result = new HashMap<String, TraceCost>();
         if (traceIds.isEmpty()) return result;
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.in("trace_id", traceIds)),
-            Aggregates.group("$trace_id",
-                Accumulators.sum("cost", "$cost_usd")));
-        for (var doc : traceCollection.aggregate(aggregate)) {
-            result.put(doc.getString("_id"), new TraceCost(doc.getDouble("cost"), null));
+        var query = new TraceQuery();
+        query.traceIds = traceIds;
+        var aggregation = new TraceAggregation();
+        aggregation.query = query;
+        aggregation.group = TraceAggregation.Group.TRACE_ID;
+        for (var row : traceStore.aggregate(aggregation)) {
+            result.put(row.group, new TraceCost(row.costUsd, null));
         }
         return result;
     }

@@ -7,15 +7,11 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationType;
 import ai.core.server.notification.NotificationService;
-import ai.core.server.trace.domain.Trace;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
+import ai.core.server.trace.TraceAggregation;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import org.bson.Document;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,7 +19,6 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -43,22 +38,12 @@ public class CostAlertService {
         return String.valueOf(tokens);
     }
 
-    private static double doubleValue(Document row, String key) {
-        var value = row.get(key);
-        return value instanceof Number n ? n.doubleValue() : 0.0;
-    }
-
-    private static long longValue(Document row, String key) {
-        var value = row.get(key);
-        return value instanceof Number n ? n.longValue() : 0L;
-    }
-
     @Inject
     CostAlertRuleStore ruleStore;
     @Inject
     CostAlertEventStore eventStore;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     ChannelConfigStore channelConfigStore;
     @Inject
@@ -95,34 +80,25 @@ public class CostAlertService {
     }
 
     private UsageAgg aggregate(CostAlertRule rule, ZonedDateTime start, ZonedDateTime end) {
-        var filters = new ArrayList<org.bson.conversions.Bson>();
-        filters.add(Filters.gte("started_at", start));
-        filters.add(Filters.lt("started_at", end));
+        var query = new TraceQuery();
+        query.startFrom = start;
+        query.startBefore = end;
         if (rule.scope == CostAlertScope.USER) {
-            filters.add(Filters.eq("user_id", rule.scopeValue));
+            query.userId = rule.scopeValue;
         } else if (rule.scope == CostAlertScope.AGENT) {
-            filters.add(Filters.eq("agent_id", rule.scopeValue));
+            query.agentId = rule.scopeValue;
         }
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(filters)),
-            Aggregates.group(null,
-                Accumulators.sum("cost_usd", "$cost_usd"),
-                Accumulators.sum("total_tokens", "$total_tokens"),
-                Accumulators.sum("input_tokens", "$input_tokens"),
-                Accumulators.sum("output_tokens", "$output_tokens"),
-                Accumulators.sum("call_count", 1L))
-        );
-        var rows = traceCollection.aggregate(aggregate);
+        var aggregation = new TraceAggregation();
+        aggregation.query = query;
+        var rows = traceStore.aggregate(aggregation);
         if (rows.isEmpty()) return null;
-        var row = rows.get(0);
+        var row = rows.getFirst();
         return new UsageAgg(
-            doubleValue(row, "cost_usd"),
-            longValue(row, "total_tokens"),
-            longValue(row, "input_tokens"),
-            longValue(row, "output_tokens"),
-            longValue(row, "call_count"));
+            row.costUsd != null ? row.costUsd : 0.0,
+            row.totalTokens != null ? row.totalTokens : 0L,
+            row.inputTokens != null ? row.inputTokens : 0L,
+            row.outputTokens != null ? row.outputTokens : 0L,
+            row.count != null ? row.count : 0L);
     }
 
     private boolean tryInsertEvent(CostAlertRule rule, LocalDate date, double actual, UsageAgg usage) {

@@ -47,6 +47,8 @@ public interface TraceStore {
 
     List<TraceFacetRow> facets(TraceQuery query, TraceFacet facet, int limit);
 
+    List<TraceAggregateRow> aggregate(TraceAggregation aggregation);
+
     List<String> traceIds(TraceQuery query, int limit);
 
     long countStartedBefore(ZonedDateTime cutoff);

@@ -8,6 +8,7 @@ import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.domain.NotificationCategory;
 import ai.core.server.domain.NotificationType;
 import ai.core.server.notification.NotificationService;
+import ai.core.server.trace.MongoTraceAggregateRow;
 import ai.core.server.trace.domain.Trace;
 import core.framework.json.JSON;
 import core.framework.mongo.Aggregate;
@@ -48,12 +49,14 @@ class CostAlertServiceTest {
         return JSON.toJSON(List.of(Map.of("type", "notification", "userId", "user-1")));
     }
 
-    private static Document row(double costUsd) {
-        return new Document("cost_usd", costUsd)
-            .append("total_tokens", 2000L)
-            .append("input_tokens", 1500L)
-            .append("output_tokens", 500L)
-            .append("call_count", 7L);
+    private static MongoTraceAggregateRow row(double costUsd) {
+        var row = new MongoTraceAggregateRow();
+        row.costUsd = costUsd;
+        row.totalTokens = 2000L;
+        row.inputTokens = 1500L;
+        row.outputTokens = 500L;
+        row.count = 7L;
+        return row;
     }
 
     private static boolean filtersBy(Aggregate<?> aggregate, String field, String value) {

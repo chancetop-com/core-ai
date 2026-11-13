@@ -18,11 +18,18 @@ public class TraceQuery {
     public String source;
     public String agentName;
     public String agentId;
+    public List<String> agentIds;
     public String model;
     public String status;
     public String sessionId;
+    public List<String> sessionIds;
     // exact trace ids, used when a caller already holds a batch of them
     public List<String> traceIds;
+    // OR between these two lists: a trace owned by any of the sessions or matching any of the ids
+    public List<String> anySessionIds;
+    public List<String> anyTraceIds;
+    // forces an empty result set, used when a scoped subject resolves to no attribution
+    public boolean matchNothing;
     // only traces that carry an agent id (non-null and non-blank)
     public boolean agentIdPresent;
     public String userId;
@@ -30,6 +37,9 @@ public class TraceQuery {
     public List<String> userIds;
     // additional user ids that must also match, used when a text search expands to several accounts
     public List<String> extraUserIds;
+    // created_at window, used by the per-user usage report
+    public ZonedDateTime createdFrom;
+    public ZonedDateTime createdTo;
     public ZonedDateTime startFrom;
     public ZonedDateTime startTo;
     // exclusive lower bound

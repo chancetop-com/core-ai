@@ -2,16 +2,12 @@ package ai.core.server.apiuser;
 
 import ai.core.api.server.apiuser.response.DailyUsageView;
 import ai.core.api.server.apiuser.response.UsageView;
-import ai.core.server.trace.domain.Trace;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
+import ai.core.server.trace.TraceAggregateRow;
+import ai.core.server.trace.TraceAggregation;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
 import core.framework.web.exception.BadRequestException;
-import org.bson.Document;
 
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -28,36 +24,23 @@ public class ApiUserUsageService {
     private static final String DATE_FORMAT = "%Y-%m-%d";
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
 
     public UsageView usage(String userId, String from, String to) {
         var start = parse(from);
         var end = parse(to);
         validateRange(start, end);
 
-        var filter = Filters.and(
-                Filters.eq("user_id", userId),
-                Filters.gte("created_at", start),
-                Filters.lte("created_at", end));
+        var query = new TraceQuery();
+        query.userId = userId;
+        query.createdFrom = start;
+        query.createdTo = end;
+        var aggregation = new TraceAggregation();
+        aggregation.query = query;
+        aggregation.group = TraceAggregation.Group.DAY_BY_CREATED;
 
         // group by UTC day (created_at date string); totals are then aggregated in memory from daily rows
-        var aggregate = new Aggregate<ApiUserDailyUsageRow>();
-        aggregate.resultClass = ApiUserDailyUsageRow.class;
-        aggregate.pipeline = List.of(
-                Aggregates.match(filter),
-                Aggregates.project(Projections.fields(
-                        Projections.include("total_tokens", "input_tokens", "output_tokens", "cached_tokens", "cost_usd"),
-                        Projections.computed("day", new Document("$dateToString",
-                                new Document("format", DATE_FORMAT).append("date", "$created_at"))))),
-                Aggregates.group("$day",
-                        Accumulators.sum("totalTokens", "$total_tokens"),
-                        Accumulators.sum("inputTokens", "$input_tokens"),
-                        Accumulators.sum("outputTokens", "$output_tokens"),
-                        Accumulators.sum("cachedTokens", "$cached_tokens"),
-                        Accumulators.sum("costUsd", "$cost_usd"),
-                        Accumulators.sum("callCount", 1)));
-
-        return toView(traceCollection.aggregate(aggregate));
+        return toView(traceStore.aggregate(aggregation));
     }
 
     private void validateRange(ZonedDateTime start, ZonedDateTime end) {
@@ -67,7 +50,7 @@ public class ApiUserUsageService {
         }
     }
 
-    private UsageView toView(List<ApiUserDailyUsageRow> dailyRows) {
+    private UsageView toView(List<TraceAggregateRow> dailyRows) {
         var response = new UsageView();
         long totalTokens = 0;
         long inputTokens = 0;
@@ -82,16 +65,16 @@ public class ApiUserUsageService {
             outputTokens += safeLong(row.outputTokens);
             cachedTokens += safeLong(row.cachedTokens);
             costUsd += safeDouble(row.costUsd);
-            callCount += safeLong(row.callCount);
+            callCount += safeLong(row.count);
 
             var daily = new DailyUsageView();
-            daily.date = row.day;
+            daily.date = row.group;
             daily.totalTokens = safeLong(row.totalTokens);
             daily.inputTokens = safeLong(row.inputTokens);
             daily.outputTokens = safeLong(row.outputTokens);
             daily.cachedTokens = safeLong(row.cachedTokens);
             daily.costUsd = safeDouble(row.costUsd);
-            daily.callCount = safeLong(row.callCount);
+            daily.callCount = safeLong(row.count);
             byDay.add(daily);
         }
         response.totalTokens = totalTokens;

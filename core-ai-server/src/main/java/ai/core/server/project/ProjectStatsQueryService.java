@@ -8,16 +8,10 @@ import ai.core.server.domain.ProjectStatsData;
 import ai.core.server.domain.ProjectStatsEntity;
 import ai.core.server.domain.ProjectStatsItem;
 import ai.core.server.domain.ProjectSubjectStats;
-import ai.core.server.trace.domain.Trace;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.BsonField;
-import com.mongodb.client.model.Filters;
+import ai.core.server.trace.TraceAggregation;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import org.bson.Document;
-import org.bson.conversions.Bson;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -43,7 +37,7 @@ public class ProjectStatsQueryService {
     @Inject
     ProjectAttributionRepository attributionRepository;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
 
     // reads the cached snapshot; subjectId != null returns that subject's breakdown from the cache
     public ProjectQueryService.ProjectStats stats(String projectId, String subjectId) {
@@ -86,7 +80,7 @@ public class ProjectStatsQueryService {
         var scope = ProjectScope.resolve(projectStore, projectId);
         if (scope == null) return;
         var data = new ProjectStatsData();
-        var byAgent = aggregateGroup(statsFilter(scope, null), "$agent_id", "$agent_name");
+        var byAgent = aggregateGroup(statsFilter(scope, null));
         data.totalTokens = sumTokens(byAgent);
         data.totalCostUsd = sumCost(byAgent);
         data.traceCount = byAgent.stream().mapToLong(ProjectQueryService.StatRow::count).sum();
@@ -95,7 +89,7 @@ public class ProjectStatsQueryService {
         data.bySubject = new ArrayList<>(subjectIds.size());
         data.subjects = new ArrayList<>(subjectIds.size());
         for (var subjectId : subjectIds) {
-            var rows = aggregateGroup(statsFilter(scope, subjectId), "$agent_id", "$agent_name");
+            var rows = aggregateGroup(statsFilter(scope, subjectId));
             var subjectStats = new ProjectSubjectStats();
             subjectStats.subjectId = subjectId;
             subjectStats.totalTokens = sumTokens(rows);
@@ -121,41 +115,32 @@ public class ProjectStatsQueryService {
         });
     }
 
-    private List<ProjectQueryService.StatRow> aggregateGroup(Bson match, String groupField, String nameField) {
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        var accumulators = new ArrayList<BsonField>();
-        accumulators.add(Accumulators.sum("total_tokens", "$total_tokens"));
-        accumulators.add(Accumulators.sum("cost_usd", "$cost_usd"));
-        accumulators.add(Accumulators.sum("count", 1L));
-        if (nameField != null) {
-            accumulators.add(Accumulators.first("name", nameField));
-        }
-        aggregate.pipeline = List.of(
-            Aggregates.match(match),
-            Aggregates.group(groupField, accumulators));
+    private List<ProjectQueryService.StatRow> aggregateGroup(TraceQuery query) {
+        var aggregation = new TraceAggregation();
+        aggregation.query = query;
+        aggregation.group = TraceAggregation.Group.AGENT_ID;
+        aggregation.firstField = TraceAggregation.FirstField.AGENT_NAME;
         var rows = new ArrayList<ProjectQueryService.StatRow>();
-        for (var doc : traceCollection.aggregate(aggregate)) {
-            var group = doc.get("_id");
-            rows.add(new ProjectQueryService.StatRow(group instanceof String s ? s : null,
-                doc.getString("name"), doc.getLong("total_tokens"), doc.getDouble("cost_usd"), doc.getLong("count")));
+        for (var row : traceStore.aggregate(aggregation)) {
+            rows.add(new ProjectQueryService.StatRow(row.group, row.firstValue, row.totalTokens, row.costUsd, row.count));
         }
         return rows;
     }
 
-    private Bson statsFilter(ProjectScope scope, String subjectId) {
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.in("agent_id", scope.agentIds));
+    private TraceQuery statsFilter(ProjectScope scope, String subjectId) {
+        var query = new TraceQuery();
+        query.agentIds = scope.agentIds;
         if (subjectId != null) {
             var ids = attributionTargets(subjectId, "session");
             var runTraceIds = attributionRunTraceIds(subjectId);
-            var subjectFilters = new ArrayList<Bson>();
-            if (!ids.isEmpty()) subjectFilters.add(Filters.in("session_id", ids));
-            if (!runTraceIds.isEmpty()) subjectFilters.add(Filters.in("trace_id", runTraceIds));
-            if (subjectFilters.isEmpty()) filters.add(Filters.eq("_id", "__none__"));
-            else filters.add(Filters.or(subjectFilters));
+            if (ids.isEmpty() && runTraceIds.isEmpty()) {
+                query.matchNothing = true;
+            } else {
+                query.anySessionIds = ids.isEmpty() ? null : ids;
+                query.anyTraceIds = runTraceIds.isEmpty() ? null : runTraceIds;
+            }
         }
-        return Filters.and(filters);
+        return query;
     }
 
     private List<ProjectStatsItem> toItems(List<ProjectQueryService.StatRow> rows) {
