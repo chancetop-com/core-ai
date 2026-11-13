@@ -62,6 +62,23 @@ public interface TraceStore {
                                               Map<String, String> modelToProvider,
                                               Map<String, String> providerIdToName);
 
+    /**
+     * Realtime rollup over raw traces for the admin analytics screen. A null dimension returns one
+     * global row; otherwise one row per dimension value, ordered by total tokens.
+     */
+    List<TraceStatsRow> realtimeStats(ZonedDateTime from, ZonedDateTime to, TraceDimension dimension,
+                                      Map<String, String> modelToProvider,
+                                      Map<String, String> providerIdToName);
+
+    List<TraceTrendRow> realtimeTrend(ZonedDateTime from, ZonedDateTime to,
+                                      Map<String, String> modelToProvider,
+                                      Map<String, String> providerIdToName);
+
+    List<TraceDimensionTrendRow> realtimeDimensionTrend(ZonedDateTime from, ZonedDateTime to,
+                                                        TraceDimension dimension, List<String> keys,
+                                                        Map<String, String> modelToProvider,
+                                                        Map<String, String> providerIdToName);
+
     List<String> traceIds(TraceQuery query, int limit);
 
     long countStartedBefore(ZonedDateTime cutoff);

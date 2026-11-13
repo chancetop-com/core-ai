@@ -303,6 +303,28 @@ public class MongoTraceStore implements TraceStore {
     }
 
     @Override
+    public List<TraceStatsRow> realtimeStats(ZonedDateTime from, ZonedDateTime to, TraceDimension dimension,
+                                             Map<String, String> modelToProvider,
+                                             Map<String, String> providerIdToName) {
+        return new MongoTraceAnalyticsReader(traceCollection).stats(from, to, dimension, modelToProvider, providerIdToName);
+    }
+
+    @Override
+    public List<TraceTrendRow> realtimeTrend(ZonedDateTime from, ZonedDateTime to,
+                                             Map<String, String> modelToProvider,
+                                             Map<String, String> providerIdToName) {
+        return new MongoTraceAnalyticsReader(traceCollection).trend(from, to, modelToProvider, providerIdToName);
+    }
+
+    @Override
+    public List<TraceDimensionTrendRow> realtimeDimensionTrend(ZonedDateTime from, ZonedDateTime to,
+                                                               TraceDimension dimension, List<String> keys,
+                                                               Map<String, String> modelToProvider,
+                                                               Map<String, String> providerIdToName) {
+        return new MongoTraceAnalyticsReader(traceCollection).dimensionTrend(from, to, dimension, keys, modelToProvider, providerIdToName);
+    }
+
+    @Override
     public List<TraceDailyRollupRow> dailyRollup(ZonedDateTime from, ZonedDateTime to) {
         return new MongoTraceRollupReader(traceCollection).daily(from, to);
     }
