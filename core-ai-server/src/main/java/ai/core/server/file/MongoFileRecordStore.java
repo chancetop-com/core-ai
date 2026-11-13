@@ -40,9 +40,15 @@ public class MongoFileRecordStore implements FileRecordStore {
     public List<FileRecord> find(FileRecordQuery request) {
         var query = new Query();
         query.filter = filter(request);
-        var sort = request.ascending
-            ? Sorts.orderBy(Sorts.ascending(request.sortField), Sorts.ascending("_id"))
-            : Sorts.orderBy(Sorts.descending(request.sortField), Sorts.ascending("_id"));
+        Bson sort;
+        if (request.legacyInlineOnly) {
+            // this scan is served by the partial created_at index, whose key pattern cannot also satisfy an _id tiebreaker
+            sort = request.ascending ? Sorts.ascending(request.sortField) : Sorts.descending(request.sortField);
+        } else {
+            sort = request.ascending
+                ? Sorts.orderBy(Sorts.ascending(request.sortField), Sorts.ascending("_id"))
+                : Sorts.orderBy(Sorts.descending(request.sortField), Sorts.ascending("_id"));
+        }
         query.sort = sort;
         query.skip = request.offset;
         query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;

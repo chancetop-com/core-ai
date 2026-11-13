@@ -420,6 +420,21 @@ class FileServiceTest {
         assertEquals(1, query.getValue().limit);
     }
 
+    @Test
+    void legacyInlineScanDropsTheIdTiebreakerSoThePartialCreatedAtIndexCanServeIt() {
+        when(fileRecordCollection.find(any(Query.class))).thenReturn(List.of());
+        var request = new FileRecordQuery();
+        request.legacyInlineOnly = true;
+        request.ascending = true;
+        request.limit = 50;
+
+        service.fileRecordStore.find(request);
+
+        var query = ArgumentCaptor.forClass(Query.class);
+        verify(fileRecordCollection).find(query.capture());
+        assertEquals("{\"created_at\": 1}", query.getValue().sort.toBsonDocument().toJson());
+    }
+
     @SuppressWarnings("unchecked")
     private MongoCollection<FileRecord> fileRecordCollection() {
         return (MongoCollection<FileRecord>) mock(MongoCollection.class);
