@@ -2,13 +2,13 @@ package ai.core.server.trace.maintenance;
 
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
@@ -47,14 +47,13 @@ public class TraceArchiveService {
     private static final long MAX_PART_UNCOMPRESSED_BYTES = 160L * 1024 * 1024;
     private static final long MAX_PART_UPLOAD_BYTES = 256L * 1024 * 1024;
     static final int TRACE_DELETE_BATCH_SIZE = 30;
-    static final int SPAN_DELETE_BATCH_SIZE = 50; // keeps every deleteMany well below the mongo socket read timeout
 
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<Span> spanCollection;
+    SpanStore spanStore;
     @Inject
     TracePayloadStore payloadStore;
 
@@ -160,11 +159,7 @@ public class TraceArchiveService {
     }
 
     private List<Span> loadSpanPage(String traceId, int offset) {
-        var query = new Query();
-        query.filter = Filters.eq("trace_id", traceId);
-        query.skip = offset;
-        query.limit = SPAN_PAGE_SIZE;
-        return spanCollection.find(query);
+        return spanStore.pageByTrace(traceId, offset, SPAN_PAGE_SIZE);
     }
 
     public void deleteArchivedTraces(ZonedDateTime cutoff) {
@@ -200,24 +195,11 @@ public class TraceArchiveService {
     }
 
     /**
-     * Deletes spans of the given traces in bounded pages: a single deleteMany over many large
-     * LLM spans can exceed the mongo socket read timeout (one span is routinely hundreds of KB,
-     * a batch of traces can be gigabytes).
+     * Deletes spans of the given traces in bounded batches inside the store; a single statement
+     * over many large spans can exceed the database round-trip limits.
      */
     private long deleteSpans(List<String> traceIds) {
-        long deleted = 0;
-        while (true) {
-            var query = new Query();
-            query.filter = Filters.in("trace_id", traceIds);
-            query.projection = Projections.include("_id");
-            query.limit = SPAN_DELETE_BATCH_SIZE;
-            var page = spanCollection.find(query);
-            if (page.isEmpty()) return deleted;
-
-            var ids = page.stream().map(s -> s.id).filter(id -> id != null).toList();
-            if (ids.isEmpty()) return deleted;
-            deleted += spanCollection.delete(Filters.in("_id", ids));
-        }
+        return spanStore.deleteByTraceIds(traceIds);
     }
 
     private byte[] archiveLine(String type, Object value) {

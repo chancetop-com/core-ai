@@ -149,7 +149,7 @@ class TraceServiceTest {
     private TraceService service() {
         var service = new TraceService();
         service.traceCollection = traceCollection();
-        service.spanCollection = spanCollection();
+        service.spanStore = ai.core.server.trace.MongoSpanStore.of(spanCollection());
         userCollection = userCollection();
         service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);
         return service;

@@ -11,8 +11,8 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
 import ai.core.server.domain.User;
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
-import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
@@ -48,7 +48,7 @@ public class TraceService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<Span> spanCollection;
+    SpanStore spanStore;
     @Inject
     ai.core.server.user.UserStore userStore;
     @Inject
@@ -69,7 +69,7 @@ public class TraceService {
             query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
         }
         var traces = traceCollection.find(query);
-        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanStore);
         return traces;
     }
 
@@ -86,7 +86,7 @@ public class TraceService {
     private List<Trace> listWithSearch(TraceListFilter filter) {
         var matches = searchCandidates(filter, searchFetchLimit(filter));
         var traces = TraceServiceHelper.page(matches, filter.offset, filter.limit);
-        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanStore);
         return traces;
     }
 
@@ -317,23 +317,13 @@ public class TraceService {
     }
 
     public List<Span> spans(String traceId) {
-        var query = new Query();
-        query.filter = Filters.eq("trace_id", traceId);
-        query.sort = Sorts.ascending("started_at");
-        query.limit = TraceServiceHelper.MAX_SPANS_PER_TRACE;
-        // Metadata-only projection: the timeline UI never needs the (potentially huge) payloads,
-        // and the duplicated langfuse observation attributes are stripped from the list as well.
-        query.projection = TraceServiceHelper.spanSummaryProjection();
-        return spanCollection.find(query);
+        // Metadata-only query: the timeline UI never needs the (potentially huge) payloads.
+        return spanStore.summariesByTrace(traceId, TraceServiceHelper.MAX_SPANS_PER_TRACE);
     }
 
     public Span span(String traceId, String spanId) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("trace_id", traceId), Filters.eq("span_id", spanId));
-        query.limit = 1;
-        var results = spanCollection.find(query);
-        if (results.isEmpty()) return null;
-        var span = results.getFirst();
+        var span = spanStore.find(traceId, spanId);
+        if (span == null) return null;
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         if (payloadStore != null) payloadStore.hydrate(span, false);
         return span;
@@ -341,28 +331,8 @@ public class TraceService {
 
     public List<Span> generations(int offset, int limit, String model, List<String> userIds) {
         if (userIds != null && userIds.isEmpty()) return List.of();
-        var query = new Query();
-        query.skip = offset;
-        query.limit = limit;
-        query.sort = Sorts.descending("started_at");
-
-        List<Bson> filters = new ArrayList<>();
-        filters.add(Filters.eq("type", SpanType.LLM));
-        if (model != null && !model.isEmpty()) {
-            filters.add(Filters.eq("model", model));
-        }
-        if (userIds != null) {
-            var traceIds = traceIdsForUsers(userIds);
-            if (traceIds.isEmpty()) {
-                filters.add(Filters.in("user_id", userIds));
-            } else {
-                filters.add(Filters.or(
-                    Filters.in("user_id", userIds),
-                    Filters.in("trace_id", traceIds)));
-            }
-        }
-        query.filter = Filters.and(filters);
-        return spanCollection.find(query);
+        List<String> traceIds = userIds != null ? traceIdsForUsers(userIds) : List.of();
+        return spanStore.generations(offset, limit, model, userIds, traceIds);
     }
 
     private List<String> traceIdsForUsers(List<String> userIds) {
@@ -392,7 +362,7 @@ public class TraceService {
         query.limit = SESSION_SUMMARY_TRACE_LIMIT;
         var traces = traceCollection.find(query);
         if (traces.isEmpty()) return null;
-        TraceServiceHelper.enrichMetricsInBatch(traces, spanCollection);
+        TraceServiceHelper.enrichMetricsInBatch(traces, spanStore);
 
         // trace_count and first trace stay exact even when the aggregate window above is capped
         var traceCount = traceCollection.count(sessionFilter);
@@ -426,6 +396,6 @@ public class TraceService {
     }
 
     public void saveSpan(Span span) {
-        spanCollection.insert(span);
+        spanStore.insert(span);
     }
 }

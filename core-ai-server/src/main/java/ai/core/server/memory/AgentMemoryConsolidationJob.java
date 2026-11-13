@@ -9,8 +9,7 @@ import ai.core.llm.domain.RoleType;
 import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.settings.SystemSettingsService;
-import ai.core.server.trace.domain.Span;
-import ai.core.server.trace.domain.SpanType;
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -70,7 +69,7 @@ public class AgentMemoryConsolidationJob implements Job {
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
-    MongoCollection<Span> spanCollection;
+    SpanStore spanStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
@@ -228,14 +227,7 @@ public class AgentMemoryConsolidationJob implements Job {
     @SuppressFBWarnings("PCAIL_POSSIBLE_CONSTANT_ALLOCATION_IN_LOOP")
     private String extractSystemPrompt(List<Trace> traces) {
         var traceIds = traces.stream().map(t -> t.traceId).toList();
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.in("trace_id", traceIds),
-                Filters.eq("type", SpanType.LLM.name())
-        );
-        query.sort = Sorts.ascending("started_at");
-        query.limit = 5;
-        var spans = spanCollection.find(query);
+        var spans = spanStore.llmSpansByTraces(traceIds, 5);
         for (var span : spans) {
             if (span.input == null || span.input.isBlank()) continue;
             JsonNode node;

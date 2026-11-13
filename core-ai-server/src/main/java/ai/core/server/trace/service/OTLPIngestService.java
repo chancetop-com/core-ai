@@ -1,6 +1,12 @@
 package ai.core.server.trace.service;
 
 import ai.core.server.run.AgentRunStore;
+import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.domain.Span;
+import ai.core.server.trace.domain.SpanStatus;
+import ai.core.server.trace.domain.SpanType;
+import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TraceStatus;
 
 import com.mongodb.MongoWriteException;
 import com.mongodb.client.model.Filters;
@@ -17,12 +23,6 @@ import io.opentelemetry.proto.trace.v1.ScopeSpans;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import ai.core.server.trace.domain.Span;
-import ai.core.server.trace.domain.SpanStatus;
-import ai.core.server.trace.domain.SpanType;
-import ai.core.server.trace.domain.Trace;
-import ai.core.server.trace.domain.TraceStatus;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -47,7 +47,7 @@ public class OTLPIngestService {
     @Inject
     AgentRunStore agentRunStore;
     @Inject
-    MongoCollection<Span> spanCollection;
+    SpanStore spanStore;
     @Inject
     ModelPricingService modelPricingService;
     @Inject
@@ -153,8 +153,7 @@ public class OTLPIngestService {
                           String traceId, String spanId, String parentSpanId,
                           Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
         var toolCallId = attrs.get("tool.call_id");
-        if (toolCallId != null && !toolCallId.isEmpty()
-                && TraceServiceHelper.exists(spanCollection, Filters.and(Filters.eq("trace_id", traceId), Filters.eq("tool_call_id", toolCallId)))) {
+        if (toolCallId != null && !toolCallId.isEmpty() && spanStore.existsToolCall(traceId, toolCallId)) {
             return;  // the same tool call was already synthesized by an earlier request of this conversation
         }
 
@@ -198,7 +197,7 @@ public class OTLPIngestService {
             span.input = compactor.compact(traceId, span.input);
             span.output = compactor.compact(traceId, span.output);
         }
-        spanCollection.insert(span);
+        spanStore.insert(span);
 
         // Back-fill model onto trace if not yet set
         if (span.model != null && !span.model.isEmpty()) {

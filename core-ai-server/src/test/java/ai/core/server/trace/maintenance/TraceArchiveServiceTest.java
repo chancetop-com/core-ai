@@ -2,6 +2,7 @@ package ai.core.server.trace.maintenance;
 
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.utils.JsonUtil;
@@ -29,6 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -103,7 +106,6 @@ class TraceArchiveServiceTest {
         var service = new TraceArchiveService(mock(ObjectStorageServiceResolver.class), null, "uat");
         var remainingTraces = new ArrayList<>(traces);
         var remainingSpans = new ArrayList<>(spans);
-        var maxSpanDeleteIds = new int[]{0};
         var tracePageSize = new int[]{0};
 
         service.traceCollection = mockCollection();
@@ -121,27 +123,11 @@ class TraceArchiveServiceTest {
             return (long) (before - remainingTraces.size());
         });
 
-        service.spanCollection = mockCollection();
-        when(service.spanCollection.find(any(Query.class))).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            var traceIds = inValues(query.filter, "trace_id");
-            var page = new ArrayList<Span>();
-            for (var span : remainingSpans) {
-                if (page.size() >= query.limit) break;
-                if (traceIds.contains(span.traceId)) {
-                    var projection = new Span(); // _id-only projection
-                    projection.id = span.id;
-                    projection.traceId = span.traceId;
-                    page.add(projection);
-                }
-            }
-            return page;
-        });
-        when(service.spanCollection.delete(any(Bson.class))).thenAnswer(invocation -> {
-            var ids = inValues(invocation.getArgument(0), "_id");
-            maxSpanDeleteIds[0] = Math.max(maxSpanDeleteIds[0], ids.size());
+        service.spanStore = mock(SpanStore.class);
+        when(service.spanStore.deleteByTraceIds(any())).thenAnswer(invocation -> {
+            List<String> traceIds = invocation.getArgument(0);
             int before = remainingSpans.size();
-            remainingSpans.removeIf(s -> ids.contains(s.id));
+            remainingSpans.removeIf(span -> traceIds.contains(span.traceId));
             return (long) (before - remainingSpans.size());
         });
 
@@ -151,8 +137,6 @@ class TraceArchiveServiceTest {
         assertTrue(remainingSpans.isEmpty(), "all spans of archived traces must be deleted");
         assertTrue(tracePageSize[0] > 0 && tracePageSize[0] <= TraceArchiveService.TRACE_DELETE_BATCH_SIZE,
                 "traces are read in small pages");
-        assertTrue(maxSpanDeleteIds[0] <= TraceArchiveService.SPAN_DELETE_BATCH_SIZE,
-                "spans must be deleted in bounded batches, got one delete of " + maxSpanDeleteIds[0]);
     }
 
     private List<String> inValues(Bson filter, String field) {
@@ -180,14 +164,15 @@ class TraceArchiveServiceTest {
             return query.skip == 0 ? new ArrayList<>(traces) : List.of();
         });
 
-        service.spanCollection = mockCollection();
-        when(service.spanCollection.find(any(Query.class))).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            String traceId = query.filter.toBsonDocument().getString("trace_id").getValue();
-            spanQueries.add(traceId + ":" + query.skip + ":" + query.limit);
+        service.spanStore = mock(SpanStore.class);
+        when(service.spanStore.pageByTrace(anyString(), anyInt(), anyInt())).thenAnswer(invocation -> {
+            String traceId = invocation.getArgument(0);
+            int skip = invocation.getArgument(1);
+            int limit = invocation.getArgument(2);
+            spanQueries.add(traceId + ":" + skip + ":" + limit);
             List<Span> all = spansByTrace.get(traceId);
-            int from = Math.min(query.skip, all.size());
-            int to = Math.min(from + query.limit, all.size());
+            int from = Math.min(skip, all.size());
+            int to = Math.min(from + limit, all.size());
             return new ArrayList<>(all.subList(from, to));
         });
         return service;

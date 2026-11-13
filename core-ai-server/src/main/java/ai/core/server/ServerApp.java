@@ -141,6 +141,7 @@ public class ServerApp extends App {
         load(new AgentComparisonStoreModule());
         load(new WorkflowStoreModule());
         load(new ReplayStoreModule());
+        load(new SpanStoreModule());
         // must load before ProjectAttributionModule: ProjectArtifactBinder injects ChatSessionStore eagerly
         load(new SessionStoreModule());
         // must load before ProjectAttributionModule: ProjectAttributionStore injects FileRecordStore eagerly

@@ -120,6 +120,15 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgComparisonMigrationMarkerRow.class);
         registerWorkflowViews();
         registerReplayViews();
+        registerSpanViews();
+    }
+
+    private void registerSpanViews() {
+        db().view(ai.core.server.trace.PgSpanRow.class);
+        db().view(ai.core.server.trace.PgTraceCountRow.class);
+        db().view(ai.core.server.trace.PgTraceIdRow.class);
+        db().view(ai.core.server.trace.PgSpanMigrationLockRow.class);
+        db().view(ai.core.server.trace.PgSpanMigrationMarkerRow.class);
     }
 
     private void registerWorkflowViews() {

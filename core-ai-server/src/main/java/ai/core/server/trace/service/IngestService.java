@@ -11,6 +11,7 @@ import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -18,6 +19,7 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import ai.core.server.trace.web.ingest.IngestRequest;
 import ai.core.server.trace.web.ingest.IngestSpanRequest;
+import ai.core.server.util.MigrationErrors;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -64,7 +66,7 @@ public class IngestService {
     @Inject
     MongoCollection<Trace> traceCollection;
     @Inject
-    MongoCollection<Span> spanCollection;
+    SpanStore spanStore;
     @Inject
     ModelPricingService modelPricingService;
     @Inject
@@ -236,9 +238,9 @@ public class IngestService {
         // Only the first concurrent inserter succeeds; the rest catch duplicate-key and skip the $inc,
         // so trace counters cannot be double-counted under OTLP retries or multi-instance ingest.
         try {
-            spanCollection.insert(span);
-        } catch (MongoWriteException e) {
-            if (e.getCode() == 11000) {
+            spanStore.insert(span);
+        } catch (RuntimeException e) {
+            if (MigrationErrors.isDuplicateKey(e)) {
                 LOGGER.debug("span {} already ingested, skipping", spanReq.spanId);
                 return;
             }

@@ -41,6 +41,7 @@ import static org.mockito.Mockito.when;
 
 class OTLPIngestServiceTest {
     private MongoCollection<GatewayModelConfig> gatewayModelCollection;
+    private MongoCollection<Span> spanCollection;
 
     @Test
     void calculatesGpt6LunaCatalogCostAndRollsUpTraceCost() {
@@ -55,7 +56,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.output_tokens", "200"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         assertEquals(0.000164, inserted.getValue().costUsd, 1e-12);
         assertEquals("model_catalog", inserted.getValue().costSource);
         assertEquals("gpt-6-luna", inserted.getValue().pricingModelId);
@@ -87,7 +88,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.output_tokens", "500000"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         assertEquals(6D, inserted.getValue().costUsd);
         assertEquals("gateway_model", inserted.getValue().costSource);
         assertEquals("gpt-5.6-terra", inserted.getValue().pricingModelId);
@@ -114,7 +115,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.output_tokens", "100000"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         // (100K uncached * 0.6521739 + 900K cached * 0.02173913 + 100K * 1.956522) * 2
         assertEquals((0.06521739 + 0.019565217 + 0.1956522) * 2, inserted.getValue().costUsd, 1e-9);
         assertEquals("gateway_model", inserted.getValue().costSource);
@@ -137,7 +138,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.cost_usd", "0.001"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         assertEquals(2D, inserted.getValue().costUsd);
         assertEquals("gateway_model", inserted.getValue().costSource);
     }
@@ -146,7 +147,7 @@ class OTLPIngestServiceTest {
     void rootOperationSpanUsesAgentNameForTraceTitle() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.run",
             attr("langfuse.observation.type", "agent"),
@@ -163,7 +164,7 @@ class OTLPIngestServiceTest {
     void stripsDuplicatedPayloadAttributesFromStoredSpan() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         var input = "{\"messages\":[{\"role\":\"user\",\"content\":\"hello\"}]}";
         var output = "{\"role\":\"assistant\",\"content\":\"hi\"}";
@@ -177,7 +178,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.output_tokens", "5"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         var span = inserted.getValue();
         assertEquals(input, span.input);
         assertEquals(output, span.output);
@@ -192,7 +193,7 @@ class OTLPIngestServiceTest {
     void keepsLangfuseAttributeWhenItDiffersFromSpanPayload() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         var attributeInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from attribute\"}]}";
         var spanInput = "{\"messages\":[{\"role\":\"user\",\"content\":\"from prompt\"}]}";
@@ -201,7 +202,7 @@ class OTLPIngestServiceTest {
             attr("langfuse.observation.input", attributeInput))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         assertEquals(spanInput, inserted.getValue().input);
         assertEquals(attributeInput, inserted.getValue().attributes.get("langfuse.observation.input"));
     }
@@ -212,7 +213,7 @@ class OTLPIngestServiceTest {
         // first ingest creates the trace, the second one finds it by the derived session trace id
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of()).thenReturn(List.of(new Trace()));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -224,7 +225,7 @@ class OTLPIngestServiceTest {
             attr("user.id", "user-1"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection, times(2)).insert(inserted.capture());
+        verify(spanCollection, times(2)).insert(inserted.capture());
         var spans = inserted.getAllValues();
         assertEquals(spans.get(0).traceId, spans.get(1).traceId);
         // derived trace id replaces the random proto trace id (16 zero bytes in this test)
@@ -237,7 +238,7 @@ class OTLPIngestServiceTest {
     void gatewaySpansWithDifferentSessionIdsKeepSeparateTraces() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -249,7 +250,7 @@ class OTLPIngestServiceTest {
             attr("user.id", "user-1"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection, times(2)).insert(inserted.capture());
+        verify(spanCollection, times(2)).insert(inserted.capture());
         var spans = inserted.getAllValues();
         assertNotEquals(spans.get(0).traceId, spans.get(1).traceId);
     }
@@ -258,14 +259,14 @@ class OTLPIngestServiceTest {
     void nonGatewaySpansKeepProtoTraceId() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.run",
             attr("session.id", "chat-session-1"),
             attr("user.id", "user-1"))));
 
         var inserted = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(inserted.capture());
+        verify(spanCollection).insert(inserted.capture());
         // agent spans with a session.id keep their real trace id (16 zero bytes in this test)
         assertEquals("0".repeat(32), inserted.getValue().traceId);
     }
@@ -280,7 +281,7 @@ class OTLPIngestServiceTest {
         model.outputPricePer1MTokens = 2D;
         when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of(model));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("flash_to_video",
             attr("media.type", "video"),
@@ -292,7 +293,7 @@ class OTLPIngestServiceTest {
             attr("gen_ai.usage.pricing_model_id", "seedance-2"))));
 
         var insertedSpan = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(insertedSpan.capture());
+        verify(spanCollection).insert(insertedSpan.capture());
         assertEquals(SpanType.MEDIA, insertedSpan.getValue().type);
         assertEquals(0.42D, insertedSpan.getValue().costUsd, 1e-9);
         assertEquals("upstream", insertedSpan.getValue().costSource);
@@ -308,7 +309,7 @@ class OTLPIngestServiceTest {
     void mediaSpanPayloadBecomesSpanAndTraceInputOutput() {
         var service = service();
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("Video generation",
             attr("media.type", "video"),
@@ -318,7 +319,7 @@ class OTLPIngestServiceTest {
             attr("langfuse.observation.output", "/api/media-jobs/job-1/content"))));
 
         var insertedSpan = ArgumentCaptor.forClass(Span.class);
-        verify(service.spanCollection).insert(insertedSpan.capture());
+        verify(spanCollection).insert(insertedSpan.capture());
         assertEquals("a cat surfing", insertedSpan.getValue().input);
         assertEquals("/api/media-jobs/job-1/content", insertedSpan.getValue().output);
 
@@ -342,7 +343,7 @@ class OTLPIngestServiceTest {
         provisional.input = "{\"messages\":[{\"role\":\"user\",\"content\":\"full request payload\"}]}";
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(provisional));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(provisional));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.turn",
             attr("langfuse.observation.type", "agent"),
@@ -366,7 +367,7 @@ class OTLPIngestServiceTest {
         trace.input = "first request body";
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("gateway.chat.completions",
             attr("client.type", "gateway"),
@@ -388,7 +389,7 @@ class OTLPIngestServiceTest {
         trace.traceId = "0".repeat(32);
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
         when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
 
         service.ingest(request(span("agent.turn",
             attr("session.id", "session-1"),
@@ -462,7 +463,8 @@ class OTLPIngestServiceTest {
     private OTLPIngestService service() {
         var service = new OTLPIngestService();
         service.traceCollection = traceCollection();
-        service.spanCollection = spanCollection();
+        spanCollection = spanCollection();
+        service.spanStore = ai.core.server.trace.MongoSpanStore.of(spanCollection);
         service.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(agentRunCollection());
         var chatSessionCollection = chatSessionCollection();
         var chatSessionStore = ai.core.server.session.MongoChatSessionStore.of(chatSessionCollection);
@@ -471,7 +473,7 @@ class OTLPIngestServiceTest {
         gatewayModelCollection = gatewayModelCollection();
         service.modelPricingService.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(gatewayModelCollection);
         when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
-        when(service.spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.find(any(Query.class))).thenReturn(List.of());
         return service;
     }
 

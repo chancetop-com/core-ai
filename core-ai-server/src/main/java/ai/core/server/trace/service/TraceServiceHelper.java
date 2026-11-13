@@ -8,6 +8,7 @@ import com.mongodb.client.model.Sorts;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
+import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 
@@ -171,18 +172,15 @@ final class TraceServiceHelper {
         return needsTokens || trace.cachedTokens == null || trace.costUsd == null;
     }
 
-    static void enrichMetricsInBatch(List<Trace> traces, MongoCollection<Span> spanCollection) {
+    static void enrichMetricsInBatch(List<Trace> traces, SpanStore spanStore) {
         var pending = traces.stream()
             .filter(trace -> trace.traceId != null && !trace.traceId.isEmpty() && needsEnrichment(trace))
             .toList();
         if (pending.isEmpty()) return;
 
-        var query = new Query();
-        query.filter = Filters.in("trace_id", pending.stream().map(trace -> trace.traceId).toList());
-        query.limit = MAX_SPANS_PER_TRACE * pending.size();
-        // Enrichment only reads token/cost fields; skip the payloads to avoid pulling huge span docs.
-        query.projection = spanSummaryProjection();
-        var spansByTrace = spanCollection.find(query).stream()
+        // Enrichment only reads token/cost fields; the store skips the payload columns.
+        var spansByTrace = spanStore.summariesByTraces(pending.stream().map(trace -> trace.traceId).toList(),
+                MAX_SPANS_PER_TRACE * pending.size()).stream()
             .filter(span -> span.traceId != null)
             .collect(Collectors.groupingBy(span -> span.traceId));
         pending.forEach(trace -> enrichMetrics(trace, spansByTrace.getOrDefault(trace.traceId, List.of())));
