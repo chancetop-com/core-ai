@@ -86,7 +86,8 @@ public class SystemOneDecisionProvider implements DecisionProvider {
         extraHeaders.forEach((name, value) -> {
             if (value != null) request.headers.put(name, value);
         });
-        if (credential == null || credential.isBlank() || credentialHeader == null || credentialHeader.isBlank()) return;
+        if (credential == null || credential.isBlank()) return;
+        if (credentialHeader == null || credentialHeader.isBlank()) return;
         request.headers.put(credentialHeader, credentialValue());
     }
 

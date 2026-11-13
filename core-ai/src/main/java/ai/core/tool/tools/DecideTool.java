@@ -47,23 +47,27 @@ public final class DecideTool extends ToolCall {
     private static final int MAX_STATE_LENGTH = 64_000;
 
     public static String buildDescription(List<DecisionModelHint> models) {
-        var description = new StringBuilder(TOOL_DESC);
+        var lines = new ArrayList<String>();
+        lines.add(TOOL_DESC);
         if (models == null || models.isEmpty()) {
-            description.append("\nNo decision model catalog is available; leave model unset to use the gateway default.");
-            return description.toString();
+            lines.add("No decision model catalog is available; leave model unset to use the gateway default.");
+            return String.join("\n", lines);
         }
-        description.append("\nAvailable decision models (omit model to use the default):");
-        for (var model : models) {
-            description.append("\n- ").append(model.modelId());
-            if (model.displayName() != null && !model.displayName().isBlank()
-                    && !model.displayName().equals(model.modelId())) {
-                description.append(" (").append(model.displayName()).append(")");
-            }
-            if (model.providerName() != null && !model.providerName().isBlank()) {
-                description.append(" — ").append(model.providerName());
-            }
+        lines.add("Available decision models (omit model to use the default):");
+        for (var model : models) lines.add(modelLine(model));
+        return String.join("\n", lines);
+    }
+
+    private static String modelLine(DecisionModelHint model) {
+        var line = new StringBuilder("- ").append(model.modelId());
+        if (model.displayName() != null && !model.displayName().isBlank()
+                && !model.displayName().equals(model.modelId())) {
+            line.append(" (").append(model.displayName()).append(')');
         }
-        return description.toString();
+        if (model.providerName() != null && !model.providerName().isBlank()) {
+            line.append(" — ").append(model.providerName());
+        }
+        return line.toString();
     }
 
     public static Builder builder() {
@@ -231,11 +235,6 @@ public final class DecideTool extends ToolCall {
     @Override
     public long getTimeoutMs() {
         return 60_000L;
-    }
-
-    @Override
-    public boolean isConcurrencySafe(String arguments) {
-        return true;
     }
 
     public static class Builder extends ToolCall.Builder<Builder, DecideTool> {
