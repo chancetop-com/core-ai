@@ -3,7 +3,9 @@ package ai.core.server.trace;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceFacetRow;
 
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Storage contract for traces. Selected by {@code sys.store.mode}, the same switch the span store uses.
@@ -23,7 +25,15 @@ public interface TraceStore {
 
     Trace findByTraceId(String traceId);
 
+    boolean existsByTraceId(String traceId);
+
     void update(TraceUpdate update);
+
+    /**
+     * Writes all supplied identity columns when at least one of them is still empty. Ingest creates the
+     * document from whichever span arrives first, and the root span later supplies the real attribution.
+     */
+    void backfillIdentity(String traceId, Map<TraceIdentityField, String> values);
 
     /**
      * @param id      the document id, usually the same value as traceId
@@ -38,4 +48,8 @@ public interface TraceStore {
     List<TraceFacetRow> facets(TraceQuery query, TraceFacet facet, int limit);
 
     List<String> traceIds(TraceQuery query, int limit);
+
+    long countStartedBefore(ZonedDateTime cutoff);
+
+    long deleteByIds(List<String> ids);
 }

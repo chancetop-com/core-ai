@@ -3,16 +3,16 @@ package ai.core.server.trace.maintenance;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.service.TracePayloadStore;
-import ai.core.utils.JsonUtil;
 import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -51,7 +51,7 @@ public class TraceArchiveService {
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     SpanStore spanStore;
     @Inject
@@ -95,12 +95,12 @@ public class TraceArchiveService {
         try (var partWriter = new ArchivePartWriter(blobPrefix, state)) {
             int offset = 0;
             while (true) {
-                var batchQuery = new Query();
-                batchQuery.filter = Filters.lt("started_at", cutoff);
-                batchQuery.sort = Sorts.ascending("started_at");
+                var batchQuery = new TraceQuery();
+                batchQuery.startBefore = cutoff;
+                batchQuery.ascending = true;
                 batchQuery.skip = offset;
                 batchQuery.limit = ARCHIVE_BATCH_SIZE;
-                var batch = traceCollection.find(batchQuery);
+                var batch = traceStore.list(batchQuery);
                 if (batch.isEmpty()) break;
 
                 for (var trace : batch) {
@@ -134,7 +134,7 @@ public class TraceArchiveService {
             return -1;
         }
 
-        int totalCount = (int) traceCollection.count(Filters.lt("started_at", cutoff));
+        int totalCount = (int) traceStore.countStartedBefore(cutoff);
         if (totalCount == 0) {
             LOGGER.info("no traces to archive, cutoff={}", cutoff);
             return 0;
@@ -169,11 +169,11 @@ public class TraceArchiveService {
             // always read the oldest page: deleting the traces as we go moves the cursor forward
             // without skip, which would re-scan the whole collection (and fetch every trace doc)
             // on each page - the query plan is a started_at index scan plus TRACE_DELETE_BATCH_SIZE fetches
-            var batchQuery = new Query();
-            batchQuery.filter = Filters.lt("started_at", cutoff);
-            batchQuery.sort = Sorts.ascending("started_at");
+            var batchQuery = new TraceQuery();
+            batchQuery.startBefore = cutoff;
+            batchQuery.ascending = true;
             batchQuery.limit = TRACE_DELETE_BATCH_SIZE;
-            var batch = traceCollection.find(batchQuery);
+            var batch = traceStore.list(batchQuery);
             if (batch.isEmpty()) break;
 
             var traceIds = TraceMaintenanceHelper.extractTraceIds(batch);
@@ -183,7 +183,7 @@ public class TraceArchiveService {
             totalSpansDeleted += deleteSpans(traceIds);
             if (payloadStore != null) payloadStore.deleteForTraces(traceIds);
 
-            long deleted = traceCollection.delete(Filters.in("_id", ids));
+            long deleted = traceStore.deleteByIds(ids);
             totalTracesDeleted += deleted;
             if (deleted == 0) break;
             if (totalTracesDeleted % (TRACE_DELETE_BATCH_SIZE * 50) == 0) {

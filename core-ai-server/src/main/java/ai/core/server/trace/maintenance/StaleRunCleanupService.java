@@ -6,21 +6,17 @@ import ai.core.server.run.AgentRunStore;
 
 import ai.core.server.domain.AgentRun;
 import ai.core.server.domain.RunStatus;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
+import ai.core.server.trace.TraceUpdate;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -40,7 +36,7 @@ public class StaleRunCleanupService {
     private static final String INTERRUPTED = "run interrupted: no activity for " + STALE_AFTER.toMinutes() + "m";
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     AgentRunStore agentRunStore;
 
@@ -82,11 +78,12 @@ public class StaleRunCleanupService {
     // Only a span that lands refreshes updated_at, so a run whose process is gone leaves the trace untouched
     // while a slow but healthy run keeps it fresh — that difference is what makes "stale" safe to act on.
     List<Trace> runningTracesStartedBefore(ZonedDateTime cutoff) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.eq("status", TraceStatus.RUNNING), Filters.lt("started_at", cutoff));
-        query.sort = Sorts.ascending("started_at");
+        var query = new TraceQuery();
+        query.status = TraceStatus.RUNNING.name();
+        query.startTo = cutoff;
+        query.ascending = true;
         query.limit = MAX_BATCH;
-        return traceCollection.find(query);
+        return traceStore.list(query);
     }
 
     List<AgentRun> unfinishedRunsStartedBefore(ZonedDateTime cutoff) {
@@ -99,22 +96,22 @@ public class StaleRunCleanupService {
     }
 
     private Trace traceOf(String traceId) {
-        return traceCollection.find(Filters.eq("trace_id", traceId)).stream().findFirst().orElse(null);
+        return traceStore.findByTraceId(traceId);
     }
 
     private void finishTrace(Trace trace) {
         var lastActivity = trace.updatedAt != null ? trace.updatedAt : ZonedDateTime.now();
-        var updates = new ArrayList<Bson>();
-        updates.add(Updates.set("status", TraceStatus.ERROR));
-        updates.add(Updates.set("error_message", INTERRUPTED));
-        updates.add(Updates.set("completed_at", lastActivity));
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+        var update = new TraceUpdate();
+        update.traceId = trace.traceId;
+        update.requireStatus = TraceStatus.RUNNING;
+        update.status = TraceStatus.ERROR;
+        update.errorMessage = INTERRUPTED;
+        update.completedAt = lastActivity;
+        update.updatedAt = ZonedDateTime.now();
         if (trace.startedAt != null) {
-            updates.add(Updates.set("duration_ms", Math.max(0L, Duration.between(trace.startedAt, lastActivity).toMillis())));
+            update.durationMs = Math.max(0L, Duration.between(trace.startedAt, lastActivity).toMillis());
         }
-        traceCollection.update(
-            Filters.and(Filters.eq("trace_id", trace.traceId), Filters.eq("status", TraceStatus.RUNNING)),
-            Updates.combine(updates));
+        traceStore.update(update);
         LOGGER.info("finished interrupted trace, traceId={}, started={}", trace.traceId, trace.startedAt);
     }
 

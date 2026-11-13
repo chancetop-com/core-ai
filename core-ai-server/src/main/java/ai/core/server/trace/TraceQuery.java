@@ -27,7 +27,10 @@ public class TraceQuery {
     public List<String> extraUserIds;
     public ZonedDateTime startFrom;
     public ZonedDateTime startTo;
+    // exclusive upper bound, used by the archive job so the boundary row is never archived twice
+    public ZonedDateTime startBefore;
     public boolean ascending;
-    public int skip;
+    // null means no offset; the archive delete loop relies on that to page by started_at only
+    public Integer skip;
     public int limit = 20;
 }

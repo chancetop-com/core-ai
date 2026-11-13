@@ -2,20 +2,17 @@ package ai.core.server.trace.service;
 
 import ai.core.server.run.AgentRunStore;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceStore;
+import ai.core.server.trace.TraceUpdate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
 
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
-import org.bson.conversions.Bson;
 
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
@@ -25,9 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -41,7 +36,7 @@ public class OTLPIngestService {
     private static final Set<String> SYSTEM_OPERATIONS = Set.of("memory-consolidator", "memory-compressor", "memory-extractor");
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     ai.core.server.session.ChatSessionStore chatSessionStore;
     @Inject
@@ -107,13 +102,13 @@ public class OTLPIngestService {
         // trace creation and span ingestion run on separate queues, so a fast child span can create the
         // doc first; the root still owns the identity, so fill whatever the first writer left empty.
         if (ensureTraceExists(resolvedTraceId, spanName, startEpochMs, attrs, resourceAttrs)) return;
-        TraceIdentity.backfill(traceCollection, resolvedTraceId, attrs);
+        TraceIdentity.backfill(traceStore, resolvedTraceId, attrs);
     }
 
     /** @return true when this call created the doc; false when it already existed (or lost the insert race). */
     private boolean ensureTraceExists(String traceId, String spanName, long startMs,
                                       Map<String, String> attrs, Map<String, String> resourceAttrs) {
-        if (TraceServiceHelper.exists(traceCollection, Filters.eq("trace_id", traceId))) return false;
+        if (traceStore.existsByTraceId(traceId)) return false;
 
         var trace = new Trace();
         trace.id = UUID.randomUUID().toString();
@@ -138,15 +133,9 @@ public class OTLPIngestService {
         trace.totalTokens = 0L;
         trace.cachedTokens = 0L;
         trace.costUsd = 0.0;
-        // race-safe: 11000 on the traces.trace_id unique index means a concurrent ingest (likely
-        // another request of the same merged gateway session) already created the trace
-        try {
-            traceCollection.insert(trace);
-            return true;
-        } catch (MongoWriteException e) {
-            if (e.getCode() != 11000) throw e;
-            return false;
-        }
+        // race-safe: the unique trace id index means a concurrent ingest (likely another request of
+        // the same merged gateway session) already created the trace
+        return traceStore.insertIfAbsent(trace);
     }
 
     private void saveSpan(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -214,10 +203,10 @@ public class OTLPIngestService {
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
                              String traceId, Map<String, String> attrs,
                              Map<String, String> resourceAttrs, TracePayloadStore.Compactor compactor) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (!existing.isEmpty()) {
+        var existing = traceStore.findByTraceId(traceId);
+        if (existing != null) {
             long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
-            updateExistingTrace(existing.getFirst(), protoSpan, attrs, endMs, compactor);
+            updateExistingTrace(existing, protoSpan, attrs, endMs, compactor);
             return;
         }
         createNewTrace(protoSpan, traceId, attrs, resourceAttrs, compactor);
@@ -225,51 +214,59 @@ public class OTLPIngestService {
 
     private void updateExistingTrace(Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                      Map<String, String> attrs, long endMs, TracePayloadStore.Compactor compactor) {
-        // Targeted $set updates instead of full document replace: a merged gateway session trace
-        // has many root spans that can be ingested concurrently, and a replace would overwrite
-        // the atomic $inc token/cost counters with a stale snapshot.
-        var updates = new ArrayList<Bson>();
+        // Targeted updates instead of a full replace: a merged gateway session trace has many root
+        // spans that can be ingested concurrently, and a replace would overwrite the atomic counter
+        // increments with a stale snapshot.
         var status = OTLPParseHelper.mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
-        updates.add(Updates.set("status", status));
-        updates.add(Updates.set("error_message", status == TraceStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null));
+        var update = new TraceUpdate();
+        update.traceId = trace.traceId;
+        update.status = status;
+        if (status == TraceStatus.ERROR) {
+            var message = OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage());
+            if (message != null) update.errorMessage = message;
+            else update.clearErrorMessage = true;
+        } else {
+            update.clearErrorMessage = true;
+        }
         var output = OTLPParseHelper.resolveOutput(attrs);
         if (compactor != null && output != null) output = compactor.compact(trace.traceId, output);
-        if (output != null) updates.add(Updates.set("output", output));
-        updates.add(Updates.set("duration_ms", endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano())));
-        updates.add(Updates.set("completed_at", OTLPParseHelper.toZonedDateTime(endMs)));
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+        if (output != null) update.output = output;
+        update.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
+        update.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
+        update.updatedAt = ZonedDateTime.now();
         // Backfill model if this span carries it and trace.model is still empty
         var spanModel = attrs.get("gen_ai.request.model");
         if (spanModel != null && !spanModel.isEmpty() && (trace.model == null || trace.model.isEmpty())) {
-            updates.add(Updates.set("model", spanModel));
+            update.model = spanModel;
         }
         // Prefer richer span info: if this span carries session/agent/user attributes,
         // upgrade the trace's identity fields (they may be null when the first-arrived
         // span was an external one without context)
         var hasRichContext = attrs.get("session.id") != null || attrs.get("gen_ai.agent.name") != null;
         if (hasRichContext) {
-            upgradeTraceWithSpanInfo(updates, trace, protoSpan, attrs, compactor);
+            upgradeTraceWithSpanInfo(update, trace, protoSpan, attrs, compactor);
         }
         var workflow = OTLPTraceMetadata.workflowMetadata(attrs);
         if (!workflow.isEmpty()) {
             var merged = new LinkedHashMap<String, String>();
             if (trace.metadata != null) merged.putAll(trace.metadata);
             merged.putAll(workflow);
-            updates.add(Updates.set("metadata", merged));
+            update.metadata = merged;
         }
-        traceCollection.update(Filters.eq("trace_id", trace.traceId), Updates.combine(updates));
+        traceStore.update(update);
     }
 
-    private void upgradeTraceWithSpanInfo(List<Bson> updates, Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
+    private void upgradeTraceWithSpanInfo(TraceUpdate update, Trace trace, io.opentelemetry.proto.trace.v1.Span protoSpan,
                                           Map<String, String> attrs, TracePayloadStore.Compactor compactor) {
-        updates.add(Updates.set("name", IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"))));
-        updates.add(Updates.set("session_id", attrs.get("session.id")));
-        updates.add(Updates.set("user_id", attrs.get("user.id")));
-        updates.add(Updates.set("agent_name", attrs.get("gen_ai.agent.name")));
-        updates.add(Updates.set("agent_id", attrs.get("gen_ai.agent.id")));
+        update.writeIdentityNulls = true;
+        update.name = IngestService.friendlyTraceName(protoSpan.getName(), attrs.get("gen_ai.agent.name"));
+        update.sessionId = attrs.get("session.id");
+        update.userId = attrs.get("user.id");
+        update.agentName = attrs.get("gen_ai.agent.name");
+        update.agentId = attrs.get("gen_ai.agent.id");
         var source = resolveSource(attrs, attrs.get("session.id"));
-        updates.add(Updates.set("source", source));
-        updates.add(Updates.set("type", resolveType(source, attrs, Map.of())));
+        update.source = source;
+        update.type = resolveType(source, attrs, Map.of());
         // The trace doc is created by whichever span arrives first — usually the first LLM call, whose payload
         // is the full request (messages + tools). The run/turn root span carries the real input (the user
         // message), so it replaces that provisional payload instead of only filling an empty field.
@@ -277,7 +274,7 @@ public class OTLPIngestService {
         if (compactor != null && input != null) input = compactor.compact(trace.traceId, input);
         var agentRootInput = attrs.get("gen_ai.agent.name") != null;
         if (input != null && (agentRootInput || trace.input == null || trace.input.isEmpty())) {
-            updates.add(Updates.set("input", input));
+            update.input = input;
         }
     }
 
@@ -316,33 +313,36 @@ public class OTLPIngestService {
         trace.totalTokens = 0L;
         trace.cachedTokens = 0L;
         trace.costUsd = 0.0;
-        traceCollection.insert(trace);
+        traceStore.insert(trace);
     }
 
     private void backfillTraceModel(String traceId, String model) {
         // targeted conditional update instead of read-and-replace: spans are large documents (a single
         // LLM span can exceed 1MB), and loading the whole trace per LLM span was a hot-path read.
-        traceCollection.update(
-            Filters.and(
-                Filters.eq("trace_id", traceId),
-                Filters.or(Filters.exists("model", false), Filters.eq("model", null), Filters.eq("model", ""))),
-            Updates.combine(Updates.set("model", model), Updates.set("updated_at", ZonedDateTime.now())));
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.MODEL;
+        update.valueWhenEmpty = model;
+        update.updatedAt = ZonedDateTime.now();
+        traceStore.update(update);
     }
 
     private void incrementTraceTokens(String traceId, Span span) {
-        var inc = new ArrayList<Bson>();
         long input = span.inputTokens != null ? span.inputTokens : 0;
         long output = span.outputTokens != null ? span.outputTokens : 0;
-        if (input > 0) inc.add(Updates.inc("input_tokens", input));
-        if (output > 0) inc.add(Updates.inc("output_tokens", output));
-        long total = input + output;
-        if (total > 0) inc.add(Updates.inc("total_tokens", total));
-        if (span.cachedTokens != null && span.cachedTokens > 0) inc.add(Updates.inc("cached_tokens", span.cachedTokens));
-        if (span.costUsd != null && span.costUsd > 0) inc.add(Updates.inc("cost_usd", span.costUsd));
-        if (!inc.isEmpty()) {
-            inc.add(Updates.set("updated_at", ZonedDateTime.now()));
-            traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(inc));
-        }
+        long cached = span.cachedTokens != null ? span.cachedTokens : 0;
+        double cost = span.costUsd != null ? span.costUsd : 0.0;
+        if (input <= 0 && output <= 0 && cached <= 0 && cost <= 0) return;
+
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.inputTokensDelta = input;
+        update.outputTokensDelta = output;
+        update.totalTokensDelta = input + output;
+        update.cachedTokensDelta = cached;
+        update.costUsdDelta = cost;
+        update.updatedAt = ZonedDateTime.now();
+        traceStore.update(update);
     }
 
     private SpanType resolveSpanType(Map<String, String> attrs) {

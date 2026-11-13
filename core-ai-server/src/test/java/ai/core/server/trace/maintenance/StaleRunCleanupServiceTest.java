@@ -24,6 +24,7 @@ import static org.mockito.Mockito.when;
  * @author stephen
  */
 class StaleRunCleanupServiceTest {
+    private MongoCollection<Trace> traceCollection;
     private MongoCollection<AgentRun> agentRunCollection;
     @Test
     void failsRunAndTraceLeftRunningByACrash() {
@@ -38,7 +39,7 @@ class StaleRunCleanupServiceTest {
         service.cleanup();
 
         var traceUpdate = ArgumentCaptor.forClass(Bson.class);
-        verify(service.traceCollection).update(any(Bson.class), traceUpdate.capture());
+        verify(traceCollection).update(any(Bson.class), traceUpdate.capture());
         var traceSet = traceUpdate.getValue().toString();
         assertTrue(traceSet.contains("ERROR"), traceSet);
         assertTrue(traceSet.contains("interrupted"), traceSet);
@@ -58,7 +59,7 @@ class StaleRunCleanupServiceTest {
         var trace = trace("t-1", TraceStatus.COMPLETED, started, finishedAt);
         trace.completedAt = finishedAt;
         trace.output = "the answer";
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of());
         stubTraceLookup(service, trace);
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of(run("run-1", RunStatus.RUNNING, started, "t-1")));
 
@@ -67,7 +68,7 @@ class StaleRunCleanupServiceTest {
         var runSet = capturedRunUpdate();
         assertTrue(runSet.contains("COMPLETED"), runSet);
         assertTrue(runSet.contains("the answer"), runSet);
-        verify(service.traceCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(traceCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
@@ -81,7 +82,7 @@ class StaleRunCleanupServiceTest {
 
         service.cleanup();
 
-        verify(service.traceCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(traceCollection, never()).update(any(Bson.class), any(Bson.class));
         verify(agentRunCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
@@ -95,14 +96,14 @@ class StaleRunCleanupServiceTest {
 
         service.cleanup();
 
-        verify(service.traceCollection, never()).update(any(Bson.class), any(Bson.class));
+        verify(traceCollection, never()).update(any(Bson.class), any(Bson.class));
     }
 
     @Test
     void failsRunWithoutTrace() {
         var service = service();
         var run = run("run-1", RunStatus.RUNNING, ZonedDateTime.now().minusHours(1), null);
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of());
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of());
         when(agentRunCollection.find(any(Query.class))).thenReturn(List.of(run));
 
         service.cleanup();
@@ -117,11 +118,11 @@ class StaleRunCleanupServiceTest {
     }
 
     private void stubStaleTraceScan(StaleRunCleanupService service, Trace trace) {
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of(trace));
     }
 
     private void stubTraceLookup(StaleRunCleanupService service, Trace trace) {
-        when(service.traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(trace));
     }
 
     private Trace trace(String traceId, TraceStatus status, ZonedDateTime startedAt, ZonedDateTime updatedAt) {
@@ -144,7 +145,8 @@ class StaleRunCleanupServiceTest {
 
     private StaleRunCleanupService service() {
         var service = new StaleRunCleanupService();
-        service.traceCollection = traceCollection();
+        traceCollection = traceCollection();
+        service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         agentRunCollection = agentRunCollection();
         service.agentRunStore = ai.core.server.run.MongoAgentRunStore.of(agentRunCollection);
         return service;

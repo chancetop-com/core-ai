@@ -36,6 +36,8 @@ public class TraceUpdate {
     public String agentId;
     public String model;
     public Map<String, String> metadata;
+    // write the identity columns even when null, used when the root span replaces a provisional trace
+    public boolean writeIdentityNulls;
 
     // when set, only this column is written, and only while it is still null or blank
     public EmptyGuard setOnlyWhenEmpty;

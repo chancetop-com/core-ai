@@ -38,6 +38,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class TraceArchiveServiceTest {
+    private MongoCollection<Trace> traceCollection;
+
     @Test
     void archivesLandInThePrivateArtifactContainerByDefault() {
         var resolver = mock(ObjectStorageServiceResolver.class);
@@ -108,15 +110,16 @@ class TraceArchiveServiceTest {
         var remainingSpans = new ArrayList<>(spans);
         var tracePageSize = new int[]{0};
 
-        service.traceCollection = mockCollection();
-        when(service.traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
+        traceCollection = mockCollection();
+        service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
+        when(traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             tracePageSize[0] = query.limit;
             assertNull(query.skip, "deletion must page by started_at, not by skip, to avoid re-scanning the collection");
             int to = Math.min(query.limit, remainingTraces.size());
             return new ArrayList<>(remainingTraces.subList(0, to));
         });
-        when(service.traceCollection.delete(any(Bson.class))).thenAnswer(invocation -> {
+        when(traceCollection.delete(any(Bson.class))).thenAnswer(invocation -> {
             var ids = inValues(invocation.getArgument(0), "_id");
             int before = remainingTraces.size();
             remainingTraces.removeIf(t -> ids.contains(t.id));
@@ -157,9 +160,10 @@ class TraceArchiveServiceTest {
 
         service.statsCollection = mockCollection();
         when(service.statsCollection.count(any(Bson.class))).thenReturn(1L);
-        service.traceCollection = mockCollection();
-        when(service.traceCollection.count(any(Bson.class))).thenReturn((long) traces.size());
-        when(service.traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
+        traceCollection = mockCollection();
+        service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
+        when(traceCollection.count(any(Bson.class))).thenReturn((long) traces.size());
+        when(traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
             return query.skip == 0 ? new ArrayList<>(traces) : List.of();
         });

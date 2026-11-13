@@ -7,6 +7,7 @@ import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
+import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
@@ -15,9 +16,11 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
 
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -53,11 +56,17 @@ public class MongoTraceStore implements TraceStore {
     }
 
     @Override
-    public Trace findByTraceId(String traceId) {
+    public boolean existsByTraceId(String traceId) {
         var query = new Query();
         query.filter = Filters.eq("trace_id", traceId);
+        query.projection = Projections.include("_id");
         query.limit = 1;
-        var results = traceCollection.find(query);
+        return !traceCollection.find(query).isEmpty();
+    }
+
+    @Override
+    public Trace findByTraceId(String traceId) {
+        var results = traceCollection.find(Filters.eq("trace_id", traceId));
         return results.isEmpty() ? null : results.getFirst();
     }
 
@@ -74,14 +83,17 @@ public class MongoTraceStore implements TraceStore {
             if (update.output != null) updates.add(Updates.set("output", update.output));
             if (update.durationMs != null) updates.add(Updates.set("duration_ms", update.durationMs));
             if (update.completedAt != null) updates.add(Updates.set("completed_at", update.completedAt));
-            if (update.name != null) updates.add(Updates.set("name", update.name));
-            if (update.sessionId != null) updates.add(Updates.set("session_id", update.sessionId));
-            if (update.userId != null) updates.add(Updates.set("user_id", update.userId));
-            if (update.source != null) updates.add(Updates.set("source", update.source));
-            if (update.type != null) updates.add(Updates.set("type", update.type));
+            // OTLP upgrades the identity from the root span and writes the columns as they are,
+            // including null: the span that created the document may not have carried them.
+            var writeNulls = update.writeIdentityNulls;
+            if (update.name != null || writeNulls) updates.add(Updates.set("name", update.name));
+            if (update.sessionId != null || writeNulls) updates.add(Updates.set("session_id", update.sessionId));
+            if (update.userId != null || writeNulls) updates.add(Updates.set("user_id", update.userId));
+            if (update.source != null || writeNulls) updates.add(Updates.set("source", update.source));
+            if (update.type != null || writeNulls) updates.add(Updates.set("type", update.type));
             if (update.metadata != null) updates.add(Updates.set("metadata", update.metadata));
-            if (update.agentName != null) updates.add(Updates.set("agent_name", update.agentName));
-            if (update.agentId != null) updates.add(Updates.set("agent_id", update.agentId));
+            if (update.agentName != null || writeNulls) updates.add(Updates.set("agent_name", update.agentName));
+            if (update.agentId != null || writeNulls) updates.add(Updates.set("agent_id", update.agentId));
             if (update.model != null) updates.add(Updates.set("model", update.model));
         }
         if (update.inputTokensDelta != null && update.inputTokensDelta != 0) {
@@ -107,6 +119,29 @@ public class MongoTraceStore implements TraceStore {
         if (update.requireStatus != null) filters.add(Filters.eq("status", update.requireStatus));
         if (update.setOnlyWhenEmpty != null) filters.add(emptyOrPlaceholder(update));
         traceCollection.update(Filters.and(filters), Updates.combine(updates));
+    }
+
+    @Override
+    public void backfillIdentity(String traceId, Map<TraceIdentityField, String> values) {
+        if (values == null || values.isEmpty()) return;
+        var missing = new ArrayList<Bson>();
+        var updates = new ArrayList<Bson>();
+        for (var entry : values.entrySet()) {
+            var column = identityColumn(entry.getKey());
+            missing.add(Filters.or(Filters.exists(column, false), Filters.eq(column, null), Filters.eq(column, "")));
+            updates.add(Updates.set(column, entry.getValue()));
+        }
+        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
+        traceCollection.update(Filters.and(Filters.eq("trace_id", traceId), Filters.or(missing)), Updates.combine(updates));
+    }
+
+    private String identityColumn(TraceIdentityField field) {
+        return switch (field) {
+            case USER_ID -> "user_id";
+            case SESSION_ID -> "session_id";
+            case AGENT_ID -> "agent_id";
+            case AGENT_NAME -> "agent_name";
+        };
     }
 
     private Bson emptyOrPlaceholder(TraceUpdate update) {
@@ -143,7 +178,7 @@ public class MongoTraceStore implements TraceStore {
     @Override
     public List<Trace> list(TraceQuery criteria) {
         var query = new Query();
-        query.skip = criteria.skip;
+        if (criteria.skip != null) query.skip = criteria.skip;
         query.limit = criteria.limit;
         query.sort = criteria.ascending ? Sorts.ascending("created_at") : Sorts.descending("created_at");
         var filters = buildFilters(criteria);
@@ -192,6 +227,17 @@ public class MongoTraceStore implements TraceStore {
             .toList();
     }
 
+    @Override
+    public long countStartedBefore(ZonedDateTime cutoff) {
+        return traceCollection.count(Filters.lt("started_at", cutoff));
+    }
+
+    @Override
+    public long deleteByIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) return 0;
+        return traceCollection.delete(Filters.in("_id", ids));
+    }
+
     private List<Bson> buildFilters(TraceQuery criteria) {
         List<Bson> filters = new ArrayList<>();
         addIdFilter(filters, criteria);
@@ -207,6 +253,7 @@ public class MongoTraceStore implements TraceStore {
         if (criteria.extraUserIds != null) filters.add(Filters.in("user_id", criteria.extraUserIds));
         if (criteria.startFrom != null) filters.add(Filters.gte("started_at", criteria.startFrom));
         if (criteria.startTo != null) filters.add(Filters.lte("started_at", criteria.startTo));
+        if (criteria.startBefore != null) filters.add(Filters.lt("started_at", criteria.startBefore));
         return filters;
     }
 

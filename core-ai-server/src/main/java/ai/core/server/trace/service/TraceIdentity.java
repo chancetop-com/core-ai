@@ -1,14 +1,9 @@
 package ai.core.server.trace.service;
 
-import ai.core.server.trace.domain.Trace;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
-import core.framework.mongo.MongoCollection;
-import org.bson.conversions.Bson;
+import ai.core.server.trace.TraceIdentityField;
+import ai.core.server.trace.TraceStore;
 
-import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.EnumMap;
 import java.util.Map;
 
 /**
@@ -19,29 +14,18 @@ import java.util.Map;
  * @author stephen
  */
 final class TraceIdentity {
-    static void backfill(MongoCollection<Trace> traceCollection, String traceId, Map<String, String> attrs) {
-        var values = new LinkedHashMap<String, String>();
-        putIfPresent(values, "user_id", attrs.get("user.id"));
-        putIfPresent(values, "session_id", attrs.get("session.id"));
-        putIfPresent(values, "agent_id", attrs.get("gen_ai.agent.id"));
-        putIfPresent(values, "agent_name", attrs.get("gen_ai.agent.name"));
+    static void backfill(TraceStore traceStore, String traceId, Map<String, String> attrs) {
+        var values = new EnumMap<TraceIdentityField, String>(TraceIdentityField.class);
+        putIfPresent(values, TraceIdentityField.USER_ID, attrs.get("user.id"));
+        putIfPresent(values, TraceIdentityField.SESSION_ID, attrs.get("session.id"));
+        putIfPresent(values, TraceIdentityField.AGENT_ID, attrs.get("gen_ai.agent.id"));
+        putIfPresent(values, TraceIdentityField.AGENT_NAME, attrs.get("gen_ai.agent.name"));
         if (values.isEmpty()) return;
-
-        var missing = new ArrayList<Bson>();
-        var updates = new ArrayList<Bson>();
-        for (var entry : values.entrySet()) {
-            missing.add(Filters.or(
-                Filters.exists(entry.getKey(), false), Filters.eq(entry.getKey(), null), Filters.eq(entry.getKey(), "")));
-            updates.add(Updates.set(entry.getKey(), entry.getValue()));
-        }
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        traceCollection.update(
-            Filters.and(Filters.eq("trace_id", traceId), Filters.or(missing)),
-            Updates.combine(updates));
+        traceStore.backfillIdentity(traceId, values);
     }
 
-    private static void putIfPresent(Map<String, String> target, String key, String value) {
-        if (value != null && !value.isBlank()) target.put(key, value);
+    private static void putIfPresent(Map<TraceIdentityField, String> target, TraceIdentityField field, String value) {
+        if (value != null && !value.isBlank()) target.put(field, value);
     }
 
     private TraceIdentity() {
