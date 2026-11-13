@@ -128,6 +128,18 @@ export interface MemoryItem {
   run: MemoryRun;
 }
 
+/** A completed context compression; the started record only says a summarization is running. */
+export interface CompressionItem {
+  seq: number;
+  key: string;
+  kind: 'compression';
+  beforeCount: number;
+  afterCount: number;
+  contextTokens?: number;
+  maxContextTokens?: number;
+  triggerThreshold?: number;
+}
+
 export interface TaskItem {
   seq: number;
   key: string;
@@ -146,6 +158,7 @@ export type Item =
   | CustomItem
   | NoticeItem
   | MemoryItem
+  | CompressionItem
   | TaskItem;
 
 export interface Turn {
@@ -213,7 +226,7 @@ export function reduce(model: TranscriptModel, record: TranscriptRecord): Transc
       applyPlan(model, record);
       return model;
     case 'compression':
-      addNotice(model, record, 'compression', compressionText(record));
+      addCompression(model, record);
       return model;
     case 'sandbox':
       addNotice(model, record, 'sandbox', recordText(record, 'message'));
@@ -498,6 +511,29 @@ function addNotice(model: TranscriptModel, record: TranscriptRecord, level: stri
   else model.orphans.push(item);
 }
 
+/**
+ * A started record carries the number of messages queued for summarization, not a result, so only the
+ * completed record is kept; the chip renders it beside Thinking / Tool use.
+ */
+function addCompression(model: TranscriptModel, record: TranscriptRecord): void {
+  if (recordBool(record, 'completed') !== true) return;
+  const before = recordNumber(record, 'before_count');
+  const after = recordNumber(record, 'after_count');
+  if (before === undefined || after === undefined) return;
+  const turn = turnFor(model, record);
+  if (!turn) return;
+  turn.items.push({
+    seq: record.seq,
+    key: `${record.seq}:0`,
+    kind: 'compression',
+    beforeCount: before,
+    afterCount: after,
+    contextTokens: recordNumber(record, 'context_tokens'),
+    maxContextTokens: recordNumber(record, 'max_context_tokens'),
+    triggerThreshold: recordNumber(record, 'trigger_threshold'),
+  });
+}
+
 function applyCustom(model: TranscriptModel, record: TranscriptRecord): void {
   if (record.name === 'memory') {
     applyMemory(model, record);
@@ -671,18 +707,6 @@ function recordTs(record: TranscriptRecord): number | undefined {
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
-}
-
-function compressionText(record: TranscriptRecord): string {
-  const before = recordNumber(record, 'before_count');
-  const after = recordNumber(record, 'after_count');
-  const context = recordNumber(record, 'context_tokens');
-  const max = recordNumber(record, 'max_context_tokens');
-  if (before !== undefined && after !== undefined) {
-    const tokens = context !== undefined && max !== undefined ? ` · ${context} / ${max} tokens` : '';
-    return `Context compressed ${before} → ${after}${tokens}`;
-  }
-  return recordText(record, 'text') ?? 'Context compressed';
 }
 
 export function noticeText(item: NoticeItem): string | undefined {

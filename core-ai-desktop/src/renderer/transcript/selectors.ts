@@ -25,7 +25,7 @@ export function inputs(turn: Turn): InputItem[] {
 export function hasOutput(turn: Turn): boolean {
   return turn.items.some((item) => item.kind === 'text' || item.kind === 'reasoning' || item.kind === 'tool'
     || item.kind === 'batch' || item.kind === 'custom' || item.kind === 'memory' || item.kind === 'notice'
-    || item.kind === 'task') || turn.summary !== null;
+    || item.kind === 'compression' || item.kind === 'task') || turn.summary !== null;
 }
 
 export function summaryText(summary: TurnSummary | null): string[] {

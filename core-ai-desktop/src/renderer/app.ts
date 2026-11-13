@@ -18,6 +18,7 @@ import {
   emptyModel,
   reduce,
   reduceAll,
+  type CompressionItem,
   type CustomItem,
   type InputItem,
   type NoticeItem,
@@ -618,6 +619,8 @@ interface StreamingState {
   panels: HTMLElement | null;
   toolsPanel: HTMLElement | null;
   toolsToggle: AssistToggle | null;
+  compressionToggle: AssistToggle | null;
+  compressionRows: number;
   taskToggle: AssistToggle | null;
   toolUses: Map<ToolUseKind, ToolUseChip> | null;
 }
@@ -4064,10 +4067,11 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   const reasoning = reasoningItems(turn);
   const toolItems = turn.items.filter((item): item is ToolItem => item.kind === 'tool');
   const taskItems = turn.items.filter((item): item is TaskItem => item.kind === 'task');
+  const compressions = turn.items.filter((item): item is CompressionItem => item.kind === 'compression');
   const notices = turn.items.filter((item): item is NoticeItem => item.kind === 'notice');
   const customs = turn.items.filter((item): item is CustomItem => item.kind === 'custom');
   const hasAssistant = text.length || reasoning.length || toolItems.length || taskItems.length
-    || turn.memoryRuns.length;
+    || compressions.length || turn.memoryRuns.length;
   if (hasAssistant) {
     const wrapper = addMessageBubble(view, 'assistant', text.join('\n\n'), [], turn.startedAt);
     const bubble = wrapper.querySelector('.bubble') as HTMLElement | null;
@@ -4084,6 +4088,7 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
       if (toolItems.length) addTranscriptTools(view, chips, panels, toolItems);
       const webTools = toolItems.filter((tool) => tool.useKind === 'web');
       if (webTools.length) addTranscriptToolUse(chips, panels, 'web', webTools);
+      if (compressions.length) addTranscriptCompressions(chips, panels, compressions);
       if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
       if (taskItems.length) addTranscriptTasks(chips, panels, taskItems);
     }
@@ -4143,6 +4148,12 @@ function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, kind: Too
   toggle.body.append(body);
   chips.append(toggle.chip);
   panels.append(toggle.panel);
+}
+
+function addTranscriptCompressions(chips: HTMLElement, panels: HTMLElement, compressions: CompressionItem[]): void {
+  const body = el('div');
+  for (const compression of compressions) body.append(compressionRow(compression));
+  addTranscriptToggle(chips, panels, `Compression (${compressions.length})`, body);
 }
 
 function addTranscriptMemory(chips: HTMLElement, panels: HTMLElement, turn: Turn): void {
@@ -4514,7 +4525,7 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, taskToggle: null, toolUses: null };
+    view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, compressionToggle: null, compressionRows: 0, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     // A rich card emitted mid-turn seals the bubble it arrived under; the turn clock chip rides along
     // into this new bubble so "Running · Ns" keeps ticking next to the live output.
@@ -4759,6 +4770,56 @@ function recordToolUse(current: StreamingState, kind: ToolUseKind, text: string)
     chip.rows.set(text, { node, count: 1 });
   }
   chip.toggle.setLabel(`${TOOL_USE_CHIPS[kind].label} (${chip.rows.size})`);
+}
+
+interface CompressionFacts {
+  beforeCount: number;
+  afterCount: number;
+  contextTokens?: number;
+  maxContextTokens?: number;
+  triggerThreshold?: number;
+}
+
+function compressionRowText(facts: CompressionFacts): string {
+  const parts = [`${facts.beforeCount.toLocaleString()} → ${facts.afterCount.toLocaleString()} messages`];
+  if (facts.contextTokens !== undefined && facts.maxContextTokens) {
+    parts.push(`${facts.contextTokens.toLocaleString()} / ${facts.maxContextTokens.toLocaleString()} tokens`);
+    const used = `${Math.round(facts.contextTokens / facts.maxContextTokens * 100)}%`;
+    parts.push(facts.triggerThreshold !== undefined ? `${used} (trigger ${Math.round(facts.triggerThreshold * 100)}%)` : used);
+  }
+  return parts.join(' · ');
+}
+
+function compressionRow(facts: CompressionFacts): HTMLElement {
+  return el('div', 'compression-row', compressionRowText(facts));
+}
+
+/** Compression is turn metadata: it rides in the chips row next to Thinking / Tool use, not as a notice line. */
+function appendCompression(view: SessionView, event: any): void {
+  const current = ensureStreaming(view);
+  if (!current.compressionToggle) {
+    const { chips, panels } = ensureAssistBlock(current);
+    const toggle = createAssistToggle('Compression');
+    toggle.chip.classList.add('compression-chip');
+    current.compressionToggle = toggle;
+    chips.append(toggle.chip);
+    panels.append(toggle.panel);
+  }
+  current.compressionRows += 1;
+  current.compressionToggle.body.append(compressionRow({
+    beforeCount: Number(event.before_count),
+    afterCount: Number(event.after_count),
+    contextTokens: numeric(event.context_tokens),
+    maxContextTokens: numeric(event.max_context_tokens),
+    triggerThreshold: numeric(event.trigger_threshold),
+  }));
+  current.compressionToggle.setLabel(`Compression (${current.compressionRows})`);
+  scrollTranscript(view);
+}
+
+function numeric(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** Where a memory report lands: the view's live message, else its newest assistant message. */
@@ -5310,9 +5371,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       break;
     }
     case 'compression':
-      if (event.completed !== false) {
-        appendNotice(`✦ Context compressed ${event.before_count} → ${event.after_count} · ${event.context_tokens ?? '?'} / ${event.max_context_tokens ?? '?'} tokens`, 'compression', view.transcript);
-      }
+      if (event.completed !== false) appendCompression(view, event);
       break;
     case 'plan_update': {
       renderPlanUpdate(view, event);

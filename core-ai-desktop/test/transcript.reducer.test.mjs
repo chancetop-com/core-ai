@@ -152,6 +152,42 @@ test('web tools carry the web use kind for the replay chip', () => {
   assert.equal(tool.arguments, '{"query":"core-ng"}');
 });
 
+test('compression keeps the completed record only and carries its counts', () => {
+  const model = reduceAll([
+    start(2, 'compress me'),
+    {
+      seq: 3,
+      turn_id: 't2',
+      kind: 'compression',
+      before_count: 2492,
+      after_count: 2463,
+      completed: false,
+      context_tokens: 801086,
+      max_context_tokens: 1000000,
+      trigger_threshold: 0.8,
+    },
+    {
+      seq: 4,
+      turn_id: 't2',
+      kind: 'compression',
+      before_count: 2492,
+      after_count: 31,
+      completed: true,
+      context_tokens: 801086,
+      max_context_tokens: 1000000,
+      trigger_threshold: 0.8,
+    },
+    { seq: 5, turn_id: 't2', kind: 'turn_complete', message_count: 31 },
+  ]);
+  const compressions = model.turns[0].items.filter((item) => item.kind === 'compression');
+  assert.equal(compressions.length, 1);
+  assert.equal(compressions[0].beforeCount, 2492);
+  assert.equal(compressions[0].afterCount, 31);
+  assert.equal(compressions[0].contextTokens, 801086);
+  assert.equal(compressions[0].maxContextTokens, 1000000);
+  assert.equal(compressions[0].triggerThreshold, 0.8);
+});
+
 test('emptyModel has no turns', () => {
   assert.deepEqual(emptyModel(), { turns: [], taskIndex: {}, pendingTaskStatus: {}, orphans: [] });
 });

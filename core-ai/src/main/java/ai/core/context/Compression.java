@@ -26,8 +26,10 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
-    private static final double DEFAULT_TOOL_RESULT_RATIO = 0.5;
-    private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 64000;
+    private static final double DEFAULT_TOOL_RESULT_RATIO = 0.1;
+    private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 16000;
+    /** One tool result must never take a large share of the window, however large the window is. */
+    private static final int MAX_TOOL_RESULT_TOKENS = 32000;
     private static final int FALLBACK_MAX_CONTEXT_TOKENS = 128000;
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
     private static final int DEFAULT_KEEP_TOKENS = 15000;
@@ -86,7 +88,7 @@ public class Compression {
         if (maxContextTokens <= 0) {
             return FALLBACK_MAX_TOOL_RESULT_TOKENS;
         }
-        return (int) (maxContextTokens * toolResultRatio);
+        return Math.min((int) (maxContextTokens * toolResultRatio), MAX_TOOL_RESULT_TOKENS);
     }
     public void addListener(CompressionListener listener) {
         this.listeners.add(listener);

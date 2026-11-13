@@ -300,7 +300,7 @@ class CompressionTest {
         target.updateModel(createMockProviderWithSummary("Summary"), "gpt-3.5-turbo");
 
         assertEquals(modelInfo.contextWindow(), target.getMaxContextTokens());
-        assertEquals(modelInfo.contextWindow() / 2, target.getMaxToolResultTokens());
+        assertEquals((int) (modelInfo.contextWindow() * 0.1), target.getMaxToolResultTokens());
         assertTrue(target.shouldCompress(modelInfo.contextWindow()));
         assertFalse(target.shouldCompress(modelInfo.contextWindow() / 5));
 
@@ -387,7 +387,7 @@ class CompressionTest {
         Compression target = new Compression(config, provider, "unknown-model-xyz");
 
         assertEquals(32000, target.getMaxContextTokens());
-        assertEquals(16000, target.getMaxToolResultTokens());
+        assertEquals(3200, target.getMaxToolResultTokens());
         assertEquals(0.5, target.getTriggerThreshold(), 0.0001);
         assertEquals(2, target.getKeepRecentTurns());
         assertFalse(target.shouldCompress(15000));
@@ -398,6 +398,18 @@ class CompressionTest {
         assertEquals("cheap-summary-model", provider.getLastRequestModel());
 
         LOGGER.info("Compression config overrides defaults test passed");
+    }
+
+    @Test
+    void testToolResultBudgetIsCappedForLargeContexts() {
+        var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
+        var config = new CompressionConfig(true, 0.8, 5, 15000, 1_000_000, null);
+        Compression target = new Compression(config, provider, "unknown-model-xyz");
+
+        assertEquals(1_000_000, target.getMaxContextTokens());
+        assertEquals(32000, target.getMaxToolResultTokens());
+
+        LOGGER.info("Tool result budget cap test passed");
     }
 
     private void verifyToolPairsIntact(List<Message> messages) {
