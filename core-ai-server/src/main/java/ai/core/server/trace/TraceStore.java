@@ -14,6 +14,18 @@ public interface TraceStore {
     void insert(Trace trace);
 
     /**
+     * Inserts unless a trace with the same trace id already exists, which is how concurrent ingest
+     * requests for one trace stay on a single document.
+     *
+     * @return true when this call created the trace
+     */
+    boolean insertIfAbsent(Trace trace);
+
+    Trace findByTraceId(String traceId);
+
+    void update(TraceUpdate update);
+
+    /**
      * @param id      the document id, usually the same value as traceId
      * @param traceId the trace id, used as a fallback because ingested traces do not always use it as _id
      */

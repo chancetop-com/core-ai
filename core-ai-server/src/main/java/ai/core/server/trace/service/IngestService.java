@@ -1,17 +1,13 @@
 package ai.core.server.trace.service;
 
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Updates;
-
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 
-import org.bson.conversions.Bson;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceStore;
+import ai.core.server.trace.TraceUpdate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
@@ -24,7 +20,6 @@ import ai.core.server.util.MigrationErrors;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -64,7 +59,7 @@ public class IngestService {
     }
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     SpanStore spanStore;
     @Inject
@@ -115,8 +110,7 @@ public class IngestService {
     }
 
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
-        var existing = traceCollection.find(Filters.eq("trace_id", traceId));
-        if (!existing.isEmpty()) {
+        if (traceStore.findByTraceId(traceId) != null) {
             updateTrace(traceId, rootSpan);
             return;
         }
@@ -160,46 +154,36 @@ public class IngestService {
         // priced LLM span. $inc treats a MISSING field as 0, but the codec writes null as a present field.
         trace.costUsd = 0.0;
 
-        // Race-safe: rely on the unique index on traces.trace_id. If another ingest created
-        // the trace concurrently, fall through to the $set update path.
-        try {
-            traceCollection.insert(trace);
-        } catch (MongoWriteException e) {
-            if (e.getCode() == 11000) {
-                updateTrace(traceId, rootSpan);
-                return;
-            }
-            throw e;
+        // Race-safe: the store's unique trace id decides the winner. If another ingest created the
+        // trace concurrently, fall through to the partial update path.
+        if (!traceStore.insertIfAbsent(trace)) {
+            updateTrace(traceId, rootSpan);
         }
     }
 
     private void updateTrace(String traceId, IngestSpanRequest rootSpan) {
         // userId/source attribution is set only at insert (ensureTrace) and never overwritten here,
         // so a later anonymous re-ingest of the same trace cannot blank attribution.
-        // Use targeted $set updates instead of full document replace so concurrent $inc
-        // operations on token/cost counters aren't overwritten with a stale snapshot.
-        List<Bson> updates = new ArrayList<>();
+        // Targeted updates instead of a full replace keep concurrent counter increments intact.
         var status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
-        updates.add(Updates.set("status", status));
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.status = status;
         // CLI spans carry the failure text in output (no OTLP status message); mirror it into
         // error_message so the trace detail/list surfaces the real error instead of a blank field.
-        if (status == TraceStatus.ERROR && rootSpan.output != null) {
-            updates.add(Updates.set("error_message", rootSpan.output));
-        }
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-        if (rootSpan.output != null) updates.add(Updates.set("output", rootSpan.output));
-        if (rootSpan.input != null) updates.add(Updates.set("input", rootSpan.input));
-        if (rootSpan.durationMs > 0) updates.add(Updates.set("duration_ms", rootSpan.durationMs));
+        if (status == TraceStatus.ERROR && rootSpan.output != null) update.errorMessage = rootSpan.output;
+        update.updatedAt = ZonedDateTime.now();
+        if (rootSpan.output != null) update.output = rootSpan.output;
+        if (rootSpan.input != null) update.input = rootSpan.input;
+        if (rootSpan.durationMs > 0) update.durationMs = rootSpan.durationMs;
         var completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
-        if (completedAt != null) updates.add(Updates.set("completed_at", completedAt));
+        if (completedAt != null) update.completedAt = completedAt;
         var agentName = attr(rootSpan.attributes, GEN_AI_AGENT_NAME);
-        if (agentName != null) {
-            updates.add(Updates.set("agent_name", agentName));
-        }
+        if (agentName != null) update.agentName = agentName;
         var agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
-        if (agentId != null) updates.add(Updates.set("agent_id", agentId));
-        if (rootSpan.model != null && !rootSpan.model.isBlank()) updates.add(Updates.set("model", rootSpan.model));
-        traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
+        if (agentId != null) update.agentId = agentId;
+        if (rootSpan.model != null && !rootSpan.model.isBlank()) update.model = rootSpan.model;
+        traceStore.update(update);
         if (agentName != null) backfillTraceName(traceId, rootSpan.name, agentName);
     }
 
@@ -263,53 +247,44 @@ public class IngestService {
     private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {
         var agentName = attr(attributes, GEN_AI_AGENT_NAME);
         if (agentName != null) {
-            traceCollection.update(
-                Filters.and(
-                    Filters.eq("trace_id", traceId),
-                    Filters.or(Filters.exists("agent_name", false), Filters.eq("agent_name", null), Filters.eq("agent_name", ""))
-                ),
-                Updates.combine(Updates.set("agent_name", agentName), Updates.set("updated_at", ZonedDateTime.now()))
-            );
+            var update = new TraceUpdate();
+            update.traceId = traceId;
+            update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.AGENT_NAME;
+            update.valueWhenEmpty = agentName;
+            update.updatedAt = ZonedDateTime.now();
+            traceStore.update(update);
             backfillTraceName(traceId, spanName, agentName);
         }
         var agentId = attr(attributes, GEN_AI_AGENT_ID);
         if (agentId != null) {
-            traceCollection.update(
-                Filters.and(
-                    Filters.eq("trace_id", traceId),
-                    Filters.or(Filters.exists("agent_id", false), Filters.eq("agent_id", null), Filters.eq("agent_id", ""))
-                ),
-                Updates.combine(Updates.set("agent_id", agentId), Updates.set("updated_at", ZonedDateTime.now()))
-            );
+            var update = new TraceUpdate();
+            update.traceId = traceId;
+            update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.AGENT_ID;
+            update.valueWhenEmpty = agentId;
+            update.updatedAt = ZonedDateTime.now();
+            traceStore.update(update);
         }
     }
 
     private void backfillTraceName(String traceId, String spanName, String agentName) {
-        traceCollection.update(
-            Filters.and(
-                Filters.eq("trace_id", traceId),
-                Filters.or(
-                    Filters.exists("name", false),
-                    Filters.eq("name", null),
-                    Filters.eq("name", ""),
-                    Filters.in("name", OPERATION_TRACE_NAMES)
-                )
-            ),
-            Updates.combine(Updates.set("name", friendlyTraceName(spanName, agentName)), Updates.set("updated_at", ZonedDateTime.now()))
-        );
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.NAME;
+        update.valueWhenEmpty = friendlyTraceName(spanName, agentName);
+        update.namePlaceholders = List.copyOf(OPERATION_TRACE_NAMES);
+        update.updatedAt = ZonedDateTime.now();
+        traceStore.update(update);
     }
 
     private void backfillTraceModel(String traceId, String model) {
-        // Only update when model is still unset; use conditional filter so concurrent counter
-        // updates don't get overwritten and we don't churn the doc once a model is recorded.
-        var filter = Filters.and(
-            Filters.eq("trace_id", traceId),
-            Filters.or(Filters.exists("model", false), Filters.eq("model", null), Filters.eq("model", ""))
-        );
-        traceCollection.update(filter, Updates.combine(
-            Updates.set("model", model),
-            Updates.set("updated_at", ZonedDateTime.now())
-        ));
+        // Only update when model is still unset; a conditional update keeps concurrent counter
+        // updates intact and avoids churning the document once a model is recorded.
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.MODEL;
+        update.valueWhenEmpty = model;
+        update.updatedAt = ZonedDateTime.now();
+        traceStore.update(update);
     }
 
     private void incrementTraceTotals(String traceId, Span span) {
@@ -319,16 +294,16 @@ public class IngestService {
         double costDelta = span.costUsd != null ? span.costUsd : 0.0;
         long totalDelta = inputDelta + outputDelta;
 
-        List<Bson> updates = new ArrayList<>();
-        if (inputDelta != 0) updates.add(Updates.inc("input_tokens", inputDelta));
-        if (outputDelta != 0) updates.add(Updates.inc("output_tokens", outputDelta));
-        if (totalDelta != 0) updates.add(Updates.inc("total_tokens", totalDelta));
-        if (cachedDelta != 0) updates.add(Updates.inc("cached_tokens", cachedDelta));
-        if (costDelta != 0.0) updates.add(Updates.inc("cost_usd", costDelta));
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.inputTokensDelta = inputDelta;
+        update.outputTokensDelta = outputDelta;
+        update.totalTokensDelta = totalDelta;
+        update.cachedTokensDelta = cachedDelta;
+        update.costUsdDelta = costDelta;
         // Always refresh updatedAt so list views show progress between aggregation deltas.
-        updates.add(Updates.set("updated_at", ZonedDateTime.now()));
-
-        traceCollection.update(Filters.eq("trace_id", traceId), Updates.combine(updates));
+        update.updatedAt = ZonedDateTime.now();
+        traceStore.update(update);
     }
 
     private Long resolveCachedTokens(IngestSpanRequest spanReq) {

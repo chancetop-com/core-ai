@@ -3,10 +3,12 @@ package ai.core.server.trace;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
+import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
@@ -37,6 +39,92 @@ public class MongoTraceStore implements TraceStore {
     @Override
     public void insert(Trace trace) {
         traceCollection.insert(trace);
+    }
+
+    @Override
+    public boolean insertIfAbsent(Trace trace) {
+        try {
+            traceCollection.insert(trace);
+            return true;
+        } catch (RuntimeException e) {
+            if (MigrationErrors.isDuplicateKey(e)) return false;
+            throw e;
+        }
+    }
+
+    @Override
+    public Trace findByTraceId(String traceId) {
+        var query = new Query();
+        query.filter = Filters.eq("trace_id", traceId);
+        query.limit = 1;
+        var results = traceCollection.find(query);
+        return results.isEmpty() ? null : results.getFirst();
+    }
+
+    @Override
+    public void update(TraceUpdate update) {
+        var updates = new ArrayList<Bson>();
+        if (update.setOnlyWhenEmpty != null) {
+            updates.add(Updates.set(field(update.setOnlyWhenEmpty), update.valueWhenEmpty));
+        } else {
+            if (update.status != null) updates.add(Updates.set("status", update.status));
+            if (update.clearErrorMessage) updates.add(Updates.set("error_message", null));
+            if (update.errorMessage != null) updates.add(Updates.set("error_message", update.errorMessage));
+            if (update.input != null) updates.add(Updates.set("input", update.input));
+            if (update.output != null) updates.add(Updates.set("output", update.output));
+            if (update.durationMs != null) updates.add(Updates.set("duration_ms", update.durationMs));
+            if (update.completedAt != null) updates.add(Updates.set("completed_at", update.completedAt));
+            if (update.name != null) updates.add(Updates.set("name", update.name));
+            if (update.sessionId != null) updates.add(Updates.set("session_id", update.sessionId));
+            if (update.userId != null) updates.add(Updates.set("user_id", update.userId));
+            if (update.source != null) updates.add(Updates.set("source", update.source));
+            if (update.type != null) updates.add(Updates.set("type", update.type));
+            if (update.metadata != null) updates.add(Updates.set("metadata", update.metadata));
+            if (update.agentName != null) updates.add(Updates.set("agent_name", update.agentName));
+            if (update.agentId != null) updates.add(Updates.set("agent_id", update.agentId));
+            if (update.model != null) updates.add(Updates.set("model", update.model));
+        }
+        if (update.inputTokensDelta != null && update.inputTokensDelta != 0) {
+            updates.add(Updates.inc("input_tokens", update.inputTokensDelta));
+        }
+        if (update.outputTokensDelta != null && update.outputTokensDelta != 0) {
+            updates.add(Updates.inc("output_tokens", update.outputTokensDelta));
+        }
+        if (update.totalTokensDelta != null && update.totalTokensDelta != 0) {
+            updates.add(Updates.inc("total_tokens", update.totalTokensDelta));
+        }
+        if (update.cachedTokensDelta != null && update.cachedTokensDelta != 0) {
+            updates.add(Updates.inc("cached_tokens", update.cachedTokensDelta));
+        }
+        if (update.costUsdDelta != null && update.costUsdDelta != 0) {
+            updates.add(Updates.inc("cost_usd", update.costUsdDelta));
+        }
+        if (update.updatedAt != null) updates.add(Updates.set("updated_at", update.updatedAt));
+        if (updates.isEmpty()) return;
+
+        var filters = new ArrayList<Bson>();
+        filters.add(Filters.eq("trace_id", update.traceId));
+        if (update.requireStatus != null) filters.add(Filters.eq("status", update.requireStatus));
+        if (update.setOnlyWhenEmpty != null) filters.add(emptyOrPlaceholder(update));
+        traceCollection.update(Filters.and(filters), Updates.combine(updates));
+    }
+
+    private Bson emptyOrPlaceholder(TraceUpdate update) {
+        var column = field(update.setOnlyWhenEmpty);
+        var empty = Filters.or(Filters.exists(column, false), Filters.eq(column, null), Filters.eq(column, ""));
+        if (update.setOnlyWhenEmpty != TraceUpdate.EmptyGuard.NAME || update.namePlaceholders == null) {
+            return empty;
+        }
+        return Filters.or(empty, Filters.in(column, update.namePlaceholders));
+    }
+
+    private String field(TraceUpdate.EmptyGuard guard) {
+        return switch (guard) {
+            case AGENT_NAME -> "agent_name";
+            case AGENT_ID -> "agent_id";
+            case MODEL -> "model";
+            case NAME -> "name";
+        };
     }
 
     @Override
