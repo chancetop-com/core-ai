@@ -3,29 +3,22 @@ package ai.core.tool.tools;
 import ai.core.AgentRuntimeException;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
+import ai.core.agent.SubAgentConfig;
 import ai.core.agent.Task;
 import ai.core.agent.profile.AgentProfile;
-import ai.core.agent.profile.AgentProfileRegistry;
+import ai.core.agent.subagent.SubagentModelRef;
+import ai.core.agent.subagent.SubagentModelUnavailableException;
 import ai.core.agent.subagent.SubagentThread;
 import ai.core.agent.subagent.SubagentThreadKind;
 import ai.core.agent.subagent.SubagentThreadRegistry;
 import ai.core.agent.subagent.SubagentThreadUnavailableException;
-import ai.core.defaultagents.DefaultCodeSimplifierAgent;
-import ai.core.defaultagents.DefaultExploreAgent;
-import ai.core.defaultagents.DefaultGeneralAgent;
-import ai.core.defaultagents.DeepResearchAgent;
-import ai.core.llm.LLMProvider;
-import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
-import ai.core.prompt.PromptInject;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
-import ai.core.tool.registry.ToolRegistry;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -58,12 +51,16 @@ public class TaskTool extends ToolCall {
         return "";
     }
 
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
     @Override
     public Tool toTool(ExecutionContext context) {
         var threads = context == null
                 ? List.<SubagentThread>of()
                 : context.getSubagentThreads().list().stream().filter(thread -> thread.kind() == SubagentThreadKind.TASK).toList();
-        setDescription(TaskToolPrompt.buildDescription(resolveAgentTypes(context), threads));
+        setDescription(TaskToolPrompt.buildDescription(resolveAgentTypes(context), threads, SubagentModelSelector.currentModel(context)));
         return super.toTool(context);
     }
 
@@ -126,30 +123,63 @@ public class TaskTool extends ToolCall {
         } else if (call.subagentType() == null || call.subagentType().isBlank()) {
             return ToolCallResult.failed("subagent_type is required to start a new subagent");
         }
-        var subContext = buildSubContext(thread != null ? thread.type() : call.subagentType(), context, call.taskId(), call.description());
-        var activeThread = thread == null ? startNewThread(call, registry, subContext, context) : thread;
+
+        var type = thread != null ? thread.type() : call.subagentType();
+        var profile = resolveProfile(type, context);
+        var config = resolveConfig(type, context);
+        SubagentModelSelector.ModelSelection selection;
+        try {
+            selection = SubagentModelSelector.select(call.model(), thread, profile, config, context);
+        } catch (SubagentModelUnavailableException e) {
+            if (thread != null && blank(call.model()) && !blank(thread.model())) {
+                return ToolCallResult.failed("[SUBAGENT_THREAD_MODEL_UNAVAILABLE] subagent " + thread.taskId()
+                        + " was created with model '" + e.model() + "', which is no longer available. "
+                        + "Start a new subagent or restore the provider configuration.");
+            }
+            return ToolCallResult.failed(SubagentModelSelector.error(e, context));
+        }
+
+        // an explicit model switches a live thread under the run gate; a legacy thread gets its model recorded after it
+        var subContext = buildSubContext(type, context, call.taskId(), call.description());
+        var activeThread = thread == null
+                ? startNewThread(call, registry, subContext, type, profile, selection)
+                : thread;
         if (!registry.tryAcquire(activeThread)) {
             return ToolCallResult.failed("subagent " + call.taskId() + " is still running; wait for its task-notification before continuing it, or cancel it with async_task_output");
         }
-        return runThread(new ThreadRun(activeThread, call, registry, context, subContext, noEarlierContext));
+        return runThread(new ThreadRun(activeThread, call, registry, context, subContext, noEarlierContext, selection, profile));
     }
 
-    private SubagentThread startNewThread(TaskCall call, SubagentThreadRegistry registry, ExecutionContext subContext, ExecutionContext context) {
+    private SubagentThread startNewThread(TaskCall call, SubagentThreadRegistry registry, ExecutionContext subContext,
+                                          String type, AgentProfile profile, SubagentModelSelector.ModelSelection selection) {
         Agent created;
         try {
-            created = createAgent(call.subagentType(), subContext);
+            created = SubagentAgentFactory.create(type, subContext, profile, selection);
         } catch (RuntimeException e) {
-            throw new SubagentThreadUnavailableException("Cannot start subagent '" + call.subagentType() + "': " + e.getMessage(), e);
+            throw new SubagentThreadUnavailableException("Cannot start subagent '" + type + "': " + e.getMessage(), e);
         }
-        return registry.register(call.taskId(), SubagentThreadKind.TASK, call.subagentType(), call.description(),
-                resolveModel(call.subagentType(), context), created);
+        return registry.registerWithModel(call.taskId(), SubagentThreadKind.TASK, type, call.description(),
+                new SubagentModelRef(selection.model(), selection.providerName()), created);
+    }
+
+    private AgentProfile resolveProfile(String type, ExecutionContext context) {
+        var registry = context.getAgentProfileRegistry();
+        return registry == null ? null : registry.get(type).orElse(null);
+    }
+
+    private SubAgentConfig resolveConfig(String type, ExecutionContext context) {
+        var configs = context.getSubAgentConfigs();
+        return configs == null ? null : configs.get(type);
     }
 
     private ToolCallResult runThread(ThreadRun run) {
         var gateOwned = true;
         try {
-            var agent = resolveThreadAgent(run.thread(), run.registry(), run.subContext());
+            var agent = resolveThreadAgent(run);
             agent.resetCancellation();
+            if (("CALL".equals(run.selection().source()) || blank(run.thread().model())) && !blank(run.selection().model())) {
+                run.thread().updateModel(run.selection().model(), run.selection().providerName());
+            }
             gateOwned = false;
             var taskManager = run.context().getTaskManager();
             if (taskManager != null && run.call().runInBackground()) {
@@ -165,12 +195,17 @@ public class TaskTool extends ToolCall {
         }
     }
 
-    private Agent resolveThreadAgent(SubagentThread thread, SubagentThreadRegistry registry, ExecutionContext subContext) {
+    private Agent resolveThreadAgent(ThreadRun run) {
+        var thread = run.thread();
         var agent = thread.agent();
         if (agent != null) {
+            if (SubagentModelSelector.shouldApplyToLiveAgent(run.selection())) {
+                SubagentModelSelector.applySelection(agent, run.selection());
+            }
             return agent;
         }
-        return registry.rehydrate(thread, () -> createAgent(thread.type(), subContext));
+        return run.registry().rehydrate(thread,
+                () -> SubagentAgentFactory.create(thread.type(), run.subContext(), run.profile(), run.selection()));
     }
 
     private ToolCallResult runSync(ThreadRun run, Agent agent) {
@@ -178,7 +213,7 @@ public class TaskTool extends ToolCall {
         try {
             text = runAgent(agent, run.call().prompt(), run.subContext());
         } finally {
-            releaseThread(run.registry(), run.thread(), agent);
+            releaseThread(run, agent);
         }
         return ToolCallResult.completed(text + "\n\n" + TaskToolPrompt.threadFooter(run.thread(), run.noEarlierContext()));
     }
@@ -196,7 +231,7 @@ public class TaskTool extends ToolCall {
                     run.call().notifyOnCompletion()));
         } finally {
             if (!submitted) {
-                releaseThread(run.registry(), run.thread(), agent);
+                releaseThread(run, agent);
             }
         }
     }
@@ -206,7 +241,7 @@ public class TaskTool extends ToolCall {
         try {
             text = runAgent(agent, run.call().prompt(), run.subContext());
         } finally {
-            releaseThread(run.registry(), run.thread(), agent);
+            releaseThread(run, agent);
         }
         return text + "\n\n" + TaskToolPrompt.threadFooter(run.thread(), run.noEarlierContext());
     }
@@ -216,10 +251,15 @@ public class TaskTool extends ToolCall {
         return extractLastAssistantText(agent);
     }
 
-    private void releaseThread(SubagentThreadRegistry registry, SubagentThread thread, Agent agent) {
-        registry.release(thread, agent, extractLastAssistantText(agent));
-        registry.persist(thread);
-        registry.evictIfNeeded();
+    private void releaseThread(ThreadRun run, Agent agent) {
+        var thread = run.thread();
+        var effectiveModel = SubagentModelSelector.effectiveModel(agent);
+        if (!blank(effectiveModel)) {
+            thread.updateModel(effectiveModel, SubagentModelSelector.selectionProvider(run.selection(), thread, agent));
+        }
+        run.registry().release(thread, agent, extractLastAssistantText(agent));
+        run.registry().persist(thread);
+        run.registry().evictIfNeeded();
     }
 
     private String validateContinuation(SubagentThread thread, String subagentType) {
@@ -257,107 +297,14 @@ public class TaskTool extends ToolCall {
         subContext.setLifecycles(context.getLifecycle());
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         subContext.setSubAgentConfigs(context.getSubAgentConfigs());
+        subContext.setSubagentModelResolver(context.getSubagentModelResolver());
         subContext.setToolRegistry(context.getToolRegistry());
         subContext.setAgentProfileRegistry(context.getAgentProfileRegistry());
         return subContext;
     }
 
-    private Agent createAgent(String subagentType, ExecutionContext context) {
-        var llmProvider = resolveLlmProvider(subagentType, context);
-        var model = resolveModel(subagentType, context);
-        var maxTurnNumber = resolveMaxTurnNumber(subagentType, context);
-        var toolRegistry = context.getToolRegistry();
-        AgentProfileRegistry profileRegistry = context.getAgentProfileRegistry();
-        if (profileRegistry != null) {
-            AgentProfile profile = profileRegistry.get(subagentType).orElse(null);
-            if (profile != null) {
-                return buildAgentFromProfile(profile, llmProvider, model, maxTurnNumber, toolRegistry, context);
-            }
-            throw new RuntimeException("Unknown subagent type: " + subagentType);
-        }
-        return createBuiltinAgent(subagentType, llmProvider, model, maxTurnNumber, toolRegistry, context);
-    }
-
-    private Agent createBuiltinAgent(String subagentType, LLMProvider llmProvider, String model, int maxTurnNumber, ToolRegistry toolRegistry, ExecutionContext context) {
-        if (DeepResearchAgent.AGENT_NAME.equals(subagentType)) {
-            return DeepResearchAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
-        }
-        if (DefaultExploreAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultExploreAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
-        }
-        if (DefaultCodeSimplifierAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultCodeSimplifierAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
-        }
-        if (DefaultGeneralAgent.AGENT_NAME.equals(subagentType)) {
-            return DefaultGeneralAgent.of(toolRegistry, llmProvider, model, context, maxTurnNumber);
-        }
-        throw new RuntimeException("Unknown subagent type: " + subagentType);
-    }
-
-    private Agent buildAgentFromProfile(AgentProfile profile, LLMProvider llmProvider, String model, int maxTurnNumber, ToolRegistry toolRegistry, ExecutionContext context) {
-        var builder = Agent.builder()
-                .name(profile.name())
-                .description(profile.description())
-                .systemPrompt(profile.systemPrompt() != null ? profile.systemPrompt() : "")
-                .llmProvider(llmProvider)
-                .model(profile.model() != null ? profile.model() : model)
-                .maxTurn(profile.maxTurnNumber() != null ? profile.maxTurnNumber() : maxTurnNumber)
-                .streamingCallback(context.getStreamingCallback())
-                .agentLifecycle(context.getLifecycle())
-                .toolRegistry(toolRegistry);
-        if (profile.tools() != null && !profile.tools().isEmpty()) {
-            builder.toolNames(new ArrayList<>(profile.tools()));
-        }
-        builder.systemPromptSections(context.getPromptSections().stream()
-                .filter(s -> s.type() == PromptInject.SectionType.ENVIRONMENT
-                        || s.type() == PromptInject.SectionType.INSTRUCTIONS
-                        || s.type() == PromptInject.SectionType.MEMORY)
-                .toList());
-        if (profile.reasoningEffort() != null) {
-            var effort = ReasoningEffort.fromString(profile.reasoningEffort());
-            if (effort != null) builder.reasoningEffort(effort);
-        }
-        if (profile.temperature() != null) {
-            builder.temperature(profile.temperature());
-        }
-        return builder.build();
-    }
-
-    private int resolveMaxTurnNumber(String subagentType, ExecutionContext context) {
-        var configs = context.getSubAgentConfigs();
-        if (configs != null) {
-            var config = configs.get(subagentType);
-            if (config != null && config.maxTurnNumber() != null) {
-                return config.maxTurnNumber();
-            }
-        }
-        return 200;
-    }
-
-    private String resolveModel(String subagentType, ExecutionContext context) {
-        var configs = context.getSubAgentConfigs();
-        if (configs != null) {
-            var config = configs.get(subagentType);
-            if (config != null && config.model() != null && !config.model().isBlank()) {
-                return config.model();
-            }
-        }
-        return context.getModel();
-    }
-
-    private LLMProvider resolveLlmProvider(String subagentType, ExecutionContext context) {
-        var configs = context.getSubAgentConfigs();
-        if (configs != null) {
-            var config = configs.get(subagentType);
-            if (config != null && config.llmProvider() != null) {
-                return config.llmProvider();
-            }
-        }
-        return context.getLlmProvider();
-    }
-
     private record TaskCall(String taskId, boolean taskIdProvided, String subagentType, String description,
-                            String prompt, boolean runInBackground, boolean notifyOnCompletion) {
+                            String prompt, String model, boolean runInBackground, boolean notifyOnCompletion) {
         static TaskCall of(Map<String, Object> argsMap) {
             var requestedTaskId = getStringValue(argsMap, "task_id");
             var taskIdProvided = requestedTaskId != null && !requestedTaskId.isBlank();
@@ -367,13 +314,15 @@ public class TaskTool extends ToolCall {
                     getStringValue(argsMap, "subagent_type"),
                     getStringValue(argsMap, "description"),
                     getStringValue(argsMap, "prompt"),
+                    getStringValue(argsMap, "model"),
                     Boolean.TRUE.equals(argsMap.get("run_in_background")),
                     !Boolean.FALSE.equals(argsMap.get("notify")));
         }
     }
 
     private record ThreadRun(SubagentThread thread, TaskCall call, SubagentThreadRegistry registry,
-                             ExecutionContext context, ExecutionContext subContext, boolean noEarlierContext) {
+                             ExecutionContext context, ExecutionContext subContext, boolean noEarlierContext,
+                             SubagentModelSelector.ModelSelection selection, AgentProfile profile) {
     }
 
     public static class Builder extends ToolCall.Builder<Builder, TaskTool> {
@@ -385,7 +334,7 @@ public class TaskTool extends ToolCall {
         public TaskTool build() {
             this.name(TOOL_NAME);
             this.sourceType("subagent");
-            this.description(TaskToolPrompt.buildDescription(TaskToolPrompt.builtinAgentTypes(), List.of()));
+            this.description(TaskToolPrompt.buildDescription(TaskToolPrompt.builtinAgentTypes(), List.of(), null));
             this.parameters(ToolCallParameters.of(
                     ToolCallParameters.ParamSpec.of(String.class, "task_id",
                                     "Identifier of a subagent. Omit to start a new subagent; pass an existing id (see Active subagents in this description) to continue that subagent with its full previous context.")
@@ -394,6 +343,11 @@ public class TaskTool extends ToolCall {
                     ToolCallParameters.ParamSpec.of(String.class, "prompt", "The task for the agent to perform").required(),
                     ToolCallParameters.ParamSpec.of(String.class, "subagent_type",
                                     "The type of specialized agent to use for this task. Required when starting a new subagent; may be omitted when continuing an existing one.")
+                            .optional(),
+                    ToolCallParameters.ParamSpec.of(String.class, "model",
+                                    "Optional model id for this subagent run. Omit to inherit your current model. "
+                                            + "An unavailable model fails the call instead of falling back. "
+                                            + "When continuing a subagent with task_id, a different model switches that subagent to it.")
                             .optional(),
                     ToolCallParameters.ParamSpec.of(Boolean.class, "run_in_background",
                             "Set to true to run this agent in the background."

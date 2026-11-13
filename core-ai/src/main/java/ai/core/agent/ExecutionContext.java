@@ -2,6 +2,7 @@ package ai.core.agent;
 
 import ai.core.agent.budget.RunBudget;
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.agent.subagent.SubagentThreadRegistry;
 import ai.core.decision.DecisionProvider;
 import ai.core.llm.streaming.StreamingCallback;
@@ -68,6 +69,7 @@ public final class ExecutionContext {
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
     private Map<String, SubAgentConfig> subAgentConfigs;
+    private SubagentModelResolver subagentModelResolver;
     private ToolRegistry toolRegistry;
     private AgentProfileRegistry agentProfileRegistry;
     private RunBudget runBudget;
@@ -325,6 +327,15 @@ public final class ExecutionContext {
 
     public void setSubAgentConfigs(Map<String, SubAgentConfig> subAgentConfigs) {
         this.subAgentConfigs = subAgentConfigs;
+    }
+
+    /** Host-provided model -> provider resolution for subagents; null keeps the parent provider. */
+    public SubagentModelResolver getSubagentModelResolver() {
+        return subagentModelResolver;
+    }
+
+    public void setSubagentModelResolver(SubagentModelResolver subagentModelResolver) {
+        this.subagentModelResolver = subagentModelResolver;
     }
 
     public ToolRegistry getToolRegistry() {

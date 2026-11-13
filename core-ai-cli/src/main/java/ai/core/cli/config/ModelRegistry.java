@@ -4,19 +4,19 @@ import ai.core.bootstrap.PropertySource;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Registry of available models across all configured providers.
  * Supports same model name in different providers.
- * Not thread-safe — all access must be from the input thread.
+ * Safe for concurrent reads; mutations are serialized.
  *
  * @author xander
  */
 public class ModelRegistry {
 
-    private final List<ModelEntry> entries = new ArrayList<>();
+    private final List<ModelEntry> entries = new CopyOnWriteArrayList<>();
 
     public ModelRegistry(LLMProviders providers, PropertySource props) {
         for (var type : providers.getProviderTypes()) {
@@ -25,13 +25,13 @@ public class ModelRegistry {
                 for (String m : models.split(",")) {
                     String trimmed = m.trim();
                     if (!trimmed.isEmpty()) {
-                        appendIfAbsent(entries, trimmed, type);
+                        appendIfAbsent(trimmed, type);
                     }
                 }
             });
             var provider = providers.getProvider(type);
             if (provider != null && provider.config.getModel() != null) {
-                appendIfAbsent(entries, provider.config.getModel(), type);
+                appendIfAbsent(provider.config.getModel(), type);
             }
         }
     }
@@ -52,17 +52,19 @@ public class ModelRegistry {
     }
 
     public void addModel(String model, LLMProviderType type) {
-        appendIfAbsent(entries, model, type);
+        appendIfAbsent(model, type);
     }
 
     public boolean removeModel(String model, LLMProviderType type) {
         return entries.removeIf(e -> e.providerType == type && e.model.equals(model));
     }
 
-    private void appendIfAbsent(List<ModelEntry> list, String model, LLMProviderType type) {
-        boolean exists = list.stream().anyMatch(e -> e.providerType == type && e.model.equals(model));
-        if (!exists) {
-            list.add(new ModelEntry(model, type));
+    private void appendIfAbsent(String model, LLMProviderType type) {
+        synchronized (this) {
+            boolean exists = entries.stream().anyMatch(e -> e.providerType == type && e.model.equals(model));
+            if (!exists) {
+                entries.add(new ModelEntry(model, type));
+            }
         }
     }
 

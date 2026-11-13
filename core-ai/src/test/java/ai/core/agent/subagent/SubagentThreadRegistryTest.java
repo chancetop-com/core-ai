@@ -151,6 +151,20 @@ class SubagentThreadRegistryTest {
         assertEquals(thread.createdAtMs(), reloaded.createdAtMs());
     }
 
+    @Test
+    void modelAndProviderSurviveReload() {
+        var persistence = new MapPersistence();
+        var registry = new SubagentThreadRegistry("sess-m", persistence);
+        var thread = registry.registerWithModel("sa-m", SubagentThreadKind.TASK, "explore", "d",
+                new SubagentModelRef("m1", "p1"), newAgent());
+        registry.persist(thread);
+
+        var reloaded = new SubagentThreadRegistry("sess-m", persistence).find("sa-m").orElseThrow();
+
+        assertEquals("m1", reloaded.model());
+        assertEquals("p1", reloaded.provider());
+    }
+
     private static final class MapPersistence implements PersistenceProvider {
         private final Map<String, String> store = new TreeMap<>();
 

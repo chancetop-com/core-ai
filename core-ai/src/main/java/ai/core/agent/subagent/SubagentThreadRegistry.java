@@ -64,8 +64,13 @@ public final class SubagentThreadRegistry {
 
     public SubagentThread register(String taskId, SubagentThreadKind kind, String type, String description,
                                    String model, Agent agent) {
+        return registerWithModel(taskId, kind, type, description, new SubagentModelRef(model, null), agent);
+    }
+
+    public SubagentThread registerWithModel(String taskId, SubagentThreadKind kind, String type, String description,
+                                            SubagentModelRef modelRef, Agent agent) {
         ensureIndexLoaded();
-        var thread = new SubagentThread(taskId, kind, type, description, model);
+        var thread = new SubagentThread(taskId, kind, type, description, modelRef);
         if (agent != null) thread.attachAgent(agent);
         threads.put(taskId, thread);
         return thread;
@@ -191,7 +196,8 @@ public final class SubagentThreadRegistry {
         for (var ref : index.threads) {
             if (ref.taskId == null) continue;
             var kind = ref.kind != null ? ref.kind : SubagentThreadKind.TASK;
-            var thread = new SubagentThread(ref.taskId, kind, ref.type, ref.description, ref.model);
+            var thread = new SubagentThread(ref.taskId, kind, ref.type, ref.description,
+                    new SubagentModelRef(ref.model, ref.provider));
             thread.restoreCounters(
                     ref.runCount != null ? ref.runCount : 0,
                     ref.createdAtMs != null ? ref.createdAtMs : 0,

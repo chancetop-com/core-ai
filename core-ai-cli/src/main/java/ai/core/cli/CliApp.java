@@ -8,6 +8,7 @@ import ai.core.cli.acp.AcpAgentRunner;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.agent.AgentSessionRunner;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.agent.CliSubagentModelResolver;
 import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.AuthManager;
@@ -289,13 +290,14 @@ public class CliApp {
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), workspace);
         var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider(), sessionId);
         var videoMediaProvider = CliAppHelper.sessionMediaProvider(ctx.videoMediaProvider(), sessionId);
+        var subagentModelResolver = new CliSubagentModelResolver(ctx.modelRegistry(), ctx.result().llmProviders);
         var agentConfig = new CliAgent.Config(ctx.result().llmProviders, modelOverride, ctx.maxTurn(), ctx.sessionPersistence(), workspace, question -> {
             return ui.readRawLine("\n  " + AnsiTheme.WARNING + "? " + AnsiTheme.RESET + question + "\n" + AnsiTheme.PROMPT + "  > " + AnsiTheme.RESET);
         }, ctx.memoryEnabled(), ctx.dailyLogsEnabled(), ctx.coding(), ctx.todoV2Enabled(), sessionId, ctx.remoteAgents(), ctx.remoteServers(), ctx.subAgentConfigs(), ctx.a2aAutoDiscover(),
                 ctx.mediaProvider(), imageMediaProvider, videoMediaProvider, ctx.defaultImageModel(), ctx.defaultVideoModel(),
                 ctx.defaultImageEditModel(), scheduledTaskStore,
                 CliAppHelper.compressionConfig(ctx.props()), "cli", ctx.helpers(), ctx.mediaCatalog(), ctx.runBudget(),
-                ctx.disabledTools());
+                ctx.disabledTools(), subagentModelResolver);
         var agent = CliAgent.of(agentConfig);
         var registry = agent.getExecutionContext().getAgentProfileRegistry();
         if (registry != null) {

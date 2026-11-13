@@ -150,6 +150,13 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
     }
 
     private String resolveSubagentModel(Map<String, Object> argMap, ExecutionContext context) {
+        var requested = (String) argMap.get("model");
+        if (requested != null && !requested.isBlank()) return requested.trim();
+        var taskId = (String) argMap.get("task_id");
+        if (taskId != null && !taskId.isBlank()) {
+            var thread = context.getSubagentThreads().find(taskId).orElse(null);
+            if (thread != null && thread.model() != null && !thread.model().isBlank()) return thread.model();
+        }
         var subagentType = (String) argMap.get("subagent_type");
         if (subagentType == null || subagentType.isBlank()) return null;
         var configs = context.getSubAgentConfigs();

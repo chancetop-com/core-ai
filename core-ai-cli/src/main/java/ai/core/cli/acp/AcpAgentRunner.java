@@ -8,7 +8,9 @@ import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
 import ai.core.cli.CliAppHelper;
+import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.cli.agent.CliAgent;
+import ai.core.cli.agent.CliSubagentModelResolver;
 import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
@@ -84,6 +86,7 @@ public class AcpAgentRunner {
     private final AcpSlashCommandHandler slashCommands;
     private final Map<String, AcpSession> sessions = new ConcurrentHashMap<>();
     private final AtomicReference<AcpSyncAgent> acpAgentRef = new AtomicReference<>();
+    private SubagentModelResolver subagentModelResolver;
 
     public AcpAgentRunner(Path configFile, String modelOverride, boolean autoApproveAll, Path workspace) {
         this.configFile = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
@@ -117,6 +120,7 @@ public class AcpAgentRunner {
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         LOGGER.info("ACP agent bootstrap initialized");
+        this.subagentModelResolver = CliSubagentModelResolver.create(props, result.llmProviders);
 
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result, props);
@@ -211,7 +215,7 @@ public class AcpAgentRunner {
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
                     ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null,
-                    ctx.disabledTools);
+                    ctx.disabledTools, subagentModelResolver);
 
         Agent coreAgent;
         try {
@@ -263,7 +267,7 @@ public class AcpAgentRunner {
                     Map.of(), false, ctx.mediaProvider, imageMediaProvider, videoMediaProvider,
                     ctx.defaultImageModel, ctx.defaultVideoModel, ctx.defaultImageEditModel, null,
                     ctx.compressionConfig(), "cli", HelperConfigStore.defaultStore().list(), ctx.mediaCatalog, null,
-                    ctx.disabledTools);
+                    ctx.disabledTools, subagentModelResolver);
 
 
         Agent coreAgent;

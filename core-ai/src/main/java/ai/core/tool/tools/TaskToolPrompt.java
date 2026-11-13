@@ -35,6 +35,7 @@ final class TaskToolPrompt {
             4. The agent's outputs should generally be trusted
             5. Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent. Tell it how to verify its work if possible (e.g., relevant test commands).
             6. If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
+            7. `model` is optional. Omit it to run the subagent on your current model. Use an exact model id available in this session; an unavailable model fails the call. Omit it when you are unsure, or when the user did not ask for a specific model.
 
             Example usage (NOTE: The agents below are fictional examples for illustration only - use the actual agents listed above):
 
@@ -103,10 +104,13 @@ final class TaskToolPrompt {
         return sb.toString();
     }
 
-    static String buildDescription(String agentTypes, List<SubagentThread> threads) {
+    static String buildDescription(String agentTypes, List<SubagentThread> threads, String currentModel) {
         var description = TOOL_DESC.replace("%s", agentTypes);
-        if (threads.isEmpty()) return description;
         var sb = new StringBuilder(description);
+        if (currentModel != null && !currentModel.isBlank()) {
+            sb.append("\nYour current model: ").append(currentModel).append(". Omit `model` to inherit it.\n");
+        }
+        if (threads.isEmpty()) return sb.toString();
         sb.append(ACTIVE_SUBAGENTS_HEADER);
         var limit = Math.min(threads.size(), MAX_THREAD_LINES);
         for (int i = 0; i < limit; i++) {
@@ -126,8 +130,11 @@ final class TaskToolPrompt {
      */
     static String threadFooter(SubagentThread thread, boolean noEarlierContext) {
         var sb = new StringBuilder(256).append("[subagent task_id=").append(thread.taskId())
-                .append(" type=").append(thread.type())
-                .append(" runs=").append(thread.runCount())
+                .append(" type=").append(thread.type());
+        if (thread.model() != null && !thread.model().isBlank()) {
+            sb.append(" model=").append(thread.model());
+        }
+        sb.append(" runs=").append(thread.runCount())
                 .append(" context≈").append(formatTokens(thread.contextTokens())).append(" tokens");
         if (noEarlierContext) {
             sb.append(" (no earlier context found for this id)");
@@ -152,8 +159,11 @@ final class TaskToolPrompt {
         if (!description.isEmpty()) {
             sb.append('"').append(description).append("\" — ");
         }
-        sb.append(thread.runCount()).append(thread.runCount() == 1 ? " run" : " runs")
-                .append(", last ").append(relativeTime(thread.lastActiveAtMs()))
+        sb.append(thread.runCount()).append(thread.runCount() == 1 ? " run" : " runs");
+        if (thread.model() != null && !thread.model().isBlank()) {
+            sb.append(", model=").append(thread.model());
+        }
+        sb.append(", last ").append(relativeTime(thread.lastActiveAtMs()))
                 .append(", context≈").append(formatTokens(thread.contextTokens())).append(" tokens");
         if (thread.state() == SubagentThreadState.DORMANT) {
             sb.append(", dormant (reloaded when continued)");

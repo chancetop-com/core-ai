@@ -370,7 +370,7 @@ public class EngineSessionRegistry {
                 bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
                 bootstrap.props.property("media.image.edit.model").orElse(null),
                 bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers,
-                bootstrap.mediaModelCatalog, null, bootstrap.disabledTools);
+                bootstrap.mediaModelCatalog, null, bootstrap.disabledTools, bootstrap.subagentModelResolver);
         var agent = CliAgent.of(agentConfig);
         if (load && agent.hasPersistenceProvider()) {
             switch (SessionLoads.load(bootstrap.sessionPersistence, sessionId)) {

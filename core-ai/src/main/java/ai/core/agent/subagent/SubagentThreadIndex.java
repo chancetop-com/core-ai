@@ -32,6 +32,7 @@ public class SubagentThreadIndex {
             ref.type = thread.type();
             ref.description = thread.description();
             ref.model = thread.model();
+            ref.provider = thread.provider();
             ref.runCount = thread.runCount();
             ref.createdAtMs = thread.createdAtMs();
             ref.lastRunAtMs = thread.lastRunAtMs();
@@ -54,6 +55,9 @@ public class SubagentThreadIndex {
 
         @Property(name = "model")
         public String model;
+
+        @Property(name = "provider")
+        public String provider;
 
         @Property(name = "run_count")
         public Integer runCount;

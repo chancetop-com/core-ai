@@ -5,7 +5,10 @@ import ai.core.agent.SubAgentConfig;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.agent.profile.AgentProfileProvider;
 import ai.core.agent.profile.AgentProfileRegistry;
+import ai.core.agent.subagent.SubagentModelResolver;
+import ai.core.agent.subagent.SubagentModelUnavailableException;
 import ai.core.agent.subagent.SubagentThreadState;
+import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
@@ -236,6 +239,169 @@ class TaskToolTest {
                 .toList();
         assertTrue(requestTexts.stream().anyMatch(t -> t.contains("first question")),
                 "the reloaded thread must carry its earlier context, actual: " + requestTexts);
+    }
+
+    @Test
+    void explicitModelUsesTheResolvedProvider() {
+        var subProvider = new RecordingMockLLMProvider();
+        subProvider.addResponse(text("m2 result"));
+        var context = context(subProvider, new MapPersistence());
+        var resolver = new FixedModelResolver().put("m2", subProvider, "p2");
+        context.setSubagentModelResolver(resolver);
+
+        var result = TaskTool.builder().build()
+                .execute("{\"description\":\"work\",\"prompt\":\"do it\",\"subagent_type\":\"explore\",\"model\":\"m2\"}", context);
+
+        assertTrue(result.isCompleted(), result.getResult());
+        assertEquals("m2 result", result.getResult().substring(0, "m2 result".length()));
+        assertEquals(1, subProvider.requests.size());
+        assertEquals("m2", subProvider.requests.getFirst().model);
+        var thread = context.getSubagentThreads().list().getFirst();
+        assertEquals("m2", thread.model());
+        assertEquals("p2", thread.provider());
+        assertTrue(result.getResult().contains("model=m2"), result.getResult());
+    }
+
+    @Test
+    void unknownExplicitModelFailsBeforeCreatingAThread() {
+        var context = context(new RecordingMockLLMProvider(), new MapPersistence());
+        context.setSubagentModelResolver(new FixedModelResolver());
+
+        var result = TaskTool.builder().build()
+                .execute("{\"description\":\"work\",\"prompt\":\"do it\",\"subagent_type\":\"explore\",\"model\":\"missing\"}", context);
+
+        assertTrue(result.isFailed());
+        assertTrue(result.getResult().contains("[SUBAGENT_MODEL_UNKNOWN]"), result.getResult());
+        assertTrue(context.getSubagentThreads().list().isEmpty(), "a failed model selection must not register a thread");
+    }
+
+    @Test
+    void continuationSwitchesToTheExplicitModel() {
+        var firstProvider = new RecordingMockLLMProvider();
+        firstProvider.addResponse(text("first result"));
+        var secondProvider = new RecordingMockLLMProvider();
+        secondProvider.addResponse(text("second result"));
+        var context = context(firstProvider, new MapPersistence());
+        context.setSubagentModelResolver(new FixedModelResolver()
+                .put("m1", firstProvider, "p1")
+                .put("m2", secondProvider, "p2"));
+        var tool = TaskTool.builder().build();
+
+        var first = tool.execute("{\"description\":\"work\",\"prompt\":\"one\",\"subagent_type\":\"explore\",\"task_id\":\"sa-switch\",\"model\":\"m1\"}", context);
+        assertTrue(first.isCompleted(), first.getResult());
+        assertEquals("m1", firstProvider.requests.getFirst().model);
+
+        var second = tool.execute("{\"description\":\"work\",\"prompt\":\"two\",\"task_id\":\"sa-switch\",\"model\":\"m2\"}", context);
+
+        assertTrue(second.isCompleted(), second.getResult());
+        assertEquals(1, secondProvider.requests.size());
+        assertEquals("m2", secondProvider.requests.getFirst().model);
+        var thread = context.getSubagentThreads().find("sa-switch").orElseThrow();
+        assertEquals("m2", thread.model());
+        assertEquals("p2", thread.provider());
+    }
+
+    @Test
+    void rehydrateUsesTheThreadModelInsteadOfTheCurrentConfiguration() {
+        var persistence = new MapPersistence();
+        var firstProvider = new RecordingMockLLMProvider();
+        firstProvider.addResponse(text("first result"));
+        var firstContext = context(firstProvider, persistence);
+        firstContext.setSubagentModelResolver(new FixedModelResolver().put("m2", firstProvider, "p2"));
+        var tool = TaskTool.builder().build();
+        var first = tool.execute("{\"description\":\"work\",\"prompt\":\"one\",\"subagent_type\":\"explore\",\"task_id\":\"sa-rehydrate\",\"model\":\"m2\"}", firstContext);
+        assertTrue(first.isCompleted(), first.getResult());
+
+        var restoredProvider = new RecordingMockLLMProvider();
+        restoredProvider.addResponse(text("restored result"));
+        var restoredContext = context(restoredProvider, persistence);
+        restoredContext.setSubagentModelResolver(new FixedModelResolver().put("m2", restoredProvider, "p2"));
+
+        var second = tool.execute("{\"description\":\"work\",\"prompt\":\"two\",\"task_id\":\"sa-rehydrate\"}", restoredContext);
+
+        assertTrue(second.isCompleted(), second.getResult());
+        assertEquals(1, restoredProvider.requests.size());
+        assertEquals("m2", restoredProvider.requests.getFirst().model);
+    }
+
+    @Test
+    void continuingAThreadKeepsItsModelWhenTheParentModelChanges() {
+        var provider = new RecordingMockLLMProvider();
+        provider.addResponse(text("first result"));
+        provider.addResponse(text("second result"));
+        var context = context(provider, new MapPersistence());
+        context.setSubagentModelResolver(new FixedModelResolver().put("m1", provider, "p1"));
+        var tool = TaskTool.builder().build();
+        var first = tool.execute("{\"description\":\"work\",\"prompt\":\"one\",\"subagent_type\":\"explore\",\"task_id\":\"sa-sticky\",\"model\":\"m1\"}", context);
+        assertTrue(first.isCompleted(), first.getResult());
+
+        context.setModel("parent-changed");
+
+        var second = tool.execute("{\"description\":\"work\",\"prompt\":\"two\",\"task_id\":\"sa-sticky\"}", context);
+
+        assertTrue(second.isCompleted(), second.getResult());
+        assertEquals(2, provider.requests.size());
+        assertEquals("m1", provider.requests.get(1).model);
+    }
+
+
+    @Test
+    void unknownExplicitModelOnContinuationFailsAsUnknownModel() {
+        var provider = new RecordingMockLLMProvider();
+        provider.addResponse(text("first result"));
+        var context = context(provider, new MapPersistence());
+        context.setSubagentModelResolver(new FixedModelResolver().put("m1", provider, "p1"));
+        var tool = TaskTool.builder().build();
+        var first = tool.execute("{\"description\":\"work\",\"prompt\":\"one\",\"subagent_type\":\"explore\",\"task_id\":\"sa-cont\",\"model\":\"m1\"}", context);
+        assertTrue(first.isCompleted(), first.getResult());
+
+        var second = tool.execute("{\"description\":\"work\",\"prompt\":\"two\",\"task_id\":\"sa-cont\",\"model\":\"missing\"}", context);
+
+        assertTrue(second.isFailed());
+        assertTrue(second.getResult().contains("[SUBAGENT_MODEL_UNKNOWN]"), second.getResult());
+        assertFalse(second.getResult().contains("created with model"), second.getResult());
+    }
+
+    @Test
+    void continuationFailsWhenTheThreadModelIsNoLongerAvailable() {
+        var persistence = new MapPersistence();
+        var provider = new RecordingMockLLMProvider();
+        provider.addResponse(text("first result"));
+        var context = context(provider, persistence);
+        context.setSubagentModelResolver(new FixedModelResolver().put("m1", provider, "p1"));
+        var tool = TaskTool.builder().build();
+        var first = tool.execute("{\"description\":\"work\",\"prompt\":\"one\",\"subagent_type\":\"explore\",\"task_id\":\"sa-lost\",\"model\":\"m1\"}", context);
+        assertTrue(first.isCompleted(), first.getResult());
+
+        var restoredContext = context(new RecordingMockLLMProvider(), persistence);
+        restoredContext.setSubagentModelResolver(new FixedModelResolver());
+        var second = tool.execute("{\"description\":\"work\",\"prompt\":\"two\",\"task_id\":\"sa-lost\"}", restoredContext);
+
+        assertTrue(second.isFailed());
+        assertTrue(second.getResult().contains("[SUBAGENT_THREAD_MODEL_UNAVAILABLE]"), second.getResult());
+    }
+
+    static class FixedModelResolver implements SubagentModelResolver {
+        private final Map<String, ResolvedModel> models = new TreeMap<>();
+
+        FixedModelResolver put(String model, LLMProvider provider, String providerName) {
+            models.put(model, new ResolvedModel(model, provider, providerName));
+            return this;
+        }
+
+        @Override
+        public ResolvedModel resolve(String model, String preferredProvider) {
+            var resolved = models.get(model);
+            if (resolved == null) {
+                throw new SubagentModelUnavailableException(SubagentModelUnavailableException.Reason.UNKNOWN_MODEL, model);
+            }
+            return resolved;
+        }
+
+        @Override
+        public List<String> availableModels() {
+            return List.copyOf(models.keySet());
+        }
     }
 
     static class RecordingMockLLMProvider extends MockLLMProvider {

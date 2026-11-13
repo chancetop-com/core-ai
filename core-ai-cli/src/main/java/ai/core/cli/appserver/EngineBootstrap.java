@@ -1,6 +1,7 @@
 package ai.core.cli.appserver;
 
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.bootstrap.AgentBootstrap;
 import ai.core.bootstrap.BootstrapResult;
 import ai.core.bootstrap.PropertiesFileSource;
@@ -8,6 +9,7 @@ import ai.core.cli.CliAppHelper;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteAgentConfigLoader;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
+import ai.core.cli.agent.CliSubagentModelResolver;
 import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
@@ -62,6 +64,12 @@ public class EngineBootstrap {
         }
     }
 
+    private static Path prepareSessionsDir(Path workspace) {
+        var dir = WorkspaceDirs.ensure(workspace);
+        Housekeeping.runEngine(dir);
+        return dir;
+    }
+
     public final Path workspace;
     public final Path sessionsDir;
     public final SessionLock engineLock;
@@ -88,18 +96,18 @@ public class EngineBootstrap {
     public final String defaultVideoModel;
     public final CompressionConfig compressionConfig;
     public final ModelRegistry modelRegistry;
+    public final SubagentModelResolver subagentModelResolver;
     public final ScheduledTaskStore scheduledTaskStore;
     public final Set<String> disabledTools;
 
     public EngineBootstrap(Path workspace, Path configFile) {
         this.workspace = workspace.toAbsolutePath();
-        this.sessionsDir = WorkspaceDirs.ensure(this.workspace);
+        this.sessionsDir = prepareSessionsDir(this.workspace);
         var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
         if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
             throw new EngineAlreadyRunningException(busy.holder());
         }
         this.engineLock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
-        Housekeeping.runEngine(sessionsDir);
         CliLogger.initialize(this.workspace, "app-server");
         this.props = loadProperties(configFile);
         var bootstrap = new AgentBootstrap(props);
@@ -130,6 +138,7 @@ public class EngineBootstrap {
         this.defaultVideoModel = props.property("media.video.model").orElse(null);
         this.compressionConfig = CliAppHelper.compressionConfig(props);
         this.modelRegistry = new ModelRegistry(result.llmProviders, props);
+        this.subagentModelResolver = new CliSubagentModelResolver(modelRegistry, result.llmProviders);
         this.scheduledTaskStore = new FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
         this.disabledTools = CliToolPolicy.disabledTools(props);

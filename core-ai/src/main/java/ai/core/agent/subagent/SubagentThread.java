@@ -23,7 +23,7 @@ public final class SubagentThread {
     private final String taskId;
     private final SubagentThreadKind kind;
     private final String type;
-    private final String model;
+    private volatile SubagentModelRef modelRef;
     private volatile long createdAtMs;
     private volatile String description;
     private volatile Agent agent;
@@ -33,12 +33,12 @@ public final class SubagentThread {
     private volatile String lastSummary;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    SubagentThread(String taskId, SubagentThreadKind kind, String type, String description, String model) {
+    SubagentThread(String taskId, SubagentThreadKind kind, String type, String description, SubagentModelRef modelRef) {
         this.taskId = taskId;
         this.kind = kind;
         this.type = type;
         this.description = description;
-        this.model = model;
+        this.modelRef = modelRef;
         this.createdAtMs = System.currentTimeMillis();
     }
 
@@ -59,7 +59,19 @@ public final class SubagentThread {
     }
 
     public String model() {
-        return model;
+        var ref = modelRef;
+        return ref == null ? null : ref.model();
+    }
+
+    public String provider() {
+        var ref = modelRef;
+        return ref == null ? null : ref.provider();
+    }
+
+    /** Records the model that actually served the latest run; a blank model is not a usable selection. */
+    public void updateModel(String model, String provider) {
+        if (model == null || model.isBlank()) return;
+        this.modelRef = new SubagentModelRef(model, provider);
     }
 
     public Agent agent() {

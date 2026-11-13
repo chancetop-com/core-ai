@@ -5,6 +5,7 @@ import ai.core.agent.AgentBuilder;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.agent.budget.RunBudget;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.agent.profile.BuiltinAgentProfileProvider;
@@ -156,6 +157,7 @@ public class CliAgent {
         execCtx.setVideoMediaProvider(config.videoMediaProvider);
         execCtx.setDecisionProvider(decisionSupport.provider());
         execCtx.setSubAgentConfigs(config.subAgentConfigs);
+        execCtx.setSubagentModelResolver(config.subagentModelResolver);
         execCtx.setAgentProfileRegistry(buildAgentProfileRegistry(config));
         agent.setExecutionContext(execCtx);
     }
@@ -399,6 +401,7 @@ public class CliAgent {
                              List<HelperEntry> helpers,
                              MediaModelCatalog mediaCatalog,
                              RunBudget runBudget,
-                             Set<String> disabledTools) {
+                             Set<String> disabledTools,
+                             SubagentModelResolver subagentModelResolver) {
     }
 }
