@@ -10,6 +10,18 @@ import { marked } from 'marked';
 import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
+import {
+  maskNotifyTarget,
+  normalizeNotifySessionsMap,
+  normalizeNotifyTargetView,
+  notifySessionKey,
+  notifyTargetDisplayLabel,
+  notifyTargetFromOcg,
+  notifyTargetKey,
+  notifyTargetOptionLabel,
+  type NotifyTargetView,
+  type OcgTargetView,
+} from './notifications';
 import { createRichCard, parseRichCard } from './richCard';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
@@ -363,6 +375,11 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   channelsLoginStart(channelId: string, accountId?: string): Promise<OcgLoginStart>;
   channelsLoginStatus(channelId: string, loginId: string): Promise<OcgLoginStatus>;
   channelsLoginCancel(channelId: string, loginId: string): Promise<OcgLoginStatus>;
+  notificationsTargets(): Promise<{ ok: boolean; targets?: OcgTargetView[]; error?: string }>;
+  notificationsSessionGet(workspace: string, sessionId: string): Promise<boolean>;
+  notificationsSessionSet(workspace: string, sessionId: string, enabled: boolean): Promise<boolean>;
+  notificationsTest(): Promise<{ ok: boolean; error?: string }>;
+  onNotificationDelivery(callback: (result: { ok: boolean; error?: string; targetLabel?: string }) => void): () => void;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
   updateDownload(): Promise<UpdateState | null>;
@@ -461,6 +478,9 @@ const state: {
   capabilities: string[];
   voiceReady: boolean;
   voiceHint: string;
+  notifyTarget: NotifyTargetView | null;
+  notifySessions: Record<string, boolean>;
+  notifyPending: boolean;
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -495,6 +515,9 @@ const state: {
   capabilities: [],
   voiceReady: false,
   voiceHint: 'Voice input',
+  notifyTarget: null,
+  notifySessions: {},
+  notifyPending: false,
 };
 
 let chatView: HTMLElement | null = null;
@@ -2014,10 +2037,79 @@ function openComposerMenu(anchor: HTMLElement, select: HTMLSelectElement, label:
   };
 }
 
+function notifyEnabledForCurrentSession(): boolean {
+  if (!state.sessionId || !state.workspace) return state.notifyPending;
+  return state.notifySessions[notifySessionKey(state.workspace, state.sessionId)] === true;
+}
+
+async function setSessionNotify(enabled: boolean): Promise<boolean> {
+  const workspace = state.workspace;
+  const sessionId = state.sessionId;
+  if (!workspace || !sessionId) {
+    state.notifyPending = enabled;
+    return true;
+  }
+  const key = notifySessionKey(workspace, sessionId);
+  if (enabled) state.notifySessions[key] = true;
+  else delete state.notifySessions[key];
+  const applied = await window.coreai
+    .notificationsSessionSet(workspace, sessionId, enabled)
+    .catch(() => !enabled);
+  if (applied !== enabled) {
+    if (enabled) delete state.notifySessions[key];
+    else state.notifySessions[key] = true;
+    toast('Could not save the notification switch', 'error');
+    return false;
+  }
+  return true;
+}
+
 function renderComposerControls(): void {
   closeComposerMenu();
   if (!composerControlsEl) return;
   composerControlsEl.replaceChildren();
+
+  const notifyLabel = el('label', 'composer-notify') as HTMLLabelElement;
+  const notifyCheckbox = el('input') as HTMLInputElement;
+  notifyCheckbox.type = 'checkbox';
+  notifyCheckbox.checked = notifyEnabledForCurrentSession();
+  const notifyTargetText = notifyTargetDisplayLabel(state.notifyTarget);
+  notifyCheckbox.title = notifyCheckbox.checked
+    ? `Session notifications on — ${notifyTargetText}`
+    : state.notifyTarget
+      ? `Notify me on ${notifyTargetText} when this session finishes`
+      : 'Set up a notification channel first';
+  notifyCheckbox.onchange = async () => {
+    const wanted = notifyCheckbox.checked;
+    if (!wanted) {
+      if (await setSessionNotify(false)) {
+        notifyCheckbox.title = state.notifyTarget
+          ? `Notify me on ${notifyTargetDisplayLabel(state.notifyTarget)} when this session finishes`
+          : 'Set up a notification channel first';
+        notifyLabel.title = notifyCheckbox.title;
+        toast('Notifications off for this session');
+      }
+      return;
+    }
+    const settings = await window.coreai.getSettings().catch(() => null);
+    state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
+    if (!state.notifyTarget) {
+      notifyCheckbox.checked = false;
+      const configured = await openNotifySetupDialog();
+      if (!configured) return;
+      notifyCheckbox.checked = true;
+    }
+    if (!(await setSessionNotify(true))) {
+      notifyCheckbox.checked = false;
+      return;
+    }
+    notifyCheckbox.title = `Session notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
+    notifyLabel.title = notifyCheckbox.title;
+    toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
+  };
+  notifyLabel.title = notifyCheckbox.title;
+  notifyLabel.append(notifyCheckbox, document.createTextNode('Notify'));
+  composerControlsEl.append(notifyLabel);
 
   const workspacePair = el('span', 'control-pair');
   workspacePair.append(el('span', 'composer-label', 'Workspace'));
@@ -2197,6 +2289,7 @@ async function connect(workspace: string): Promise<void> {
   sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
+  state.notifyPending = false;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -2214,6 +2307,8 @@ async function connect(workspace: string): Promise<void> {
   const settings = await window.coreai.getSettings();
   state.info.backgroundScheduling = settings?.backgroundScheduling === true;
   state.workspaces = settings?.workspaces ?? state.workspaces;
+  state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
+  state.notifySessions = normalizeNotifySessionsMap(settings?.notifySessions);
   renderSidebar();
   renderComposerControls();
   await loadSummaries();
@@ -2235,6 +2330,7 @@ async function enterDefaultMode(): Promise<void> {
   sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
+  state.notifyPending = false;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
   clearPendingAttachments();
@@ -2332,6 +2428,7 @@ async function startNewConversation(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.pendingModel = null;
+  state.notifyPending = false;
   clearPendingAttachments();
   surfaces.resetDraft();
   const previousDraft = findSessionView(null);
@@ -2373,6 +2470,19 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   }
   state.sessionId = createdId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === createdId)?.title ?? firstMessage;
+  if (state.notifyPending && state.workspace) {
+    state.notifyPending = false;
+    const key = notifySessionKey(state.workspace, createdId);
+    state.notifySessions[key] = true;
+    const applied = await window.coreai
+      .notificationsSessionSet(state.workspace, createdId, true)
+      .catch(() => false);
+    if (!applied) {
+      delete state.notifySessions[key];
+      toast('Could not save the notification switch', 'error');
+      renderComposerControls();
+    }
+  }
   const view = ensureSessionView(createdId);
   view.historyLoaded = true;
   // The blank window becomes this session: its draft text, dock and artifact selection move over.
@@ -2403,6 +2513,8 @@ async function openSession(sessionId: string): Promise<void> {
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
   state.pendingModel = null;
+  state.notifyPending = false;
+  renderComposerControls();
   clearPendingAttachments();
   const view = ensureSessionView(target);
   renderSessionItems();
@@ -7175,9 +7287,203 @@ async function renderBrowserAutomationSection(): Promise<HTMLElement> {
   return section;
 }
 
+/** Open the configuration dialog used by both the composer switch and Settings. */
+let notifyDialogOpen = false;
+
+async function openImChannelSettings(): Promise<void> {
+  state.nav = 'settings';
+  renderSidebar();
+  await renderContent();
+  document.querySelector('[data-settings-section="im-channels"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+async function openNotifySetupDialog(): Promise<boolean> {
+  if (notifyDialogOpen) return false;
+  notifyDialogOpen = true;
+  const overlay = el('div', 'notify-overlay');
+  const box = el('div', 'notify-dialog');
+  overlay.append(box);
+  document.body.append(overlay);
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let renderToken = 0;
+
+    function close(saved: boolean): void {
+      if (settled) return;
+      settled = true;
+      notifyDialogOpen = false;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(saved);
+    }
+
+    function onKey(event: KeyboardEvent): void {
+      if (event.key === 'Escape') close(false);
+    }
+
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (event) => {
+      if (event.target === overlay) close(false);
+    };
+
+    const render = async (): Promise<void> => {
+      const token = ++renderToken;
+      const [settings, targetsResult, ocg] = await Promise.all([
+        window.coreai.getSettings().catch(() => null),
+        window.coreai.notificationsTargets().catch((error: unknown): { ok: boolean; targets?: OcgTargetView[]; error?: string } => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        })),
+        window.coreai.channelsStatus().catch(() => null),
+      ]);
+      if (settled || token !== renderToken) return;
+
+      const current = normalizeNotifyTargetView(settings?.notifyTarget);
+      state.notifyTarget = current;
+      const targets = targetsResult.ok ? (targetsResult.targets ?? []) : [];
+
+      const header = el('div', 'notify-dialog-head');
+      header.append(el('div', 'notify-dialog-title', 'Session notifications'));
+      const closeButton = el('button', 'notify-dialog-close') as HTMLButtonElement;
+      closeButton.append(icon('x'));
+      closeButton.title = 'Close';
+      closeButton.onclick = () => close(false);
+      header.append(closeButton);
+
+      const body = el('div', 'notify-dialog-body');
+      body.append(el('div', 'hint', 'Get a message on your IM channel when a turn in this chat finishes.'));
+      box.replaceChildren(header, body);
+
+      const actions = el('div', 'notify-actions');
+      const openSettings = el('button', 'btn small', 'Open Settings → IM channels');
+      openSettings.onclick = () => {
+        close(false);
+        void openImChannelSettings();
+      };
+      const cancel = el('button', 'btn small', 'Cancel');
+      cancel.onclick = () => close(false);
+
+      if (!ocg?.present) {
+        body.append(el('div', 'notify-status error', 'OCG is not installed. Install it, then sign in to a channel in Settings → IM channels.'));
+        const install = el('button', 'btn small primary', 'Install OCG');
+        install.onclick = async () => {
+          if (!window.confirm('Install openclaw-channel-gateway with npm?\n\nRequires Node.js 22.12+. Channel credentials and QR login stay local.')) return;
+          install.disabled = true;
+          const result = await window.coreai.channelsInstallTool();
+          toast(result.ok ? `OCG installed: ${result.detail}` : `OCG install failed: ${result.detail}`, result.ok ? '' : 'error');
+          if (result.ok) void render();
+          else install.disabled = false;
+        };
+        actions.append(install, openSettings, cancel);
+        body.append(actions);
+        return;
+      }
+
+      if (!targetsResult.ok) {
+        body.append(el('div', 'notify-status error', targetsResult.error ?? 'OCG targets are unavailable'));
+        body.append(el('div', 'hint', 'Start the OCG daemon (or enable the desktop IM bridge) in Settings → IM channels, then Refresh.'));
+        const refresh = el('button', 'btn small', 'Refresh');
+        refresh.onclick = () => void render();
+        actions.append(refresh, openSettings, cancel);
+        body.append(actions);
+        return;
+      }
+
+      if (targets.length === 0) {
+        body.append(el('div', 'hint', 'No address to pick yet. Send the bot a message on WeChat, QQ or another channel once — after that the conversation shows up here as a choice.'));
+        const refresh = el('button', 'btn small', 'Refresh');
+        refresh.onclick = () => void render();
+        actions.append(refresh, openSettings, cancel);
+        body.append(actions);
+        return;
+      }
+
+      const select = el('select', 'notify-select') as HTMLSelectElement;
+      for (const entry of targets) {
+        const option = el('option', undefined, notifyTargetOptionLabel(entry)) as HTMLOptionElement;
+        option.value = notifyTargetKey(entry);
+        select.append(option);
+      }
+      const preferred = current
+        ? targets.find((entry) => notifyTargetKey(entry) === notifyTargetKey(current))
+        : undefined;
+      const fallback = targets.find((entry) => entry.chatType !== 'group') ?? targets[0];
+      select.value = notifyTargetKey(preferred ?? fallback);
+
+      const targetHint = el('div', 'hint');
+      const updateTargetHint = (): void => {
+        const entry = targets.find((candidate) => notifyTargetKey(candidate) === select.value);
+        if (!entry) {
+          targetHint.textContent = '';
+          return;
+        }
+        const shared = entry.chatType === 'group' ? ' · this target is shared — the message is visible to the group' : '';
+        targetHint.textContent = `Target: ${maskNotifyTarget(entry.target)}${shared}`;
+      };
+      select.onchange = updateTargetHint;
+      updateTargetHint();
+
+      const status = el('div', 'notify-status');
+      const saveButton = el('button', 'btn small primary', 'Save');
+      const testButton = el('button', 'btn small', 'Send test');
+      const save = async (closeAfter: boolean): Promise<boolean> => {
+        const entry = targets.find((candidate) => notifyTargetKey(candidate) === select.value);
+        if (!entry) {
+          status.textContent = 'Select a channel target first';
+          status.className = 'notify-status error';
+          return false;
+        }
+        saveButton.disabled = true;
+        const saved = await window.coreai.setSettings({ notifyTarget: notifyTargetFromOcg(entry) }).catch(() => null);
+        saveButton.disabled = false;
+        const normalized = normalizeNotifyTargetView(saved?.notifyTarget);
+        if (!normalized) {
+          status.textContent = 'Could not save the notification target';
+          status.className = 'notify-status error';
+          return false;
+        }
+        state.notifyTarget = normalized;
+        status.textContent = `Saved — ${notifyTargetDisplayLabel(normalized)}`;
+        status.className = 'notify-status';
+        if (closeAfter) {
+          toast('Notification target saved');
+          close(true);
+        }
+        return true;
+      };
+      saveButton.onclick = () => void save(true);
+      testButton.onclick = async () => {
+        if (!(await save(false))) return;
+        testButton.disabled = true;
+        const result = await window.coreai.notificationsTest().catch((error: unknown) => ({
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        }));
+        testButton.disabled = false;
+        status.textContent = result.ok ? 'Test message sent' : `Test failed: ${result.error ?? 'unknown error'}`;
+        status.className = result.ok ? 'notify-status' : 'notify-status error';
+      };
+
+      body.append(
+        el('div', 'notify-field-label', 'Send to'),
+        select,
+        targetHint,
+        el('div', 'hint', 'The target is saved on this machine; the switch stays per session.'),
+        status,
+      );
+      actions.append(saveButton, testButton, cancel);
+      body.append(actions);
+    };
+
+    void render();
+  });
+}
+
 /** Settings → IM channels: local OCG daemon and the optional ocg skill. */
 async function renderChannelsSection(): Promise<HTMLElement> {
   const section = el('div');
+  section.dataset.settingsSection = 'im-channels';
   section.append(el('h2', undefined, 'IM channels'));
   section.append(el('div', 'hint', 'Read and reply to QQ, WeChat, Telegram, DingTalk or Discord through a local OpenClaw Channel Gateway. Credentials, channel configuration and QR login stay on this machine; the app does not store them.'));
   const [status, envelope, settings, bridge, admin] = await Promise.all([
@@ -7256,6 +7562,31 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   bridgeLabel.append(bridgeToggle, document.createTextNode('Route incoming IM messages into desktop sessions (P0)'));
   section.append(bridgeLabel);
   section.append(el('div', 'hint', 'The bridge only consumes channels whose OCG agentType is "mailbox". The conversation is created in the workspace selected by the routing binding below, or in the workspace currently open in the app — where it behaves like any other desktop session. While the bridge runs, do not also poll the same mailbox with the ocg skill: the two consumers would compete for messages. Text only; direct messages and group @mentions.'));
+
+  section.append(el('h3', undefined, 'Completion notifications'));
+  const notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
+  const notifyGrid = el('dl', 'settings-grid');
+  notifyGrid.append(el('dt', undefined, 'Notify channel'));
+  notifyGrid.append(el('dd', undefined, notifyTargetDisplayLabel(notifyTarget)));
+  section.append(notifyGrid);
+  section.append(el('div', 'hint', 'Send one message through this machine\'s OCG daemon when a chat turn finishes. The switch is per session, in the chat composer.'));
+  const notifyActions = el('div', 'notify-actions');
+  const configureNotify = el('button', 'btn small primary', 'Configure…');
+  configureNotify.onclick = async () => {
+    if (await openNotifySetupDialog()) await rerender();
+  };
+  const testNotify = el('button', 'btn small', 'Send test');
+  testNotify.onclick = async () => {
+    testNotify.disabled = true;
+    const result = await window.coreai.notificationsTest().catch((error: unknown) => ({
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    testNotify.disabled = false;
+    toast(result.ok ? 'Test notification sent' : `Test failed: ${result.error ?? 'unknown error'}`, result.ok ? '' : 'error');
+  };
+  notifyActions.append(configureNotify, testNotify);
+  section.append(notifyActions);
 
   const setup = el('pre', undefined, [
     'ocg config set channels.<channel-id>.agentType mailbox',
@@ -8053,6 +8384,8 @@ async function bootstrap(): Promise<void> {
   state.info.backgroundScheduling = settings?.backgroundScheduling === true;
   state.approvalPolicy = settings?.approvalPolicy ?? 'ask';
   state.workspaces = settings?.workspaces ?? [];
+  state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
+  state.notifySessions = normalizeNotifySessionsMap(settings?.notifySessions);
   state.capabilities = state.workspace ? await window.coreai.engineCapabilities(state.workspace).catch(() => []) : [];
   state.colorScheme = normalizeColorScheme(settings?.colorScheme);
   try {
@@ -8130,6 +8463,9 @@ async function bootstrap(): Promise<void> {
 
   window.coreai.onBrowserState((status: BrowserStatus) => {
     applyBrowserStatus(status);
+  });
+  window.coreai.onNotificationDelivery((result) => {
+    if (result && result.ok === false) toast(`Notification failed: ${result.error ?? 'unknown error'}`, 'error');
   });
   void window.coreai.browserStatus().then((status) => {
     applyBrowserStatus(status);

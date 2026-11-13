@@ -1217,6 +1217,96 @@ select.rich-card-input[multiple] { padding: 3px; }
 .composer-controls .composer-status.running { color: var(--green); }
 .composer-controls .composer-status.error { color: var(--red); }
 
+/* Session-completion notification switch: composer-level opt-in, off by default. */
+.composer-notify {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--faint);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.composer-notify input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.composer-notify:hover { color: var(--text); }
+.composer-notify:has(input:checked) { color: var(--accent); }
+
+.notify-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.notify-dialog {
+  width: min(480px, 92vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+}
+
+.notify-dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.notify-dialog-title { font-size: 14px; font-weight: 600; }
+
+.notify-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.notify-dialog-close:hover { background: var(--bg-elev); color: var(--text); }
+.notify-dialog-close .ic { width: 15px; height: 15px; }
+
+.notify-dialog-body { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.notify-field-label { color: var(--faint); font-size: 12px; }
+
+.notify-select {
+  width: 100%;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg-input);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.notify-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 4px; }
+
+.notify-status { color: var(--faint); font-size: 12px; line-height: 1.45; }
+.notify-status.error { color: var(--red); }
+
 .composer-menu { position: fixed; z-index: 60; min-width: 170px; max-height: 320px; overflow-y: auto; background: var(--bg-panel); border: 1px solid var(--border-strong); border-radius: 10px; padding: 6px; box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45); }
 .composer-menu-item { display: block; width: 100%; text-align: left; border: 0; background: transparent; color: var(--text); font: inherit; font-size: 12.5px; padding: 6px 8px; border-radius: 6px; cursor: pointer; white-space: nowrap; }
 .composer-menu-item:hover { background: var(--bg-elev); }

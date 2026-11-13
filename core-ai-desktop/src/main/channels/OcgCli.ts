@@ -37,6 +37,17 @@ export interface OcgResult<T> {
   code?: string;
 }
 
+export interface OcgTarget {
+  channel: string;
+  accountId?: string;
+  target: string;
+  chatType?: string;
+  senderName?: string | null;
+  groupSubject?: string | null;
+  lastSeenAt?: number;
+  count?: number;
+}
+
 function parseJson(text: string): unknown {
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -103,6 +114,34 @@ export async function ocgSend(channel: string, to: string, text: string, account
   const args = ['send', '--channel', channel, '--to', to, '--text', text, '--json'];
   if (accountId) args.push('--account', accountId);
   return runJson(args, 60_000);
+}
+
+/** Recently seen peers: the only addresses the user can pick without knowing platform ids. */
+export function normalizeOcgTargets(value: unknown): OcgTarget[] {
+  if (!Array.isArray(value)) return [];
+  const targets: OcgTarget[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== 'object') continue;
+    const record = candidate as Record<string, unknown>;
+    const channel = typeof record.channel === 'string' ? record.channel.trim() : '';
+    const target = typeof record.target === 'string' ? record.target.trim() : '';
+    if (!channel || !target) continue;
+    const entry: OcgTarget = { channel, target };
+    if (typeof record.accountId === 'string' && record.accountId.trim()) entry.accountId = record.accountId.trim();
+    if (typeof record.chatType === 'string' && record.chatType.trim()) entry.chatType = record.chatType.trim();
+    if (typeof record.senderName === 'string') entry.senderName = record.senderName;
+    if (typeof record.groupSubject === 'string') entry.groupSubject = record.groupSubject;
+    if (typeof record.lastSeenAt === 'number') entry.lastSeenAt = record.lastSeenAt;
+    if (typeof record.count === 'number') entry.count = record.count;
+    targets.push(entry);
+  }
+  return targets;
+}
+
+export async function ocgTargets(): Promise<OcgResult<{ targets: OcgTarget[] }>> {
+  const result = await runJson<{ targets?: unknown }>(['targets', 'list', '--json'], 20_000);
+  if (!result.ok) return { ok: false, code: result.code, error: result.error };
+  return { ok: true, data: { targets: normalizeOcgTargets(result.data?.targets) } };
 }
 
 export async function ocgDaemonStatus(): Promise<OcgResult<Record<string, unknown>>> {

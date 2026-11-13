@@ -56,6 +56,18 @@ contextBridge.exposeInMainWorld('coreai', {
   channelsLoginStart: (channelId: string, accountId?: string) => ipcRenderer.invoke('channels:loginStart', channelId, accountId),
   channelsLoginStatus: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginStatus', channelId, loginId),
   channelsLoginCancel: (channelId: string, loginId: string) => ipcRenderer.invoke('channels:loginCancel', channelId, loginId),
+  notificationsTargets: () => ipcRenderer.invoke('notifications:targets'),
+  notificationsSessionGet: (workspace: string, sessionId: string) => ipcRenderer.invoke('notifications:sessionGet', workspace, sessionId),
+  notificationsSessionSet: (workspace: string, sessionId: string, enabled: boolean) =>
+    ipcRenderer.invoke('notifications:sessionSet', workspace, sessionId, enabled),
+  notificationsTest: () => ipcRenderer.invoke('notifications:test'),
+  onNotificationDelivery: (callback: (state: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => callback(payload);
+    ipcRenderer.on('notifications:delivery', listener);
+    return () => {
+      ipcRenderer.removeListener('notifications:delivery', listener);
+    };
+  },
   updateStatus: () => ipcRenderer.invoke('update:status'),
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),

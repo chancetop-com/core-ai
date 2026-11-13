@@ -134,3 +134,21 @@ test('a daemon without apiVersion falls back to the CLI port', async (t) => {
   assert.equal(result.ok, true);
   assert.equal(fallbackWaits, 1);
 });
+
+test('send omits an empty account id and keeps a present one', async (t) => {
+  const bodies = [];
+  const { server, baseUrl } = await startServer(async (req, res) => {
+    const body = await readBody(req);
+    bodies.push(body);
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ ok: true }));
+  });
+  t.after(() => server.close());
+
+  const client = new OcgHttpPort({ baseUrl, token: TOKEN });
+  assert.equal((await client.send('openclaw-weixin', 'peer', 'hi', '')).ok, true);
+  assert.equal((await client.send('openclaw-weixin', 'peer', 'hi', 'acct')).ok, true);
+
+  assert.deepEqual(bodies[0], { channel: 'openclaw-weixin', to: 'peer', text: 'hi' });
+  assert.deepEqual(bodies[1], { channel: 'openclaw-weixin', to: 'peer', text: 'hi', accountId: 'acct' });
+});

@@ -29,8 +29,9 @@ import { ChannelBridge, type ChannelBridgeState } from './channels/ChannelBridge
 import { type ChannelBinding, resolveBindingWorkspace } from './channels/Bindings';
 import { channelsFromStatus, createOcgPort, type OcgChannel, OcgHttpPort } from './channels/OcgClient';
 import { routeChannelToDesktop } from './channels/OcgRouting';
-import { ocgAck, ocgReply, ocgSend, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
+import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
+import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -60,6 +61,10 @@ interface DesktopSettings {
   channelsBridgeEnabled?: boolean;
   /** IM bindings: channel/account/peer -> workspace. */
   channelBindings?: ChannelBinding[];
+  /** Local OCG target for session-completion notifications. */
+  notifyTarget?: NotifyTarget | null;
+  /** Per-session notification switches, key = "<workspace>::<sessionId>". */
+  notifySessions?: Record<string, boolean>;
   backgroundScheduling?: boolean;
   /** Start the installed app when the user signs in (default on). The window still closes to tray. */
   launchAtLogin?: boolean;
@@ -79,6 +84,7 @@ let builtinSkills: BuiltinSkills | null = null;
 let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
 let channelBridge: ChannelBridge | null = null;
+let completionNotifier: CompletionNotifier | null = null;
 let ocgAdmin: OcgHttpPort | null = null;
 let channelKeepAwakeId: number | null = null;
 let tray: Tray | null = null;
@@ -156,6 +162,8 @@ function normalizeSettings(loaded: DesktopSettings): DesktopSettings {
   if (result.computerUse === undefined) result.computerUse = true;
   if (result.browserSkillEnabled === undefined) result.browserSkillEnabled = true;
   if (result.launchAtLogin === undefined) result.launchAtLogin = true;
+  result.notifyTarget = normalizeNotifyTarget(result.notifyTarget);
+  result.notifySessions = normalizeNotifySessions(result.notifySessions);
   const list = Array.isArray(result.workspaces) ? result.workspaces.filter((entry): entry is string => typeof entry === 'string') : [];
   if (result.lastWorkspace && !list.includes(result.lastWorkspace)) list.unshift(result.lastWorkspace);
   result.workspaces = list.slice(0, 8);
@@ -708,6 +716,8 @@ function registerIpc(): void {
   ipcMain.handle('settings:set', async (_event, patch: DesktopSettings) => {
     const previousPolicy = settings.approvalPolicy ?? 'ask';
     settings = { ...settings, ...patch };
+    if (patch.notifyTarget !== undefined) settings.notifyTarget = normalizeNotifyTarget(patch.notifyTarget);
+    if (patch.notifySessions !== undefined) settings.notifySessions = normalizeNotifySessions(patch.notifySessions);
     if (typeof patch.backgroundScheduling === 'boolean') configureBackgroundScheduling();
     if (typeof patch.launchAtLogin === 'boolean') applyLaunchAtLogin();
     saveSettings();
@@ -995,6 +1005,32 @@ function registerIpc(): void {
     }
     return channelBridge?.snapshot() ?? null;
   });
+  ipcMain.handle('notifications:targets', async () => {
+    const result = await ocgTargets();
+    return result.ok
+      ? { ok: true, targets: result.data?.targets ?? [] }
+      : { ok: false, error: result.error ?? 'OCG targets are unavailable' };
+  });
+  ipcMain.handle('notifications:sessionGet', (_event, workspace: string, sessionId: string): boolean => {
+    if (typeof workspace !== 'string' || !workspace || typeof sessionId !== 'string' || !sessionId) return false;
+    return settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true;
+  });
+  ipcMain.handle('notifications:sessionSet', (_event, workspace: string, sessionId: string, enabled: boolean): boolean => {
+    if (typeof workspace !== 'string' || !workspace || typeof sessionId !== 'string' || !sessionId) return false;
+    const key = notifySessionKey(workspace, sessionId);
+    const next = { ...(settings.notifySessions ?? {}) };
+    if (enabled === true) next[key] = true;
+    else delete next[key];
+    settings.notifySessions = next;
+    saveSettings();
+    return enabled === true;
+  });
+  ipcMain.handle('notifications:test', async () => {
+    const target = settings.notifyTarget;
+    if (!target) return { ok: false, error: 'Notification channel is not configured' };
+    ocgAdmin ??= new OcgHttpPort();
+    return ocgAdmin.send(target.channel, target.target, 'Notification test — core-ai-desktop', target.accountId ?? '');
+  });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
   ipcMain.handle('update:download', async () => updateService?.download() ?? null);
@@ -1175,12 +1211,24 @@ else {
       },
       onEvent: (workspace, method, params) => {
         channelBridge?.onEngineEvent(workspace, method, params);
+        completionNotifier?.onEngineEvent(workspace, method, params);
         send('engine:event', { workspace, method, params });
       },
       onLog: (workspace, line) => {
         console.error(`[engine ${workspace}] ${line}`);
         send('engine:log', { workspace, line });
       },
+    });
+    completionNotifier = new CompletionNotifier({
+      isEnabled: (workspace, sessionId) => settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true,
+      target: () => settings.notifyTarget ?? null,
+      send: async (target, text) => {
+        ocgAdmin ??= new OcgHttpPort();
+        return ocgAdmin.send(target.channel, target.target, text, target.accountId ?? '');
+      },
+      sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
+      log: (line) => console.log(`[notifications] ${line}`),
+      onDelivery: (result) => send('notifications:delivery', result),
     });
     channelBridge = new ChannelBridge({
       workspace: (message) => resolveBridgeWorkspace(message),

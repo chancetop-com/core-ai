@@ -213,7 +213,12 @@ export class OcgHttpPort implements OcgPort {
     text: string,
     accountId: string,
   ): Promise<OcgResult<Record<string, unknown>>> {
-    return this.request('POST', '/ocg/v1/send', { channel, to, text, accountId });
+    return this.request('POST', '/ocg/v1/send', {
+      channel,
+      to,
+      text,
+      ...(accountId ? { accountId } : {}),
+    });
   }
 
   async channels(): Promise<OcgResult<{ channels: OcgChannel[] }>> {
