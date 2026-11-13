@@ -1,7 +1,6 @@
 package ai.core.server.trace;
 
 import ai.core.server.trace.domain.Span;
-import ai.core.server.util.MigrationErrors;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
@@ -64,16 +63,9 @@ public class SpanMigrationService {
             query.limit = PAGE_SIZE;
             List<Span> page = spanCollection.find(query);
             if (page.isEmpty()) break;
-            for (Span span : page) {
-                try {
-                    spanStore.insert(span);
-                } catch (RuntimeException e) {
-                    if (!MigrationErrors.isDuplicateKey(e)) throw e;
-                    LOGGER.debug("span already migrated, id={}", span.id);
-                }
-                lastId = span.id;
-                count++;
-            }
+            spanStore.bulkInsert(page);
+            lastId = page.getLast().id;
+            count += page.size();
         }
         return count;
     }

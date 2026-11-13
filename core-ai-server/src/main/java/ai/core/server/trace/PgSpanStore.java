@@ -30,6 +30,7 @@ public class PgSpanStore implements SpanStore {
         + "cost_source, pricing_model_id, input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, "
         + "error_message, attributes, started_at, completed_at, created_at) ";
     private static final int DELETE_BATCH_SIZE = 500;
+    private static final int BULK_SIZE = 200;
 
     private static Span toSpan(PgSpanRow row) {
         var span = new Span();
@@ -69,6 +70,19 @@ public class PgSpanStore implements SpanStore {
     private static String type(SpanType type) {
         return type == null ? null : type.name();
     }
+
+    private static Object[] params(Span span) {
+        return new Object[]{
+            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model,
+            span.status != null ? span.status.name() : null, span.toolCallId, JsonSanitizer.text(span.input),
+            JsonSanitizer.text(span.output), span.inputTokens, span.outputTokens, span.cachedTokens, span.costUsd,
+            span.costSource, span.pricingModelId, span.inputPricePer1MTokens, span.outputPricePer1MTokens,
+            span.durationMs, JsonSanitizer.text(span.errorMessage),
+            span.attributes != null ? JsonUtil.toJson(span.attributes) : null,
+            span.startedAt, span.completedAt, span.createdAt
+        };
+    }
+
     private static final TypeReference<Map<String, String>> ATTRIBUTES_TYPE = new TypeReference<>() { };
 
     @Inject
@@ -77,12 +91,18 @@ public class PgSpanStore implements SpanStore {
     @Override
     public void insert(Span span) {
         database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
-            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model,
-            span.status != null ? span.status.name() : null, span.toolCallId, JsonSanitizer.text(span.input),
-            JsonSanitizer.text(span.output), span.inputTokens, span.outputTokens, span.cachedTokens, span.costUsd,
-            span.costSource, span.pricingModelId, span.inputPricePer1MTokens, span.outputPricePer1MTokens,
-            span.durationMs, JsonSanitizer.text(span.errorMessage), span.attributes != null ? JsonUtil.toJson(span.attributes) : null,
-            span.startedAt, span.completedAt, span.createdAt);
+            params(span));
+    }
+
+    @Override
+    public void bulkInsert(List<Span> spans) {
+        for (int i = 0; i < spans.size(); i += BULK_SIZE) {
+            var batch = spans.subList(i, Math.min(i + BULK_SIZE, spans.size())).stream()
+                .map(PgSpanStore::params)
+                .toList();
+            database.batchExecute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?) "
+                + "ON CONFLICT DO NOTHING", batch);
+        }
     }
 
     @Override

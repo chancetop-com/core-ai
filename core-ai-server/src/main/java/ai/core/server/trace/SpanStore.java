@@ -14,6 +14,8 @@ import java.util.List;
 public interface SpanStore {
     void insert(Span span);
 
+    void bulkInsert(List<Span> spans);
+
     Span find(String traceId, String spanId);
 
     boolean existsToolCall(String traceId, String toolCallId);

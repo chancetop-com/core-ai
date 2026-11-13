@@ -134,6 +134,18 @@ class PgSpanStoreTest {
     }
 
     @Test
+    void bulkInsertIgnoresRowsThatWereAlreadyCopied() {
+        var store = store();
+        var now = ZonedDateTime.now();
+        store.insert(span("s1", "t1", "l1", SpanType.LLM, now));
+        store.bulkInsert(List.of(
+            span("s1", "t1", "l1", SpanType.LLM, now),
+            span("s2", "t1", "l2", SpanType.LLM, now.plusSeconds(1))));
+
+        assertEquals(2, store.pageByTrace("t1", 0, 10).size());
+    }
+
+    @Test
     void archivePagingAndDeletesAreBounded() {
         var store = store();
         var cutoff = ZonedDateTime.now();

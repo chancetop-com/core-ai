@@ -35,6 +35,11 @@ public class MongoSpanStore implements SpanStore {
     }
 
     @Override
+    public void bulkInsert(List<Span> spans) {
+        if (!spans.isEmpty()) spanCollection.bulkInsert(spans);
+    }
+
+    @Override
     public Span find(String traceId, String spanId) {
         var query = new Query();
         query.filter = Filters.and(Filters.eq("trace_id", traceId), Filters.eq("span_id", spanId));
