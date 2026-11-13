@@ -104,7 +104,6 @@ public class PgTraceAnalytics {
             + " FROM " + TABLE + " WHERE started_at >= ? AND started_at < ? GROUP BY 1, 2";
         params.add(from);
         params.add(to);
-        params.add(NO_AGENT);
         return database.select(sql, PgTraceRollupRow.class, params.toArray()).stream().map(this::rollupRow).toList();
     }
 
