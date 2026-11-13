@@ -179,7 +179,7 @@ public class MongoTraceStore implements TraceStore {
     public List<Trace> list(TraceQuery criteria) {
         var query = new Query();
         if (criteria.skip != null) query.skip = criteria.skip;
-        query.limit = criteria.limit;
+        if (criteria.limit != null) query.limit = criteria.limit;
         query.sort = criteria.ascending ? Sorts.ascending("created_at") : Sorts.descending("created_at");
         var filters = buildFilters(criteria);
         if (!filters.isEmpty()) {
@@ -244,14 +244,21 @@ public class MongoTraceStore implements TraceStore {
         if (hasText(criteria.type)) filters.add(Filters.eq("type", criteria.type));
         addSourceFilter(filters, criteria.source);
         if (hasText(criteria.agentName)) filters.add(Filters.eq("agent_name", criteria.agentName));
+        if (hasText(criteria.agentId)) filters.add(Filters.eq("agent_id", criteria.agentId));
         if (hasText(criteria.model)) filters.add(Filters.eq("model", criteria.model));
         if (hasText(criteria.status)) filters.add(Filters.eq("status", TraceStatus.valueOf(criteria.status)));
         if (hasText(criteria.sessionId)) filters.add(Filters.eq("session_id", criteria.sessionId));
+        if (criteria.traceIds != null) filters.add(Filters.in("trace_id", criteria.traceIds));
+        if (criteria.agentIdPresent) {
+            filters.add(Filters.ne("agent_id", null));
+            filters.add(Filters.ne("agent_id", ""));
+        }
         if (hasText(criteria.userId)) filters.add(Filters.eq("user_id", criteria.userId));
         // an empty list must stay $in: [] (match nothing); null means "not scoped"
         else if (criteria.userIds != null) filters.add(Filters.in("user_id", criteria.userIds));
         if (criteria.extraUserIds != null) filters.add(Filters.in("user_id", criteria.extraUserIds));
         if (criteria.startFrom != null) filters.add(Filters.gte("started_at", criteria.startFrom));
+        if (criteria.startAfter != null) filters.add(Filters.gt("started_at", criteria.startAfter));
         if (criteria.startTo != null) filters.add(Filters.lte("started_at", criteria.startTo));
         if (criteria.startBefore != null) filters.add(Filters.lt("started_at", criteria.startBefore));
         return filters;

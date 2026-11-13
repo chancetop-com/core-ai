@@ -5,11 +5,10 @@ import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.memory.experiment.MemoryLayer;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Trace;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -55,7 +54,7 @@ public class AgentMemoryService {
     AgentMemoryStore memoryStore;
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
 
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
@@ -167,9 +166,9 @@ public class AgentMemoryService {
      */
     public List<Trace> sourceTraces(List<String> traceIds) {
         if (traceIds == null || traceIds.isEmpty()) return List.of();
-        var query = new Query();
-        query.filter = Filters.in("trace_id", traceIds);
-        var traces = new ArrayList<>(traceCollection.find(query));
+        var query = new TraceQuery();
+        query.traceIds = traceIds;
+        var traces = new ArrayList<>(traceStore.list(query));
         traces.sort((a, b) -> {
             if (a.startedAt == null) return b.startedAt == null ? 0 : 1;
             if (b.startedAt == null) return -1;

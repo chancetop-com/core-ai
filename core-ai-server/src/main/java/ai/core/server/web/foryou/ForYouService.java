@@ -5,7 +5,8 @@ import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
 import ai.core.server.session.ChatMessageService;
-import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.TraceDailyStats;
 import com.mongodb.client.model.Accumulators;
 import com.mongodb.client.model.Aggregates;
@@ -13,7 +14,6 @@ import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
 import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.bson.Document;
 
 import java.time.LocalDate;
@@ -48,7 +48,7 @@ public class ForYouService {
     ai.core.server.file.FileRecordStore fileRecordStore;
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
 
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
@@ -200,13 +200,11 @@ public class ForYouService {
 
     private void accumulateFromTraces(Map<LocalDate, DailyUsage> dailyMap, String userId,
                                        ZonedDateTime start, ZonedDateTime end) {
-        var query = new Query();
-        query.filter = Filters.and(
-            Filters.eq("user_id", userId),
-            Filters.gte("started_at", start),
-            Filters.lt("started_at", end)
-        );
-        var traces = traceCollection.find(query);
+        var query = new TraceQuery();
+        query.userId = userId;
+        query.startFrom = start;
+        query.startBefore = end;
+        var traces = traceStore.list(query);
         for (var trace : traces) {
             if (trace.startedAt == null) continue;
             var date = trace.startedAt.withZoneSameInstant(UTC).toLocalDate();

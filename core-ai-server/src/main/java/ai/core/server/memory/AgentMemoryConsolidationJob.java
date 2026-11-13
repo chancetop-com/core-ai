@@ -10,16 +10,14 @@ import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -65,7 +63,7 @@ public class AgentMemoryConsolidationJob implements Job {
     @Inject
     LLMProviders llmProviders;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
@@ -119,17 +117,12 @@ public class AgentMemoryConsolidationJob implements Job {
 
     private Set<String> collectAgentIds() {
         var cutoff = ZonedDateTime.now().minusHours(IDLE_THRESHOLD_HOURS);
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("status", TraceStatus.COMPLETED),
-                Filters.exists("agent_id", true),
-                Filters.ne("agent_id", null),
-                Filters.ne("agent_id", ""),
-                Filters.lte("started_at", cutoff)
-        );
-        query.sort = Sorts.descending("started_at");
+        var query = new TraceQuery();
+        query.status = TraceStatus.COMPLETED.name();
+        query.agentIdPresent = true;
+        query.startTo = cutoff;
         query.limit = 500;
-        var traces = traceCollection.find(query);
+        var traces = traceStore.list(query);
         var ids = new HashSet<String>();
         for (var trace : traces) {
             if (trace.agentId != null && !trace.agentId.isBlank()
@@ -165,16 +158,14 @@ public class AgentMemoryConsolidationJob implements Job {
         var cursor = agentMemoryService.getCursor(agentId);
         var since = cursor != null ? cursor.lastProcessedAt : ZonedDateTime.now().minusYears(10);
         var cutoff = ZonedDateTime.now().minusHours(IDLE_THRESHOLD_HOURS);
-        var query = new Query();
-        query.filter = Filters.and(
-                Filters.eq("agent_id", agentId),
-                Filters.eq("status", TraceStatus.COMPLETED),
-                Filters.gt("started_at", since),
-                Filters.lte("started_at", cutoff)
-        );
-        query.sort = Sorts.ascending("started_at");
+        var query = new TraceQuery();
+        query.agentId = agentId;
+        query.status = TraceStatus.COMPLETED.name();
+        query.startAfter = since;
+        query.startTo = cutoff;
+        query.ascending = true;
         query.limit = MAX_TRACES_PER_AGENT;
-        var traces = traceCollection.find(query);
+        var traces = traceStore.list(query);
         if (traces.size() < MIN_TRACES_FOR_EXTRACTION) {
             LOGGER.debug("agent={} has {} new traces, skipping (min={})", agentId, traces.size(), MIN_TRACES_FOR_EXTRACTION);
             return;

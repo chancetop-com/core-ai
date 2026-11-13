@@ -17,9 +17,14 @@ public class TraceQuery {
     public String type;
     public String source;
     public String agentName;
+    public String agentId;
     public String model;
     public String status;
     public String sessionId;
+    // exact trace ids, used when a caller already holds a batch of them
+    public List<String> traceIds;
+    // only traces that carry an agent id (non-null and non-blank)
+    public boolean agentIdPresent;
     public String userId;
     // null = not scoped, empty = match nothing
     public List<String> userIds;
@@ -27,10 +32,13 @@ public class TraceQuery {
     public List<String> extraUserIds;
     public ZonedDateTime startFrom;
     public ZonedDateTime startTo;
+    // exclusive lower bound
+    public ZonedDateTime startAfter;
     // exclusive upper bound, used by the archive job so the boundary row is never archived twice
     public ZonedDateTime startBefore;
     public boolean ascending;
     // null means no offset; the archive delete loop relies on that to page by started_at only
     public Integer skip;
-    public int limit = 20;
+    // null means no limit
+    public Integer limit;
 }

@@ -197,7 +197,7 @@ class AgentMemoryServiceTest {
     private AgentMemoryService service() {
         var service = new AgentMemoryService();
         service.memoryStore = MongoAgentMemoryStore.of(memoryCollection, cursorCollection());
-        service.traceCollection = traceCollection;
+        service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         service.chatMessageStore = ai.core.server.session.MongoChatMessageStore.of(chatMessageCollection);
         return service;
     }
