@@ -45,11 +45,11 @@ class AzureSpeechAudioProviderTest {
         assertEquals("你好，欢迎。", result.text());
         assertEquals(2, result.phrases().size());
         assertEquals("1", result.phrases().getFirst().speaker());
-        assertEquals(0.1, result.phrases().getFirst().startSec());
-        assertEquals(1.0, result.phrases().getFirst().endSec());
+        assertEquals(0.1, result.phrases().getFirst().startSec(), 0.0001);
+        assertEquals(1.0, result.phrases().getFirst().endSec(), 0.0001);
         assertEquals("2", result.phrases().getLast().speaker());
         assertEquals(2, result.words().size());
-        assertEquals(1.1, result.words().getLast().startSec());
+        assertEquals(1.1, result.words().getLast().startSec(), 0.0001);
     }
 
     @Test

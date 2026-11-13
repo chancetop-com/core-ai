@@ -228,14 +228,10 @@ project(":core-ai-server") {
     tasks.withType<Test> {
         setProperty("failOnNoDiscoveredTests", false)
     }
-}
-
-project(":core-ai-server-db-migration") {
-    apply(plugin = "java")
-    apply(plugin = "db-migration")
-    dependencies {
-        runtimeOnly("org.flywaydb:flyway-database-postgresql:${Versions.FLYWAY_VERSION}")
-        runtimeOnly("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
+    // Test sources reach runtime-only types (for example undertow handlers) through core-ai;
+    // without them SpotBugs aborts analysis with exit code 3 instead of reporting findings.
+    tasks.named<com.github.spotbugs.snom.SpotBugsTask>("spotbugsTest") {
+        auxClassPaths.from(configurations.testRuntimeClasspath.get())
     }
 }
 
