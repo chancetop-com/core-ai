@@ -158,7 +158,7 @@ public class ComparisonViewAssembler {
     public List<ComparisonSessionPairView> pairsOf(AgentComparison comparison) {
         var query = new ai.core.server.session.ChatSessionQuery();
         query.comparisonId = comparison.id;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         var grouped = new LinkedHashMap<String, List<ChatSession>>();
         for (var session : chatSessionStore.find(query)) {
             if (session.comparisonPairId == null) continue;

@@ -46,10 +46,13 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
             default -> throw new IllegalArgumentException("unsupported agent sort field: " + request.sortField);
         };
         var direction = request.ascending ? " ASC" : " DESC";
-        var orderBy = " ORDER BY " + sort + direction + (request.ascending ? " NULLS FIRST" : " NULLS LAST")
-            + ", id ASC LIMIT ? OFFSET ?";
-        sql.append(orderBy);
-        params.add(request.limit <= 0 ? 1000 : request.limit);
+        sql.append(" ORDER BY ").append(sort).append(direction)
+            .append(request.ascending ? " NULLS FIRST" : " NULLS LAST").append(", id ASC");
+        if (request.limit != null && request.limit > 0) {
+            sql.append(" LIMIT ?");
+            params.add(request.limit);
+        }
+        sql.append(" OFFSET ?");
         params.add(Math.max(request.offset, 0));
         return database.select(sql.toString(), PgAgentDefinitionRow.class, params.toArray())
             .stream().map(PgAgentDefinitionStore::toDefinition).toList();

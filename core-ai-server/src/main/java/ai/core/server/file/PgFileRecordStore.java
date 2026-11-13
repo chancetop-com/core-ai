@@ -57,9 +57,12 @@ public class PgFileRecordStore implements FileRecordStore {
             default -> throw new IllegalArgumentException("unsupported file sort field: " + request.sortField);
         };
         var direction = request.ascending ? " ASC NULLS FIRST" : " DESC NULLS LAST";
-        var orderBy = " ORDER BY " + sort + direction + ", id ASC LIMIT ? OFFSET ?";
-        sql.append(orderBy);
-        params.add(request.limit <= 0 ? 100 : request.limit);
+        sql.append(" ORDER BY ").append(sort).append(direction).append(", id ASC");
+        if (request.limit != null && request.limit > 0) {
+            sql.append(" LIMIT ?");
+            params.add(request.limit);
+        }
+        sql.append(" OFFSET ?");
         params.add(Math.max(request.offset, 0));
         return database.select(sql.toString(), PgFileRecordRow.class, params.toArray())
             .stream().map(PgFileRecordStore::toRecord).toList();

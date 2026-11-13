@@ -212,7 +212,7 @@ public class AgentCatalogService {
 
     private Snapshot loadSnapshot() {
         var query = new AgentDefinitionQuery();
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         query.excludeSystemPrompt = true;
         List<AgentDefinition> definitions;
         try {

@@ -114,7 +114,7 @@ final class AgentListHelper {
 
     List<AgentDefinition> findAgents(AgentDefinitionQuery query, Integer skip, Integer limit) {
         query.offset = skip != null ? skip : 0;
-        query.limit = limit != null ? limit : Integer.MAX_VALUE;
+        query.limit = limit;
         return agentDefinitionStore.find(query);
     }
 
@@ -123,7 +123,7 @@ final class AgentListHelper {
     List<AgentDefinition> searchAgents(AgentDefinitionQuery query, String keyword, String sortField, String priorityAgentId) {
         var lower = keyword.toLowerCase(Locale.ROOT);
         query.sortField = sortField;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         var matches = new ArrayList<AgentDefinition>();
         for (var agent : agentDefinitionStore.find(query)) {
             if (contains(agent.name, lower) || contains(agent.description, lower)) matches.add(agent);
@@ -165,7 +165,7 @@ final class AgentListHelper {
             var query = new AgentDefinitionQuery();
             query.ids = favoriteIds;
             query.forkVisibilityUserId = userId;
-            query.limit = Integer.MAX_VALUE;
+            query.limit = null;
             for (var agent : agentDefinitionStore.find(query)) {
                 byId.put(agent.id, agent);
             }

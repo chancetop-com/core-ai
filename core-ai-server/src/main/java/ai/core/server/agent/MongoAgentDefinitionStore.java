@@ -39,7 +39,7 @@ public class MongoAgentDefinitionStore implements AgentDefinitionStore {
             ? Sorts.orderBy(Sorts.ascending("name_key"), Sorts.ascending("_id"))
             : request.ascending ? Sorts.ascending(request.sortField) : Sorts.descending(request.sortField);
         query.skip = request.offset;
-        query.limit = request.limit;
+        query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;
         if (request.excludeSystemPrompt) query.projection = com.mongodb.client.model.Projections.exclude("system_prompt");
         if (request.summaryOnly) query.projection = com.mongodb.client.model.Projections.include("_id", "name");
         return agentDefinitionCollection.find(query);

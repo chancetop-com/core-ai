@@ -78,9 +78,12 @@ public class PgChatSessionStore implements ChatSessionStore {
             default -> throw new IllegalArgumentException("unsupported chat session sort field: " + request.sortField);
         };
         var direction = request.ascending ? " ASC NULLS FIRST" : " DESC NULLS LAST";
-        var orderBy = " ORDER BY " + sort + direction + " LIMIT ? OFFSET ?";
-        sql.append(orderBy);
-        params.add(request.limit <= 0 ? 100 : request.limit);
+        sql.append(" ORDER BY ").append(sort).append(direction);
+        if (request.limit != null && request.limit > 0) {
+            sql.append(" LIMIT ?");
+            params.add(request.limit);
+        }
+        sql.append(" OFFSET ?");
         params.add(Math.max(request.offset, 0));
         return database.select(sql.toString(), PgChatSessionRow.class, params.toArray())
                 .stream().map(PgChatSessionStore::toSession).toList();

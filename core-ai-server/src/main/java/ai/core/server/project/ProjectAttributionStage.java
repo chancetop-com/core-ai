@@ -377,7 +377,7 @@ public class ProjectAttributionStage {
     private List<ChatMessage> history(String sessionId) {
         var query = new ai.core.server.session.ChatMessageQuery();
         query.sessionId = sessionId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         return chatMessageStore.find(query);
     }
 

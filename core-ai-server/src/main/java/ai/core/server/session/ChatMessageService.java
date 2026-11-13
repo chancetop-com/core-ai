@@ -63,7 +63,7 @@ public class ChatMessageService {
     public List<ChatMessage> history(String sessionId) {
         var query = new ChatMessageQuery();
         query.sessionId = sessionId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         return chatMessageStore.find(query);
     }
 

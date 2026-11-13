@@ -33,7 +33,8 @@ public class ChatMessageQuery {
     public String sortField = "seq";
     public boolean ascending = true;
     public int offset;
-    public int limit = 1000;
+    /** null or non-positive means no limit; the Mongo store must never receive a sentinel length because core-ng pre-sizes the result list with it */
+    public Integer limit = 1000;
 
     public static class SessionWindow {
         public String sessionId;

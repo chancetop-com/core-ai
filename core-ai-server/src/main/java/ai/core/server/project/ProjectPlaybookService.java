@@ -193,7 +193,7 @@ public class ProjectPlaybookService {
     private List<String> userMessages(String sessionId) {
         var query = new ai.core.server.session.ChatMessageQuery();
         query.sessionId = sessionId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         var history = chatMessageStore.find(query);
         var tail = history.size() > MAX_MESSAGES_PER_SESSION
             ? history.subList(history.size() - MAX_MESSAGES_PER_SESSION, history.size()) : history;

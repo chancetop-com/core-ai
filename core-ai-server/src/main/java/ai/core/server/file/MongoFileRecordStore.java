@@ -45,7 +45,7 @@ public class MongoFileRecordStore implements FileRecordStore {
             : Sorts.orderBy(Sorts.descending(request.sortField), Sorts.ascending("_id"));
         query.sort = sort;
         query.skip = request.offset;
-        query.limit = request.limit;
+        query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;
         if (request.excludeData) query.projection = com.mongodb.client.model.Projections.exclude("data");
         return fileRecordCollection.find(query);
     }

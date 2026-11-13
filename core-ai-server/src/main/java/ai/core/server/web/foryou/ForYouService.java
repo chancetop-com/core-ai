@@ -164,7 +164,7 @@ public class ForYouService {
     public List<FileRecord> listFiles(String userId) {
         var query = new ai.core.server.file.FileRecordQuery();
         query.userId = userId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         return fileRecordStore.find(query);
     }
 

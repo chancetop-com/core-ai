@@ -65,6 +65,7 @@ class AgentCatalogServiceTest {
         var queryCaptor = ArgumentCaptor.forClass(Query.class);
         verify(collection).find(queryCaptor.capture());
         assertNotNull(queryCaptor.getValue().projection, "catalog query must project away system_prompt");
+        assertNull(queryCaptor.getValue().limit, "an unbounded catalog query must not pre-size the Mongo result list");
         assertEquals(1, agents.size());
         verify(skillService, never()).batchResolve(any());
     }

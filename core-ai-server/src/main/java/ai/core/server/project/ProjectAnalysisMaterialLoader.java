@@ -95,7 +95,7 @@ public class ProjectAnalysisMaterialLoader {
         var found = new HashMap<String, ChatSession>();
         var query = new ai.core.server.session.ChatSessionQuery();
         query.ids = new ArrayList<>(byTarget.keySet());
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         for (var session : chatSessionStore.find(query)) found.put(session.id, session);
         for (var entry : byTarget.entrySet()) {
             var session = found.get(entry.getKey());
@@ -161,7 +161,7 @@ public class ProjectAnalysisMaterialLoader {
         if (byTarget.isEmpty()) return;
         var query = new ai.core.server.file.FileRecordQuery();
         query.ids = new ArrayList<>(byTarget.keySet());
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         var found = new HashMap<String, FileRecord>();
         for (var file : fileRecordStore.find(query)) found.put(file.id, file);
         for (var entry : byTarget.entrySet()) {
@@ -218,7 +218,7 @@ public class ProjectAnalysisMaterialLoader {
     private List<ChatMessage> history(String sessionId) {
         var query = new ai.core.server.session.ChatMessageQuery();
         query.sessionId = sessionId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         return chatMessageStore.find(query);
     }
 

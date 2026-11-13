@@ -35,5 +35,6 @@ public class ChatSessionQuery {
     public String sortField = "last_message_at";
     public boolean ascending;
     public int offset;
-    public int limit = 100;
+    /** null or non-positive means no limit; the Mongo store must never receive a sentinel length because core-ng pre-sizes the result list with it */
+    public Integer limit = 100;
 }

@@ -61,7 +61,7 @@ public class MongoChatMessageStore implements ChatMessageStore {
             ? Sorts.ascending(request.sortField)
             : Sorts.descending(request.sortField);
         query.skip = request.offset;
-        query.limit = request.limit;
+        query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;
         return chatMessageCollection.find(query);
     }
 

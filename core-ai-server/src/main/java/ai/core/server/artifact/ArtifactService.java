@@ -101,7 +101,7 @@ public class ArtifactService {
         var query = new ChatSessionQuery();
         query.agentIds = List.of(agentId);
         if (userId != null && !userId.isBlank()) query.userId = userId;
-        query.limit = Integer.MAX_VALUE;
+        query.limit = null;
         var sessions = chatSessionStore.find(query);
 
         var fileIds = new ArrayList<String>();

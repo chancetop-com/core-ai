@@ -62,7 +62,7 @@ public class MongoChatSessionStore implements ChatSessionStore {
         query.filter = filter(request);
         query.sort = request.ascending ? Sorts.ascending(request.sortField) : Sorts.descending(request.sortField);
         query.skip = request.offset;
-        query.limit = request.limit;
+        query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;
         return chatSessionCollection.find(query);
     }
 

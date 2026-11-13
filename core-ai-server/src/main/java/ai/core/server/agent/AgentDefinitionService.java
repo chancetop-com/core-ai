@@ -133,7 +133,7 @@ public class AgentDefinitionService {
         if (keyword != null) {
             String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
             var query = query(userId, effectiveRequest);
-            query.limit = Integer.MAX_VALUE;
+            query.limit = null;
             var assistant = personalAssistantService.findPersonalAssistant(userId);
             paged = listHelper.searchAgents(query, keyword, sortField,
                 assistant != null ? assistant.id : PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
