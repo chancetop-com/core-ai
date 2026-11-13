@@ -152,7 +152,7 @@ export class CompletionNotifier {
     const turnKey = `${workspace}\u0000${sessionId}`;
 
     if (type === 'status_change') {
-      if (event.status === 'running') this.turnStarted.set(turnKey, Date.now());
+      if (String(event.status ?? '').toLowerCase() === 'running') this.turnStarted.set(turnKey, Date.now());
       else this.turnStarted.delete(turnKey);
       return;
     }
