@@ -235,6 +235,15 @@ project(":core-ai-server") {
     }
 }
 
+project(":core-ai-server-db-migration") {
+    apply(plugin = "java")
+    apply(plugin = "db-migration")
+    dependencies {
+        runtimeOnly("org.flywaydb:flyway-database-postgresql:${Versions.FLYWAY_VERSION}")
+        runtimeOnly("org.postgresql:postgresql:${Versions.POSTGRESQL_JDBC_VERSION}")
+    }
+}
+
 project(":core-ai-cli") {
     apply(plugin = "application")
     apply(plugin = "native-app")
