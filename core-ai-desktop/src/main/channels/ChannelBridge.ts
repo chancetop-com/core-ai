@@ -1,6 +1,7 @@
 // P0 IM bridge: pull authorized messages from the local OCG daemon, run one engine turn
 // per message, and post the final answer back. P1 replaces the CLI polling with the
 // versioned OCG HTTP client and adds bindings/authorization/journaling.
+import type { StagedAttachment } from '../attachments/AttachmentStager';
 import { BridgeStore, type BridgeSessionRecord } from './BridgeStore';
 import type { OcgInboundMessage, OcgResult } from './OcgCli';
 
@@ -41,6 +42,12 @@ export interface ChannelBridgeOptions {
   sessionTitle?: (workspace: string, sessionId: string) => string | null;
   /** First user message stored in an engine session; used to name legacy WeChat sessions. */
   firstUserText?: (workspace: string, sessionId: string) => string | null;
+  /**
+   * Copies inbound IM attachments into the session's staging directory. The engine only reads
+   * attachment paths inside the workspace or that directory, so OCG's own media paths cannot be
+   * sent as-is.
+   */
+  stageMedia?: (sessionId: string, sourcePaths: string[]) => Promise<StagedAttachment[]>;
   /** Delay before the "processing" hint; a turn that finishes sooner sends no hint. */
   progressDelayMs?: number;
   progressText?: string;
@@ -67,6 +74,7 @@ const RETRY_MIN_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 const PROGRESS_DELAY_MS = 2_500;
 const PROGRESS_TEXT = '收到，正在处理…';
+const MEDIA_FAILED_TEXT = '附件接收失败，请重试。';
 const TITLE_TEXT_MAX = 32;
 
 function sleep(ms: number): Promise<void> {
@@ -198,13 +206,14 @@ export class ChannelBridge {
       return;
     }
     const text = (message.text ?? '').trim();
-    if (!text) {
-      if (message.media.length > 0) {
-        await this.replyAndFinish(message, '当前版本只支持文本消息。', false, '', '', '');
-      } else {
-        this.options.log(`skip ${message.id}: empty message`);
-        await this.finishWithoutReply(message, 'acked');
-      }
+    const mediaPaths: string[] = [];
+    for (const entry of message.media ?? []) {
+      if (entry.path) mediaPaths.push(entry.path);
+      else if (entry.url) this.options.log(`message ${message.id}: media not downloaded yet (${entry.url})`);
+    }
+    if (!text && mediaPaths.length === 0) {
+      this.options.log(`skip ${message.id}: empty message`);
+      await this.finishWithoutReply(message, 'acked');
       return;
     }
     const workspace = this.options.workspace(message);
@@ -221,7 +230,7 @@ export class ChannelBridge {
       lastPeer: message.sender.name ?? message.sender.id ?? message.target ?? message.channel,
     };
     this.emit();
-    this.options.log(`message ${message.id} channel=${message.channel} chat=${message.chatType} textLen=${text.length}`);
+    this.options.log(`message ${message.id} channel=${message.channel} chat=${message.chatType} textLen=${text.length} media=${mediaPaths.length}`);
 
     let sessionId: string;
     let title: string;
@@ -239,12 +248,23 @@ export class ChannelBridge {
     this.state = { ...this.state, activeSessionId: sessionId };
     this.emit();
 
+    const staged = await this.stageInboundMedia(message, sessionId, mediaPaths);
+    if (!text && staged.length === 0) {
+      this.fail(`media staging failed for ${message.id}: no attachment could be staged`);
+      await this.replyAndFinish(message, MEDIA_FAILED_TEXT, true, workspace, sessionId, title);
+      return;
+    }
+
+    const parts: Array<{ type: string; text?: string; path?: string }> = [];
+    if (text) parts.push({ type: 'text', text });
+    for (const attachment of staged) parts.push({ type: attachment.kind, path: attachment.path });
+
     const waiter = this.createWaiter(sessionId, workspace, message.id);
     try {
       await this.options.callEngine(workspace, 'session/send', {
         sessionId,
         turnId: message.id,
-        parts: [{ type: 'text', text }],
+        parts,
       });
     } catch (error) {
       waiter.cancel();
@@ -348,6 +368,30 @@ export class ChannelBridge {
     if (!result.ok) this.options.log(`progress ${message.id} failed: ${result.error ?? 'unknown error'}`);
   }
 
+  private async stageInboundMedia(
+    message: OcgInboundMessage,
+    sessionId: string,
+    sourcePaths: string[],
+  ): Promise<StagedAttachment[]> {
+    if (sourcePaths.length === 0) return [];
+    if (!this.options.stageMedia) {
+      this.options.log(`message ${message.id}: stageMedia is not configured, ${sourcePaths.length} attachment(s) ignored`);
+      return [];
+    }
+    try {
+      const staged = await this.options.stageMedia(sessionId, sourcePaths);
+      const attachments = (staged ?? []).filter((attachment) => attachment && attachment.path);
+      if (attachments.length < sourcePaths.length) {
+        this.options.log(`message ${message.id}: staged ${attachments.length}/${sourcePaths.length} attachment(s)`);
+      }
+      return attachments;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.options.log(`message ${message.id}: media staging failed: ${detail}`);
+      return [];
+    }
+  }
+
   private async resolveSession(message: OcgInboundMessage, workspace: string): Promise<{ sessionId: string; title: string }> {
     const sessionKey = this.sessionKeyOf(message);
     const existing = this.store.getSession(sessionKey);
@@ -417,12 +461,23 @@ export class ChannelBridge {
     if (message.chatType === 'group') {
       return `${label}群 · ${message.groupSubject ?? message.target ?? '未命名'}`;
     }
-    // WeChat direct chats only expose an openid, so the opening line names the session.
+    // WeChat direct chats only expose an openid, so the opening line (or the attached file) names the session.
     if (message.channel === 'openclaw-weixin') {
-      const opening = titleText(message.text);
+      const opening = this.openingOf(message);
       if (opening) return `${label} · ${opening}`;
     }
     return `${label} · ${this.peerName(message)}`;
+  }
+
+  /** First typed line, or the first attached file name for a media-only message. */
+  private openingOf(message: OcgInboundMessage): string {
+    const text = titleText(message.text);
+    if (text) return text;
+    for (const entry of message.media ?? []) {
+      if (!entry.path) continue;
+      return titleText(entry.path.replace(/\\/g, '/').split('/').pop() ?? '');
+    }
+    return '';
   }
 
   private peerName(message: OcgInboundMessage): string {

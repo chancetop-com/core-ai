@@ -1193,6 +1193,11 @@ else {
       consumer: 'core-ai-desktop',
       sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
       firstUserText: (workspace, sessionId) => readFirstUserText(workspace, sessionId),
+      stageMedia: async (sessionId, sourcePaths) => {
+        const result = await stageAttachments(stagingRoot(), sessionId, sourcePaths);
+        for (const skip of result.skipped) console.log(`[channels] media skipped: ${skip.name}: ${skip.reason}`);
+        return result.attachments;
+      },
       onState: (state) => send('channels:state', state),
       onSession: (event) => send('channels:session', event),
       log: (line) => console.log(`[channels] ${line}`),

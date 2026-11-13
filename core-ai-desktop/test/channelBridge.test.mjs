@@ -29,7 +29,7 @@ function message(overrides = {}) {
   };
 }
 
-function makeBridge(t, { messages, engine, progressDelayMs, store, sessionTitle, firstUserText }) {
+function makeBridge(t, { messages, engine, progressDelayMs, store, sessionTitle, firstUserText, stageMedia }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'coreai-bridge-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const queue = [...messages];
@@ -96,6 +96,7 @@ function makeBridge(t, { messages, engine, progressDelayMs, store, sessionTitle,
     consumer: 'core-ai-desktop',
     ...(sessionTitle ? { sessionTitle } : {}),
     ...(firstUserText ? { firstUserText } : {}),
+    ...(stageMedia ? { stageMedia } : {}),
     ...(progressDelayMs === undefined ? {} : { progressDelayMs }),
     onState: (state) => states.push(state),
     onSession: () => undefined,
@@ -136,16 +137,106 @@ test('group message without a mention is acknowledged without running a turn', a
   assert.equal(created.length, 0);
 });
 
-test('media-only message is answered without invoking the engine', async (t) => {
-  const { bridge, replies, created } = makeBridge(t, {
-    messages: [message({ text: '', media: [{ path: 'x.png', url: null, mime: 'image/png' }] })],
-    engine: {},
+test('a media-only message is staged and sent as an image part', async (t) => {
+  const stageCalls = [];
+  const { bridge, replies, engineSends, created } = makeBridge(t, {
+    messages: [message({
+      text: '',
+      media: [{ path: 'C:/Users/me/.openclaw-channel-gateway/media/inbound/photo.jpg', url: null, mime: 'image/jpeg' }],
+    })],
+    engine: { output: '这张图里有一杯咖啡' },
+    stageMedia: async (sessionId, sourcePaths) => {
+      stageCalls.push({ sessionId, sourcePaths });
+      return [{ path: `D:/home/.core-ai/app-server/staging/${sessionId}/photo.jpg`, name: 'photo.jpg', kind: 'image', size: 42 }];
+    },
   });
   bridge.start();
   await waitFor(() => replies.length === 1);
   bridge.stop();
+  assert.equal(created.length, 1);
+  assert.equal(created[0].title, '微信 · photo.jpg');
+  assert.deepEqual(stageCalls, [{
+    sessionId: 's_1',
+    sourcePaths: ['C:/Users/me/.openclaw-channel-gateway/media/inbound/photo.jpg'],
+  }]);
+  assert.deepEqual(engineSends[0].parts, [
+    { type: 'image', path: 'D:/home/.core-ai/app-server/staging/s_1/photo.jpg' },
+  ]);
+  assert.deepEqual(replies[0], { id: 'm_1', text: '这张图里有一杯咖啡', isError: false });
+});
+
+test('a text-plus-image message carries text and image parts', async (t) => {
+  const { bridge, replies, engineSends, created } = makeBridge(t, {
+    messages: [message({
+      text: '看看这张图',
+      media: [{ path: 'C:/inbound/photo.jpg', url: null, mime: 'image/jpeg' }],
+    })],
+    engine: {},
+    stageMedia: async (sessionId) => [
+      { path: `D:/staging/${sessionId}/photo.jpg`, name: 'photo.jpg', kind: 'image', size: 42 },
+    ],
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.equal(created[0].title, '微信 · 看看这张图');
+  assert.deepEqual(engineSends[0].parts, [
+    { type: 'text', text: '看看这张图' },
+    { type: 'image', path: 'D:/staging/s_1/photo.jpg' },
+  ]);
+});
+
+test('a media-only message whose attachments cannot be staged is answered with an error', async (t) => {
+  const { bridge, replies, engineSends, created, acks } = makeBridge(t, {
+    messages: [message({ text: '', media: [{ path: 'C:/inbound/broken.jpg', url: null, mime: 'image/jpeg' }] })],
+    engine: {},
+    stageMedia: async () => [],
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.equal(created.length, 1);
+  assert.equal(engineSends.length, 0);
+  assert.deepEqual(replies[0], { id: 'm_1', text: '附件接收失败，请重试。', isError: true });
+  assert.equal(acks.length, 0);
+});
+
+test('a staging failure is reported instead of sending an empty turn', async (t) => {
+  const { bridge, replies, engineSends } = makeBridge(t, {
+    messages: [message({ text: '', media: [{ path: 'C:/inbound/broken.jpg', url: null, mime: 'image/jpeg' }] })],
+    engine: {},
+    stageMedia: async () => { throw new Error('staging root is unwritable'); },
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.equal(engineSends.length, 0);
+  assert.deepEqual(replies[0], { id: 'm_1', text: '附件接收失败，请重试。', isError: true });
+});
+
+test('text survives a staging failure and is sent alone', async (t) => {
+  const { bridge, replies, engineSends } = makeBridge(t, {
+    messages: [message({ text: '图片没发出去也没关系', media: [{ path: 'C:/inbound/broken.jpg', url: null, mime: 'image/jpeg' }] })],
+    engine: {},
+    stageMedia: async () => [],
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.deepEqual(engineSends[0].parts, [{ type: 'text', text: '图片没发出去也没关系' }]);
+  assert.equal(replies[0].isError, false);
+});
+
+test('an undownloaded media entry without text is acknowledged without a turn', async (t) => {
+  const { bridge, replies, acks, created } = makeBridge(t, {
+    messages: [message({ text: '', media: [{ path: null, url: 'https://cdn.example.com/a.jpg', mime: 'image/jpeg' }] })],
+    engine: {},
+  });
+  bridge.start();
+  await waitFor(() => acks.length === 1);
+  bridge.stop();
+  assert.equal(replies.length, 0);
   assert.equal(created.length, 0);
-  assert.equal(replies[0].text, '当前版本只支持文本消息。');
 });
 
 test('a redelivered message id is acknowledged without a second turn', async (t) => {
