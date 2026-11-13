@@ -73,19 +73,15 @@ public class PgTraceAnalytics {
     List<TraceAggregateRow> aggregate(TraceAggregation aggregation) {
         var filter = PgTraceFilter.of(aggregation.query);
         var params = new ArrayList<Object>();
-        var select = new StringBuilder("SELECT ");
         var group = groupExpression(aggregation.group, params);
-        select.append(group != null ? group + " AS group_value" : "NULL AS group_value");
-        select.append(", ").append(firstExpression(aggregation)).append(" AS first_value");
-        select.append(SUMS).append(", COUNT(*) AS count");
-        select.append(" FROM ").append(TABLE).append(filter.where());
+        var sql = "SELECT " + (group != null ? group + " AS group_value" : "NULL AS group_value")
+            + ", " + firstExpression(aggregation) + " AS first_value" + SUMS + ", COUNT(*) AS count"
+            + " FROM " + TABLE + filter.where()
+            + (group != null ? " GROUP BY 1" : "")
+            + (aggregation.limit > 0 ? " LIMIT ?" : "");
         params.addAll(filter.paramList());
-        if (group != null) select.append(" GROUP BY 1");
-        if (aggregation.limit > 0) {
-            select.append(" LIMIT ?");
-            params.add(aggregation.limit);
-        }
-        return database.select(select.toString(), PgTraceAggregateRow.class, params.toArray()).stream()
+        if (aggregation.limit > 0) params.add(aggregation.limit);
+        return database.select(sql, PgTraceAggregateRow.class, params.toArray()).stream()
             .map(row -> {
                 var value = new TraceAggregateRow();
                 value.group = row.groupValue;
@@ -119,37 +115,31 @@ public class PgTraceAnalytics {
         params.add(NO_AGENT);
         params.add(UNKNOWN);
         params.add(UNKNOWN);
-        var select = new StringBuilder("SELECT user_id AS user_id, COALESCE(agent_id, ?) AS agent_id")
-            .append(", agent_name AS agent_name, COALESCE(source, ?) AS source, COALESCE(model, ?) AS model, ")
-            .append(providerIdExpression(modelToProvider, params)).append(" AS provider_id, ")
-            .append(providerNameExpression(modelToProvider, providerIdToName, params)).append(" AS provider_name")
-            .append(ANALYTICS_METRICS)
-            .append(" FROM ").append(TABLE).append(" WHERE started_at >= ? AND started_at < ? GROUP BY 1, 2, 3, 4, 5, 6, 7");
+        var sql = "SELECT user_id AS user_id, COALESCE(agent_id, ?) AS agent_id"
+            + ", agent_name AS agent_name, COALESCE(source, ?) AS source, COALESCE(model, ?) AS model, "
+            + providerIdExpression(modelToProvider, params) + " AS provider_id, "
+            + providerNameExpression(modelToProvider, providerIdToName, params) + " AS provider_name"
+            + ANALYTICS_METRICS
+            + " FROM " + TABLE + " WHERE started_at >= ? AND started_at < ? GROUP BY 1, 2, 3, 4, 5, 6, 7";
         params.add(from);
         params.add(to);
-        return database.select(select.toString(), PgTraceRollupRow.class, params.toArray()).stream()
+        return database.select(sql, PgTraceRollupRow.class, params.toArray()).stream()
             .map(this::rollupRow).toList();
     }
 
     List<TraceStatsRow> realtimeStats(ZonedDateTime from, ZonedDateTime to, TraceDimension dimension,
                                       Map<String, String> modelToProvider, Map<String, String> providerIdToName) {
         var params = new ArrayList<Object>();
-        var select = new StringBuilder("SELECT ");
-        if (dimension == null) {
-            select.append("NULL AS group_value");
-        } else {
-            select.append(dimensionExpression(dimension, modelToProvider, params)).append(" AS group_value");
-        }
-        select.append(", min(agent_name) AS agent_name, min(")
-            .append(providerNameExpression(modelToProvider, providerIdToName, params))
-            .append(") AS provider_name")
-            .append(STATS_METRICS)
-            .append(" FROM ").append(TABLE).append(" WHERE started_at >= ? AND started_at < ?");
+        var group = dimension == null ? "NULL" : dimensionExpression(dimension, modelToProvider, params);
+        var sql = "SELECT " + group + " AS group_value, min(agent_name) AS agent_name, min("
+            + providerNameExpression(modelToProvider, providerIdToName, params) + ") AS provider_name"
+            + STATS_METRICS
+            + " FROM " + TABLE + " WHERE started_at >= ? AND started_at < ?"
+            + (dimension != null ? " GROUP BY 1" : "")
+            + " ORDER BY total_tokens DESC";
         params.add(from);
         params.add(to);
-        if (dimension != null) select.append(" GROUP BY 1");
-        select.append(" ORDER BY total_tokens DESC");
-        return database.select(select.toString(), PgTraceStatsRow.class, params.toArray()).stream()
+        return database.select(sql, PgTraceStatsRow.class, params.toArray()).stream()
             .map(row -> {
                 var value = new TraceStatsRow();
                 value.key = row.groupValue;
@@ -284,7 +274,7 @@ public class PgTraceAnalytics {
 
     private String providerNameExpression(Map<String, String> modelToProvider, Map<String, String> providerIdToName,
                                           List<Object> params) {
-        Map<String, String> modelToName = new LinkedHashMap<>();
+        Map<String, String> modelToName = new LinkedHashMap<>(modelToProvider.size());
         for (var entry : modelToProvider.entrySet()) {
             modelToName.put(entry.getKey(), providerIdToName.getOrDefault(entry.getValue(), UNKNOWN));
         }
@@ -296,7 +286,7 @@ public class PgTraceAnalytics {
             params.add(UNKNOWN);
             return "?";
         }
-        var sql = new StringBuilder("CASE ").append(column);
+        var sql = new StringBuilder(column.length() + mapping.size() * 16 + 32).append("CASE ").append(column);
         for (var entry : mapping.entrySet()) {
             sql.append(" WHEN ? THEN ?");
             params.add(entry.getKey());

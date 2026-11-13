@@ -37,16 +37,6 @@ public class AdminAnalyticsService {
 
     // === Static helpers ===
 
-    private static long getLong(Document doc, String key) {
-        Number value = doc.get(key, Number.class);
-        return value != null ? value.longValue() : 0L;
-    }
-
-    private static double getDouble(Document doc, String key) {
-        Number value = doc.get(key, Number.class);
-        return value != null ? value.doubleValue() : 0.0;
-    }
-
     private static long value(Long value) {
         return value != null ? value : 0L;
     }
@@ -58,11 +48,6 @@ public class AdminAnalyticsService {
         if (value instanceof java.util.Date date) return date.toInstant().toString();
         if (value instanceof java.time.ZonedDateTime time) return time.toInstant().toString();
         return value != null ? value.toString() : "";
-    }
-
-    private static String dimensionTimestamp(Document id) {
-        Object date = id.get("date");
-        return timestampValue(date != null ? date : id.get("hour"));
     }
 
     @Inject

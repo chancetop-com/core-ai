@@ -163,14 +163,13 @@ public class PgTraceStore implements TraceStore {
         set(sets, params, column, update.valueWhenEmpty);
         if (update.updatedAt != null) set(sets, params, "updated_at", update.updatedAt);
 
-        var where = new StringBuilder("trace_id = ? AND (" + column + " IS NULL OR length(" + column + ") = 0");
+        var placeholderClause = update.setOnlyWhenEmpty == TraceUpdate.EmptyGuard.NAME && update.namePlaceholders != null
+            && !update.namePlaceholders.isEmpty()
+            ? " OR " + column + " IN (" + placeholders(update.namePlaceholders.size()) + ")"
+            : "";
+        var where = "trace_id = ? AND (" + column + " IS NULL OR length(" + column + ") = 0" + placeholderClause + ")";
         params.add(update.traceId);
-        if (update.setOnlyWhenEmpty == TraceUpdate.EmptyGuard.NAME && update.namePlaceholders != null
-            && !update.namePlaceholders.isEmpty()) {
-            where.append(" OR ").append(column).append(" IN (").append(placeholders(update.namePlaceholders.size())).append(')');
-            params.addAll(update.namePlaceholders);
-        }
-        where.append(')');
+        if (!placeholderClause.isEmpty()) params.addAll(update.namePlaceholders);
         database.execute("UPDATE " + TABLE + " SET " + String.join(", ", sets) + " WHERE " + where, params.toArray());
     }
 
@@ -208,18 +207,14 @@ public class PgTraceStore implements TraceStore {
     @Override
     public List<Trace> list(TraceQuery criteria) {
         var filter = PgTraceFilter.of(criteria);
-        var sql = new StringBuilder(SELECT).append(filter.where())
-            .append(criteria.ascending ? " ORDER BY created_at ASC, id ASC" : " ORDER BY created_at DESC, id DESC");
+        var sql = SELECT + filter.where()
+            + (criteria.ascending ? " ORDER BY created_at ASC, id ASC" : " ORDER BY created_at DESC, id DESC")
+            + (criteria.limit != null ? " LIMIT ?" : "")
+            + (criteria.skip != null ? " OFFSET ?" : "");
         var params = new ArrayList<>(filter.paramList());
-        if (criteria.limit != null) {
-            sql.append(" LIMIT ?");
-            params.add(criteria.limit);
-        }
-        if (criteria.skip != null) {
-            sql.append(" OFFSET ?");
-            params.add(criteria.skip);
-        }
-        return database.select(sql.toString(), PgTraceRow.class, params.toArray())
+        if (criteria.limit != null) params.add(criteria.limit);
+        if (criteria.skip != null) params.add(criteria.skip);
+        return database.select(sql, PgTraceRow.class, params.toArray())
             .stream().map(PgTraceStore::toTrace).toList();
     }
 
