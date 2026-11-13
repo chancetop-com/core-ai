@@ -1,7 +1,8 @@
 # 语音转写（Speech-to-Text）设计
 
 > 实现状态（2026-11-13）：服务端 `POST /api/speech/transcriptions`、`GET /api/speech/models`、
-> `POST /api/speech/synthesis`、`GET /api/speech/synthesis/models`；CLI `core-ai-cli speech
+> `POST /api/speech/synthesis`、`GET /api/speech/synthesis/models`，以及 OpenAI 兼容的
+> `POST /api/gateway/v1/audio/transcriptions` / `audio/speech`；CLI `core-ai-cli speech
 > transcribe|synthesize|models` 与 `transcribe_audio` builtin；桌面 composer 麦克风按钮；网关
 > `audio.transcriptions` / `audio.speech` 端点，支持 OpenAI、Azure OpenAI、Google Cloud Speech 与
 > Azure Speech 回退；默认模型在 System Settings 里按方向配置。单测覆盖客户端 multipart、路由/回退、
@@ -122,7 +123,22 @@ Azure fast transcription 会带时间信息。`speaker` 仅在 provider 开启�
   `[mm:ss] Speaker N: ...` 行。它只在已登录时注册，和 `understand_video` 一样依赖 server 凭据。
 - `SpeechClient` 是唯一客户端实现，命令和 builtin 共用。
 
-### 2.4 桌面
+### 2.4 OpenAI 兼容音频端点
+
+网关的 OpenAI 兼容面（base_url = `/api/gateway/v1`）也提供语音：
+
+- `POST /api/gateway/v1/audio/transcriptions`：multipart，字段 `file`、`model`、`language`、`prompt`、
+  `response_format`（`json` / `text` / `verbose_json` / `srt` / `vtt`）。响应按 OpenAI 形状返回，
+  `verbose_json` 带 `task` / `language` / `duration` / `segments`。
+- `POST /api/gateway/v1/audio/speech`：JSON，字段 `model`、`input`、`voice`、`response_format`、
+  `speed`、`instructions`，返回音频二进制。
+
+两者省略 `model` 时使用 System Settings 的默认语音模型；`azure-speech` 回退只输出 mp3，
+请求其他 `response_format` 会得到 `SPEECH_UNSUPPORTED_FORMAT`。这两个路由复用同一套
+`SpeechTranscriptionService` / `SpeechSynthesisService`，因此模型校验、回退和审计行为与
+`/api/speech/*` 一致。
+
+### 2.5 桌面
 
 - composer 文本框右侧增加麦克风按钮；`state.voiceReady` 由引擎的 `speech/models` 决定，
   未登录/未配置时按钮禁用并给出原因。

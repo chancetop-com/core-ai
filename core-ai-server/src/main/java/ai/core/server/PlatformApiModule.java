@@ -4,6 +4,7 @@ import ai.core.api.server.CapabilitiesWebService;
 import ai.core.api.server.speech.SpeechTranscriptSegmentView;
 import ai.core.api.server.speech.SpeechTranscriptionView;
 import ai.core.api.server.speech.SpeechWebService;
+import ai.core.server.gateway.GatewayAudioController;
 import ai.core.server.speech.SpeechSynthesisController;
 import ai.core.server.speech.SpeechSynthesisService;
 import ai.core.server.speech.SpeechTranscriptionController;
@@ -35,6 +36,10 @@ public class PlatformApiModule extends Module {
                 bind(SpeechTranscriptionController.class)::transcribe);
         http().route(HTTPMethod.POST, "/api/speech/synthesis",
                 bind(SpeechSynthesisController.class)::synthesize);
+        // OpenAI-compatible audio surface for clients that point their SDK at /api/gateway/v1
+        var gatewayAudio = bind(GatewayAudioController.class);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/audio/transcriptions", gatewayAudio::transcribe);
+        http().route(HTTPMethod.POST, "/api/gateway/v1/audio/speech", gatewayAudio::synthesize);
     }
 
     private void registerCapabilities() {

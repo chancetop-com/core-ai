@@ -70,6 +70,10 @@ public class SpeechSynthesisService {
         }
         var model = resolveModel(request.model);
         if (AZURE_SPEECH_MODEL.equals(model)) {
+            if (request.format != null && !request.format.isBlank() && !"mp3".equalsIgnoreCase(request.format.trim())) {
+                throw new BadRequestException("azure-speech returns mp3 only, response_format=" + request.format,
+                        "SPEECH_UNSUPPORTED_FORMAT");
+            }
             var result = audioProvider.synthesize(new TtsSpec(request.text, request.voice, null, null,
                     request.speed, null, normalizedLanguage(request.language)));
             return new SpeechSynthesis(result.audio(), result.contentType(), AZURE_SPEECH_MODEL, AZURE_SPEECH_PROVIDER, request.voice);
