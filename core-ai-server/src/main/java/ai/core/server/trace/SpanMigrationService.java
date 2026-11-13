@@ -49,6 +49,10 @@ public class SpanMigrationService {
             insertMarker();
             transaction.commit();
             LOGGER.info("span migration finished, spans={}", count);
+        } catch (RuntimeException e) {
+            // the backfill is best effort: a failure must not keep the instance from starting,
+            // and the copy simply retries on the next start
+            LOGGER.warn("span migration failed, legacy spans stay in mongo until the next attempt", e);
         }
     }
 

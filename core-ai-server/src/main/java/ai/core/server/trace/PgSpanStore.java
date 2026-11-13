@@ -31,6 +31,7 @@ public class PgSpanStore implements SpanStore {
         + "error_message, attributes, started_at, completed_at, created_at) ";
     private static final int DELETE_BATCH_SIZE = 500;
     private static final int BULK_SIZE = 200;
+    private static final long BULK_PAYLOAD_BYTES = 8L * 1024 * 1024;
 
     private static Span toSpan(PgSpanRow row) {
         var span = new Span();
@@ -83,6 +84,16 @@ public class PgSpanStore implements SpanStore {
         };
     }
 
+    private static long payloadBytes(Span span) {
+        long bytes = textBytes(span.input) + textBytes(span.output) + textBytes(span.errorMessage);
+        if (span.attributes != null) bytes += JsonUtil.toJson(span.attributes).length();
+        return bytes;
+    }
+
+    private static long textBytes(String value) {
+        return value == null ? 0 : value.length();
+    }
+
     private static final TypeReference<Map<String, String>> ATTRIBUTES_TYPE = new TypeReference<>() { };
 
     @Inject
@@ -96,13 +107,26 @@ public class PgSpanStore implements SpanStore {
 
     @Override
     public void bulkInsert(List<Span> spans) {
-        for (int i = 0; i < spans.size(); i += BULK_SIZE) {
-            var batch = spans.subList(i, Math.min(i + BULK_SIZE, spans.size())).stream()
-                .map(PgSpanStore::params)
-                .toList();
-            database.batchExecute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?) "
-                + "ON CONFLICT DO NOTHING", batch);
+        // A span may carry megabytes of tool output; batching purely by row count made one
+        // statement large enough to exhaust the database's memory during the legacy backfill.
+        var batch = new ArrayList<Object[]>();
+        long batchBytes = 0;
+        for (var span : spans) {
+            long bytes = payloadBytes(span);
+            if (!batch.isEmpty() && (batch.size() >= BULK_SIZE || batchBytes + bytes > BULK_PAYLOAD_BYTES)) {
+                flush(batch);
+                batch.clear();
+                batchBytes = 0;
+            }
+            batch.add(params(span));
+            batchBytes += bytes;
         }
+        if (!batch.isEmpty()) flush(batch);
+    }
+
+    private void flush(List<Object[]> batch) {
+        database.batchExecute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?) "
+            + "ON CONFLICT DO NOTHING", batch);
     }
 
     @Override

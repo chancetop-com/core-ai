@@ -12,6 +12,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.sql.DriverManager;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -143,6 +144,25 @@ class PgSpanStoreTest {
             span("s2", "t1", "l2", SpanType.LLM, now.plusSeconds(1))));
 
         assertEquals(2, store.pageByTrace("t1", 0, 10).size());
+    }
+
+    @Test
+    void bulkInsertSplitsSpansWithHugePayloads() {
+        var store = store();
+        var now = ZonedDateTime.now();
+        var huge = "x".repeat(4 * 1024 * 1024);
+        var spans = new ArrayList<Span>();
+        for (int i = 0; i < 3; i++) {
+            var span = span("big-" + i, "t-big", "l-big-" + i, SpanType.TOOL, now.plusSeconds(i));
+            span.input = huge;
+            span.output = huge;
+            spans.add(span);
+        }
+
+        store.bulkInsert(spans);
+
+        assertEquals(3, store.pageByTrace("t-big", 0, 10).size());
+        assertEquals(huge.length(), store.find("t-big", "l-big-1").input.length());
     }
 
     @Test
