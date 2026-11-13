@@ -102,6 +102,7 @@ public class MongoChatMessageStore implements ChatMessageStore {
             filters.add(Filters.regex("content", pattern, "i"));
         }
         if (request.role != null) filters.add(Filters.eq("role", request.role));
+        if (request.maxSeq != null) filters.add(Filters.lte("seq", request.maxSeq));
         return filters.isEmpty() ? Filters.empty() : Filters.and(filters);
     }
 }

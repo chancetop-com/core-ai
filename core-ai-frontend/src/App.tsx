@@ -62,6 +62,7 @@ const OpenClaw = lazy(() => import('./pages/openclaw/OpenClaw'));
 const ForYou = lazy(() => import('./pages/for-you/ForYou'));
 const ArtifactList = lazy(() => import('./pages/artifacts/ArtifactList'));
 const SharedArtifact = lazy(() => import('./pages/shared/SharedArtifact'));
+const SharedSession = lazy(() => import('./pages/shared/SharedSession'));
 const NotificationsPage = lazy(() => import('./pages/notifications/Notifications'));
 const MemoryExperiment = lazy(() => import('./pages/experiments/MemoryExperimentList'));
 const MemoryExperimentRunDetail = lazy(() => import('./pages/experiments/MemoryExperimentRunDetail'));
@@ -81,6 +82,15 @@ function PageFallback() {
 }
 
 export default function App() {
+  if (/^\/shared\/sessions\/[^/]+\/?$/.test(window.location.pathname)) {
+    return <BrowserRouter><ErrorBoundary><Suspense fallback={<PageFallback />}>
+      <Routes><Route path="/shared/sessions/:token" element={<SharedSession />} /></Routes>
+    </Suspense></ErrorBoundary></BrowserRouter>;
+  }
+  return <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -158,6 +168,7 @@ export default function App() {
             <Suspense fallback={<PageFallback />}>
               <Routes>
                 <Route path="/shared/artifacts/:token" element={<SharedArtifact />} />
+                <Route path="/shared/sessions/:token" element={<SharedSession />} />
                 {authRequired && (
                   <>
                     <Route path="/login" element={

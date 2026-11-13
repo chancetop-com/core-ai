@@ -24,6 +24,7 @@ public class AuthInterceptor implements Interceptor {
         return "/api/auth/register".equals(path) || "/api/auth/login".equals(path)
                 || path.startsWith("/api/public/otel/")
                 || path.startsWith("/api/public/artifacts/")
+                || path.startsWith("/api/public/session-shares/")
                 || path.startsWith("/api/ingest/")
                 || path.startsWith("/api/capabilities")
                 || path.startsWith("/api/webhook-triggers/")

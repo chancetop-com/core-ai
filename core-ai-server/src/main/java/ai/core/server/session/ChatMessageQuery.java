@@ -23,6 +23,8 @@ public class ChatMessageQuery {
 
     public String role;
 
+    public Long maxSeq;
+
     /** inclusive */
     public ZonedDateTime from;
 

@@ -24,6 +24,7 @@ import { historyToChatMessages, restoreCachedChatMessages, compressionSegment, c
 import { adoptCachedChat, chatCacheKeys } from './cache';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
+import SessionShareModal from './components/SessionShareModal';
 
 const VoiceTranscriberSidebar = lazy(() => import('./components/VoiceTranscriberSidebar'));
 const ArtifactDrawer = lazy(() => import('./components/ArtifactDrawer'));
@@ -174,6 +175,7 @@ export default function Chat() {
   const [showVoiceSidebar, setShowVoiceSidebar] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
+  const [sharingSession, setSharingSession] = useState<{ id: string; title?: string } | null>(null);
   const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
     if (!cachedChatUsable) return [];
@@ -2102,6 +2104,7 @@ export default function Chat() {
         onOpen={hydrateSession}
         onNewChat={handleNewChat}
         onDraftResolved={handleDraftResolved}
+        onShare={session => setSharingSession({ id: session.id, title: session.title })}
       />
       <div className="flex flex-col h-full flex-1 min-w-0 overflow-hidden">
       <AgentSelector
@@ -2112,7 +2115,10 @@ export default function Chat() {
         selectedAgent={selectedAgent}
         onSelectAgent={handleSelectAgent}
         onToggleFavorite={handleToggleFavorite}
+        onShare={sessionId && !comparisonContext ? () => setSharingSession({ id: sessionId }) : undefined}
       />
+      {sharingSession && <SessionShareModal key={sharingSession.id} sessionId={sharingSession.id} title={sharingSession.title}
+        running={sharingSession.id === sessionId && status === 'running'} onClose={() => setSharingSession(null)} />}
 
       {runningComparison && !comparisonContext && (
         <div className="mx-6 mt-4 flex items-center gap-3 rounded-xl border px-4 py-3 text-sm"

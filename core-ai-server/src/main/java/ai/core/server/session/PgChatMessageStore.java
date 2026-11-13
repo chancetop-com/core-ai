@@ -135,6 +135,10 @@ public class PgChatMessageStore implements ChatMessageStore {
             where.add("role = ?");
             params.add(request.role);
         }
+        if (request.maxSeq != null) {
+            where.add("seq <= ?");
+            params.add(request.maxSeq);
+        }
         if (!where.isEmpty()) sql.append(" WHERE ").append(String.join(" AND ", where));
     }
 

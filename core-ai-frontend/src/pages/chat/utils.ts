@@ -86,6 +86,8 @@ function buildSegments(m: HistoryMessage): MessageSegment[] {
 export function historyToChatMessages(messages: HistoryMessage[]): ChatMessage[] {
   return messages.map(m => ({
     role: m.role === 'user' ? 'user' : 'agent',
+    seq: m.seq,
+    traceId: m.trace_id,
     segments: buildSegments(m),
     timestamp: m.timestamp,
   }));

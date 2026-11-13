@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Check, ChevronDown, Search, Star } from 'lucide-react';
+import { Bot, Check, ChevronDown, Search, Share2, Star } from 'lucide-react';
 import type { AgentDefinition } from '../../../api/client';
 import { api } from '../../../api/client';
 
@@ -13,6 +13,7 @@ interface AgentSelectorProps {
   selectedAgent?: AgentDefinition;
   onSelectAgent: (id: string, agent?: AgentDefinition) => void;
   onToggleFavorite: (id: string) => void;
+  onShare?: () => void;
 }
 
 function canChatWithAgent(agent: AgentDefinition): boolean {
@@ -27,6 +28,7 @@ const AgentSelector = memo(function AgentSelector({
   selectedAgent,
   onSelectAgent,
   onToggleFavorite,
+  onShare,
 }: AgentSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +227,11 @@ const AgentSelector = memo(function AgentSelector({
             {selectedAgent.description && ` · ${selectedAgent.description}`}
           </span>
         )}
+        {onShare && <button type="button" onClick={onShare} title="Share conversation"
+          className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs cursor-pointer shrink-0"
+          style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+          <Share2 size={14} /> Share
+        </button>}
       </div>
     </div>
   );

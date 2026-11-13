@@ -12,7 +12,7 @@ const message: ChatMessage = {
   ],
 };
 
-function renderRow(msg: ChatMessage = message) {
+function renderRow(msg: ChatMessage = message, readOnly = false) {
   render(
     <ChatMessageRow
       msg={msg}
@@ -30,6 +30,7 @@ function renderRow(msg: ChatMessage = message) {
       showFeedback={false}
       onQuickReply={vi.fn()}
       interactiveDisabled={false}
+      readOnly={readOnly}
     />,
   );
 }
@@ -42,5 +43,13 @@ describe('ChatMessageRow', () => {
     const choice = screen.getByRole('button', { name: 'Yes' });
 
     expect(body.compareDocumentPosition(choice) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('hides approval and quick reply controls in a shared conversation', () => {
+    renderRow({ ...message, approval: { tool: 'write_file', arguments: '{}', callId: 'call-2' } }, true);
+    expect(screen.queryByRole('button', { name: 'Yes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Deny/ })).toBeNull();
+    expect(screen.getByText('A long reply body')).toBeTruthy();
   });
 });

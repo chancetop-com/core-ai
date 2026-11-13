@@ -1,6 +1,7 @@
 package ai.core.server.web;
 
 import ai.core.server.runtime.CapacityExceededException;
+import ai.core.server.share.SessionShareInterceptor;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.ResponseStatus;
 import core.framework.http.ContentType;
@@ -12,6 +13,7 @@ import core.framework.web.Invocation;
 import core.framework.web.Request;
 import core.framework.web.Response;
 import core.framework.web.exception.MethodNotAllowedException;
+import core.framework.web.exception.BadRequestException;
 
 import java.util.Optional;
 
@@ -57,6 +59,9 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
         if (request.path().startsWith("/api/")) {
             String errorCode = e instanceof ErrorCode code ? code.errorCode() : "INTERNAL_ERROR";
             String message = e.getMessage() == null ? "" : e.getMessage();
+            if (request.path().startsWith("/api/public/session-shares/") && !(e instanceof BadRequestException)) {
+                message = "Shared content is unavailable.";
+            }
             var json = "{\"errorCode\":\"" + escape(errorCode) + "\",\"message\":\"" + escape(message) + "\"}";
             var response = Response.text(json)
                     .status(httpStatus(e))
@@ -65,6 +70,10 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
             // capacity rejections are retryable, so the client gets a concrete back-off hint
             if (e instanceof CapacityExceededException capacity) {
                 response.header("Retry-After", String.valueOf(capacity.retryAfterSeconds()));
+            }
+            if (request.path().startsWith("/api/public/session-shares/")
+                || request.path().startsWith("/api/sessions/") && request.path().contains("/shares")) {
+                SessionShareInterceptor.headers(response);
             }
             return Optional.of(response);
         }

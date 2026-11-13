@@ -133,6 +133,8 @@ export interface ChatAttachment {
 
 export interface ChatMessage {
   role: 'user' | 'agent';
+  seq?: number;
+  traceId?: string;
   segments: MessageSegment[];
   attachments?: ChatAttachment[];
   approval?: AwaitInfo;

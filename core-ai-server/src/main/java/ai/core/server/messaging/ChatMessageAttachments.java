@@ -54,7 +54,7 @@ public class ChatMessageAttachments {
                 contents.add(videoContent(attachment, sessionId, userId, storageService));
             } else if (type == null || "IMAGE".equals(type)) {
                 // a missing type is a legacy payload: images were the only non-video kind the web layer sent
-                contents.add(imageContent(attachment, storageService));
+                contents.add(imageContent(attachment, sessionId, userId, storageService));
             }
         }
         return contents;
@@ -212,7 +212,7 @@ public class ChatMessageAttachments {
         return AttachedContent.ofReference(reference.id, reference.contentType, reference.fileName);
     }
 
-    private AttachedContent imageContent(Map<String, Object> attachment, ObjectStorageService storageService) {
+    private AttachedContent imageContent(Map<String, Object> attachment, String sessionId, String userId, ObjectStorageService storageService) {
         var container = (String) attachment.get("container");
         var blobName = (String) attachment.get("blobName");
         var contentType = (String) attachment.get("contentType");
@@ -227,7 +227,29 @@ public class ChatMessageAttachments {
         var content = AttachedContent.ofBase64(image.data(), image.format(),
                 AttachedContent.AttachedContentType.IMAGE, (String) attachment.get("fileName"));
         content.url = (String) attachment.get("url");
+        recordImageReference(attachment, sessionId, userId, metadata, bytes.length);
         return content;
+    }
+
+    private void recordImageReference(Map<String, Object> attachment, String sessionId, String userId,
+                                      ObjectStorageService.ObjectMetadata metadata, long size) {
+        if (attachmentRepository == null) return;
+        var container = (String) attachment.get("container");
+        var blobName = (String) attachment.get("blobName");
+        if (attachmentRepository.findBySource(sessionId, userId, container, blobName) != null) return;
+        var reference = new SessionAttachmentRef();
+        reference.id = "image_" + UUID.randomUUID();
+        reference.sessionId = sessionId;
+        reference.userId = userId;
+        reference.container = container;
+        reference.blobName = blobName;
+        reference.fileName = (String) attachment.get("fileName");
+        reference.kind = "IMAGE";
+        reference.contentType = (String) attachment.get("contentType");
+        reference.sourceSizeBytes = size;
+        reference.sourceETag = metadata == null ? null : metadata.etag();
+        reference.createdAt = ZonedDateTime.now();
+        attachmentRepository.insert(reference);
     }
 
     private String resolveVideoContentType(String storageContentType, String clientContentType) {

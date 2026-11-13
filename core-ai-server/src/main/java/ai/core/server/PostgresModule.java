@@ -6,6 +6,7 @@ import ai.core.server.project.PgProjectCountRow;
 import ai.core.server.project.PgProjectRow;
 import ai.core.server.project.PgSubjectFileStatsRow;
 import ai.core.server.skill.PgSkillCountRow;
+import ai.core.server.share.PgSessionShareRow;
 import ai.core.server.user.PgUserIdRow;
 import ai.core.server.user.PgUserRow;
 import core.framework.module.Module;
@@ -31,6 +32,7 @@ public class PostgresModule extends Module {
         db().user(user);
         db().password(password);
         db().view(PgDocumentRow.class);
+        db().view(PgSessionShareRow.class);
         db().view(ai.core.server.session.PgChatSessionRow.class);
         db().view(ai.core.server.session.PgChatSessionCountRow.class);
         db().view(ai.core.server.session.PgChatSessionMigrationLockRow.class);

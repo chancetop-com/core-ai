@@ -3,12 +3,14 @@ import { createPortal } from 'react-dom';
 import { Lasso, Loader2, X as CloseIcon } from 'lucide-react';
 import { fetchBlob, fileIdOf, needsAuthFetch, shareTokenOf } from '../../../api/authedBlob';
 import ImageCanvasEditor from '../../../components/ImageCanvasEditor';
+import { sharedFileUrl } from '../../../api/sessionShares';
 
 interface Props {
   src?: string;
   alt?: string;
   /** Image class; defaults to the inline message image. Callers that show a thumbnail pass their own. */
   className?: string;
+  readOnly?: boolean;
 }
 
 interface EditTarget {
@@ -17,27 +19,40 @@ interface EditTarget {
   sourceUrl: string | null;
 }
 
-export default function AuthedImage({ src, alt, className }: Props) {
-  const [resolved, setResolved] = useState<string | null>(null);
+export default function AuthedImage({ src, alt, className, readOnly = false }: Props) {
+  const [resolved, setResolved] = useState<string | null>(() => src && !readOnly && !needsAuthFetch(src) ? src : null);
   const [error, setError] = useState<string | null>(null);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const editTarget = editTargetOf(src);
+  const editTarget = readOnly ? null : editTargetOf(src);
 
   useEffect(() => {
     if (!src) {
       setResolved(null);
+      setError(null);
       return;
     }
-    if (!needsAuthFetch(src)) {
+    if (readOnly && !sharedFileUrl(src)) {
+      setResolved(null);
+      setError('Image is not included in this share.');
+      return;
+    }
+    if (!readOnly && !needsAuthFetch(src)) {
       setResolved(src);
+      setError(null);
       return;
     }
     let cancelled = false;
     let createdUrl: string | null = null;
     setResolved(null);
     setError(null);
-    fetchBlob(src).then(blob => {
+    const load = readOnly
+      ? fetch(src, { credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer' }).then(response => {
+        if (!response.ok) throw new Error('Shared image is unavailable.');
+        return response.blob();
+      })
+      : fetchBlob(src);
+    load.then(blob => {
       if (cancelled) return;
       createdUrl = URL.createObjectURL(blob);
       setResolved(createdUrl);
@@ -49,7 +64,7 @@ export default function AuthedImage({ src, alt, className }: Props) {
       cancelled = true;
       if (createdUrl) URL.revokeObjectURL(createdUrl);
     };
-  }, [src]);
+  }, [src, readOnly]);
 
   // ESC closes lightbox; lock body scroll while open so the page behind doesn't scroll
   useEffect(() => {

@@ -31,6 +31,7 @@ public final class SpaRoutes {
         "/datasets/:id", "/datasets/:id/records",
         "/projects/:id", "/projects/:id/playbook", "/projects/:id/subjects/:subjectId",
         "/shared/artifacts/:token",
+        "/shared/sessions/:token",
         "/triggers/webhook", "/triggers/schedule", "/triggers/channels", "/triggers/openclaw",
         "/tools/builtin",
         "/settings", "/settings/users", "/settings/api-keys", "/settings/api-users", "/settings/gateway", "/settings/system",

@@ -141,6 +141,8 @@ interface ChatMessageRowProps {
   onFeedbackClick?: () => void;
   onQuickReply: (value: string) => void;
   interactiveDisabled: boolean;
+  readOnly?: boolean;
+  onViewTrace?: (traceId: string) => void;
 }
 
 export const ChatMessageRow = memo(function ChatMessageRow({
@@ -160,6 +162,8 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   onFeedbackClick,
   onQuickReply,
   interactiveDisabled,
+  readOnly = false,
+  onViewTrace,
 }: ChatMessageRowProps) {
   const sandboxSeg = msg.segments?.find(s => s.type === 'sandbox') as SandboxSegment | undefined;
   const compressionSeg = msg.segments?.find(s => s.type === 'compression') as CompressionSegment | undefined;
@@ -169,11 +173,11 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const cardSegs = msg.segments?.filter((s): s is CardSegment => s.type === 'card') ?? [];
   const quickReplySegs = msg.segments?.filter((s): s is QuickRepliesSegment => s.type === 'quick_replies') ?? [];
   const textSeg = msg.segments?.find(s => s.type === 'text');
-  const generatedVideo = textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
+  const generatedVideo = !readOnly && textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
   const attachments = msg.attachments ?? [];
   const hasAttachments = attachments.length > 0;
   const hasRenderableText = textSeg != null && (textSeg.content.trim().length > 0 || generatedVideo != null);
-  const msgArtifacts = msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
+  const msgArtifacts = !readOnly && msg.role === 'agent' ? getMessageArtifacts(msg, sessionArtifacts) : [];
 
   // content-visibility: auto skips paint for off-screen elements, but the browser
   // heuristic can incorrectly flag a streaming message as off-screen when its
@@ -196,7 +200,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             <BackgroundTasksBlock seg={tasksSeg} />
           </div>
         )}
-        {sandboxSeg && (
+        {!readOnly && sandboxSeg && (
           <div className="mb-3">
             <SandboxBlock seg={sandboxSeg} terminalEnabled={terminalEnabled} onOpenTerminal={onOpenSandboxTerminal} />
           </div>
@@ -211,7 +215,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             <ToolsBlock tools={toolsSeg?.tools ?? []} compression={compressionSeg} />
           </div>
         )}
-        {cardSegs.length > 0 && (
+        {!readOnly && cardSegs.length > 0 && (
           <div className="mb-3 flex flex-col gap-2">
             {cardSegs.map((seg, idx) => (
               <RichCardView key={idx} card={seg.card} disabled={interactiveDisabled} onAction={onQuickReply} />
@@ -227,8 +231,12 @@ export const ChatMessageRow = memo(function ChatMessageRow({
                   att.type === 'IMAGE' ? (
                     <div key={idx} className="block rounded-lg overflow-hidden border"
                       style={{ borderColor: 'var(--color-border)', maxWidth: '160px' }}>
-                      <AuthedImage src={att.url} alt={`attachment-${idx}`} className="w-full h-24 object-cover cursor-zoom-in" />
+                      <AuthedImage src={att.url} alt={att.file_name || `attachment-${idx}`} readOnly={readOnly} className="w-full h-24 object-cover cursor-zoom-in" />
                     </div>
+                  ) : readOnly ? (
+                    <span key={idx} className="inline-flex items-center gap-1.5 text-xs">
+                      <Paperclip size={12} /> {att.file_name || att.type}
+                    </span>
                   ) : (
                     <a key={idx} href={att.url} target="_blank" rel="noopener noreferrer"
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium"
@@ -254,8 +262,8 @@ export const ChatMessageRow = memo(function ChatMessageRow({
                 <div className="font-[inherit] m-0 [&_pre]:bg-[var(--color-bg-tertiary)] [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_code]:text-[inherit] [&_table]:border-collapse [&_table]:my-2 [&_table]:w-auto [&_th]:border [&_th]:border-[var(--color-border)] [&_th]:px-2 [&_th]:py-1 [&_th]:bg-[var(--color-bg-tertiary)] [&_td]:border [&_td]:border-[var(--color-border)] [&_td]:px-2 [&_td]:py-1 [&_svg]:block [&_svg]:max-w-full [&_svg]:h-auto">
                   <ReactMarkdown
                     remarkPlugins={REMARK_PLUGINS}
-                    rehypePlugins={msg.role === 'agent' && !isStreamingLast ? AGENT_REHYPE_PLUGINS : undefined}
-                    components={msg.role === 'agent' ? agentMarkdownComponents : undefined}>
+                    rehypePlugins={!readOnly && msg.role === 'agent' && !isStreamingLast ? AGENT_REHYPE_PLUGINS : undefined}
+                    components={msg.role === 'agent' || readOnly ? agentMarkdownComponents : undefined}>
                     {generatedVideo ? generatedVideo.content : textSeg.content}
                   </ReactMarkdown>
                   {generatedVideo && <GeneratedVideo href={generatedVideo.url} label={generatedVideo.label} />}
@@ -291,19 +299,19 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             ))}
           </div>
         )}
-        {quickReplySegs.length > 0 && (
+        {!readOnly && quickReplySegs.length > 0 && (
           <div className="mt-2 flex flex-col gap-2">
             {quickReplySegs.map((seg, idx) => (
               <QuickReplyButtons key={idx} question={seg.question} options={seg.options} disabled={interactiveDisabled} onSelect={onQuickReply} />
             ))}
           </div>
         )}
-        {(msg.timestamp || hasTextSegments(msg.segments) || showFeedback) && (
+        {(msg.timestamp || hasTextSegments(msg.segments) || showFeedback || msg.traceId) && (
           <div className={`flex items-center gap-2 mt-1 ${msg.role === 'user' ? 'justify-end' : ''}`}>
             {hasTextSegments(msg.segments) && (
               <CopyButton text={getMessageText(msg)} />
             )}
-            {showFeedback && (
+            {!readOnly && showFeedback && (
               <button
                 type="button"
                 onClick={onFeedbackClick}
@@ -312,6 +320,12 @@ export const ChatMessageRow = memo(function ChatMessageRow({
               >
                 <MessageSquareHeart size={12} />
                 Feedback
+              </button>
+            )}
+            {msg.traceId && onViewTrace && (
+              <button type="button" onClick={() => onViewTrace(msg.traceId!)}
+                className="text-[11px] cursor-pointer hover:underline" style={{ color: 'var(--color-primary)' }}>
+                View trace
               </button>
             )}
             {msg.timestamp && (
@@ -323,7 +337,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
             )}
           </div>
         )}
-        {msg.approval && (
+        {!readOnly && msg.approval && (
           <div className="mt-2 rounded-xl border px-4 py-3"
             style={{ borderColor: 'var(--color-warning)', background: 'var(--color-bg-secondary)' }}>
             <div className="text-sm font-medium mb-2" style={{ color: 'var(--color-warning)' }}>

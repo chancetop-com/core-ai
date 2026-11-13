@@ -33,6 +33,8 @@ import ai.core.server.memory.experiment.AgentMemoryExperimentConfig;
 import ai.core.server.memory.experiment.AgentMemoryExperimentRun;
 import ai.core.server.domain.ChatMessage;
 import ai.core.server.domain.ChatSession;
+import ai.core.server.domain.SessionShare;
+import ai.core.server.domain.SessionShareFile;
 import ai.core.server.domain.SessionFeedback;
 import ai.core.server.domain.UserChannelTarget;
 import ai.core.server.domain.Dataset;
@@ -249,6 +251,7 @@ public class ServerApp extends App {
         load(new HubCallModule());
         load(new AsyncToolTaskModule());
         load(new SessionModule());
+        load(new SessionShareModule());
         // Sandbox Hub serves the owning session's tools and needs AgentSessionManager (SessionModule)
         // and HubCallAuditService (HubCallAuditModule), so it follows both.
         load(new SandboxHubModule());
@@ -309,6 +312,8 @@ public class ServerApp extends App {
         mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
         mongo.collection(ChatSession.class);
+        mongo.collection(SessionShare.class);
+        mongo.view(SessionShareFile.class);
         mongo.view(ToolRef.class);
         mongo.collection(SessionFeedback.class);
         mongo.collection(UserChannelTarget.class);

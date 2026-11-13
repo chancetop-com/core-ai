@@ -65,6 +65,8 @@ interface TraceInspectorProps {
   mode?: InspectorMode;
   onBack?: () => void;
   onClose?: () => void;
+  readOnly?: boolean;
+  loadSpan?: (traceId: string, spanId: string) => Promise<Span>;
 }
 
 const SPAN_COLORS: Record<string, string> = {
@@ -83,13 +85,14 @@ const SPAN_ICONS: Record<string, ComponentType<{ size?: number; style?: CSSPrope
   GROUP: Users,
 };
 
-export default function TraceInspector({ trace, spans, mode = 'panel', onBack, onClose }: TraceInspectorProps) {
+export default function TraceInspector({ trace, spans, mode = 'panel', onBack, onClose, readOnly = false, loadSpan = api.traces.span }: TraceInspectorProps) {
   const [tabState, setTabState] = useState<{ traceId: string; tab: TraceTab }>({ traceId: trace.traceId, tab: 'timeline' });
   const tab = tabState.traceId === trace.traceId ? tabState.tab : 'timeline';
   const [selectedSpanId, setSelectedSpanId] = useState<string | null>(null);
   // Full span payloads are fetched on demand (spans list carries metadata only) and cached per trace+span.
   const [spanDetails, setSpanDetails] = useState<Record<string, Span>>({});
   const [loadingSpanKey, setLoadingSpanKey] = useState<string | null>(null);
+  const [spanError, setSpanError] = useState<string | null>(null);
   const effectiveSelectedSpanId = selectedSpanId ?? findDefaultSpan(spans)?.spanId ?? null;
   const selectedSpanKey = effectiveSelectedSpanId ? `${trace.traceId}:${effectiveSelectedSpanId}` : null;
 
@@ -107,14 +110,15 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
     if (!spanId) return;
     let cancelled = false;
     setLoadingSpanKey(selectedSpanKey);
-    api.traces.span(trace.traceId, spanId)
+    setSpanError(null);
+    loadSpan(trace.traceId, spanId)
       .then(detail => {
         if (cancelled) return;
         setSpanDetails(prev => (prev[selectedSpanKey] ? prev : { ...prev, [selectedSpanKey]: detail }));
       })
       .catch(() => {
         // Keep the metadata span as fallback; summary/timeline info stays available.
-        if (!cancelled) console.warn('load span detail failed', spanId);
+        if (!cancelled) setSpanError('Span details are currently unavailable.');
       })
       .finally(() => {
         if (!cancelled) setLoadingSpanKey(null);
@@ -122,7 +126,7 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
     return () => {
       cancelled = true;
     };
-  }, [selectedSpanKey, trace.traceId, spanDetails, effectiveSelectedSpanId]);
+  }, [selectedSpanKey, trace.traceId, spanDetails, effectiveSelectedSpanId, loadSpan]);
 
   const containerClass = mode === 'page'
     ? 'p-6 h-full overflow-auto'
@@ -133,7 +137,7 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
 
   const content = (
     <>
-      <TraceHeader trace={trace} spans={spans} mode={mode} onClose={onClose} />
+      <TraceHeader trace={trace} spans={spans} mode={mode} onClose={onClose} readOnly={readOnly} />
       <div className="flex border-b shrink-0" style={{ borderColor: 'var(--color-border)' }}>
         <TraceTabButton active={tab === 'timeline'} icon={<ListTree size={14} />} onClick={() => setTraceTab('timeline')}>
           Timeline
@@ -145,9 +149,10 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
           Raw
         </TraceTabButton>
       </div>
+      {spanError && <p role="status" className="px-4 py-2 text-xs" style={{ color: 'var(--color-warning)' }}>{spanError}</p>}
       <div className="flex-1 min-h-0 overflow-auto">
         {tab === 'timeline' && (
-          <TimelineTab trace={trace} spans={spans} selectedSpan={selectedSpan} onSelectSpan={span => setSelectedSpanId(span.spanId)} mode={mode} loading={loadingSpanKey === selectedSpanKey} />
+          <TimelineTab trace={trace} spans={spans} selectedSpan={selectedSpan} onSelectSpan={span => setSelectedSpanId(span.spanId)} mode={mode} loading={loadingSpanKey === selectedSpanKey} readOnly={readOnly} />
         )}
         {tab === 'io' && <TraceIOTab trace={trace} />}
         {tab === 'raw' && <CodeBlock content={JSON.stringify({ trace, spans }, null, 2)} />}
@@ -176,11 +181,12 @@ export default function TraceInspector({ trace, spans, mode = 'panel', onBack, o
   return <div className={containerClass}>{content}</div>;
 }
 
-function TraceHeader({ trace, spans, mode, onClose }: {
+function TraceHeader({ trace, spans, mode, onClose, readOnly }: {
   trace: Trace;
   spans: Span[];
   mode: InspectorMode;
   onClose?: () => void;
+  readOnly?: boolean;
 }) {
   const traceType = typeColors(resolveTraceType(trace));
   const source = sourceColors(resolveTraceSource(trace));
@@ -245,7 +251,7 @@ function TraceHeader({ trace, spans, mode, onClose }: {
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {trace.sessionId && (
+          {!readOnly && trace.sessionId && (
             <a href={`/chat?sessionId=${encodeURIComponent(trace.sessionId)}`}
               className="px-2 py-1.5 rounded-md text-xs inline-flex items-center gap-1 cursor-pointer"
               style={{ color: 'var(--color-primary)', background: 'var(--color-primary-bg)' }}
@@ -253,7 +259,7 @@ function TraceHeader({ trace, spans, mode, onClose }: {
               <MessageCircle size={13} /> Chat
             </a>
           )}
-          {mode === 'panel' && (
+          {!readOnly && mode === 'panel' && (
             <a href={`/traces/${traceId}`} target="_blank" rel="noopener noreferrer"
               className="p-1.5 rounded-md cursor-pointer"
               style={{ color: 'var(--color-text-secondary)' }}
@@ -319,13 +325,14 @@ function ErrorBlock({ message }: { message: string }) {
   );
 }
 
-function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode, loading }: {
+function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode, loading, readOnly }: {
   trace: Trace;
   spans: Span[];
   selectedSpan: Span | null;
   onSelectSpan: (span: Span) => void;
   mode: InspectorMode;
   loading?: boolean;
+  readOnly?: boolean;
 }) {
   if (spans.length === 0) {
     return <EmptyState>No spans recorded</EmptyState>;
@@ -342,7 +349,7 @@ function TimelineTab({ trace, spans, selectedSpan, onSelectSpan, mode, loading }
   return (
     <div className={layoutClass}>
       <SpanTimeline trace={trace} spans={spans} selectedSpanId={selectedSpan?.spanId} onSelectSpan={onSelectSpan} />
-      {selectedSpan && <SpanInspector span={selectedSpan} parentSpan={parentSpan} loading={loading} />}
+      {selectedSpan && <SpanInspector span={selectedSpan} parentSpan={parentSpan} loading={loading} readOnly={readOnly} />}
     </div>
   );
 }
@@ -489,7 +496,7 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
   );
 }
 
-function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?: Span; loading?: boolean }) {
+function SpanInspector({ span, parentSpan, loading, readOnly }: { span: Span; parentSpan?: Span; loading?: boolean; readOnly?: boolean }) {
   const navigate = useNavigate();
   const [tabState, setTabState] = useState<{ spanId: string; tab: SpanTab }>({ spanId: span.spanId, tab: 'summary' });
   const tab = tabState.spanId === span.spanId ? tabState.tab : 'summary';
@@ -511,7 +518,7 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
   };
 
   const startReplay = async () => {
-    if (creatingReplay || !replayable) return;
+    if (readOnly || creatingReplay || !replayable) return;
     setCreatingReplay(true);
     setReplayError('');
     try {
@@ -539,7 +546,7 @@ function SpanInspector({ span, parentSpan, loading }: { span: Span; parentSpan?:
             </div>
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {isLlm && (
+            {!readOnly && isLlm && (
               <button
                 className="flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium disabled:opacity-50"
                 style={{ background: 'var(--color-primary)', color: '#fff' }}

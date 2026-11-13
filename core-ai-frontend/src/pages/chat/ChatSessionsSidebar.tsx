@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Trash2, CheckSquare, Square, X } from 'lucide-react';
+import { MessageSquare, Plus, Loader2, MoreHorizontal, Pencil, Share2, Trash2, CheckSquare, Square, X } from 'lucide-react';
 import { sessionApi } from '../../api/session';
 import type { ChatSessionSummary } from '../../api/session';
 import { formatMessageTimeFull } from './utils';
@@ -13,6 +13,7 @@ interface Props {
   onNewChat: () => void;
   onDraftResolved?: () => void;
   onDeleted?: (sessionId: string) => void;
+  onShare?: (session: ChatSessionSummary) => void;
 }
 
 function formatTime(iso?: string): string {
@@ -40,7 +41,7 @@ const SOURCE_FILTERS: { key: string; label: string }[] = [
   { key: 'workflow', label: 'Workflow' },
 ];
 
-export default function ChatSessionsSidebar({ currentSessionId, draftSession, refreshKey, onOpen, onNewChat, onDraftResolved, onDeleted }: Props) {
+export default function ChatSessionsSidebar({ currentSessionId, draftSession, refreshKey, onOpen, onNewChat, onDraftResolved, onDeleted, onShare }: Props) {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -303,6 +304,11 @@ export default function ChatSessionsSidebar({ currentSessionId, draftSession, re
                     style={{ color: 'var(--color-text)' }}>
                     <Pencil size={13} /> Rename
                   </button>
+                  {onShare && <button onClick={() => { setMenuId(null); onShare(s); }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:opacity-80"
+                    style={{ color: 'var(--color-text)' }}>
+                    <Share2 size={13} /> Share conversation
+                  </button>}
                   <button onClick={() => handleDelete(s.id)}
                     className="w-full flex items-center gap-2 px-3 py-1.5 cursor-pointer hover:opacity-80"
                     style={{ color: 'var(--color-danger, #e5484d)' }}>

@@ -141,6 +141,27 @@ class PgChatMessageStoreTest {
     }
 
     @Test
+    void boundsHistoryAndCountBeforePagination() {
+        var now = ZonedDateTime.now();
+        store.insertIfAbsent(message("shared", 1L, "user", "first", now));
+        store.insertIfAbsent(message("shared", 2L, "agent", "second", now));
+        store.insertIfAbsent(message("shared", 3L, "user", "private continuation", now));
+        store.insertIfAbsent(message("another", 1L, "user", "unrelated", now));
+
+        var query = new ChatMessageQuery();
+        query.sessionId = "shared";
+        query.maxSeq = 2L;
+        query.offset = 1;
+        query.limit = 1;
+        assertEquals(List.of("second"), store.find(query).stream().map(message -> message.content).toList());
+        assertEquals(2L, store.count(query));
+        query.offset = 2;
+        assertTrue(store.find(query).isEmpty());
+        query.maxSeq = 0L;
+        assertEquals(0L, store.count(query));
+    }
+
+    @Test
     void searchesByTermsAndMatchesAnyTraceOrSessionWindow() {
         var now = ZonedDateTime.now();
         store.insertIfAbsent(message("s-1", 1L, "user", "Terraform plan", now.minusMinutes(5)));
