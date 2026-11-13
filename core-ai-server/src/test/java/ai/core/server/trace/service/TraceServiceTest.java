@@ -62,6 +62,7 @@ class TraceServiceTest {
         return user;
     }
 
+    private MongoCollection<Trace> traceCollection;
     private MongoCollection<User> userCollection;
 
     @Test
@@ -72,7 +73,7 @@ class TraceServiceTest {
             user("Alice Chen", "alice@example.com"),
             user("Bob Li", "bob@example.com")));
         // First trace query is the indexed user_id match; second is the bounded name/agent scan.
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(aliceTrace)).thenReturn(List.of());
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of(aliceTrace)).thenReturn(List.of());
 
         var filter = new TraceListFilter();
         filter.q = "alice";
@@ -90,7 +91,7 @@ class TraceServiceTest {
         var second = trace("t2", "alice@example.com", "tool call", "support-agent", "gpt-4o", 1);
         var ignored = trace("t3", "bob@example.com", "chat completion", "support-agent", "gpt-4o-mini", 0);
         when(userCollection.find(any(Query.class))).thenReturn(List.of(user("Alice Chen", "alice@example.com")));
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(first, second)).thenReturn(List.of(ignored));
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of(first, second)).thenReturn(List.of(ignored));
 
         var filter = new TraceListFilter();
         filter.q = "alice";
@@ -107,7 +108,7 @@ class TraceServiceTest {
         var service = service();
         var match = trace("t1", "alice@example.com", "checkout flow", "support-agent", "gpt-4o", 1);
         var ignored = trace("t2", "alice@example.com", "chat completion", "support-agent", "gpt-4o", 0);
-        when(service.traceCollection.find(any(Query.class))).thenReturn(List.of(match, ignored));
+        when(traceCollection.find(any(Query.class))).thenReturn(List.of(match, ignored));
 
         var filter = new TraceListFilter();
         filter.name = "checkout";
@@ -126,14 +127,14 @@ class TraceServiceTest {
         service.count(filter);
 
         var captor = ArgumentCaptor.forClass(Bson.class);
-        verify(service.traceCollection).count(captor.capture());
+        verify(traceCollection).count(captor.capture());
         assertEquals(Filters.in("user_id", List.of("api:a", "api:b")), captor.getValue());
 
         var emptyFilter = new TraceListFilter();
         emptyFilter.userIds = List.of();
         service.count(emptyFilter);
 
-        verify(service.traceCollection, times(2)).count(captor.capture());
+        verify(traceCollection, times(2)).count(captor.capture());
         assertEquals(Filters.in("user_id", List.of()), captor.getValue());
     }
 
@@ -143,12 +144,13 @@ class TraceServiceTest {
 
         assertTrue(service.generations(0, 20, null, List.of()).isEmpty());
         assertNull(service.sessionSummary("session-1", List.of()));
-        verify(service.traceCollection, never()).find(any(Query.class));
+        verify(traceCollection, never()).find(any(Query.class));
     }
 
     private TraceService service() {
         var service = new TraceService();
-        service.traceCollection = traceCollection();
+        traceCollection = traceCollection();
+        service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         service.spanStore = ai.core.server.trace.MongoSpanStore.of(spanCollection());
         userCollection = userCollection();
         service.userStore = ai.core.server.user.MongoUserStore.of(userCollection);

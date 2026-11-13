@@ -1,9 +1,7 @@
 package ai.core.server.trace.service;
 
 import ai.core.llm.LLMModelContextRegistry;
-import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
-import com.mongodb.client.model.Sorts;
 
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -16,7 +14,6 @@ import org.bson.conversions.Bson;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -80,16 +77,6 @@ final class TraceServiceHelper {
         return traces.subList(offset, end);
     }
 
-    static Query sortedTraceQuery(List<Bson> filters, int limit) {
-        var query = new Query();
-        query.limit = limit;
-        query.sort = Sorts.descending("created_at");
-        if (!filters.isEmpty()) {
-            query.filter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
-        }
-        return query;
-    }
-
     static Pattern compileNamePattern(String name) {
         if (!hasText(name)) return null;
         try {
@@ -132,37 +119,11 @@ final class TraceServiceHelper {
         return false;
     }
 
-    // Exact-match clauses for a pasted full ID. Server-generated ids are lowercase, but ingested ids
-    // (OTLP session.id attributes) are stored verbatim, so the pasted form is matched as well.
-    static List<Bson> fullIdClauses(String q) {
-        var id = q.toLowerCase(Locale.ROOT);
-        List<Bson> idClauses = new java.util.ArrayList<>();
-        idClauses.add(Filters.eq("session_id", id));
-        idClauses.add(Filters.eq("user_id", id));
-        idClauses.add(Filters.eq("trace_id", id));
-        if (!id.equals(q)) {
-            idClauses.add(Filters.eq("session_id", q));
-            idClauses.add(Filters.eq("user_id", q));
-            idClauses.add(Filters.eq("trace_id", q));
-        }
-        return idClauses;
-    }
-
     static String facetValue(Trace trace, String field) {
         return switch (field) {
             case "model" -> trace.model;
             case "agentName", "agent_name" -> trace.agentName;
             case "source" -> trace.source;
-            default -> null;
-        };
-    }
-
-    static String mongoFieldName(String field) {
-        if (field == null) return null;
-        return switch (field) {
-            case "model" -> "model";
-            case "agentName", "agent_name" -> "agent_name";
-            case "source" -> "source";
             default -> null;
         };
     }

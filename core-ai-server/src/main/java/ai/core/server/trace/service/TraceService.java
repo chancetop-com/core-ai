@@ -1,25 +1,16 @@
 package ai.core.server.trace.service;
 
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
-
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 
 import ai.core.server.domain.User;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceFacet;
+import ai.core.server.trace.TraceQuery;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
-import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
 
-import org.bson.conversions.Bson;
-
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -46,7 +37,7 @@ public class TraceService {
     private static final int USER_SEARCH_LIMIT = 10000;
 
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
     @Inject
     SpanStore spanStore;
     @Inject
@@ -58,17 +49,7 @@ public class TraceService {
         if (requiresSearch(filter)) {
             return listWithSearch(filter);
         }
-
-        var query = new Query();
-        query.skip = filter.offset;
-        query.limit = filter.limit;
-        query.sort = Sorts.descending("created_at");
-
-        var bsonFilters = buildFilters(filter);
-        if (!bsonFilters.isEmpty()) {
-            query.filter = bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters);
-        }
-        var traces = traceCollection.find(query);
+        var traces = traceStore.list(query(filter));
         TraceServiceHelper.enrichMetricsInBatch(traces, spanStore);
         return traces;
     }
@@ -77,10 +58,7 @@ public class TraceService {
         if (requiresSearch(filter)) {
             throw new UnsupportedOperationException("trace text search is counted in prev/next mode");
         }
-
-        var bsonFilters = buildFilters(filter);
-        if (bsonFilters.isEmpty()) return traceCollection.count(Filters.empty());
-        return traceCollection.count(bsonFilters.size() == 1 ? bsonFilters.getFirst() : Filters.and(bsonFilters));
+        return traceStore.count(query(filter));
     }
 
     private List<Trace> listWithSearch(TraceListFilter filter) {
@@ -91,13 +69,12 @@ public class TraceService {
     }
 
     private List<Trace> searchCandidates(TraceListFilter filter, int limit) {
-        var indexedFilters = buildFilters(filter);
         var matches = new LinkedHashMap<String, Trace>();
         var namePattern = TraceServiceHelper.compileNamePattern(filter.name);
         if (hasPlainTextQuery(filter)) {
-            addUserMatches(matches, indexedFilters, matchingUserIds(filter.q), namePattern, limit);
+            addUserMatches(matches, filter, matchingUserIds(filter.q), namePattern, limit);
         }
-        addTraceTextMatches(matches, indexedFilters, filter, namePattern, limit);
+        addTraceTextMatches(matches, filter, namePattern, limit);
         return matches.values().stream()
             .sorted(TraceServiceHelper::compareCreatedAtDesc)
             .toList();
@@ -108,70 +85,36 @@ public class TraceService {
         return Math.clamp(requested, 1, SEARCH_TRACE_SCAN_LIMIT);
     }
 
-    private List<Bson> buildFilters(TraceListFilter filter) {
-        List<Bson> bsonFilters = new ArrayList<>();
-        addQueryFilter(bsonFilters, filter.q);
-        // name is an advanced raw regex, evaluated in Java to avoid unindexed Mongo regex scans
-        if (filter.type != null && !filter.type.isEmpty()) {
-            bsonFilters.add(Filters.eq("type", filter.type));
-        }
-        addSourceFilter(bsonFilters, filter.source);
-        if (filter.agentName != null && !filter.agentName.isEmpty()) {
-            bsonFilters.add(Filters.eq("agent_name", filter.agentName));
-        }
-        if (filter.model != null && !filter.model.isEmpty()) {
-            bsonFilters.add(Filters.eq("model", filter.model));
-        }
-        if (filter.status != null && !filter.status.isEmpty()) {
-            bsonFilters.add(Filters.eq("status", TraceStatus.valueOf(filter.status)));
-        }
-        if (filter.sessionId != null && !filter.sessionId.isEmpty()) {
-            bsonFilters.add(Filters.eq("session_id", filter.sessionId));
-        }
-        if (filter.userId != null && !filter.userId.isEmpty()) {
-            bsonFilters.add(Filters.eq("user_id", filter.userId));
-        } else if (filter.userIds != null) {
-            // an empty list must stay $in: [] (match nothing); null means "not scoped" and is handled above
-            bsonFilters.add(Filters.in("user_id", filter.userIds));
-        }
-        if (filter.startFrom != null) {
-            bsonFilters.add(Filters.gte("started_at", filter.startFrom));
-        }
-        if (filter.startTo != null) {
-            bsonFilters.add(Filters.lte("started_at", filter.startTo));
-        }
-        return bsonFilters;
+    private TraceQuery query(TraceListFilter filter) {
+        var query = new TraceQuery();
+        query.skip = filter.offset;
+        query.limit = filter.limit;
+        addQueryFilter(query, filter.q);
+        // name is an advanced raw regex, evaluated in Java to avoid unindexed regex scans
+        query.type = filter.type;
+        query.source = filter.source;
+        query.agentName = filter.agentName;
+        query.model = filter.model;
+        query.status = filter.status;
+        query.sessionId = filter.sessionId;
+        query.userId = filter.userId;
+        query.userIds = filter.userIds;
+        query.startFrom = filter.startFrom;
+        query.startTo = filter.startTo;
+        return query;
     }
 
     // q is the user-friendly search. Strategy:
     //   - Full UUID / 32-char trace ID → exact match on id fields only, so the OR stays on indexes
     //   - 6+ hex chars (e.g. an 8-char session prefix shown in the UI) → anchored prefix match on id fields
     //   - Plain text → user_id index matches plus bounded in-memory name/agent matching
-    // Ids are stored as lowercase hex, so prefix regexes are lowercased without the "i" flag to stay on the index.
-    private void addQueryFilter(List<Bson> bsonFilters, String q) {
+    private void addQueryFilter(TraceQuery query, String q) {
         if (q == null || q.isEmpty()) return;
         var trimmed = q.trim();
         if (UUID_PATTERN.matcher(trimmed).matches() || LONG_HEX_PATTERN.matcher(trimmed).matches()) {
-            bsonFilters.add(Filters.or(TraceServiceHelper.fullIdClauses(trimmed)));
+            query.exactId = trimmed;
         } else if (HEX_PREFIX_PATTERN.matcher(trimmed).matches()) {
-            var prefix = "^" + Pattern.quote(trimmed.toLowerCase(Locale.ROOT));
-            bsonFilters.add(Filters.or(
-                Filters.regex("session_id", prefix),
-                Filters.regex("trace_id", prefix)));
-        }
-    }
-
-    private void addSourceFilter(List<Bson> bsonFilters, String source) {
-        if (source == null || source.isEmpty()) return;
-        // Legacy traces predate the source field; treat missing source as "chat"
-        if ("chat".equals(source)) {
-            bsonFilters.add(Filters.or(
-                Filters.eq("source", "chat"),
-                Filters.exists("source", false),
-                Filters.eq("source", null),
-                Filters.eq("source", "")));
-        } else {
-            bsonFilters.add(Filters.eq("source", source));
+            query.idPrefix = trimmed;
         }
     }
 
@@ -187,20 +130,24 @@ public class TraceService {
             && !HEX_PREFIX_PATTERN.matcher(q).matches();
     }
 
-    private void addUserMatches(Map<String, Trace> matches, List<Bson> indexedFilters, Set<String> userIds, Pattern namePattern, int limit) {
+    private void addUserMatches(Map<String, Trace> matches, TraceListFilter filter, Set<String> userIds, Pattern namePattern, int limit) {
         if (userIds.isEmpty()) return;
-        var filters = new ArrayList<>(indexedFilters);
-        filters.add(Filters.in("user_id", userIds));
-        traceCollection.find(TraceServiceHelper.sortedTraceQuery(filters, limit)).stream()
+        var query = query(filter);
+        query.skip = 0;
+        query.limit = limit;
+        query.extraUserIds = List.copyOf(userIds);
+        traceStore.list(query).stream()
             .filter(trace -> TraceServiceHelper.matchesNamePattern(trace, namePattern))
             .forEach(trace -> TraceServiceHelper.putTrace(matches, trace));
     }
 
-    private void addTraceTextMatches(Map<String, Trace> matches, List<Bson> indexedFilters, TraceListFilter filter, Pattern namePattern, int limit) {
+    private void addTraceTextMatches(Map<String, Trace> matches, TraceListFilter filter, Pattern namePattern, int limit) {
         if (namePattern == null && !hasPlainTextQuery(filter)) return;
-        var query = hasPlainTextQuery(filter) ? filter.q.trim() : null;
-        traceCollection.find(TraceServiceHelper.sortedTraceQuery(indexedFilters, limit)).stream()
-            .filter(trace -> (query == null || matchesTraceTextQuery(trace, query))
+        var query = query(filter);
+        query.skip = 0;
+        query.limit = limit;
+        traceStore.list(query).stream()
+            .filter(trace -> (filter.q == null || matchesTraceTextQuery(trace, filter.q.trim()))
                 && TraceServiceHelper.matchesNamePattern(trace, namePattern))
             .forEach(trace -> TraceServiceHelper.putTrace(matches, trace));
     }
@@ -249,24 +196,12 @@ public class TraceService {
     }
 
     public List<Map<String, Object>> facets(String field, TraceListFilter filter) {
-        var mongoField = TraceServiceHelper.mongoFieldName(field);
-        if (mongoField == null) return List.of();
+        var facet = TraceFacet.from(field);
+        if (facet == null) return List.of();
         if (requiresSearch(filter)) {
             return facetsInMemory(field, filter);
         }
-
-        var bsonFilters = buildFilters(filter);
-        // ne(null) also excludes missing fields and keeps clean index bounds (notablescan-safe on dev)
-        bsonFilters.add(Filters.ne(mongoField, null));
-        bsonFilters.add(Filters.ne(mongoField, ""));
-        var aggregate = new Aggregate<TraceFacetRow>();
-        aggregate.resultClass = TraceFacetRow.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(bsonFilters)),
-            Aggregates.group("$" + mongoField, Accumulators.sum("count", 1)),
-            Aggregates.sort(Sorts.descending("count")),
-            Aggregates.limit(FACET_LIMIT));
-        return traceCollection.aggregate(aggregate).stream()
+        return traceStore.facets(query(filter), facet, FACET_LIMIT).stream()
             .map(facetRow -> {
                 Map<String, Object> row = new LinkedHashMap<>();
                 row.put("value", facetRow.value);
@@ -296,14 +231,7 @@ public class TraceService {
     }
 
     public Trace get(String traceId) {
-        Trace trace = traceCollection.get(traceId).orElse(null);
-        if (trace == null) {
-            var query = new Query();
-            query.filter = Filters.eq("trace_id", traceId);
-            query.limit = 1;
-            var results = traceCollection.find(query);
-            trace = results.isEmpty() ? null : results.getFirst();
-        }
+        var trace = traceStore.get(traceId, traceId);
         if (trace != null && TraceServiceHelper.needsEnrichment(trace)) {
             TraceServiceHelper.enrichMetrics(trace, spans(trace.traceId));
         }
@@ -336,38 +264,26 @@ public class TraceService {
     }
 
     private List<String> traceIdsForUsers(List<String> userIds) {
-        var query = new Query();
-        query.filter = Filters.in("user_id", userIds);
-        query.sort = Sorts.descending("created_at");
-        query.limit = SCOPED_TRACE_ID_LOOKUP_LIMIT;
-        return traceCollection.find(query).stream()
-            .map(trace -> trace.traceId)
-            .filter(traceId -> traceId != null && !traceId.isEmpty())
-            .toList();
+        var query = new TraceQuery();
+        query.userIds = userIds;
+        return traceStore.traceIds(query, SCOPED_TRACE_ID_LOOKUP_LIMIT);
     }
 
     // Aggregates one session's traces for the trace-page summary bar; walks the session_id index only
     public Map<String, Object> sessionSummary(String sessionId, List<String> userIds) {
         if (userIds != null && userIds.isEmpty()) return null;
-        var filters = new ArrayList<Bson>();
-        filters.add(Filters.eq("session_id", sessionId));
-        if (userIds != null) {
-            filters.add(Filters.in("user_id", userIds));
-        }
-        var sessionFilter = filters.size() == 1 ? filters.getFirst() : Filters.and(filters);
-
-        var query = new Query();
-        query.filter = sessionFilter;
-        query.sort = Sorts.descending("created_at");
+        var query = new TraceQuery();
+        query.sessionId = sessionId;
+        query.userIds = userIds;
         query.limit = SESSION_SUMMARY_TRACE_LIMIT;
-        var traces = traceCollection.find(query);
+        var traces = traceStore.list(query);
         if (traces.isEmpty()) return null;
         TraceServiceHelper.enrichMetricsInBatch(traces, spanStore);
 
         // trace_count and first trace stay exact even when the aggregate window above is capped
-        var traceCount = traceCollection.count(sessionFilter);
+        var traceCount = traceStore.count(query);
         var latestTrace = traces.getFirst();
-        var firstTrace = traceCount > traces.size() ? findFirstTrace(sessionFilter) : traces.getLast();
+        var firstTrace = traceCount > traces.size() ? findFirstTrace(sessionId, userIds) : traces.getLast();
         Map<String, Object> session = new LinkedHashMap<>();
         session.put("session_id", sessionId);
         session.put("trace_count", traceCount);
@@ -383,16 +299,17 @@ public class TraceService {
         return session;
     }
 
-    private Trace findFirstTrace(Bson sessionFilter) {
-        var query = new Query();
-        query.filter = sessionFilter;
-        query.sort = Sorts.ascending("created_at");
+    private Trace findFirstTrace(String sessionId, List<String> userIds) {
+        var query = new TraceQuery();
+        query.sessionId = sessionId;
+        query.userIds = userIds;
+        query.ascending = true;
         query.limit = 1;
-        return traceCollection.find(query).getFirst();
+        return traceStore.list(query).getFirst();
     }
 
     public void saveTrace(Trace trace) {
-        traceCollection.insert(trace);
+        traceStore.insert(trace);
     }
 
     public void saveSpan(Span span) {
