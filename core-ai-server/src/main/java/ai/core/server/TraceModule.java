@@ -4,8 +4,6 @@ import ai.core.api.server.prompt.PromptWebService;
 import ai.core.api.server.trace.TraceWebService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.task.TaskRunner;
-import ai.core.server.trace.MongoTraceStore;
-import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.maintenance.TraceArchiveService;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
 import ai.core.server.trace.maintenance.TraceArchivingTask;
@@ -66,7 +64,6 @@ public class TraceModule extends Module {
     }
 
     private void registerTrace() {
-        bind(TraceStore.class, bind(MongoTraceStore.class));
         bind(TraceService.class);
         bind(TraceVisibilityResolver.class);
         bind(TraceAccessControl.class);
