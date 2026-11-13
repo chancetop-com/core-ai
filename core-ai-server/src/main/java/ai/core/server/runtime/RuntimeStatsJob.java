@@ -4,7 +4,6 @@ import ai.core.api.server.runtime.RuntimeStatsView;
 import ai.core.sse.SseQueueLimits;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
-import core.framework.mongo.MongoCollection;
 import core.framework.scheduler.Job;
 import core.framework.scheduler.JobContext;
 
@@ -28,7 +27,7 @@ public class RuntimeStatsJob implements Job {
     @Inject
     RuntimeCapacityGuard guard;
     @Inject
-    MongoCollection<RuntimeSample> runtimeSampleCollection;
+    RuntimeSampleStore sampleStore;
 
     @Override
     public void execute(JobContext context) {
@@ -97,7 +96,7 @@ public class RuntimeStatsJob implements Job {
         sample.directCrsLive = stats.sandboxFleet.directCrsLive;
         sample.createsTotal = stats.sandboxFleet.createsTotal;
         sample.createsFailedTotal = stats.sandboxFleet.createsFailedTotal;
-        runtimeSampleCollection.insert(sample);
+        sampleStore.insert(sample);
     }
 
     private void applyMemory(RuntimeSample sample, RuntimeStatsView.MemoryStats memory) {

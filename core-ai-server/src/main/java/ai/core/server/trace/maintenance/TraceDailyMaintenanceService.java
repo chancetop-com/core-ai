@@ -1,11 +1,12 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.trace.AnalyticsStatsStore;
 import ai.core.server.trace.TraceDailyRollupRow;
+import ai.core.server.trace.TraceDailyStatsStore;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.TraceDailyStats;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,9 +33,9 @@ public class TraceDailyMaintenanceService {
         return value != null ? value : 0.0;
     }
     @Inject
-    MongoCollection<TraceDailyStats> statsCollection;
+    TraceDailyStatsStore statsStore;
     @Inject
-    MongoCollection<AnalyticsDailyStats> analyticsStatsCollection;
+    AnalyticsStatsStore analyticsStatsStore;
     @Inject
     ai.core.server.gateway.GatewayModelStore gatewayModelStore;
     @Inject
@@ -89,24 +90,15 @@ public class TraceDailyMaintenanceService {
     }
 
     private int upsertAnalyticsStats(List<TraceDailyRollupRow> rows, LocalDate date) {
-        int created = 0;
-        int replaced = 0;
-
+        int upserted = 0;
         for (var row : rows) {
             var stats = buildAnalyticsStats(row, date);
             if (stats == null) continue;
-
-            if (analyticsStatsCollection.get(stats.id).isPresent()) {
-                analyticsStatsCollection.replace(stats);
-                replaced++;
-            } else {
-                analyticsStatsCollection.insert(stats);
-                created++;
-            }
+            analyticsStatsStore.upsert(stats);
+            upserted++;
         }
-
-        LOGGER.info("analytics daily stats aggregated, date={}, total={}, created={}, replaced={}", date, created + replaced, created, replaced);
-        return created + replaced;
+        LOGGER.info("analytics daily stats aggregated, date={}, total={}", date, upserted);
+        return upserted;
     }
 
     private AnalyticsDailyStats buildAnalyticsStats(TraceDailyRollupRow row, LocalDate date) {
@@ -149,24 +141,15 @@ public class TraceDailyMaintenanceService {
     }
 
     private int upsertStats(List<TraceDailyRollupRow> rows, LocalDate date) {
-        int created = 0;
-        int replaced = 0;
-
+        int upserted = 0;
         for (var row : rows) {
             var stats = buildStats(row, date);
             if (stats == null) continue;
-
-            if (statsCollection.get(stats.id).isPresent()) {
-                statsCollection.replace(stats);
-                replaced++;
-            } else {
-                statsCollection.insert(stats);
-                created++;
-            }
+            statsStore.upsert(stats);
+            upserted++;
         }
-
-        LOGGER.info("daily stats aggregated, date={}, total={}, created={}, replaced={}", date, created + replaced, created, replaced);
-        return created + replaced;
+        LOGGER.info("daily stats aggregated, date={}, total={}", date, upserted);
+        return upserted;
     }
 
     private TraceDailyStats buildStats(TraceDailyRollupRow row, LocalDate date) {

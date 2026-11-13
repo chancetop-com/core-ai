@@ -3,10 +3,7 @@ package ai.core.server.runtime;
 import ai.core.api.server.runtime.RuntimePodView;
 import ai.core.api.server.runtime.RuntimePodsView;
 import ai.core.api.server.runtime.RuntimeSeriesView;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import core.framework.web.exception.BadRequestException;
 
 import java.time.Duration;
@@ -31,7 +28,7 @@ public class RuntimeSampleService {
     private static final int MAX_SAMPLES = 50000;
 
     @Inject
-    MongoCollection<RuntimeSample> runtimeSampleCollection;
+    RuntimeSampleStore sampleStore;
     @Inject
     RuntimeSettingsService runtimeSettingsService;
 
@@ -73,10 +70,7 @@ public class RuntimeSampleService {
     }
 
     private List<RuntimeSample> fetch(ZonedDateTime from, ZonedDateTime to) {
-        var query = new Query();
-        query.filter = Filters.and(Filters.gte("collected_at", from), Filters.lte("collected_at", to));
-        query.limit = MAX_SAMPLES;
-        return runtimeSampleCollection.find(query);
+        return sampleStore.range(from, to, MAX_SAMPLES);
     }
 
     private long bucketStart(RuntimeSample sample, long bucketMillis) {

@@ -3,16 +3,14 @@ package ai.core.server.trace.maintenance;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceDailyStatsStore;
 import ai.core.server.trace.TraceQuery;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
-import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.service.TracePayloadStore;
-import com.mongodb.client.model.Filters;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,7 +47,7 @@ public class TraceArchiveService {
     static final int TRACE_DELETE_BATCH_SIZE = 30;
 
     @Inject
-    MongoCollection<TraceDailyStats> statsCollection;
+    TraceDailyStatsStore statsStore;
     @Inject
     TraceStore traceStore;
     @Inject
@@ -218,7 +216,7 @@ public class TraceArchiveService {
     }
 
     private long countStatsForDate(LocalDate date) {
-        return statsCollection.count(Filters.eq("date", date.atStartOfDay(UTC)));
+        return statsStore.countByDate(date.atStartOfDay(UTC));
     }
 
     private static final class ArchiveState {

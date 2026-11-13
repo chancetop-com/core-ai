@@ -3,6 +3,7 @@ package ai.core.server.trace.maintenance;
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.SpanStore;
+import ai.core.server.trace.TraceDailyStatsStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.utils.JsonUtil;
@@ -157,8 +158,8 @@ class TraceArchiveServiceTest {
         var service = new TraceArchiveService(resolver, null, "uat");
         service.maxPartUncompressedBytes = 4096;
 
-        service.statsCollection = mockCollection();
-        when(service.statsCollection.count(any(Bson.class))).thenReturn(1L);
+        service.statsStore = mock(TraceDailyStatsStore.class);
+        when(service.statsStore.countByDate(any())).thenReturn(1L);
         MongoCollection<Trace> traceCollection = mockCollection();
         service.traceStore = ai.core.server.trace.MongoTraceStore.of(traceCollection);
         when(traceCollection.count(any(Bson.class))).thenReturn((long) traces.size());

@@ -1,20 +1,12 @@
 package ai.core.server.analytics;
 
-import ai.core.server.trace.domain.AnalyticsDailyStats;
+import ai.core.server.trace.AnalyticsStatsStore;
 import ai.core.server.trace.TraceDimension;
 import ai.core.server.trace.TraceDimensionTrendRow;
 import ai.core.server.trace.TraceStatsRow;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.TraceTrendRow;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Aggregates;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.Aggregate;
-import core.framework.mongo.MongoCollection;
-import org.bson.Document;
-import org.bson.conversions.Bson;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -27,6 +19,7 @@ import static ai.core.server.analytics.AdminAnalyticsService.Dimension.MODEL;
 import static ai.core.server.analytics.AdminAnalyticsService.Dimension.PROVIDER;
 import static ai.core.server.analytics.AdminAnalyticsService.Dimension.SOURCE;
 import static ai.core.server.analytics.AdminAnalyticsService.Dimension.USER;
+
 
 /**
  * Admin analytics query service.
@@ -51,7 +44,7 @@ public class AdminAnalyticsService {
     }
 
     @Inject
-    MongoCollection<AnalyticsDailyStats> analyticsStatsCollection;
+    AnalyticsStatsStore analyticsStatsStore;
     @Inject
     TraceStore traceStore;
     @Inject
@@ -68,12 +61,12 @@ public class AdminAnalyticsService {
     }
 
     private AnalyticsModels.GlobalSummary globalFromStats(DateRange bounds) {
-        var rows = AnalyticsRowMapper.statsRows(aggregateStats(bounds, null));
+        var rows = aggregateStats(bounds, null);
         var summary = buildGlobalSummary(rows);
         var prevBounds = AnalyticsDateUtils.computePrevRange(bounds);
         AnalyticsModels.GlobalSummary prevSummary = null;
         if (prevBounds != null) {
-            var prevRows = AnalyticsRowMapper.statsRows(aggregateStats(prevBounds, null));
+            var prevRows = aggregateStats(prevBounds, null);
             prevSummary = buildGlobalSummary(prevRows);
         }
         return new AnalyticsModels.GlobalSummary(
@@ -105,7 +98,7 @@ public class AdminAnalyticsService {
 
     private List<AnalyticsModels.TrendPoint> trendFromStats(DateRange bounds) {
         boolean hourly = AnalyticsDateUtils.isHourlyRange(bounds);
-        var rows = AnalyticsRowMapper.trendRows(aggregateStatsTrend(bounds, hourly));
+        var rows = aggregateStatsTrend(bounds, hourly);
         return buildTrendPoints(rows);
     }
 
@@ -146,7 +139,7 @@ public class AdminAnalyticsService {
             var providerIdToName = mappingService.loadProviderIdToNameMapping();
             rows = aggregateRealtimeTraces(bounds, dim, modelToProvider, providerIdToName);
         } else {
-            rows = AnalyticsRowMapper.statsRows(aggregateStats(bounds, dim));
+            rows = aggregateStats(bounds, dim);
         }
         var totals = buildGlobalSummary(rows);
         Map<String, String> userIdToName = dim == USER ? mappingService.loadUserIdToNameMapping() : Map.of();
@@ -162,34 +155,21 @@ public class AdminAnalyticsService {
         if ("realtime".equals(mode)) {
             return buildDimensionTrendPoints(dimensionTrendFromTraces(dim, bounds, keys));
         }
-        return buildDimensionTrendPoints(AnalyticsRowMapper.dimensionTrendRows(dimensionTrendFromStats(dim, bounds, keys)));
+        return buildDimensionTrendPoints(dimensionTrendFromStats(dim, bounds, keys));
     }
 
     // === Shared aggregation helpers ===
 
-    private List<Document> aggregateStats(DateRange bounds, Dimension dim) {
-        var match = Aggregates.match(Filters.and(
-            Filters.gte("date", bounds.from()),
-            Filters.lt("date", bounds.to())
-        ));
-        var groupField = dim != null ? "$" + dim.field : null;
-        var pipeline = buildStatsPipeline(match, groupField, false);
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = pipeline.stream().toList();
-        return analyticsStatsCollection.aggregate(aggregate);
+    private List<TraceStatsRow> aggregateStats(DateRange bounds, Dimension dim) {
+        return analyticsStatsStore.stats(bounds.from(), bounds.to(), dimension(dim));
     }
 
-    private List<Document> aggregateStatsTrend(DateRange bounds, boolean hourly) {
-        var match = Aggregates.match(Filters.and(
-            Filters.gte("date", bounds.from()),
-            Filters.lt("date", bounds.to())
-        ));
-        var pipeline = buildTrendPipeline(match, hourly ? "date" : null);
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = pipeline.stream().toList();
-        return analyticsStatsCollection.aggregate(aggregate);
+    private List<TraceTrendRow> aggregateStatsTrend(DateRange bounds, boolean hourly) {
+        return analyticsStatsStore.trend(bounds.from(), bounds.to(), hourly);
+    }
+
+    private TraceDimension dimension(Dimension dim) {
+        return dim != null ? TraceDimension.valueOf(dim.name()) : null;
     }
 
     private List<TraceStatsRow> aggregateRealtimeTraces(DateRange bounds, Dimension dim, Map<String, String> modelToProvider, Map<String, String> providerIdToName) {
@@ -199,53 +179,6 @@ public class AdminAnalyticsService {
 
     private List<TraceTrendRow> aggregateRealtimeTracesTrend(DateRange bounds, Map<String, String> modelToProvider, Map<String, String> providerIdToName) {
         return traceStore.realtimeTrend(bounds.from(), bounds.to(), modelToProvider, providerIdToName);
-    }
-
-    private List<Bson> buildStatsPipeline(Bson match, String groupField, boolean realtime) {
-        var pipeline = new ArrayList<Bson>();
-        pipeline.add(match);
-        Object groupId = groupField != null ? groupField : null;
-        var group = Aggregates.group(
-            groupId,
-            Accumulators.sum("input_tokens", realtime ? "$input_tokens" : "$input_tokens"),
-            Accumulators.sum("output_tokens", realtime ? "$output_tokens" : "$output_tokens"),
-            Accumulators.sum("total_tokens", realtime ? "$total_tokens" : "$total_tokens"),
-            Accumulators.sum("cached_tokens", realtime ? "$cached_tokens" : "$cached_tokens"),
-            Accumulators.sum("cost_usd", realtime ? "$cost_usd" : "$cost_usd"),
-            Accumulators.sum("call_count", realtime ? 1L : "$call_count"),
-            Accumulators.avg("avg_total_tokens", realtime ? "$total_tokens" : "$avg_total_tokens"),
-            Accumulators.avg("avg_cost_usd", realtime ? "$cost_usd" : "$avg_cost_usd"),
-            Accumulators.max("max_total_tokens", realtime ? "$total_tokens" : "$max_total_tokens"),
-            Accumulators.max("max_cost_usd", realtime ? "$cost_usd" : "$max_cost_usd"),
-            Accumulators.max("p90_total_tokens", realtime ? "$total_tokens" : "$p90_total_tokens"),
-            Accumulators.first("agent_name", "$agent_name"),
-            Accumulators.first("provider_name", "$provider_name")
-        );
-        pipeline.add(group);
-        pipeline.add(Aggregates.sort(Sorts.descending("total_tokens")));
-        return pipeline;
-    }
-
-    private List<Bson> buildTrendPipeline(Bson match, String dateField) {
-        var pipeline = new ArrayList<Bson>();
-        pipeline.add(match);
-        Document groupId;
-        if (dateField != null) {
-            groupId = new Document("$dateTrunc",
-                new Document("date", "$" + dateField).append("unit", "hour"));
-        } else {
-            groupId = new Document("date", "$date");
-        }
-        pipeline.add(Aggregates.group(
-            groupId,
-            Accumulators.sum("input_tokens", "$input_tokens"),
-            Accumulators.sum("output_tokens", "$output_tokens"),
-            Accumulators.sum("cached_tokens", "$cached_tokens"),
-            Accumulators.sum("cost_usd", "$cost_usd"),
-            Accumulators.sum("call_count", "$call_count")
-        ));
-        pipeline.add(Aggregates.sort(Sorts.ascending("_id")));
-        return pipeline;
     }
 
     // === Response builders ===
@@ -346,27 +279,8 @@ public class AdminAnalyticsService {
 
     // === Dimension trend ===
 
-    private List<Document> dimensionTrendFromStats(Dimension dim, DateRange bounds, List<String> keys) {
-        var match = Aggregates.match(Filters.and(
-            Filters.gte("date", bounds.from()),
-            Filters.lt("date", bounds.to()),
-            Filters.in(dim.field, keys)
-        ));
-        var pipeline = new ArrayList<Bson>();
-        pipeline.add(match);
-        pipeline.add(Aggregates.group(
-            new Document("dim", "$" + dim.field).append("date", "$date"),
-            Accumulators.sum("input_tokens", "$input_tokens"),
-            Accumulators.sum("output_tokens", "$output_tokens"),
-            Accumulators.sum("cached_tokens", "$cached_tokens"),
-            Accumulators.sum("cost_usd", "$cost_usd"),
-            Accumulators.sum("call_count", "$call_count")
-        ));
-        pipeline.add(Aggregates.sort(Sorts.ascending("_id.date")));
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = pipeline;
-        return analyticsStatsCollection.aggregate(aggregate);
+    private List<TraceDimensionTrendRow> dimensionTrendFromStats(Dimension dim, DateRange bounds, List<String> keys) {
+        return analyticsStatsStore.dimensionTrend(dimension(dim), bounds.from(), bounds.to(), keys);
     }
 
     private List<TraceDimensionTrendRow> dimensionTrendFromTraces(Dimension dim, DateRange bounds, List<String> keys) {

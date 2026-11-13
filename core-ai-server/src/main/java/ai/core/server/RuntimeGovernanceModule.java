@@ -2,11 +2,16 @@ package ai.core.server;
 
 import ai.core.api.server.runtime.RuntimeWebService;
 import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.server.pg.StoreMode;
 import ai.core.server.run.AgentRunner;
 import ai.core.server.runtime.AdmissionInterceptor;
+import ai.core.server.runtime.MongoRuntimeSampleStore;
+import ai.core.server.runtime.PgRuntimeSampleStore;
 import ai.core.server.runtime.RuntimeCapacityGuard;
 import ai.core.server.runtime.RuntimeLimitsProvider;
+import ai.core.server.runtime.RuntimeSampleMigrationService;
 import ai.core.server.runtime.RuntimeSampleService;
+import ai.core.server.runtime.RuntimeSampleStore;
 import ai.core.server.runtime.RuntimeSettingsService;
 import ai.core.server.runtime.RuntimeStatsJob;
 import ai.core.server.runtime.RuntimeStatsService;
@@ -35,6 +40,7 @@ import java.time.Duration;
 public class RuntimeGovernanceModule extends Module {
     @Override
     protected void initialize() {
+        registerSampleStore();
         var limitsProvider = new RuntimeLimitsProvider(bean(SystemSettingsService.class));
         bind(limitsProvider);
         var guard = new RuntimeCapacityGuard(limitsProvider, bean(TurnStateRegistry.class));
@@ -67,5 +73,17 @@ public class RuntimeGovernanceModule extends Module {
         // gauges into the action log (Kibana), so watermarks and refusals are visible without the UI
         schedule().fixedRate("runtime-stats", bind(RuntimeStatsJob.class), Duration.ofMinutes(1));
         api().service(RuntimeWebService.class, bind(RuntimeWebServiceImpl.class));
+    }
+
+    private void registerSampleStore() {
+        if (StoreMode.postgres(property("sys.runtime.store.mode").orElse("auto"),
+            property("sys.store.mode").orElse("mongo"), "sys.runtime.store.mode")) {
+            bind(RuntimeSampleStore.class, bind(PgRuntimeSampleStore.class));
+            var migration = bind(RuntimeSampleMigrationService.class);
+            boolean copyLegacy = !"skip".equals(property("sys.runtime.migration").orElse("copy"));
+            onStartup(() -> migration.start(copyLegacy));
+        } else {
+            bind(RuntimeSampleStore.class, bind(MongoRuntimeSampleStore.class));
+        }
     }
 }

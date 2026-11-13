@@ -140,6 +140,8 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.trace.PgTraceStatsRow.class);
         db().view(ai.core.server.trace.PgTraceTrendRow.class);
         db().view(ai.core.server.trace.PgTraceDimensionTrendRow.class);
+        db().view(ai.core.server.trace.PgTraceDailyUsageRow.class);
+        db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
     }
 
     private void registerWorkflowViews() {

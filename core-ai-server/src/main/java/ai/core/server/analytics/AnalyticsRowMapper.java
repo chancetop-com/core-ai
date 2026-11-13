@@ -17,8 +17,8 @@ import java.util.List;
  *
  * @author stephen
  */
-final class AnalyticsRowMapper {
-    static List<TraceStatsRow> statsRows(List<Document> rows) {
+public final class AnalyticsRowMapper {
+    public static List<TraceStatsRow> statsRows(List<Document> rows) {
         var converted = new ArrayList<TraceStatsRow>(rows.size());
         for (var row : rows) {
             var value = new TraceStatsRow();
@@ -41,7 +41,7 @@ final class AnalyticsRowMapper {
         return converted;
     }
 
-    static List<TraceTrendRow> trendRows(List<Document> rows) {
+    public static List<TraceTrendRow> trendRows(List<Document> rows) {
         var converted = new ArrayList<TraceTrendRow>(rows.size());
         for (var row : rows) {
             var value = new TraceTrendRow();
@@ -56,7 +56,7 @@ final class AnalyticsRowMapper {
         return converted;
     }
 
-    static List<TraceDimensionTrendRow> dimensionTrendRows(List<Document> rows) {
+    public static List<TraceDimensionTrendRow> dimensionTrendRows(List<Document> rows) {
         var converted = new ArrayList<TraceDimensionTrendRow>(rows.size());
         for (var row : rows) {
             var id = row.get("_id", Document.class);
