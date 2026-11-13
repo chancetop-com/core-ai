@@ -61,6 +61,8 @@ interface DesktopSettings {
   /** IM bindings: channel/account/peer -> workspace. */
   channelBindings?: ChannelBinding[];
   backgroundScheduling?: boolean;
+  /** Start the installed app when the user signs in (default on). The window still closes to tray. */
+  launchAtLogin?: boolean;
   /** Bundled engine version whose standalone CLI copies this install has already refreshed. */
   cliSyncedEngineVersion?: string;
 }
@@ -102,6 +104,18 @@ function applyColorScheme(): void {
   nativeTheme.themeSource = normalizeColorScheme(settings.colorScheme);
   mainWindow?.setBackgroundColor(windowBackground());
 }
+/**
+ * Register/unregister the OS login item. Only packaged builds may register: a dev run would point
+ * the entry at the bare Electron binary instead of the installed app. Linux has no Electron API.
+ */
+function applyLaunchAtLogin(): void {
+  if (!app.isPackaged || (process.platform !== 'win32' && process.platform !== 'darwin')) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin !== false });
+  } catch (error) {
+    console.error(`[startup] could not update the login item: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
 let windowStateTimer: ReturnType<typeof setTimeout> | null = null;
 function normalizeWindowBounds(value: unknown): WindowBounds | null {
   if (!value || typeof value !== 'object') return null;
@@ -141,6 +155,7 @@ function normalizeSettings(loaded: DesktopSettings): DesktopSettings {
   const result = { ...loaded };
   if (result.computerUse === undefined) result.computerUse = true;
   if (result.browserSkillEnabled === undefined) result.browserSkillEnabled = true;
+  if (result.launchAtLogin === undefined) result.launchAtLogin = true;
   const list = Array.isArray(result.workspaces) ? result.workspaces.filter((entry): entry is string => typeof entry === 'string') : [];
   if (result.lastWorkspace && !list.includes(result.lastWorkspace)) list.unshift(result.lastWorkspace);
   result.workspaces = list.slice(0, 8);
@@ -572,12 +587,11 @@ function createWindow(): void {
   mainWindow.on('maximize', scheduleWindowStateSave);
   mainWindow.on('unmaximize', scheduleWindowStateSave);
   mainWindow.on('close', (event) => {
-    if (settings.backgroundScheduling && tray && !quitting) {
-      event.preventDefault();
-      mainWindow?.hide();
-      return;
-    }
     flushWindowStateSave();
+    // The X button parks the app in the system tray instead of quitting; the tray menu is the way out.
+    if (quitting || !tray) return;
+    event.preventDefault();
+    mainWindow?.hide();
   });
   void mainWindow.loadFile(rendererPath);
   // Model output is rendered as sanitized markdown, and the sanitizer allows unknown protocols so
@@ -632,47 +646,43 @@ async function attachPreviews(attachments: StagedAttachment[]): Promise<void> {
   }));
 }
 
-function configureBackgroundScheduling(): void {
-  if (!settings.backgroundScheduling) {
-    scheduleWaker?.stop();
-    scheduleWaker = null;
-    if (tray) {
-      tray.destroy();
-      tray = null;
-    }
-    if (mainWindow?.isVisible() === false) mainWindow.show();
-    return;
-  }
-  if (!tray) {
+function showMainWindow(): void {
+  if (!mainWindow) createWindow();
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show();
+  mainWindow?.focus();
+}
+/** The tray outlives the window: closing the window only hides it, so the icon must always exist. */
+function ensureTray(): void {
+  if (tray) return;
+  try {
     const icon = nativeImage.createFromPath(path.join(__dirname, 'logo.png'));
     tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
-    tray.setToolTip('core-ai-desktop — scheduled tasks');
-    tray.on('click', () => {
-      if (!mainWindow) createWindow();
-      mainWindow?.show();
-      mainWindow?.focus();
-    });
+    tray.setToolTip('core-ai-desktop');
+    tray.on('click', showMainWindow);
     tray.setContextMenu(Menu.buildFromTemplate([
-      {
-        label: 'Open core-ai-desktop',
-        click: () => {
-          if (!mainWindow) createWindow();
-          mainWindow?.show();
-          mainWindow?.focus();
-        },
-      },
+      { label: 'Open core-ai-desktop', click: showMainWindow },
       {
         label: 'Scheduled tasks',
         click: () => {
-          if (!mainWindow) createWindow();
-          mainWindow?.show();
-          mainWindow?.focus();
+          showMainWindow();
           void mainWindow?.webContents.executeJavaScript("window.dispatchEvent(new CustomEvent('coreai-nav-go', { detail: 'schedules' }))");
         },
       },
       { type: 'separator' },
       { label: 'Quit', click: () => app.quit() },
     ]));
+  } catch (error) {
+    // Without a tray the window must keep quitting on close, so the app is never left unreachable.
+    console.error(`[tray] could not create the tray icon: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function configureBackgroundScheduling(): void {
+  if (!settings.backgroundScheduling) {
+    scheduleWaker?.stop();
+    scheduleWaker = null;
+    return;
   }
   if (!scheduleWaker && supervisor) {
     scheduleWaker = new ScheduleWaker({
@@ -692,13 +702,14 @@ function registerIpc(): void {
     engineVersion: readEngineManifest(resolveEnginePath())?.version ?? null,
     electron: process.versions.electron, node: process.versions.node, userData: app.getPath('userData'), homedir: os.homedir(),
     defaultWorkspacePath: defaultWorkspacePath(), defaultExists: existsSync(defaultWorkspacePath()), startupWorkspace: resolveStartupWorkspace(),
-    schedulesFile: path.join(os.homedir(), '.core-ai', 'schedules.json'),
+    schedulesFile: path.join(os.homedir(), '.core-ai', 'schedules.json'), packaged: app.isPackaged, platform: process.platform,
   }));
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('settings:set', async (_event, patch: DesktopSettings) => {
     const previousPolicy = settings.approvalPolicy ?? 'ask';
     settings = { ...settings, ...patch };
     if (typeof patch.backgroundScheduling === 'boolean') configureBackgroundScheduling();
+    if (typeof patch.launchAtLogin === 'boolean') applyLaunchAtLogin();
     saveSettings();
     applyColorScheme();
     let skillsChanged = false;
@@ -1084,6 +1095,8 @@ else {
     settings = loadSettings();
     allowMicrophonePermission();
     applyColorScheme();
+    applyLaunchAtLogin();
+    ensureTray();
     nativeTheme.on('updated', () => mainWindow?.setBackgroundColor(windowBackground()));
     browserManager = new BrowserManager({
       onState: (status) => send('browser:state', status),
@@ -1199,6 +1212,10 @@ else {
       .catch(() => undefined);
     createWindow();
     browserManager.attachWindow(mainWindow);
+    app.on('activate', () => {
+      if (!mainWindow) createWindow();
+      else showMainWindow();
+    });
     if (process.env.COREAI_BROWSER_AUTOSTART === '1') {
       void browserManager.start().catch((error: Error) => {
         console.error(`[browser] autostart failed: ${error.message}`);
@@ -1206,7 +1223,7 @@ else {
     }
   });
   app.on('window-all-closed', () => {
-    if (settings.backgroundScheduling && tray) return;
+    if (tray) return;
     app.quit();
   });
   app.on('before-quit', (event) => {

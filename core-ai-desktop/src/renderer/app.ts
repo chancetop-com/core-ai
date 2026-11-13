@@ -5617,8 +5617,8 @@ async function renderSchedulesPanel(): Promise<HTMLElement> {
   state.info.backgroundScheduling = backgroundSettings?.backgroundScheduling === true;
   if (!state.info.backgroundScheduling) {
     const notice = el('div', 'notice');
-    notice.append(document.createTextNode('Tasks stop when you close this window. '));
-    const settingsButton = el('button', 'btn small', 'Run in background');
+    notice.append(document.createTextNode('Background scheduling is off, so idle workspaces are not woken to run due tasks. '));
+    const settingsButton = el('button', 'btn small', 'Enable background scheduling');
     settingsButton.onclick = () => { state.nav = 'settings'; renderSidebar(); void renderContent(); };
     notice.append(settingsButton);
     body.append(notice);
@@ -6870,12 +6870,31 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   }
   body.append(grid);
 
+  const currentSettings = await window.coreai.getSettings();
+  body.append(el('h2', undefined, 'Desktop'));
+  const loginSupported = state.info?.platform === 'win32' || state.info?.platform === 'darwin';
+  if (loginSupported) {
+    const launchLabel = el('label', 'schedule-filter');
+    const launchToggle = el('input') as HTMLInputElement;
+    launchToggle.type = 'checkbox';
+    launchToggle.checked = currentSettings?.launchAtLogin !== false;
+    launchToggle.onchange = async () => {
+      const saved = await window.coreai.setSettings({ launchAtLogin: launchToggle.checked });
+      launchToggle.checked = saved?.launchAtLogin !== false;
+      toast(launchToggle.checked ? 'core-ai-desktop will start when you sign in' : 'Start at login disabled');
+    };
+    launchLabel.append(launchToggle, document.createTextNode('Start core-ai-desktop when I sign in'));
+    body.append(launchLabel);
+  }
+  body.append(el('div', 'hint', `Closing the window keeps core-ai-desktop running in the system tray; use the tray menu to quit.${
+    loginSupported && state.info?.packaged === false ? ' Start at login applies to the installed build.' : ''
+  }`));
+
   body.append(el('h2', undefined, 'Scheduled tasks'));
-  body.append(el('div', 'hint', 'Keep the app in the system tray so local scheduled tasks can execute after the window is closed.'));
+  body.append(el('div', 'hint', 'Wake idle workspaces so local scheduled tasks run while the main window is closed.'));
   const backgroundLabel = el('label', 'schedule-filter');
   const backgroundToggle = el('input') as HTMLInputElement;
   backgroundToggle.type = 'checkbox';
-  const currentSettings = await window.coreai.getSettings();
   backgroundToggle.checked = currentSettings?.backgroundScheduling === true;
   backgroundToggle.onchange = async () => {
     await window.coreai.setSettings({ backgroundScheduling: backgroundToggle.checked });
