@@ -132,6 +132,14 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.trace.PgSpanMigrationLockRow.class);
         db().view(ai.core.server.trace.PgSpanMigrationMarkerRow.class);
         db().view(ai.core.server.trace.PgMigrationProgressRow.class);
+        db().view(ai.core.server.trace.PgTraceRow.class);
+        db().view(ai.core.server.trace.PgTraceFacetRow.class);
+        db().view(ai.core.server.trace.PgTraceAggregateRow.class);
+        db().view(ai.core.server.trace.PgTraceTraceIdRow.class);
+        db().view(ai.core.server.trace.PgTraceRollupRow.class);
+        db().view(ai.core.server.trace.PgTraceStatsRow.class);
+        db().view(ai.core.server.trace.PgTraceTrendRow.class);
+        db().view(ai.core.server.trace.PgTraceDimensionTrendRow.class);
     }
 
     private void registerWorkflowViews() {
