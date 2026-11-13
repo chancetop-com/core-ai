@@ -17,13 +17,21 @@ import java.util.List;
  * instead, so environments opt out with {@code sys.trace.span.migration=skip}; new spans always
  * go to the active store.
  *
+ * <p>The copy runs after startup rather than inside it. A span can carry megabytes of payload, and
+ * the whole history is too large to finish within the startup watchdog and to commit as one
+ * transaction. Each page commits its own transaction and advances a cursor row, so a pod restart
+ * resumes from the last committed page instead of copying everything again.
+ *
  * @author stephen
  */
 public class SpanMigrationService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SpanMigrationService.class);
     private static final String LOCK_KEY = "span_migration";
     private static final String MARKER = "spans_v1";
-    private static final int PAGE_SIZE = 200;
+    // bounded by payload, not just row count: a page is held in the JVM while PostgreSQL writes it
+    private static final int PAGE_SIZE = 50;
+    private static final long LOCK_RETRY_DELAY_MS = 5_000L;
+    private static final long ERROR_RETRY_DELAY_MS = 30_000L;
 
     @Inject
     MongoCollection<Span> spanCollection;
@@ -32,46 +40,71 @@ public class SpanMigrationService {
     @Inject
     Database database;
 
-    public void migrate(boolean copyLegacySpans) {
+    public void start(boolean copyLegacySpans) {
         if (!copyLegacySpans) {
             LOGGER.info("span migration skipped by configuration, legacy spans stay archived");
             return;
         }
-        try (var transaction = database.beginTransaction()) {
-            var lock = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired",
-                    PgSpanMigrationLockRow.class, LOCK_KEY).orElse(null);
-            if (lock == null || !Boolean.TRUE.equals(lock.acquired)) {
-                transaction.rollback();
-                LOGGER.info("span migration skipped, another instance holds the lock");
-                return;
+        Thread.ofVirtual().name("span-migration").start(this::run);
+    }
+
+    private void run() {
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                if (migrationDone()) {
+                    LOGGER.info("span migration already complete, nothing to copy");
+                    return;
+                }
+                List<Span> page = page(cursor());
+                if (page.isEmpty()) {
+                    if (finish()) return;
+                    sleep(LOCK_RETRY_DELAY_MS);
+                } else if (!copy(page)) {
+                    sleep(LOCK_RETRY_DELAY_MS);
+                }
+            } catch (RuntimeException e) {
+                LOGGER.error("span migration failed, retrying in {}s", ERROR_RETRY_DELAY_MS / 1000, e);
+                sleep(ERROR_RETRY_DELAY_MS);
             }
-            long count = copy();
-            insertMarker();
-            transaction.commit();
-            LOGGER.info("span migration finished, spans={}", count);
-        } catch (RuntimeException e) {
-            // the backfill is best effort: a failure must not keep the instance from starting,
-            // and the copy simply retries on the next start
-            LOGGER.warn("span migration failed, legacy spans stay in mongo until the next attempt", e);
         }
     }
 
-    private long copy() {
-        if (migrationDone()) return 0;
-        long count = 0;
-        String lastId = "";
-        while (true) {
-            var query = new Query();
-            query.filter = Filters.gt("_id", lastId);
-            query.sort = Sorts.ascending("_id");
-            query.limit = PAGE_SIZE;
-            List<Span> page = spanCollection.find(query);
-            if (page.isEmpty()) break;
+    /**
+     * Copies one page and records its last id in the same transaction, so the cursor never runs
+     * ahead of the rows that were actually written.
+     */
+    private boolean copy(List<Span> page) {
+        try (var transaction = database.beginTransaction()) {
+            if (!lock()) {
+                transaction.rollback();
+                return false;
+            }
             spanStore.bulkInsert(page);
-            lastId = page.getLast().id;
-            count += page.size();
+            saveCursor(page.getLast().id);
+            transaction.commit();
+            return true;
         }
-        return count;
+    }
+
+    private boolean finish() {
+        try (var transaction = database.beginTransaction()) {
+            if (!lock()) {
+                transaction.rollback();
+                return false;
+            }
+            database.execute("INSERT INTO app.g2_migration_markers (id, completed_at) VALUES (?, now())"
+                    + " ON CONFLICT DO NOTHING", MARKER);
+            database.execute("DELETE FROM app.migration_progress WHERE id = ?", MARKER);
+            transaction.commit();
+            LOGGER.info("span migration finished");
+            return true;
+        }
+    }
+
+    private boolean lock() {
+        var lock = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired",
+                PgSpanMigrationLockRow.class, LOCK_KEY).orElse(null);
+        return lock != null && Boolean.TRUE.equals(lock.acquired);
     }
 
     private boolean migrationDone() {
@@ -79,9 +112,29 @@ public class SpanMigrationService {
                 PgSpanMigrationMarkerRow.class, MARKER).isPresent();
     }
 
-    private void insertMarker() {
-        if (!migrationDone()) {
-            database.execute("INSERT INTO app.g2_migration_markers (id, completed_at) VALUES (?, now())", MARKER);
+    private String cursor() {
+        return database.selectOne("SELECT last_key FROM app.migration_progress WHERE id = ?",
+                PgMigrationProgressRow.class, MARKER).map(row -> row.lastKey).orElse("");
+    }
+
+    private List<Span> page(String cursor) {
+        var query = new Query();
+        query.filter = Filters.gt("_id", cursor);
+        query.sort = Sorts.ascending("_id");
+        query.limit = PAGE_SIZE;
+        return spanCollection.find(query);
+    }
+
+    private void saveCursor(String lastKey) {
+        database.execute("INSERT INTO app.migration_progress (id, last_key, updated_at) VALUES (?, ?, now())"
+                + " ON CONFLICT (id) DO UPDATE SET last_key = EXCLUDED.last_key, updated_at = now()", MARKER, lastKey);
+    }
+
+    private void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 }

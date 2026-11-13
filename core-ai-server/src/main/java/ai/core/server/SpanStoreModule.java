@@ -16,7 +16,7 @@ public class SpanStoreModule extends Module {
             bind(SpanStore.class, bind(PgSpanStore.class));
             boolean copyLegacySpans = !"skip".equals(property("sys.trace.span.migration").orElse("copy"));
             var migration = bind(SpanMigrationService.class);
-            onStartup(() -> migration.migrate(copyLegacySpans));
+            onStartup(() -> migration.start(copyLegacySpans));
         } else {
             bind(SpanStore.class, bind(MongoSpanStore.class));
         }
