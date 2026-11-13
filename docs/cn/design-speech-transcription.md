@@ -1,8 +1,10 @@
 # 语音转写（Speech-to-Text）设计
 
-> 实现状态（2026-11-12）：服务端 `POST /api/speech/transcriptions`、`GET /api/speech/models`；CLI
-> `core-ai-cli speech transcribe|models` 与 `transcribe_audio` builtin；桌面 composer 麦克风按钮；
-> 网关 `audio.transcriptions` 端点与 `OPENAI_AUDIO` 协议。单测覆盖客户端 multipart、路由/回退、
+> 实现状态（2026-11-13）：服务端 `POST /api/speech/transcriptions`、`GET /api/speech/models`、
+> `POST /api/speech/synthesis`、`GET /api/speech/synthesis/models`；CLI `core-ai-cli speech
+> transcribe|synthesize|models` 与 `transcribe_audio` builtin；桌面 composer 麦克风按钮；网关
+> `audio.transcriptions` / `audio.speech` 端点，支持 OpenAI、Azure OpenAI、Google Cloud Speech 与
+> Azure Speech 回退；默认模型在 System Settings 里按方向配置。单测覆盖客户端 multipart、路由/回退、
 > 控制器解析和 WAV 编码。
 
 ## 1. 目标与非目标
@@ -94,6 +96,21 @@ Agent transcribe_audio ┘                         │
 Azure fast transcription 会带时间信息。`speaker` 仅在 provider 开启说话人分离时出现
 （Azure fast transcription、`*-diarize` 模型）。
 
+`POST /api/speech/synthesis`（`application/json`）：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `text` | 是 | 要合成的文本 |
+| `model` | 否 | `/api/speech/synthesis/models` 返回的 `modelId`；省略用 System Settings 默认 |
+| `voice` | 否 | provider voice（如 `alloy`、`zh-CN-XiaoxiaoNeural`）；省略用 provider 默认 |
+| `language` | 否 | BCP-47；Azure 回退时用来选默认 voice |
+| `format` | 否 | `mp3` / `wav` / `opus` 等；默认 `mp3` |
+| `speed` | 否 | 语速倍率 |
+| `instructions` | 否 | 支持 `gpt-4o-*-tts` 一类模型的情感/语气指令 |
+
+响应是音频二进制，模型、provider、voice 放在 `x-speech-model` / `x-speech-provider` /
+`x-speech-voice` 响应头，调用方不需要解析 body 就能命名文件。
+
 ### 2.3 CLI
 
 - `core-ai-cli speech models`：打印当前 server 可用的转写模型和默认项。
@@ -118,13 +135,15 @@ Azure fast transcription 会带时间信息。`speaker` 仅在 provider 开启�
 
 ## 3. 配置方式
 
-**方式 A：网关音频模型（推荐用于 OpenAI/Azure OpenAI/LiteLLM）**
+**方式 A：网关音频模型（推荐用于 OpenAI/Azure OpenAI/Google Cloud Speech）**
 
 1. 在 Gateway Providers 里新建或复用 OpenAI 兼容 provider；`mediaProtocol` 可留 Automatic（openai/azure
-   类型会自动识别）或显式选 `OPENAI_AUDIO`。
+   类型会自动识别）或显式选 `OPENAI_AUDIO`。Google Cloud Speech 选 `Google Cloud Speech` provider，
+   填 API key 或 service account；`mediaProtocol` 选 `GOOGLE_SPEECH`。
 2. 在 Models 里新建模型，如 `modelId=whisper-1`、`upstreamModel=whisper-1`，`endpointTypes` 勾选
-   **Speech to Text**（`audio.transcriptions`）。
-3. `core-ai-cli speech models` 应能看到该模型；不带 `--model` 时按优先级取第一个。
+   **Speech to Text**（`audio.transcriptions`）；TTS 模型勾 **Text to Speech**（`audio.speech`）。
+3. 在 System Settings → Media & Tools 的 **Speech to text model** / **Text to speech model**
+   选择默认模型；留空时按优先级取该端点的第一个模型。默认值按每次请求实时解析，改网关模型无需重启。
 
 **方式 B：Azure Speech 回退**
 
