@@ -12,7 +12,7 @@ import core.framework.module.Module;
 public class SpanStoreModule extends Module {
     @Override
     protected void initialize() {
-        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+        if (postgresStore()) {
             bind(SpanStore.class, bind(PgSpanStore.class));
             boolean copyLegacySpans = !"skip".equals(property("sys.trace.span.migration").orElse("copy"));
             var migration = bind(SpanMigrationService.class);
@@ -20,5 +20,20 @@ public class SpanStoreModule extends Module {
         } else {
             bind(SpanStore.class, bind(MongoSpanStore.class));
         }
+    }
+
+    private boolean postgresStore() {
+        var globalMode = property("sys.store.mode").orElse("mongo");
+        return switch (property("sys.trace.span.store.mode").orElse("auto")) {
+            case "auto" -> "pg".equals(globalMode);
+            case "mongo" -> false;
+            case "pg" -> {
+                if (!"pg".equals(globalMode)) {
+                    throw new IllegalArgumentException("sys.trace.span.store.mode=pg requires sys.store.mode=pg");
+                }
+                yield true;
+            }
+            default -> throw new IllegalArgumentException("sys.trace.span.store.mode must be auto, mongo, or pg");
+        };
     }
 }
