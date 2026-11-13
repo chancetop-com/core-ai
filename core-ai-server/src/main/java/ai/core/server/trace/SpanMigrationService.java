@@ -49,6 +49,7 @@ public class SpanMigrationService {
     }
 
     private void run() {
+        LOGGER.info("span migration started");
         while (!Thread.currentThread().isInterrupted()) {
             try {
                 if (migrationDone()) {
@@ -62,7 +63,7 @@ public class SpanMigrationService {
                 } else if (!copy(page)) {
                     sleep(LOCK_RETRY_DELAY_MS);
                 }
-            } catch (RuntimeException e) {
+            } catch (RuntimeException | Error e) {
                 LOGGER.error("span migration failed, retrying in {}s", ERROR_RETRY_DELAY_MS / 1000, e);
                 sleep(ERROR_RETRY_DELAY_MS);
             }
