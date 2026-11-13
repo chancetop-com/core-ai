@@ -59,7 +59,7 @@ public class PgTraceAnalytics {
         + ", MAX(total_tokens) AS max_total_tokens"
         + ", MAX(cost_usd) AS max_cost_usd"
         // the realtime path has always reported the maximum here
-        + ", MAX(total_tokens) AS p90_total_tokens";
+        + ", MAX(total_tokens)::float8 AS p90_total_tokens";
 
     private static final String TREND_METRICS = ", SUM(COALESCE(input_tokens, 0))::bigint AS input_tokens"
         + ", SUM(COALESCE(output_tokens, 0))::bigint AS output_tokens"
