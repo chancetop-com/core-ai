@@ -4,6 +4,7 @@ import ai.core.server.trace.PgMigrationProgressRow;
 import ai.core.server.trace.PgSpanMigrationLockRow;
 import ai.core.server.trace.PgSpanMigrationMarkerRow;
 import core.framework.db.Database;
+import core.framework.db.Transaction;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,11 +75,19 @@ public abstract class PagedBackfill<T> {
     }
 
     private boolean copy(List<T> page) {
-        var transaction = database.beginTransaction();
-        if (!lock()) {
-            transaction.rollback();
-            return false;
+        boolean written;
+        try (var transaction = database.beginTransaction()) {
+            if (!lock()) {
+                transaction.rollback();
+                return false;
+            }
+            written = writePage(page, transaction);
         }
+        if (!written) copyRowByRow(page);
+        return true;
+    }
+
+    private boolean writePage(List<T> page, Transaction transaction) {
         try {
             write(page);
             saveCursor(key(page.getLast()));
@@ -87,9 +96,8 @@ public abstract class PagedBackfill<T> {
         } catch (RuntimeException e) {
             transaction.rollback();
             LOGGER.warn("{} page from {} rejected, retrying row by row", name(), key(page.getFirst()), e);
+            return false;
         }
-        copyRowByRow(page);
-        return true;
     }
 
     /**
