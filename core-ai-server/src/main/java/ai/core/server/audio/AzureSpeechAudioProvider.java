@@ -1,5 +1,6 @@
 package ai.core.server.audio;
 
+import ai.core.media.audio.AsrPhrase;
 import ai.core.media.audio.AsrResult;
 import ai.core.media.audio.AsrSpec;
 import ai.core.media.audio.AudioProvider;
@@ -99,27 +100,45 @@ public class AzureSpeechAudioProvider implements AudioProvider {
             text = String.valueOf(first.get("text"));
         }
         var words = new ArrayList<WordTimestamp>();
-        if (root.get("phrases") instanceof List<?> phrases) {
-            for (var phraseObj : phrases) {
-                if (!(phraseObj instanceof Map<?, ?> phrase) || !(phrase.get("words") instanceof List<?> phraseWords)) continue;
+        var phrases = new ArrayList<AsrPhrase>();
+        if (root.get("phrases") instanceof List<?> phraseList) {
+            for (var phraseObj : phraseList) {
+                if (!(phraseObj instanceof Map<?, ?> phrase)) continue;
+                var offset = millis(phrase.get("offsetMilliseconds"));
+                var duration = millis(phrase.get("durationMilliseconds"));
+                phrases.add(new AsrPhrase(string(phrase.get("text")), speaker(phrase.get("speaker")), offset, offset + duration));
+                if (!(phrase.get("words") instanceof List<?> phraseWords)) continue;
                 for (var wordObj : phraseWords) {
                     if (!(wordObj instanceof Map<?, ?> word)) continue;
-                    var offset = millis(word.get("offsetMilliseconds"));
-                    var duration = millis(word.get("durationMilliseconds"));
-                    words.add(new WordTimestamp(String.valueOf(word.get("text")), offset, offset + duration));
+                    var wordOffset = millis(word.get("offsetMilliseconds"));
+                    var wordDuration = millis(word.get("durationMilliseconds"));
+                    words.add(new WordTimestamp(String.valueOf(word.get("text")), wordOffset, wordOffset + wordDuration));
                 }
             }
         }
-        return new AsrResult(text, words);
+        return new AsrResult(text, words, phrases);
+    }
+
+    private String speaker(Object value) {
+        return value instanceof Number number ? String.valueOf(number.intValue()) : null;
+    }
+
+    private String string(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private double millis(Object value) {
         return value instanceof Number number ? number.doubleValue() / 1000 : 0;
     }
 
-    private byte[] multipart(String boundary, AsrSpec spec) {
+    String definition(AsrSpec spec) {
         var locale = spec.locale() == null ? "zh-CN" : spec.locale();
-        var definition = "{\"locales\":[\"" + locale + "\"]}";
+        return "{\"locales\":[\"" + locale + "\"],\"diarization\":{\"enabled\":true,\"maxSpeakers\":"
+                + spec.maxSpeakers() + "}}";
+    }
+
+    private byte[] multipart(String boundary, AsrSpec spec) {
+        var definition = definition(spec);
         var head = ("--" + boundary + "\r\nContent-Disposition: form-data; name=\"definition\"\r\n\r\n" + definition + "\r\n"
             + "--" + boundary + "\r\nContent-Disposition: form-data; name=\"audio\"; filename=\"audio.bin\"\r\n"
             + "Content-Type: " + (spec.contentType() == null ? "application/octet-stream" : spec.contentType()) + "\r\n\r\n")

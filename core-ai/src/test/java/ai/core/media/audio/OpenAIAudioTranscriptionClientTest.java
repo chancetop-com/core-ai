@@ -95,6 +95,20 @@ class OpenAIAudioTranscriptionClientTest {
     }
 
     @Test
+    void diarizationModelsUseDiarizedJsonAndParseSpeaker() {
+        responseBody.set("""
+                {"text":"hello","segments":[{"speaker":"A","start":0.0,"end":1.1,"text":"hello"}]}
+                """);
+
+        var result = client().transcribe(request("gpt-4o-transcribe-diarize", null));
+
+        assertEquals(1, result.segments().size());
+        assertEquals("A", result.segments().getFirst().speaker());
+        assertEquals(1.1, result.segments().getFirst().endSec());
+        assertTrue(body.get().contains("diarized_json"));
+    }
+
+    @Test
     void retriesWithoutVerboseJsonWhenTheModelRejectsIt() {
         retryMode.set(true);
 

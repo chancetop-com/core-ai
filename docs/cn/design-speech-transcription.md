@@ -48,6 +48,7 @@ Agent transcribe_audio ┘                         │
 - `GatewayTranscriptionProvider` 用 `GatewayRoutingEngine.route(model, AUDIO_TRANSCRIPTION)` 选
   provider，再按 provider 类型构造 `OpenAIAudioTranscriptionClient`：
   - OpenAI / LiteLLM / openai-compatible：`{baseUrl}/audio/transcriptions`，`Authorization: Bearer`。
+    Whisper 用 `verbose_json` 取分段；模型名含 `diarize` 时用 `diarized_json` 取说话人标签。
   - Azure OpenAI：`{resource}/openai/deployments/{model}/audio/transcriptions?api-version=...`，
     `api-key` 头；部署名即模型名，body 不再重复 `model`。
   - 允许复用 `OPENAI_IMAGES` / `OPENAI_COMPATIBLE` 协议（同一 baseUrl/API key 同时服务图像和音频），
@@ -57,6 +58,9 @@ Agent transcribe_audio ┘                         │
     `azure-speech`（仅当 Azure Speech key/region 已配置）。
   - 请求不带 `model` 时取列表第一个；列表为空且 Azure 未配置则返回
     `SPEECH_NOT_CONFIGURED`，错误信息明确告诉管理员配置哪一种。
+  - Azure fallback 的 fast transcription 请求固定开启 `diarization`（`maxSpeakers=8`），
+    每个 phrase 的 `speaker` 映射到 `segments[].speaker`；Azure 返回数字标签，OpenAI
+    diarization 返回字母标签，统一按字符串输出。
 - `SpeechTranscriptionController` 解析 multipart：字段 `audio`（兼容任意单文件字段）、`model`、
   `language`、`prompt`；限制 9 MB（core-ng 默认 10 MB 请求体上限，含 multipart 开销）；通过
   `GatewayCallAuditService` 记录 `kind=media`、
@@ -82,20 +86,23 @@ Agent transcribe_audio ┘                         │
   "durationSeconds": 12.4,
   "model": "whisper-1",
   "provider": "azure-openai",
-  "segments": [{ "text": "今天讨论了三件事", "start": 0.0, "end": 2.1 }]
-}
-```
+   "segments": [{ "text": "今天讨论了三件事", "speaker": "1", "start": 0.0, "end": 2.1 }]
+ }
+ ```
 
 `segments` 可能为空：`gpt-4o-transcribe` 一类模型只返回文本；Whisper 的 `verbose_json` 和
-Azure fast transcription 会带时间信息。
+Azure fast transcription 会带时间信息。`speaker` 仅在 provider 开启说话人分离时出现
+（Azure fast transcription、`*-diarize` 模型）。
 
 ### 2.3 CLI
 
 - `core-ai-cli speech models`：打印当前 server 可用的转写模型和默认项。
-- `core-ai-cli speech transcribe <file> [--language] [--model] [--prompt] [--output] [--json]`：
-  文本走 stdout，模型/语言/时长走 stderr，便于 `> notes.txt` 这类管道。
+- `core-ai-cli speech transcribe <file> [--language] [--model] [--prompt] [--format] [--output] [--json]`：
+  `--format text`（默认）输出全文；`--format segments` 输出 `[HH:MM:SS] Speaker N: ...`；
+  `--format json` 输出完整响应（等同 `--json`）。文本走 stdout，模型/语言/时长走 stderr，
+  便于 `> notes.txt` 这类管道。
 - `transcribe_audio` builtin：agent 在 CLI/桌面里直接转写本地音频；`timestamps:true` 输出
-  `[mm:ss]` 行。它只在已登录时注册，和 `understand_video` 一样依赖 server 凭据。
+  `[mm:ss] Speaker N: ...` 行。它只在已登录时注册，和 `understand_video` 一样依赖 server 凭据。
 - `SpeechClient` 是唯一客户端实现，命令和 builtin 共用。
 
 ### 2.4 桌面

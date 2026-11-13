@@ -28,7 +28,7 @@ public final class TranscribeAudioTool extends ToolCall {
             IMPORTANT:
             - file must be a local path (absolute, or relative to the workspace). Do not pass a URL or a media_id.
             - The audio is uploaded to the server's speech endpoint; supported formats include wav, mp3, m4a, ogg and webm.
-            - When the user needs timestamps, set timestamps=true; segments are rendered as [mm:ss] lines.
+            - When the user needs timestamps or speaker labels, set timestamps=true; segments are rendered as [mm:ss] Speaker N: lines.
             - Do not read the audio bytes with read_file or shell first. Only this tool can turn speech into text.
             """;
 
@@ -84,7 +84,9 @@ public final class TranscribeAudioTool extends ToolCall {
         var builder = new StringBuilder();
         for (var segment : result.segments) {
             if (segment.text == null || segment.text.isBlank()) continue;
-            builder.append('[').append(timestamp(segment.start)).append("] ").append(segment.text.trim()).append('\n');
+            builder.append('[').append(timestamp(segment.start)).append(']');
+            if (segment.speaker != null && !segment.speaker.isBlank()) builder.append(" Speaker ").append(segment.speaker).append(':');
+            builder.append(' ').append(segment.text.trim()).append('\n');
         }
         return builder.isEmpty() ? result.text : builder.toString().trim();
     }

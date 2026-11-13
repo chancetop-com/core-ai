@@ -1,6 +1,7 @@
 package ai.core.server.speech;
 
 import ai.core.api.server.speech.ListSpeechModelsResponse;
+import ai.core.media.audio.AsrPhrase;
 import ai.core.media.audio.AsrResult;
 import ai.core.media.audio.AudioProvider;
 import ai.core.media.audio.TranscriptSegment;
@@ -91,6 +92,24 @@ class SpeechTranscriptionServiceTest {
         assertEquals("Azure Speech", view.provider);
         assertEquals(0.9, view.durationSeconds);
         assertEquals(0.2, view.segments.getFirst().start);
+    }
+
+    @Test
+    void azureFallbackKeepsSpeakerAndPhraseTimings() {
+        when(settings.azureSpeechKey()).thenReturn("key");
+        when(settings.azureSpeechRegion()).thenReturn("eastus");
+        when(audio.transcribe(any())).thenReturn(new AsrResult("你好，欢迎。", List.of(),
+                List.of(new AsrPhrase("你好，", "1", 0.1, 0.8),
+                        new AsrPhrase("欢迎。", "2", 0.9, 1.7))));
+
+        var view = service().transcribe(new byte[]{1}, "audio/wav", null, "zh", null);
+
+        assertEquals(1.7, view.durationSeconds);
+        assertEquals(2, view.segments.size());
+        assertEquals("1", view.segments.getFirst().speaker);
+        assertEquals(0.1, view.segments.getFirst().start);
+        assertEquals("2", view.segments.getLast().speaker);
+        assertEquals(1.7, view.segments.getLast().end);
     }
 
     @Test

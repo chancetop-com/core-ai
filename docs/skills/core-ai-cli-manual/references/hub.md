@@ -253,14 +253,17 @@ core-ai-cli speech models                                   # what the server ca
 core-ai-cli speech transcribe meeting.m4a --language zh-CN  # text to stdout, metadata to stderr
                                                            # (omit --language: gateway models auto-detect; Azure uses zh-CN)
 core-ai-cli speech transcribe interview.mp3 --output interview.txt
-core-ai-cli speech transcribe clip.wav --json               # full view: text, language, segments
+core-ai-cli speech transcribe interview.mp3 --format segments  # [HH:MM:SS] Speaker N: text
+core-ai-cli speech transcribe clip.wav --json                  # full view: text, language, segments
 ```
 
-Supported input formats are wav, mp3, m4a/mp4, ogg/opus, webm and flac (9 MB limit, set by the server's
-10 MB multipart budget). `--model` pins one
+`--format text` is the default (full text). `--format segments` prints one phrase per line with its
+start time and, when the provider separates speakers (Azure Speech, `*-diarize` models), a speaker
+label. `--format json` is the same as `--json`. Supported input formats are wav, mp3, m4a/mp4,
+ogg/opus, webm and flac (9 MB limit, set by the server's 10 MB multipart budget). `--model` pins one
 of the ids from `speech models`; omit it for the server default. When an agent needs a transcript, it
 calls the `transcribe_audio` builtin (`file`, optional `language`/`model`/`prompt`, and `timestamps:true`
-for `[mm:ss]` lines) — the same model catalog and the same endpoint.
+for `[mm:ss] Speaker N:` lines) — the same model catalog and the same endpoint.
 
 The desktop composer uses this path from its microphone button: it records 16 kHz mono WAV locally,
 the engine forwards it to the same endpoint, and the transcript is inserted into the draft.

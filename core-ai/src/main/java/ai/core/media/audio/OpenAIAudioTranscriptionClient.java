@@ -60,8 +60,8 @@ public class OpenAIAudioTranscriptionClient implements TranscriptionProvider {
     public TranscriptionResult transcribe(TranscriptionRequest request) {
         var format = responseFormat(request.model());
         var response = execute(request, format);
-        if (response.statusCode == 400 && "verbose_json".equals(format) && mentionsResponseFormat(response.text())) {
-            // newer transcription models accept json/text but reject verbose_json; the text is still enough
+        if (response.statusCode == 400 && !"json".equals(format) && mentionsResponseFormat(response.text())) {
+            // some models reject verbose_json/diarized_json; plain json still returns the text
             response = execute(request, "json");
         }
         var body = response.text();
@@ -104,12 +104,13 @@ public class OpenAIAudioTranscriptionClient implements TranscriptionProvider {
     }
 
     /**
-     * Whisper reports segments, language and duration only in verbose_json. The gpt-4o-transcribe family
-     * rejects verbose_json, so it stays on json and the response is text-only.
+     * Whisper reports segments, language and duration only in verbose_json; diarization models add
+     * speaker labels in diarized_json. The gpt-4o-transcribe family rejects both and stays on json.
      */
     private String responseFormat(String model) {
         if (model == null) return "json";
         var value = model.toLowerCase(Locale.ROOT);
+        if (value.contains("diarize")) return "diarized_json";
         return value.contains("whisper") ? "verbose_json" : "json";
     }
 
@@ -141,7 +142,8 @@ public class OpenAIAudioTranscriptionClient implements TranscriptionProvider {
                 if (!(item instanceof Map<?, ?> segment)) continue;
                 segments.add(new TranscriptSegment(string(segment.get("text")),
                         number(segment.get("start")) == null ? 0 : number(segment.get("start")),
-                        number(segment.get("end")) == null ? 0 : number(segment.get("end"))));
+                        number(segment.get("end")) == null ? 0 : number(segment.get("end")),
+                        speaker(segment.get("speaker"))));
             }
         }
         return new TranscriptionResult(text, language, duration, segments);
@@ -153,6 +155,11 @@ public class OpenAIAudioTranscriptionClient implements TranscriptionProvider {
 
     private Double number(Object value) {
         return value instanceof Number number ? number.doubleValue() : null;
+    }
+
+    private String speaker(Object value) {
+        if (value instanceof String text) return text;
+        return value instanceof Number number ? String.valueOf(number.intValue()) : null;
     }
 
     private void field(ByteArrayOutputStream body, String boundary, String name, String value) {

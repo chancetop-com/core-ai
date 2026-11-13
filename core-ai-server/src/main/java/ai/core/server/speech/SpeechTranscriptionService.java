@@ -6,6 +6,7 @@ import ai.core.api.server.speech.SpeechTranscriptSegmentView;
 import ai.core.api.server.speech.SpeechTranscriptionView;
 import ai.core.media.audio.AsrSpec;
 import ai.core.media.audio.AudioProvider;
+import ai.core.media.audio.TranscriptSegment;
 import ai.core.media.audio.TranscriptionException;
 import ai.core.media.audio.TranscriptionRequest;
 import ai.core.media.audio.TranscriptionResult;
@@ -18,7 +19,6 @@ import core.framework.web.exception.BadRequestException;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -118,22 +118,19 @@ public class SpeechTranscriptionService {
     private SpeechTranscriptionView azure(byte[] audio, String contentType, String language) {
         var locale = azureLocale(language);
         var result = audioProvider.transcribe(new AsrSpec(audio, contentType, locale));
-        var segments = new ArrayList<SpeechTranscriptSegmentView>();
-        Double duration = null;
-        if (!result.words().isEmpty()) {
+        var transcript = new ArrayList<TranscriptSegment>();
+        for (var phrase : result.phrases()) {
+            transcript.add(new TranscriptSegment(phrase.text(), phrase.startSec(), phrase.endSec(), phrase.speaker()));
+        }
+        Double duration = transcript.isEmpty() ? null : transcript.getLast().endSec();
+        if (transcript.isEmpty() && !result.words().isEmpty()) {
             var first = result.words().getFirst();
             var last = result.words().getLast();
-            var segment = new SpeechTranscriptSegmentView();
-            segment.text = result.text();
-            segment.start = first.startSec();
-            segment.end = last.endSec();
-            segments.add(segment);
+            transcript.add(new TranscriptSegment(result.text(), first.startSec(), last.endSec(), null));
             duration = last.endSec();
         }
-        var view = view(new TranscriptionResult(result.text(), locale, duration, List.of()), AZURE_SPEECH_MODEL,
+        return view(new TranscriptionResult(result.text(), locale, duration, transcript), AZURE_SPEECH_MODEL,
                 AZURE_SPEECH_PROVIDER, locale);
-        view.segments = segments;
-        return view;
     }
 
     private SpeechTranscriptionView view(TranscriptionResult result, String model, String provider, String requestedLanguage) {
@@ -148,6 +145,7 @@ public class SpeechTranscriptionService {
         for (var segment : result.segments()) {
             var item = new SpeechTranscriptSegmentView();
             item.text = segment.text();
+            item.speaker = segment.speaker();
             item.start = segment.startSec();
             item.end = segment.endSec();
             segments.add(item);
