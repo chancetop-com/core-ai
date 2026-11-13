@@ -1,7 +1,7 @@
 // P0 IM bridge: pull authorized messages from the local OCG daemon, run one engine turn
 // per message, and post the final answer back. P1 replaces the CLI polling with the
 // versioned OCG HTTP client and adds bindings/authorization/journaling.
-import { BridgeStore } from './BridgeStore';
+import { BridgeStore, type BridgeSessionRecord } from './BridgeStore';
 import type { OcgInboundMessage, OcgResult } from './OcgCli';
 
 /** The three OCG operations the bridge needs; P1 swaps the CLI implementation for HTTP. */
@@ -24,7 +24,7 @@ export interface ChannelBridgeState {
 }
 
 export interface ChannelSessionEvent {
-  kind: 'created' | 'replied';
+  kind: 'created' | 'replied' | 'renamed';
   sessionId: string;
   workspace: string;
   title: string;
@@ -37,6 +37,10 @@ export interface ChannelBridgeOptions {
   ocg: OcgPort;
   storeFile: string;
   consumer: string;
+  /** Display title of an engine session (rename sidecar first, first user message otherwise). */
+  sessionTitle?: (workspace: string, sessionId: string) => string | null;
+  /** First user message stored in an engine session; used to name legacy WeChat sessions. */
+  firstUserText?: (workspace: string, sessionId: string) => string | null;
   /** Delay before the "processing" hint; a turn that finishes sooner sends no hint. */
   progressDelayMs?: number;
   progressText?: string;
@@ -63,6 +67,7 @@ const RETRY_MIN_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 const PROGRESS_DELAY_MS = 2_500;
 const PROGRESS_TEXT = '收到，正在处理…';
+const TITLE_TEXT_MAX = 32;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -81,6 +86,12 @@ function channelLabel(channel: string): string {
     case 'discord': return 'Discord';
     default: return channel || 'IM';
   }
+}
+
+function titleText(value: string | null | undefined): string {
+  const oneLine = (value ?? '').replace(/\s+/g, ' ').trim();
+  if (!oneLine) return '';
+  return oneLine.length > TITLE_TEXT_MAX ? `${oneLine.slice(0, TITLE_TEXT_MAX)}…` : oneLine;
 }
 
 export class ChannelBridge {
@@ -343,7 +354,7 @@ export class ChannelBridge {
     if (existing && existing.workspace === workspace) {
       try {
         await this.options.callEngine(workspace, 'session/resume', { sessionId: existing.sessionId });
-        return { sessionId: existing.sessionId, title: existing.title };
+        return { sessionId: existing.sessionId, title: await this.retitleLegacySession(message, workspace, existing) };
       } catch (error) {
         const code = engineErrorCode(error);
         // Busy/newer-version sessions are recoverable only by the process/user that owns them;
@@ -406,7 +417,46 @@ export class ChannelBridge {
     if (message.chatType === 'group') {
       return `${label}群 · ${message.groupSubject ?? message.target ?? '未命名'}`;
     }
-    return `${label} · ${message.sender.name ?? message.sender.id ?? message.target ?? '未知联系人'}`;
+    // WeChat direct chats only expose an openid, so the opening line names the session.
+    if (message.channel === 'openclaw-weixin') {
+      const opening = titleText(message.text);
+      if (opening) return `${label} · ${opening}`;
+    }
+    return `${label} · ${this.peerName(message)}`;
+  }
+
+  private peerName(message: OcgInboundMessage): string {
+    return message.sender.name ?? message.sender.id ?? message.target ?? '未知联系人';
+  }
+
+  /** Titles created before the first-message rule carried the peer openid; upgrade the mapped ones once. */
+  private async retitleLegacySession(message: OcgInboundMessage, workspace: string, existing: BridgeSessionRecord): Promise<string> {
+    if (message.channel !== 'openclaw-weixin' || message.chatType !== 'direct') return existing.title;
+    const legacy = `${channelLabel(message.channel)} · ${this.peerName(message)}`;
+    if (existing.title !== legacy) return existing.title;
+    const currentTitle = this.options.sessionTitle?.(workspace, existing.sessionId) ?? null;
+    // Missing or different title means the user renamed it (or it cannot be read); never overwrite that.
+    if (!currentTitle) return existing.title;
+    if (currentTitle !== legacy) return this.replaceSessionTitle(message, existing, currentTitle);
+    const opening = titleText(this.options.firstUserText?.(workspace, existing.sessionId));
+    if (!opening) return existing.title;
+    const title = `${channelLabel(message.channel)} · ${opening}`;
+    try {
+      await this.options.callEngine(workspace, 'session/rename', { sessionId: existing.sessionId, title });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      this.options.log(`session ${existing.sessionId} title upgrade skipped: ${detail}`);
+      return existing.title;
+    }
+    return this.replaceSessionTitle(message, existing, title);
+  }
+
+  private replaceSessionTitle(message: OcgInboundMessage, existing: BridgeSessionRecord, title: string): string {
+    if (title === existing.title) return title;
+    const sessionKey = this.sessionKeyOf(message);
+    this.store.setSession(sessionKey, { ...existing, title, updatedAt: Date.now() });
+    this.options.onSession({ kind: 'renamed', sessionId: existing.sessionId, workspace: existing.workspace, title, sessionKey });
+    return title;
   }
 
   private fail(message: string): void {

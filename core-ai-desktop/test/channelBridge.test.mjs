@@ -1,7 +1,7 @@
 // P0 IM bridge: one OCG message becomes one engine turn and one OCG reply.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import bridgeModule from '../dist/test/channelBridge.js';
@@ -29,7 +29,7 @@ function message(overrides = {}) {
   };
 }
 
-function makeBridge(t, { messages, engine, progressDelayMs }) {
+function makeBridge(t, { messages, engine, progressDelayMs, store, sessionTitle, firstUserText }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'coreai-bridge-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const queue = [...messages];
@@ -38,6 +38,7 @@ function makeBridge(t, { messages, engine, progressDelayMs }) {
   const sends = [];
   const engineSends = [];
   const created = [];
+  const renames = [];
   const ocg = {
     wait: async () => {
       if (queue.length > 0) return { ok: true, data: { messages: [queue.shift()] } };
@@ -79,8 +80,13 @@ function makeBridge(t, { messages, engine, progressDelayMs }) {
       return { accepted: true, queued: false };
     }
     if (method === 'session/history') return { messages: [] };
+    if (method === 'session/rename') {
+      renames.push(params);
+      return { sessionId: params.sessionId };
+    }
     throw new Error(`unexpected engine method ${method}`);
   };
+  if (store) writeFileSync(path.join(dir, 'bridge.json'), JSON.stringify(store), 'utf8');
   const states = [];
   const bridge = new ChannelBridge({
     workspace: () => 'D:/work',
@@ -88,12 +94,14 @@ function makeBridge(t, { messages, engine, progressDelayMs }) {
     ocg,
     storeFile: path.join(dir, 'bridge.json'),
     consumer: 'core-ai-desktop',
+    ...(sessionTitle ? { sessionTitle } : {}),
+    ...(firstUserText ? { firstUserText } : {}),
     ...(progressDelayMs === undefined ? {} : { progressDelayMs }),
     onState: (state) => states.push(state),
     onSession: () => undefined,
     log: () => undefined,
   });
-  return { bridge, replies, acks, sends, engineSends, created, states };
+  return { bridge, replies, acks, sends, engineSends, created, states, renames };
 }
 
 async function waitFor(predicate, timeoutMs = 2_000) {
@@ -111,7 +119,7 @@ test('direct message creates a session and replies with the turn output', async 
   await waitFor(() => replies.length === 1);
   bridge.stop();
   assert.equal(created.length, 1);
-  assert.equal(created[0].title, '微信 · 张三');
+  assert.equal(created[0].title, '微信 · 你好');
   assert.equal(engineSends[0].turnId, 'm_1');
   assert.deepEqual(replies[0], { id: 'm_1', text: '你好，我是助手', isError: false });
 });
@@ -177,4 +185,44 @@ test('a fast turn sends no processing hint', async (t) => {
   await new Promise((resolve) => setTimeout(resolve, 80));
   bridge.stop();
   assert.equal(sends.length, 0);
+});
+
+test('a legacy openid title is upgraded to the first user message', async (t) => {
+  const sessionKey = message().sessionKey;
+  const { bridge, replies, renames } = makeBridge(t, {
+    messages: [message({ text: '第二个问题' })],
+    engine: {},
+    store: {
+      sessions: {
+        [sessionKey]: { sessionId: 's_legacy', workspace: 'D:/work', title: '微信 · 张三', updatedAt: Date.now() },
+      },
+      handled: {},
+    },
+    sessionTitle: () => '微信 · 张三',
+    firstUserText: () => '第一个问题',
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.deepEqual(renames, [{ sessionId: 's_legacy', title: '微信 · 第一个问题' }]);
+});
+
+test('a user-renamed session title is never overwritten by the upgrade', async (t) => {
+  const sessionKey = message().sessionKey;
+  const { bridge, replies, renames } = makeBridge(t, {
+    messages: [message()],
+    engine: {},
+    store: {
+      sessions: {
+        [sessionKey]: { sessionId: 's_legacy', workspace: 'D:/work', title: '微信 · 张三', updatedAt: Date.now() },
+      },
+      handled: {},
+    },
+    sessionTitle: () => '我的会话',
+    firstUserText: () => '第一个问题',
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.equal(renames.length, 0);
 });

@@ -438,12 +438,12 @@ core-ai-desktop/src/main/channels/
 {
   "agent:main:openclaw-weixin:3a0a78f9906b-im-bot:direct:o9cq80...@im.wechat": {
     "sessionId": "cli-...", "workspace": "D:/work",
-    "title": "微信 · 张三", "createdAt": 1761..., "lastSeenAt": 1761...
+    "title": "微信 · 你好，帮我看下这个文件", "createdAt": 1761..., "lastSeenAt": 1761...
   }
 }
 ```
 
-- 标题首次用 `sender.name`（群用 `groupSubject`），用户重命名后不被覆盖；
+- 标题首次用微信会话的第一句话（群用 `groupSubject`），用户重命名后不被覆盖；旧版按 openid 生成的标题在下次入站时自动升级；
 - 会话被删除后，`session/resume` 失败 → 自动新建并更新映射（保留旧标题）；
 - OCG 的 `dmScope` 变更会改变 `sessionKey`：旧映射保留但不再命中，新会话从空白开始（UI 提示）；
 - 映射是 **desktop 私有**，OCG 永远不读。

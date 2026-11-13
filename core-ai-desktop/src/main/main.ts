@@ -241,15 +241,19 @@ function firstTextPart(content: unknown): string | null {
   }
   return null;
 }
-function readSessionTitle(workspace: string, sessionId: string): string | null {
+function readRenamedSessionTitle(workspace: string, sessionId: string): string | null {
   try {
-    const dir = sessionsDirOf(workspace);
-    const sidecar = path.join(dir, 'titles.json');
-    if (existsSync(sidecar)) {
-      const renamed = (JSON.parse(readFileSync(sidecar, 'utf8')) as Record<string, string>)?.[sessionId];
-      if (typeof renamed === 'string' && renamed.trim()) return renamed.trim();
-    }
-    const file = path.join(dir, `${sessionId}.data`);
+    const sidecar = path.join(sessionsDirOf(workspace), 'titles.json');
+    if (!existsSync(sidecar)) return null;
+    const renamed = (JSON.parse(readFileSync(sidecar, 'utf8')) as Record<string, string>)?.[sessionId];
+    return typeof renamed === 'string' && renamed.trim() ? renamed.trim() : null;
+  } catch {
+    return null;
+  }
+}
+function readFirstUserText(workspace: string, sessionId: string): string | null {
+  try {
+    const file = path.join(sessionsDirOf(workspace), `${sessionId}.data`);
     if (!existsSync(file) || statSync(file).size > 15 * 1024 * 1024) return null;
     const data = JSON.parse(readFileSync(file, 'utf8')) as { messages?: unknown[]; history?: unknown[] };
     for (const list of [data.history, data.messages]) {
@@ -264,6 +268,9 @@ function readSessionTitle(workspace: string, sessionId: string): string | null {
   } catch {
     return null;
   }
+}
+function readSessionTitle(workspace: string, sessionId: string): string | null {
+  return readRenamedSessionTitle(workspace, sessionId) ?? readFirstUserText(workspace, sessionId);
 }
 function summarizeWorkspace(workspace: string): WorkspaceSessionSummary {
   const summary: WorkspaceSessionSummary = { path: workspace, count: 0, latestSessionId: null, latestTitle: null, latestUpdatedAt: 0 };
@@ -1171,6 +1178,8 @@ else {
       ocg: createOcgPort({ wait: ocgWait, reply: ocgReply, ack: ocgAck, send: ocgSend }),
       storeFile: path.join(app.getPath('userData'), 'channels', 'bridge.json'),
       consumer: 'core-ai-desktop',
+      sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
+      firstUserText: (workspace, sessionId) => readFirstUserText(workspace, sessionId),
       onState: (state) => send('channels:state', state),
       onSession: (event) => send('channels:session', event),
       log: (line) => console.log(`[channels] ${line}`),

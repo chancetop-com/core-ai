@@ -156,7 +156,7 @@ interface ChannelBridgeState {
 }
 
 interface ChannelSessionEvent {
-  kind: 'created' | 'replied';
+  kind: 'created' | 'replied' | 'renamed';
   sessionId: string;
   workspace: string;
   title: string;
