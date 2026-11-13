@@ -231,7 +231,8 @@ public class ToolRefResolver {
         var serverName = toolRef.source != null ? toolRef.source : toolRef.id;
         var mgr = pickManager(serverName, sessionMgr);
         if (mgr != null && mgr.hasServer(serverName)) {
-            result.addAll(loadMcpToolsSafe(mgr, serverName));
+            var serverEntry = findMcpEntry(serverName);
+            result.addAll(loadMcpToolsSafe(mgr, serverName, serverEntry != null ? serverEntry.name : serverName));
         }
     }
 
@@ -245,7 +246,8 @@ public class ToolRefResolver {
         var toolName = parsed.toolName();
         var mgr = pickManager(serverId, sessionMgr);
         if (mgr != null && mgr.hasServer(serverId)) {
-            result.addAll(loadMcpToolSafe(mgr, serverId, toolName));
+            var entry = findMcpEntry(serverId);
+            result.addAll(loadMcpToolSafe(mgr, serverId, toolName, entry != null ? entry.name : serverId));
             return;
         }
         resolveMcpToolFallback(serverId, toolName, toolRef, result, sessionMgr);
@@ -265,7 +267,7 @@ public class ToolRefResolver {
         }
         var fallbackMgr = pickManager(resolvedServerName, sessionMgr);
         if (fallbackMgr != null && fallbackMgr.hasServer(resolvedServerName)) {
-            result.addAll(loadMcpToolSafe(fallbackMgr, resolvedServerName, toolName));
+            result.addAll(loadMcpToolSafe(fallbackMgr, resolvedServerName, toolName, entry.name));
         } else {
             LOGGER.warn("unable to resolve individual mcp tool, id={}, source={}", toolRef.id, toolRef.source);
         }
@@ -351,30 +353,31 @@ public class ToolRefResolver {
     private List<ToolCall> resolveMcpTools(ToolRegistryEntry entry, McpClientManager sessionMgr) {
         var byEntryId = pickManager(entry.id, sessionMgr);
         if (byEntryId != null && byEntryId.hasServer(entry.id)) {
-            return loadMcpToolsSafe(byEntryId, entry.id);
+            return loadMcpToolsSafe(byEntryId, entry.id, entry.name);
         }
         if (entry.id.startsWith(CONFIG_PREFIX)) {
             var serverName = entry.id.substring(CONFIG_PREFIX.length());
             var byShortName = pickManager(serverName, sessionMgr);
             if (byShortName != null && byShortName.hasServer(serverName)) {
-                return loadMcpToolsSafe(byShortName, serverName);
+                return loadMcpToolsSafe(byShortName, serverName, entry.name);
             }
         }
         return List.of();
     }
 
-    private List<ToolCall> loadMcpToolsSafe(McpClientManager mcpManager, String serverName) {
+    private List<ToolCall> loadMcpToolsSafe(McpClientManager mcpManager, String serverName, String serverLabel) {
         try {
-            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), null));
+            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), null, null, serverLabel));
         } catch (Exception e) {
             LOGGER.warn("skip MCP server {} due to load failure: {}", serverName, e.getMessage());
             return List.of();
         }
     }
 
-    private List<ToolCall> loadMcpToolSafe(McpClientManager mcpManager, String serverName, String toolName) {
+    private List<ToolCall> loadMcpToolSafe(McpClientManager mcpManager, String serverName, String toolName,
+                                           String serverLabel) {
         try {
-            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), List.of(toolName)));
+            return new ArrayList<>(McpToolCalls.from(mcpManager, List.of(serverName), List.of(toolName), null, serverLabel));
         } catch (Exception e) {
             LOGGER.warn("skip MCP tool {}/{} due to load failure: {}", serverName, toolName, e.getMessage());
             return List.of();

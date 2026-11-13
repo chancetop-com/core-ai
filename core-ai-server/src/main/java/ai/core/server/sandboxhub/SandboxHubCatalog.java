@@ -9,6 +9,7 @@ import ai.core.sandbox.SandboxConstants;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetToolProvider;
 import ai.core.tool.ToolCall;
+import ai.core.tool.mcp.McpToolCall;
 import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
@@ -48,6 +49,8 @@ public final class SandboxHubCatalog {
     public static final int AGENT_TIMEOUT_SECONDS = 300;
 
     private static final String MCP_PROVIDER_PREFIX = "mcp:";
+    private static final String MCP_SOURCE_TYPE = "mcp";
+    private static final String API_SOURCE_TYPE = "api";
     private static final String API_PROVIDER_PREFIX = ToolProvider.API_TOOLS + ":";
     private static final String LLM_CALL_PROVIDER_PREFIX = "llm-call:";
     private static final String LLM_CALL_SOURCE_TYPE = "llm-call";
@@ -91,30 +94,49 @@ public final class SandboxHubCatalog {
         var path = pathOf(kind, refId);
         var exposure = tool.getExposure().name().toLowerCase(Locale.ROOT);
         var callable = tool.getExposure() != ToolExposure.HIDDEN && !ToolActivationTool.TOOL_NAME.equals(tool.getName());
-        return new Entry(scriptName(path), kind, groupOf(kind, refId, providerId), path, refId,
+        return new Entry(scriptName(path), kind, groupOf(kind, refId, providerId, tool), path, refId,
                 tool.getDescription(), exposure, callable, tool);
     }
 
+    /**
+     * A tool carries its own provenance ({@code sourceType}, and for MCP the server it was registered under), so
+     * the kind must not depend on how the tool reached this registry. Tools loaded later into a session — the
+     * create request's tool refs, dynamically loaded ones, or every base tool after a rebuild — are registered
+     * under a generic provider, and reading the provider id alone would report them all as builtin.
+     */
     private static String kindOf(ToolCall tool, String providerId) {
         if (tool.isSubAgent()) return KIND_AGENT;
+        var sourceType = tool.getSourceType();
+        if (MCP_SOURCE_TYPE.equals(sourceType)) return KIND_MCP;
+        if (API_SOURCE_TYPE.equals(sourceType)) return KIND_API;
+        if (LLM_CALL_SOURCE_TYPE.equals(sourceType)) return KIND_LLM_CALL;
         if (providerId != null) {
             if (providerId.startsWith(MCP_PROVIDER_PREFIX)) return KIND_MCP;
             if (providerId.startsWith(API_PROVIDER_PREFIX)) return KIND_API;
             if (providerId.startsWith(LLM_CALL_PROVIDER_PREFIX)) return KIND_LLM_CALL;
         }
-        return LLM_CALL_SOURCE_TYPE.equals(tool.getSourceType()) ? KIND_LLM_CALL : KIND_BUILTIN;
+        return KIND_BUILTIN;
     }
 
     private static String refIdOf(ToolCall tool, String kind, String providerId) {
         return switch (kind) {
-            case KIND_MCP -> mcpRefId(tool, providerId);
+            case KIND_MCP -> mcpRefId(tool, mcpServer(tool, providerId));
             case KIND_API -> apiRefId(tool, providerId);
             default -> tool.getName();
         };
     }
 
-    private static String mcpRefId(ToolCall tool, String providerId) {
-        var server = providerId == null ? "" : providerId.substring(MCP_PROVIDER_PREFIX.length());
+    /** The server a script addresses an MCP tool by: the provider's server first, then the tool's own label. */
+    private static String mcpServer(ToolCall tool, String providerId) {
+        if (providerId != null && providerId.startsWith(MCP_PROVIDER_PREFIX)) {
+            return providerId.substring(MCP_PROVIDER_PREFIX.length());
+        }
+        if (tool instanceof McpToolCall mcpTool) return mcpTool.getServerLabel();
+        var namespace = tool.getNamespace();
+        return namespace == null ? "" : namespace;
+    }
+
+    private static String mcpRefId(ToolCall tool, String server) {
         var toolName = localMcpToolName(server, tool.getName());
         return MCP_PROVIDER_PREFIX + server + ":" + toolName;
     }
@@ -126,7 +148,8 @@ public final class SandboxHubCatalog {
     }
 
     private static String apiRefId(ToolCall tool, String providerId) {
-        var ref = providerId == null ? "" : providerId.substring(API_PROVIDER_PREFIX.length());
+        var ref = providerId != null && providerId.startsWith(API_PROVIDER_PREFIX)
+                ? providerId.substring(API_PROVIDER_PREFIX.length()) : "";
         if (ref.startsWith(API_OPERATION_PREFIX)) {
             return ref.substring(API_OPERATION_PREFIX.length()).replace(':', '/');
         }
@@ -140,9 +163,12 @@ public final class SandboxHubCatalog {
         return namespace == null || namespace.isBlank() ? tool.getName() : namespace + PATH_SEPARATOR + tool.getName();
     }
 
-    private static String groupOf(String kind, String refId, String providerId) {
+    private static String groupOf(String kind, String refId, String providerId, ToolCall tool) {
         return switch (kind) {
-            case KIND_MCP -> providerId == null ? null : providerId.substring(MCP_PROVIDER_PREFIX.length());
+            case KIND_MCP -> {
+                var server = mcpServer(tool, providerId);
+                yield server.isBlank() ? null : server;
+            }
             case KIND_API -> {
                 var separator = refId.indexOf(PATH_SEPARATOR_CHAR);
                 yield separator < 0 ? refId : refId.substring(0, separator);
@@ -154,7 +180,8 @@ public final class SandboxHubCatalog {
     private static String pathOf(String kind, String refId) {
         if (KIND_MCP.equals(kind)) {
             var parts = refId.split(":", 3);
-            return parts.length < 3 ? refId : parts[1] + PATH_SEPARATOR + parts[2];
+            if (parts.length < 3) return refId;
+            return parts[1].isEmpty() ? parts[2] : parts[1] + PATH_SEPARATOR + parts[2];
         }
         return refId;
     }

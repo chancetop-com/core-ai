@@ -15,6 +15,15 @@ public class McpToolCall extends ToolCall {
 
     McpClientManager mcpClientManager;
     String serverName;
+    String serverLabel;
+
+    /**
+     * The server name a user or script addresses this tool by. The manager key ({@link #serverName}) may be an
+     * opaque id, so anything that groups tools for display keeps the label the server was registered under.
+     */
+    public String getServerLabel() {
+        return serverLabel != null && !serverLabel.isBlank() ? serverLabel : serverName;
+    }
 
     @Override
     public ToolCallResult execute(String text) {
@@ -31,6 +40,7 @@ public class McpToolCall extends ToolCall {
     public static class Builder extends ToolCall.Builder<Builder, ToolCall> {
         private McpClientManager mcpClientManager;
         private String serverName;
+        private String serverLabel;
 
         public Builder mcpClientManager(McpClientManager mcpClientManager) {
             this.mcpClientManager = mcpClientManager;
@@ -39,6 +49,11 @@ public class McpToolCall extends ToolCall {
 
         public Builder serverName(String serverName) {
             this.serverName = serverName;
+            return this;
+        }
+
+        public Builder serverLabel(String serverLabel) {
+            this.serverLabel = serverLabel;
             return this;
         }
 
@@ -54,6 +69,7 @@ public class McpToolCall extends ToolCall {
             build(toolCall);
             toolCall.mcpClientManager = mcpClientManager;
             toolCall.serverName = serverName;
+            toolCall.serverLabel = serverLabel;
             return toolCall;
         }
 

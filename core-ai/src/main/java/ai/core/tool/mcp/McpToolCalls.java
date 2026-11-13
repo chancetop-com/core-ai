@@ -55,6 +55,7 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
                 .parameters(buildParameters(tool.inputSchema()))
                 .mcpClientManager(manager)
                 .serverName(serverName)
+                .serverLabel(displayName)
                 .build();
     }
 

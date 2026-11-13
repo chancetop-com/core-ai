@@ -13,6 +13,7 @@ import ai.core.server.llmcall.LLMCallTool;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.mcp.McpToolCall;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 
@@ -63,6 +64,30 @@ class ToolRefResolverTest {
         }
 
         verify(manager, never()).safeListTools("google-gbp");
+    }
+
+    @Test
+    void resolvedMcpToolsKeepTheRegisteredServerLabel() {
+        var entry = new ToolRegistryEntry();
+        entry.id = "gbp-id";
+        entry.name = "google-gbp";
+        entry.type = ToolType.MCP;
+        entry.enabled = Boolean.TRUE;
+        entry.config = Map.of("url", "http://localhost/mcp");
+        var manager = mock(McpClientManager.class);
+        when(manager.hasServer(entry.id)).thenReturn(Boolean.TRUE);
+        when(manager.safeListTools(entry.id)).thenReturn(List.of(
+                McpSchema.Tool.builder().name("list_locations").description("locations").build()));
+        var applicationManager = new ApplicationMcpManager();
+        applicationManager.set(manager);
+        var resolver = new ToolRefResolver(Map.of(entry.id, entry), null, Map.of(), null, null, applicationManager);
+
+        var tools = resolver.resolve(List.of(ToolRef.of(entry.id, ToolSourceType.MCP)));
+
+        assertEquals(1, tools.size());
+        var mcpTool = (McpToolCall) tools.getFirst();
+        assertEquals("list_locations", mcpTool.getName());
+        assertEquals("google-gbp", mcpTool.getServerLabel());
     }
 
     @Test

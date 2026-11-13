@@ -3,6 +3,7 @@ package ai.core.server.sandboxhub;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.sandboxhub.SandboxHubGroup;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
+import ai.core.mcp.client.McpClientManager;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
@@ -16,6 +17,8 @@ import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.function.Function;
+import ai.core.tool.mcp.McpToolCall;
 import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
@@ -131,6 +134,31 @@ class SandboxHubCatalogTest {
         return tool;
     }
 
+    private static McpToolCall mcpTool(String serverKey, String serverLabel, String toolName) {
+        var tool = McpToolCall.builder()
+                .name(toolName)
+                .description("mcp tool")
+                .parameters(new ArrayList<>())
+                .mcpClientManager(mock(McpClientManager.class))
+                .serverName(serverKey)
+                .serverLabel(serverLabel)
+                .build();
+        tool.setExposure(ToolExposure.DIRECT);
+        return tool;
+    }
+
+    private static Function apiTool(String app, String toolName) {
+        var tool = Function.builder()
+                .name(toolName)
+                .description("api tool")
+                .parameters(new ArrayList<>())
+                .namespace(app)
+                .sourceType("api")
+                .build();
+        tool.setExposure(ToolExposure.DIRECT);
+        return tool;
+    }
+
     private static DatasetToolProvider datasetProvider(DatasetService datasetService) {
         var config = new AgentDatasetConfig();
         config.datasetId = DATASET_ID;
@@ -175,6 +203,43 @@ class SandboxHubCatalogTest {
 
         assertEquals("mcp:menu-hub:search", entry.refId());
         assertEquals("menu_hub_search", entry.name());
+    }
+
+    @Test
+    void mcpToolKeepsServerGroupingWhenLoadedUnderAGenericProvider() {
+        var catalog = catalog(provider("count", mcpTool("507f1f77bcf86cd799439011", "google-gbp", "list_locations")));
+
+        var entry = only(catalog);
+
+        assertEquals("mcp", entry.kind());
+        assertEquals("google-gbp", entry.group());
+        assertEquals("google-gbp/list_locations", entry.path());
+        assertEquals("mcp:google-gbp:list_locations", entry.refId());
+        assertEquals("google_gbp_list_locations", entry.name());
+        assertEquals(1, catalog.groups().size());
+        assertEquals(1, group(catalog.groups(), "mcp", "google-gbp").count);
+    }
+
+    @Test
+    void mcpToolLoadedUnderAGenericProviderStillStripsTheSlugPrefix() {
+        var catalog = catalog(provider("list_locations", mcpTool("gbp-id", "google-gbp", "google_gbp_list_locations")));
+
+        var entry = only(catalog);
+
+        assertEquals("mcp:google-gbp:list_locations", entry.refId());
+        assertEquals("google_gbp_list_locations", entry.name());
+    }
+
+    @Test
+    void apiToolKeepsAppGroupingWhenLoadedUnderAGenericProvider() {
+        var catalog = catalog(provider("menu_api_menu_search", apiTool("menu-api", "menu_api_menu_search")));
+
+        var entry = only(catalog);
+
+        assertEquals("api", entry.kind());
+        assertEquals("menu-api", entry.group());
+        assertEquals("menu-api/menu_api_menu_search", entry.path());
+        assertEquals("menu-api/menu_api_menu_search", entry.refId());
     }
 
     @Test
