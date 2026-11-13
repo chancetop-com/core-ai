@@ -302,6 +302,18 @@ public class MongoTraceStore implements TraceStore {
         };
     }
 
+    @Override
+    public List<TraceDailyRollupRow> dailyRollup(ZonedDateTime from, ZonedDateTime to) {
+        return new MongoTraceRollupReader(traceCollection).daily(from, to);
+    }
+
+    @Override
+    public List<TraceDailyRollupRow> analyticsRollup(ZonedDateTime from, ZonedDateTime to,
+                                                     Map<String, String> modelToProvider,
+                                                     Map<String, String> providerIdToName) {
+        return new MongoTraceRollupReader(traceCollection).analytics(from, to, modelToProvider, providerIdToName);
+    }
+
     private List<Bson> buildFilters(TraceQuery criteria) {
         List<Bson> filters = new ArrayList<>(24);
         addIdFilter(filters, criteria);

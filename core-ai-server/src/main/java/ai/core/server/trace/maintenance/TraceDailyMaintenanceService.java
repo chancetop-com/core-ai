@@ -1,16 +1,11 @@
 package ai.core.server.trace.maintenance;
 
-import ai.core.server.analytics.AnalyticsMappingService;
+import ai.core.server.trace.TraceDailyRollupRow;
+import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
-import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
-import com.mongodb.client.model.Accumulators;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Aggregates;
 import core.framework.inject.Inject;
 import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Aggregate;
-import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +24,13 @@ public class TraceDailyMaintenanceService {
     private static final String NO_AGENT = "(no agent)";
     private static final ZoneId UTC = ZoneId.of("UTC");
 
+    private static long value(Long value) {
+        return value != null ? value : 0L;
+    }
+
+    private static double value(Double value) {
+        return value != null ? value : 0.0;
+    }
     @Inject
     MongoCollection<TraceDailyStats> statsCollection;
     @Inject
@@ -38,44 +40,16 @@ public class TraceDailyMaintenanceService {
     @Inject
     ai.core.server.gateway.GatewayProviderStore gatewayProviderStore;
     @Inject
-    MongoCollection<Trace> traceCollection;
+    TraceStore traceStore;
 
     public int aggregateDailyStats(LocalDate date) {
         var dayStart = date.atStartOfDay(UTC);
         var dayEnd = date.plusDays(1).atStartOfDay(UTC);
-        var rows = aggregateTraces(dayStart, dayEnd, date);
+        var rows = traceStore.dailyRollup(dayStart, dayEnd);
         int existingStatsCount = upsertStats(rows, date);
         int analyticsCount = aggregateAnalyticsDailyStats(dayStart, dayEnd, date);
         LOGGER.info("daily stats aggregated, date={}, traceDailyStats={}, analyticsDailyStats={}", date, existingStatsCount, analyticsCount);
         return existingStatsCount + analyticsCount;
-    }
-
-    private List<Document> aggregateTraces(ZonedDateTime dayStart, ZonedDateTime dayEnd, LocalDate date) {
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(Filters.gte("started_at", dayStart), Filters.lt("started_at", dayEnd)
-            )),
-            Aggregates.group(
-                new Document()
-                    .append("user_id", "$user_id")
-                    .append("agent_id", new Document("$ifNull", List.of("$agent_id", NO_AGENT)))
-                    .append("date", date.toString()),
-                Accumulators.sum("input_tokens", "$input_tokens"),
-                Accumulators.sum("output_tokens", "$output_tokens"),
-                Accumulators.sum("total_tokens", "$total_tokens"),
-                Accumulators.sum("cached_tokens", "$cached_tokens"),
-                Accumulators.sum("cost_usd", "$cost_usd"),
-                Accumulators.sum("call_count", 1L),
-                Accumulators.avg("avg_total_tokens", "$total_tokens"),
-                Accumulators.avg("avg_cost_usd", "$cost_usd"),
-                // Push token/cost values for P90 computation in Java
-                Accumulators.push("all_total_tokens", "$total_tokens"),
-                Accumulators.push("all_cost_usd", "$cost_usd"),
-                Accumulators.addToSet("session_ids", "$session_id")
-            )
-        );
-        return traceCollection.aggregate(aggregate);
     }
 
     // === Analytics daily stats ===
@@ -88,7 +62,7 @@ public class TraceDailyMaintenanceService {
         }
         var providerIdToName = loadProviderIdToNameMapping();
 
-        var rows = aggregateAnalyticsTraces(dayStart, dayEnd, date, modelToProvider, providerIdToName);
+        var rows = traceStore.analyticsRollup(dayStart, dayEnd, modelToProvider, providerIdToName);
         return upsertAnalyticsStats(rows, date);
     }
 
@@ -114,61 +88,12 @@ public class TraceDailyMaintenanceService {
         return mapping;
     }
 
-    private List<Document> aggregateAnalyticsTraces(ZonedDateTime dayStart, ZonedDateTime dayEnd,
-                                                      LocalDate date, Map<String, String> modelToProvider,
-                                                      Map<String, String> providerIdToName) {
-        var addProviderId = buildProviderAddFields(modelToProvider);
-        var addProviderName = buildProviderNameAddFields(providerIdToName);
-        var aggregate = new Aggregate<Document>();
-        aggregate.resultClass = Document.class;
-        aggregate.pipeline = List.of(
-            Aggregates.match(Filters.and(Filters.gte("started_at", dayStart), Filters.lt("started_at", dayEnd))),
-            addProviderId,
-            addProviderName,
-            Aggregates.group(
-                new Document()
-                    .append("user_id", "$user_id")
-                    .append("agent_id", new Document("$ifNull", List.of("$agent_id", NO_AGENT)))
-                    .append("agent_name", "$agent_name")
-                    .append("source", new Document("$ifNull", List.of("$source", "unknown")))
-                    .append("model", new Document("$ifNull", List.of("$model", "unknown")))
-                    .append("provider_id", "$provider_id")
-                    .append("provider_name", "$provider_name")
-                    .append("date", date.toString()),
-                Accumulators.sum("input_tokens", "$input_tokens"),
-                Accumulators.sum("output_tokens", "$output_tokens"),
-                Accumulators.sum("total_tokens", "$total_tokens"),
-                Accumulators.sum("cached_tokens", "$cached_tokens"),
-                Accumulators.sum("cost_usd", "$cost_usd"),
-                Accumulators.sum("call_count", 1L),
-                Accumulators.avg("avg_input_tokens", "$input_tokens"),
-                Accumulators.avg("avg_output_tokens", "$output_tokens"),
-                Accumulators.avg("avg_total_tokens", "$total_tokens"),
-                Accumulators.avg("avg_cost_usd", "$cost_usd"),
-                Accumulators.max("max_total_tokens", "$total_tokens"),
-                Accumulators.max("max_cost_usd", "$cost_usd"),
-                Accumulators.push("all_total_tokens", "$total_tokens"),
-                Accumulators.push("all_cost_usd", "$cost_usd"),
-                Accumulators.addToSet("session_ids", "$session_id")
-            )
-        );
-        return traceCollection.aggregate(aggregate);
-    }
-
-    private Document buildProviderAddFields(Map<String, String> modelToProvider) {
-        return AnalyticsMappingService.buildProviderAddFields(modelToProvider);
-    }
-
-    private Document buildProviderNameAddFields(Map<String, String> providerIdToName) {
-        return AnalyticsMappingService.buildProviderNameAddFields(providerIdToName);
-    }
-
-    private int upsertAnalyticsStats(List<Document> rows, LocalDate date) {
+    private int upsertAnalyticsStats(List<TraceDailyRollupRow> rows, LocalDate date) {
         int created = 0;
         int replaced = 0;
 
         for (var row : rows) {
-            var stats = buildAnalyticsStatsFromRow(row, date);
+            var stats = buildAnalyticsStats(row, date);
             if (stats == null) continue;
 
             if (analyticsStatsCollection.get(stats.id).isPresent()) {
@@ -184,71 +109,51 @@ public class TraceDailyMaintenanceService {
         return created + replaced;
     }
 
-    private AnalyticsDailyStats buildAnalyticsStatsFromRow(Document row, LocalDate date) {
-        var id = row.get("_id", Document.class);
-        if (id == null) return null;
-        return buildStatsFromId(row, date, id);
-    }
-
-    private AnalyticsDailyStats buildStatsFromId(Document row, LocalDate date, Document id) {
-        String userId = id.getString("user_id");
+    private AnalyticsDailyStats buildAnalyticsStats(TraceDailyRollupRow row, LocalDate date) {
+        var userId = row.userId;
         if (userId == null) return null;
-        String agentId = id.getString("agent_id");
-        if (agentId == null) agentId = NO_AGENT;
-        String agentName = id.getString("agent_name");
-        String source = id.getString("source");
-        if (source == null) source = "unknown";
-        String model = id.getString("model");
-        if (model == null) model = "unknown";
-        String providerId = id.getString("provider_id");
-        if (providerId == null) providerId = "unknown";
-        String providerName = id.getString("provider_name");
-        if (providerName == null) providerName = "unknown";
+        var agentId = row.agentId != null ? row.agentId : NO_AGENT;
+        var source = row.source != null ? row.source : "unknown";
+        var model = row.model != null ? row.model : "unknown";
+        var providerId = row.providerId != null ? row.providerId : "unknown";
+        var providerName = row.providerName != null ? row.providerName : "unknown";
 
         var stats = new AnalyticsDailyStats();
         stats.id = userId + "::" + agentId + "::" + source + "::" + model + "::" + providerId + "::" + date;
         stats.userId = userId;
         stats.agentId = agentId;
-        stats.agentName = agentName;
+        stats.agentName = row.agentName;
         stats.source = source;
         stats.model = model;
         stats.providerId = providerId;
         stats.providerName = providerName;
         stats.date = date.atStartOfDay(UTC);
 
-        fillTokenMetrics(stats, row);
+        stats.inputTokens = value(row.inputTokens);
+        stats.outputTokens = value(row.outputTokens);
+        stats.totalTokens = value(row.totalTokens);
+        stats.cachedTokens = value(row.cachedTokens);
+        stats.costUsd = value(row.costUsd);
+        stats.callCount = value(row.callCount);
+        stats.avgInputTokens = value(row.avgInputTokens);
+        stats.avgOutputTokens = value(row.avgOutputTokens);
+        stats.avgTotalTokens = value(row.avgTotalTokens);
+        stats.avgCostUsd = value(row.avgCostUsd);
+        stats.maxTotalTokens = value(row.maxTotalTokens);
+        stats.maxCostUsd = value(row.maxCostUsd);
+        if (stats.totalTokens <= 0) stats.totalTokens = stats.inputTokens + stats.outputTokens;
+        stats.p90TotalTokens = value(row.p90TotalTokens);
+        stats.p90CostUsd = value(row.p90CostUsd);
+        stats.sessionCount = value(row.sessionCount);
         return stats;
     }
 
-    @SuppressWarnings("unchecked")
-    private void fillTokenMetrics(AnalyticsDailyStats stats, Document row) {
-        stats.inputTokens = TraceMaintenanceHelper.getLong(row, "input_tokens");
-        stats.outputTokens = TraceMaintenanceHelper.getLong(row, "output_tokens");
-        stats.totalTokens = TraceMaintenanceHelper.getLong(row, "total_tokens");
-        stats.cachedTokens = TraceMaintenanceHelper.getLong(row, "cached_tokens");
-        stats.costUsd = TraceMaintenanceHelper.getDouble(row, "cost_usd");
-        stats.callCount = TraceMaintenanceHelper.getLong(row, "call_count");
-        stats.avgInputTokens = TraceMaintenanceHelper.getDouble(row, "avg_input_tokens");
-        stats.avgOutputTokens = TraceMaintenanceHelper.getDouble(row, "avg_output_tokens");
-        stats.avgTotalTokens = TraceMaintenanceHelper.getDouble(row, "avg_total_tokens");
-        stats.avgCostUsd = TraceMaintenanceHelper.getDouble(row, "avg_cost_usd");
-        stats.maxTotalTokens = TraceMaintenanceHelper.getLong(row, "max_total_tokens");
-        stats.maxCostUsd = TraceMaintenanceHelper.getDouble(row, "max_cost_usd");
-        if (stats.totalTokens <= 0) stats.totalTokens = stats.inputTokens + stats.outputTokens;
-        var allTotalTokens = (List<Object>) row.get("all_total_tokens");
-        var allCostUsd = (List<Object>) row.get("all_cost_usd");
-        var sessionIds = (List<String>) row.get("session_ids");
-        stats.p90TotalTokens = TraceMaintenanceHelper.computeP90(allTotalTokens);
-        stats.p90CostUsd = TraceMaintenanceHelper.computeP90(allCostUsd);
-        stats.sessionCount = sessionIds != null ? (long) sessionIds.size() : 0L;
-    }
-
-    private int upsertStats(List<Document> rows, LocalDate date) {
+    private int upsertStats(List<TraceDailyRollupRow> rows, LocalDate date) {
         int created = 0;
         int replaced = 0;
 
         for (var row : rows) {
-            var stats = buildStatsFromRow(row, date);
+            var stats = buildStats(row, date);
             if (stats == null) continue;
 
             if (statsCollection.get(stats.id).isPresent()) {
@@ -264,31 +169,15 @@ public class TraceDailyMaintenanceService {
         return created + replaced;
     }
 
-    @SuppressWarnings("unchecked")
-    private TraceDailyStats buildStatsFromRow(Document row, LocalDate date) {
-        var id = row.get("_id", Document.class);
-        if (id == null) return null;
-        String userId = id.getString("user_id");
-        String agentId = id.getString("agent_id");
+    private TraceDailyStats buildStats(TraceDailyRollupRow row, LocalDate date) {
+        var userId = row.userId;
         if (userId == null) return null;
-        if (agentId == null) agentId = NO_AGENT;
+        var agentId = row.agentId != null ? row.agentId : NO_AGENT;
 
-        long inputTokens = TraceMaintenanceHelper.getLong(row, "input_tokens");
-        long outputTokens = TraceMaintenanceHelper.getLong(row, "output_tokens");
-        long totalTokens = TraceMaintenanceHelper.getLong(row, "total_tokens");
-        long cachedTokens = TraceMaintenanceHelper.getLong(row, "cached_tokens");
-        double costUsd = TraceMaintenanceHelper.getDouble(row, "cost_usd");
-        long callCount = TraceMaintenanceHelper.getLong(row, "call_count");
-        double avgTotalTokens = TraceMaintenanceHelper.getDouble(row, "avg_total_tokens");
-        double avgCostUsd = TraceMaintenanceHelper.getDouble(row, "avg_cost_usd");
+        long inputTokens = value(row.inputTokens);
+        long outputTokens = value(row.outputTokens);
+        long totalTokens = value(row.totalTokens);
         if (totalTokens <= 0) totalTokens = inputTokens + outputTokens;
-
-        var allTotalTokens = (List<Object>) row.get("all_total_tokens");
-        var allCostUsd = (List<Object>) row.get("all_cost_usd");
-        var sessionIds = (List<String>) row.get("session_ids");
-        double p90TotalTokens = TraceMaintenanceHelper.computeP90(allTotalTokens);
-        double p90CostUsd = TraceMaintenanceHelper.computeP90(allCostUsd);
-        long sessionCount = sessionIds != null ? sessionIds.size() : 0;
 
         var stats = new TraceDailyStats();
         stats.id = userId + "_" + agentId + "_" + date;
@@ -298,14 +187,15 @@ public class TraceDailyMaintenanceService {
         stats.inputTokens = inputTokens;
         stats.outputTokens = outputTokens;
         stats.totalTokens = totalTokens;
-        stats.cachedTokens = cachedTokens;
-        stats.costUsd = costUsd;
-        stats.callCount = callCount;
-        stats.avgTotalTokens = avgTotalTokens;
-        stats.avgCostUsd = avgCostUsd;
-        stats.p90TotalTokens = p90TotalTokens;
-        stats.p90CostUsd = p90CostUsd;
-        stats.sessionCount = sessionCount;
+        stats.cachedTokens = value(row.cachedTokens);
+        stats.costUsd = value(row.costUsd);
+        stats.callCount = value(row.callCount);
+        stats.avgTotalTokens = value(row.avgTotalTokens);
+        stats.avgCostUsd = value(row.avgCostUsd);
+        stats.p90TotalTokens = value(row.p90TotalTokens);
+        stats.p90CostUsd = value(row.p90CostUsd);
+        stats.sessionCount = value(row.sessionCount);
         return stats;
     }
+
 }

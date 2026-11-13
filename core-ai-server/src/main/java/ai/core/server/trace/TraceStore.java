@@ -49,6 +49,19 @@ public interface TraceStore {
 
     List<TraceAggregateRow> aggregate(TraceAggregation aggregation);
 
+    /**
+     * Per user and agent rollup for one UTC day, with averages, P90 and distinct session count.
+     */
+    List<TraceDailyRollupRow> dailyRollup(ZonedDateTime from, ZonedDateTime to);
+
+    /**
+     * Per user, agent, source, model and provider rollup for one UTC day. The provider is derived from
+     * the model through the supplied mappings.
+     */
+    List<TraceDailyRollupRow> analyticsRollup(ZonedDateTime from, ZonedDateTime to,
+                                              Map<String, String> modelToProvider,
+                                              Map<String, String> providerIdToName);
+
     List<String> traceIds(TraceQuery query, int limit);
 
     long countStartedBefore(ZonedDateTime cutoff);
