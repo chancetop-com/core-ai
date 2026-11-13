@@ -47,6 +47,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
   const [imageGenerationModel, setImageGenerationModel] = useState('');
   const [videoGenerationModel, setVideoGenerationModel] = useState('');
   const [videoUnderstandingModel, setVideoUnderstandingModel] = useState('');
+  const [speechTranscriptionModel, setSpeechTranscriptionModel] = useState('');
+  const [speechSynthesisModel, setSpeechSynthesisModel] = useState('');
   const [storageProvider, setStorageProvider] = useState('');
   const [azureBlobArtifactContainer, setAzureBlobArtifactContainer] = useState('');
   const [azureBlobPublicArtifactContainer, setAzureBlobPublicArtifactContainer] = useState('');
@@ -98,6 +100,24 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
     [models],
   );
 
+  const speechTranscriptionModels = useMemo(
+    () => models.filter(model => model.enabled !== false && (model.endpointTypes || []).includes('audio.transcriptions')),
+    [models],
+  );
+
+  const speechSynthesisModels = useMemo(
+    () => models.filter(model => model.enabled !== false && (model.endpointTypes || []).includes('audio.speech')),
+    [models],
+  );
+
+  const speechModelOptions = useMemo(() => {
+    const azureReady = settings?.has_azure_speech_key && settings?.azure_speech_region;
+    return (list: GatewayModel[]): GatewayModel[] => {
+      if (!azureReady || list.some(model => model.modelId === 'azure-speech')) return list;
+      return [...list, { id: 'azure-speech', modelId: 'azure-speech', displayName: 'Azure Speech', providerId: '', upstreamModel: '', enabled: true }];
+    };
+  }, [settings?.has_azure_speech_key, settings?.azure_speech_region]);
+
   // caption and video understanding run on chat models that must accept image/video input;
   // keep unknown capability models (null = auto) and exclude explicitly unsupported ones
   const captionModels = useMemo(() => chatModels.filter(model => model.supportsVision !== false), [chatModels]);
@@ -124,6 +144,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setImageGenerationModel(settingsResponse.image_generation_model || '');
       setVideoGenerationModel(settingsResponse.video_generation_model || '');
       setVideoUnderstandingModel(settingsResponse.video_understanding_model || '');
+      setSpeechTranscriptionModel(settingsResponse.speech_transcription_model || '');
+      setSpeechSynthesisModel(settingsResponse.speech_synthesis_model || '');
       setStorageProvider(settingsResponse.storage_provider || '');
       setAzureBlobArtifactContainer(settingsResponse.azure_blob_artifact_container || '');
       setAzureBlobPublicArtifactContainer(settingsResponse.azure_blob_public_artifact_container || '');
@@ -190,6 +212,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
         image_generation_model: imageGenerationModel.trim() || null,
         video_generation_model: videoGenerationModel.trim() || null,
         video_understanding_model: videoUnderstandingModel.trim() || null,
+        speech_transcription_model: speechTranscriptionModel.trim() || null,
+        speech_synthesis_model: speechSynthesisModel.trim() || null,
         storage_provider: storageProvider.trim() || null,
         azure_blob_artifact_container: azureBlobArtifactContainer.trim() || null,
         azure_blob_public_artifact_container: azureBlobPublicArtifactContainer.trim() || null,
@@ -218,6 +242,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setImageGenerationModel(response.image_generation_model || '');
       setVideoGenerationModel(response.video_generation_model || '');
       setVideoUnderstandingModel(response.video_understanding_model || '');
+      setSpeechTranscriptionModel(response.speech_transcription_model || '');
+      setSpeechSynthesisModel(response.speech_synthesis_model || '');
       setStorageProvider(response.storage_provider || '');
       setAzureBlobArtifactContainer(response.azure_blob_artifact_container || '');
       setAzureBlobPublicArtifactContainer(response.azure_blob_public_artifact_container || '');
@@ -412,6 +438,32 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
                   defaultModel={settings?.default_video_understanding_model}
                   onChange={setVideoUnderstandingModel}
                 />
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Speech to text model</span>
+                <ModelSelect
+                  value={speechTranscriptionModel}
+                  models={speechModelOptions(speechTranscriptionModels)}
+                  defaultModel="server fallback"
+                  onChange={setSpeechTranscriptionModel}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Default ASR model used by speech transcribe and the agent transcribe_audio tool. Leave
+                  empty to use the first audio.transcriptions model, then Azure Speech.
+                </span>
+              </label>
+              <label className="block">
+                <span className="block text-sm font-medium mb-2">Text to speech model</span>
+                <ModelSelect
+                  value={speechSynthesisModel}
+                  models={speechModelOptions(speechSynthesisModels)}
+                  defaultModel="server fallback"
+                  onChange={setSpeechSynthesisModel}
+                />
+                <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  Default TTS model for /api/speech/synthesis. Leave empty to use the first audio.speech
+                  model, then Azure Speech.
+                </span>
               </label>
               <label className="block">
                 <span className="block text-sm font-medium mb-2">Summarize PDF model</span>

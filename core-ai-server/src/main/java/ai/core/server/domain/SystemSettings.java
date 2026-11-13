@@ -35,6 +35,12 @@ public class SystemSettings {
     @Field(name = "video_understanding_model")
     public String videoUnderstandingModel;
 
+    @Field(name = "speech_transcription_model")
+    public String speechTranscriptionModel;
+
+    @Field(name = "speech_synthesis_model")
+    public String speechSynthesisModel;
+
     @Field(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 

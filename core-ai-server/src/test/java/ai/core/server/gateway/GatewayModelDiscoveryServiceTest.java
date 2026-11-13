@@ -16,6 +16,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -89,7 +90,7 @@ class GatewayModelDiscoveryServiceTest {
     }
 
     @Test
-    void discoversAudioTranscriptionModelsOnlyForThatEndpoint() {
+    void discoversSpeechModelsOnTheirOwnEndpoints() {
         var provider = provider("provider-1", "litellm", "https://litellm.example.com");
         var service = service(provider, """
                 {"data":[
@@ -100,10 +101,24 @@ class GatewayModelDiscoveryServiceTest {
 
         var response = service.discover("provider-1", "admin-1");
 
-        // audio_speech (TTS) is not a transcription endpoint and is filtered out of the import list
-        assertEquals(1, response.models.size());
-        assertEquals("whisper-1", response.models.get(0).id);
+        assertEquals(2, response.models.size());
+        assertEquals("tts-1", response.models.get(0).id);
+        assertEquals(List.of("audio.speech"), response.models.get(0).endpointTypes);
+        assertEquals("whisper-1", response.models.get(1).id);
+        assertEquals(List.of("audio.transcriptions"), response.models.get(1).endpointTypes);
+    }
+
+    @Test
+    void discoversGoogleSpeechModelsWithoutCallingTheModelsApi() {
+        var provider = provider("provider-1", "google-speech", "https://speech.googleapis.com");
+        var service = service(provider, "{}");
+
+        var response = service.discover("provider-1", "admin-1");
+
+        assertEquals(6, response.models.size());
+        assertEquals("chirp_3", response.models.get(0).id);
         assertEquals(List.of("audio.transcriptions"), response.models.get(0).endpointTypes);
+        assertNull(service.captured);
     }
 
     @Test

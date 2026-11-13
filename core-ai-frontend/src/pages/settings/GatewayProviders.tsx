@@ -11,6 +11,7 @@ const PROVIDER_TYPES = [
   { value: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', prefix: 'openrouter/' },
   { value: 'openai-compatible', label: 'OpenAI Compatible', baseUrl: '', prefix: '' },
   { value: 'gemini', label: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', prefix: 'google/' },
+  { value: 'google-speech', label: 'Google Cloud Speech', baseUrl: 'https://speech.googleapis.com', prefix: 'google/' },
   { value: 'kie', label: 'KIE', baseUrl: 'https://api.kie.ai', prefix: 'kie/' },
   { value: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', prefix: 'anthropic/' },
 ];
@@ -19,7 +20,8 @@ const MEDIA_PROTOCOLS = [
   { value: '', label: 'Automatic' },
   { value: 'OPENAI_IMAGES', label: 'OpenAI Images' },
   { value: 'OPENAI_COMPATIBLE', label: 'OpenAI Compatible' },
-  { value: 'OPENAI_AUDIO', label: 'OpenAI Audio (transcriptions)' },
+  { value: 'OPENAI_AUDIO', label: 'OpenAI Audio (transcriptions / speech)' },
+  { value: 'GOOGLE_SPEECH', label: 'Google Cloud Speech (STT)' },
   { value: 'GEMINI_GENERATE_CONTENT', label: 'Gemini generateContent' },
   { value: 'VERTEX_GEMINI_GENERATE_CONTENT', label: 'Vertex Gemini generateContent' },
   { value: 'VERTEX_GEMINI_INTERACTIONS', label: 'Vertex Gemini Interactions (video)' },
@@ -48,6 +50,7 @@ const ENDPOINT_TYPES = [
   { value: 'image.edits', label: 'Image Edit' },
   { value: 'video.generations', label: 'Video' },
   { value: 'audio.transcriptions', label: 'Speech to Text' },
+  { value: 'audio.speech', label: 'Text to Speech' },
   { value: 'decision', label: 'Decision (System One)' },
 ];
 
@@ -941,10 +944,10 @@ function renderProviderPanel(props: {
                {MEDIA_PROTOCOLS.map(protocol => <option key={protocol.value} value={protocol.value}>{protocol.label}</option>)}
              </select>
            </Field>
-            {isVertexMediaProtocol(form.mediaProtocol) && (
+            {usesGoogleCloudFields(form.mediaProtocol) && (
               <Field label="Google Credentials">
                <select className={inputClass} style={inputStyle} value={form.mediaAuthType} onChange={e => setForm({ ...form, mediaAuthType: e.target.value })}>
-                 {GOOGLE_AUTH_TYPES.slice(1).map(authType => <option key={authType.value} value={authType.value}>{authType.label}</option>)}
+                 {(form.mediaProtocol === 'GOOGLE_SPEECH' ? GOOGLE_AUTH_TYPES : GOOGLE_AUTH_TYPES.slice(1)).map(authType => <option key={authType.value} value={authType.value}>{authType.label}</option>)}
                </select>
              </Field>
            )}
@@ -975,7 +978,7 @@ function renderProviderPanel(props: {
             />
           </Field>
 
-          {isVertexMediaProtocol(form.mediaProtocol) && (
+          {usesGoogleCloudFields(form.mediaProtocol) && (
             <>
               <div className="grid grid-cols-2 gap-4">
                 <Field label="GCP Project ID">
@@ -984,9 +987,11 @@ function renderProviderPanel(props: {
                 <Field label="GCP Location">
                   <input className={inputClass} style={inputStyle} value={form.vertexLocation} onChange={e => setForm({ ...form, vertexLocation: e.target.value })} />
                 </Field>
-                <Field label="GCS Bucket (video understanding)">
-                  <input className={inputClass} style={inputStyle} value={form.vertexGcsBucket} placeholder="my-gemini-video-bucket" onChange={e => setForm({ ...form, vertexGcsBucket: e.target.value })} />
-                </Field>
+                {isVertexMediaProtocol(form.mediaProtocol) && (
+                  <Field label="GCS Bucket (video understanding)">
+                    <input className={inputClass} style={inputStyle} value={form.vertexGcsBucket} placeholder="my-gemini-video-bucket" onChange={e => setForm({ ...form, vertexGcsBucket: e.target.value })} />
+                  </Field>
+                )}
               </div>
              {form.mediaAuthType === 'GOOGLE_SERVICE_ACCOUNT_JSON' && (
                <Field label={form.hasGoogleCredentials ? 'Service Account JSON (leave empty to keep current)' : 'Service Account JSON'}>
@@ -1557,6 +1562,10 @@ function ReadOnlyField({ label, children }: { label: string; children: ReactNode
 
 function isVertexMediaProtocol(protocol: string) {
   return protocol === 'VERTEX_GEMINI_GENERATE_CONTENT' || protocol === 'VERTEX_GEMINI_INTERACTIONS';
+}
+
+function usesGoogleCloudFields(protocol: string) {
+  return isVertexMediaProtocol(protocol) || protocol === 'GOOGLE_SPEECH';
 }
 
 function labelEndpoint(value: string) {

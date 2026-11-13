@@ -8,8 +8,8 @@ import java.util.concurrent.Callable;
 /**
  * @author stephen
  */
-@Command(name = "speech", description = "Transcribe audio with the server's speech models",
-        subcommands = {SpeechTranscribeCommand.class, SpeechModelsCommand.class})
+@Command(name = "speech", description = "Transcribe or synthesize speech with the server's speech models",
+        subcommands = {SpeechTranscribeCommand.class, SpeechSynthesizeCommand.class, SpeechModelsCommand.class})
 public class SpeechCommand implements Callable<Integer> {
     @Override
     public Integer call() {

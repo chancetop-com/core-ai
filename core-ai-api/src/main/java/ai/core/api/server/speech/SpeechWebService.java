@@ -14,4 +14,8 @@ public interface SpeechWebService {
     @GET
     @Path("/api/speech/models")
     ListSpeechModelsResponse models();
+
+    @GET
+    @Path("/api/speech/synthesis/models")
+    ListSpeechSynthesisModelsResponse synthesisModels();
 }

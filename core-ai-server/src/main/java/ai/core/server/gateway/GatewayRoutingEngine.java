@@ -401,7 +401,7 @@ public class GatewayRoutingEngine {
             case RESPONSES -> provider.defaultResponsesModel;
             case IMAGE_GENERATION, IMAGE_EDIT -> provider.defaultImageModel;
             case VIDEO_GENERATION -> provider.defaultVideoModel;
-            case AUDIO_TRANSCRIPTION -> null; case DECISION -> provider.defaultDecisionModel;
+            case AUDIO_TRANSCRIPTION, AUDIO_SPEECH -> null; case DECISION -> provider.defaultDecisionModel;
         };
     }
 

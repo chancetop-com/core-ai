@@ -31,6 +31,7 @@ public class GatewayModelService {
     static final String ENDPOINT_IMAGE_EDIT = "image.edits";
     static final String ENDPOINT_VIDEO_GENERATION = "video.generations";
     static final String ENDPOINT_AUDIO_TRANSCRIPTION = "audio.transcriptions";
+    static final String ENDPOINT_AUDIO_SPEECH = "audio.speech";
     static final String ENDPOINT_DECISION = "decision";
     static final String RESPONSE_FORMAT_JSON_SCHEMA = "json_schema";
     static final String RESPONSE_FORMAT_JSON_OBJECT = "json_object";

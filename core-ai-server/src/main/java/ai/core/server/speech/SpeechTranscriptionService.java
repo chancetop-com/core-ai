@@ -74,7 +74,9 @@ public class SpeechTranscriptionService {
             models.add(view);
         }
         response.models = models;
-        response.defaultModel = models.isEmpty() ? null : models.getFirst().modelId;
+        var configured = settingsService.speechTranscriptionModel();
+        response.defaultModel = configured != null && models.stream().anyMatch(model -> configured.equals(model.modelId))
+                ? configured : models.isEmpty() ? null : models.getFirst().modelId;
         response.azureConfigured = azureConfigured;
         return response;
     }
@@ -97,6 +99,8 @@ public class SpeechTranscriptionService {
             }
             return requested.trim();
         }
+        var configured = settingsService.speechTranscriptionModel();
+        if (configured != null && !configured.isBlank()) return configured;
         var models = routingEngine.explicitMediaModelHints(GatewayEndpointType.AUDIO_TRANSCRIPTION);
         if (!models.isEmpty()) return models.getFirst().modelId();
         if (azureConfigured()) return AZURE_SPEECH_MODEL;

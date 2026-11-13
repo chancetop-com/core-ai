@@ -121,6 +121,43 @@ class SystemSettingsServiceTest {
     }
 
     @Test
+    void persistsSpeechDefaultsWhenModelsAreEnabled() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        when(models.find(any(Query.class))).thenReturn(List.of(mediaModel("asr-1"), mediaModel("tts-1")));
+        var request = new SystemSettingsRequest();
+        request.speechTranscriptionModel = "asr-1";
+        request.speechSynthesisModel = "tts-1";
+
+        var view = service.update(request, "admin");
+
+        var entity = ArgumentCaptor.forClass(SystemSettings.class);
+        verify(settings).insert(entity.capture());
+        assertEquals("asr-1", entity.getValue().speechTranscriptionModel);
+        assertEquals("tts-1", entity.getValue().speechSynthesisModel);
+        assertEquals("asr-1", view.speechTranscriptionModel);
+        assertEquals("tts-1", view.speechSynthesisModel);
+    }
+
+    @Test
+    void rejectsSpeechDefaultsForUnknownModels() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        when(models.find(any(Query.class))).thenReturn(List.of());
+        var request = new SystemSettingsRequest();
+        request.speechTranscriptionModel = "missing-asr";
+
+        assertThrows(BadRequestException.class, () -> service.update(request, "admin"));
+    }
+
+    @Test
+    void rejectsAzureSpeechDefaultWithoutCredentials() {
+        when(settings.get("default")).thenReturn(Optional.empty());
+        var request = new SystemSettingsRequest();
+        request.speechSynthesisModel = "azure-speech";
+
+        assertThrows(BadRequestException.class, () -> service.update(request, "admin"));
+    }
+
+    @Test
     void mediaModelGuardAcceptsLegacyRowsWithoutTheEnabledField() {
         when(settings.get("default")).thenReturn(Optional.empty());
         when(models.find(any(Query.class))).thenReturn(List.of(mediaModel("legacy-image")));

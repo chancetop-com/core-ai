@@ -31,11 +31,13 @@ final class GatewayModelCatalog {
 
     private static List<String> inferEndpoints(String modelId) {
         var value = modelId == null ? "" : modelId.toLowerCase(Locale.ROOT);
-        // speech-to-text models are the one audio family the gateway serves
         if (value.contains("whisper") || value.contains("transcribe")) {
             return List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION);
         }
-        if (containsAny(value, "embedding", "embed", "tts", "image", "moderation")) return List.of();
+        if (value.contains("tts") || value.contains("audio_speech") || value.contains("audio-speech")) {
+            return List.of(GatewayModelService.ENDPOINT_AUDIO_SPEECH);
+        }
+        if (containsAny(value, "embedding", "embed", "image", "moderation")) return List.of();
         var endpoints = new ArrayList<String>();
         endpoints.add(GatewayModelService.ENDPOINT_CHAT_COMPLETIONS);
         if (value.matches("o\\d.*") || value.startsWith("gpt-4.1") || value.startsWith("gpt-5")) {

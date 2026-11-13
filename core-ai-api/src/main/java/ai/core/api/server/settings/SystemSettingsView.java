@@ -47,6 +47,12 @@ public class SystemSettingsView {
     @Property(name = "default_video_understanding_model")
     public String defaultVideoUnderstandingModel;
 
+    @Property(name = "speech_transcription_model")
+    public String speechTranscriptionModel;
+
+    @Property(name = "speech_synthesis_model")
+    public String speechSynthesisModel;
+
     @Property(name = "sandbox_snapshot_enabled")
     public Boolean sandboxSnapshotEnabled;
 

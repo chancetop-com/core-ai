@@ -2021,6 +2021,8 @@ export interface SystemSettings {
   default_video_generation_model?: string;
   video_understanding_model?: string | null;
   default_video_understanding_model?: string;
+  speech_transcription_model?: string | null;
+  speech_synthesis_model?: string | null;
   storage_provider?: string | null;
   azure_blob_artifact_container?: string | null;
   azure_blob_public_artifact_container?: string | null;
@@ -2058,6 +2060,8 @@ export interface SystemSettingsRequest {
   image_generation_model?: string | null;
   video_generation_model?: string | null;
   video_understanding_model?: string | null;
+  speech_transcription_model?: string | null;
+  speech_synthesis_model?: string | null;
   storage_provider?: string | null;
   azure_blob_artifact_container?: string | null;
   azure_blob_public_artifact_container?: string | null;

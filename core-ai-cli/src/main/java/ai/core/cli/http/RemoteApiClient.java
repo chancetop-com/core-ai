@@ -109,6 +109,33 @@ public class RemoteApiClient {
         }
     }
 
+    /** Binary POST: returns audio bytes plus response metadata (TTS model/provider headers). */
+    public BinaryResponse postBytes(String path, Object body) {
+        var json = body != null ? JsonUtil.toJson(body) : "{}";
+        var request = request(path)
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+        try {
+            var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() >= 400) {
+                var message = parseErrorMessage(response.statusCode(), response.body() == null ? null
+                        : new String(response.body(), StandardCharsets.UTF_8));
+                LOGGER.warn("API error: {} {}", response.statusCode(), message);
+                throw new RemoteApiException(response.statusCode(), message);
+            }
+            var headers = new java.util.HashMap<String, String>();
+            response.headers().map().forEach((name, values) ->
+                    headers.put(name, values == null || values.isEmpty() ? null : values.getFirst()));
+            return new BinaryResponse(response.body() == null ? new byte[0] : response.body(), headers);
+        } catch (RemoteApiException e) {
+            throw e;
+        } catch (Exception e) {
+            LOGGER.warn("API request failed: {}", e.getMessage());
+            throw new IllegalStateException("API request failed: " + e.getMessage(), e);
+        }
+    }
+
     public String post(String path, Object body) {
         var json = body != null ? JsonUtil.toJson(body) : "{}";
         var request = textRequest(path)

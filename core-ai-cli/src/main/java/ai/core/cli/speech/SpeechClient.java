@@ -1,6 +1,7 @@
 package ai.core.cli.speech;
 
 import ai.core.api.server.speech.ListSpeechModelsResponse;
+import ai.core.api.server.speech.ListSpeechSynthesisModelsResponse;
 import ai.core.api.server.speech.SpeechTranscriptionView;
 import ai.core.cli.http.RemoteApiClient;
 import ai.core.tool.tools.TranscribeAudioTool;
@@ -61,6 +62,29 @@ public class SpeechClient implements TranscribeAudioTool.AudioTranscriptionServi
                 modelClient.getRequired("/api/speech/models"));
     }
 
+    public ListSpeechSynthesisModelsResponse synthesisModels() {
+        return JsonUtil.fromJson(ListSpeechSynthesisModelsResponse.class,
+                modelClient.getRequired("/api/speech/synthesis/models"));
+    }
+
+    public SpeechAudio synthesize(String text, String model, String voice, String language, String format, Double speed) {
+        var body = new LinkedHashMap<String, Object>();
+        body.put("text", text);
+        putObject(body, "model", model);
+        putObject(body, "voice", voice);
+        putObject(body, "language", language);
+        putObject(body, "format", format);
+        if (speed != null) body.put("speed", speed);
+        var response = client.postBytes("/api/speech/synthesis", body);
+        return new SpeechAudio(response.body(), response.headers().get("content-type"),
+                response.headers().get("x-speech-model"), response.headers().get("x-speech-provider"),
+                response.headers().get("x-speech-voice"));
+    }
+
+    private void putObject(Map<String, Object> fields, String key, String value) {
+        if (value != null && !value.isBlank()) fields.put(key, value.trim());
+    }
+
     @Override
     public SpeechTranscriptionView transcribe(Path audio, String language, String model, String prompt) {
         checkSize(audio);
@@ -87,5 +111,8 @@ public class SpeechClient implements TranscribeAudioTool.AudioTranscriptionServi
         } catch (IOException e) {
             throw new IllegalArgumentException("cannot read audio file: " + audio, e);
         }
+    }
+
+    public record SpeechAudio(byte[] audio, String contentType, String model, String provider, String voice) {
     }
 }

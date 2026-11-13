@@ -4,6 +4,8 @@ import ai.core.api.server.CapabilitiesWebService;
 import ai.core.api.server.speech.SpeechTranscriptSegmentView;
 import ai.core.api.server.speech.SpeechTranscriptionView;
 import ai.core.api.server.speech.SpeechWebService;
+import ai.core.server.speech.SpeechSynthesisController;
+import ai.core.server.speech.SpeechSynthesisService;
 import ai.core.server.speech.SpeechTranscriptionController;
 import ai.core.server.speech.SpeechTranscriptionService;
 import ai.core.server.web.CapabilitiesWebServiceImpl;
@@ -24,12 +26,15 @@ public class PlatformApiModule extends Module {
     private void configureSpeechToken() {
         // the transcription service must be bound before the WebService impl resolves its @Inject fields
         bind(SpeechTranscriptionService.class);
+        bind(SpeechSynthesisService.class);
         api().service(SpeechWebService.class, bind(SpeechWebServiceImpl.class));
-        // the raw multipart controller returns this bean directly; api() service registration does not cover it
+        // the raw controllers return beans/bytes directly; api() service registration does not cover them
         http().bean(SpeechTranscriptionView.class);
         http().bean(SpeechTranscriptSegmentView.class);
         http().route(HTTPMethod.POST, "/api/speech/transcriptions",
                 bind(SpeechTranscriptionController.class)::transcribe);
+        http().route(HTTPMethod.POST, "/api/speech/synthesis",
+                bind(SpeechSynthesisController.class)::synthesize);
     }
 
     private void registerCapabilities() {

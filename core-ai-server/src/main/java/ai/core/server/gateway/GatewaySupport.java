@@ -336,6 +336,7 @@ final class GatewaySupport {
 
     static void validateProviderEndpointCompatibility(GatewayProviderConfig provider, List<String> endpointTypes) {
         if (endpointTypes == null || endpointTypes.isEmpty()) return;
+        GatewaySpeechSupport.validateEndpointCompatibility(provider, endpointTypes);
         if ("anthropic".equals(provider.type)) {
             // the gateway bridges anthropic clients onto chat providers, not the other way round:
             // an anthropic upstream is only addressable through the messages surface

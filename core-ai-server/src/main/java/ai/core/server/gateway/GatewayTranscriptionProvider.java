@@ -1,10 +1,12 @@
 package ai.core.server.gateway;
 
+import ai.core.media.GoogleAccessTokenProvider;
 import ai.core.media.audio.OpenAIAudioTranscriptionClient;
 import ai.core.media.audio.TranscriptionProvider;
 import ai.core.media.audio.TranscriptionRequest;
 import ai.core.media.audio.TranscriptionResult;
 import ai.core.server.domain.GatewayProviderConfig;
+import ai.core.server.speech.GoogleSpeechTranscriptionClient;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 
@@ -54,17 +56,31 @@ public class GatewayTranscriptionProvider implements TranscriptionProvider {
         if (!supportsAudio(provider)) {
             throw new BadRequestException("gateway provider " + provider.name + " (media protocol "
                     + provider.mediaProtocol + ") does not support audio transcription; use an OpenAI-compatible"
-                    + " provider or set mediaProtocol=OPENAI_AUDIO");
+                    + " provider, set mediaProtocol=OPENAI_AUDIO, or use a google-speech provider");
         }
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
+        if (GatewaySpeechSupport.isGoogleSpeechProvider(provider)) {
+            return new GoogleSpeechTranscriptionClient(provider.baseUrl, provider.vertexProjectId, provider.vertexLocation,
+                    apiKey, googleTokenProvider(provider), 8);
+        }
         if ("azure".equals(provider.type)) {
             return OpenAIAudioTranscriptionClient.azure(provider.baseUrl, apiKey == null ? "" : apiKey, provider.apiVersion);
         }
         return new OpenAIAudioTranscriptionClient(provider.baseUrl, apiKey == null ? "" : apiKey);
     }
 
+    private GoogleAccessTokenProvider googleTokenProvider(GatewayProviderConfig provider) {
+        if ("API_KEY".equals(provider.mediaAuthType)) return null;
+        var credentials = secretProtector.unprotect(provider.googleCredentialsEncrypted);
+        if ("GOOGLE_SERVICE_ACCOUNT_JSON".equals(provider.mediaAuthType) && (credentials == null || credentials.isBlank())) {
+            throw new BadRequestException("service account JSON is required for Google service account authentication");
+        }
+        return new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(provider.mediaAuthType) ? credentials : null);
+    }
+
     /** Image/chat protocols are accepted too: the upstream audio route is the same OpenAI surface. */
     private boolean supportsAudio(GatewayProviderConfig provider) {
+        if (GatewaySpeechSupport.isGoogleSpeechProvider(provider)) return true;
         var protocol = provider.mediaProtocol == null ? null : provider.mediaProtocol.trim().toUpperCase(Locale.ROOT);
         if ("OPENAI_AUDIO".equals(protocol)) return true;
         if (protocol != null && !protocol.isBlank()

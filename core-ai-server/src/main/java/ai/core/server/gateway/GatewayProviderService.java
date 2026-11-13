@@ -121,6 +121,8 @@ public class GatewayProviderService {
         try {
             if (GatewayDecisionProbe.isDecisionProvider(entity, modelStore)) {
                 GatewayDecisionProbe.test(entity, secret(entity), modelStore, result);
+            } else if (GatewaySpeechSupport.isGoogleSpeechProvider(entity)) {
+                testGoogleSpeech(entity, result);
             } else if (isVertexMediaProvider(entity)) {
                 var apiKey = secret(entity);
                 if (!isBlank(apiKey) && "VERTEX_GEMINI_GENERATE_CONTENT".equals(entity.mediaProtocol)) {
@@ -156,6 +158,33 @@ public class GatewayProviderService {
             result.durationMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
         }
         return result;
+    }
+
+    private void testGoogleSpeech(GatewayProviderConfig entity, TestGatewayProviderResponse result) {
+        if ("API_KEY".equals(entity.mediaAuthType)) {
+            if (isBlank(secret(entity))) {
+                fail(result, "Google Speech API key is required");
+                return;
+            }
+            result.message = "Google Speech API key configured";
+        } else {
+            try {
+                var credentials = secretProtector.unprotect(entity.googleCredentialsEncrypted);
+                new GoogleAccessTokenProvider("GOOGLE_SERVICE_ACCOUNT_JSON".equals(entity.mediaAuthType) ? credentials : null).accessToken();
+            } catch (RuntimeException e) {
+                fail(result, truncate(e.getMessage(), 300));
+                return;
+            }
+            result.message = "Google credentials verified";
+        }
+        result.ok = Boolean.TRUE;
+        result.status = "ok";
+    }
+
+    private void fail(TestGatewayProviderResponse result, String message) {
+        result.ok = Boolean.FALSE;
+        result.status = "failed";
+        result.message = message;
     }
 
     // Vertex Express Mode authenticates with an API key (x-goog-api-key) instead of a service account
@@ -344,7 +373,8 @@ public class GatewayProviderService {
     private String normalizeType(String type) {
         var value = type.trim().toLowerCase(Locale.ROOT);
         return switch (value) {
-            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini", "kie", "anthropic" -> value;
+            case "openai", "azure", "litellm", "deepseek", "qwen", "openrouter", "openai-compatible", "gemini",
+                 "google-speech", "kie", "anthropic" -> value;
             case "claude" -> "anthropic";
             default -> throw new BadRequestException("unsupported provider type: " + type);
         };
@@ -355,7 +385,8 @@ public class GatewayProviderService {
         if (value == null) return null;
         value = value.toUpperCase(Locale.ROOT);
         return switch (value) {
-            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "OPENAI_AUDIO", "GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE", "VOLCENGINE_ARK" -> value;
+            case "OPENAI_IMAGES", "OPENAI_COMPATIBLE", "OPENAI_AUDIO", "GOOGLE_SPEECH", "GEMINI_GENERATE_CONTENT",
+                 "VERTEX_GEMINI_GENERATE_CONTENT", "VERTEX_GEMINI_INTERACTIONS", "KIE", "VOLCENGINE_ARK" -> value;
             default -> throw new BadRequestException("unsupported media protocol: " + mediaProtocol);
         };
     }
@@ -398,6 +429,7 @@ public class GatewayProviderService {
         if (type == null) return null;
         return switch (type) {
             case "openai" -> "openai/";
+            case "google-speech" -> "google/";
             case "azure" -> "azure/";
             case "litellm" -> "litellm/";
             case "deepseek" -> "deepseek/";

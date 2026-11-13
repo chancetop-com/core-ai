@@ -89,8 +89,15 @@ public class SystemSettingsService {
         validateModelExists(videoGenerationModel, "videoGenerationModel");
         var videoUnderstandingModel = normalizeModel(request.videoUnderstandingModel);
         validateModelExists(videoUnderstandingModel, "videoUnderstandingModel");
+        var speechTranscriptionModel = normalizeModel(request.speechTranscriptionModel);
+        SpeechSettingsSupport.validate(speechTranscriptionModel, "audio.transcriptions",
+                request, entity(), gatewayModelStore, secretProtector);
+        var speechSynthesisModel = normalizeModel(request.speechSynthesisModel);
+        SpeechSettingsSupport.validate(speechSynthesisModel, "audio.speech",
+                request, entity(), gatewayModelStore, secretProtector);
         return new NormalizedSettings(memoryExtractionModel, llmModel, captionImageModel,
-                summarizePdfModel, imageGenerationModel, videoGenerationModel, videoUnderstandingModel);
+                summarizePdfModel, imageGenerationModel, videoGenerationModel, videoUnderstandingModel,
+                speechTranscriptionModel, speechSynthesisModel);
     }
 
     private void applyModels(SystemSettings entity, NormalizedSettings models) {
@@ -101,6 +108,8 @@ public class SystemSettingsService {
         entity.imageGenerationModel = models.imageGenerationModel();
         entity.videoGenerationModel = models.videoGenerationModel();
         entity.videoUnderstandingModel = models.videoUnderstandingModel();
+        entity.speechTranscriptionModel = models.speechTranscriptionModel();
+        entity.speechSynthesisModel = models.speechSynthesisModel();
     }
 
     private void applyIntegrations(SystemSettings entity, SystemSettingsRequest request) {
@@ -238,6 +247,18 @@ public class SystemSettingsService {
         return entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
     }
 
+    /** Configured ASR model, or azure-speech while the Azure credential is usable. */
+    public String speechTranscriptionModel() {
+        var entity = entity();
+        return entity == null ? null : SpeechSettingsSupport.resolve(normalizeModel(entity.speechTranscriptionModel),
+                "audio.transcriptions", entity, gatewayModelStore, secretProtector);
+    }
+    /** Configured TTS model, or azure-speech while the Azure credential is usable. */
+    public String speechSynthesisModel() {
+        var entity = entity();
+        return entity == null ? null : SpeechSettingsSupport.resolve(normalizeModel(entity.speechSynthesisModel),
+                "audio.speech", entity, gatewayModelStore, secretProtector);
+    }
     public boolean sandboxSnapshotEnabled() {
         var entity = entity();
         return entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
@@ -380,6 +401,8 @@ public class SystemSettingsService {
         view.imageGenerationModel = entity == null ? null : normalizeModel(entity.imageGenerationModel);
         view.videoGenerationModel = entity == null ? null : normalizeModel(entity.videoGenerationModel);
         view.videoUnderstandingModel = entity == null ? null : normalizeModel(entity.videoUnderstandingModel);
+        view.speechTranscriptionModel = entity == null ? null : normalizeModel(entity.speechTranscriptionModel);
+        view.speechSynthesisModel = entity == null ? null : normalizeModel(entity.speechSynthesisModel);
         view.sandboxSnapshotEnabled = entity != null && Boolean.TRUE.equals(entity.sandboxSnapshotEnabled);
         view.sandboxAttachmentMaxBytes = entity == null ? null : entity.sandboxAttachmentMaxBytes;
         view.defaultSandboxAttachmentMaxBytes = SandboxAttachmentLimit.DEFAULT_BYTES;
@@ -421,6 +444,7 @@ public class SystemSettingsService {
 
     private record NormalizedSettings(String memoryExtractionModel, String llmModel,
                                        String captionImageModel, String summarizePdfModel, String imageGenerationModel,
-                                       String videoGenerationModel, String videoUnderstandingModel) {
+                                       String videoGenerationModel, String videoUnderstandingModel,
+                                       String speechTranscriptionModel, String speechSynthesisModel) {
     }
 }

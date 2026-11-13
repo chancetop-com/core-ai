@@ -64,6 +64,7 @@ public class GatewayModelDiscoveryService {
     }
 
     List<GatewayModelMetadata> discover(GatewayProviderConfig provider) {
+        if (GatewaySpeechSupport.isGoogleSpeechProvider(provider)) return googleSpeechModels();
         var models = new ArrayList<GatewayModelMetadata>();
         if ("litellm".equals(provider.type)) {
             models.addAll(fetch(provider, modelInfoUrl(provider)));
@@ -89,6 +90,23 @@ public class GatewayModelDiscoveryService {
                                 .sorted(Comparator.comparing(GatewayModelMetadata::id))
                                 .toList()
                 ));
+    }
+
+    private List<GatewayModelMetadata> googleSpeechModels() {
+        return List.of(
+                googleSpeechModel("chirp_3", "Chirp 3"),
+                googleSpeechModel("chirp_2", "Chirp 2"),
+                googleSpeechModel("latest_long", "Latest Long"),
+                googleSpeechModel("latest_short", "Latest Short"),
+                googleSpeechModel("telephony", "Telephony"),
+                googleSpeechModel("medical_dictation", "Medical Dictation")
+        );
+    }
+
+    private GatewayModelMetadata googleSpeechModel(String id, String displayName) {
+        return new GatewayModelMetadata(id, displayName,
+                List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION),
+                null, null, null, null, null, null, null);
     }
 
     private GatewayModelMetadata withEndpointTypes(GatewayModelMetadata model, List<String> endpointTypes) {
@@ -187,6 +205,10 @@ public class GatewayModelDiscoveryService {
         if (mode == null) return null;
         var value = mode.toLowerCase(Locale.ROOT);
         if (containsAny(value, "embedding", "moderation")) return List.of();
+        if (value.contains("audio_speech") || value.contains("audio-speech") || value.contains("text_to_speech")
+                || value.contains("text-to-speech") || value.contains("tts")) {
+            return List.of(GatewayModelService.ENDPOINT_AUDIO_SPEECH);
+        }
         if (value.contains("transcription") || value.contains("speech_to_text") || value.contains("speech-to-text")) {
             return List.of(GatewayModelService.ENDPOINT_AUDIO_TRANSCRIPTION);
         }

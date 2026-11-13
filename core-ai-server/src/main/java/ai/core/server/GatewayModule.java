@@ -52,6 +52,7 @@ import ai.core.server.domain.GeminiFileService;
 import ai.core.server.domain.GeminiFilesClient;
 import ai.core.server.domain.GeminiVideoUnderstandingService;
 import ai.core.server.gateway.GatewaySecretProtector;
+import ai.core.server.gateway.GatewaySpeechSynthesisProvider;
 import ai.core.server.gateway.GatewayTranscriptionProvider;
 import ai.core.server.gateway.GatewayVideoController;
 import ai.core.server.gateway.HubMediaModelService;
@@ -134,6 +135,7 @@ public class GatewayModule extends Module {
         bind(GatewayMediaProvider.class, mediaProvider);
         bind(MediaProvider.class, mediaProvider);
         bind(GatewayTranscriptionProvider.class);
+        bind(GatewaySpeechSynthesisProvider.class);
     }
 
     private void bindGatewayDecisionProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector) {
