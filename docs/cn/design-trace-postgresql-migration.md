@@ -161,3 +161,17 @@ Mongo 实现把 `TraceQuery` 翻成 Bson（现有逻辑原样搬过去）；PG �
 - `TraceArchiveService` 按 `_id` 批量删除；PG 侧要按 `id` 删除并同时删 `spans`（现有逻辑已按 trace 删 span，需核对）。
 - `get(traceId)` 的 `_id` 优先 / `trace_id` 兜底语义要保留，否则 OTLP 与 chat 两条写入路径的 id 不一致时会查不到。
 - 历史 `traces` 可能有重复 `trace_id`，唯一索引会建失败；先用非唯一索引。
+
+## 9. 实施记录（2026-11-13）
+
+- Flyway 版本：**V35**（V34 已被并行会话的 `app.session_shares` 占用），dev 与 UAT 均已执行。
+- 唯一索引保留：`traces_trace_id_uidx`；回填用 `INSERT ... ON CONFLICT DO NOTHING`，历史重复的 `trace_id` 只会保留先写入的一条，与 Mongo 侧“一个 trace_id 一份文档”的语义一致。
+- 开关（与 span store 同风格）：
+  - `sys.trace.store.mode=auto|mongo|pg`（默认 auto，跟随 `sys.store.mode`；`pg` 要求全局也是 `pg`）
+  - `sys.trace.migration=copy|skip`（默认 copy；skip 时不回填，历史留在 Mongo）
+- P90 口径：Mongo 侧是“最近秩”取第 `ceil(0.9n)` 个值，SQL 侧用 `percentile_disc(0.9)` 对齐（不是插值的 `percentile_cont`）。realtime 路径的 `p90_total_tokens` 仍沿用历史语义 = `max`。
+- `trace_payload_blobs` 暂不迁移：blob 由 span 与 trace 共用，UAT 的 span store 仍是 Mongo（`SYS_TRACE_SPAN_STORE_MODE=mongo`），因此 `app.trace_payloads` 建表但空置，`TracePayloadStore` 继续读写 Mongo。
+- 验证结果：
+  - dev（镜像 2.0.229）：回填 321 条，`traces_v1` marker 写入、进度行删除；列表 / facets / 详情 / session summary / analytics realtime 全部经 API 验证；手工 ingest 一条验证写入路径后删除。
+  - UAT（镜像 2.0.229）：回填 19,707 条，marker 写入；列表与 analytics 各维度 API 验证通过；PG 内存 ~1.0 GiB / 2 GiB。
+
