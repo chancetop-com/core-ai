@@ -44,62 +44,7 @@ class WorkflowAgentSnapshotServiceTest {
     void setUp() {
         service.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(collection);
         service.skillService = skillService;
-        service.qualityGate = new ai.core.server.quality.PublishQualityGate() {
-            @Override
-            public ai.core.server.quality.PublishCandidate buildCandidate(AgentDefinition entity) {
-                int revision = entity.definitionRevision == null ? 0 : entity.definitionRevision;
-                var config = ai.core.server.agent.AgentExecutableConfigFactory.fromEditableDefinition(entity);
-                ai.core.server.agent.AgentDependencyAccessPolicy.markPublishedSkillsValidated(config);
-                var prompt = new ai.core.server.quality.QualityPromptView(config.systemPrompt, config.inputTemplate,
-                    "INLINE", null, false, false, "sha256:p");
-                return new ai.core.server.quality.PublishCandidate(entity, config, entity.name, entity.description,
-                    ai.core.server.quality.QualityHashes.candidateHash(config),
-                    ai.core.server.quality.QualityHashes.metadataHash(entity.name, entity.description),
-                    revision, prompt, List.of(), "/system_prompt", "INLINE");
-            }
-
-            @Override
-            public ai.core.server.quality.QualityRunResult evaluate(AgentDefinition entity,
-                                                                    ai.core.server.quality.PublishCandidate candidate,
-                                                                    String userId,
-                                                                    ai.core.server.quality.domain.QualityGateMode mode,
-                                                                    String idempotencyKey, boolean enforce) {
-                var run = new ai.core.server.quality.domain.AgentQualityRun();
-                run.id = "test-run";
-                run.agentId = entity.id;
-                run.definitionRevision = candidate.definitionRevision();
-                run.policyRevision = 1;
-                run.gateResult = ai.core.server.quality.domain.QualityGateResult.PASSED;
-                run.checksComplete = true;
-                var report = new ai.core.api.server.agent.AgentQualityReportView();
-                report.runId = run.id;
-                report.agentId = run.agentId;
-                report.gateResult = "PASSED";
-                report.issues = List.of();
-                return new ai.core.server.quality.QualityRunResult(run, report, false);
-            }
-
-            @Override
-            public ai.core.server.quality.QualityRunResult precheck(AgentDefinition entity, String userId,
-                                                                    String idempotencyKey) {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
-            public void recheck(ai.core.server.quality.PublishCandidate candidate,
-                                ai.core.server.quality.domain.AgentQualityRun run) {
-            }
-
-            @Override
-            public void recordPublication(ai.core.server.quality.domain.AgentQualityRun run,
-                                          ai.core.server.quality.PublishCandidate candidate, String userId) {
-            }
-
-            @Override
-            public ai.core.api.server.agent.AgentQualityReportView report(String agentId, String runId) {
-                return null;
-            }
-        };
+        service.qualityGate = new ai.core.server.quality.PassThroughQualityGate();
     }
 
     @Test

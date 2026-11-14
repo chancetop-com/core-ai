@@ -66,8 +66,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS agent_publication_records_operation_key_idx
 -- the editable name/description cannot silently change the catalog-visible metadata without a publish.
 UPDATE app.agents
 SET data = jsonb_set(
-        jsonb_set(data, '{publishedName}', to_jsonb(data ->> 'name')),
-        '{publishedDescription}', to_jsonb(data ->> 'description'))
-WHERE data ->> 'status' = 'PUBLISHED'
+        jsonb_set(data, '{publishedName}', to_jsonb(COALESCE(data ->> 'name', ''))),
+        '{publishedDescription}', to_jsonb(COALESCE(data ->> 'description', '')))
+WHERE data IS NOT NULL
+  AND data ->> 'status' = 'PUBLISHED'
   AND NOT (data ? 'publishedName');
 

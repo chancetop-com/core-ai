@@ -41,7 +41,7 @@ public final class PassThroughQualityGate implements PublishQualityGate {
         run.policyRevision = 1;
         run.runStatus = QualityRunStatus.COMPLETED;
         run.gateResult = QualityGateResult.PASSED;
-        run.checksComplete = true;
+        run.checksComplete = Boolean.TRUE;
         run.createdAt = ZonedDateTime.now();
         run.finishedAt = run.createdAt;
         var report = new AgentQualityReportView();
@@ -70,3 +70,4 @@ public final class PassThroughQualityGate implements PublishQualityGate {
         return null;
     }
 }
+

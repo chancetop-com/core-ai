@@ -3,7 +3,6 @@ package ai.core.server.quality;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityGateResult;
 import ai.core.server.quality.domain.QualityIssueStatus;
-import ai.core.server.quality.domain.QualityRunStatus;
 import ai.core.server.quality.domain.StoredQualityIssue;
 import org.junit.jupiter.api.Test;
 
@@ -64,9 +63,6 @@ class QualityRunAggregatorTest {
 
     private QualityRunAggregator.RuleOutcome outcome(String ruleId, QualityEnforcement enforcement,
                                                      QualityIssueStatus status) {
-        var revision = new ai.core.server.quality.domain.AgentQualityRuleRevision();
-        revision.ruleId = ruleId;
-        revision.revision = 1;
         var issue = new StoredQualityIssue();
         issue.ruleId = ruleId;
         issue.ruleRevision = 1;
@@ -78,3 +74,5 @@ class QualityRunAggregatorTest {
             new QualityRunAggregator.AgentQualityRuleRevisionHolder(ruleId, 1, enforcement), evaluation);
     }
 }
+
+

@@ -2,7 +2,6 @@ package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentQualityReportView;
 import ai.core.server.domain.AgentDefinition;
-import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.quality.PublishCandidate;
 import ai.core.server.quality.PublishQualityGate;
 import ai.core.server.quality.QualityHashes;
@@ -80,14 +79,14 @@ final class TestQualityGate implements PublishQualityGate {
         run.policyRevision = 1;
         run.runStatus = QualityRunStatus.COMPLETED;
         run.gateResult = QualityGateResult.PASSED;
-        run.checksComplete = true;
+        run.checksComplete = Boolean.TRUE;
         run.createdAt = ZonedDateTime.now();
         run.finishedAt = run.createdAt;
         var report = new AgentQualityReportView();
         report.runId = run.id;
         report.agentId = run.agentId;
         report.gateResult = QualityGateResult.PASSED.name();
-        report.checksComplete = true;
+        report.checksComplete = Boolean.TRUE;
         report.warnCount = 0;
         report.blockFailCount = 0;
         report.incompleteCount = 0;
@@ -95,3 +94,5 @@ final class TestQualityGate implements PublishQualityGate {
         return new QualityRunResult(run, report, false);
     }
 }
+
+

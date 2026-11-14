@@ -135,6 +135,7 @@ class G1CopyTest {
         copyJson(database, ai.core.server.channel.openclaw.OcgConfigView.class, "app.ocg_configs", c -> c.id);
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void copyUsers(MongoImpl mongo, DatabaseImpl database) {
         var store = new PgUserStore();
         inject(store, database);
@@ -176,6 +177,7 @@ class G1CopyTest {
         }
     }
 
+    @SuppressWarnings("PMD.UnusedFormalParameter")
     private void copyProjects(MongoImpl mongo, DatabaseImpl database) {
         var store = new PgProjectStore();
         inject(store, database);
@@ -220,15 +222,16 @@ class G1CopyTest {
 
     private String repairEscapes(String json) {
         var repaired = new StringBuilder(json.length() + 16);
-        for (int i = 0; i < json.length(); i++) {
-            char c = json.charAt(i);
+        int i = 0;
+        while (i < json.length()) {
+            char c = json.charAt(i++);
             if (c != '\\') {
                 repaired.append(c);
                 continue;
             }
             repaired.append('\\');
-            if (i + 1 < json.length()) {
-                char next = json.charAt(i + 1);
+            if (i < json.length()) {
+                char next = json.charAt(i);
                 if (next == '"' || next == '\\' || next == '/' || next == 'b' || next == 'f'
                     || next == 'n' || next == 'r' || next == 't' || next == 'u') {
                     repaired.append(next);
@@ -316,4 +319,8 @@ class G1CopyTest {
         }
     }
 }
+
+
+
+
 

@@ -2,11 +2,8 @@ package ai.core.server.tool;
 
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
-import ai.core.server.tool.ToolRegistryMetadata;
-import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.BuiltinTools;
 import ai.core.tool.ToolCall;
-import ai.core.tool.registry.ToolProvider;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -26,7 +23,7 @@ class ToolRegistryMetadataParityTest {
     void effectiveBuiltinNamesMatchRuntimeProvider() throws Exception {
         var service = new ToolRegistryService();
         var sets = new LinkedHashMap<String, List<ToolCall>>();
-        var entries = new LinkedHashMap<String, ai.core.server.domain.ToolRegistryEntry>();
+        var entries = new LinkedHashMap<>();
         for (var entry : BuiltinTools.GROUPED_SETS.entrySet()) {
             var registryEntry = new ai.core.server.domain.ToolRegistryEntry();
             registryEntry.id = "builtin:" + entry.getKey();
@@ -55,7 +52,7 @@ class ToolRegistryMetadataParityTest {
         var sets = new LinkedHashMap<String, List<ToolCall>>();
         sets.put("builtin:test-group", List.of(new NamedTool("list_agents"), new NamedTool("get_agent")));
         inject(service, "dynamicToolSets", sets);
-        inject(service, "tools", new LinkedHashMap<String, ai.core.server.domain.ToolRegistryEntry>());
+        inject(service, "tools", new LinkedHashMap<>());
 
         var ref = ToolRef.of("builtin:test-group:list_agents", ToolSourceType.BUILTIN);
         assertEquals(List.of("list_agents"), ToolRegistryMetadata.effectiveBuiltinToolNames(service, List.of(ref)));
@@ -95,4 +92,5 @@ class ToolRegistryMetadataParityTest {
         }
     }
 }
+
 

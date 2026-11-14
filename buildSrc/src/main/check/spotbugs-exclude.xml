@@ -62,6 +62,17 @@
         <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
     </Match>
 
+    <!-- Test-only reflection over a migration fixture; no production accessibility change -->
+    <Match>
+        <Class name="ai.core.server.migration.G1CopyTest" />
+        <Bug pattern="RFI_SET_ACCESSIBLE,PCAIL_POSSIBLE_CONSTANT_ALLOCATION_IN_LOOP,UP_UNUSED_PARAMETER" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.server.tool.ToolRegistryMetadataParityTest" />
+        <Bug pattern="RFI_SET_ACCESSIBLE" />
+    </Match>
+
     <!-- PSC_PRESIZE_COLLECTIONS: cannot presize without knowing final count -->
     <Match>
         <Class name="ai.core.tool.tools.FuzzyMatchReplacer" />
