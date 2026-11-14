@@ -2,13 +2,13 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | Approved / Implementing（用户于 2026-11-14 授权实施） |
-| 文档版本 | v0.3（AI 技术评审修订） + 实施记录（2026-11-14） |
+| 状态 | Implemented / Dev-verified（用户于 2026-11-14 授权实施） |
+| 文档版本 | v0.5（实施验证记录） |
 | 创建日期 | 2026-11-12 |
-| 需求提出者 / Reviewer | 用户；用户 Review 结论待记录 |
+| 需求提出者 / Reviewer | 用户；2026-11-14 授权实施；AI 技术评审见 §14.2 |
 | 作者 | core-ai |
 | 范围 | Agent 发布质检、可配置规则、管理 UI、发布错误与审计 |
-| 本次交付 | 仅技术设计；v0.3 根据 AI 技术评审修订，不修改业务代码，不部署，不启用规则 |
+| 本次交付 | 服务端质量门禁、规则/策略治理 API、管理 UI 与 dev 验证；UAT / prod 待按 §10.2 运维预案上线 |
 | 设计依据 | 用户原始需求、实际源代码、公开行业资料、AI 技术评审意见；不参考现有 design 文档 |
 
 ## 0. 原始需求与文档治理
@@ -908,6 +908,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 | v0.2 | 2026-11-12 | core-ai | 自查修订：提交状态fencing、BLOCK/SHADOW预算隔离、外部一致性和重检风险边界、激活质量指标、概率谓词、输入错误分类、重放承诺 | 消除设计矛盾与无法兑现的保证；未改变用户原始需求 | 待Review |
 | v0.3 | 2026-11-12 | core-ai | AI 技术评审修订：发布元数据快照、MCP server/tool 拆分、workflow snapshot 准入、WARN 交付、decision route 指纹、B2 单一投影、publication record、fork/B3/admin/runbook/内部 caller 边界；更新验收与 ADR | 处理 AI 技术评审 P0/P1；不改变用户原始需求 | 待Review |
 | v0.4（实施记录） | 2026-11-14 | core-ai | 记录用户实施授权与 R-IMPL-01..13 的落地选择（存储、SHADOW 种子、幂等/并发、fork、workflow、MCP tool 未缓存、试测与 UI） | 用户授权实施；OPEN 决策按默认/最保守方案落地并留痕 | 用户授权实施（2026-11-14） |
+| v0.5（实施验证记录） | 2026-11-14 | core-ai | 记录 2.0.235–2.0.238 的实现与 dev E2E 结果、V38 迁移、剩余限制；交互式 builtin reset 改为全部候选检查通过后再写入 | 实施完成并完成 dev 验证；不改变用户原始需求 | 用户授权实施（2026-11-14） |
 
 ### 14.4 设计自查记录
 
@@ -933,6 +934,37 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 | `AgentPortService.importAgent` | 否（只创建草稿） | 不写 PUBLISHED；后续 publish 必须走门禁 |
 
 任何新增直接写 `published_config` 或 `status=PUBLISHED` 的路径，必须先在此表登记，否则视为绕过门禁。
+
+### 14.6 实施验证记录（dev，2026-11-14）
+
+**代码与镜像：**主要实现 commit `63747b05`、`a242ee4f`、`e4f9e0a8`、`4e864c83`，镜像 `2.0.235` → `2.0.238`。本次仅操作 dev（`FBRDevAKSCluster` / namespace `dev-ai`），未触碰 UAT / prod。
+
+**静态与自动化检查：**`./gradlew :core-ai-server:check` 通过（compile、unit test、checkstyle、PMD、SpotBugs、JaCoCo）；`npm --prefix core-ai-frontend run build` 通过。
+
+**迁移：**Flyway V38 已在 dev 应用（schema version 38），创建 `app.agent_quality_*` 与 `app.agent_publication_records`；启动种子为 8 条规则、policy revision 1（A1/A2/C1 为 BLOCK；B1/B2/B3 与 MCP tool 为 SHADOW），决策模型 `decision-1` 经 `azure-decision` 解析成功。
+
+| 场景 | dev 实测结果 |
+|---|---|
+| 预检 | `POST /api/agents/:id/quality-checks` 返回 `PASSED`，含 runId、`executionCandidateHash`、`metadataHash`、`policyRevision`、route fingerprint |
+| 正常发布 | `200`，响应头 `X-Quality-Run-Id/Gate-Result/Warn-Count`；receipt 记录 run、hashes、policy；`publishedName/Description` 快照写入 |
+| 发布后改草稿 | 将 editable `description` 置空后，catalog 仍返回已发布 description，C1 不被 update 绕过 |
+| C1 | 空 description 发布被 `422 AGENT_QUALITY_REJECTED` 拒绝，issue 含 `field_path=/description`、suggestion |
+| A1 | 未知 builtin 引用发布被 `422` 拒绝，issue 含 `resource_type=BUILTIN`、`issue_reason=BUILTIN_NOT_REGISTERED`、可重试标记 |
+| A1 MCP server | 不存在的 MCP server 发布被 `422` 拒绝，`CFG.MCP_SERVER_AVAILABLE` / `MCP_SERVER_NOT_FOUND` |
+| A2 | 规则 revision 参数改为 `subagents=5` 后，对 11 个 subagent 的候选试测为 `FAIL`（actual=11, max=5），随后恢复 `50`；规则变更走 revision，不修改历史 revision |
+| B1 | 时间指令 + 无 `{{system.time}}` 的试测为 `FAIL`，决策概率约 0.99，返回 route fingerprint |
+| B2 / B3 | “使用 read_file 但无对应 builtin”“引用 @subagent:research 但无绑定”试测均为 `FAIL` |
+| WARN | 将 B1 激活为 `WARN` 后发布返回 `200`、`warnCount=1`；report 中该 issue `enforcement=WARN`、状态可读 |
+| 策略回滚 | 以历史 `policy_revision` 重新激活成功，后续发布回到原始绑定 |
+| 自定义 DECISION 规则 | 创建 `201`；未试测激活被 `400` 拒绝；试测 `FAIL`（概率约 0.014）；激活后发布 `200` + WARN，report 含自定义规则 key；回滚成功；retire 后 lifecycle=`RETIRED` |
+| 部署健康 | rollout 2/2 Running，无 CrashLoop；decision 路由未漂移 |
+
+**剩余限制 / 未完成验证：**
+
+- A2 的完整“发布被门禁阻断”链路未在 dev 用真实 Agent 跑通：旧发布前置检查会先拒绝合成的不存在 subagent ID（`400 agent has an unavailable sub-agent dependency`）。规则本身的计数与超限结果已通过规则试测和单元测试验证；要跑完整链路需创建 51 个真实 subagent。
+- 管理 UI 与 Agent 编辑器的视觉 E2E 未执行：验证时宿主桌面处于锁屏状态，无法驾驶内置浏览器。前端构建通过、API 契约与组件 wiring 已审查；P3 视觉验收仍待人工确认。
+- `CFG.MCP_TOOL_AVAILABLE` 仍为 SHADOW / INDETERMINATE（R-IMPL-08），报告 TTL 清理与后台 reconciler 未实现（R-IMPL-03 / R-IMPL-10）。
+- 启动初始化与 migration 保持 trusted seed，不调用模型门禁；交互式 builtin reset 已改为“全部候选先检查、全部通过后统一写入”，避免部分重置。
 
 ## 15. 参考资料
 

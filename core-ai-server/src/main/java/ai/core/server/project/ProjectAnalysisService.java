@@ -17,6 +17,7 @@ import java.time.Duration;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -215,11 +216,13 @@ public class ProjectAnalysisService {
                 ProjectBuiltinAgents.subjectAnalyzerPrompt(), ProjectBuiltinAgents.subjectAnalysisSchema(), now),
             ProjectBuiltinAgents.PLAYBOOK_WRITER, ProjectBuiltinAgents.playbookWriterDoc(now),
             ProjectBuiltinAgents.REPORT_RENDERER, ProjectBuiltinAgents.reportRendererDoc(now));
+        var checked = new LinkedHashMap<String, AgentDefinition>();
         for (var doc : docs.values()) {
             var definition = toDefinition(doc);
             applyBuiltinQualityGate(definition);
-            agentDefinitionStore.upsert(definition);
+            checked.put(definition.id, definition);
         }
+        checked.values().forEach(agentDefinitionStore::upsert);
     }
 
     // An interactive builtin reset republishes executable content, so it runs the same gate as a normal
