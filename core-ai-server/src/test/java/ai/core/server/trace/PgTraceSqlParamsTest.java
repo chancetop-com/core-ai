@@ -1,19 +1,15 @@
 package ai.core.server.trace;
 
+import ai.core.server.testsupport.RecordingDatabase;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.domain.TraceStatus;
 import core.framework.db.Database;
-import core.framework.db.Transaction;
-import org.junit.jupiter.api.Test;
-
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
+import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
@@ -108,7 +104,7 @@ class PgTraceSqlParamsTest {
         scoped.agentIds = List.of("a1");
         store.count(scoped);
 
-        assertEquals(6, database.statements.size());
+        assertEquals(6, database.statementCount());
     }
 
     @Test
@@ -137,7 +133,7 @@ class PgTraceSqlParamsTest {
         store.findByTraceId("t1");
         store.existsByTraceId("t1");
 
-        assertEquals(10, database.statements.size());
+        assertEquals(10, database.statementCount());
     }
 
     @Test
@@ -169,7 +165,7 @@ class PgTraceSqlParamsTest {
         }
         store.realtimeTrend(from, to, Map.of(), Map.of());
 
-        assertEquals(20, database.statements.size());
+        assertEquals(20, database.statementCount());
     }
 
     @Test
@@ -188,7 +184,7 @@ class PgTraceSqlParamsTest {
         store.trend(from, to, true);
         store.upsert(new AnalyticsDailyStats());
 
-        assertEquals(13, database.statements.size());
+        assertEquals(13, database.statementCount());
     }
 
     @Test
@@ -200,50 +196,6 @@ class PgTraceSqlParamsTest {
         store.countByDate(ZonedDateTime.parse("2026-11-01T00:00:00Z"));
         store.dailyUsage("u1", ZonedDateTime.parse("2026-11-01T00:00:00Z"),
             ZonedDateTime.parse("2026-11-02T00:00:00Z"));
-        assertEquals(3, database.statements.size());
-    }
-
-    private static final class RecordingDatabase implements Database {
-        private static void verify(String sql, Object[] params) {
-            long placeholders = sql.chars().filter(ch -> ch == '?').count();
-            assertEquals(placeholders, params.length, "parameter count mismatch, sql=" + sql);
-        }
-
-        private final List<String> statements = new ArrayList<>();
-
-        @Override
-        public <T> List<T> select(String sql, Class<T> viewClass, Object... params) {
-            verify(sql, params);
-            statements.add(sql);
-            return List.of();
-        }
-
-        @Override
-        public <T> Optional<T> selectOne(String sql, Class<T> viewClass, Object... params) {
-            verify(sql, params);
-            statements.add(sql);
-            return Optional.empty();
-        }
-
-        @Override
-        public int execute(String sql, Object... params) {
-            verify(sql, params);
-            statements.add(sql);
-            return 0;
-        }
-
-        @Override
-        public int[] batchExecute(String sql, List<Object[]> params) {
-            for (var row : params) verify(sql, row);
-            statements.add(sql);
-            var results = new int[params.size()];
-            java.util.Arrays.fill(results, 0);
-            return results;
-        }
-
-        @Override
-        public Transaction beginTransaction() {
-            throw new UnsupportedOperationException("read/write only in this test");
-        }
+        assertEquals(3, database.statementCount());
     }
 }

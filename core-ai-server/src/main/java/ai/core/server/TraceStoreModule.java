@@ -14,6 +14,10 @@ import ai.core.server.trace.TraceDailyStatsMigrationService;
 import ai.core.server.trace.TraceDailyStatsStore;
 import ai.core.server.trace.TraceMigrationService;
 import ai.core.server.trace.TraceStore;
+import ai.core.server.trace.service.MongoTracePayloadRepository;
+import ai.core.server.trace.service.PgTracePayloadRepository;
+import ai.core.server.trace.service.TracePayloadMigrationService;
+import ai.core.server.trace.service.TracePayloadRepository;
 import core.framework.module.Module;
 
 /**
@@ -39,15 +43,19 @@ public class TraceStoreModule extends Module {
             var traceMigration = bind(TraceMigrationService.class);
             var dailyStatsMigration = bind(TraceDailyStatsMigrationService.class);
             var analyticsStatsMigration = bind(AnalyticsDailyStatsMigrationService.class);
+            bind(TracePayloadRepository.class, bind(PgTracePayloadRepository.class));
+            var payloadMigration = bind(TracePayloadMigrationService.class);
             onStartup(() -> {
                 traceMigration.start(copyLegacy);
                 dailyStatsMigration.start(copyLegacy);
                 analyticsStatsMigration.start(copyLegacy);
+                payloadMigration.start(copyLegacy);
             });
         } else {
             bind(TraceStore.class, bind(MongoTraceStore.class));
             bind(TraceDailyStatsStore.class, bind(MongoTraceDailyStatsStore.class));
             bind(AnalyticsStatsStore.class, bind(MongoAnalyticsStatsStore.class));
+            bind(TracePayloadRepository.class, bind(MongoTracePayloadRepository.class));
         }
     }
 

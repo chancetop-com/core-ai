@@ -8,6 +8,7 @@ import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.domain.TracePayloadBlob;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.maintenance.TraceArchiveService;
@@ -62,6 +63,8 @@ class TraceStoreModuleTest {
         private final MongoCollection<TraceDailyStats> stats = mock(MongoCollection.class);
         @SuppressWarnings("unchecked")
         private final MongoCollection<AnalyticsDailyStats> analyticsStats = mock(MongoCollection.class);
+        @SuppressWarnings("unchecked")
+        private final MongoCollection<TracePayloadBlob> payloadBlobs = mock(MongoCollection.class);
         private final List<Class<?>> loadedModules = new ArrayList<>();
         private ApiUserUsageService usage;
         private TraceArchiveService archive;
@@ -74,6 +77,8 @@ class TraceStoreModuleTest {
                 .thenAnswer(invocation -> context.bind(Types.generic(MongoCollection.class, TraceDailyStats.class), null, stats));
             when(mongo.collection(AnalyticsDailyStats.class))
                 .thenAnswer(invocation -> context.bind(Types.generic(MongoCollection.class, AnalyticsDailyStats.class), null, analyticsStats));
+            when(mongo.collection(TracePayloadBlob.class))
+                .thenAnswer(invocation -> context.bind(Types.generic(MongoCollection.class, TracePayloadBlob.class), null, payloadBlobs));
             when(traces.aggregate(any())).thenReturn(List.of());
         }
 

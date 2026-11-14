@@ -3,11 +3,7 @@ package ai.core.server.trace.service;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TracePayloadBlob;
-import com.mongodb.MongoWriteException;
-import com.mongodb.client.model.Filters;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,7 +104,7 @@ public class TracePayloadStore {
     }
 
     @Inject
-    MongoCollection<TracePayloadBlob> blobCollection;
+    TracePayloadRepository payloadRepository;
 
     public Compactor newCompactor() {
         return new Compactor();
@@ -158,27 +154,15 @@ public class TracePayloadStore {
 
     public void deleteForTraces(List<String> traceIds) {
         if (traceIds == null || traceIds.isEmpty()) return;
-        long deleted = 0;
-        for (int i = 0; i < traceIds.size(); i += 500) {
-            var batch = traceIds.subList(i, Math.min(i + 500, traceIds.size()));
-            deleted += blobCollection.delete(Filters.in("trace_id", batch));
-        }
+        long deleted = payloadRepository.deleteByTraceIds(traceIds);
         if (deleted > 0) {
             LOGGER.info("deleted {} trace payload blobs for {} traces", deleted, traceIds.size());
         }
     }
 
     private Map<String, String> load(String traceId, Set<String> hashes, boolean strict) {
-        var ids = new ArrayList<String>(hashes.size());
-        for (var hash : hashes) {
-            ids.add(traceId + ':' + hash);
-        }
-        var query = new Query();
-        query.filter = Filters.in("_id", ids);
-        query.limit = ids.size();
-
         Map<String, String> originals = new HashMap<>(mapCapacity(hashes.size()));
-        for (var blob : blobCollection.find(query)) {
+        for (var blob : payloadRepository.findByTrace(traceId, new ArrayList<>(hashes))) {
             originals.put(blob.id.substring(traceId.length() + 1), blob.data);
         }
         if (strict) {
@@ -203,12 +187,7 @@ public class TracePayloadStore {
         blob.sizeBytes = decodedSize(dataUrl);
         blob.createdAt = ZonedDateTime.now();
         try {
-            blobCollection.insert(blob);
-            return true;
-        } catch (MongoWriteException e) {
-            if (e.getCode() == 11000) return true; // already stored by an earlier span of the same trace
-            LOGGER.warn("failed to store trace payload blob, keeping payload inline, traceId={}", traceId, e);
-            return false;
+            return payloadRepository.store(blob);
         } catch (RuntimeException e) {
             LOGGER.warn("failed to store trace payload blob, keeping payload inline, traceId={}", traceId, e);
             return false;

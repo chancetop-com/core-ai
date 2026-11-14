@@ -2,8 +2,6 @@ package ai.core.server.trace.service;
 
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.TracePayloadBlob;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -24,32 +21,14 @@ import static org.mockito.Mockito.when;
 
 class TracePayloadStoreTest {
     private final Map<String, TracePayloadBlob> blobs = new HashMap<>();
-    private final MongoCollection<TracePayloadBlob> blobCollection = collection();
+    private final TracePayloadRepository repository = repository();
     private TracePayloadStore store;
 
     @BeforeEach
     void setUp() {
         blobs.clear();
         store = new TracePayloadStore();
-        store.blobCollection = blobCollection;
-        doAnswer(invocation -> {
-            var blob = invocation.getArgument(0, TracePayloadBlob.class);
-            blobs.putIfAbsent(blob.id, blob);
-            return null;
-        }).when(blobCollection).insert(any(TracePayloadBlob.class));
-        when(blobCollection.find(any(Query.class))).thenAnswer(invocation -> {
-            Query query = invocation.getArgument(0);
-            var ids = new ArrayList<String>();
-            for (var value : query.filter.toBsonDocument().getDocument("_id").getArray("$in")) {
-                ids.add(value.asString().getValue());
-            }
-            var result = new ArrayList<TracePayloadBlob>();
-            for (var id : ids) {
-                var blob = blobs.get(id);
-                if (blob != null) result.add(blob);
-            }
-            return result;
-        });
+        store.payloadRepository = repository;
     }
 
     @Test
@@ -62,7 +41,7 @@ class TracePayloadStoreTest {
         assertFalse(compacted.contains("data:image/"));
         assertEquals(2, occurrences(compacted));
         assertEquals(1, blobs.size());
-        verify(blobCollection, times(1)).insert(any(TracePayloadBlob.class));
+        verify(repository, times(1)).store(any(TracePayloadBlob.class));
 
         var blob = blobs.values().iterator().next();
         assertEquals("trace-1", blob.traceId);
@@ -87,7 +66,7 @@ class TracePayloadStoreTest {
 
         assertEquals(first, second);
         assertEquals(2, blobs.size());
-        verify(blobCollection, times(2)).insert(any(TracePayloadBlob.class));
+        verify(repository, times(2)).store(any(TracePayloadBlob.class));
     }
 
     @Test
@@ -100,7 +79,7 @@ class TracePayloadStoreTest {
         compactor.compact("trace-1", payload);
 
         assertEquals(1, blobs.size());
-        verify(blobCollection, times(1)).insert(any(TracePayloadBlob.class));
+        verify(repository, times(1)).store(any(TracePayloadBlob.class));
     }
 
     @Test
@@ -149,7 +128,23 @@ class TracePayloadStoreTest {
     }
 
     @SuppressWarnings("unchecked")
-    private MongoCollection<TracePayloadBlob> collection() {
-        return (MongoCollection<TracePayloadBlob>) mock(MongoCollection.class);
+    private TracePayloadRepository repository() {
+        var repository = mock(TracePayloadRepository.class);
+        when(repository.store(any(TracePayloadBlob.class))).thenAnswer(invocation -> {
+            var blob = invocation.getArgument(0, TracePayloadBlob.class);
+            blobs.putIfAbsent(blob.id, blob);
+            return Boolean.TRUE;
+        });
+        when(repository.findByTrace(any(), any())).thenAnswer(invocation -> {
+            String traceId = invocation.getArgument(0);
+            var hashes = invocation.getArgument(1, java.util.List.class);
+            var result = new ArrayList<TracePayloadBlob>();
+            for (var hash : hashes) {
+                var blob = blobs.get(traceId + ':' + hash);
+                if (blob != null) result.add(blob);
+            }
+            return result;
+        });
+        return repository;
     }
 }

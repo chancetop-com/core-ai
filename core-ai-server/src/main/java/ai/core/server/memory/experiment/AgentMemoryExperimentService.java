@@ -3,11 +3,7 @@ package ai.core.server.memory.experiment;
 import ai.core.prompt.PromptInject;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryService;
-import com.mongodb.client.model.Filters;
-import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
@@ -45,10 +41,7 @@ public class AgentMemoryExperimentService {
     }
 
     @Inject
-    MongoCollection<AgentMemoryExperimentConfig> configCollection;
-
-    @Inject
-    MongoCollection<AgentMemoryExperimentRun> runCollection;
+    AgentMemoryExperimentStore experimentStore;
 
     @Inject
     AgentMemoryService memoryService;
@@ -58,11 +51,7 @@ public class AgentMemoryExperimentService {
     // ── Config management ──
 
     public AgentMemoryExperimentConfig getConfig(String agentId) {
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        query.limit = 1;
-        var results = configCollection.find(query);
-        return results.isEmpty() ? null : results.getFirst();
+        return experimentStore.getConfig(agentId);
     }
 
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
@@ -73,13 +62,12 @@ public class AgentMemoryExperimentService {
             config.id = existing.id;
             config.updatedAt = now;
             config.createdAt = existing.createdAt;
-            configCollection.replace(config);
         } else {
             if (config.id == null) config.id = UUID.randomUUID().toString();
             config.createdAt = now;
             config.updatedAt = now;
-            configCollection.insert(config);
         }
+        experimentStore.saveConfig(config);
         return config;
     }
 
@@ -318,7 +306,7 @@ public class AgentMemoryExperimentService {
         record.promptTokens = (long) result.estimatedTokens;
         record.createdAt = ZonedDateTime.now();
         record.updatedAt = record.createdAt;
-        runCollection.insert(record);
+        experimentStore.insertRun(record);
         return record;
     }
 
@@ -327,18 +315,12 @@ public class AgentMemoryExperimentService {
      * Called when session feedback is submitted.
      */
     public void recordOutcome(String sessionId, String outcome, Integer rating) {
-        var query = new Query();
-        query.filter = Filters.eq("session_id", sessionId);
-        query.sort = Sorts.descending("created_at");
-        query.limit = 1;
-        var runs = runCollection.find(query);
-        if (runs.isEmpty()) return;
-
-        var run = runs.getFirst();
+        var run = experimentStore.latestRunBySession(sessionId);
+        if (run == null) return;
         run.outcome = outcome;
         run.userRating = rating;
         run.updatedAt = ZonedDateTime.now();
-        runCollection.replace(run);
+        experimentStore.updateRun(run);
     }
 
     /**
@@ -346,74 +328,47 @@ public class AgentMemoryExperimentService {
      * Called later via LLM judge or heuristic analysis.
      */
     public void recordAttributions(String runId, List<MemoryAttribution> attributions) {
-        var query = new Query();
-        query.filter = Filters.eq("run_id", runId);
-        query.limit = 1;
-        var runs = runCollection.find(query);
-        if (runs.isEmpty()) return;
-
-        var run = runs.getFirst();
+        var run = experimentStore.runByRunId(runId);
+        if (run == null) return;
         run.attributions = attributions;
         run.updatedAt = ZonedDateTime.now();
-        runCollection.replace(run);
+        experimentStore.updateRun(run);
     }
 
     /**
      * Finds all experiment runs for an agent, sorted by recency.
      */
     public List<AgentMemoryExperimentRun> findByAgentId(String agentId, int limit) {
-        var query = new Query();
-        query.filter = Filters.eq("agent_id", agentId);
-        query.sort = Sorts.descending("created_at");
-        query.limit = limit;
-        return runCollection.find(query);
+        return experimentStore.runsByAgent(agentId, limit);
     }
 
     /**
      * Paginated listing of experiment runs, optionally filtered by agent.
      */
     public List<AgentMemoryExperimentRun> findAllRuns(String agentId, int skip, int limit) {
-        var query = new Query();
-        if (agentId != null && !agentId.isBlank()) {
-            query.filter = Filters.eq("agent_id", agentId);
-        }
-        query.sort = Sorts.descending("created_at");
-        query.skip = skip;
-        query.limit = limit;
-        return runCollection.find(query);
+        return experimentStore.listRuns(agentId, skip, limit);
     }
 
     public long countRuns(String agentId) {
-        if (agentId != null && !agentId.isBlank()) {
-            return runCollection.count(Filters.eq("agent_id", agentId));
-        }
-        return runCollection.count(Filters.empty());
+        return experimentStore.countRuns(agentId);
     }
 
     public AgentMemoryExperimentRun getRunById(String id) {
-        var query = new Query();
-        query.filter = Filters.eq("_id", id);
-        query.limit = 1;
-        var results = runCollection.find(query);
-        return results.isEmpty() ? null : results.getFirst();
+        return experimentStore.getRun(id);
     }
 
     /**
      * Paginated listing of experiment configs.
      */
     public List<AgentMemoryExperimentConfig> findAllConfigs(int skip, int limit) {
-        var query = new Query();
-        query.sort = Sorts.ascending("agent_id");
-        query.skip = skip;
-        query.limit = limit;
-        return configCollection.find(query);
+        return experimentStore.findConfigs(skip, limit);
     }
 
     public long countConfigs() {
-        return configCollection.count(Filters.empty());
+        return experimentStore.countConfigs();
     }
 
     public void deleteConfig(String agentId) {
-        configCollection.delete(Filters.eq("agent_id", agentId));
+        experimentStore.deleteConfig(agentId);
     }
 }

@@ -3,8 +3,6 @@ package ai.core.server.memory.experiment;
 import ai.core.server.memory.AgentMemory;
 import ai.core.server.memory.AgentMemoryService;
 import ai.core.server.memory.KnowledgeType;
-import core.framework.mongo.MongoCollection;
-import core.framework.mongo.Query;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -15,7 +13,6 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -25,8 +22,7 @@ import static org.mockito.Mockito.when;
 class AgentMemoryExperimentServiceTest {
     private static final String AGENT_ID = "agent-1";
 
-    private final MongoCollection<AgentMemoryExperimentConfig> configCollection = configCollection();
-    private final MongoCollection<AgentMemoryExperimentRun> runCollection = runCollection();
+    private final AgentMemoryExperimentStore experimentStore = mock(AgentMemoryExperimentStore.class);
     private final AgentMemoryService memoryService = memoryService();
     private final AgentMemoryExperimentService service = service();
 
@@ -144,7 +140,7 @@ class AgentMemoryExperimentServiceTest {
                 config(InjectionMode.FULL, List.of(MemoryLayer.METHODS), 5), MemoryInjectionResult.skipped());
 
         var captor = ArgumentCaptor.forClass(AgentMemoryExperimentRun.class);
-        verify(runCollection).insert(captor.capture());
+        verify(experimentStore).insertRun(captor.capture());
         assertEquals(InjectionMode.FULL, captor.getValue().injectionMode);
     }
 
@@ -154,12 +150,12 @@ class AgentMemoryExperimentServiceTest {
                 config(null, List.of(MemoryLayer.METHODS), 5), MemoryInjectionResult.skipped());
 
         var captor = ArgumentCaptor.forClass(AgentMemoryExperimentRun.class);
-        verify(runCollection).insert(captor.capture());
+        verify(experimentStore).insertRun(captor.capture());
         assertEquals(MemoryPolicy.DEFAULT_INJECTION_MODE, captor.getValue().injectionMode);
     }
 
     private void stubConfig(AgentMemoryExperimentConfig config) {
-        when(configCollection.find(any(Query.class))).thenReturn(config == null ? List.of() : List.of(config));
+        when(experimentStore.getConfig(AGENT_ID)).thenReturn(config);
     }
 
     private void stubLayer(MemoryLayer layer, AgentMemory... memories) {
@@ -204,8 +200,7 @@ class AgentMemoryExperimentServiceTest {
 
     private AgentMemoryExperimentService service() {
         var service = new AgentMemoryExperimentService();
-        service.configCollection = configCollection;
-        service.runCollection = runCollection;
+        service.experimentStore = experimentStore;
         service.memoryService = memoryService;
         return service;
     }
@@ -216,13 +211,5 @@ class AgentMemoryExperimentServiceTest {
         return service;
     }
 
-    @SuppressWarnings("unchecked")
-    private MongoCollection<AgentMemoryExperimentConfig> configCollection() {
-        return mock(MongoCollection.class);
-    }
 
-    @SuppressWarnings("unchecked")
-    private MongoCollection<AgentMemoryExperimentRun> runCollection() {
-        return mock(MongoCollection.class);
-    }
 }
