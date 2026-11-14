@@ -269,3 +269,41 @@ S1：
 S2：删除三个 `*_STORE_MODE=mongo` 覆盖，保留 `SYS_STORE_MODE=pg`；`SYS_TRACE_SPAN_MIGRATION` 不设置（默认 copy）。
 
 回滚：删除 `SYS_STORE_MODE`（S1）/ 加回三个 `mongo` 覆盖（S2），并把 image 改回上一固定 tag。
+
+## 12. 执行记录（2026-11-14，prod 已切换）
+
+状态：**已执行**。prod `core-ai-server` 现运行在 PostgreSQL store 上（G1–G5 全部）。
+
+### 12.1 前置
+
+| 项 | 结果 |
+|---|---|
+| Mongo 备份 | `mongodump` 728 MB gzip（`prod/mongodb-0:/tmp/prod-core-ai-20261114-1636.gz`，本地 `D:\core-ai\.core-ai\backups\`）；restore 到 `restore_check` 校验 58 集合 / 71,789 文档成功，随后 drop |
+| 镜像 | `chancetop/core-ai-server:2.0.234`，digest `sha256:3dbd4b05f5b63c46af464044d692ab1ba72b6cdf772f1f95b6fcfadc6635b7ff` |
+| 资源 | pod limits `memory: 4Gi`（原 2Gi，`-Xmx3072m`） |
+| Flyway | prod: baseline V1（历史表在 `public` 只有 dataset V1；在 `app` 建 baseline 后应用 V2–V37，37 行 0 失败） |
+| PG | CNPG 3/3，50Gi×3，切换后库 1.2 GB、磁盘用 2.4G / 49G |
+
+### 12.2 发现并处理的两个问题
+
+1. **G1 集合没有启动迁移服务**：users / api_keys / projects+children / gateway / skills / tool_registry / system_settings / system_prompts / service_api / triggers / channels / ocg_configs / prompt_templates 在代码里只有 store，没有 migration service（dev/UAT 当年是一次性脚本复制）。补齐方式：把当时的 `G1DevCopyTest` 整理为 `core-ai-server/src/test/java/ai/core/server/migration/G1CopyTest.java`（读 `G1_COPY=1` + `G1_MONGO_URI` / `G1_PG_URL` 等环境变量，幂等 upsert，含抽样校验）。prod 上执行 3 次（中途修正了 legacy project `updated_at` 为 null 的问题）。
+2. **core-ng 只对 `sys.properties` 声明过的 key 应用环境变量覆盖**：`sys.trace.store.mode` / `sys.runtime.store.mode` 未声明，因此 S1 里“把 G5 钉在 Mongo”的三个 override 实际未生效 —— trace / payload / runtime / 两套日统计在 S1 一并迁完（只有 `sys.trace.span.store.mode` 已声明，spans 确实被钉住）。结果无害，且缩短了 S2。
+
+### 12.3 窗口
+
+| 阶段 | 操作 | 结果 |
+|---|---|---|
+| Flyway | 16:46–16:49 | V1 baseline + V2–V37 |
+| S1（G1–G4） | 19:07 停服 → 19:10 重跑 G1 copy → 19:11 起新版本 | 停机 ~4 分钟；G2–G5 迁移 19:11:39–48 完成；校验全表 delta=0 |
+| S2（G5 spans） | 19:20 停服 → 19:21 起新版本 | 停机 ~2 分钟；span 回填 27,453 条 2 分钟完成；marker `spans_v1` |
+
+### 12.4 校验
+
+- 全量对比 66 组集合/表：**全部 OK**（PG ≥ Mongo；delta 均为切换后新写入：traces +2、spans +2、runtime +32、project attributions/scans +4）
+- API：登录（PG users）、会话列表（admin 48）、会话详情/history、agents 47、skills 122、traces 列表 1,078、trace 详情、单 trace spans 657
+- Mongo：`spans` 冻在 27,452；`traces` 等集合不再增长
+- 日志：无 `UncheckedSQLException` / `PSQLException` / 迁移错误
+
+### 12.5 回滚入口
+
+env 仓库 `azure/prod/kube/resource/app/ai/20-core-ai-server.yaml`：删除 `SYS_STORE_MODE` 与 `SYS_TRACE_SPAN_MIGRATION`；如需固定旧镜像用 `chancetop/core-ai-server@sha256:1290721…`（切换前 digest）。Mongo 数据未删未改。
