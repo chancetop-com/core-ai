@@ -15,7 +15,7 @@
 
 ### 0.1 用户原始需求（原文保留）
 
-> 我要给core-ai-server的agent发布加一个质量检测机制，它会通过一系列的检测来判断agent是否满足一定的要求，检测可以通过系统的决策模型或者代码来做，规则可能包括：A对配置的检测 1. agent是否配置了已被删除的tool/mcp/skill/subagent/dataset等配置 2. 配置的tool或者subagent或者skill是否超过某个阈值 比如超过50个是不可以的 要ui可配  B提示词的检测 1. 如果提示词中有日期，时间相关的指令，但是没有注入{{system.time}}时间信息，不行 2. 如果指令中有文件操作、网络抓取或者代码、生成图片、视频等等需要builtin tool去完成的指令，但是没有配置bultin tool的，不行 3. 如果提示词中提到了使用某些tool/api-tool/mcp/skill/subagent/dataset，但是没有对应的配置，不行。 C对描述的检测 1. 必须包含agent的功能简介
+> 我要给core-ai-server的agent发布加一个质量检测机制，它会通过一系列的检测来判断agent是否满足一定的要求，检测可以通过系统的决策模型或者代码来做，规则可能包括：A对配置的检测 1. agent是否配置了已被删除的tool/mcp/skill/subagent/dataset等配置 2. 配置的tool或者subagent或者skill是否超过某个阈值 比如超过50个是不可以的 要ui可配  B提示词的检测 1. 如果提示词中有日期，时间相关的指令，但是没有注入<span v-pre>{{system.time}}</span>时间信息，不行 2. 如果指令中有文件操作、网络抓取或者代码、生成图片、视频等等需要builtin tool去完成的指令，但是没有配置bultin tool的，不行 3. 如果提示词中提到了使用某些tool/api-tool/mcp/skill/subagent/dataset，但是没有对应的配置，不行。 C对描述的检测 1. 必须包含agent的功能简介
 > 你要根据我提到的东西 设计一个机制，它可扩展更多的检测，它在用户点击publish时做质检，有问题就报错，报错信息必须包括具体规则的信息和建议，最好还可以通过UI来添加使用决策模型来进行判断的规则。你先出techdesign，我review之后再做后续。design文档你不要参考现有的，你要按业界最佳实践来写，design文档最好有章节保留用户原始需求和review记录以及修改记录等，design文档必须有每个设计和决策的初衷和理由
 
 ### 0.2 需求编号
@@ -24,7 +24,7 @@
 |---|---|---|
 | A1 | 配置引用不能指向已删除的 tool / API-tool / MCP / skill / subagent / dataset | 必须阻断 |
 | A2 | tool / subagent / skill 等数量阈值由 UI 配置；超过阈值不可发布 | 必须阻断，阈值可配置 |
-| B1 | 日期、时间相关指令缺少有效的 `{{system.time}}` 注入不可发布 | 必须阻断，语义边界待 Review |
+| B1 | 日期、时间相关指令缺少有效的 <code v-pre>{{system.time}}</code> 注入不可发布 | 必须阻断，语义边界待 Review |
 | B2 | 要求执行文件、网络、代码、图片、视频等操作时，必须配置相应 builtin 能力 | 必须阻断 |
 | B3 | 指令要求使用的命名资源必须存在对应配置 | 必须阻断 |
 | C1 | description 必须包含 Agent 功能简介 | 必须阻断，不能仅检查非空 |
@@ -108,7 +108,7 @@
 | API ID 有 app/service/operation 层级；MCP 单工具 ID 需按最后一个冒号拆分 | `core-ai-server/src/main/java/ai/core/server/tool/InternalApiToolLoader.java:36`；`core-ai-server/src/main/java/ai/core/server/domain/ToolRef.java:24` | 复用现有解析器；区分绑定粒度；不能把 ID 随意按冒号拆开 |
 | skills/datasets/memory/multimodal/sandbox 会补入部分工具；MCP materialization 可能启动进程 | `core-ai-server/src/main/java/ai/core/server/skill/SkillToolAssembler.java:29`；`core-ai-server/src/main/java/ai/core/server/dataset/tool/DatasetToolProvider.java:30`；`core-ai-server/src/main/java/ai/core/server/tool/McpServerConnectionManager.java:152` | 需要 metadata-only 能力投影，不直接运行完整 AgentBuilder 或 MCP 连接 |
 | AGENT run 在执行时提供 `system.time`，author template 经 Mustache；appendix 和 query 保持原文 | `core-ai/src/main/java/ai/core/agent/Node.java:278`；`core-ai/src/main/java/ai/core/agent/PromptRenderer.java:18` | 时间有效注入检查按 runtime profile；不能对所有上下文里的花括号一律判未展开 |
-| LLM_CALL 直接将 system prompt 放到 completion，不走 AGENT 的时间渲染路径 | `core-ai-server/src/main/java/ai/core/server/run/LLMCallExecutor.java:63` | LLM_CALL 写入字面 `{{system.time}}` 目前也不能满足时间规则；需明确阻断建议，不伪造已注入 |
+| LLM_CALL 直接将 system prompt 放到 completion，不走 AGENT 的时间渲染路径 | `core-ai-server/src/main/java/ai/core/server/run/LLMCallExecutor.java:63` | LLM_CALL 写入字面 <code v-pre>{{system.time}}</code> 目前也不能满足时间规则；需明确阻断建议，不伪造已注入 |
 | 决策模型可注入 DecisionProvider；结果只有概率/标签/分数，不提供文本理由，解析对缺答案较宽松 | `core-ai-server/src/main/java/ai/core/server/GatewayModule.java:137`；`core-ai/src/main/java/ai/core/decision/SystemOneDecisionProvider.java:156` | 复用 Provider，额外严格验证；建议由规则模板产生 |
 | decision 通用请求 timeout 固定为 60s，内部调用不自动继承 HTTP Hub audit/quota | `core-ai/src/main/java/ai/core/decision/SystemOneDecisionProvider.java:48`；`core-ai-server/src/main/java/ai/core/server/gateway/GatewayDecisionProvider.java:41` | 发布路径需可取消的专用预算和显式审计/计费，不能假设已有 |
 | 普通 Publish 不先 Save，UI 只显示异常字符串；通用 client 丢弃错误结构 | `core-ai-frontend/src/pages/agents/AgentEditor.tsx:664`；`core-ai-frontend/src/api/client.ts:12` | 明确保存再检查，保留 typed report；不能在 error.message 内编码 JSON |
@@ -278,11 +278,11 @@ v0.3 按 AI 技术评审建议默认 `CURRENT_TIME_DEPENDENT`。原因：把“�
 
 示例：“输出日期格式 YYYY-MM-DD”不触发；“汇总本周销售”触发；“把 2026-01-01 转成周几”不触发；“判断优惠券是否过期”触发；LLM_CALL 的“从用户输入中提取日期”不触发。
 
-有效注入必须由真实模板解析/渲染路径确认：参与最终 system prompt 的 `{{system.time}}` 变量来源被实际替换，且不只是聊天记录、未使用配置、转义文本或模板名。不是简单 `prompt.contains("{{system.time}}")`。平台统一追加时间信息只有确实进入该 Agent runtime 的 system prompt 并有 provenance 才可满足；不能假设所有 Agent 自动有时间。
+有效注入必须由真实模板解析/渲染路径确认：参与最终 system prompt 的 <code v-pre>{{system.time}}</code> 变量来源被实际替换，且不只是聊天记录、未使用配置、转义文本或模板名。不是简单 <code v-pre>prompt.contains("{{system.time}}")</code>。平台统一追加时间信息只有确实进入该 Agent runtime 的 system prompt 并有 provenance 才可满足；不能假设所有 Agent 自动有时间。
 
 按 definition type 区分：AGENT 可通过真实 Mustache 路径验证；LLM_CALL 当前不渲染 system.time，故包含该字面变量也不能视为有效注入。首版不为质检顺便改变 LLM_CALL runtime：遇到适用时间指令阻断并说明该类型不支持时间模板，建议改为有渲染支持的 AGENT 或移除该指令；若要支持 LLM_CALL 时间模板须另行 Review，增加真正拥有渲染契约的 runtime 改动和回归测试。AGENT 当前 SYSTEM message 未必每轮刷新；本规则证明上下文含有效时间，不证明它精确到本轮，时间新鲜度是后续独立规则。
 
-错误示例：`PROMPT.TIME_CONTEXT_REQUIRED@1：system_prompt 包含适用的时间指令，但未发现有效 system.time 注入。对 AGENT，建议在有效提示词模板加入“当前时间：{{system.time}}”，或删除不需要的时间指令；对 LLM_CALL，提示当前执行路径不支持该模板，不能只补字面字符串。`
+错误示例：<code v-pre>PROMPT.TIME_CONTEXT_REQUIRED@1：system_prompt 包含适用的时间指令，但未发现有效 system.time 注入。对 AGENT，建议在有效提示词模板加入“当前时间：{{system.time}}”，或删除不需要的时间指令；对 LLM_CALL，提示当前执行路径不支持该模板，不能只补字面字符串。</code>
 
 **理由：**关键词与模板字符串存在均不足以证明时间上下文可用。参数显式保留用户严格要求与低误报模式之间的差别，避免设计悄悄改需求。
 
