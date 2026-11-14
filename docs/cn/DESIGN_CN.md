@@ -555,7 +555,7 @@ Tracer（抽象）
 
 ### 3.16 提示词系统
 
-**Mustache 模板**: 系统提示词和查询模板支持 `{{variable}}` 变量插值。
+**Mustache 模板**: 系统提示词和查询模板支持 <code v-pre>{{variable}}</code> 变量插值。
 
 **系统变量**（自动注入）：
 - 构建时: `AGENT_TOOLS`

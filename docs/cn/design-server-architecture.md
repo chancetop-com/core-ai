@@ -147,7 +147,7 @@ PromptTemplate (独立版本管理)               │
 | system_prompt | Agent 指令 |
 | model | LLM 模型标识 |
 | tool_ids | ToolRegistry 条目引用 |
-| input_template | `{{variable}}` 运行输入模板 |
+| input_template | <code v-pre>{{variable}}</code> 运行输入模板 |
 | type | `AGENT`（多轮 + 工具）或 `LLM_CALL`（单次调用） |
 | published_config | 运行/调度使用的不可变快照 |
 | webhook_secret | `whk_` + UUID，用于 Webhook 认证 |
@@ -202,7 +202,7 @@ PromptTemplate (独立版本管理)               │
 
 | 字段 | 说明 |
 |------|------|
-| template | 含 `{{variable}}` 占位符的文本 |
+| template | 含 <code v-pre>{{variable}}</code> 占位符的文本 |
 | version | 每次更新自动递增 |
 | published_version | 运行时可用的版本号 |
 | status | DRAFT → PUBLISHED → ARCHIVED |

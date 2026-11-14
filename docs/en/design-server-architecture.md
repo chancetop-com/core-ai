@@ -149,7 +149,7 @@ PromptTemplate (independent versioning)    │
 | system_prompt | Agent instructions |
 | model | LLM model identifier |
 | tool_ids | References to ToolRegistry entries |
-| input_template | `{{variable}}` template for run input |
+| input_template | <code v-pre>{{variable}}</code> template for run input |
 | type | `AGENT` (multi-turn with tools) or `LLM_CALL` (single call) |
 | published_config | Immutable snapshot used by runs/schedules |
 | webhook_secret | `whk_` + UUID, for webhook authentication |
@@ -204,7 +204,7 @@ PromptTemplate (independent versioning)    │
 
 | Field | Description |
 |-------|-------------|
-| template | Text with `{{variable}}` placeholders |
+| template | Text with <code v-pre>{{variable}}</code> placeholders |
 | version | Auto-incremented on each update |
 | published_version | The version available for runtime use |
 | status | DRAFT → PUBLISHED → ARCHIVED |

@@ -70,7 +70,7 @@ if (todos != null) {
 }
 ```
 
-This ensures the system prompt `{{AGENT_WRITE_TODOS_SYSTEM_PROMPT}}` is populated when the session is restored.
+This ensures the system prompt <code v-pre>{{AGENT_WRITE_TODOS_SYSTEM_PROMPT}}</code> is populated when the session is restored.
 
 ### Files to Modify
 

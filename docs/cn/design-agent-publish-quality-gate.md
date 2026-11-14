@@ -952,7 +952,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 | A1 | 未知 builtin 引用发布被 `422` 拒绝，issue 含 `resource_type=BUILTIN`、`issue_reason=BUILTIN_NOT_REGISTERED`、可重试标记 |
 | A1 MCP server | 不存在的 MCP server 发布被 `422` 拒绝，`CFG.MCP_SERVER_AVAILABLE` / `MCP_SERVER_NOT_FOUND` |
 | A2 | 规则 revision 参数改为 `subagents=5` 后，对 11 个 subagent 的候选试测为 `FAIL`（actual=11, max=5），随后恢复 `50`；规则变更走 revision，不修改历史 revision |
-| B1 | 时间指令 + 无 `{{system.time}}` 的试测为 `FAIL`，决策概率约 0.99，返回 route fingerprint |
+| B1 | 时间指令 + 无 <code v-pre>{{system.time}}</code> 的试测为 `FAIL`，决策概率约 0.99，返回 route fingerprint |
 | B2 / B3 | “使用 read_file 但无对应 builtin”“引用 @subagent:research 但无绑定”试测均为 `FAIL` |
 | WARN | 将 B1 激活为 `WARN` 后发布返回 `200`、`warnCount=1`；report 中该 issue `enforcement=WARN`、状态可读 |
 | 策略回滚 | 以历史 `policy_revision` 重新激活成功，后续发布回到原始绑定 |
