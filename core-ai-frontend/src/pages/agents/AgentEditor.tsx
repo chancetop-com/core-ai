@@ -1068,9 +1068,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
 
       {qualityReport && (
         <QualityReportPanel report={qualityReport}
-          onLocate={() => {
-            const panel = document.getElementById('agent-editor-content');
-            if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+          onLocate={section => {
+            document.getElementById(`agent-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           onClose={() => setQualityReport(null)} />
       )}
@@ -1144,7 +1143,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </div>
 
           {!isVersionMode && (
-          <div>
+          <div id="agent-section-overview">
             <label className="block text-sm font-medium mb-1">Description <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></label>
             <input value={agent.description || ''} onChange={e => update('description', e.target.value)}
               className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
@@ -1153,7 +1152,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           )}
 
           {/* System Prompt Selection */}
-          <div className="rounded-xl border p-4"
+          <div id="agent-section-prompt" className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3">System Prompt <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span></h3>
             <div className="space-y-3">
@@ -1470,7 +1469,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </div>
 
           {/* Datasets */}
-          <div className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+          <div id="agent-section-datasets" className="rounded-xl border mt-4" style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <button
               onClick={() => { if (!datasetsOpen) loadDatasets(); setDatasetsOpen(!datasetsOpen); }}
               className="w-full flex items-center justify-between p-4 cursor-pointer">
@@ -1594,7 +1593,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
 
           {/* Tools - not shown for LLM_CALL */}
           {agent.type !== 'LLM_CALL' && (
-          <div className="rounded-xl border p-4"
+          <div id="agent-section-tools" className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
               <Wrench size={16} style={{ color: '#f59e0b' }} /> Tools <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
@@ -1937,7 +1936,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           {agent.type !== 'LLM_CALL' && (
           <>
           {/* Subagents */}
-          <div className="rounded-xl border p-4"
+          <div id="agent-section-subagents" className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
               <Users size={16} style={{ color: '#8b5cf6' }} /> Subagents <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
@@ -2022,7 +2021,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </div>
 
           {/* Skills */}
-          <div className="rounded-xl border p-4"
+          <div id="agent-section-skills" className="rounded-xl border p-4"
             style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
               <Sparkles size={16} style={{ color: '#ec4899' }} /> Skills <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
