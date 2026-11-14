@@ -38,6 +38,7 @@ const SettingsPage = lazy(() => import('./pages/settings/Settings'));
 const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
+const AgentQualityPage = lazy(() => import('./pages/settings/AgentQuality'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
 const Tasks = lazy(() => import('./pages/tasks/Tasks'));
 const Mcp = lazy(() => import('./pages/mcp/Mcp'));
@@ -250,6 +251,7 @@ function AuthenticatedApp() {
                       <Route path="system" element={canManageSystem || canManageSnapshots ? <SystemSettingsPage /> : <Navigate to="/for-you" replace />} />
                       <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><Navigate to="/settings/system?tab=sandbox" replace /></RequirePermission>} />
                       <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
+                      <Route path="agent-quality" element={<RequirePermission permission="agent.quality.manage"><AgentQualityPage /></RequirePermission>} />
                       <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />
                       {user?.role === 'admin' && <Route index element={<Dashboard />} />}
                       <Route path="users" element={<RequirePermission permission="user.manage"><UserManagement /></RequirePermission>} />

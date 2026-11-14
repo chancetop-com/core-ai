@@ -169,6 +169,20 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
     }
 
     @Override
+    public boolean replaceIfRevision(AgentDefinition definition, int expectedRevision) {
+        definition.definitionRevision = expectedRevision + 1;
+        definition.writeLeaseToken = null;
+        definition.writeLeaseExpiresAt = null;
+        return database.execute("UPDATE " + TABLE + " SET user_id = ?, name = ?, name_key = ?, type = ?, status = ?, "
+                + "system_default = ?, forked_from = ?, has_published_config = ?, created_at = ?, updated_at = ?, "
+                + "data = ?::jsonb WHERE id = ? AND COALESCE((data ->> ?)::int, 0) = ?",
+            definition.userId, definition.name, definition.nameKey, definition.type != null ? definition.type.name() : null,
+            definition.status != null ? definition.status.name() : null, definition.systemDefault, definition.forkedFrom,
+            definition.publishedConfig != null, definition.createdAt, definition.updatedAt,
+            JsonSanitizer.json(JsonUtil.toJson(definition)), definition.id, "definitionRevision", expectedRevision) > 0;
+    }
+
+    @Override
     public void upsert(AgentDefinition definition) {
         database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
                 + "ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, name = EXCLUDED.name, "

@@ -24,6 +24,13 @@ public interface AgentDefinitionStore {
 
     void replace(AgentDefinition definition);
 
+    /**
+     * Single-document compare-and-set on {@code definitionRevision}. Returns false when the document no
+     * longer carries the expected revision (or was deleted), which callers must surface as a conflict
+     * instead of overwriting.
+     */
+    boolean replaceIfRevision(AgentDefinition definition, int expectedRevision);
+
     void upsert(AgentDefinition definition);
 
     void delete(String id);

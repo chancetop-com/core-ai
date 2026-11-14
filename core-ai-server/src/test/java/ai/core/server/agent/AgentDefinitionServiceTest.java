@@ -795,7 +795,9 @@ class AgentDefinitionServiceTest {
 
     @SuppressWarnings("unchecked")
     private MongoCollection<AgentDefinition> agentCollection() {
-        return mock(MongoCollection.class);
+        var collection = mock(MongoCollection.class);
+        when(collection.update(any(Bson.class), any(Bson.class))).thenReturn(1L);
+        return collection;
     }
 
     @SuppressWarnings("unchecked")
@@ -807,6 +809,12 @@ class AgentDefinitionServiceTest {
         service.skillService = mock(SkillService.class);
         service.systemPromptService = mock(SystemPromptService.class);
         service.personalAssistantService = mock(PersonalAssistantService.class);
+        var gate = new TestQualityGate(service.systemPromptService);
+        service.qualityGate = gate;
+        var publishService = new AgentPublishService();
+        publishService.agentDefinitionStore = service.agentDefinitionStore;
+        publishService.qualityGate = gate;
+        service.agentPublishService = publishService;
         return service;
     }
 

@@ -289,11 +289,13 @@ public class AgentCatalogService {
         }
 
         public String name() {
-            return definition.name;
+            return definition.status == ai.core.server.domain.AgentStatus.PUBLISHED
+                && definition.publishedName != null ? definition.publishedName : definition.name;
         }
 
         public String description() {
-            return definition.description;
+            return definition.status == ai.core.server.domain.AgentStatus.PUBLISHED
+                && definition.publishedDescription != null ? definition.publishedDescription : definition.description;
         }
     }
 

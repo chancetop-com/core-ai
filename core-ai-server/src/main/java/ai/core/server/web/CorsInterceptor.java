@@ -32,6 +32,7 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
 
         var response = invocation.proceed();
 
+        ai.core.server.quality.QualityHeaders.apply(invocation.context(), response);
         if (response.header("Access-Control-Allow-Origin").isEmpty()) {
             response.header("Access-Control-Allow-Origin", "*");
         }
@@ -62,14 +63,19 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
             if (request.path().startsWith("/api/public/session-shares/") && !(e instanceof BadRequestException)) {
                 message = "Shared content is unavailable.";
             }
-            var json = "{\"errorCode\":\"" + escape(errorCode) + "\",\"message\":\"" + escape(message) + "\"}";
+            var extension = e instanceof TypedWebError typed ? typed.extraJson() : null;
+            var json = "{\"errorCode\":\"" + escape(errorCode) + "\",\"message\":\"" + escape(message) + "\""
+                + (extension == null || extension.isBlank() ? "" : "," + extension)
+                + "}";
             var response = Response.text(json)
-                    .status(httpStatus(e))
+                    .status(e instanceof TypedWebError typed ? typed.status() : httpStatus(e))
                     .contentType(ContentType.APPLICATION_JSON)
                     .header("Access-Control-Allow-Origin", "*");
             // capacity rejections are retryable, so the client gets a concrete back-off hint
             if (e instanceof CapacityExceededException capacity) {
                 response.header("Retry-After", String.valueOf(capacity.retryAfterSeconds()));
+            } else if (e instanceof TypedWebError typed && typed.retryAfterSeconds() != null) {
+                response.header("Retry-After", String.valueOf(typed.retryAfterSeconds()));
             }
             if (request.path().startsWith("/api/public/session-shares/")
                 || request.path().startsWith("/api/sessions/") && request.path().contains("/shares")) {

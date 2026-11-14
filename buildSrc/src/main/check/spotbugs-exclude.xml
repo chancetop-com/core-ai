@@ -51,6 +51,17 @@
         <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
     </Match>
 
+    <!-- BX_UNBOXING: nullable Integer defaulting to 0 is intentional in these view/rule builders -->
+    <Match>
+        <Class name="ai.core.server.agent.AgentViewHelper" />
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
+    </Match>
+
+    <Match>
+        <Class name="ai.core.server.quality.AgentQualityAdminService" />
+        <Bug pattern="BX_UNBOXING_IMMEDIATELY_REBOXED" />
+    </Match>
+
     <!-- PSC_PRESIZE_COLLECTIONS: cannot presize without knowing final count -->
     <Match>
         <Class name="ai.core.tool.tools.FuzzyMatchReplacer" />

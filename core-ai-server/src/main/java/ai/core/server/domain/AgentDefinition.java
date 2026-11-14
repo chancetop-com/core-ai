@@ -31,6 +31,36 @@ public class AgentDefinition {
     @Field(name = "description")
     public String description;
 
+    /** Catalog-visible metadata frozen by the last publish; null for drafts and pre-snapshot records. */
+    @Field(name = "published_name")
+    public String publishedName;
+
+    @Field(name = "published_description")
+    public String publishedDescription;
+
+    @Field(name = "metadata_hash")
+    public String metadataHash;
+
+    /** Monotonic CAS revision; every write path bumps it with a conditional update. Null means legacy 0. */
+    @Field(name = "definition_revision")
+    public Integer definitionRevision;
+
+    /**
+     * Short-lived lease held while a writer replaces the document. Mongo has no conditional replace; the
+     * lease plus {@link #lastWriteToken} verification is the equivalent single-document CAS there.
+     */
+    @Field(name = "write_lease_token")
+    public String writeLeaseToken;
+
+    @Field(name = "write_lease_expires_at")
+    public ZonedDateTime writeLeaseExpiresAt;
+
+    @Field(name = "last_write_token")
+    public String lastWriteToken;
+
+    @Field(name = "quality_receipt")
+    public AgentQualityReceipt qualityReceipt;
+
     @Field(name = "system_prompt")
     public String systemPrompt;
 

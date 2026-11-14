@@ -34,7 +34,7 @@ final class AgentListHelper {
     static AgentDefinitionView toSummaryView(AgentDefinition entity) {
         var view = new AgentDefinitionView();
         view.id = entity.id;
-        view.name = entity.name;
+        view.name = AgentViewHelper.catalogName(entity);
         return view;
     }
 

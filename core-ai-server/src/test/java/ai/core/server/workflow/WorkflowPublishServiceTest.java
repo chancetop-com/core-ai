@@ -36,6 +36,8 @@ class WorkflowPublishServiceTest {
         when(agentCollection.get(agent.id)).thenReturn(Optional.of(agent));
         var snapshots = new WorkflowAgentSnapshotService();
         snapshots.agentDefinitionStore = ai.core.server.agent.MongoAgentDefinitionStore.of(agentCollection);
+        snapshots.qualityGate = new ai.core.server.quality.PassThroughQualityGate();
+        snapshots.skillService = mock(ai.core.server.skill.SkillService.class);
         publishService = new WorkflowPublishService();
         publishService.definitionStore = definitionStore;
         publishService.versionStore = versionStore;

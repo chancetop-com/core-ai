@@ -127,6 +127,8 @@ public class ServerApp extends App {
         registerMongo();
 
         load(new PostgresModule());
+        // quality policy/run storage must exist before AgentDefinitionModule binds the publish gate
+        load(new AgentQualityStoreModule());
         // agent definitions are read by project attribution/session runtime during startup wiring
         load(new AgentDefinitionStoreModule());
         load(new AgentVersionStoreModule());
@@ -235,12 +237,15 @@ public class ServerApp extends App {
 
     private void loadDomainModules() {
         load(new SkillModule());
+        // publish gate must exist before AgentDefinitionModule binds AgentDefinitionService
+        load(new QualityGateModule());
         // Skill Hub needs SkillService (catalog invalidator) — must follow SkillModule
         load(new SkillHubModule());
         load(new GitHubModule());
         load(new AgentDefinitionModule());
         load(new DatasetModule());
         load(new ToolRegistryModule());
+        wireQualityGate();
         // MCP Hub needs ToolRegistryService (registry) — must follow ToolRegistryModule; its own
         // schedule job keeps the hub catalog warm for later consumers (SessionModule etc.).
         load(new McpHubModule());
@@ -291,6 +296,24 @@ public class ServerApp extends App {
     private void loadTransportModules() {
 
         load(new WebModule());
+    }
+
+    // the gate is bound before the tool/dataset modules exist, and runs only after all of them load
+    private void wireQualityGate() {
+        try {
+            var toolRegistry = bean(ai.core.server.tool.ToolRegistryService.class);
+            var referenceResolver = bean(ai.core.server.quality.QualityReferenceResolver.class);
+            referenceResolver.setToolRegistryService(toolRegistry);
+            referenceResolver.setDatasetService(bean(ai.core.server.dataset.DatasetService.class));
+            var capabilityResolver = bean(ai.core.server.quality.EffectiveCapabilityResolver.class);
+            capabilityResolver.setToolRegistryService(toolRegistry);
+            capabilityResolver.setGatewayRoutingEngine(bean(ai.core.server.gateway.GatewayRoutingEngine.class));
+        } catch (Error e) {
+            // wiring tests load a subset of modules; a real missing bean is still rethrown (only the
+            // explicit "not bound" error is tolerated, and the gate reports unavailable if never wired)
+            if (e.getMessage() == null || !e.getMessage().contains("can not find bean")) throw e;
+            LOGGER.debug("quality gate wiring skipped, module not loaded: {}", e.getMessage());
+        }
     }
 
     private void registerProjectCollections(MongoConfig mongo) {
@@ -366,6 +389,12 @@ public class ServerApp extends App {
         mongo.collection(ToolRegistryEntry.class);
         mongo.collection(HubCall.class);
         mongo.collection(AgentDefinition.class);
+        mongo.collection(ai.core.server.quality.domain.AgentQualityRule.class);
+        mongo.collection(ai.core.server.quality.domain.AgentQualityRuleRevision.class);
+        mongo.collection(ai.core.server.quality.domain.AgentQualityPolicyRevision.class);
+        mongo.collection(ai.core.server.quality.domain.AgentQualityPolicyHead.class);
+        mongo.collection(ai.core.server.quality.domain.AgentQualityRun.class);
+        mongo.collection(ai.core.server.quality.domain.AgentPublicationRecord.class);
         mongo.collection(ChannelConfigView.class);
         mongo.collection(OcgConfigView.class);
         mongo.collection(AgentSchedule.class);

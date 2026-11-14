@@ -10,6 +10,14 @@ package ai.core.decision;
 public interface DecisionProvider {
     DecisionResponse decide(DecisionRequest request);
 
+    /**
+     * Deadline-aware variant. Implementations that own an HTTP transport must apply the limit there;
+     * the default keeps existing providers source compatible.
+     */
+    default DecisionResponse decide(DecisionRequest request, DecisionOptions options) {
+        return decide(request);
+    }
+
     default String name() {
         return getClass().getSimpleName();
     }

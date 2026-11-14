@@ -15,6 +15,9 @@ public final class PermissionCodes {
 
     public static final String AGENT_VIEW = "agent.view";
     public static final String AGENT_MANAGE = "agent.manage";
+    // Publish-quality rule administration: a platform governance surface, not implied by agent.manage.
+    // The controller annotation is only the first check; the service also requires a human admin.
+    public static final String AGENT_QUALITY_MANAGE = "agent.quality.manage";
     public static final String WORKFLOW_VIEW = "workflow.view";
     public static final String WORKFLOW_MANAGE = "workflow.manage";
     public static final String PROMPT_VIEW = "prompt.view";
@@ -69,7 +72,7 @@ public final class PermissionCodes {
     /** Complete catalog, used for role config validation and admin UI checkboxes. */
     public static final List<String> ALL = List.of(
             DASHBOARD_VIEW, CHAT_USE, TRACE_VIEW,
-            AGENT_VIEW, AGENT_MANAGE,
+            AGENT_VIEW, AGENT_MANAGE, AGENT_QUALITY_MANAGE,
             WORKFLOW_VIEW, WORKFLOW_MANAGE,
             PROMPT_VIEW, PROMPT_MANAGE,
             TRIGGER_VIEW, TRIGGER_MANAGE,

@@ -3,6 +3,7 @@ package ai.core.server.agent;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
+import ai.core.server.domain.AgentQualityReceipt;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
@@ -63,6 +64,8 @@ public class PersonalAssistantService {
     UserStore userStore;
     @Inject
     SkillService skillService;
+    @Inject
+    ai.core.server.quality.PublishQualityGate qualityGate;
 
     /** Maps a template id to the caller's own copy, forking on first use; any other id passes through. */
     public String resolve(String agentId, String userId) {
@@ -103,6 +106,7 @@ public class PersonalAssistantService {
     // Concurrent first uses race on the deterministic id, the loser re-reads the winner's document.
     private AgentDefinition fork(AgentDefinition template, User user) {
         var fork = buildFork(template, user);
+        applyForkGate(fork, user);
         try {
             agentDefinitionStore.insert(fork);
         } catch (MongoWriteException e) {
@@ -116,6 +120,36 @@ public class PersonalAssistantService {
         AgentListHelper.addFavorite(userStore, user.id, fork.id);
         LOGGER.info("personal assistant forked, userId={}, agentId={}, templateId={}", user.id, fork.id, template.id);
         return fork;
+    }
+
+    // The filtered fork is a new published content candidate; it must pass the same gate. A failure keeps
+    // the copy as a draft (the owner can still run a draft) instead of publishing unchecked content.
+    private void applyForkGate(AgentDefinition fork, User user) {
+        try {
+            var candidate = qualityGate.buildCandidate(fork);
+            var result = qualityGate.evaluate(fork, candidate, user.id,
+                ai.core.server.quality.domain.QualityGateMode.FORK, null, true);
+            fork.publishedConfig = candidate.config();
+            fork.publishedName = candidate.name();
+            fork.publishedDescription = candidate.description();
+            fork.metadataHash = candidate.metadataHash();
+            var receipt = new AgentQualityReceipt();
+            receipt.runId = result.runId();
+            receipt.policyRevision = result.policyRevision();
+            receipt.definitionRevision = 1;
+            receipt.executionCandidateHash = candidate.executionCandidateHash();
+            receipt.metadataHash = candidate.metadataHash();
+            receipt.gateResult = result.run().gateResult.name();
+            receipt.ruleResultDigest = result.run().ruleResultDigest;
+            receipt.routeFingerprint = result.run().routeFingerprint;
+            receipt.warnCount = result.warnCount();
+            receipt.publishedAt = ZonedDateTime.now();
+            fork.qualityReceipt = receipt;
+        } catch (RuntimeException e) {
+            fork.status = AgentStatus.DRAFT;
+            LOGGER.warn("personal assistant fork did not pass the publish quality gate, it stays a draft, userId={}, reason={}",
+                user.id, e.getMessage());
+        }
     }
 
     private AgentDefinition buildFork(AgentDefinition template, User user) {

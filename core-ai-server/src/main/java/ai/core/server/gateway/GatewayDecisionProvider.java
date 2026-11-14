@@ -1,8 +1,10 @@
 package ai.core.server.gateway;
 
+import ai.core.decision.DecisionOptions;
 import ai.core.decision.DecisionProvider;
 import ai.core.decision.DecisionRequest;
 import ai.core.decision.DecisionResponse;
+import ai.core.decision.DecisionRoute;
 import ai.core.server.domain.GatewayProviderConfig;
 import core.framework.web.exception.BadRequestException;
 import org.slf4j.Logger;
@@ -39,12 +41,17 @@ public class GatewayDecisionProvider implements DecisionProvider {
 
     @Override
     public DecisionResponse decide(DecisionRequest request) {
+        return decide(request, DecisionOptions.none());
+    }
+
+    @Override
+    public DecisionResponse decide(DecisionRequest request, DecisionOptions options) {
         if (!routingEngine.hasEnabledProviders()) {
             throw new BadRequestException("no enabled gateway providers configured for decision");
         }
         var resolved = routingEngine.route(request.model(), GatewayEndpointType.DECISION);
         var upstream = upstreamProvider(resolved.provider());
-        var response = upstream.decide(request.withModel(resolved.upstreamModel()));
+        var response = upstream.decide(request.withModel(resolved.upstreamModel()), options);
         if (response.usage() != null) {
             LOGGER.debug("decision call, model={}, provider={}, upstreamModel={}, inputTokens={}, outputTokens={}",
                     request.model(), resolved.provider().name, resolved.upstreamModel(),
@@ -53,7 +60,8 @@ public class GatewayDecisionProvider implements DecisionProvider {
             LOGGER.debug("decision call, model={}, provider={}, upstreamModel={}",
                     request.model(), resolved.provider().name, resolved.upstreamModel());
         }
-        return response;
+        return response.withRoute(new DecisionRoute(resolved.provider().id,
+            resolved.upstreamModel(), resolved.fingerprint(request.model())));
     }
 
     private DecisionProvider upstreamProvider(GatewayProviderConfig provider) {

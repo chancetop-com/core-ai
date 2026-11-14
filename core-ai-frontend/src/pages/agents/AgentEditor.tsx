@@ -10,6 +10,8 @@ import { useAuth } from '../../api/auth';
 import StatusBadge from '../../components/StatusBadge';
 import { agentVersionApi } from '../../api/comparison';
 import type { AgentVersion, ComparisonVariantConfig } from '../../api/comparison';
+import QualityReportPanel from './QualityReportPanel';
+import { ApiError, publishAgent, qualityApi, type QualityReport } from '../../api/quality';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
@@ -80,6 +82,33 @@ function versionToEditable(version: AgentVersion): AgentDefinition {
   };
 }
 
+function agentUpdatePayload(agent: AgentDefinition) {
+  return {
+    name: agent.name,
+    description: agent.description,
+    type: agent.type,
+    system_prompt: agent.system_prompt,
+    system_prompt_id: agent.system_prompt_id,
+    model: agent.model,
+    multi_modal_model: agent.multi_modal_model,
+    prefer_caption_path: agent.prefer_caption_path,
+    temperature: agent.temperature,
+    thinking_effort: agent.thinking_effort,
+    max_turns: agent.max_turns,
+    timeout_seconds: agent.timeout_seconds,
+    tools: agent.tools,
+    input_template: agent.input_template,
+    variables: agent.variables || {},
+    response_schema: agent.response_schema,
+    subagent_ids: agent.subagent_ids,
+    skill_ids: agent.skill_ids,
+    dataset_config: agent.dataset_config,
+    sandbox_config: agent.sandbox_config,
+    enable_memory: agent.enable_memory,
+    system_default: agent.system_default,
+  } as unknown as Partial<AgentDefinition>;
+}
+
 function editableToVersionConfig(agent: AgentDefinition): ComparisonVariantConfig {
   return {
     system_prompt: agent.system_prompt || '',
@@ -118,6 +147,9 @@ export default function AgentEditor({ versionId }: { versionId?: string } = {}) 
   const [publishing, setPublishing] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
+  const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [checkingQuality, setCheckingQuality] = useState(false);
+  const [publishWarnings, setPublishWarnings] = useState(0);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
 
@@ -579,9 +611,9 @@ The system prompt should define how this agent behaves, its capabilities, and it
     return toolRef.id;
   };
 
-  const handleSave = async () => {
-    if (!id && !isVersionMode) return;
-    if (!agent) return;
+  const handleSave = async (): Promise<AgentDefinition | null> => {
+    if (!id && !isVersionMode) return null;
+    if (!agent) return null;
     setSaving(true);
     setSaveSuccess(false);
     setSaveError('');
@@ -594,9 +626,9 @@ The system prompt should define how this agent behaves, its capabilities, and it
         });
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
-        return;
+        return null;
       }
-      if (!id) return;
+      if (!id) return null;
 
       if (isNew) {
         const created = await api.agents.create({
@@ -624,40 +656,37 @@ The system prompt should define how this agent behaves, its capabilities, and it
           system_default: agent.system_default,
         } as any);
         navigate(`/agents/${created.id}`);
-        return;
+        return created;
       }
 
-      const updated = await api.agents.update(id, {
-        name: agent.name,
-        description: agent.description,
-        type: agent.type,
-        system_prompt: agent.system_prompt,
-        system_prompt_id: agent.system_prompt_id,
-        model: agent.model,
-        multi_modal_model: agent.multi_modal_model,
-        prefer_caption_path: agent.prefer_caption_path,
-        temperature: agent.temperature,
-        thinking_effort: agent.thinking_effort,
-        max_turns: agent.max_turns,
-        timeout_seconds: agent.timeout_seconds,
-        tools: agent.tools,
-        input_template: agent.input_template,
-        variables: agent.variables || {},
-        response_schema: agent.response_schema,
-          subagent_ids: agent.subagent_ids,
-          skill_ids: agent.skill_ids,
-          dataset_config: agent.dataset_config,
-          sandbox_config: agent.sandbox_config,
-          enable_memory: agent.enable_memory,
-          system_default: agent.system_default,
-        } as any);
+      const updated = await api.agents.update(id, agentUpdatePayload(agent));
         setAgent(updated);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+      return updated;
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Save failed');
+      return null;
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCheckQuality = async () => {
+    if (!id) return;
+    setCheckingQuality(true);
+    setSaveError('');
+    try {
+      const saved = await api.agents.update(id, agentUpdatePayload(agent));
+      setAgent(saved);
+      const report = await qualityApi.check(id);
+      setQualityReport(report);
+      if (report.gate_result === 'PASSED') setSaveSuccess(false);
+    } catch (e) {
+      if (e instanceof ApiError && e.qualityReport) setQualityReport(e.qualityReport);
+      setSaveError(e instanceof Error ? e.message : 'Quality check failed');
+    } finally {
+      setCheckingQuality(false);
     }
   };
 
@@ -665,13 +694,27 @@ The system prompt should define how this agent behaves, its capabilities, and it
     if (!id) return;
     setPublishing(true);
     setPublishSuccess(false);
+    setPublishWarnings(0);
+    setQualityReport(null);
+    setSaveError('');
     try {
-      const published = await api.agents.publish(id);
-      setAgent(published);
+      const saved = await api.agents.update(id, agentUpdatePayload(agent));
+      setAgent(saved);
+      const result = await publishAgent(id, saved.definition_revision);
+      if (result.agent) setAgent(result.agent as AgentDefinition);
+      setPublishWarnings(result.warnCount);
+      if (result.warnCount > 0) {
+        setQualityReport(await qualityApi.report(id, result.runId || 'latest'));
+      }
       setPublishSuccess(true);
       setTimeout(() => setPublishSuccess(false), 3000);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Publish failed');
+      if (e instanceof ApiError) {
+        if (e.qualityReport) setQualityReport(e.qualityReport);
+        setSaveError(e.message);
+      } else {
+        setSaveError(e instanceof Error ? e.message : 'Publish failed');
+      }
     } finally {
       setPublishing(false);
     }
@@ -995,13 +1038,20 @@ The system prompt should define how this agent behaves, its capabilities, and it
             style={{ borderColor: 'var(--color-border)' }}>
             <Download size={14} /> Export
           </button>
-          <button onClick={handlePublish} disabled={publishing || isNew}
+          <button onClick={handleCheckQuality} disabled={checkingQuality || isNew || publishing}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <HelpCircle size={14} /> {checkingQuality ? 'Checking...' : 'Check Quality'}
+          </button>
+          <button onClick={handlePublish} disabled={publishing || checkingQuality || isNew}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
             style={{
-              borderColor: publishSuccess ? 'var(--color-success)' : 'var(--color-border)',
-              color: publishSuccess ? 'var(--color-success)' : undefined,
+              borderColor: publishWarnings > 0 ? 'var(--color-warning, #d97706)' : publishSuccess ? 'var(--color-success)' : 'var(--color-border)',
+              color: publishWarnings > 0 ? 'var(--color-warning, #d97706)' : publishSuccess ? 'var(--color-success)' : undefined,
             }}>
-            {publishSuccess ? <><Check size={14} /> Published!</> : <><Upload size={14} /> {publishing ? 'Publishing...' : 'Publish'}</>}
+            {publishSuccess
+              ? <><Check size={14} /> {publishWarnings > 0 ? `Published with ${publishWarnings} warning${publishWarnings === 1 ? '' : 's'}` : 'Published!'}</>
+              : <><Upload size={14} /> {publishing ? 'Saving & checking...' : 'Publish'}</>}
           </button>
             </>
           )}
@@ -1015,6 +1065,15 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </button>
         </div>
       </div>
+
+      {qualityReport && (
+        <QualityReportPanel report={qualityReport}
+          onLocate={() => {
+            const panel = document.getElementById('agent-editor-content');
+            if (panel) panel.scrollIntoView({ behavior: 'smooth' });
+          }}
+          onClose={() => setQualityReport(null)} />
+      )}
 
       {showImportConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
@@ -2083,6 +2142,14 @@ The system prompt should define how this agent behaves, its capabilities, and it
               <div className="flex justify-between"><dt>Created by</dt><dd>{agent.created_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>Timeout</dt><dd>{agent.timeout_seconds || 600}s</dd></div>
               <div className="flex justify-between"><dt>Published</dt><dd>{agent.published_at ? new Date(agent.published_at).toLocaleString() : '-'}</dd></div>
+              {agent.status === 'PUBLISHED' && (
+                <>
+                  <div className="flex justify-between gap-2"><dt>Published name</dt><dd className="truncate max-w-40" title={agent.published_name || agent.name}>{agent.published_name || agent.name}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Published desc</dt><dd className="truncate max-w-40" title={agent.published_description || ''}>{agent.published_description || '-'}</dd></div>
+                  <div className="flex justify-between"><dt>Quality gate</dt><dd>{agent.quality?.gate_result || '-'}{agent.quality?.warn_count ? ` (${agent.quality.warn_count} warn)` : ''}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Quality run</dt><dd className="font-mono truncate max-w-32" title={agent.quality?.run_id || ''}>{agent.quality?.run_id || '-'}</dd></div>
+                </>
+              )}
               <div className="flex justify-between"><dt>Updated</dt><dd>{agent.updated_at ? new Date(agent.updated_at).toLocaleString() : '-'}</dd></div>
               <div className="flex justify-between"><dt>Updated by</dt><dd>{agent.updated_by || '-'}</dd></div>
               <div className="flex justify-between"><dt>System Default</dt><dd>{agent.system_default ? 'Yes' : 'No'}</dd></div>

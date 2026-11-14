@@ -1,9 +1,8 @@
 package ai.core.server.workflow;
 
 import ai.core.server.agent.AgentDefinitionStore;
-
-import ai.core.server.agent.AgentExecutableConfigFactory;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
+import ai.core.server.agent.AgentExecutableConfigFactory;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentSnapshotSource;
@@ -26,11 +25,16 @@ import java.util.Map;
  * @author Xander
  */
 public class WorkflowAgentSnapshotService {
+    private static final org.slf4j.Logger LOGGER = org.slf4j.LoggerFactory.getLogger(WorkflowAgentSnapshotService.class);
+
     @Inject
     AgentDefinitionStore agentDefinitionStore;
 
     @Inject
     SkillService skillService;
+
+    @Inject
+    ai.core.server.quality.PublishQualityGate qualityGate;
 
     public void capture(WorkflowGraph graph, String ownerUserId, List<String> errors,
                         Map<String, String> snapshots, Map<String, String> sources) {
@@ -81,17 +85,58 @@ public class WorkflowAgentSnapshotService {
     private SnapshotCandidate snapshotCandidate(WorkflowNode node, AgentDefinition agent,
                                                 String ownerUserId, List<String> errors) {
         if (WorkflowAgentAccessPolicy.isOwnedEditable(agent, ownerUserId)) {
-            var config = AgentExecutableConfigFactory.fromEditableDefinition(agent);
-            if (!hasAccessibleSkills(node, config, ownerUserId, errors)) return null;
-            AgentDependencyAccessPolicy.markPublishedSkillsValidated(config);
-            return new SnapshotCandidate(config, "OWNED_EDITABLE");
+            var candidate = qualityGate.buildCandidate(agent);
+            if (!hasAccessibleSkills(node, candidate.config(), ownerUserId, errors)) return null;
+            try {
+                qualityGate.evaluate(agent, candidate, ownerUserId,
+                    ai.core.server.quality.domain.QualityGateMode.WORKFLOW, null, true);
+            } catch (ai.core.server.quality.QualityGateException e) {
+                errors.addAll(qualityIssues("node " + node.id(), e.report()));
+                return null;
+            } catch (RuntimeException e) {
+                errors.add("node " + node.id() + " failed the publish quality check: " + e.getMessage());
+                return null;
+            }
+            return new SnapshotCandidate(candidate.config(), "OWNED_EDITABLE");
         }
         if (WorkflowAgentAccessPolicy.hasUsablePublishedConfig(agent)) {
+            verifyPublishedReceipt(node, agent);
             return new SnapshotCandidate(
                 AgentExecutableConfigFactory.fromPublishedConfig(agent.publishedConfig), "PUBLISHED");
         }
         errors.add("node " + node.id() + " references an agent/LLM definition you cannot access: " + agent.id);
         return null;
+    }
+
+    private void verifyPublishedReceipt(WorkflowNode node, AgentDefinition agent) {
+        var receipt = agent.qualityReceipt;
+        if (receipt == null) {
+            LOGGER.warn("workflow snapshot uses a published agent without a quality receipt, node={}, agent={}",
+                node.id(), agent.id);
+            return;
+        }
+        var configHash = ai.core.server.quality.QualityHashes.candidateHash(agent.publishedConfig);
+        var metadataHash = ai.core.server.quality.QualityHashes.metadataHash(
+            agent.publishedName != null ? agent.publishedName : agent.name,
+            agent.publishedDescription != null ? agent.publishedDescription : agent.description);
+        if (!configHash.equals(receipt.executionCandidateHash) || !metadataHash.equals(receipt.metadataHash)) {
+            LOGGER.warn("workflow snapshot uses a published agent whose receipt does not match its published config, "
+                + "node={}, agent={}", node.id(), agent.id);
+        }
+    }
+
+    private List<String> qualityIssues(String prefix, ai.core.api.server.agent.AgentQualityReportView report) {
+        if (report == null) return List.of(prefix + " failed the publish quality check");
+        var errors = new java.util.ArrayList<String>();
+        if (report.issues != null) {
+            for (var issue : report.issues) {
+                if (errors.size() >= 5) break;
+                errors.add(prefix + ": " + issue.ruleId + "@" + issue.ruleRevision + " " + issue.message
+                    + " 建议：" + issue.suggestion);
+            }
+        }
+        if (errors.isEmpty()) errors.add(prefix + " failed the publish quality check");
+        return errors;
     }
 
     private boolean hasAccessibleSkills(WorkflowNode node, AgentPublishedConfig config,

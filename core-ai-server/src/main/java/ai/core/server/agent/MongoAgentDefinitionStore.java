@@ -17,6 +17,8 @@ import java.util.regex.Pattern;
  * @author stephen
  */
 public class MongoAgentDefinitionStore implements AgentDefinitionStore {
+    private static final int CAS_LEASE_SECONDS = 60;
+
     public static MongoAgentDefinitionStore of(MongoCollection<AgentDefinition> collection) {
         var store = new MongoAgentDefinitionStore();
         store.agentDefinitionCollection = collection;
@@ -58,6 +60,49 @@ public class MongoAgentDefinitionStore implements AgentDefinitionStore {
     @Override
     public void replace(AgentDefinition definition) {
         agentDefinitionCollection.replace(definition);
+    }
+
+    /**
+     * Mongo has no replace-with-filter in the framework API, so the lease claim serializes writers on this
+     * document and the token written into the new document proves the replace was not superseded.
+     */
+    @Override
+    public boolean replaceIfRevision(AgentDefinition definition, int expectedRevision) {
+        var token = java.util.UUID.randomUUID().toString();
+        var now = java.time.ZonedDateTime.now();
+        var leaseExpiresAt = now.plusSeconds(CAS_LEASE_SECONDS);
+        var claimable = Filters.or(
+            Filters.eq("write_lease_token", null),
+            Filters.lt("write_lease_expires_at", java.util.Date.from(now.toInstant())));
+        var claimed = agentDefinitionCollection.update(
+            Filters.and(Filters.eq("_id", definition.id),
+                revisionFilter(expectedRevision),
+                claimable),
+            com.mongodb.client.model.Updates.combine(
+                com.mongodb.client.model.Updates.set("write_lease_token", token),
+                com.mongodb.client.model.Updates.set("write_lease_expires_at", leaseExpiresAt)));
+        if (claimed == 0) return false;
+
+        definition.definitionRevision = expectedRevision + 1;
+        definition.lastWriteToken = token;
+        definition.writeLeaseToken = null;
+        definition.writeLeaseExpiresAt = null;
+        agentDefinitionCollection.replace(definition);
+
+        return agentDefinitionCollection.get(definition.id)
+            .map(current -> token.equals(current.lastWriteToken)
+                && Integer.valueOf(expectedRevision + 1).equals(current.definitionRevision))
+            .orElse(Boolean.FALSE);
+    }
+
+    private Bson revisionFilter(int expectedRevision) {
+        if (expectedRevision == 0) {
+            return Filters.or(
+                Filters.eq("definition_revision", 0),
+                Filters.exists("definition_revision", false),
+                Filters.eq("definition_revision", null));
+        }
+        return Filters.eq("definition_revision", expectedRevision);
     }
 
     @Override

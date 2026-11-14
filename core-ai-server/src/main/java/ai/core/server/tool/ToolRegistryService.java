@@ -262,6 +262,18 @@ public class ToolRegistryService {
         return tool;
     }
 
+    Map<String, ToolRegistryEntry> toolEntries() {
+        return tools;
+    }
+
+    Map<String, List<ToolCall>> dynamicToolSets() {
+        return dynamicToolSets;
+    }
+
+    InternalApiToolLoader apiLoader() {
+        return serviceApiTools.loader();
+    }
+
     public List<String> listCategories() {
         return tools.values().stream().map(t -> t.category).filter(c -> c != null && !c.isBlank()).distinct().sorted().toList();
     }
@@ -314,18 +326,9 @@ public class ToolRegistryService {
      * async task manager dispatches a stored task's poll/cancel to.
      */
     public ToolCall findBuiltinTool(String toolName) {
-        for (var tools : dynamicToolSets.values()) {
-            for (var tool : tools) {
-                if (toolName.equals(tool.getName())) return tool;
-            }
-        }
-        for (var tool : BuiltinTools.fromSet(ToolProvider.BUILTIN_ALL, mediaProvider, gitHubTokenProvider, videoUnderstandingService)) {
-            if (toolName.equals(tool.getName())) return tool;
-        }
-        return null;
+        return ToolRegistryMetadata.findBuiltinTool(this, toolName, mediaProvider, gitHubTokenProvider, videoUnderstandingService);
     }
 
-    /** Returns the subgroup label of a tool inside a builtin group, or null when the group has no subgroups. */
     public String builtinGroupToolGroup(String groupId, String toolName) {
         var groups = builtinGroupToolGroups.get(groupId);
         return groups != null ? groups.get(toolName) : null;

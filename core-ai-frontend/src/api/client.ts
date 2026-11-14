@@ -590,6 +590,19 @@ export interface SandboxConfig {
   env_vars?: Record<string, string>;
 }
 
+export interface AgentQualityReceipt {
+  run_id?: string;
+  policy_revision?: number;
+  definition_revision?: number;
+  execution_candidate_hash?: string;
+  metadata_hash?: string;
+  gate_result?: string;
+  rule_result_digest?: string;
+  route_fingerprint?: string;
+  warn_count?: number;
+  published_at?: string;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -611,6 +624,10 @@ export interface AgentDefinition {
   response_schema: unknown;
   created_by: string;
   status: string;
+  definition_revision?: number;
+  published_name?: string | null;
+  published_description?: string | null;
+  quality?: AgentQualityReceipt | null;
   published_at: string;
   created_at: string;
   updated_at: string;

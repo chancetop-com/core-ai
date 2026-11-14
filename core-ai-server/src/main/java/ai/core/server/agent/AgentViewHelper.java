@@ -2,6 +2,7 @@ package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentDatasetConfigView;
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.AgentQualityReceiptView;
 import ai.core.api.server.agent.SandboxConfigView;
 import ai.core.api.server.session.IdName;
 import ai.core.api.server.tool.ToolRefView;
@@ -33,6 +34,8 @@ final class AgentViewHelper {
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     static AgentDefinitionView buildDetailedView(AgentDefinition entity, AgentDefinitionStore store, UserStore userStore, SkillService skillService) {
         var view = buildView(entity, Map.of(), Map.of());
+        view.name = entity.name;
+        view.description = entity.description;
         view.createdBy = userName(userStore, entity.userId);
         view.updatedBy = userName(userStore, lastModifiedBy(entity));
         if (view.subAgents != null) {
@@ -71,9 +74,31 @@ final class AgentViewHelper {
 
     static AgentDefinitionView buildView(AgentDefinition entity, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         var view = new AgentDefinitionView();
+        applyIdentity(view, entity);
+        applyConfiguration(view, entity);
+        applyReferences(view, entity, subAgentNameMap, skillNameMap);
+        view.status = entity.status != null ? entity.status.name() : null;
+        view.definitionRevision = entity.definitionRevision == null ? 0 : entity.definitionRevision;
+        view.publishedName = entity.publishedName;
+        view.publishedDescription = entity.publishedDescription;
+        view.quality = toReceiptView(entity.qualityReceipt);
+        view.forkedFrom = entity.forkedFrom;
+        view.forkedAt = entity.forkedAt;
+        view.publishedAt = entity.publishedAt;
+        view.createdAt = entity.createdAt;
+        view.updatedAt = entity.updatedAt;
+        view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
+        view.datasetConfig = toDatasetConfigViews(entity.datasetConfig);
+        return view;
+    }
+
+    private static void applyIdentity(AgentDefinitionView view, AgentDefinition entity) {
         view.id = entity.id;
-        view.name = entity.name;
-        view.description = entity.description;
+        view.name = catalogName(entity);
+        view.description = catalogDescription(entity);
+    }
+
+    private static void applyConfiguration(AgentDefinitionView view, AgentDefinition entity) {
         view.systemPrompt = entity.systemPrompt;
         view.systemPromptId = entity.systemPromptId;
         view.model = entity.model;
@@ -90,6 +115,10 @@ final class AgentViewHelper {
         view.enableMemory = entity.enableMemory;
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.responseSchema = entity.responseSchema;
+    }
+
+    private static void applyReferences(AgentDefinitionView view, AgentDefinition entity,
+                                        Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
         view.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
         view.skillIds = IdLists.cleanOrNull(entity.skillIds);
         view.subAgents = view.subAgentIds != null ? view.subAgentIds.stream()
@@ -108,14 +137,31 @@ final class AgentViewHelper {
                     return v;
                 })
                 .toList() : null;
-        view.status = entity.status != null ? entity.status.name() : null;
-        view.forkedFrom = entity.forkedFrom;
-        view.forkedAt = entity.forkedAt;
-        view.publishedAt = entity.publishedAt;
-        view.createdAt = entity.createdAt;
-        view.updatedAt = entity.updatedAt;
-        view.sandboxConfig = toSandboxConfigView(entity.sandboxConfig);
-        view.datasetConfig = toDatasetConfigViews(entity.datasetConfig);
+    }
+
+    static String catalogName(AgentDefinition entity) {
+        return entity.status == ai.core.server.domain.AgentStatus.PUBLISHED && entity.publishedName != null
+            ? entity.publishedName : entity.name;
+    }
+
+    static String catalogDescription(AgentDefinition entity) {
+        return entity.status == ai.core.server.domain.AgentStatus.PUBLISHED && entity.publishedDescription != null
+            ? entity.publishedDescription : entity.description;
+    }
+
+    static AgentQualityReceiptView toReceiptView(ai.core.server.domain.AgentQualityReceipt receipt) {
+        if (receipt == null) return null;
+        var view = new AgentQualityReceiptView();
+        view.runId = receipt.runId;
+        view.policyRevision = receipt.policyRevision;
+        view.definitionRevision = receipt.definitionRevision;
+        view.executionCandidateHash = receipt.executionCandidateHash;
+        view.metadataHash = receipt.metadataHash;
+        view.gateResult = receipt.gateResult;
+        view.ruleResultDigest = receipt.ruleResultDigest;
+        view.routeFingerprint = receipt.routeFingerprint;
+        view.warnCount = receipt.warnCount;
+        view.publishedAt = receipt.publishedAt;
         return view;
     }
 
@@ -226,3 +272,4 @@ final class AgentViewHelper {
         return null;
     }
 }
+

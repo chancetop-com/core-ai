@@ -288,6 +288,7 @@ class PersonalAssistantServiceTest {
         service.agentDefinitionStore = MongoAgentDefinitionStore.of(agentDefinitionCollection);
         service.userStore = ai.core.server.user.MongoUserStore.of(users());
         service.skillService = mock(SkillService.class);
+        service.qualityGate = new TestQualityGate(mock(ai.core.server.systemprompt.SystemPromptService.class));
         return service;
     }
 

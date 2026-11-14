@@ -90,6 +90,19 @@ public class AgentDefinitionView {
     @Property(name = "status")
     public String status;
 
+    @Property(name = "definition_revision")
+    public Integer definitionRevision;
+
+    /** Catalog-visible metadata of the current publish; equal to the editable values until the next publish. */
+    @Property(name = "published_name")
+    public String publishedName;
+
+    @Property(name = "published_description")
+    public String publishedDescription;
+
+    @Property(name = "quality")
+    public AgentQualityReceiptView quality;
+
     @Property(name = "forked_from")
     public String forkedFrom;
 

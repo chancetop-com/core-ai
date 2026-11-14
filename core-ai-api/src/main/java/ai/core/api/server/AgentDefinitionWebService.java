@@ -1,6 +1,7 @@
 package ai.core.api.server;
 
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.AgentQualityReportView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -69,6 +70,18 @@ public interface AgentDefinitionWebService {
     @POST
     @Path("/api/agents/:id/publish")
     AgentDefinitionView publish(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/agents/:id/quality-checks")
+    AgentQualityReportView checkQuality(@PathParam("id") String id);
+
+    /**
+     * {@code runId} may be literal {@code latest}: the editor reads the newest report after a publish
+     * that returned WARN results without remembering a run id.
+     */
+    @GET
+    @Path("/api/agents/:id/quality-checks/:runId")
+    AgentQualityReportView qualityReport(@PathParam("id") String id, @PathParam("runId") String runId);
 
 //    @POST
 //    @Path("/api/agents/from-session")

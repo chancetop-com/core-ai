@@ -2,6 +2,7 @@ package ai.core.server.web;
 
 import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.AgentQualityReportView;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -23,6 +24,7 @@ import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
 import core.framework.web.WebContext;
+import core.framework.web.exception.BadRequestException;
 
 /**
  * @author stephen
@@ -107,7 +109,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     public AgentDefinitionView update(String id, UpdateAgentRequest request) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        return agentDefinitionService.update(id, request, userId);
+        return agentDefinitionService.update(id, request, userId, expectedRevision());
     }
 
     @Override
@@ -115,7 +117,41 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     public AgentDefinitionView publish(String id) {
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
-        return agentDefinitionService.publish(id, userId);
+        var options = new ai.core.server.agent.PublishOptions(expectedRevision(), idempotencyKey());
+        var outcome = agentDefinitionService.publishWithOutcome(id, userId, options);
+        ai.core.server.quality.QualityHeaders.put(webContext, outcome.runId(), outcome.gateResult(), outcome.warnCount());
+        return outcome.view();
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_MANAGE)
+    public AgentQualityReportView checkQuality(String id) {
+        var userId = AuthContext.userId(webContext);
+        ActionLogContext.put("user_id", userId);
+        return agentDefinitionService.checkQuality(id, userId, idempotencyKey());
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public AgentQualityReportView qualityReport(String id, String runId) {
+        return agentDefinitionService.qualityReport(id, runId, AuthContext.userId(webContext));
+    }
+
+    private Integer expectedRevision() {
+        return webContext.request().header("If-Match").map(this::parseRevision).orElse(null);
+    }
+
+    private Integer parseRevision(String value) {
+        var text = value.replace("\"", "").replace("W/", "").trim();
+        try {
+            return Integer.valueOf(text);
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("invalid If-Match revision: " + value, "BAD_REQUEST", e);
+        }
+    }
+
+    private String idempotencyKey() {
+        return webContext.request().header("Idempotency-Key").orElse(null);
     }
 
 //    @Override

@@ -62,8 +62,14 @@ public class SystemOneDecisionProvider implements DecisionProvider {
 
     @Override
     public DecisionResponse decide(DecisionRequest request) {
+        return decide(request, DecisionOptions.none());
+    }
+
+    @Override
+    public DecisionResponse decide(DecisionRequest request, DecisionOptions options) {
         var httpRequest = new HTTPRequest(HTTPMethod.POST, endpoint);
         httpRequest.headers.put("Content-Type", ContentType.APPLICATION_JSON.toString());
+        applyOptions(httpRequest, options);
         setHeaders(httpRequest);
         httpRequest.body(JsonUtil.toJson(body(request)).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
 
@@ -72,6 +78,12 @@ public class SystemOneDecisionProvider implements DecisionProvider {
             throw error(response.statusCode, response.text());
         }
         return parseResponse(response.text());
+    }
+
+    private void applyOptions(HTTPRequest request, DecisionOptions options) {
+        if (options == null) return;
+        if (options.timeout() != null) request.timeout = options.timeout();
+        if (options.connectTimeout() != null) request.connectTimeout = options.connectTimeout();
     }
 
     @Override

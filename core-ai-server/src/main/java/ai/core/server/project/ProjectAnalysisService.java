@@ -43,6 +43,8 @@ public class ProjectAnalysisService {
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
+    ai.core.server.quality.PublishQualityGate qualityGate;
+    @Inject
     ProjectAttributionStage attributionStage;
     @Inject
     ProjectSubjectAnalysisStage subjectAnalysisStage;
@@ -214,8 +216,35 @@ public class ProjectAnalysisService {
             ProjectBuiltinAgents.PLAYBOOK_WRITER, ProjectBuiltinAgents.playbookWriterDoc(now),
             ProjectBuiltinAgents.REPORT_RENDERER, ProjectBuiltinAgents.reportRendererDoc(now));
         for (var doc : docs.values()) {
-            agentDefinitionStore.upsert(toDefinition(doc));
+            var definition = toDefinition(doc);
+            applyBuiltinQualityGate(definition);
+            agentDefinitionStore.upsert(definition);
         }
+    }
+
+    // An interactive builtin reset republishes executable content, so it runs the same gate as a normal
+    // publish; a failure leaves the existing builtin untouched instead of writing unchecked content.
+    private void applyBuiltinQualityGate(AgentDefinition definition) {
+        var candidate = qualityGate.buildCandidate(definition);
+        var result = qualityGate.evaluate(definition, candidate, "system",
+            ai.core.server.quality.domain.QualityGateMode.PUBLISH, null, true);
+        definition.publishedConfig = candidate.config();
+        definition.publishedName = candidate.name();
+        definition.publishedDescription = candidate.description();
+        definition.metadataHash = candidate.metadataHash();
+        var receipt = new ai.core.server.domain.AgentQualityReceipt();
+        receipt.runId = result.runId();
+        receipt.policyRevision = result.policyRevision();
+        receipt.definitionRevision = 1;
+        receipt.executionCandidateHash = candidate.executionCandidateHash();
+        receipt.metadataHash = candidate.metadataHash();
+        receipt.gateResult = result.run().gateResult.name();
+        receipt.ruleResultDigest = result.run().ruleResultDigest;
+        receipt.routeFingerprint = result.run().routeFingerprint;
+        receipt.warnCount = result.warnCount();
+        receipt.publishedAt = ZonedDateTime.now();
+        definition.qualityReceipt = receipt;
+        definition.definitionRevision = 0;
     }
 
     private AgentDefinition toDefinition(org.bson.Document doc) {
@@ -263,3 +292,4 @@ public class ProjectAnalysisService {
     public record AnalysisResult(int attributed, int analyzed, int updated) {
     }
 }
+

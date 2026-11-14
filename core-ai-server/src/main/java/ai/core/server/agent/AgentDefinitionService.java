@@ -9,13 +9,12 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.util.IdLists;
 import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 import ai.core.server.systemprompt.SystemPromptService;
-import ai.core.server.util.IdLists;
 import core.framework.inject.Inject;
 import core.framework.util.Strings;
-import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.ForbiddenException;
 
 import java.time.ZonedDateTime;
@@ -50,6 +49,10 @@ public class AgentDefinitionService {
     SystemPromptService systemPromptService;
     @Inject
     PersonalAssistantService personalAssistantService;
+    @Inject
+    AgentPublishService agentPublishService;
+    @Inject
+    ai.core.server.quality.PublishQualityGate qualityGate;
 
     private volatile Runnable catalogInvalidator;
 
@@ -86,6 +89,26 @@ public class AgentDefinitionService {
             entity.maxTurns = request.maxTurns != null ? request.maxTurns : 200;
             entity.timeoutSeconds = request.timeoutSeconds != null ? request.timeoutSeconds : 600;
         }
+        applyCreateConfiguration(entity, request);
+        if (Boolean.TRUE.equals(request.systemDefault)) {
+            if (!isAdmin(userId)) {
+                throw new ForbiddenException("only admin can create system default agents");
+            }
+            entity.systemDefault = Boolean.TRUE;
+        }
+        entity.status = AgentStatus.DRAFT;
+        entity.definitionRevision = 0;
+        entity.createdAt = ZonedDateTime.now();
+        entity.updatedAt = entity.createdAt;
+        entity.updatedBy = userId;
+
+        requireAccessibleSkills(entity.skillIds, userId);
+        agentDefinitionStore.insert(entity);
+        notifyCatalogChanged();
+        return toView(entity);
+    }
+
+    private void applyCreateConfiguration(AgentDefinition entity, CreateAgentRequest request) {
         entity.tools = request.tools != null ? AgentViewHelper.toToolRefs(request.tools) : null;
         entity.subAgentIds = IdLists.cleanOrNull(request.subAgentIds);
         entity.skillIds = IdLists.cleanOrNull(request.skillIds);
@@ -96,21 +119,6 @@ public class AgentDefinitionService {
         entity.sandboxConfig = request.sandboxConfig != null ? AgentViewHelper.fromSandboxConfigView(request.sandboxConfig) : null;
         entity.datasetConfig = AgentViewHelper.toDatasetConfigs(request.datasetConfig);
         entity.enableMemory = Boolean.TRUE.equals(request.enableMemory);
-        if (Boolean.TRUE.equals(request.systemDefault)) {
-            if (!isAdmin(userId)) {
-                throw new ForbiddenException("only admin can create system default agents");
-            }
-            entity.systemDefault = Boolean.TRUE;
-        }
-        entity.status = AgentStatus.DRAFT;
-        entity.createdAt = ZonedDateTime.now();
-        entity.updatedAt = entity.createdAt;
-        entity.updatedBy = userId;
-
-        requireAccessibleSkills(entity.skillIds, userId);
-        agentDefinitionStore.insert(entity);
-        notifyCatalogChanged();
-        return toView(entity);
     }
 
     public ListAgentsResponse list(String userId) {
@@ -269,8 +277,16 @@ public class AgentDefinitionService {
     }
 
     public AgentDefinitionView update(String id, UpdateAgentRequest request, String userId) {
+        return update(id, request, userId, null);
+    }
+
+    public AgentDefinitionView update(String id, UpdateAgentRequest request, String userId, Integer expectedRevision) {
         var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        int currentRevision = entity.definitionRevision == null ? 0 : entity.definitionRevision;
+        if (expectedRevision != null && expectedRevision != currentRevision) {
+            throw new core.framework.web.exception.ConflictException("agent was modified by another editor; refresh and retry");
+        }
 
         requireAdminForSystemDefault(entity, userId);
         requirePersonalAssistantOwnerOrAdmin(entity, userId);
@@ -309,65 +325,49 @@ public class AgentDefinitionService {
         entity.updatedAt = ZonedDateTime.now();
         entity.updatedBy = userId;
 
-        agentDefinitionStore.replace(entity);
+        entity.definitionRevision = currentRevision;
+        if (!agentDefinitionStore.replaceIfRevision(entity, currentRevision)) {
+            throw new core.framework.web.exception.ConflictException("agent was modified by another editor; refresh and retry");
+        }
         notifyCatalogChanged();
         return toView(entity);
     }
 
     public AgentDefinitionView publish(String id, String userId) {
+        return publishWithOutcome(id, userId, PublishOptions.none()).view();
+    }
+
+    public AgentPublishOutcome publishWithOutcome(String id, String userId, PublishOptions options) {
         var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
 
         requireAdminForSystemDefault(entity, userId);
         requirePersonalAssistantOwnerOrAdmin(entity, userId);
         var publishedSkillIds = requireAccessibleSkills(entity.skillIds, userId);
-        requirePublishedLlmCallDependencies(entity);
-        requirePublishedSubAgentDependencies(entity);
-
+        AgentDependencyPrecheck.check(entity, agentDefinitionStore);
         entity.subAgentIds = IdLists.cleanOrNull(entity.subAgentIds);
         entity.skillIds = publishedSkillIds;
 
-        entity.publishedConfig = AgentExecutableConfigFactory.fromEditableDefinition(entity);
-        AgentDependencyAccessPolicy.markPublishedSkillsValidated(entity.publishedConfig);
-        if (!Strings.isBlank(entity.publishedConfig.systemPromptId)) {
-            entity.publishedConfig.systemPrompt = systemPromptService.resolveContent(entity.publishedConfig.systemPromptId);
-            entity.publishedConfig.systemPromptId = null;
-        }
-        entity.status = AgentStatus.PUBLISHED;
-        entity.publishedAt = ZonedDateTime.now();
-        entity.updatedAt = entity.publishedAt;
-        entity.updatedBy = userId;
-
-        agentDefinitionStore.replace(entity);
+        var result = agentPublishService.publish(entity, userId, options);
         notifyCatalogChanged();
-        return toView(entity);
+        return new AgentPublishOutcome(toView(result.entity()), result.runId(), "PASSED", result.warnCount());
     }
 
-    private void requirePublishedLlmCallDependencies(AgentDefinition entity) {
-        if (entity.type != DefinitionType.AGENT || entity.tools == null) return;
-        for (var tool : entity.tools) {
-            if (!AgentDependencyAccessPolicy.isLlmCallRef(tool)) continue;
-            String definitionId;
-            try {
-                definitionId = AgentDependencyAccessPolicy.requireLlmCallDefinitionId(tool);
-            } catch (IllegalArgumentException e) {
-                throw new BadRequestException("agent has an unavailable LLM call dependency", "BAD_REQUEST", e);
-            }
-            AgentDefinition dependency = agentDefinitionStore.get(definitionId).orElse(null);
-            if (!AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(dependency)) {
-                throw new BadRequestException("agent has an unavailable LLM call dependency");
-            }
-        }
+    public ai.core.api.server.agent.AgentQualityReportView checkQuality(String id, String userId, String idempotencyKey) {
+        var entity = agentDefinitionStore.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        requireAdminForSystemDefault(entity, userId);
+        requirePersonalAssistantOwnerOrAdmin(entity, userId);
+        requireAccessibleSkills(entity.skillIds, userId);
+        return qualityGate.precheck(entity, userId, idempotencyKey).report();
     }
 
-    private void requirePublishedSubAgentDependencies(AgentDefinition entity) {
-        if (entity.type != DefinitionType.AGENT) return;
-        for (String subAgentId : IdLists.clean(entity.subAgentIds)) {
-            AgentDefinition dependency = agentDefinitionStore.get(subAgentId).orElse(null);
-            if (!AgentDependencyAccessPolicy.hasUsablePublishedSubAgent(dependency)) {
-                throw new BadRequestException("agent has an unavailable sub-agent dependency");
-            }
-        }
+    public ai.core.api.server.agent.AgentQualityReportView qualityReport(String id, String runId, String userId) {
+        var entity = agentDefinitionStore.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        requireAdminForSystemDefault(entity, userId);
+        requirePersonalAssistantOwnerOrAdmin(entity, userId);
+        return qualityGate.report(id, runId);
     }
 
     private List<String> requireAccessibleSkills(List<String> skillIds, String userId) {
@@ -434,3 +434,9 @@ public class AgentDefinitionService {
         return userStore.get(userId).map(u -> "admin".equals(u.role)).orElse(Boolean.FALSE);
     }
 }
+
+
+
+
+
+
