@@ -937,7 +937,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 
 ### 14.6 实施验证记录（dev，2026-11-14）
 
-**代码与镜像：**主要实现 commit `63747b05`、`a242ee4f`、`e4f9e0a8`、`4e864c83`，镜像 `2.0.235` → `2.0.238`。本次仅操作 dev（`FBRDevAKSCluster` / namespace `dev-ai`），未触碰 UAT / prod。
+**代码与镜像：**主要实现 commit `63747b05`、`a242ee4f`、`e4f9e0a8`、`4e864c83`、`402fc1dd`、`60f9dc6e`，镜像 `2.0.235` → `2.0.239`。本次仅操作 dev（`FBRDevAKSCluster` / namespace `dev-ai`），未触碰 UAT / prod。
 
 **静态与自动化检查：**`./gradlew :core-ai-server:check` 通过（compile、unit test、checkstyle、PMD、SpotBugs、JaCoCo）；`npm --prefix core-ai-frontend run build` 通过。
 
@@ -962,7 +962,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 **剩余限制 / 未完成验证：**
 
 - A2 的完整“发布被门禁阻断”链路未在 dev 用真实 Agent 跑通：旧发布前置检查会先拒绝合成的不存在 subagent ID（`400 agent has an unavailable sub-agent dependency`）。规则本身的计数与超限结果已通过规则试测和单元测试验证；要跑完整链路需创建 51 个真实 subagent。
-- 管理 UI 与 Agent 编辑器的视觉 E2E 未执行：验证时宿主桌面处于锁屏状态，无法驾驶内置浏览器。前端构建通过、API 契约与组件 wiring 已审查；P3 视觉验收仍待人工确认。
+- 管理 UI 与 Agent 编辑器的视觉 E2E 未执行：验证时宿主桌面处于锁屏状态，无法驾驶内置浏览器。前端构建通过、API 契约与组件 wiring 已审查；issue 的“定位”动作已按 field_path 滚动到 description / prompt / tools / skills / subagents / datasets 对应区块。P3 视觉验收仍待人工确认。
 - `CFG.MCP_TOOL_AVAILABLE` 仍为 SHADOW / INDETERMINATE（R-IMPL-08），报告 TTL 清理与后台 reconciler 未实现（R-IMPL-03 / R-IMPL-10）。
 - 启动初始化与 migration 保持 trusted seed，不调用模型门禁；交互式 builtin reset 已改为“全部候选先检查、全部通过后统一写入”，避免部分重置。
 
