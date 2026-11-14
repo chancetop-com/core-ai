@@ -197,3 +197,20 @@ Mongo 实现把 `TraceQuery` 翻成 Bson（现有逻辑原样搬过去）；PG �
   - dev（镜像 2.0.233）：`runtime_samples` 86,712、`trace_daily_stats` 1,607、`analytics_daily_stats` 264，三个 marker 均写入；`/api/admin/runtime/{pods,stats,series}`、`/api/for-you/token-usage`、analytics history 全维度通过；手工触发 `TRACE_DAILY_MAINTENANCE:2026-11-12` 成功（traceDailyStats=1、analyticsDailyStats=1）。
   - UAT（镜像 2.0.233）：`runtime_samples` 86,456、`trace_daily_stats` 3,064、`analytics_daily_stats` 2,651，marker 全部写入；同上 API 通过；手工触发每日任务成功（traceDailyStats=39、analyticsDailyStats=56）；PG 内存 ~0.9 GiB / 2 GiB。
 
+
+## 11. UAT span 切 PG 与 payload 迁移（2026-11-14）
+
+### 11.1 UAT span store 切到 PostgreSQL
+
+- UAT 部署先加 `SYS_TRACE_SPAN_MIGRATION=skip`（镜像 `2.0.233`），再从 configmap `core-ai-server-config` 删除 `SYS_TRACE_SPAN_STORE_MODE=mongo`，rollout 后 `sys.trace.span.store.mode=auto` 跟随 `SYS_STORE_MODE=pg`。
+- 启动日志确认 `SpanMigrationService - span migration skipped by configuration`，**没有**回填 39 万 Mongo span，也没有写 `spans_v1` marker。
+- 验证：手工 ingest 一条 span 后 `app.spans` 从 0 → 1，Mongo `spans` 停在 394,122 不再增长；旧 trace 的 span 查询返回空（预期降级），新 trace 正常。
+- 归档状态：UAT `TRACE_ARCHIVE` 每日成功执行（保留 30 天，归档到 Azure Blob），切流时 Mongo 内 394k span 中仅 9,346 条刚超过 30 天窗口，其余为 30 天内热数据，不在归档范围；切流后这批热数据在应用侧不可见，但 Mongo 数据未删、回滚即可恢复。
+- 回滚：configmap 加回 `SYS_TRACE_SPAN_STORE_MODE=mongo` 并 rollout。
+
+### 11.2 trace_payload_blobs 迁移到 app.trace_payloads
+
+- 新增 `TracePayloadRepository`（Mongo / PG 双实现），`TracePayloadStore` 的 compaction、hydrate、delete 全部走仓库；`app.trace_payloads` 从空置变为正式存储。
+- 回填 `trace_payloads_v1`：dev 30 条、UAT 20,076 条（约 11 GB，单条最大 12 MB，页大小按 10 条控制内存）。
+- 验证：旧 trace 详情与单个 span 详情均能把 `coreai-image://` 还原为原始 data URL（dev 与新 ingest 的 UAT trace 都验证）；新 ingest 的图片直接写入 PG。
+- UAT 磁盘：回填后 20Gi 卷用到 14G（剩余 5.9G），建议后续扩到 30Gi。

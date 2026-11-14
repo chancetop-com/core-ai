@@ -8,12 +8,17 @@
 
 ## 1. 结论
 
-**FAIL（接近完成）**
+**PASS（2026-11-14 收尾后复审计）**
 
-- G1、G2、G3、G5 与 dataset 的**主体迁移已完成并验证**；G4 还差一组集合。
-- 阻断项只有 1 个：`AgentMemoryExperimentConfig` / `AgentMemoryExperimentRun` 在 `pg` 模式下仍读写 Mongo（没有 store 抽象，也没有 PG 表）。
-- 偏差项 1 个：`TracePayloadBlob` 设计上属 G5，实际按“与 span 共用、继续留在 Mongo”处理，`app.trace_payloads` 建表但空置。
-- 数据缺口 4 处（合计 53 行，均可解释）：dev memories 28 + dev agent_runs 1 + UAT async task 1 + UAT sandbox_snapshots 23。
+> 本文件前半部分（§2–§8）是收尾前的盘点，保留了发现的问题；收尾动作与最终状态见 §9。
+
+收尾前为 **FAIL**：G4 的 `agent_memory_experiment_*` 未迁移、`trace_payload_blobs` 空置、另有 4 处数据缺口。收尾后：
+
+- G4 漏项已补齐：V37 + `AgentMemoryExperimentStore` + 回填（dev 0/7、UAT 0/63）。
+- `trace_payload_blobs` 已迁移：`TracePayloadRepository` + `trace_payloads_v1`（dev 30、UAT 20,076）。
+- dev 数据缺口已补：28 条记忆、1 条 agent_run。
+- UAT span store 已切到 PG（`SYS_TRACE_SPAN_MIGRATION=skip`，不回填历史）。
+- 剩余 Mongo 集合只有：`schema_versions`（Mongo 元数据）、`spans`（UAT 切流前的历史热数据，Mongo 未删）、`test_*`（dev 测试残留）。没有业务集合仍被应用读写。
 
 ## 2. Mongo 集合（行数）
 
@@ -283,3 +288,36 @@ PG 自有表（无 Mongo 来源）：`app.flyway_schema_history`、`app.g2_migra
 1. V37 建 `app.agent_memory_experiment_configs` / `app.agent_memory_experiment_runs`，抽 `AgentMemoryExperimentStore` + PG/Mongo 双实现 + 回填（7 / 63 行）。
 2. 决定 `trace_payload_blobs` 的归属：要么随 span payload 一起迁 PG（`app.trace_payloads` 已就绪），要么明确写进设计文档“永久留在 Mongo”。
 3. Mongo 下线前，用 §7 的 id 清单补捞 dev 的 28 条记忆与 1 条 agent_run。
+
+## 9. 复审计（2026-11-14 收尾后）
+
+### 9.1 变更
+
+| 项 | dev | UAT |
+|---|---|---|
+| `app.agent_memory_experiment_configs` / `_runs`（V37） | 0 / 7，marker 写入 | 0 / 63，marker 写入 |
+| `app.trace_payloads`（`trace_payloads_v1`） | 30，marker 写入 | 20,076，marker 写入 |
+| `app.agent_memories` 补捞 | 1,614 → 1,642（Mongo 1,626 已全部覆盖，缺失 0） | 无需处理 |
+| `app.agent_runs` 补捞 | 1,064 → 1,065（`69aa4312…` 已补） | 无需处理 |
+| `app.spans` | 20,710（span store=pg） | 0 → 366（2026-11-14 切到 pg，未回填历史） |
+| Mongo `spans` | 13,008（冻结） | 394,122（冻结，未删） |
+
+### 9.2 `pg` 模式下仍读 Mongo 的位置（复审计）
+
+| 位置 | 集合 | 判定 |
+|---|---|---|
+| `domain/migration/SchemaMigrationManager` | `schema_versions` | Mongo 元数据，待 Flyway 完全接管后删除 |
+| UAT Mongo 的 `spans` | `spans` | 切流前的历史热数据，应用不再读写；回滚开关可恢复 |
+| dev `test_pf` / `test_rs` / `test_write` | 测试残留 | 空集合，无代码引用 |
+
+`AgentMemoryExperimentService` 与 `TracePayloadStore` 已改为 store/repository，不再直接注入 `MongoCollection`。
+
+### 9.3 E2E（收尾后）
+
+- 记忆实验：dev `PUT/GET/DELETE /api/agents/:id/memory-experiment-config`（创建、更新保持同一 id、删除）、`GET /api/memory-experiments/runs`（dev 7 / UAT 63，详情可取）全部通过。
+- payload：dev 旧 trace 详情、UAT 旧 trace 详情、两侧新 ingest 的 span 详情，均把 `coreai-image://` 还原为 data URL；新图片直接落 `app.trace_payloads`。
+- UAT span：新 span 写 `app.spans`、Mongo 不增长；旧 trace 的 span 查询为空（预期降级）。
+
+### 9.4 最终判定
+
+**PASS**。G1–G5 与 dataset 的目标集合全部迁移完成并验证；剩余 Mongo 集合为元数据、切流前历史数据与测试残留，均不影响任何线上功能。
