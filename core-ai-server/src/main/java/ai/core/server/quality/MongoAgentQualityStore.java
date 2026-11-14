@@ -89,6 +89,11 @@ public class MongoAgentQualityStore implements AgentQualityStore {
     }
 
     @Override
+    public void replaceRevision(AgentQualityRuleRevision revision) {
+        revisionCollection.replace(revision);
+    }
+
+    @Override
     public Optional<AgentQualityPolicyRevision> getPolicy(int revision) {
         return policyCollection.findOne(Filters.eq("revision", revision));
     }

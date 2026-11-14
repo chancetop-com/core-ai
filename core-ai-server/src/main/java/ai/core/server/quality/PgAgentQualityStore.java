@@ -115,6 +115,11 @@ public class PgAgentQualityStore implements AgentQualityStore {
     }
 
     @Override
+    public void replaceRevision(AgentQualityRuleRevision revision) {
+        revisions().replace(revision);
+    }
+
+    @Override
     public Optional<AgentQualityPolicyRevision> getPolicy(int revision) {
         return selectOne(POLICIES, AgentQualityPolicyRevision.class,
             "(data ->> ?)::int = ?", "revision", revision);

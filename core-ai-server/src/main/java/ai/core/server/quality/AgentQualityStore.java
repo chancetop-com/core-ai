@@ -39,6 +39,8 @@ public interface AgentQualityStore {
 
     boolean insertRevisionIfAbsent(AgentQualityRuleRevision revision);
 
+    void replaceRevision(AgentQualityRuleRevision revision);
+
     Optional<AgentQualityPolicyRevision> getPolicy(int revision);
 
     List<AgentQualityPolicyRevision> listPolicies();

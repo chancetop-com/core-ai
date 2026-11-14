@@ -68,6 +68,7 @@ public class QualityPolicyService {
         var revision = new AgentQualityRuleRevision();
         revision.id = id + ":1";
         revision.ruleId = id;
+        revision.ruleKey = definition.key();
         revision.revision = 1;
         revision.name = definition.name();
         revision.category = definition.category();
@@ -88,6 +89,14 @@ public class QualityPolicyService {
         revision.createdBy = "system";
         revision.createdAt = now;
         store.insertRevisionIfAbsent(revision);
+        backfillRuleKey(id, definition.key());
+    }
+
+    private void backfillRuleKey(String ruleId, String ruleKey) {
+        var stored = store.getRevision(ruleId, 1).orElse(null);
+        if (stored == null || stored.ruleKey != null) return;
+        stored.ruleKey = ruleKey;
+        store.replaceRevision(stored);
     }
 
     private void seedPolicy(ZonedDateTime now) {

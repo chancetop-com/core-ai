@@ -133,6 +133,8 @@ public class AgentQualityAdminService {
 
         int nextRevision = rule.latestRevision + 1;
         latest.id = rule.id + ":" + nextRevision;
+        latest.ruleId = rule.id;
+        latest.ruleKey = rule.key;
         latest.revision = nextRevision;
         latest.changeReason = request.changeReason;
         latest.createdBy = userId;
@@ -171,7 +173,7 @@ public class AgentQualityAdminService {
         long started = System.currentTimeMillis();
         var evaluation = qualityGate.testRule(candidate, revision);
         var response = new TestAgentQualityRuleResponse();
-        response.ruleId = ruleId;
+        response.ruleId = rule.key;
         response.ruleRevision = revision.revision;
         response.result = evaluation.status().name();
         response.issues = QualityReportMapper.issueViews(evaluation.issues(), true);
@@ -207,7 +209,7 @@ public class AgentQualityAdminService {
         var response = new AgentQualityPolicyListResponse();
         response.active = toPolicyView(active.policy(), active.generation(), true);
         response.history = policyService.history().stream()
-            .map(policy -> toPolicyView(policy, null, policy.revision == active.revision()))
+            .map(policy -> toPolicyView(policy, policy.generation, policy.revision == active.revision()))
             .toList();
         return response;
     }
@@ -250,6 +252,7 @@ public class AgentQualityAdminService {
         var entity = new AgentQualityRuleRevision();
         entity.id = rule.id + ":" + revision;
         entity.ruleId = rule.id;
+        entity.ruleKey = rule.key;
         entity.revision = revision;
         entity.name = request.name;
         entity.category = rule.category;

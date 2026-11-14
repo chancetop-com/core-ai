@@ -24,7 +24,7 @@ public final class QualityIssues {
                                         Map<String, String> variables, String fallbackMessage,
                                         String fallbackSuggestion) {
         var issue = new StoredQualityIssue();
-        issue.ruleId = rule.ruleId;
+        issue.ruleId = rule.ruleKey != null ? rule.ruleKey : rule.ruleId;
         issue.ruleRevision = rule.revision;
         issue.ruleName = rule.name;
         issue.ruleRequirement = rule.description;
@@ -45,7 +45,7 @@ public final class QualityIssues {
     public static StoredQualityIssue copyMetadata(AgentQualityRuleRevision rule, QualityEnforcement enforcement,
                                                   StoredQualityIssue issue) {
         if (issue == null) return null;
-        issue.ruleId = rule.ruleId;
+        issue.ruleId = rule.ruleKey != null ? rule.ruleKey : rule.ruleId;
         issue.ruleRevision = rule.revision;
         issue.ruleName = rule.name;
         issue.ruleRequirement = rule.description;

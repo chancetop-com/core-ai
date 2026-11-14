@@ -22,6 +22,10 @@ public class AgentQualityRuleRevision {
     @Field(name = "rule_id")
     public String ruleId;
 
+    /** Stable public rule key used in reports; {@link #ruleId} is the internal document identity. */
+    @Field(name = "rule_key")
+    public String ruleKey;
+
     @Field(name = "revision")
     public Integer revision;
 
