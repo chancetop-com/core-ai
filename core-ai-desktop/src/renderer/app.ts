@@ -16,7 +16,6 @@ import {
   normalizeNotifySessionsMap,
   normalizeNotifyTargetView,
   notifyChannelLabel,
-  notifyHasMultipleChannels,
   notifySessionKey,
   notifyTargetChannels,
   notifyTargetDisplayLabel,
@@ -2104,9 +2103,18 @@ function renderComposerControls(): void {
       ]);
       state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
       const targets = targetsResult.ok ? targetsResult.targets ?? [] : [];
-      if (!state.notifyTarget || notifyHasMultipleChannels(targets)) {
+      if (!state.notifyTarget) {
+        const fallback = defaultNotifyTarget(targets);
+        if (fallback) {
+          const saved = await window.coreai
+            .setSettings({ notifyTarget: notifyTargetFromOcg(fallback) })
+            .catch(() => null);
+          state.notifyTarget = normalizeNotifyTargetView(saved?.notifyTarget);
+        }
+      }
+      if (!state.notifyTarget) {
         notifyCheckbox.checked = false;
-        const configured = await openNotifySetupDialog();
+        const configured = await openNotifySetupDialog(false, true);
         if (!configured) return;
         notifyCheckbox.checked = true;
       }
@@ -2116,6 +2124,7 @@ function renderComposerControls(): void {
       }
       notifyCheckbox.title = `Session notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
       notifyLabel.title = notifyCheckbox.title;
+      renderComposerControls();
       toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
     } finally {
       notifyCheckbox.disabled = false;
@@ -2124,6 +2133,18 @@ function renderComposerControls(): void {
   notifyLabel.title = notifyCheckbox.title;
   notifyLabel.append(notifyCheckbox, document.createTextNode('Notify'));
   composerControlsEl.append(notifyLabel);
+  if (state.notifyTarget) {
+    const channelButton = el('button', 'composer-notify-channel', notifyChannelLabel(state.notifyTarget.channel)) as HTMLButtonElement;
+    channelButton.type = 'button';
+    channelButton.title = `Change notification channel — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
+    channelButton.onclick = async () => {
+      if (await openNotifySetupDialog(true)) {
+        renderComposerControls();
+        toast(`Notification channel — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
+      }
+    };
+    composerControlsEl.append(channelButton);
+  }
 
   const workspacePair = el('span', 'control-pair');
   workspacePair.append(el('span', 'composer-label', 'Workspace'));
@@ -7311,7 +7332,7 @@ async function openImChannelSettings(): Promise<void> {
   document.querySelector('[data-settings-section="im-channels"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
-async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
+async function openNotifySetupDialog(preferCurrent = false, autoConnect = false): Promise<boolean> {
   if (notifyDialogOpen) return false;
   notifyDialogOpen = true;
   const overlay = el('div', 'notify-overlay');
@@ -7322,10 +7343,18 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     let settled = false;
     let renderToken = 0;
+    let pollTimer: number | null = null;
+
+    function stopPolling(): void {
+      if (pollTimer === null) return;
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
 
     function close(saved: boolean): void {
       if (settled) return;
       settled = true;
+      stopPolling();
       notifyDialogOpen = false;
       document.removeEventListener('keydown', onKey);
       overlay.remove();
@@ -7342,6 +7371,7 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
     };
 
     const render = async (): Promise<void> => {
+      stopPolling();
       const token = ++renderToken;
       const [settings, targetsResult, ocg, admin] = await Promise.all([
         window.coreai.getSettings().catch(() => null),
@@ -7357,6 +7387,21 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
       const current = normalizeNotifyTargetView(settings?.notifyTarget);
       state.notifyTarget = current;
       const targets = targetsResult.ok ? (targetsResult.targets ?? []) : [];
+      if (autoConnect && targets.length > 0) {
+        const fallback = defaultNotifyTarget(targets);
+        if (fallback) {
+          const saved = await window.coreai
+            .setSettings({ notifyTarget: notifyTargetFromOcg(fallback) })
+            .catch(() => null);
+          const normalized = normalizeNotifyTargetView(saved?.notifyTarget);
+          if (normalized) {
+            if (settled || token !== renderToken) return;
+            state.notifyTarget = normalized;
+            close(true);
+            return;
+          }
+        }
+      }
 
       const header = el('div', 'notify-dialog-head');
       header.append(el('div', 'notify-dialog-title', 'Session notifications'));
@@ -7426,6 +7471,7 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
         refresh.onclick = () => void render();
         actions.append(refresh, openSettings, cancel);
         body.append(actions);
+        pollTimer = window.setInterval(() => void render(), 5_000);
         return;
       }
 

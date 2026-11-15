@@ -34,6 +34,7 @@ const targets = [
   { entryPoints: ['src/main/notifications/CompletionNotifier.ts'], outfile: 'dist/test/completionNotifier.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/notifications.ts'], outfile: 'dist/test/notifications.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/OcgRouting.ts'], outfile: 'dist/test/ocgRouting.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/channels/OcgConfig.ts'], outfile: 'dist/test/ocgConfig.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/Bindings.ts'], outfile: 'dist/test/bindings.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/computer/CuaManager.ts'], outfile: 'dist/test/cuaManager.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/attachments/AttachmentStager.ts'], outfile: 'dist/test/attachmentStager.js', platform: 'node', target: 'node20', format: 'cjs' },

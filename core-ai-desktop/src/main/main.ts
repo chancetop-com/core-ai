@@ -28,6 +28,7 @@ import { BrowserManager } from './browser/BrowserManager';
 import { ChannelBridge, type ChannelBridgeState } from './channels/ChannelBridge';
 import { type ChannelBinding, resolveBindingWorkspace } from './channels/Bindings';
 import { channelsFromStatus, createOcgPort, type OcgChannel, OcgHttpPort } from './channels/OcgClient';
+import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
@@ -202,11 +203,45 @@ function resolveBridgeWorkspace(message?: OcgInboundMessage): string {
   return defaultWorkspace();
 }
 /** The bridge is only a client: OCG's daemon does not survive a reboot, so recover it before polling. */
-async function ensureOcgDaemon(): Promise<void> {
+let ocgDaemonTask: Promise<void> | null = null;
+
+function ensureOcgDaemon(): Promise<void> {
+  ocgDaemonTask ??= ensureOcgDaemonOnce().finally(() => {
+    ocgDaemonTask = null;
+  });
+  return ocgDaemonTask;
+}
+
+async function restartOcgDaemon(): Promise<boolean> {
+  const stopped = await runOcg(['daemon', 'stop'], 60_000);
+  if (stopped.code !== 0) {
+    console.warn(`[channels] OCG daemon stop returned ${stopped.code}: ${stopped.stderr || stopped.stdout}`);
+  }
+  const started = await runOcg(['daemon', 'start'], 150_000);
+  if (started.code !== 0) {
+    console.error(`[channels] OCG daemon start failed: ${started.stderr || started.stdout}`);
+    return false;
+  }
+  return true;
+}
+
+async function ensureOcgDaemonOnce(): Promise<void> {
   try {
+    const sendSecret = ensureOcgSendSecret();
+    if (!sendSecret.ok) {
+      console.error(`[channels] could not enable OCG proactive send: ${sendSecret.error}`);
+    } else if (sendSecret.changed) {
+      console.log('[channels] enabled OCG proactive send');
+    }
     ocgAdmin ??= new OcgHttpPort();
     const health = await ocgAdmin.health();
-    if (health.ok) return;
+    if (health.ok) {
+      if (sendSecret.changed) {
+        const restarted = await restartOcgDaemon();
+        if (!restarted) console.error('[channels] OCG daemon restart failed after enabling proactive send');
+      }
+      return;
+    }
     console.log(`[channels] OCG daemon is not reachable (${health.error ?? 'unknown'}); starting it`);
     const result = await runOcg(['daemon', 'start'], 150_000);
     if (result.code === 0) {
@@ -217,6 +252,12 @@ async function ensureOcgDaemon(): Promise<void> {
   } catch (error) {
     console.error(`[channels] OCG daemon start failed: ${error instanceof Error ? error.message : String(error)}`);
   }
+}
+
+async function sendOcgNotification(target: NotifyTarget, text: string) {
+  await ensureOcgDaemon();
+  ocgAdmin ??= new OcgHttpPort();
+  return ocgAdmin.send(target.channel, target.target, text, target.accountId ?? '');
 }
 
 /**
@@ -1006,6 +1047,7 @@ function registerIpc(): void {
     return channelBridge?.snapshot() ?? null;
   });
   ipcMain.handle('notifications:targets', async () => {
+    await ensureOcgDaemon();
     const result = await ocgTargets();
     return result.ok
       ? { ok: true, targets: result.data?.targets ?? [] }
@@ -1028,8 +1070,7 @@ function registerIpc(): void {
   ipcMain.handle('notifications:test', async () => {
     const target = settings.notifyTarget;
     if (!target) return { ok: false, error: 'Notification channel is not configured' };
-    ocgAdmin ??= new OcgHttpPort();
-    return ocgAdmin.send(target.channel, target.target, 'Notification test — core-ai-desktop', target.accountId ?? '');
+    return sendOcgNotification(target, 'Notification test — core-ai-desktop');
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
@@ -1222,10 +1263,7 @@ else {
     completionNotifier = new CompletionNotifier({
       isEnabled: (workspace, sessionId) => settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true,
       target: () => settings.notifyTarget ?? null,
-      send: async (target, text) => {
-        ocgAdmin ??= new OcgHttpPort();
-        return ocgAdmin.send(target.channel, target.target, text, target.accountId ?? '');
-      },
+      send: async (target, text) => sendOcgNotification(target, text),
       sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
       log: (line) => console.log(`[notifications] ${line}`),
       onDelivery: (result) => send('notifications:delivery', result),
