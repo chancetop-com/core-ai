@@ -11,14 +11,19 @@ import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import {
+  defaultNotifyTarget,
   maskNotifyTarget,
   normalizeNotifySessionsMap,
   normalizeNotifyTargetView,
+  notifyChannelLabel,
+  notifyHasMultipleChannels,
   notifySessionKey,
+  notifyTargetChannels,
   notifyTargetDisplayLabel,
   notifyTargetFromOcg,
   notifyTargetKey,
   notifyTargetOptionLabel,
+  notifyTargetsForChannel,
   type NotifyTargetView,
   type OcgTargetView,
 } from './notifications';
@@ -2091,21 +2096,30 @@ function renderComposerControls(): void {
       }
       return;
     }
-    const settings = await window.coreai.getSettings().catch(() => null);
-    state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
-    if (!state.notifyTarget) {
-      notifyCheckbox.checked = false;
-      const configured = await openNotifySetupDialog();
-      if (!configured) return;
-      notifyCheckbox.checked = true;
+    notifyCheckbox.disabled = true;
+    try {
+      const [settings, targetsResult] = await Promise.all([
+        window.coreai.getSettings().catch(() => null),
+        window.coreai.notificationsTargets().catch((): { ok: boolean; targets?: OcgTargetView[] } => ({ ok: false })),
+      ]);
+      state.notifyTarget = normalizeNotifyTargetView(settings?.notifyTarget);
+      const targets = targetsResult.ok ? targetsResult.targets ?? [] : [];
+      if (!state.notifyTarget || notifyHasMultipleChannels(targets)) {
+        notifyCheckbox.checked = false;
+        const configured = await openNotifySetupDialog();
+        if (!configured) return;
+        notifyCheckbox.checked = true;
+      }
+      if (!(await setSessionNotify(true))) {
+        notifyCheckbox.checked = false;
+        return;
+      }
+      notifyCheckbox.title = `Session notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
+      notifyLabel.title = notifyCheckbox.title;
+      toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
+    } finally {
+      notifyCheckbox.disabled = false;
     }
-    if (!(await setSessionNotify(true))) {
-      notifyCheckbox.checked = false;
-      return;
-    }
-    notifyCheckbox.title = `Session notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
-    notifyLabel.title = notifyCheckbox.title;
-    toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
   };
   notifyLabel.title = notifyCheckbox.title;
   notifyLabel.append(notifyCheckbox, document.createTextNode('Notify'));
@@ -7297,7 +7311,7 @@ async function openImChannelSettings(): Promise<void> {
   document.querySelector('[data-settings-section="im-channels"]')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }
 
-async function openNotifySetupDialog(): Promise<boolean> {
+async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
   if (notifyDialogOpen) return false;
   notifyDialogOpen = true;
   const overlay = el('div', 'notify-overlay');
@@ -7399,18 +7413,23 @@ async function openNotifySetupDialog(): Promise<boolean> {
         return;
       }
 
-      const select = el('select', 'notify-select') as HTMLSelectElement;
-      for (const entry of targets) {
-        const option = el('option', undefined, notifyTargetOptionLabel(entry)) as HTMLOptionElement;
-        option.value = notifyTargetKey(entry);
-        select.append(option);
-      }
-      const preferred = current
+      const channels = notifyTargetChannels(targets);
+      const preferred = preferCurrent && current
         ? targets.find((entry) => notifyTargetKey(entry) === notifyTargetKey(current))
         : undefined;
-      const fallback = targets.find((entry) => entry.chatType !== 'group') ?? targets[0];
-      select.value = notifyTargetKey(preferred ?? fallback);
+      const initial = preferred ?? defaultNotifyTarget(targets);
+      let selectedChannel = initial?.channel ?? channels[0] ?? '';
+      let preferredKey = preferred ? notifyTargetKey(preferred) : '';
 
+      const channelSelect = el('select', 'notify-select') as HTMLSelectElement;
+      for (const channel of channels) {
+        const option = el('option', undefined, notifyChannelLabel(channel)) as HTMLOptionElement;
+        option.value = channel;
+        channelSelect.append(option);
+      }
+      channelSelect.value = selectedChannel;
+
+      const select = el('select', 'notify-select') as HTMLSelectElement;
       const targetHint = el('div', 'hint');
       const updateTargetHint = (): void => {
         const entry = targets.find((candidate) => notifyTargetKey(candidate) === select.value);
@@ -7421,8 +7440,35 @@ async function openNotifySetupDialog(): Promise<boolean> {
         const shared = entry.chatType === 'group' ? ' · this target is shared — the message is visible to the group' : '';
         targetHint.textContent = `Target: ${maskNotifyTarget(entry.target)}${shared}`;
       };
-      select.onchange = updateTargetHint;
-      updateTargetHint();
+      const fillTargets = (): void => {
+        const entries = notifyTargetsForChannel(targets, selectedChannel);
+        select.replaceChildren();
+        for (const entry of entries) {
+          const option = el('option', undefined, notifyTargetOptionLabel(entry)) as HTMLOptionElement;
+          option.value = notifyTargetKey(entry);
+          select.append(option);
+        }
+        const fallback = entries.find((entry) => notifyTargetKey(entry) === preferredKey)
+          ?? entries.find((entry) => entry.chatType !== 'group')
+          ?? entries[0];
+        if (fallback) select.value = notifyTargetKey(fallback);
+        updateTargetHint();
+      };
+      channelSelect.onchange = () => {
+        selectedChannel = channelSelect.value;
+        fillTargets();
+      };
+      select.onchange = () => {
+        preferredKey = select.value;
+        updateTargetHint();
+      };
+      fillTargets();
+
+      const field = (label: string, control: HTMLElement): HTMLElement => {
+        const wrapper = el('div', 'notify-field');
+        wrapper.append(el('div', 'notify-field-label', label), control);
+        return wrapper;
+      };
 
       const status = el('div', 'notify-status');
       const saveButton = el('button', 'btn small primary', 'Save');
@@ -7465,9 +7511,12 @@ async function openNotifySetupDialog(): Promise<boolean> {
         status.className = result.ok ? 'notify-status' : 'notify-status error';
       };
 
+      if (channels.length > 1) {
+        body.append(el('div', 'hint', 'Multiple channels are bound — pick the channel that should receive the notice.'));
+      }
       body.append(
-        el('div', 'notify-field-label', 'Send to'),
-        select,
+        ...(channels.length > 1 ? [field('Channel', channelSelect)] : []),
+        field('Send to', select),
         targetHint,
         el('div', 'hint', 'The target is saved on this machine; the switch stays per session.'),
         status,
@@ -7573,7 +7622,7 @@ async function renderChannelsSection(): Promise<HTMLElement> {
   const notifyActions = el('div', 'notify-actions');
   const configureNotify = el('button', 'btn small primary', 'Configure…');
   configureNotify.onclick = async () => {
-    if (await openNotifySetupDialog()) await rerender();
+    if (await openNotifySetupDialog(true)) await rerender();
   };
   const testNotify = el('button', 'btn small', 'Send test');
   testNotify.onclick = async () => {

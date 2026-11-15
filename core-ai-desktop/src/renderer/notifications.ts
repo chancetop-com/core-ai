@@ -52,6 +52,38 @@ export function notifyTargetOptionLabel(target: OcgTargetView): string {
   return `${notifyChannelLabel(target.channel)} · ${name}${shared}`;
 }
 
+/** Recency rank of a recently seen peer; targets without a timestamp sort last but keep their order. */
+export function notifyTargetRecency(target: Pick<OcgTargetView, 'lastSeenAt'>): number {
+  return typeof target.lastSeenAt === 'number' && Number.isFinite(target.lastSeenAt) ? target.lastSeenAt : 0;
+}
+
+export function sortNotifyTargetsByRecency(targets: OcgTargetView[]): OcgTargetView[] {
+  return [...targets].sort((a, b) => notifyTargetRecency(b) - notifyTargetRecency(a));
+}
+
+/** Bound channels in most-recent-first order, so the first channel is the one to preselect. */
+export function notifyTargetChannels(targets: OcgTargetView[]): string[] {
+  const channels: string[] = [];
+  for (const target of sortNotifyTargetsByRecency(targets)) {
+    if (target.channel && !channels.includes(target.channel)) channels.push(target.channel);
+  }
+  return channels;
+}
+
+export function notifyHasMultipleChannels(targets: OcgTargetView[]): boolean {
+  return notifyTargetChannels(targets).length > 1;
+}
+
+/** Default to the most recent direct conversation so a first notification never lands in a group. */
+export function defaultNotifyTarget(targets: OcgTargetView[]): OcgTargetView | null {
+  const sorted = sortNotifyTargetsByRecency(targets);
+  return sorted.find((target) => target.chatType !== 'group') ?? sorted[0] ?? null;
+}
+
+export function notifyTargetsForChannel(targets: OcgTargetView[], channel: string): OcgTargetView[] {
+  return sortNotifyTargetsByRecency(targets.filter((target) => target.channel === channel));
+}
+
 export function notifyTargetFromOcg(target: OcgTargetView): NotifyTargetView {
   const label = target.senderName || target.groupSubject || maskNotifyTarget(target.target);
   return {

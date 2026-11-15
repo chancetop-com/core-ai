@@ -15,14 +15,18 @@ const {
 } = notifierModule;
 
 const {
+  defaultNotifyTarget,
   maskNotifyTarget,
   normalizeNotifySessionsMap,
   normalizeNotifyTargetView,
   notifyChannelLabel,
+  notifyHasMultipleChannels,
+  notifyTargetChannels,
   notifyTargetDisplayLabel,
   notifyTargetFromOcg,
   notifyTargetKey,
   notifyTargetOptionLabel,
+  notifyTargetsForChannel,
 } = rendererModule;
 
 const { normalizeOcgTargets } = ocgCliModule;
@@ -251,6 +255,26 @@ test('renderer notification helpers label, mask and map targets', () => {
   assert.deepEqual(normalizeNotifySessionsMap({ a: true, b: false }), { a: true });
   assert.equal(normalizeNotifyTargetView({ channel: 'qqbot', target: 'peer' }).channel, 'qqbot');
   assert.equal(normalizeNotifyTargetView({ channel: 'qqbot' }), null);
+});
+
+test('notification channel choices follow recency and never default to a group', () => {
+  const targets = [
+    { channel: 'qqbot', target: 'group-1', chatType: 'group', groupSubject: 'Team', lastSeenAt: 500 },
+    { channel: 'openclaw-weixin', target: 'peer-a', chatType: 'direct', senderName: 'Stephen', lastSeenAt: 100 },
+    { channel: 'telegram', target: 'peer-t', chatType: 'direct', senderName: 'Telegram Friend', lastSeenAt: 300 },
+    { channel: 'openclaw-weixin', target: 'peer-b', chatType: 'direct', senderName: 'Second', lastSeenAt: 200 },
+  ];
+  assert.deepEqual(notifyTargetChannels(targets), ['qqbot', 'telegram', 'openclaw-weixin']);
+  assert.equal(notifyHasMultipleChannels(targets), true);
+  assert.equal(notifyHasMultipleChannels([targets[1]]), false);
+  assert.equal(notifyHasMultipleChannels([]), false);
+  assert.equal(notifyTargetKey(defaultNotifyTarget(targets)), 'telegram\u0000\u0000peer-t');
+  assert.deepEqual(
+    notifyTargetsForChannel(targets, 'openclaw-weixin').map((target) => target.target),
+    ['peer-b', 'peer-a'],
+  );
+  assert.equal(notifyTargetKey(defaultNotifyTarget([targets[0]])), 'qqbot\u0000\u0000group-1');
+  assert.equal(defaultNotifyTarget([]), null);
 });
 
 test('normalizeOcgTargets keeps usable rows and drops malformed ones', () => {

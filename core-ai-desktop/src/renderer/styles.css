@@ -1289,6 +1289,7 @@ select.rich-card-input[multiple] { padding: 3px; }
 .notify-dialog-close .ic { width: 15px; height: 15px; }
 
 .notify-dialog-body { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+.notify-field { display: flex; flex-direction: column; gap: 6px; }
 .notify-field-label { color: var(--faint); font-size: 12px; }
 
 .notify-select {
