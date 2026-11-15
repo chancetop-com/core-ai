@@ -7343,13 +7343,14 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
 
     const render = async (): Promise<void> => {
       const token = ++renderToken;
-      const [settings, targetsResult, ocg] = await Promise.all([
+      const [settings, targetsResult, ocg, admin] = await Promise.all([
         window.coreai.getSettings().catch(() => null),
         window.coreai.notificationsTargets().catch((error: unknown): { ok: boolean; targets?: OcgTargetView[]; error?: string } => ({
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         })),
         window.coreai.channelsStatus().catch(() => null),
+        window.coreai.channelsAdminOverview().catch(() => null),
       ]);
       if (settled || token !== renderToken) return;
 
@@ -7405,7 +7406,22 @@ async function openNotifySetupDialog(preferCurrent = false): Promise<boolean> {
       }
 
       if (targets.length === 0) {
-        body.append(el('div', 'hint', 'No address to pick yet. Send the bot a message on WeChat, QQ or another channel once — after that the conversation shows up here as a choice.'));
+        body.append(el('div', 'hint', 'No address to pick yet. From the account that should receive the notice, send the bot one message, then click Refresh.'));
+        const bound = admin?.ok ? admin.channels ?? [] : [];
+        const describe = (channel: OcgChannel): string => {
+          const ids = channel.accounts
+            .map((account) => account.accountId)
+            .filter((accountId) => accountId && accountId !== 'default');
+          return `${notifyChannelLabel(channel.channelId)}${ids.length ? ` (${ids.join(', ')})` : ''}`;
+        };
+        const mailbox = bound.filter((channel) => channel.agentType === 'mailbox');
+        const elsewhere = bound.filter((channel) => channel.agentType !== 'mailbox');
+        if (mailbox.length) {
+          body.append(el('div', 'hint', `Bots that can be picked after one message: ${mailbox.map(describe).join(' · ')}`));
+        }
+        if (elsewhere.length) {
+          body.append(el('div', 'hint', `Not in mailbox mode, so they cannot appear here yet: ${elsewhere.map(describe).join(' · ')}. Use "Route to desktop" in Settings → IM channels first.`));
+        }
         const refresh = el('button', 'btn small', 'Refresh');
         refresh.onclick = () => void render();
         actions.append(refresh, openSettings, cancel);
