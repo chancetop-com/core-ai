@@ -10,6 +10,12 @@ import redis.clients.jedis.JedisPool;
  * @author stephen
  */
 public record SandboxServiceDependencies(JedisPool jedisPool, SandboxSnapshotService snapshotService,
-                                  ObjectStorageServiceResolver storageResolver, FileService fileService,
-                                  SessionAttachmentRefRepository attachmentRepository) {
+                                         ObjectStorageServiceResolver storageResolver, FileService fileService,
+                                         SessionAttachmentRefRepository attachmentRepository,
+                                         SandboxBindingStore bindingStore) {
+    public SandboxServiceDependencies(JedisPool jedisPool, SandboxSnapshotService snapshotService,
+                                      ObjectStorageServiceResolver storageResolver, FileService fileService,
+                                      SessionAttachmentRefRepository attachmentRepository) {
+        this(jedisPool, snapshotService, storageResolver, fileService, attachmentRepository, null);
+    }
 }

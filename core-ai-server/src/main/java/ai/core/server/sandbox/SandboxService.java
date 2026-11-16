@@ -67,21 +67,21 @@ public class SandboxService {
     /** Reads the System Configuration override on every call, so a changed limit applies without a restart. */
     public volatile LongSupplier attachmentMaxBytesSupplier;
     final SandboxSnapshotService snapshotService;
-    private SandboxRedisStore redisStore;
+    private SandboxBindingStore bindingStore;
     private volatile SandboxHubBinding hubBinding;
 
     public SandboxService() {
-        this((JedisPool) null, null, null, null, null);
+        this((JedisPool) null, null, null, null, null, null);
     }
 
     public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
                           ObjectStorageServiceResolver storageResolver, FileService fileService) {
-        this(jedisPool, snapshotService, storageResolver, fileService, null);
+        this(jedisPool, snapshotService, storageResolver, fileService, null, null);
     }
 
     public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
                           ObjectStorageServiceResolver storageResolver, FileService fileService,
-                          SessionAttachmentRefRepository attachmentRepository) {
+                          SessionAttachmentRefRepository attachmentRepository, SandboxBindingStore bindingStore) {
         this.sandboxManager = null;
         this.discoverySandbox = new DiscoverySandbox(null);
         this.defaultConfig = new SandboxConfig();
@@ -93,7 +93,7 @@ public class SandboxService {
         this.fileService = fileService;
         this.attachmentRepository = attachmentRepository;
         this.snapshotService = snapshotService;
-        this.redisStore = new SandboxRedisStore(jedisPool);
+        this.bindingStore = bindingStore != null ? bindingStore : new SandboxRedisStore(jedisPool);
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
@@ -124,7 +124,7 @@ public class SandboxService {
         this.fileService = dependencies.fileService();
         this.attachmentRepository = dependencies.attachmentRepository();
         this.snapshotService = dependencies.snapshotService();
-        this.redisStore = new SandboxRedisStore(dependencies.jedisPool());
+        this.bindingStore = dependencies.bindingStore() != null ? dependencies.bindingStore() : new SandboxRedisStore(dependencies.jedisPool());
         this.cleanupScheduler = cleanupScheduler;
         cleanupScheduler.scheduleAtFixedRate(
                 new SandboxCleanupJob(sandboxManager, provider,
@@ -333,7 +333,7 @@ public class SandboxService {
         if (sandbox != null) return hubBinding.isBound(sandbox, sandboxId);
         // The session may live on another replica: the binding stored when the sandbox was acquired is
         // the same identity this pod would see locally, so a replaced or released sandbox still fails.
-        return hubBinding.isBound(redisStore != null ? redisStore.getBinding(sessionId) : null, sandboxId);
+        return hubBinding.isBound(bindingStore != null ? bindingStore.getBinding(sessionId) : null, sandboxId);
     }
 
     private void rememberAgent(String sessionId, String agentName) {
@@ -361,29 +361,29 @@ public class SandboxService {
         return !Boolean.FALSE.equals(effectiveConfig.enabled);
     }
 
-    // ---- Redis sandbox binding (cross-pod reattach) ----
+    // ---- sandbox binding (cross-pod reattach) ----
 
-    /** Returns the sandbox ID bound to the session in Redis, or null if not found or Redis unavailable. */
+    /** Returns the sandbox ID bound to the session, or null if not found or the store is unavailable. */
     public String getSandboxId(String sessionId) {
-        return redisStore != null ? redisStore.getBinding(sessionId) : null;
+        return bindingStore != null ? bindingStore.getBinding(sessionId) : null;
     }
 
     private void storeSandboxBinding(String sessionId) {
-        if (redisStore == null) return;
+        if (bindingStore == null) return;
         var sandbox = sessionSandboxes.get(sessionId);
         if (sandbox == null) return;
         var id = sandbox.getId();
         if ("pending".equals(id)) return;
-        redisStore.saveBinding(sessionId, id);
+        bindingStore.saveBinding(sessionId, id);
     }
 
     void deleteSandboxBinding(String sessionId) {
-        if (redisStore != null) redisStore.deleteBinding(sessionId);
+        if (bindingStore != null) bindingStore.deleteBinding(sessionId);
     }
 
     /** Strictly removes a durable sandbox binding without releasing a live local sandbox. */
     public void invalidateSandboxBinding(String sessionId) {
-        if (redisStore != null) redisStore.deleteBindingStrict(sessionId);
+        if (bindingStore != null) bindingStore.deleteBindingStrict(sessionId);
     }
 
     /** Reattaches during rebuild, returning a LazySandbox around the delegate or null when unavailable. */

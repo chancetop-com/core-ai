@@ -15,7 +15,10 @@ import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.AwtImageShrinker;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.NotificationSettingsService;
+import ai.core.server.session.PgSessionActivityStore;
+import ai.core.server.session.RedisSessionActivityStore;
 import ai.core.server.session.SessionActivityRegistry;
+import ai.core.server.session.SessionActivityStore;
 import ai.core.server.session.SessionAgentHelper;
 import ai.core.server.session.SessionCompletionNotifier;
 import ai.core.server.session.SessionNoticePrompt;
@@ -30,6 +33,7 @@ import ai.core.server.web.auth.SubUserDelegationResolver;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.SseAuthInterceptor;
+import ai.core.server.state.StateBackend;
 import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -80,7 +84,7 @@ public class SessionModule extends Module {
         bind(ChatMessageService.class);
         bind(SessionSearchService.class);
         bind(SessionReadService.class);
-        activityRegistry = bind(new SessionActivityRegistry(bean(JedisPool.class)));
+        activityRegistry = bind(SessionActivityRegistry.of(activityStore()));
         // the notice log is bound in ChannelInfrastructureModule; the block it feeds belongs to this runtime
         bind(SessionNoticePrompt.class);
         bind(SessionCompletionNotifier.class);
@@ -89,6 +93,13 @@ public class SessionModule extends Module {
         // finished async tool calls are delivered over the command bus; MessagingRuntimeModule wires
         // the dispatcher once CommandPublisher exists (it loads after this module)
         bind(SessionCreateHelper.class);
+    }
+
+    private SessionActivityStore activityStore() {
+        var backend = StateBackend.of(property("sys.state.backend").orElse("redis"),
+                property("sys.store.mode").orElse("mongo"));
+        if (backend == StateBackend.POSTGRES) return bind(new PgSessionActivityStore());
+        return new RedisSessionActivityStore(bean(JedisPool.class));
     }
 
     private void registerSandboxTerminal() {

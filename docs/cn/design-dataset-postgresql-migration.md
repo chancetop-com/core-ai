@@ -758,6 +758,17 @@ CREATE TABLE messaging.user_session_counts (user_id text NOT NULL, pod_id text N
 - 故障演练：杀掉会话的 owner pod，会话在 30–60 秒内被其它 pod 接管，SSE 能续上，没有重复执行的命令；
 - Redis 实例下线。
 
+### 7.9 实施记录
+
+**2026-11-16：第一步（`sys.state.backend`）已实现，默认仍为 Redis，未上线切换。**
+
+- 新增开关 `sys.state.backend=redis|postgres`（`sys.properties`）。`postgres` 要求 `sys.store.mode=pg`，否则启动失败，避免在没配置 `Database` 的环境里静默退回。
+- Flyway `V39__messaging_state.sql` 建立 `messaging` schema 与 `messaging.session_activity`、`messaging.a2a_tasks`，以及 `app.sandbox_bindings`；后两张带 `expires_at`，由 `state-expiry-cleanup` 定时删除过期行。
+- 迁入 PG 的三类状态：sandbox 绑定（`SandboxBindingStore`）、会话活跃度（`SessionActivityStore`）、A2A 任务快照（`A2ATaskSnapshotStore`）。每类都有 Redis / PostgreSQL 两个实现，模块按开关选择，Redis 实现保持原有行为。
+- 未迁的部分：pod 注册表与租约（7.2）、命令队列（7.3）、会话归属 / turn 状态 / 用户计数（7.4）、RPC（7.5）、SSE 定向投递（7.6）。这些仍走 Redis，`StartupDependencyCheck` 也仍然要求 Redis。
+- 验证：`PgStateStoresTest` 在本地 PostgreSQL 16 上通过（sandbox 绑定 upsert/delete、活跃度过期、A2A 快照过期）；受影响模块的现有测试与 checkstyle 通过。
+- 下一步按 7.7 的顺序推进：先 pod 注册表 + 租约 + 计数（`sys.lease.backend`），再 RPC、SSE，最后命令队列；命令队列切换前需要先解决“新旧 pod 同时消费两边队列”的过渡版本。
+
 ## 8. 阶段 4：Mongo 存量策略
 
 - **新功能默认用 PG。** 新建 Mongo 集合需要在设计文档里说明理由；

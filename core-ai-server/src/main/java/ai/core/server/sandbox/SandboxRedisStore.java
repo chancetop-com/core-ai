@@ -5,11 +5,9 @@ import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
 /**
- * Stores sandbox-to-session bindings in Redis for cross-pod reattach during session rebuild.
- *
  * @author stephen
  */
-class SandboxRedisStore {
+public class SandboxRedisStore implements SandboxBindingStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxRedisStore.class);
     private static final String KEY_PREFIX = "sandbox:";
 
@@ -19,11 +17,12 @@ class SandboxRedisStore {
 
     private final JedisPool jedisPool;
 
-    SandboxRedisStore(JedisPool jedisPool) {
+    public SandboxRedisStore(JedisPool jedisPool) {
         this.jedisPool = jedisPool;
     }
 
-    String getBinding(String sessionId) {
+    @Override
+    public String getBinding(String sessionId) {
         if (jedisPool == null) return null;
         try (var jedis = jedisPool.getResource()) {
             return jedis.get(key(sessionId));
@@ -33,7 +32,8 @@ class SandboxRedisStore {
         }
     }
 
-    void saveBinding(String sessionId, String sandboxId) {
+    @Override
+    public void saveBinding(String sessionId, String sandboxId) {
         if (jedisPool == null) return;
         try (var jedis = jedisPool.getResource()) {
             jedis.set(key(sessionId), sandboxId);
@@ -43,7 +43,8 @@ class SandboxRedisStore {
         }
     }
 
-    void deleteBinding(String sessionId) {
+    @Override
+    public void deleteBinding(String sessionId) {
         try {
             deleteBindingStrict(sessionId);
         } catch (Exception e) {
@@ -51,7 +52,8 @@ class SandboxRedisStore {
         }
     }
 
-    void deleteBindingStrict(String sessionId) {
+    @Override
+    public void deleteBindingStrict(String sessionId) {
         if (jedisPool == null) return;
         try (var jedis = jedisPool.getResource()) {
             jedis.del(key(sessionId));

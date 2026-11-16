@@ -2,9 +2,6 @@ package ai.core.server.a2a;
 
 import ai.core.a2a.A2ATaskState;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.utils.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
@@ -16,21 +13,23 @@ import java.time.Duration;
  * @author xander
  */
 public class A2ATaskRegistry {
-    private static final Logger LOGGER = LoggerFactory.getLogger(A2ATaskRegistry.class);
-    private static final String TASK_KEY_PREFIX = "coreai:a2a:task:";
     private static final Duration ACTIVE_TASK_TTL = Duration.ofHours(2);
     private static final Duration TERMINAL_TASK_TTL = Duration.ofMinutes(30);
 
-    private final JedisPool jedisPool;
+    private final A2ATaskSnapshotStore store;
     private final SessionOwnershipRegistry ownershipRegistry;
 
     protected A2ATaskRegistry() {
-        this.jedisPool = null;
+        this.store = null;
         this.ownershipRegistry = null;
     }
 
     public A2ATaskRegistry(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry) {
-        this.jedisPool = jedisPool;
+        this(new RedisA2ATaskSnapshotStore(jedisPool), ownershipRegistry);
+    }
+
+    public A2ATaskRegistry(A2ATaskSnapshotStore store, SessionOwnershipRegistry ownershipRegistry) {
+        this.store = store;
         this.ownershipRegistry = ownershipRegistry;
     }
 
@@ -41,25 +40,14 @@ public class A2ATaskRegistry {
     }
 
     public void save(A2ATaskSnapshot snapshot) {
-        if (jedisPool == null || snapshot == null || snapshot.taskId == null) return;
+        if (store == null || snapshot == null || snapshot.taskId == null) return;
         var ttl = snapshot.isTerminal() ? TERMINAL_TASK_TTL : ACTIVE_TASK_TTL;
-        try (var jedis = jedisPool.getResource()) {
-            jedis.setex(taskKey(snapshot.taskId), ttl.toSeconds(), JsonUtil.toJson(snapshot));
-        } catch (Exception e) {
-            LOGGER.warn("failed to save A2A task snapshot, taskId={}", snapshot.taskId, e);
-        }
+        store.save(snapshot, ttl);
     }
 
     public A2ATaskSnapshot get(String taskId) {
-        if (jedisPool == null || taskId == null || taskId.isBlank()) return null;
-        try (var jedis = jedisPool.getResource()) {
-            var json = jedis.get(taskKey(taskId));
-            if (json == null || json.isBlank()) return null;
-            return JsonUtil.fromJson(A2ATaskSnapshot.class, json);
-        } catch (Exception e) {
-            LOGGER.warn("failed to get A2A task snapshot, taskId={}", taskId, e);
-            return null;
-        }
+        if (store == null || taskId == null || taskId.isBlank()) return null;
+        return store.get(taskId);
     }
 
     public boolean isLocalOwner(A2ATaskSnapshot snapshot) {
@@ -76,9 +64,5 @@ public class A2ATaskRegistry {
             if (owner != null && !owner.isBlank()) return owner;
         }
         return ownershipRegistry.getHostname();
-    }
-
-    private String taskKey(String taskId) {
-        return TASK_KEY_PREFIX + taskId;
     }
 }

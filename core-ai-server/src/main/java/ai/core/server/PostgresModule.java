@@ -52,6 +52,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
         registerAgentViews();
         registerRuntimeViews();
+        registerMessagingViews();
         db().view(PgApiKeyRow.class);
         db().view(PgProjectRow.class);
         db().view(PgProjectCountRow.class);
@@ -146,6 +147,13 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.trace.PgTraceDailyUsageRow.class);
         db().view(ai.core.server.trace.service.PgTracePayloadRow.class);
         db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
+    }
+
+    private void registerMessagingViews() {
+        db().view(ai.core.server.sandbox.PgSandboxBindingRow.class);
+        db().view(ai.core.server.session.PgSessionActivityRow.class);
+        db().view(ai.core.server.a2a.PgA2ATaskRow.class);
+        db().view(ai.core.server.state.PgStateCheckRow.class);
     }
 
     private void registerWorkflowViews() {

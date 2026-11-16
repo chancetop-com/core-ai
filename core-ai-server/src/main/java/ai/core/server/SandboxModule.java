@@ -5,7 +5,10 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.file.FileService;
 import ai.core.server.domain.SessionAttachmentRefRepository;
+import ai.core.server.sandbox.PgSandboxBindingStore;
+import ai.core.server.sandbox.SandboxBindingStore;
 import ai.core.server.sandbox.SandboxManager;
+import ai.core.server.sandbox.SandboxRedisStore;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.SandboxServiceDependencies;
 import ai.core.server.sandbox.TokenResolver;
@@ -21,6 +24,7 @@ import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import ai.core.server.sandboxhub.SessionTokenService;
 import ai.core.server.settings.SandboxAttachmentLimit;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.state.StateBackend;
 import core.framework.module.Module;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +57,7 @@ class SandboxModule extends Module {
         if (providerName == null || providerName.isBlank()) {
             bindSandboxService(new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                    bean(SessionAttachmentRefRepository.class)), sessionTokenService);
+                    bean(SessionAttachmentRefRepository.class), bindingStore()), sessionTokenService);
             return;
         }
 
@@ -75,13 +79,13 @@ class SandboxModule extends Module {
         } else {
             bindSandboxService(new SandboxService(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                    bean(SessionAttachmentRefRepository.class)), sessionTokenService);
+                    bean(SessionAttachmentRefRepository.class), bindingStore()), sessionTokenService);
             return;
         }
         bindSandboxService(new SandboxService(provider, resolveDefaultConfig(), serverUrlFromSandbox,
                 new SandboxServiceDependencies(bean(JedisPool.class), bean(SandboxSnapshotService.class),
                         bean(ObjectStorageServiceResolver.class), bean(FileService.class),
-                        bean(SessionAttachmentRefRepository.class))), sessionTokenService);
+                        bean(SessionAttachmentRefRepository.class), bindingStore())), sessionTokenService);
 
         onShutdown(sandboxService::shutdown);
     }
@@ -102,6 +106,13 @@ class SandboxModule extends Module {
     private void bindSandboxManager(SandboxService service) {
         var manager = service.sandboxManager();
         bind(manager != null ? manager : new SandboxManager(null));
+    }
+
+    private SandboxBindingStore bindingStore() {
+        var backend = StateBackend.of(property("sys.state.backend").orElse("redis"),
+                property("sys.store.mode").orElse("mongo"));
+        if (backend == StateBackend.POSTGRES) return bind(new PgSandboxBindingStore());
+        return new SandboxRedisStore(bean(JedisPool.class));
     }
 
     // Both sides read the SAME property value as raw UTF-8 bytes -- the Go runtime's hub proxy
