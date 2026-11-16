@@ -154,6 +154,8 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.session.PgSessionActivityRow.class);
         db().view(ai.core.server.a2a.PgA2ATaskRow.class);
         db().view(ai.core.server.state.PgStateCheckRow.class);
+        db().view(ai.core.server.messaging.PgLeaseOwnerRow.class);
+        db().view(ai.core.server.messaging.PgLeaseCountRow.class);
     }
 
     private void registerWorkflowViews() {

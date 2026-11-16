@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.api.server.runtime.RuntimeWebService;
+import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.pg.StoreMode;
 import ai.core.server.run.AgentRunner;
@@ -19,12 +20,12 @@ import ai.core.server.runtime.RuntimeWebServiceImpl;
 import ai.core.server.sandbox.SandboxManager;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.session.SessionBudgetStore;
 import ai.core.server.session.UserSessionBudget;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.trace.spi.LocalSpanProcessor;
 import ai.core.session.SessionRuntimeLimits;
 import core.framework.module.Module;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 
@@ -61,8 +62,9 @@ public class RuntimeGovernanceModule extends Module {
             var limits = guard.limits();
             return new SessionRuntimeLimits(limits.maxQueuedMessagesPerSession, limits.turnTimeoutSeconds);
         });
-        // per-user session budget: counted in Redis so it holds across replicas
-        var userSessions = new UserSessionBudget(bean(JedisPool.class));
+        // per-user session budget: counted in the shared lease store so it holds across replicas
+        var userSessions = new UserSessionBudget(bean(SessionBudgetStore.class),
+                bean(SessionOwnershipRegistry.class).getHostname());
         userSessions.limitsSupplier = limitsProvider::get;
         bean(AgentSessionManager.class).userSessionBudget = userSessions;
         // span ingest queue depth is fixed by the pool that backs it, so it is read once at startup
