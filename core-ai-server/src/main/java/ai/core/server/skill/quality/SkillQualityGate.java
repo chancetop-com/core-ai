@@ -21,16 +21,7 @@ import java.util.UUID;
 public final class SkillQualityGate {
     public static final int POLICY_REVISION = 1;
 
-    public static List<String> ruleKeys() {
-        return List.of(
-            "SKILL.NAME_IDENTITY", "SKILL.DESCRIPTION_TRIGGER_SCOPE", "SKILL.METADATA_REQUIRED",
-            "SKILL.PACKAGE_HYGIENE", "SKILL.PROGRESSIVE_DISCLOSURE", "SKILL.EVAL_DATASET",
-            "SKILL.PERMISSION_DECLARATION", "SKILL.PERMISSION_UNUSED", "SKILL.VERSION_BUMP_REPO",
-            "SKILL.UNREFERENCED_REFERENCE"
-        );
-    }
-
-    private final List<SkillQualityRule> rules = List.of(
+    private static final List<SkillQualityRule> RULES = List.of(
         new SkillNameIdentityRule(),
         new SkillDescriptionRule(),
         new SkillMetadataRule(),
@@ -42,6 +33,16 @@ public final class SkillQualityGate {
         new SkillVersionWarningRule(),
         new SkillUnreferencedReferenceRule()
     );
+
+    public static List<SkillRuleMeta> ruleCatalog() {
+        return RULES.stream().map(SkillQualityRule::meta).toList();
+    }
+
+    public static List<String> ruleKeys() {
+        return ruleCatalog().stream().map(SkillRuleMeta::key).toList();
+    }
+
+    private final List<SkillQualityRule> rules = RULES;
 
     public SkillQualityResult evaluate(SkillPublishCandidate candidate) {
         var outcomes = new ArrayList<QualityRunAggregator.RuleOutcome>();

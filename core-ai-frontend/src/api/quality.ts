@@ -191,6 +191,20 @@ export interface RuleTestResponse {
   lifecycle?: string;
 }
 
+export interface SkillQualityRule {
+  key: string;
+  revision: number;
+  name: string;
+  category?: string;
+  enforcement?: 'BLOCK' | 'WARN' | 'SHADOW';
+  requirement?: string;
+}
+
+export interface SkillQualityRuleListResponse {
+  rules: SkillQualityRule[];
+  policy_revision: number;
+}
+
 export const qualityApi = {
   check: (agentId: string, idempotencyKey?: string) =>
     request<QualityReport>(`/api/agents/${agentId}/quality-checks`, {
@@ -224,6 +238,10 @@ export const qualityApi = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+};
+
+export const skillQualityApi = {
+  rules: () => request<SkillQualityRuleListResponse>('/api/admin/skill-quality/rules'),
 };
 
 export function issueTargetSection(fieldPath?: string): string | null {

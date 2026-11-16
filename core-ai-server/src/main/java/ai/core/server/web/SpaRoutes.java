@@ -35,7 +35,8 @@ public final class SpaRoutes {
         "/triggers/webhook", "/triggers/schedule", "/triggers/channels", "/triggers/openclaw",
         "/tools/builtin",
         "/settings", "/settings/users", "/settings/api-keys", "/settings/api-users", "/settings/gateway", "/settings/system",
-        "/settings/cost-alerts", "/settings/tasks", "/settings/sandbox", "/settings/agent-quality"
+        "/settings/cost-alerts", "/settings/tasks", "/settings/sandbox", "/settings/agent-quality",
+        "/settings/skill-quality"
     );
 
     /**

@@ -3,6 +3,8 @@ import { AlertTriangle, CheckCircle2, FlaskConical, History, Plus, RefreshCw, Tr
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import { qualityApi, type QualityPolicy, type QualityRule, type RuleTemplate, type RuleTestResponse } from '../../api/quality';
+import Pagination from '../../components/Pagination';
+import { useListState } from '../../hooks/useListState';
 
 const EMPTY_RULE = {
   key: '',
@@ -37,6 +39,8 @@ export default function AgentQuality() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [offset, setOffset] = useListState('agent-quality.offset', 0);
+  const [limit, setLimit] = useListState('agent-quality.limit', 20);
 
   const load = async () => {
     setBusy(true);
@@ -62,6 +66,16 @@ export default function AgentQuality() {
   };
 
   useEffect(() => { load(); }, []);
+
+  useEffect(() => {
+    if (rules.length === 0) {
+      if (offset !== 0) setOffset(0);
+    } else if (offset >= rules.length) {
+      setOffset(Math.floor((rules.length - 1) / limit) * limit);
+    }
+  }, [rules.length, offset, limit, setOffset]);
+
+  const pageRules = rules.slice(offset, offset + limit);
 
   const select = (rule: QualityRule) => {
     setSelected(rule);
@@ -233,40 +247,53 @@ export default function AgentQuality() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_460px] gap-4">
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: 'var(--color-bg-tertiary)' }}>
-              <tr>
-                <th className="text-left px-3 py-2">Rule</th>
-                <th className="text-left px-3 py-2">Kind</th>
-                <th className="text-left px-3 py-2">Lifecycle</th>
-                <th className="text-left px-3 py-2">Enforcement</th>
-                <th className="text-left px-3 py-2">Rev</th>
-                <th className="text-left px-3 py-2">Tested</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map(rule => (
-                <tr key={rule.id} onClick={() => select(rule)} className="border-t cursor-pointer"
-                  style={{ borderColor: 'var(--color-border)', background: selected?.id === rule.id ? 'var(--color-primary-bg)' : undefined }}>
-                  <td className="px-3 py-2">
-                    <div className="font-mono text-xs">{rule.key}</div>
-                    <div style={{ color: 'var(--color-text-secondary)' }}>{rule.name}</div>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{rule.kind}</td>
-                  <td className="px-3 py-2 text-xs">{rule.lifecycle}</td>
-                  <td className="px-3 py-2 text-xs">
-                    <span className="px-1.5 py-0.5 rounded" style={{
-                      background: rule.enforcement === 'BLOCK' ? 'rgba(220,38,38,0.12)' : rule.enforcement === 'WARN' ? 'rgba(217,119,6,0.12)' : 'var(--color-bg-tertiary)',
-                      color: rule.enforcement === 'BLOCK' ? 'var(--color-error)' : 'var(--color-text-secondary)',
-                    }}>{rule.enforcement || '-'}</span>
-                  </td>
-                  <td className="px-3 py-2 text-xs">{rule.revision}</td>
-                  <td className="px-3 py-2 text-xs">{rule.tested ? <CheckCircle2 size={14} style={{ color: 'var(--color-success)' }} /> : '-'}</td>
+        <div>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+            <table className="w-full text-sm">
+              <thead style={{ background: 'var(--color-bg-tertiary)' }}>
+                <tr>
+                  <th className="text-left px-3 py-2">Rule</th>
+                  <th className="text-left px-3 py-2">Kind</th>
+                  <th className="text-left px-3 py-2">Lifecycle</th>
+                  <th className="text-left px-3 py-2">Enforcement</th>
+                  <th className="text-left px-3 py-2">Rev</th>
+                  <th className="text-left px-3 py-2">Tested</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {pageRules.map(rule => (
+                  <tr key={rule.id} onClick={() => select(rule)} className="border-t cursor-pointer"
+                    style={{ borderColor: 'var(--color-border)', background: selected?.id === rule.id ? 'var(--color-primary-bg)' : undefined }}>
+                    <td className="px-3 py-2">
+                      <div className="font-mono text-xs">{rule.key}</div>
+                      <div style={{ color: 'var(--color-text-secondary)' }}>{rule.name}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{rule.kind}</td>
+                    <td className="px-3 py-2 text-xs">{rule.lifecycle}</td>
+                    <td className="px-3 py-2 text-xs">
+                      <span className="px-1.5 py-0.5 rounded" style={{
+                        background: rule.enforcement === 'BLOCK' ? 'rgba(220,38,38,0.12)' : rule.enforcement === 'WARN' ? 'rgba(217,119,6,0.12)' : 'var(--color-bg-tertiary)',
+                        color: rule.enforcement === 'BLOCK' ? 'var(--color-error)' : 'var(--color-text-secondary)',
+                      }}>{rule.enforcement || '-'}</span>
+                    </td>
+                    <td className="px-3 py-2 text-xs">{rule.revision}</td>
+                    <td className="px-3 py-2 text-xs">{rule.tested ? <CheckCircle2 size={14} style={{ color: 'var(--color-success)' }} /> : '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {rules.length > 0 && (
+            <Pagination
+              offset={offset}
+              limit={limit}
+              total={rules.length}
+              shown={pageRules.length}
+              onOffsetChange={setOffset}
+              onLimitChange={nextLimit => { setLimit(nextLimit); setOffset(0); }}
+            />
+          )}
         </div>
 
         <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>

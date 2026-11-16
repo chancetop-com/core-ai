@@ -10,6 +10,8 @@ import ai.core.server.skill.SkillRepoSyncJob;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.skill.SkillUploadController;
+import ai.core.server.skill.quality.SkillQualityAdminService;
+import ai.core.server.web.SkillQualityAdminWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -30,6 +32,9 @@ public class SkillModule extends Module {
         bind(SkillArchiveBuilder.class);
         bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
+        bind(SkillQualityAdminService.class);
+        api().service(ai.core.api.server.SkillQualityAdminWebService.class,
+            bind(SkillQualityAdminWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
         // fixed wake-up tick only; the job applies the enabled switch and interval configured on the
         // system configuration page, so admins can throttle or stop the sync without a restart

@@ -54,6 +54,16 @@ class SkillQualityGateTest {
             && issue.message.contains("Workflow")));
     }
 
+    @Test
+    void ruleCatalogMatchesTheRulesTheGateRuns() {
+        var catalog = SkillQualityGate.ruleCatalog();
+
+        assertEquals(10, catalog.size());
+        assertEquals(SkillQualityGate.ruleKeys(), catalog.stream().map(SkillRuleMeta::key).toList());
+        assertTrue(catalog.stream().allMatch(meta -> meta.name() != null && meta.requirement() != null
+            && meta.category() != null && meta.enforcement() != null && meta.revision() > 0));
+    }
+
     private SkillPublishCandidate candidate(boolean withEval) {
         return candidate(withEval, skillContent());
     }
