@@ -48,8 +48,9 @@ class PgLeaseStoresTest {
                     + "resource_id text PRIMARY KEY, owner_pod text NOT NULL, acquired_at timestamptz NOT NULL)");
             statement.execute("CREATE TABLE IF NOT EXISTS messaging.turn_states ("
                     + "session_id text PRIMARY KEY, owner_pod text NOT NULL, user_id text, started_at timestamptz NOT NULL)");
+            statement.execute("DROP TABLE IF EXISTS messaging.user_session_counts");
             statement.execute("CREATE TABLE IF NOT EXISTS messaging.user_session_counts ("
-                    + "user_id text NOT NULL, pod_id text NOT NULL, count integer NOT NULL, PRIMARY KEY (user_id, pod_id))");
+                    + "user_id text PRIMARY KEY, count integer NOT NULL, expires_at timestamptz NOT NULL)");
         } catch (SQLException e) {
             throw new IllegalStateException("failed to initialize lease store test schema", e);
         }
@@ -113,19 +114,20 @@ class PgLeaseStoresTest {
     }
 
     @Test
-    void sessionBudgetCountsOnlyLivePods() {
+    void sessionBudgetCountsPerUserAndExpires() {
         var store = new PgSessionBudgetStore();
         store.database = DATABASE;
         var user = "user-" + id;
 
-        assertTrue(store.acquire(user, pod1, 1));
-        assertFalse(store.acquire(user, pod2, 1));
+        assertTrue(store.acquire(user, 1));
+        assertFalse(store.acquire(user, 1));
 
-        heartbeatAgeSeconds(pod1, 60);
-        assertTrue(store.acquire(user, pod2, 1));
+        store.release(user);
+        assertTrue(store.acquire(user, 1));
 
-        store.release(user, pod2);
-        assertTrue(store.acquire(user, pod1, 1));
+        DATABASE.execute("UPDATE messaging.user_session_counts SET expires_at = now() - make_interval(secs => ?) WHERE user_id = ?",
+            1, user);
+        assertTrue(store.acquire(user, 1));
     }
 
     private void registerPod(String podId) {

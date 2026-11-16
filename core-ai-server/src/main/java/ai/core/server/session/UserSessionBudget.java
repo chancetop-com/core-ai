@@ -19,17 +19,15 @@ public class UserSessionBudget {
     private static final Logger LOGGER = LoggerFactory.getLogger(UserSessionBudget.class);
 
     private final SessionBudgetStore store;
-    private final String podId;
     // assigned by RuntimeGovernanceModule: read live from system settings
     public Supplier<RuntimeLimits> limitsSupplier;
 
     public UserSessionBudget(JedisPool jedisPool) {
-        this(new RedisSessionBudgetStore(jedisPool), null);
+        this(new RedisSessionBudgetStore(jedisPool));
     }
 
-    public UserSessionBudget(SessionBudgetStore store, String podId) {
+    public UserSessionBudget(SessionBudgetStore store) {
         this.store = store;
-        this.podId = podId;
     }
 
     /** @throws CapacityExceededException when this user already holds the maximum number of live sessions. */
@@ -37,7 +35,7 @@ public class UserSessionBudget {
         if (userId == null || userId.isBlank()) return;
         var limit = limit();
         if (limit <= 0) return;
-        if (!store.acquire(userId, podId, limit)) {
+        if (!store.acquire(userId, limit)) {
             throw new CapacityExceededException("user_sessions", 30,
                 "session limit reached for this user (" + limit + "), close a session first");
         }
@@ -47,7 +45,7 @@ public class UserSessionBudget {
     public void release(String userId) {
         if (userId == null || userId.isBlank()) return;
         if (limit() <= 0) return;
-        store.release(userId, podId);
+        store.release(userId);
     }
 
     private int limit() {

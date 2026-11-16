@@ -19,7 +19,7 @@ public class RedisSessionBudgetStore implements SessionBudgetStore {
     }
 
     @Override
-    public boolean acquire(String userId, String podId, int limit) {
+    public boolean acquire(String userId, int limit) {
         try (var jedis = jedisPool.getResource()) {
             var count = jedis.incr(key(userId));
             jedis.expire(key(userId), TTL_SECONDS);
@@ -35,7 +35,7 @@ public class RedisSessionBudgetStore implements SessionBudgetStore {
     }
 
     @Override
-    public void release(String userId, String podId) {
+    public void release(String userId) {
         try (var jedis = jedisPool.getResource()) {
             if (jedis.decr(key(userId)) < 0) jedis.del(key(userId));
         } catch (Exception e) {

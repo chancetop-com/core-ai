@@ -29,9 +29,7 @@ public class LeaseCleanupJob implements Job {
         var turns = database.execute("DELETE FROM messaging.turn_states t "
             + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = t.owner_pod "
             + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
-        var counts = database.execute("DELETE FROM messaging.user_session_counts c "
-            + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = c.pod_id "
-            + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
+        var counts = database.execute("DELETE FROM messaging.user_session_counts WHERE expires_at < now()");
         var pods = database.execute("DELETE FROM messaging.pods WHERE heartbeat_at < now() - make_interval(secs => ?)",
             DEAD_POD_RETENTION_SECONDS);
         if (ownership > 0 || turns > 0 || counts > 0 || pods > 0) {

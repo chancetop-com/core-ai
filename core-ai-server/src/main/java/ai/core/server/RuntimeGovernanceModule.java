@@ -1,7 +1,6 @@
 package ai.core.server;
 
 import ai.core.api.server.runtime.RuntimeWebService;
-import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.pg.StoreMode;
 import ai.core.server.run.AgentRunner;
@@ -63,8 +62,7 @@ public class RuntimeGovernanceModule extends Module {
             return new SessionRuntimeLimits(limits.maxQueuedMessagesPerSession, limits.turnTimeoutSeconds);
         });
         // per-user session budget: counted in the shared lease store so it holds across replicas
-        var userSessions = new UserSessionBudget(bean(SessionBudgetStore.class),
-                bean(SessionOwnershipRegistry.class).getHostname());
+        var userSessions = new UserSessionBudget(bean(SessionBudgetStore.class));
         userSessions.limitsSupplier = limitsProvider::get;
         bean(AgentSessionManager.class).userSessionBudget = userSessions;
         // span ingest queue depth is fixed by the pool that backs it, so it is read once at startup

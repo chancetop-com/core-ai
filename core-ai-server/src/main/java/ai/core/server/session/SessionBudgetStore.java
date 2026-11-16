@@ -1,14 +1,14 @@
 package ai.core.server.session;
 
 /**
- * Per-user live-session counter. Counted across pods; the PostgreSQL implementation keeps one row
- * per (user, pod) and only counts rows whose pod heartbeat is fresh.
+ * Per-user live-session counter. A single row per user keeps acquire and release correct no matter
+ * which pod serves the request; the expiry covers a pod that dies before releasing its creates.
  *
  * @author stephen
  */
 public interface SessionBudgetStore {
     /** @return false when counting this session would exceed the limit. */
-    boolean acquire(String userId, String podId, int limit);
+    boolean acquire(String userId, int limit);
 
-    void release(String userId, String podId);
+    void release(String userId);
 }
