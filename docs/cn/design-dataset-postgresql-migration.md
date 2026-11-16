@@ -767,6 +767,7 @@ CREATE TABLE messaging.user_session_counts (user_id text NOT NULL, pod_id text N
 - 迁入 PG 的三类状态：sandbox 绑定（`SandboxBindingStore`）、会话活跃度（`SessionActivityStore`）、A2A 任务快照（`A2ATaskSnapshotStore`）。每类都有 Redis / PostgreSQL 两个实现，模块按开关选择，Redis 实现保持原有行为。
 - 未迁的部分：pod 注册表与租约（7.2）、命令队列（7.3）、会话归属 / turn 状态 / 用户计数（7.4）、RPC（7.5）、SSE 定向投递（7.6）。这些仍走 Redis，`StartupDependencyCheck` 也仍然要求 Redis。
 - 验证：`PgStateStoresTest` 在本地 PostgreSQL 16 上通过（sandbox 绑定 upsert/delete、活跃度过期、A2A 快照过期）；受影响模块的现有测试与 checkstyle 通过。
+- 2026-11-16 dev 已用 `2.0.242` 切到 `SYS_STATE_BACKEND=postgres` 并通过 E2E（sandbox 绑定写/读/删、会话活跃度、A2A 快照跨 Pod 读取），详见 `docs/validation/2026-11-16-dev-stage3-state-backend.md`；UAT / prod 尚未切换。
 - 下一步按 7.7 的顺序推进：先 pod 注册表 + 租约 + 计数（`sys.lease.backend`），再 RPC、SSE，最后命令队列；命令队列切换前需要先解决“新旧 pod 同时消费两边队列”的过渡版本。
 
 ## 8. 阶段 4：Mongo 存量策略

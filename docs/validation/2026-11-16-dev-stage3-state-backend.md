@@ -55,6 +55,7 @@ where table_schema = 'messaging' or (table_schema = 'app' and table_name = 'sand
 | `POST /api/a2a/agents/assistant:admin@example.com/message/send` | 创建任务 `73068027-55df-4b91-ad85-74a85eaa2e86` |
 | PG `messaging.a2a_tasks` | 行存在，`ownerPod=core-ai-server-bc5659b6f-2xlsw` |
 | 非 owner Pod（`wjs78`，HTTPS 18443）`GET /api/a2a/tasks/73068027…` | 200，`TASK_STATE_COMPLETED`，输出 `a2a-e2e-ok`；证明快照由另一个 Pod 从 PG 读取 |
+| `DELETE /api/sessions/:id`（关闭会话、释放 sandbox） | 成功；`app.sandbox_bindings` 对应行删除，验证绑定的删除路径 |
 | 两个 Pod 最近 25 分钟日志 | 无 `ERROR` |
 
 ## 回滚
