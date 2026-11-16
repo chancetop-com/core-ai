@@ -1559,8 +1559,10 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 
 - `:core-ai-server:test --tests "ai.core.server.skill.*"`：通过（skill service、repo sync、quality gate、parser、permission analyzer、publish service）。
 - `:core-ai-cli:compileJava`：通过；`core-ai-frontend npm run build`（tsc + vite）：通过。
-- `:core-ai-server:checkstyleMain/:checkstyleTest`：本模块新增/修改文件无违规；工作区另有与本设计无关的未提交改动（`sys.properties` 属性顺序、`ModelPricingProbeTest` 匿名内部类长度）导致整任务非零退出，未在本轮修改这些文件。
-- 未执行 dev 部署或 dev E2E；未运行完整 server 测试套件；未做真实模型校准、并发压力与旧 skill 干跑。
+- `:core-ai-server:check`：通过（checkstyle、PMD、SpotBugs、test）。
+- dev E2E（2026-11-16，`2.0.246`，镜像 digest `sha256:f39cb352…c8dbed`）：通过。已验证 valid upload、missing eval、undeclared SDK usage、broken reference、missing `skill_dir`、directory mismatch、valid update（PG `revision=2` + receipt）、failed update 不改变 revision 与 receipt、成功响应 header。记录见 `docs/validation/2026-11-16-dev-skill-quality-gate.md`。
+- E2E 发现并修复：`PgSkillStore.replaceIfRevision` 的 SQL 直接写了 JSON key 的单引号，core-ng 拒绝单引号导致编辑上传 500；已改为绑定参数 `data ->> ?`，在 `2.0.246` 复测通过。
+- 仍未做真实模型校准、并发压力、旧 skill dry-run、repo/marketplace 端到端。
 
 ## 15. 参考资料
 
