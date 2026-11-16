@@ -135,8 +135,8 @@ public class PgSkillStore implements SkillStore {
     public boolean replaceIfRevision(SkillDefinition definition, int expectedRevision) {
         var updated = database.execute("UPDATE " + TABLE
                 + " SET data = ?::jsonb, updated_at = now()"
-                + " WHERE id = ? AND COALESCE((data ->> 'revision')::int, 0) = ?",
-            JsonUtil.toJson(definition), definition.id, expectedRevision);
+                + " WHERE id = ? AND COALESCE((data ->> ?)::int, 0) = ?",
+            JsonUtil.toJson(definition), definition.id, "revision", expectedRevision);
         return updated > 0;
     }
 
