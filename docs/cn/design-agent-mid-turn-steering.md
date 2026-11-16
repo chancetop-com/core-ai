@@ -1,6 +1,6 @@
 # Tech Design：Agent 回合内追加消息（Mid-turn Steering）
 
-> 状态：**已实现（2026-10-23）**
+> 状态：**已实现（2026-10-23），2026-11-16 修订：运行中的 tool batch 可被用户消息抢占**
 > 日期：2026-10-23
 > 目的：用户消息在 agent 正在执行工具链时也能被接收，并在**下一次 model call 之前**注入当前 turn，而不是等整个 turn 结束
 > 关联：Agent 运行时治理（design-agent-runtime-governance，待补充）、会话完成通知（design-session-completion-notify，待补充）
@@ -10,7 +10,7 @@
 | 决策点 | 结论 |
 | --- | --- |
 | 注入点 | 每次 model call 之前（`Agent.runTurnsLoop` 循环顶部） |
-| 是否抢占 | **不抢占**。不打断正在进行的 model stream，也不打断正在执行的 tool；等当前 model call / tool batch 自然结束后再注入 |
+| 是否抢占 | **抢占 tool，不抢占 stream**。消息到达时若 tool batch 正在执行，取消正在等 tool 的等待（tool 结果记为 cancelled），立即回到循环顶部注入消息；正在进行的 model stream 仍不打断（见 §3.6） |
 | 停止语义 | 仍然由用户按 Stop 触发 `cancelTurn()`；本特性不引入新的中断路径 |
 | turn 边界 | 注入后仍在**同一个 turn** 内：`pending input` 会让循环继续，即使模型刚返回的是纯文本 |
 | 注入位置约束 | 只能在上一轮 `turn()`（assistant 消息 + 全部 tool result）完整结束后注入，绝不能在 `tool_use` 与 `tool_result` 之间插入 |
@@ -148,6 +148,21 @@ model 返回 "done"
 | turn 正常结束 | pending 已全部注入；`closeAndDrain()` 为空 |
 | 强制 close | 未注入消息已由 `ChatMessageService.writeUserMessage` 持久化到 chat history；agent 内存态可能来不及注入（见 §6 已知边界） |
 
+### 3.6 运行中的 tool batch 被用户消息抢占（2026-11-16 修订）
+
+原设计“不打断正在执行的 tool”。实际使用中这会让整条会话停在一个长时间 tool 上：消息已进入 `PendingUserInputQueue`，但注入点在“下一次 model call 之前”，而 model call 要等 tool 返回，于是用户在 desktop 里发的消息看起来“卡住”，要等 tool 跑完才被模型看到。
+
+修订后的规则：**消息到达即放弃正在等待的 tool 调用**，但仍不打断 model stream。
+
+- `ExecutionContext.hasWaitingUserInput()` 反映 per-turn 队列里是否有等待注入的消息；
+- `ToolExecutor` 等待 tool（本地 `executeWithTimeout` 与 sandbox 两条路径）时每 100ms 复查一次该状态：一旦有等待的用户消息，`future.cancel(true)` + 中断 tool 线程，返回失败结果 `ToolCallResult.failed("Tool call cancelled: the user sent a new message ...")`；
+- 被取消的 tool call 仍会生成一条 tool result，`tool_use` / `tool_result` 的配对不被破坏；模型看到的顺序是 `tool(result: cancelled)` → `user(新消息)`；
+- `Agent.runTurnsLoop` 继续同一 turn，注入 pending 消息后再发 model call，`TurnCompleteEvent` 只发一次；
+- 消息到达时 tool 已结束（`future.cancel` 返回 false）则正常返回 tool 结果，不误伤；
+- 副作用与 Stop 相同：tool 线程被中断，是否真正停下由 tool 自己决定（shell 会 kill 进程）；后台任务（async launched）不受影响。
+
+仍不抢占的部分：正在进行的一次 model call / stream。消息在该 call 返回后、下一次 model call 前注入。
+
 ## 4. UI / 传输
 
 - 聊天页在 `status === 'running'` 时保持输入框和 Send 可用，同时保留 Stop 按钮；
@@ -159,18 +174,28 @@ model 返回 "done"
 
 | 测试 | 断言 |
 | --- | --- |
-| `messageSentDuringToolExecutionIsInjectedAfterTheToolResult` | 阻塞 tool 期间发两条消息 → tool 结束后、下一次 model request 按顺序包含两条消息；只产生 1 个 turn |
+| `messageSentDuringToolExecutionCancelsTheToolAndIsInjectedImmediately` | 阻塞 tool 期间发两条消息 → 不释放 tool 也能完成 turn；下一次 model request 按顺序包含 cancelled 的 tool result 与两条消息；只产生 1 个 turn |
 | `messageSentDuringFinalTextContinuesTheSameTurn` | model 生成文本期间发消息 → 当前 call 返回后再发一次 model call；仍是 1 个 turn |
 | `cancelledTurnRequeuesPendingInputForTheNextTurn` | Stop 后 pending 成为下一 turn，不丢失 |
+| `enqueuedMessageWaitsForTheRunningTurnAndStartsItsOwnTurn` | 显式排队的消息不抢占正在跑的 tool，tool 结束后自己起一个 turn |
 | `PendingUserInputQueueTest` | FIFO、上限、close 后 offer 拒绝 |
 | `SessionCommandQueueTest.keepsFifoOrderWithinTheSamePriority` | 同优先级 FIFO（新增 sequence tiebreaker） |
 | `ChatComposer.test.tsx > keeps the composer usable while a turn is running` | 运行中 textarea 可用、Enter 仍触发 onSend |
 
 ## 6. 已知边界 / 非目标
 
-- **不抢占**：长文本生成期间的消息要等当前 model call 返回；长 tool 要等 tool batch 结束。用户仍可用 Stop 中断。
-- **不做 per-message 取消**：v1 只能 Stop 整个 turn；pending 消息随 turn 结束回退。
+- **只抢占 tool，不抢占 stream**：长文本生成期间的消息要等当前 model call 返回；长 tool 会在消息到达后约 100ms 内被取消并注入消息（见 §3.6）。
+- **tool 能否真正停下取决于 tool 自身**：被取消的等待会中断 tool 线程并丢弃结果，但不会等待 tool 确认退出（与 Stop 语义一致）。
+- **审批等待不在抢占范围**：tool 处于等待用户批准（`PermissionGate`）时，消息仍要等审批或超时。
+- **不做 per-message 取消**：取消对象是“正在等待的 tool 调用”，不是整轮 turn；pending 消息随 turn 结束回退。
 - **强制 close 的极端情况**：如果 agent 线程在注入前被强制终止，消息已在 chat history，但可能未进入 agent 内存消息；后续如需严格恢复，可在 `SessionRebuildManager` 里对齐 chat history 与 agent history。
 - **transcript 交错**：`ChatMessageService` 按 turn 聚合 assistant 文本，运行中插入的 user message 在历史里会排在最终 assistant 消息之前；不做逐段 flush。
 - **CLI 交互输入**：backend/app-server/server chat 已支持运行中追加消息；CLI REPL 的输入仍由 `readyForInput` 串行化（一次只读一条、等 turn 结束），本次未改 CLI 的终端交互。
 - **不改变 task notification**：`executeTaskNotifications()` 仍走 `injectUserMessage + continueWithInjectedMessage`，不在本特性范围内。
+
+## 7. 修改记录
+
+| 日期 | 变更 |
+| --- | --- |
+| 2026-10-23 | 初版：注入点、FIFO、turn 边界、取消回退 |
+| 2026-11-16 | 修订 §0 / §3.6 / §6：运行中的 tool batch 可被用户消息抢占，修复 desktop 中“发消息打断后仍要等长 tool 结束”的卡顿；新增 `ExecutionContext.hasWaitingUserInput()` 与 `ToolExecutor` 的等待复查 |

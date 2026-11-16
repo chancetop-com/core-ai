@@ -216,6 +216,15 @@ public final class ExecutionContext {
         this.pendingUserInput = pendingUserInput;
     }
 
+    /**
+     * True while a message accepted during the running turn is still waiting for its injection point.
+     * A tool call checks this so a long tool cannot hold the user's message back for its whole runtime.
+     */
+    public boolean hasWaitingUserInput() {
+        var pending = pendingUserInput;
+        return pending != null && !pending.isEmpty();
+    }
+
     public void setLlmProvider(LLMProvider llmProvider) {
         this.llmProvider = llmProvider;
     }

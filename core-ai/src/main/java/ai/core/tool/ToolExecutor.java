@@ -31,8 +31,6 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -289,14 +287,17 @@ public class ToolExecutor {
             return callSandbox(tool, functionCall, args, context, sandbox);
         }
         var otelContext = Context.current();
+        var threadRef = new AtomicReference<Thread>();
         var future = CompletableFuture.supplyAsync(() -> {
+            threadRef.set(Thread.currentThread());
             try (var scope = otelContext.makeCurrent()) {
                 return callSandbox(tool, functionCall, args, context, sandbox);
             }
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
         var unbind = token.onCancel(() -> future.cancel(true));
         try {
-            return future.get();
+            token.throwIfCancelled();
+            return ToolCallWait.await(future, 0, tool.getName(), context, threadRef).result();
         } catch (CancellationException e) {
             LOGGER.warn("sandbox tool call abandoned after cancel, tool={}, reason={}", tool.getName(), token.getReason());
             return ToolCallResult.failed(Strings.format("tool call cancelled while running in sandbox (reason={}): {}", token.getReason(), tool.getName()));
@@ -348,16 +349,12 @@ public class ToolExecutor {
         }, AsyncToolTaskExecutor.getInstance().getExecutor());
 
         try {
-            var result = future.get(timeoutMs, TimeUnit.MILLISECONDS);
-            if (timeoutMs < requestedTimeout) {
-                result.withStats("budget.timeout.requested_ms", requestedTimeout)
+            var outcome = ToolCallWait.await(future, timeoutMs, functionCall.function.name, context, threadRef);
+            if (timeoutMs < requestedTimeout && !outcome.timedOut() && !outcome.cancelled()) {
+                outcome.result().withStats("budget.timeout.requested_ms", requestedTimeout)
                         .withStats("budget.timeout.effective_ms", timeoutMs);
             }
-            return result;
-        } catch (TimeoutException e) {
-            LOGGER.warn("tool {} execution timed out after {}ms", functionCall.function.name, timeoutMs);
-            future.cancel(true);
-            return ToolCallResult.failed(Strings.format("tool call timed out after {}ms: {}", timeoutMs, functionCall.function.name));
+            return outcome.result();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.cancel(true);

@@ -87,6 +87,11 @@ class MidTurnSteeringTest {
                 && message.getTextContent() != null && message.getTextContent().contains(text));
     }
 
+    private static boolean containsToolText(List<Message> messages, String text) {
+        return messages.stream().anyMatch(message -> message.role == RoleType.TOOL
+                && message.getTextContent() != null && message.getTextContent().contains(text));
+    }
+
     private static CompletionResponse textResponse(String content) {
         return CompletionResponse.of(
                 List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, content))),
@@ -101,7 +106,7 @@ class MidTurnSteeringTest {
     }
 
     @Test
-    void messageSentDuringToolExecutionIsInjectedAfterTheToolResult() throws Exception {
+    void messageSentDuringToolExecutionCancelsTheToolAndIsInjectedImmediately() throws Exception {
         var block = new BlockingTool();
         var provider = new RecordingProvider();
         provider.addResponse(toolCallResponse("call-1", "block", "{}"));
@@ -116,10 +121,8 @@ class MidTurnSteeringTest {
 
             session.sendMessage("second prompt");
             session.sendMessage("third prompt");
-            assertEquals(2, session.pendingUserInputCount());
-
-            block.release.countDown();
-            assertTrue(listener.firstTurn.await(10, TimeUnit.SECONDS), "turn must complete");
+            // the tool is never released: the user's messages must not wait for it
+            assertTrue(listener.firstTurn.await(10, TimeUnit.SECONDS), "turn must complete without the tool");
 
             assertEquals(1, listener.turnCount(), "steering must not start another turn");
             assertEquals(2, provider.requests.size(), "one tool response and one follow-up response");
@@ -128,6 +131,8 @@ class MidTurnSteeringTest {
                     "call-1", RoleType.TOOL,
                     "second prompt", RoleType.USER,
                     "third prompt", RoleType.USER);
+            assertTrue(containsToolText(followUp, "cancelled"),
+                    "the model must be told the running tool call was cancelled: " + followUp);
             assertEquals(0, session.pendingUserInputCount());
         } finally {
             block.release.countDown();

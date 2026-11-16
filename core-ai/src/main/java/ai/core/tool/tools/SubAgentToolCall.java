@@ -240,6 +240,7 @@ public class SubAgentToolCall extends ToolCall {
 
         } catch (CancellationException e) {
             future.cancel(true);
+            cancelRun(childToken);
             cancelChildBackgroundTasks(agent);
             return buildPartialOrCancelledResult(agent);
         } catch (TimeoutException e) {
@@ -250,6 +251,7 @@ public class SubAgentToolCall extends ToolCall {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             future.cancel(true);
+            cancelRun(childToken);
             cancelChildBackgroundTasks(agent);
             return buildPartialOrCancelledResult(agent);
         } catch (ExecutionException e) {
@@ -305,6 +307,14 @@ public class SubAgentToolCall extends ToolCall {
         for (var subAgent : agent.getSubAgents()) {
             subAgent.getSubAgent().cancel();
         }
+    }
+
+    /**
+     * Stops the subagent run itself, not just this call's wait. An abandoned run keeps working — and
+     * keeps the session thread gated — although its result can no longer reach the parent.
+     */
+    private void cancelRun(CancellationToken childToken) {
+        if (childToken != null) childToken.cancel(CancelReason.USER_CANCELLED);
     }
 
     private Agent resolveAgent() {
