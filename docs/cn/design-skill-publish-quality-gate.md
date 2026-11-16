@@ -1576,7 +1576,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 - [S8] [OWASP — LLM Prompt Injection Prevention Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/LLM_Prompt_Injection_Prevention_Cheat_Sheet.html)：不可信输入、judge 零权限、输出验证、对抗测试。
 - [S9] [Semantic Versioning 2.0.0](https://semver.org/)：版本语义与比较。
 - [S10] [CommonMark Spec](https://spec.commonmark.org/)：heading/link/code fence AST。
-- [S11] [core-ai-session SDK 源码](../../sdk/core-ai-session/core_ai_session/tree.py)：`s.mcp` / `s.api` / `s.llm_call` / `s.agent` / `s.tool` / `s.dataset` 调用形状。
+- [S11] [core-ai-session SDK 源码](https://github.com/chancetop-com/core-ai/blob/master/sdk/core-ai-session/core_ai_session/tree.py)：`s.mcp` / `s.api` / `s.llm_call` / `s.agent` / `s.tool` / `s.dataset` 调用形状。
 - [S12] [Agent 发布质量门禁设计](./design-agent-publish-quality-gate.md)：状态机、版本化规则、decision adapter、typed report 与审计模式。
 - [S13] [Microsoft Learn — Deploy and use Microsoft-Decision-1](https://learn.microsoft.com/en-us/azure/foundry/foundry-models/how-to/use-foundry-models-microsoft-decision)：typed questions、无自由文本 rationale、阈值与标注验证。
 - [S14] [OpenAI — Build skills](https://developers.openai.com/codex/build-skills)：name/description、workflow、reference/scripts 组织与边界。
