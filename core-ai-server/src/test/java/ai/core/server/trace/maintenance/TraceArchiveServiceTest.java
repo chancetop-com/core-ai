@@ -165,7 +165,8 @@ class TraceArchiveServiceTest {
         when(traceCollection.count(any(Bson.class))).thenReturn((long) traces.size());
         when(traceCollection.find(any(Query.class))).thenAnswer(invocation -> {
             Query query = invocation.getArgument(0);
-            return query.skip == 0 ? new ArrayList<>(traces) : List.of();
+            // PostgreSQL stores return immutable lists (Stream.toList()); the archiver must not mutate them.
+            return query.skip == 0 ? traces : List.of();
         });
 
         service.spanStore = mock(SpanStore.class);
@@ -177,7 +178,7 @@ class TraceArchiveServiceTest {
             List<Span> all = spansByTrace.get(traceId);
             int from = Math.min(skip, all.size());
             int to = Math.min(from + limit, all.size());
-            return new ArrayList<>(all.subList(from, to));
+            return List.copyOf(all.subList(from, to));
         });
         return service;
     }

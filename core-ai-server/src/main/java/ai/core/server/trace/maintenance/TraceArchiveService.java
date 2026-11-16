@@ -105,7 +105,6 @@ public class TraceArchiveService {
                     archiveTrace(trace, partWriter);
                 }
                 offset += batch.size();
-                batch.clear();
             }
             partWriter.finish();
         } catch (IOException | RuntimeException e) {
@@ -152,7 +151,6 @@ public class TraceArchiveService {
                 partWriter.writeSpan(trace, span);
             }
             offset += page.size();
-            page.clear();
         }
     }
 
