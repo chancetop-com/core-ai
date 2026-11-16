@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -56,7 +57,7 @@ class PgStateStoresTest {
                     + "session_id text PRIMARY KEY, last_activity bigint NOT NULL, expires_at timestamptz NOT NULL)");
             statement.execute("CREATE TABLE IF NOT EXISTS messaging.a2a_tasks ("
                     + "task_id text PRIMARY KEY, data jsonb NOT NULL, expires_at timestamptz NOT NULL)");
-        } catch (Exception e) {
+        } catch (SQLException e) {
             throw new IllegalStateException("failed to initialize state store test schema", e);
         }
     }
