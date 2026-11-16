@@ -240,6 +240,26 @@ export class CuaManager {
   }
 
   /**
+   * Updates the CLI with the official installer, then refreshes an existing host service so
+   * cua-spacesd matches the new binary. The CLI update is the hard requirement; a service refresh
+   * failure is reported in the detail instead of failing the whole update.
+   */
+  async updateCli(): Promise<{ ok: boolean; detail: string }> {
+    const installed = await this.installCli();
+    if (!installed.ok) return installed;
+    const bin = this.resolveBin();
+    if (!bin) return { ok: false, detail: 'the cua CLI was not found after the installer ran' };
+    const host = await this.hostInfo(bin);
+    if (!host.configured) return { ok: true, detail: installed.detail };
+    const setup = await runCommand(bin, ['host', 'setup', '--direct', HOST_SERVICE_URL, '--name', os.hostname() || 'core-ai-desktop'], HOST_SETUP_TIMEOUT);
+    const refreshed = await this.waitForService(bin, 3);
+    const detail = setup.code === 0 && refreshed.running
+      ? 'CLI and desktop service updated'
+      : `${installed.detail}; desktop service refresh: ${lastLine(setup.stdout, setup.stderr) || `exit ${setup.code}`}`;
+    return { ok: true, detail };
+  }
+
+  /**
    * Idempotent enablement: every step checks first and only acts when something is missing, so it
    * doubles as a repair action. Step details feed the Settings panel.
    */

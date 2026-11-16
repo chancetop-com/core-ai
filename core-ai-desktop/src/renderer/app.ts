@@ -145,7 +145,7 @@ interface ComputerStatus {
   enabled: boolean;
   ready: boolean;
   problems: string[];
-  cli: { present: boolean; path: string | null; version: string | null };
+  cli: { present: boolean; path: string | null; version: string | null; latest?: string | null; updateAvailable?: boolean };
   consent: boolean;
   host: { configured: boolean; installed: boolean; running: boolean; mode: string | null; directUrl: string | null };
   target: { host: boolean };
@@ -159,6 +159,8 @@ interface RuntimeStatus {
   path: string | null;
   detail: string;
   daemon?: string | null;
+  latest?: string | null;
+  updateAvailable?: boolean;
 }
 
 interface ChannelBridgeState {
@@ -360,6 +362,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   browserSelectTab(id: string): Promise<BrowserStatus | null>;
   computerStatus(): Promise<ComputerStatus | null>;
   computerInstallCli(): Promise<{ ok: boolean; detail: string }>;
+  computerUpdateCli(): Promise<{ ok: boolean; detail: string }>;
   computerEnable(): Promise<{ ok: boolean; steps: ComputerStep[] }>;
   computerDisable(): Promise<ComputerStatus | null>;
   computerRemoveService(): Promise<{ ok: boolean; detail: string }>;
@@ -6598,15 +6601,18 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
     grid.style.gap = '10px';
     grid.style.margin = '0 0 18px';
 
+    const latestNote = (status: RuntimeStatus | null): string =>
+      status?.updateAvailable && status.latest ? ` · latest ${status.latest}` : '';
+
     const runtimeLine = (skill: BuiltinSkillEntry): string => {
       switch (skill.runtime) {
         case 'browser-use':
           return browserTool?.present
-            ? `browser-use ${browserTool.version ?? ''}${browserTool.path ? ` · ${browserTool.path}` : ''}`.trim()
+            ? `browser-use ${browserTool.version ?? ''}${latestNote(browserTool)}${browserTool.path ? ` · ${browserTool.path}` : ''}`.trim()
             : 'browser-use CLI is not installed';
         case 'ocg':
           return channelsTool?.present
-            ? `ocg ${channelsTool.version ?? ''}${channelsTool.daemon ? ` · daemon ${channelsTool.daemon}` : ''}`.trim()
+            ? `ocg ${channelsTool.version ?? ''}${latestNote(channelsTool)}${channelsTool.daemon ? ` · daemon ${channelsTool.daemon}` : ''}`.trim()
             : 'ocg is not installed';
         case 'cua':
           return 'Configure Computer use in Settings';
@@ -6683,6 +6689,34 @@ async function renderSkillsPanel(): Promise<HTMLElement> {
           await refresh();
         };
         actions.append(installTool);
+      }
+      if (skill.runtime === 'browser-use' && browserTool?.present && (browserTool.updateAvailable || !browserTool.latest)) {
+        const updateTool = el('button', 'btn small', 'Update browser-use');
+        updateTool.title = browserTool.latest ? `Update to ${browserTool.latest}` : 'Reinstall the latest release';
+        updateTool.onclick = async () => {
+          const confirmed = window.confirm('Update browser-use to the latest release with uv, pipx or pip?');
+          if (!confirmed) return;
+          updateTool.disabled = true;
+          updateTool.textContent = 'Updating…';
+          const result = await window.coreai.browserInstallTool();
+          toast(result.ok ? `browser-use updated: ${result.detail}` : `browser-use update failed: ${result.detail}`, result.ok ? '' : 'error');
+          await refresh();
+        };
+        actions.append(updateTool);
+      }
+      if (skill.runtime === 'ocg' && channelsTool?.present && (channelsTool.updateAvailable || !channelsTool.latest)) {
+        const updateTool = el('button', 'btn small', 'Update OCG');
+        updateTool.title = channelsTool.latest ? `Update to ${channelsTool.latest}` : 'Reinstall the latest release';
+        updateTool.onclick = async () => {
+          const confirmed = window.confirm('Update openclaw-channel-gateway to the latest release?\n\nThe local OCG daemon restarts so the new build is loaded.');
+          if (!confirmed) return;
+          updateTool.disabled = true;
+          updateTool.textContent = 'Updating…';
+          const result = await window.coreai.channelsInstallTool();
+          toast(result.ok ? `OCG updated: ${result.detail}` : `OCG update failed: ${result.detail}`, result.ok ? '' : 'error');
+          await refresh();
+        };
+        actions.append(updateTool);
       }
       if (skill.runtime === 'cua') {
         const settings = el('button', 'btn small', 'Settings');
@@ -7610,7 +7644,8 @@ async function renderChannelsSection(): Promise<HTMLElement> {
     grid.append(el('dt', undefined, label));
     grid.append(el('dd', undefined, value));
   };
-  row('OCG CLI', status.present ? `${status.version ? `v${status.version}` : 'installed'} - ${status.path ?? ''}` : 'not installed');
+  const ocgLatest = status.updateAvailable && status.latest ? ` · latest v${status.latest}` : '';
+  row('OCG CLI', status.present ? `${status.version ? `v${status.version}` : 'installed'}${ocgLatest} - ${status.path ?? ''}` : 'not installed');
   row('OCG daemon', status.daemon ?? (status.present ? 'status unknown' : 'not available'));
   if (admin.ok) {
     row('OCG transport', admin.agentType ?? 'unknown');
@@ -7639,6 +7674,37 @@ async function renderChannelsSection(): Promise<HTMLElement> {
     const fresh = await renderChannelsSection();
     section.replaceWith(fresh);
   };
+  const toolActions = el('div');
+  toolActions.style.display = 'flex';
+  toolActions.style.gap = '8px';
+  toolActions.style.margin = '10px 0 4px';
+  if (!status.present) {
+    const install = el('button', 'btn small primary', 'Install OCG');
+    install.onclick = async () => {
+      const confirmed = window.confirm('Install openclaw-channel-gateway with npm?\n\nRequires Node.js 22.12+. Channel credentials and QR login stay local.');
+      if (!confirmed) return;
+      install.disabled = true;
+      install.textContent = 'Installing…';
+      const result = await window.coreai.channelsInstallTool();
+      toast(result.ok ? `OCG installed: ${result.detail}` : `OCG install failed: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    toolActions.append(install);
+  } else if (status.updateAvailable || !status.latest) {
+    const update = el('button', 'btn small primary', 'Update OCG');
+    update.title = status.latest ? `Update to ${status.latest}` : 'Reinstall the latest release';
+    update.onclick = async () => {
+      const confirmed = window.confirm('Update openclaw-channel-gateway to the latest release?\n\nThe local OCG daemon restarts so the new build is loaded.');
+      if (!confirmed) return;
+      update.disabled = true;
+      update.textContent = 'Updating…';
+      const result = await window.coreai.channelsInstallTool();
+      toast(result.ok ? `OCG updated: ${result.detail}` : `OCG update failed: ${result.detail}`, result.ok ? '' : 'error');
+      await rerender();
+    };
+    toolActions.append(update);
+  }
+  if (toolActions.childElementCount > 0) section.append(toolActions);
   const enableLabel = el('label', 'schedule-filter');
   const toggle = el('input') as HTMLInputElement;
   toggle.type = 'checkbox';
@@ -8010,8 +8076,11 @@ async function renderComputerUseSection(): Promise<HTMLElement> {
     grid.append(el('dt', undefined, label));
     grid.append(el('dd', undefined, value));
   };
+  const cuaLatest = status.cli.updateAvailable && status.cli.latest
+    ? ` · latest v${status.cli.latest}`
+    : '';
   row('CUA CLI', status.cli.present
-    ? `${status.cli.version ? `v${status.cli.version}` : 'installed'} - ${status.cli.path ?? ''}`
+    ? `${status.cli.version ? `v${status.cli.version}` : 'installed'}${cuaLatest} - ${status.cli.path ?? ''}`
     : 'not installed');
   const access: string[] = [];
   access.push(status.consent ? 'consent granted' : 'consent missing');
@@ -8073,6 +8142,23 @@ async function renderComputerUseSection(): Promise<HTMLElement> {
       await rerender();
     };
     actions.append(install);
+  }
+
+  if (status.cli.present && (status.cli.updateAvailable || !status.cli.latest)) {
+    const update = el('button', 'btn small', 'Update CUA CLI');
+    update.title = status.cli.latest ? `Update to ${status.cli.latest}` : 'Reinstall the latest CLI';
+    update.onclick = async () => {
+      const confirmed = window.confirm('Update the CUA CLI with the official installer from cua.ai?\n\n'
+        + 'It replaces the binary in %LOCALAPPDATA%\\Programs\\cua\\bin and refreshes the local host service '
+        + 'when one is configured. Computer use stays enabled.');
+      if (!confirmed) return;
+      update.disabled = true;
+      update.textContent = 'Updating…';
+      const result = await window.coreai.computerUpdateCli();
+      toast(result.ok ? `CUA CLI updated: ${result.detail}` : `CUA CLI update failed: ${result.detail}`);
+      await rerender();
+    };
+    actions.append(update);
   }
 
   if (!status.enabled) {

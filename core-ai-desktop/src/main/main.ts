@@ -34,7 +34,7 @@ import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage 
 import { CuaManager } from './computer/CuaManager';
 import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { BuiltinSkills } from './skills/BuiltinSkills';
-import { browserUseStatus, installBrowserUse, installOcg, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
+import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
@@ -879,8 +879,21 @@ function registerIpc(): void {
   ipcMain.handle('browser:newTab', (_event, url?: string) => browserManager?.newTab(url) ?? null);
   ipcMain.handle('browser:closeTab', (_event, id: string) => browserManager?.closeTab(String(id ?? '')) ?? null);
   ipcMain.handle('browser:selectTab', (_event, id: string) => browserManager?.selectTab(String(id ?? '')) ?? null);
-  ipcMain.handle('computer:status', () => cuaManager?.status(settings.computerUse === true) ?? null);
+  ipcMain.handle('computer:status', async () => {
+    if (!cuaManager) return null;
+    const status = await cuaManager.status(settings.computerUse === true);
+    const latest = await latestCuaVersion();
+    return {
+      ...status,
+      cli: {
+        ...status.cli,
+        latest,
+        updateAvailable: status.cli.present && isNewerVersion(latest, status.cli.version),
+      },
+    };
+  });
   ipcMain.handle('computer:installCli', () => cuaManager?.installCli() ?? { ok: false, detail: 'computer use manager unavailable' });
+  ipcMain.handle('computer:updateCli', () => cuaManager?.updateCli() ?? { ok: false, detail: 'computer use manager unavailable' });
   ipcMain.handle('computer:enable', async () => {
     if (!cuaManager) return { ok: false, steps: [] };
     const result = await cuaManager.enable();
@@ -951,7 +964,7 @@ function registerIpc(): void {
     if (result.ok) {
       const skill = builtinSkills?.install('browser-use');
       if (skill && !skill.ok) console.error(`[skills] browser-use: ${skill.detail}`);
-      await supervisor?.shutdownAll();
+      if (skill?.changed) await supervisor?.shutdownAll();
     }
     return { ...result, status: await browserUseStatus() };
   });
@@ -966,11 +979,19 @@ function registerIpc(): void {
     return { enabled: value, status: await ocgStatus(), skill: result ?? null };
   });
   ipcMain.handle('channels:installTool', async () => {
+    const wasInstalled = resolveExecutable('ocg') !== null;
     const result = await installOcg();
     if (result.ok) {
       const skill = builtinSkills?.install('ocg');
       if (skill && !skill.ok) console.error(`[skills] ocg: ${skill.detail}`);
-      await supervisor?.shutdownAll();
+      if (skill?.changed) await supervisor?.shutdownAll();
+      if (wasInstalled) {
+        const restarted = await restartOcgDaemon();
+        if (!restarted) {
+          console.error('[channels] OCG daemon restart failed after install/update');
+          result.detail = `${result.detail} (daemon restart failed)`;
+        }
+      }
     }
     return { ...result, status: await ocgStatus() };
   });

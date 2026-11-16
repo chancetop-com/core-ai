@@ -11,6 +11,10 @@ export interface RuntimeStatus {
   version: string | null;
   path: string | null;
   detail: string;
+  /** Latest version published on the tool's official channel, when it could be checked. */
+  latest?: string | null;
+  /** True only when both versions are known and the installed one is older. */
+  updateAvailable?: boolean;
 }
 
 export interface InstallOutcome {
@@ -64,6 +68,84 @@ function lastLine(...texts: Array<string | undefined>): string {
 function versionOf(output: string): string | null {
   const match = /(\d+\.\d+\.\d+[\w.+-]*)/.exec(output);
   return match ? match[1] : null;
+}
+
+function versionParts(value: string | null | undefined): [number, number, number] | null {
+  if (!value) return null;
+  const match = /(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(value);
+  if (!match) return null;
+  return [Number(match[1]), Number(match[2] ?? 0), Number(match[3] ?? 0)];
+}
+
+export function compareVersions(left: string, right: string): number {
+  const a = versionParts(left);
+  const b = versionParts(right);
+  if (!a || !b) return 0;
+  for (let index = 0; index < 3; index += 1) {
+    if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+  }
+  return 0;
+}
+
+export function isNewerVersion(latest: string | null | undefined, current: string | null | undefined): boolean {
+  if (!latest || !current) return false;
+  return compareVersions(latest, current) > 0;
+}
+
+export function parsePypiVersion(json: unknown): string | null {
+  const version = (json as { info?: { version?: unknown } } | null)?.info?.version;
+  return typeof version === 'string' && version.trim() ? version.trim() : null;
+}
+
+export function parseNpmVersion(json: unknown): string | null {
+  const version = (json as { version?: unknown } | null)?.version;
+  return typeof version === 'string' && version.trim() ? version.trim() : null;
+}
+
+export function parseCuaManifestVersion(json: unknown): string | null {
+  const version = (json as { versions?: { cli?: unknown } } | null)?.versions?.cli;
+  return typeof version === 'string' && version.trim() ? version.trim() : null;
+}
+
+const LATEST_CACHE_TTL = 10 * 60 * 1000;
+const LATEST_TIMEOUT = 4_000;
+const latestCache = new Map<string, { at: number; value: string | null }>();
+
+async function fetchJson(url: string): Promise<unknown> {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': 'core-ai-desktop' },
+    signal: AbortSignal.timeout(LATEST_TIMEOUT),
+  });
+  if (!response.ok) return null;
+  return response.json().catch(() => null);
+}
+
+async function cachedLatest(key: string, load: () => Promise<string | null>): Promise<string | null> {
+  const cached = latestCache.get(key);
+  if (cached && Date.now() - cached.at < LATEST_CACHE_TTL) return cached.value;
+  let value: string | null = null;
+  try {
+    value = await load();
+  } catch {
+    value = null;
+  }
+  latestCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
+/** Latest browser-use release on PyPI. */
+export function latestBrowserUseVersion(): Promise<string | null> {
+  return cachedLatest('browser-use', async () => parsePypiVersion(await fetchJson('https://pypi.org/pypi/browser-use/json')));
+}
+
+/** Latest openclaw-channel-gateway release on npm. */
+export function latestOcgVersion(): Promise<string | null> {
+  return cachedLatest('ocg', async () => parseNpmVersion(await fetchJson('https://registry.npmjs.org/openclaw-channel-gateway/latest')));
+}
+
+/** Latest CLI version in Cua's floating install manifest. */
+export function latestCuaVersion(): Promise<string | null> {
+  return cachedLatest('cua', async () => parseCuaManifestVersion(await fetchJson('https://github.com/trycua/cua/releases/download/cua-install-latest/release-artifacts.json')));
 }
 
 function executableExtensions(): string[] {
@@ -125,23 +207,36 @@ export async function probeCommand(name: string, args: string[] = ['--version'])
   return { present: true, version: versionOf(result.stdout), path: file, detail: file };
 }
 
-export function browserUseStatus(): Promise<RuntimeStatus> {
-  return probeCommand('browser-use');
+export async function browserUseStatus(): Promise<RuntimeStatus> {
+  const status = await probeCommand('browser-use');
+  const latest = await latestBrowserUseVersion();
+  return {
+    ...status,
+    latest,
+    updateAvailable: status.present && isNewerVersion(latest, status.version),
+  };
 }
 
 export async function ocgStatus(): Promise<RuntimeStatus & { daemon: string | null }> {
   const status = await probeCommand('ocg');
-  if (!status.present || !status.path) return { ...status, daemon: null };
+  const latest = await latestOcgVersion();
+  const enriched = {
+    ...status,
+    latest,
+    updateAvailable: status.present && isNewerVersion(latest, status.version),
+  };
+  if (!status.present || !status.path) return { ...enriched, daemon: null };
   const result = await runCommand(status.path, ['daemon', 'status', '--json'], DAEMON_TIMEOUT);
   let daemon: string | null = null;
   try {
-    const data = JSON.parse(result.stdout.trim()) as { running?: unknown; status?: unknown };
+    const data = JSON.parse(result.stdout.trim()) as { running?: unknown; reachable?: unknown; status?: unknown };
     if (typeof data.running === 'boolean') daemon = data.running ? 'running' : 'stopped';
+    else if (typeof data.reachable === 'boolean') daemon = data.reachable ? 'running' : 'stopped';
     else if (typeof data.status === 'string') daemon = data.status;
   } catch {
     // older OCG versions do not support --json; the version probe is enough for the panel
   }
-  return { ...status, daemon };
+  return { ...enriched, daemon };
 }
 
 /** Installs browser-use through uv/pipx/pip, whichever the machine already has. */
