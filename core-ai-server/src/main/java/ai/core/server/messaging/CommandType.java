@@ -19,5 +19,14 @@ public enum CommandType {
     A2A_RESUME_TASK,
     SANDBOX_CATALOG,
     SANDBOX_TOOL_CALL,
-    SANDBOX_TOOL_POLL
+    SANDBOX_TOOL_POLL;
+
+    public boolean rpc() {
+        return switch (this) {
+            case LOAD_TOOLS, LOAD_SKILLS, UNLOAD_SKILLS, LOAD_SUB_AGENTS, GENERATE_AGENT_DRAFT,
+                 A2A_START_TASK, A2A_CANCEL_TASK, A2A_RESUME_TASK,
+                 SANDBOX_CATALOG, SANDBOX_TOOL_CALL, SANDBOX_TOOL_POLL -> true;
+            default -> false;
+        };
+    }
 }

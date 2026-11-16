@@ -70,6 +70,10 @@ public class InProcessCommandHandler {
      * Process a single command. Called by {@link CommandConsumer} from any thread.
      */
     public void handle(SessionCommand command) {
+        handle(command, null);
+    }
+
+    private void handle(SessionCommand command, RpcResponder responder) {
         LOGGER.info("processing command: type={}, sessionId={}", command.type(), command.sessionId());
         try {
             if (command.sessionId() != null && command.type() != CommandType.CLOSE_SESSION) {
@@ -81,33 +85,52 @@ public class InProcessCommandHandler {
                 case APPROVE_TOOL -> handleApproveTool(command);
                 case CANCEL_TURN -> handleCancelTurn(command);
                 case CLOSE_SESSION -> handleCloseSession(command);
-                case LOAD_TOOLS -> handleLoadTools(command);
-                case LOAD_SKILLS -> handleLoadSkills(command);
-                case UNLOAD_SKILLS -> handleUnloadSkills(command);
-                case LOAD_SUB_AGENTS -> handleLoadSubAgents(command);
-                case GENERATE_AGENT_DRAFT -> handleGenerateAgentDraft(command);
-                case A2A_START_TASK -> handleA2AStartTask(command);
-                case A2A_CANCEL_TASK -> handleA2ACancelTask(command);
-                case A2A_RESUME_TASK -> handleA2AResumeTask(command);
-                case SANDBOX_CATALOG -> respondOk(command, sandboxHubCommands.catalog(command));
-                case SANDBOX_TOOL_CALL -> respondOk(command, sandboxHubCommands.call(command));
-                case SANDBOX_TOOL_POLL -> respondOk(command, sandboxHubCommands.poll(command));
+                case LOAD_TOOLS -> handleLoadTools(command, responder);
+                case LOAD_SKILLS -> handleLoadSkills(command, responder);
+                case UNLOAD_SKILLS -> handleUnloadSkills(command, responder);
+                case LOAD_SUB_AGENTS -> handleLoadSubAgents(command, responder);
+                case GENERATE_AGENT_DRAFT -> handleGenerateAgentDraft(command, responder);
+                case A2A_START_TASK -> handleA2AStartTask(command, responder);
+                case A2A_CANCEL_TASK -> handleA2ACancelTask(command, responder);
+                case A2A_RESUME_TASK -> handleA2AResumeTask(command, responder);
+                case SANDBOX_CATALOG -> respondOk(responder, command, sandboxHubCommands.catalog(command));
+                case SANDBOX_TOOL_CALL -> respondOk(responder, command, sandboxHubCommands.call(command));
+                case SANDBOX_TOOL_POLL -> respondOk(responder, command, sandboxHubCommands.poll(command));
                 default -> LOGGER.warn("unknown command type: {}", command.type());
             }
         } catch (Throwable t) {
-            handleCommandError(command, t);
+            handleCommandError(command, t, responder);
         }
     }
 
-    private void handleCommandError(SessionCommand command, Throwable t) {
-        LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
-        publishCommandError(command, t);
-        tryRespondError(command, t.getMessage());
+    /**
+     * Execute an RPC command synchronously and return its response JSON instead of publishing it
+     * to Redis. Called only by {@link InternalRpcController}.
+     */
+    public String handleRpc(SessionCommand command) {
+        if (!command.type().rpc()) {
+            throw new IllegalArgumentException("not an rpc command, type=" + command.type());
+        }
+        if (command.requestId() == null || command.requestId().isBlank()) {
+            throw new IllegalArgumentException("rpc command must have a requestId, type=" + command.type());
+        }
+        var responder = new RpcResponder();
+        handle(command, responder);
+        if (responder.response == null) {
+            throw new IllegalStateException("rpc command produced no response, type=" + command.type());
+        }
+        return responder.response;
     }
 
-    private void tryRespondError(SessionCommand command, String message) {
+    private void handleCommandError(SessionCommand command, Throwable t, RpcResponder responder) {
+        LOGGER.error("failed to process command, sessionId={}, type={}", command.sessionId(), command.type(), t);
+        publishCommandError(command, t);
+        tryRespondError(command, t.getMessage(), responder);
+    }
+
+    private void tryRespondError(SessionCommand command, String message, RpcResponder responder) {
         try {
-            respondError(command, message);
+            respondError(responder, command, message);
         } catch (Throwable ignored) {
             // best-effort: under OOM responding may also fail; do not rethrow
         }
@@ -210,17 +233,17 @@ public class InProcessCommandHandler {
 
     // --- RPC handlers ---
 
-    private void handleLoadTools(SessionCommand command) {
+    private void handleLoadTools(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(LoadToolsPayload.class, command.payload());
         var toolRefs = payload != null ? payload.tools : null;
         if (toolRefs == null || toolRefs.isEmpty()) {
-            respondOk(command, JsonUtil.toJson(Map.of("loadedTools", List.of())));
+            respondOk(responder, command, JsonUtil.toJson(Map.of("loadedTools", List.of())));
             return;
         }
         var loadedTools = sessionManager.loadToolRefs(command.sessionId(), toolRefs, command.userId());
         var idNames = LoadedToolRefNames.toIdNames(loadedTools, toolRegistryService);
         var result = JsonUtil.toJson(Map.of("loadedTools", idNames));
-        respondOk(command, result);
+        respondOk(responder, command, result);
     }
 
     private void publishCommandError(SessionCommand command, Throwable t) {
@@ -252,7 +275,7 @@ public class InProcessCommandHandler {
         }
     }
 
-    private void handleLoadSkills(SessionCommand command) {
+    private void handleLoadSkills(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(LoadSkillsPayload.class, command.payload());
         var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
         var names = sessionManager.loadSkills(command.sessionId(), skillIds, command.userId());
@@ -264,27 +287,27 @@ public class InProcessCommandHandler {
             idNames.add(v);
         }
         var result = JsonUtil.toJson(Map.of("loadedSkills", idNames));
-        respondOk(command, result);
+        respondOk(responder, command, result);
     }
 
-    private void handleUnloadSkills(SessionCommand command) {
+    private void handleUnloadSkills(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(UnloadSkillsPayload.class, command.payload());
         var skillIds = IdLists.clean(payload != null ? payload.skillIds : null);
         if (skillIds.isEmpty()) {
             var remaining = sessionManager.unloadSkills(command.sessionId(), List.of(), command.userId());
-            respondOk(command, JsonUtil.toJson(Map.of("remainingSkills", remaining)));
+            respondOk(responder, command, JsonUtil.toJson(Map.of("remainingSkills", remaining)));
             return;
         }
         var remaining = sessionManager.unloadSkills(command.sessionId(), skillIds, command.userId());
         var result = JsonUtil.toJson(Map.of("remainingSkills", remaining));
-        respondOk(command, result);
+        respondOk(responder, command, result);
     }
 
-    private void handleLoadSubAgents(SessionCommand command) {
+    private void handleLoadSubAgents(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(LoadSubAgentsPayload.class, command.payload());
         var agentIds = IdLists.clean(payload != null ? payload.agentIds : null);
         if (agentIds.isEmpty()) {
-            respondOk(command, JsonUtil.toJson(Map.of("loadedSubAgents", List.of())));
+            respondOk(responder, command, JsonUtil.toJson(Map.of("loadedSubAgents", List.of())));
             return;
         }
         var definitions = agentIds.stream()
@@ -299,48 +322,56 @@ public class InProcessCommandHandler {
             idNames.add(v);
         }
         var result = JsonUtil.toJson(Map.of("loadedSubAgents", idNames));
-        respondOk(command, result);
+        respondOk(responder, command, result);
     }
 
-    private void handleGenerateAgentDraft(SessionCommand command) {
+    private void handleGenerateAgentDraft(SessionCommand command, RpcResponder responder) {
         var session = sessionManager.getSession(command.sessionId());
         var draft = agentDraftGenerator.generate(session);
         var result = JsonUtil.toJson(draft);
-        respondOk(command, result);
+        respondOk(responder, command, result);
     }
 
-    private void handleA2AStartTask(SessionCommand command) {
+    private void handleA2AStartTask(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(ai.core.server.a2a.A2AStartTaskCommandPayload.class, command.payload());
         var task = serverA2AService.startTaskOnOwner(payload, command.userId());
-        respondOk(command, JsonUtil.toJson(task));
+        respondOk(responder, command, JsonUtil.toJson(task));
     }
 
-    private void handleA2ACancelTask(SessionCommand command) {
+    private void handleA2ACancelTask(SessionCommand command, RpcResponder responder) {
         var payload = JsonUtil.fromJson(Map.class, command.payload());
         var taskId = (String) payload.get("taskId");
         var task = serverA2AService.cancelTaskOnOwner(taskId);
-        respondOk(command, JsonUtil.toJson(task));
+        respondOk(responder, command, JsonUtil.toJson(task));
     }
 
-    private void handleA2AResumeTask(SessionCommand command) {
+    private void handleA2AResumeTask(SessionCommand command, RpcResponder responder) {
         var message = JsonUtil.fromJson(Message.class, command.payload());
         var task = serverA2AService.resumeTaskOnOwner(message, command.userId());
-        respondOk(command, JsonUtil.toJson(task));
+        respondOk(responder, command, JsonUtil.toJson(task));
     }
 
     // --- RPC response helpers ---
 
-    private void respondOk(SessionCommand command, String payloadJson) {
+    private void respondOk(RpcResponder responder, SessionCommand command, String payloadJson) {
         var requestId = command.requestId();
         if (requestId == null) return;  // not an RPC command, no response needed
         var response = RpcClient.okResponse(payloadJson);
-        publishResponse(requestId, response);
+        respond(responder, requestId, response);
     }
 
-    private void respondError(SessionCommand command, String message) {
+    private void respondError(RpcResponder responder, SessionCommand command, String message) {
         var requestId = command.requestId();
         if (requestId == null) return;
         var response = RpcClient.errorResponse(message);
+        respond(responder, requestId, response);
+    }
+
+    private void respond(RpcResponder responder, String requestId, String response) {
+        if (responder != null) {
+            responder.response = response;
+            return;
+        }
         publishResponse(requestId, response);
     }
 
@@ -348,6 +379,10 @@ public class InProcessCommandHandler {
         try (var jedis = jedisPool.getResource()) {
             jedis.publish(RPC_CHANNEL_PREFIX + requestId, json);
         }
+    }
+
+    private static final class RpcResponder {
+        private String response;
     }
 
     // --- Payload DTOs (internal) ---

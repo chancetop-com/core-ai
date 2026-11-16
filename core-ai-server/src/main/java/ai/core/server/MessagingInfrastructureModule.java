@@ -6,12 +6,15 @@ import ai.core.server.a2a.A2ATaskSnapshotStore;
 import ai.core.server.a2a.PgA2ATaskSnapshotStore;
 import ai.core.server.a2a.RedisA2ATaskSnapshotStore;
 import ai.core.server.messaging.EventPublisher;
+import ai.core.server.messaging.HttpRpcTransport;
 import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.LeaseCleanupJob;
 import ai.core.server.messaging.PgOwnershipStore;
 import ai.core.server.messaging.PgTurnStateStore;
 import ai.core.server.messaging.PodRegistry;
+import ai.core.server.messaging.RedisRpcTransport;
 import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.RpcMode;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.session.PgSessionBudgetStore;
@@ -26,11 +29,14 @@ import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 /**
  * @author stephen
  */
 class MessagingInfrastructureModule extends Module {
     @Override
+    @SuppressFBWarnings("WEM_OBSCURING_EXCEPTION")
     protected void initialize() {
         var redisHost = property("sys.jedis.host").orElse("localhost");
         var redisPort = Integer.parseInt(property("sys.jedis.port").orElse("6379"));
@@ -38,14 +44,22 @@ class MessagingInfrastructureModule extends Module {
         var storeMode = property("sys.store.mode").orElse("mongo");
         var stateBackend = StateBackend.of(property("sys.state.backend").orElse("redis"), storeMode, "sys.state.backend");
         var leaseBackend = StateBackend.of(property("sys.lease.backend").orElse("redis"), storeMode, "sys.lease.backend");
+        var rpcMode = RpcMode.of(property("sys.rpc.transport").orElse("redis"));
+        var internalToken = property("sys.internal.token").orElse("");
+        if (rpcMode == RpcMode.HTTP && internalToken.isBlank()) {
+            throw new IllegalArgumentException("sys.rpc.transport=http requires sys.internal.token");
+        }
+
         var ownershipRegistry = ownershipRegistry(jedisPool, leaseBackend);
-        var turnStateRegistry = turnStateRegistry(jedisPool, leaseBackend, ownershipRegistry);
+        var podRegistry = podRegistry(leaseBackend, rpcMode, ownershipRegistry);
+        var turnStateRegistry = turnStateRegistry(jedisPool, leaseBackend, podRegistry);
         onStartup(turnStateRegistry::start);
         onShutdown(turnStateRegistry::stop);
         bind(new EventPublisher(jedisPool));
         bind(new A2ATaskRegistry(a2aTaskStore(jedisPool, stateBackend), ownershipRegistry));
         bind(new A2AEventRelay(jedisPool));
-        bind(new RpcClient(jedisPool, ownershipRegistry));
+        var httpRpcTransport = rpcMode == RpcMode.HTTP ? new HttpRpcTransport(podRegistry::address, internalToken) : null;
+        bind(new RpcClient(ownershipRegistry, new RedisRpcTransport(jedisPool), httpRpcTransport));
         // generic "run locally when this pod owns the session, otherwise RPC to the owner" helper; bound
         // here so modules loaded before MessagingRuntimeModule can inject it
         bind(PodLocalExecutor.class);
@@ -65,13 +79,18 @@ class MessagingInfrastructureModule extends Module {
         return bind(new SessionOwnershipRegistry(jedisPool));
     }
 
-    private TurnStateRegistry turnStateRegistry(JedisPool jedisPool, StateBackend leaseBackend, SessionOwnershipRegistry ownershipRegistry) {
+    private PodRegistry podRegistry(StateBackend leaseBackend, RpcMode rpcMode, SessionOwnershipRegistry ownershipRegistry) {
+        if (leaseBackend != StateBackend.POSTGRES && rpcMode != RpcMode.HTTP) return null;
+        var podRegistry = bind(new PodRegistry(ownershipRegistry.getHostname(), podAddress(ownershipRegistry.getHostname())));
+        onStartup(podRegistry::start);
+        onShutdown(podRegistry::stop);
+        schedule().fixedRate("lease-cleanup", bind(new LeaseCleanupJob(leaseBackend == StateBackend.POSTGRES)), Duration.ofMinutes(1));
+        return podRegistry;
+    }
+
+    private TurnStateRegistry turnStateRegistry(JedisPool jedisPool, StateBackend leaseBackend, PodRegistry podRegistry) {
         if (leaseBackend == StateBackend.POSTGRES) {
-            var podRegistry = bind(new PodRegistry(ownershipRegistry.getHostname(), podAddress(ownershipRegistry.getHostname())));
-            onStartup(podRegistry::start);
-            onShutdown(podRegistry::stop);
             bind(SessionBudgetStore.class, bind(PgSessionBudgetStore.class));
-            schedule().fixedRate("lease-cleanup", bind(LeaseCleanupJob.class), Duration.ofMinutes(1));
             return bind(new TurnStateRegistry(bind(PgTurnStateStore.class), podRegistry.podId()));
         }
         bind(SessionBudgetStore.class, new RedisSessionBudgetStore(jedisPool));
@@ -85,6 +104,7 @@ class MessagingInfrastructureModule extends Module {
 
     private String podAddress(String podId) {
         var ip = System.getenv("POD_IP");
-        return (ip == null || ip.isBlank() ? podId : ip) + ":8080";
+        var port = property("sys.http.listen").orElse("8080");
+        return (ip == null || ip.isBlank() ? podId : ip) + ":" + port;
     }
 }

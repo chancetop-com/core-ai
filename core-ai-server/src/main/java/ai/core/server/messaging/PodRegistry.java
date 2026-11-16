@@ -35,6 +35,19 @@ public class PodRegistry {
         return podId;
     }
 
+    public String address(String podId) {
+        try {
+            return database.selectOne("SELECT address FROM messaging.pods WHERE pod_id = ? "
+                    + "AND heartbeat_at > now() - make_interval(secs => ?)",
+                PgPodAddressRow.class, podId, PgOwnershipStore.LIVENESS_SECONDS)
+                .map(row -> row.address)
+                .orElse(null);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to resolve pod address, podId={}", podId, e);
+            return null;
+        }
+    }
+
     public void start() {
         database.execute("INSERT INTO messaging.pods (pod_id, address, started_at, heartbeat_at) VALUES (?, ?, now(), now()) "
             + "ON CONFLICT (pod_id) DO UPDATE SET address = EXCLUDED.address, started_at = EXCLUDED.started_at, heartbeat_at = now()",

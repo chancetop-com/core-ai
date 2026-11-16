@@ -30,6 +30,7 @@ class PgLeaseStoresTest {
         database.password = System.getenv().getOrDefault("CORE_AI_PG_TEST_PASSWORD", "core_ai");
         database.view(PgLeaseOwnerRow.class);
         database.view(PgLeaseCountRow.class);
+        database.view(PgPodAddressRow.class);
         createTables();
         return database;
     }
@@ -128,6 +129,18 @@ class PgLeaseStoresTest {
         DATABASE.execute("UPDATE messaging.user_session_counts SET expires_at = now() - make_interval(secs => ?) WHERE user_id = ?",
             1, user);
         assertTrue(store.acquire(user, 1));
+    }
+
+    @Test
+    void podAddressExpiresWithHeartbeat() {
+        var registry = new PodRegistry(pod1, "unused");
+        registry.database = DATABASE;
+        DATABASE.execute("UPDATE messaging.pods SET address = ? WHERE pod_id = ?", "10.0.0.1:8080", pod1);
+
+        assertEquals("10.0.0.1:8080", registry.address(pod1));
+
+        heartbeatAgeSeconds(pod1, 60);
+        assertNull(registry.address(pod1));
     }
 
     private void registerPod(String podId) {

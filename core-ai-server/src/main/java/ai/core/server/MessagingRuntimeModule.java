@@ -12,8 +12,11 @@ import ai.core.server.messaging.CommandPublisher;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
+import ai.core.server.messaging.InternalRpcController;
 import ai.core.server.messaging.CommandRpcDependencies;
+import ai.core.server.messaging.PodRegistry;
 import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.RpcMode;
 import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionCommandDependencies;
@@ -65,6 +68,11 @@ class MessagingRuntimeModule extends Module {
         var rpcDependencies = new CommandRpcDependencies(bean(AgentDraftGenerator.class), bean(AgentDefinitionService.class),
                 bean(ServerA2AService.class), jedisPool, bean(ToolRegistryService.class), bean(SandboxHubService.class));
         var commandHandler = new InProcessCommandHandler(sessionDependencies, rpcDependencies);
+        if (RpcMode.of(property("sys.rpc.transport").orElse("redis")) == RpcMode.HTTP) {
+            var controller = new InternalRpcController(commandHandler, bean(PodRegistry.class),
+                property("sys.internal.token").orElse(""), property("sys.internal.token.previous").orElse(""));
+            http().route(HTTPMethod.POST, "/_internal/rpc", controller::handle);
+        }
         // unowned sessions run on the instance that received the request (its SSE channel is here; nothing else on the
         // same Redis can race for the turn); false restores distribution through the shared unowned stream
         var claimLocally = "true".equalsIgnoreCase(property("sys.session.claimLocally").orElse("true"));
