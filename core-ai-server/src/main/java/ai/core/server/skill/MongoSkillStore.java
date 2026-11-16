@@ -97,8 +97,46 @@ public class MongoSkillStore implements SkillStore {
     }
 
     @Override
+    public boolean insertIfAbsent(SkillDefinition definition) {
+        if (skillCollection.get(definition.id).isPresent()) return false;
+        if (skillCollection.findOne(Filters.eq("qualified_name", definition.qualifiedName)).isPresent()) return false;
+        try {
+            skillCollection.insert(definition);
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
+    @Override
     public void replace(SkillDefinition definition) {
         skillCollection.replace(definition);
+    }
+
+    @Override
+    public boolean replaceIfRevision(SkillDefinition definition, int expectedRevision) {
+        var revisionFilter = expectedRevision == 0
+            ? Filters.or(Filters.eq("revision", 0), Filters.exists("revision", false))
+            : Filters.eq("revision", expectedRevision);
+        var filter = Filters.and(Filters.eq("_id", definition.id), revisionFilter);
+        return skillCollection.update(filter, Updates.combine(
+            Updates.set("namespace", definition.namespace),
+            Updates.set("name", definition.name),
+            Updates.set("qualified_name", definition.qualifiedName),
+            Updates.set("directory_name", definition.directoryName),
+            Updates.set("description", definition.description),
+            Updates.set("source_type", definition.sourceType),
+            Updates.set("content", definition.content),
+            Updates.set("allowed_tools", definition.allowedTools),
+            Updates.set("metadata", definition.metadata),
+            Updates.set("resources", definition.resources),
+            Updates.set("repo_config", definition.repoConfig),
+            Updates.set("version", definition.version),
+            Updates.set("digest", definition.digest),
+            Updates.set("user_id", definition.userId),
+            Updates.set("updated_at", definition.updatedAt),
+            Updates.set("revision", definition.revision),
+            Updates.set("quality_receipt", definition.qualityReceipt))) > 0;
     }
 
     @Override

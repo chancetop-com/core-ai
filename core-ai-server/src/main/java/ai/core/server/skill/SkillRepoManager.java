@@ -1,10 +1,5 @@
 package ai.core.server.skill;
 
-import ai.core.server.domain.SkillDefinition;
-import ai.core.server.domain.SkillRepoConfig;
-import ai.core.server.domain.SkillSourceType;
-import ai.core.skill.SkillMetadata;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -14,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -93,64 +87,7 @@ class SkillRepoManager {
         }
     }
 
-    private final SkillStore skillStore;
-    private final SkillBlobStore blobStore;
-
     SkillRepoManager(SkillStore skillStore, SkillBlobStore blobStore) {
-        this.skillStore = skillStore;
-        this.blobStore = blobStore;
-    }
-
-    private SkillResourceWriter writer() {
-        return new SkillResourceWriter(blobStore);
-    }
-
-    SkillDefinition registerOrUpdate(String userId, String namespace, SkillMetadata skill, SkillRepoSource source) {
-        String qualifiedName = namespace + "/" + skill.getName();
-        Path skillDir = skill.getSkillDir() != null
-            ? Path.of(skill.getSkillDir())
-            : Path.of(skill.getPath()).getParent();
-
-        if (skillDir == null) {
-            throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
-        }
-
-        var existing = skillStore.findByQualifiedName(qualifiedName);
-        var entity = existing.orElseGet(SkillDefinition::new);
-        var previous = entity.resources;
-        if (entity.id == null) {
-            entity.id = new ObjectId().toHexString();
-            entity.createdAt = ZonedDateTime.now();
-        }
-        entity.namespace = namespace;
-        entity.name = skill.getName();
-        entity.qualifiedName = qualifiedName;
-        entity.description = skill.getDescription();
-        entity.sourceType = SkillSourceType.REPO;
-        entity.content = readSkillMdFromDir(skillDir);
-        var bytes = readResourceBytes(skillDir, skill.getResources());
-        entity.resources = writer().toResources(entity.id, entity.content, bytes);
-        entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
-        entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-        entity.userId = userId;
-        entity.digest = SkillDigest.of(entity.content, bytes);
-        entity.updatedAt = ZonedDateTime.now();
-
-        var repoConfig = new SkillRepoConfig();
-        repoConfig.repoUrl = source.url();
-        repoConfig.branch = effectiveBranch(source.branch());
-        repoConfig.skillPath = source.skillPath();
-        repoConfig.lastSyncedAt = ZonedDateTime.now();
-        repoConfig.lastCommitHash = source.commitHash();
-        entity.repoConfig = repoConfig;
-
-        if (existing.isPresent()) {
-            skillStore.replace(entity);
-        } else {
-            skillStore.insert(entity);
-        }
-        blobStore.deleteReplaced(previous, entity.resources);
-        return entity;
     }
 
     String readSkillMdFromDir(Path skillDir) {

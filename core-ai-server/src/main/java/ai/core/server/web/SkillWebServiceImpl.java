@@ -95,7 +95,9 @@ public class SkillWebServiceImpl implements SkillWebService {
                 .map(r -> new SkillResourceUpdate(r.path, Boolean.TRUE.equals(r.keep), r.content))
                 .toList();
         }
-        return toView(skillService.update(id, request.description, request.content, request.allowedTools, resources));
+        var outcome = skillService.updateOutcome(id, request.description, request.content, request.allowedTools, resources);
+        ai.core.server.skill.quality.SkillQualityHeaders.put(webContext, outcome.report());
+        return toView(outcome.entity());
     }
 
     @Override

@@ -157,7 +157,13 @@ public class SelfHarnessDispatcher {
                 if (namespace == null || namespace.isBlank()) throw new IllegalArgumentException("namespace is required");
                 var content = (String) params.get("content");
                 if (content == null || content.isBlank()) throw new IllegalArgumentException("content is required");
-                yield skillService.upload(userId, namespace, content.getBytes(StandardCharsets.UTF_8), toResourceBytes(params.get("resources")));
+                var skillDir = (String) params.get("skill_dir");
+                if (skillDir == null || skillDir.isBlank()) {
+                    var matcher = java.util.regex.Pattern.compile("(?m)^name:\\s*[\"']?([^\\s\"']+)").matcher(content);
+                    skillDir = matcher.find() ? matcher.group(1) : null;
+                }
+                yield skillService.upload(userId, namespace, skillDir, content.getBytes(StandardCharsets.UTF_8),
+                    toResourceBytes(params.get("resources")));
             }
             case "update_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);

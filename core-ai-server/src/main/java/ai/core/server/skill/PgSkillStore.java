@@ -122,8 +122,22 @@ public class PgSkillStore implements SkillStore {
     }
 
     @Override
+    public boolean insertIfAbsent(SkillDefinition definition) {
+        return store().insertIfAbsent(definition);
+    }
+
+    @Override
     public void replace(SkillDefinition definition) {
         store().replace(definition);
+    }
+
+    @Override
+    public boolean replaceIfRevision(SkillDefinition definition, int expectedRevision) {
+        var updated = database.execute("UPDATE " + TABLE
+                + " SET data = ?::jsonb, updated_at = now()"
+                + " WHERE id = ? AND COALESCE((data ->> 'revision')::int, 0) = ?",
+            JsonUtil.toJson(definition), definition.id, expectedRevision);
+        return updated > 0;
     }
 
     @Override

@@ -2534,9 +2534,10 @@ export const api = {
             request<SkillDefinition>(`/api/skills/${id}/sync`, { method: 'POST' }),
         download: (id: string) =>
             request<SkillDownloadResponse>(`/api/skills/${id}/download`),
-        upload: async (skillFile: File, resourceFiles?: File[]): Promise<SkillDefinition> => {
+        upload: async (skillFile: File, resourceFiles?: File[], skillDir?: string): Promise<SkillDefinition> => {
             const formData = new FormData();
             formData.append('skill_file', skillFile);
+            if (skillDir) formData.append('skill_dir', skillDir);
             if (resourceFiles) {
                 for (const f of resourceFiles) {
                     formData.append(f.name, f);

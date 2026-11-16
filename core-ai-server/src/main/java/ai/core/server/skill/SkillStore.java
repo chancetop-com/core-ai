@@ -35,7 +35,13 @@ public interface SkillStore {
 
     void insert(SkillDefinition definition);
 
+    /** Inserts only when the id does not exist yet; false means a concurrent writer won. */
+    boolean insertIfAbsent(SkillDefinition definition);
+
     void replace(SkillDefinition definition);
+
+    /** Replaces the document only when its current revision equals {@code expectedRevision}. */
+    boolean replaceIfRevision(SkillDefinition definition, int expectedRevision);
 
     void delete(String id);
 

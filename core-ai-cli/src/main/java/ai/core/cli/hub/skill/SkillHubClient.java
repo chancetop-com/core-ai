@@ -96,7 +96,18 @@ public class SkillHubClient {
     }
 
     public String push(Map<String, Path> files) {
-        return apiClient(timeout).postMultipart("/api/skills/upload", files);
+        return push(files, Map.of());
+    }
+
+    public String push(Map<String, Path> files, Map<String, String> fields) {
+        return apiClient(timeout).postMultipart("/api/skills/upload", fields, toMultipart(files));
+    }
+
+    private java.util.Map<String, RemoteApiClient.MultipartFile> toMultipart(Map<String, Path> files) {
+        var mapped = new java.util.LinkedHashMap<String, RemoteApiClient.MultipartFile>();
+        files.forEach((name, file) -> mapped.put(name,
+            new RemoteApiClient.MultipartFile(file, null, "application/octet-stream")));
+        return mapped;
     }
 
     private <T> T get(String path, Class<T> responseClass) {

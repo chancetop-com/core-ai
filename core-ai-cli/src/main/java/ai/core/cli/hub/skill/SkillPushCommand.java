@@ -44,7 +44,7 @@ class SkillPushCommand extends HubCommandBase {
             files.put(resource, absolute.resolve(resource));
         }
         metadata("uploading " + local.name() + " ...");
-        String body = skillClient().push(files);
+        String body = skillClient().push(files, Map.of("skill_dir", absolute.getFileName().toString()));
         if (body == null) {
             throw new HubCliError(HubExitCodes.TOOL_ERROR, "upload failed");
         }

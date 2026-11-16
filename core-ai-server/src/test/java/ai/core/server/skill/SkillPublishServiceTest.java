@@ -1,0 +1,141 @@
+package ai.core.server.skill;
+
+import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillSourceType;
+import ai.core.server.quality.domain.QualityGateResult;
+import ai.core.server.skill.quality.SkillQualityGateException;
+import org.junit.jupiter.api.Test;
+
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class SkillPublishServiceTest {
+    @Test
+    void publishesNewSkillWithReceipt() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        when(store.insertIfAbsent(any())).thenReturn(true);
+        var service = service(store, blobStore);
+
+        var outcome = service.publish(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), resources()));
+
+        assertEquals(1, outcome.entity().revision);
+        assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
+        assertNotNull(outcome.entity().qualityReceipt);
+        assertEquals(outcome.report().runId, outcome.entity().qualityReceipt.runId);
+        verify(store).insertIfAbsent(any());
+    }
+
+    @Test
+    void rejectsInvalidPackageWithoutWriting() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        var service = service(store, blobStore);
+
+        var error = assertThrows(SkillQualityGateException.class,
+            () -> service.publish(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+                content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8)))));
+
+        assertEquals(SkillQualityGateException.REJECTED, error.errorCode());
+        verify(store, never()).insertIfAbsent(any());
+        verify(blobStore, never()).put(any(), any(), any());
+    }
+
+    @Test
+    void reportsStaleRevisionWhenCasLoses() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        var existing = new SkillDefinition();
+        existing.id = "1";
+        existing.namespace = "Admin";
+        existing.name = "demo-skill";
+        existing.directoryName = "demo-skill";
+        existing.qualifiedName = "Admin/demo-skill";
+        existing.content = content();
+        existing.revision = 2;
+        existing.sourceType = SkillSourceType.UPLOAD;
+        existing.userId = "u1";
+        when(store.replaceIfRevision(any(), eq(2))).thenReturn(false);
+        var service = service(store, blobStore);
+
+        var request = SkillPublishRequest.upload("u1", "Admin", "demo-skill", content(), resources());
+        request.existing = existing;
+        var error = assertThrows(SkillQualityGateException.class, () -> service.publish(request));
+
+        assertEquals(SkillQualityGateException.STALE, error.errorCode());
+        verify(store, never()).insertIfAbsent(any());
+    }
+
+    private SkillPublishService service(SkillStore store, SkillBlobStore blobStore) {
+        var service = new SkillPublishService();
+        service.skillStore = store;
+        service.blobStore = blobStore;
+        return service;
+    }
+
+    private Map<String, byte[]> resources() {
+        var resources = new LinkedHashMap<String, byte[]>();
+        resources.put("README.txt", "hello".getBytes(StandardCharsets.UTF_8));
+        resources.put("eval/eval.json", evalDataset().getBytes(StandardCharsets.UTF_8));
+        return resources;
+    }
+
+    private String content() {
+        return """
+            ---
+            name: demo-skill
+            description: "Do demo things. Use when asked for a demo. Scope: demo inputs only; not for production."
+            metadata:
+              version: 1.0.0
+              author: core-ai
+              tags: demo
+            ---
+            ## Workflow
+            1. Read.
+            2. Write.
+            ## Decision making
+            If out of scope, refuse.
+            ## Output specification
+            One demo.md.
+            ## Error handling
+            Ask or retry once.
+            ## Quality assurance
+            Run eval.
+            """;
+    }
+
+    private String evalDataset() {
+        var cases = new StringBuilder();
+        cases.append(evalCase("trigger-001", "trigger_accuracy", "{\"triggered\":true}"));
+        cases.append(evalCase("trigger-002", "trigger_accuracy", "{\"triggered\":false}"));
+        cases.append(evalCase("scope-001", "scope_accuracy",
+            "{\"in_scope\":true,\"expected_behavior\":\"handle\"}"));
+        cases.append(evalCase("tool-001", "tool_accuracy", "{\"no_tools\":true}"));
+        cases.append(evalCase("param-001", "parameter_accuracy",
+            "{\"tool\":\"read_file\",\"arguments\":{},\"match\":\"schema\"}"));
+        cases.append(evalCase("instr-001", "instruction_following", "{\"rules\":[\"one file\"]}"));
+        cases.append(evalCase("output-001", "output_quality", "{\"outputs\":[]}"));
+        cases.append(evalCase("robust-001", "robustness",
+            "{\"failure_mode\":\"missing input\",\"expected_behavior\":\"ask_user\"}"));
+        return "{\"schema_version\":1,\"skill\":\"demo-skill\",\"dataset_version\":\"1.0.0\",\"cases\":["
+            + cases.substring(0, cases.length() - 1) + "]}";
+    }
+
+    private String evalCase(String id, String dimension, String expected) {
+        return "{\"id\":\"" + id + "\",\"dimension\":\"" + dimension + "\","
+            + "\"input\":{\"user_request\":\"run the demo\"},"
+            + "\"expected\":" + expected + ",\"assertions\":[{\"kind\":\"no_crash\"}]},";
+    }
+}

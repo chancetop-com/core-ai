@@ -154,6 +154,45 @@ class SkillResourceWriter {
         return merged;
     }
 
+    /**
+     * Merge for the gate: the same replacement semantics as {@link #merge}, but pure bytes and no object
+     * storage writes. Blob-backed rows are read back so the permission and eval rules can see their text.
+     */
+    Map<String, byte[]> mergeBytes(List<SkillResource> existing, List<SkillResourceUpdate> updates) {
+        Map<String, SkillResource> byPath = new HashMap<>();
+        if (existing != null) {
+            for (var resource : existing) byPath.put(resource.path, resource);
+        }
+        var seen = new HashSet<String>();
+        var merged = new java.util.LinkedHashMap<String, byte[]>();
+        for (var update : updates) {
+            if (!seen.add(update.path())) throw new BadRequestException("duplicate resource path: " + update.path());
+            var bytes = update.keep()
+                ? bytesOf(byPath.get(update.path()), update.path())
+                : update.content() == null ? null : update.content().getBytes(StandardCharsets.UTF_8);
+            if (bytes == null) throw new BadRequestException("resource does not exist and cannot be kept: " + update.path());
+            merged.put(update.path(), bytes);
+        }
+        return merged;
+    }
+
+    Map<String, byte[]> bytesOf(List<SkillResource> resources) {
+        var result = new java.util.LinkedHashMap<String, byte[]>();
+        if (resources == null) return result;
+        for (var resource : resources) {
+            var bytes = resource.storagePath != null ? blobStore.fetch(resource.storagePath)
+                : resource.content == null ? null : resource.content.getBytes(StandardCharsets.UTF_8);
+            if (bytes != null) result.put(resource.path, bytes);
+        }
+        return result;
+    }
+
+    private byte[] bytesOf(SkillResource resource, String path) {
+        if (resource == null) throw new BadRequestException("resource does not exist and cannot be kept: " + path);
+        if (resource.storagePath != null) return blobStore.fetch(resource.storagePath);
+        return resource.content == null ? null : resource.content.getBytes(StandardCharsets.UTF_8);
+    }
+
     /** Moves inline resources to object storage when the inline part exceeds the document budget. */
     void enforceBudget(String skillId, String skillMd, List<SkillResource> resources) {
         if (resources == null || resources.isEmpty()) return;

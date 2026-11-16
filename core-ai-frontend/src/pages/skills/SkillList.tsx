@@ -215,6 +215,7 @@ export default function SkillList() {
         if (!files || files.length === 0) return;
 
         let skillFile: File | null = null;
+        let skillDir = '';
         const resourceFiles: File[] = [];
 
         for (let i = 0; i < files.length; i++) {
@@ -222,6 +223,7 @@ export default function SkillList() {
             const relativePath = file.webkitRelativePath || file.name;
             const parts = relativePath.split('/');
             const innerPath = parts.slice(1).join('/');
+            if (parts.length > 1) skillDir = parts[0];
             if (innerPath === 'SKILL.md') {
                 skillFile = file;
             } else if (innerPath && !isIgnoredResourcePath(innerPath)) {
@@ -244,7 +246,7 @@ export default function SkillList() {
 
         setUploading(true);
         try {
-            const created = await api.skills.upload(skillFile, resourceFiles.length > 0 ? resourceFiles : undefined);
+            const created = await api.skills.upload(skillFile, resourceFiles.length > 0 ? resourceFiles : undefined, skillDir);
             if (created?.id) navigate(`/skills/${created.id}/edit`);
         } catch (err) {
             alert('Upload failed: ' + (err instanceof Error ? err.message : 'unknown error'));

@@ -29,6 +29,15 @@ public class SkillDefinition {
     @Field(name = "qualified_name")
     public String qualifiedName;
 
+    @Field(name = "directory_name")
+    public String directoryName;
+
+    @Field(name = "revision")
+    public Integer revision;
+
+    @Field(name = "quality_receipt")
+    public SkillQualityReceipt qualityReceipt;
+
     @Field(name = "description")
     public String description;
 

@@ -33,6 +33,7 @@ public class CorsInterceptor implements Interceptor, ErrorHandler {
         var response = invocation.proceed();
 
         ai.core.server.quality.QualityHeaders.apply(invocation.context(), response);
+        ai.core.server.skill.quality.SkillQualityHeaders.apply(invocation.context(), response);
         if (response.header("Access-Control-Allow-Origin").isEmpty()) {
             response.header("Access-Control-Allow-Origin", "*");
         }

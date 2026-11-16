@@ -5,6 +5,7 @@ import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
+import ai.core.server.skill.SkillPublishService;
 import ai.core.server.skill.SkillRepoSyncJob;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillToolAssembler;
@@ -22,6 +23,7 @@ public class SkillModule extends Module {
     @Override
     protected void initialize() {
         bind(SkillBlobStore.class);
+        bind(SkillPublishService.class);
         bind(SkillService.class);
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);

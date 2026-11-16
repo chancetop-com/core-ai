@@ -1,7 +1,7 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
-import ai.core.server.domain.SkillResource;
+import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
@@ -9,7 +9,6 @@ import ai.core.skill.SkillMetadata;
 import core.framework.inject.Inject;
 import core.framework.web.exception.ForbiddenException;
 import core.framework.web.exception.NotFoundException;
-import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,7 +20,6 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,26 +35,14 @@ public class SkillService {
         return new ForbiddenException("skill is unavailable");
     }
 
-    private static boolean digestStale(String digest, boolean contentChanged, List<SkillResource> previous, List<SkillResource> current) {
-        if (digest == null || contentChanged) return true;
-        return !SkillResourceWriter.unchanged(previous, current);
-    }
-
-    /** Drops upload entries that are not skill resources (dotfiles, {@code __pycache__}, {@code *.pyc}). */
-    private static Map<String, byte[]> acceptedResources(Map<String, byte[]> resources) {
-        if (resources == null || resources.isEmpty()) return resources;
-        var accepted = new LinkedHashMap<String, byte[]>(resources.size());
-        for (var entry : resources.entrySet()) {
-            if (!SkillLoader.isIgnoredResource(entry.getKey())) accepted.put(entry.getKey(), entry.getValue());
-        }
-        return accepted.isEmpty() ? null : accepted;
-    }
-
     @Inject
     SkillStore skillStore;
 
     @Inject
     SkillBlobStore blobStore;
+
+    @Inject
+    SkillPublishService publishService;
 
     private volatile Runnable catalogInvalidator = () -> {
     };
@@ -74,46 +60,35 @@ public class SkillService {
         return repoManager().extractRepoOwner(repoUrl);
     }
 
-    public SkillDefinition upload(String userId, String namespace, byte[] skillFileBytes, Map<String, byte[]> resources) {
-        String content = new String(skillFileBytes, StandardCharsets.UTF_8);
-        var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
-        SkillMetadata parsed = loader.parseSkillMd(content, "upload", "upload");
-        if (parsed == null) {
-            throw new RuntimeException("failed to parse SKILL.md: invalid frontmatter or missing name/description");
-        }
+    public SkillDefinition upload(String userId, String namespace, String directoryName,
+                                  byte[] skillFileBytes, Map<String, byte[]> resources) {
+        return uploadOutcome(userId, namespace, directoryName, skillFileBytes, resources).entity();
+    }
 
-        var accepted = acceptedResources(resources);
-        String qualifiedName = namespace + "/" + parsed.getName();
-        var existing = skillStore.findByQualifiedName(qualifiedName);
-        var entity = existing.orElseGet(SkillDefinition::new);
-        var previous = entity.resources;
-        if (entity.id == null) {
-            entity.id = new ObjectId().toHexString();
-            entity.createdAt = ZonedDateTime.now();
+    public SkillPublishOutcome uploadOutcome(String userId, String namespace, String directoryName,
+                                             byte[] skillFileBytes, Map<String, byte[]> resources) {
+        if (directoryName == null || directoryName.isBlank()) {
+            throw ai.core.server.skill.quality.SkillQualityGateException.directoryRequired();
         }
-        entity.namespace = namespace;
-        entity.name = parsed.getName();
-        entity.qualifiedName = qualifiedName;
-        entity.description = parsed.getDescription();
-        entity.sourceType = SkillSourceType.UPLOAD;
-        entity.content = content;
-        entity.resources = writer().toResources(entity.id, content, accepted);
-        entity.allowedTools = parsed.getAllowedTools().isEmpty() ? null : new ArrayList<>(parsed.getAllowedTools());
-        entity.metadata = parsed.getMetadata().isEmpty() ? null : Map.copyOf(parsed.getMetadata());
-        entity.userId = userId;
-        entity.digest = SkillDigest.of(content, accepted);
-        entity.updatedAt = ZonedDateTime.now();
-
-        if (existing.isPresent()) {
-            skillStore.replace(entity);
-            LOGGER.info("updated skill via upload, id={}, qualifiedName={}", entity.id, qualifiedName);
-        } else {
-            skillStore.insert(entity);
-            LOGGER.info("created skill via upload, id={}, qualifiedName={}", entity.id, qualifiedName);
+        var content = new String(skillFileBytes, StandardCharsets.UTF_8);
+        var request = SkillPublishRequest.upload(userId, namespace, directoryName, content, resources);
+        var parsedName = frontmatterName(content);
+        if (parsedName != null) {
+            request.existing = skillStore.findByQualifiedName(namespace + "/" + parsedName).orElse(null);
         }
-        blobStore.deleteReplaced(previous, entity.resources);
+        var outcome = publishService.publish(request);
         invalidateCatalog();
-        return entity;
+        LOGGER.info("uploaded skill, id={}, qualifiedName={}", outcome.entity().id, outcome.entity().qualifiedName);
+        return outcome;
+    }
+
+    private String frontmatterName(String content) {
+        try {
+            return new ai.core.server.skill.quality.SkillDocumentParser().parse(content)
+                .frontMatter.get("name") instanceof String name ? name : null;
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     public List<SkillDefinition> registerFromRepo(String userId, String repoUrl, String branch, String skillPath) {
@@ -156,8 +131,7 @@ public class SkillService {
             var results = new ArrayList<SkillDefinition>();
             var source = new SkillRepoSource(repoUrl, branch, effectiveSkillPath, commitHash);
             for (var skill : skills) {
-                var entity = repoManager().registerOrUpdate(userId, namespace, skill, source);
-                results.add(entity);
+                results.add(publishRepoSKill(userId, namespace, skill, source));
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
             invalidateCatalog();
@@ -234,36 +208,30 @@ public class SkillService {
     }
 
     public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResourceUpdate> updates) {
-        var entity = get(id);
-        if (description != null) entity.description = description;
-        if (allowedTools != null) entity.allowedTools = allowedTools.isEmpty() ? null : allowedTools;
-        if (content != null) entity.content = content;
-
-        var previous = entity.resources;
-        if (updates != null) {
-            var merged = writer().merge(id, previous, updates);
-            writer().enforceBudget(id, entity.content, merged);
-            entity.resources = merged.isEmpty() ? null : merged;
-        }
-        if (digestStale(entity.digest, content != null, previous, entity.resources)) {
-            entity.digest = SkillDigest.of(entity.content, digestBytes(entity.resources));
-        }
-        entity.updatedAt = ZonedDateTime.now();
-        skillStore.replace(entity);
-        blobStore.deleteReplaced(previous, entity.resources);
-        invalidateCatalog();
-        return entity;
+        return updateOutcome(id, description, content, allowedTools, updates).entity();
     }
 
-    private Map<String, byte[]> digestBytes(List<SkillResource> resources) {
-        var bytes = new LinkedHashMap<String, byte[]>();
-        if (resources == null) return bytes;
-        for (var resource : resources) {
-            bytes.put(resource.path, resource.content != null
-                    ? resource.content.getBytes(StandardCharsets.UTF_8)
-                    : blobStore.fetch(resource.storagePath));
-        }
-        return bytes;
+    public SkillPublishOutcome updateOutcome(String id, String description, String content,
+                                             List<String> allowedTools, List<SkillResourceUpdate> updates) {
+        var entity = get(id);
+        var writer = writer();
+        Map<String, byte[]> resources = updates != null
+            ? writer.mergeBytes(entity.resources, updates)
+            : writer.bytesOf(entity.resources);
+        var request = new SkillPublishRequest();
+        request.userId = entity.userId;
+        request.namespace = entity.namespace;
+        request.directoryName = entity.directoryName != null ? entity.directoryName : entity.name;
+        request.content = content;
+        request.resources = resources;
+        request.existing = entity;
+        request.sourceType = entity.sourceType;
+        request.repoConfig = entity.repoConfig;
+        request.mirroredDescription = description;
+        request.mirroredAllowedTools = allowedTools;
+        var outcome = publishService.publish(request);
+        invalidateCatalog();
+        return outcome;
     }
 
     long sweepStaleRepoTempDirs() {
@@ -331,27 +299,53 @@ public class SkillService {
         return syncFromRepo(id, false);
     }
 
-    private void syncMatchedSkill(SkillDefinition entity, SkillMetadata skill, String commitHash) {
+    private SkillDefinition publishRepoSKill(String userId, String namespace, SkillMetadata skill, SkillRepoSource source) {
+        var skillDir = skill.getSkillDir() != null ? Path.of(skill.getSkillDir()) : Path.of(skill.getPath()).getParent();
+        var directoryName = skillDir == null ? null : skillDir.getFileName();
+        if (directoryName == null) {
+            throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
+        }
+        var request = SkillPublishRequest.upload(userId, namespace, directoryName.toString(),
+            repoManager().readSkillMdFromDir(skillDir), repoManager().readResourceBytes(skillDir, skill.getResources()));
+        request.existing = skillStore.findByQualifiedName(namespace + "/" + skill.getName()).orElse(null);
+        request.sourceType = SkillSourceType.REPO;
+        request.repoConfig = repoConfig(source);
+        return publishService.publish(request).entity();
+    }
+
+    private SkillRepoConfig repoConfig(SkillRepoSource source) {
+        var config = new SkillRepoConfig();
+        config.repoUrl = source.url();
+        config.branch = source.branch() == null || source.branch().isBlank() ? "main" : source.branch().trim();
+        config.skillPath = source.skillPath();
+        config.lastSyncedAt = ZonedDateTime.now();
+        config.lastCommitHash = source.commitHash();
+        return config;
+    }
+
+    private SkillDefinition syncMatchedSkill(SkillDefinition entity, SkillMetadata skill, String commitHash) {
         var skillDir = skill.getSkillDir() != null
             ? Path.of(skill.getSkillDir())
             : Path.of(skill.getPath()).getParent();
         if (skillDir == null) {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
         }
-        var previous = entity.resources;
-        entity.content = repoManager().readSkillMdFromDir(skillDir);
-        var bytes = repoManager().readResourceBytes(skillDir, skill.getResources());
-        entity.resources = writer().toResources(entity.id, entity.content, bytes);
-        entity.description = skill.getDescription();
-        entity.allowedTools = skill.getAllowedTools().isEmpty() ? null : new ArrayList<>(skill.getAllowedTools());
-        entity.metadata = skill.getMetadata().isEmpty() ? null : Map.copyOf(skill.getMetadata());
-        entity.digest = SkillDigest.of(entity.content, bytes);
-        if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
-        entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
-        entity.updatedAt = ZonedDateTime.now();
-        skillStore.replace(entity);
-        blobStore.deleteReplaced(previous, entity.resources);
+        if (entity.repoConfig != null) {
+            if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
+            entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
+        }
+        var request = new SkillPublishRequest();
+        request.userId = entity.userId;
+        request.namespace = entity.namespace;
+        request.directoryName = entity.directoryName != null ? entity.directoryName : entity.name;
+        request.content = repoManager().readSkillMdFromDir(skillDir);
+        request.resources = repoManager().readResourceBytes(skillDir, skill.getResources());
+        request.existing = entity;
+        request.sourceType = SkillSourceType.REPO;
+        request.repoConfig = entity.repoConfig;
+        var outcome = publishService.publish(request);
         invalidateCatalog();
+        return outcome.entity();
     }
 
     public SkillDefinition download(String id) {

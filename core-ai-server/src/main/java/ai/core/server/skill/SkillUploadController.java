@@ -67,7 +67,12 @@ public class SkillUploadController implements Controller {
             }
         }
 
-        var entity = skillService.upload(userId, namespace, skillFileBytes, resources.isEmpty() ? null : resources);
+        var fields = request.formParams();
+        var skillDir = fields == null ? null : fields.get("skill_dir");
+        var outcome = skillService.uploadOutcome(userId, namespace, skillDir, skillFileBytes,
+            resources.isEmpty() ? null : resources);
+        var entity = outcome.entity();
+        ai.core.server.skill.quality.SkillQualityHeaders.put(webContext, outcome.report());
 
         var view = new SkillDefinitionView();
         view.id = entity.id;

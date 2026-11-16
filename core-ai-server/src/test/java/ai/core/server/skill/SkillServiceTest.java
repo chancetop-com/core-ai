@@ -20,7 +20,6 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -269,85 +268,42 @@ class SkillServiceTest {
     }
 
     @Test
-    void uploadStoresBinaryResourcesAsBlobsAndDigestsOriginalBytes() {
+    void uploadRejectsSkillThatFailsQualityGateBeforeWriting() {
         var collection = skillCollection();
         when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
         var blobStore = mock(SkillBlobStore.class);
-        when(blobStore.configured()).thenReturn(Boolean.TRUE);
-        when(blobStore.put(anyString(), anyString(), any(byte[].class))).thenReturn("artifacts/skills/s1/resources/abc");
         var service = new SkillService();
         service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = blobStore;
-        var font = new byte[]{0x00, (byte) 0xFF};
+        service.publishService = publishService(service.skillStore, blobStore);
         var content = "---\nname: demo\ndescription: demo\n---\n";
 
-        var entity = service.upload("u1", "Admin", content.getBytes(StandardCharsets.UTF_8), Map.of("fonts/a.ttf", font));
+        var error = assertThrows(ai.core.server.skill.quality.SkillQualityGateException.class,
+            () -> service.upload("u1", "Admin", "demo", content.getBytes(StandardCharsets.UTF_8), null));
 
-        var resource = entity.resources.getFirst();
-        assertEquals("fonts/a.ttf", resource.path);
-        assertEquals("artifacts/skills/s1/resources/abc", resource.storagePath);
-        assertNull(resource.content);
-        assertEquals(2L, resource.size);
-        assertEquals(SkillDigest.of(content, Map.of("fonts/a.ttf", font)), entity.digest);
-        verify(collection).insert(entity);
-    }
-
-    @Test
-    void uploadRejectsBinaryResourcesWithoutObjectStorage() {
-        var collection = skillCollection();
-        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
-        var service = new SkillService();
-        service.skillStore = MongoSkillStore.of(collection);
-        service.blobStore = mock(SkillBlobStore.class);
-        var content = "---\nname: demo\ndescription: demo\n---\n";
-
-        var error = assertThrows(BadRequestException.class, () -> service.upload("u1", "Admin",
-                content.getBytes(StandardCharsets.UTF_8), Map.of("fonts/a.ttf", new byte[]{0x00, (byte) 0xFF})));
-
-        assertTrue(error.getMessage().contains("fonts/a.ttf"));
+        assertEquals(ai.core.server.skill.quality.SkillQualityGateException.REJECTED, error.errorCode());
         verify(collection, never()).insert(any());
+        verify(blobStore, never()).put(anyString(), anyString(), any(byte[].class));
     }
 
     @Test
-    void uploadDropsEntriesThatAreNotSkillResources() {
-        var collection = skillCollection();
-        when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
-        var service = new SkillService();
-        service.skillStore = MongoSkillStore.of(collection);
-        service.blobStore = mock(SkillBlobStore.class);
-        var content = "---\nname: demo\ndescription: demo\n---\n";
-        var runScript = "#!/bin/sh\necho hi\n".getBytes(StandardCharsets.UTF_8);
-
-        var entity = service.upload("u1", "Admin", content.getBytes(StandardCharsets.UTF_8), Map.of(
-                "scripts/run.sh", runScript,
-                "__pycache__/demo.cpython-314.pyc", new byte[]{0x00, (byte) 0xFF},
-                ".DS_Store", new byte[]{0x01}));
-
-        assertEquals(List.of("scripts/run.sh"), entity.resources.stream().map(resource -> resource.path).toList());
-        assertEquals(SkillDigest.of(content, Map.of("scripts/run.sh", runScript)), entity.digest);
-        verify(collection).insert(entity);
-    }
-
-    @Test
-    void updateReusesDigestWhenResourcesAreKeptUnchanged() {
+    void updateRejectsInvalidContentBeforeWriting() {
         var collection = skillCollection();
         var entity = skill("1", "Admin", "review", "desc");
-        entity.content = "content";
-        entity.digest = "digest-1";
-        var resource = resource("scripts/run.sh", "#!/bin/sh");
-        entity.resources = List.of(resource);
+        entity.content = "---\nname: review\ndescription: demo\n---\n";
+        entity.directoryName = "review";
+        entity.revision = 1;
         when(collection.get("1")).thenReturn(Optional.of(entity));
         var blobStore = mock(SkillBlobStore.class);
         var service = new SkillService();
         service.skillStore = MongoSkillStore.of(collection);
         service.blobStore = blobStore;
+        service.publishService = publishService(service.skillStore, blobStore);
 
-        service.update("1", "new description", null, null, List.of(new SkillResourceUpdate("scripts/run.sh", true, null)));
+        assertThrows(ai.core.server.skill.quality.SkillQualityGateException.class,
+            () -> service.update("1", null, null, null, null));
 
-        assertEquals("digest-1", entity.digest);
-        assertEquals("new description", entity.description);
-        assertSame(resource, entity.resources.getFirst());
-        verify(blobStore, never()).fetch(anyString());
+        verify(collection, never()).replace(any());
     }
 
     @Test
@@ -366,28 +322,11 @@ class SkillServiceTest {
         verify(collection, never()).replace(any());
     }
 
-    @Test
-    void updateRecomputesDigestOverStoredBlobBytesWhenContentChanges() {
-        var collection = skillCollection();
-        var entity = skill("1", "Admin", "review", "desc");
-        entity.content = "content";
-        entity.digest = "digest-1";
-        var blob = new SkillResource();
-        blob.path = "fonts/a.ttf";
-        blob.storagePath = "artifacts/skills/1/resources/x";
-        entity.resources = List.of(blob);
-        when(collection.get("1")).thenReturn(Optional.of(entity));
-        var blobStore = mock(SkillBlobStore.class);
-        var bytes = new byte[]{0x00, (byte) 0xFF};
-        when(blobStore.fetch("artifacts/skills/1/resources/x")).thenReturn(bytes);
-        var service = new SkillService();
-        service.skillStore = MongoSkillStore.of(collection);
-        service.blobStore = blobStore;
-
-        service.update("1", null, "new content", null, null);
-
-        assertEquals(SkillDigest.of("new content", Map.of("fonts/a.ttf", bytes)), entity.digest);
-        verify(blobStore).fetch("artifacts/skills/1/resources/x");
+    private SkillPublishService publishService(SkillStore store, SkillBlobStore blobStore) {
+        var publishService = new SkillPublishService();
+        publishService.skillStore = store;
+        publishService.blobStore = blobStore;
+        return publishService;
     }
 
     @SuppressWarnings("unchecked")
