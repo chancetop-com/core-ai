@@ -4,10 +4,12 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.quality.domain.QualityGateResult;
 import ai.core.server.skill.quality.SkillQualityGateException;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,6 +22,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@SuppressFBWarnings({"NAB_NEEDLESS_BOOLEAN_CONSTANT_CONVERSION", "MRC_METHOD_RETURNS_CONSTANT"})
 class SkillPublishServiceTest {
     @Test
     void publishesNewSkillWithReceipt() {
@@ -117,25 +120,26 @@ class SkillPublishServiceTest {
     }
 
     private String evalDataset() {
-        var cases = new StringBuilder();
-        cases.append(evalCase("trigger-001", "trigger_accuracy", "{\"triggered\":true}"));
-        cases.append(evalCase("trigger-002", "trigger_accuracy", "{\"triggered\":false}"));
-        cases.append(evalCase("scope-001", "scope_accuracy",
-            "{\"in_scope\":true,\"expected_behavior\":\"handle\"}"));
-        cases.append(evalCase("tool-001", "tool_accuracy", "{\"no_tools\":true}"));
-        cases.append(evalCase("param-001", "parameter_accuracy",
-            "{\"tool\":\"read_file\",\"arguments\":{},\"match\":\"schema\"}"));
-        cases.append(evalCase("instr-001", "instruction_following", "{\"rules\":[\"one file\"]}"));
-        cases.append(evalCase("output-001", "output_quality", "{\"outputs\":[]}"));
-        cases.append(evalCase("robust-001", "robustness",
-            "{\"failure_mode\":\"missing input\",\"expected_behavior\":\"ask_user\"}"));
+        var cases = List.of(
+            evalCase("trigger-001", "trigger_accuracy", "{\"triggered\":true}"),
+            evalCase("trigger-002", "trigger_accuracy", "{\"triggered\":false}"),
+            evalCase("scope-001", "scope_accuracy",
+                "{\"in_scope\":true,\"expected_behavior\":\"handle\"}"),
+            evalCase("tool-001", "tool_accuracy", "{\"no_tools\":true}"),
+            evalCase("param-001", "parameter_accuracy",
+                "{\"tool\":\"read_file\",\"arguments\":{},\"match\":\"schema\"}"),
+            evalCase("instr-001", "instruction_following", "{\"rules\":[\"one file\"]}"),
+            evalCase("output-001", "output_quality", "{\"outputs\":[]}"),
+            evalCase("robust-001", "robustness",
+                "{\"failure_mode\":\"missing input\",\"expected_behavior\":\"ask_user\"}")
+        );
         return "{\"schema_version\":1,\"skill\":\"demo-skill\",\"dataset_version\":\"1.0.0\",\"cases\":["
-            + cases.substring(0, cases.length() - 1) + "]}";
+            + String.join(",", cases) + "]}";
     }
 
     private String evalCase(String id, String dimension, String expected) {
         return "{\"id\":\"" + id + "\",\"dimension\":\"" + dimension + "\","
             + "\"input\":{\"user_request\":\"run the demo\"},"
-            + "\"expected\":" + expected + ",\"assertions\":[{\"kind\":\"no_crash\"}]},";
+            + "\"expected\":" + expected + ",\"assertions\":[{\"kind\":\"no_crash\"}]}";
     }
 }

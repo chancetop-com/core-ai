@@ -2,7 +2,6 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
-import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
@@ -336,14 +335,6 @@ class SkillServiceTest {
 
     private SkillRepoManager manager(MongoCollection<SkillDefinition> collection) {
         return new SkillRepoManager(MongoSkillStore.of(collection), mock(SkillBlobStore.class));
-    }
-
-    private SkillResource resource(String path, String content) {
-        var resource = new SkillResource();
-        resource.path = path;
-        resource.content = content;
-        resource.size = (long) content.length();
-        return resource;
     }
 
     private SkillService service(SkillRepoManager manager, MongoCollection<SkillDefinition> collection) {
