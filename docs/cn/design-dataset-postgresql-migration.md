@@ -768,6 +768,12 @@ CREATE TABLE messaging.user_session_counts (user_id text NOT NULL, pod_id text N
 - 未迁的部分：pod 注册表与租约（7.2）、命令队列（7.3）、会话归属 / turn 状态 / 用户计数（7.4）、RPC（7.5）、SSE 定向投递（7.6）。这些仍走 Redis，`StartupDependencyCheck` 也仍然要求 Redis。
 - 验证：`PgStateStoresTest` 在本地 PostgreSQL 16 上通过（sandbox 绑定 upsert/delete、活跃度过期、A2A 快照过期）；受影响模块的现有测试与 checkstyle 通过。
 - 2026-11-16 dev 已用 `2.0.242` 切到 `SYS_STATE_BACKEND=postgres` 并通过 E2E（sandbox 绑定写/读/删、会话活跃度、A2A 快照跨 Pod 读取），详见 `docs/validation/2026-11-16-dev-stage3-state-backend.md`；UAT / prod 尚未切换。
+- **2026-11-16 第二步（`sys.lease.backend`）已实现并上线 dev（`2.0.244`）。**
+  - Flyway `V40__messaging_leases.sql`：`messaging.pods`、`session_ownership`（同时承载 session 与 AgentRun 租约）、`turn_states`（含 `user_id`）、`user_session_counts`。
+  - `PodRegistry` 每 10 秒心跳；租约有效性改为跟随 owner pod 心跳（30 秒失效），不再按 key 续期；`LeaseCleanupJob` 每分钟清理死 pod 的租约、计数和 5 分钟无心跳的 pod 行。
+  - 会话预算最初按 `(user, pod)` 计数，两个 Pod 之间关闭会话会泄漏；`2.0.244` + `V41` 改为每用户单行 + 24 小时过期，任意 Pod 都可以释放。
+  - dev E2E：ownership acquire/release、turn state 在运行中出现并在结束后清除、A2A context 租约、3→2 缩容后死 Pod 行被清理。详见 `docs/validation/2026-11-16-dev-stage3-lease-backend.md`。
+  - 下一步：RPC 改为 pod 间 HTTP（`sys.rpc.transport`），然后 SSE 定向投递，最后命令队列。
 - 下一步按 7.7 的顺序推进：先 pod 注册表 + 租约 + 计数（`sys.lease.backend`），再 RPC、SSE，最后命令队列；命令队列切换前需要先解决“新旧 pod 同时消费两边队列”的过渡版本。
 
 ## 8. 阶段 4：Mongo 存量策略
