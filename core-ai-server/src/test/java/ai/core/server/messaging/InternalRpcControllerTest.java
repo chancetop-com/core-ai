@@ -23,6 +23,15 @@ class InternalRpcControllerTest {
     private final InProcessCommandHandler handler = mock(InProcessCommandHandler.class);
 
     @Test
+    void nonPodHostIsNotFound() {
+        var controller = controller("secret", null);
+        var request = request("secret", "pod-1", body());
+        when(request.hostname()).thenReturn("core-ai-server.connexup-dev.net");
+
+        assertEquals(HTTPStatus.NOT_FOUND, controller.handle(request).status());
+    }
+
+    @Test
     void rejectsMissingToken() {
         var controller = controller("secret", null);
 
@@ -101,6 +110,7 @@ class InternalRpcControllerTest {
     private InternalRpcController controller(String token, String previousToken) {
         var podRegistry = mock(PodRegistry.class);
         when(podRegistry.podId()).thenReturn("pod-1");
+        when(podRegistry.host()).thenReturn("127.0.0.1");
         return new InternalRpcController(handler, podRegistry, token, previousToken);
     }
 
@@ -109,6 +119,7 @@ class InternalRpcControllerTest {
         when(request.header("X-Internal-Token")).thenReturn(Optional.ofNullable(token));
         when(request.header("X-Target-Pod")).thenReturn(Optional.ofNullable(targetPod));
         when(request.body()).thenReturn(Optional.of(body));
+        when(request.hostname()).thenReturn("127.0.0.1");
         return request;
     }
 

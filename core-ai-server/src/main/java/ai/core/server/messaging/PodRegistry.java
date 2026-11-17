@@ -35,6 +35,11 @@ public class PodRegistry {
         return podId;
     }
 
+    public String host() {
+        var separator = address.lastIndexOf(':');
+        return separator > 0 ? address.substring(0, separator) : address;
+    }
+
     public String address(String podId) {
         try {
             return database.selectOne("SELECT address FROM messaging.pods WHERE pod_id = ? "

@@ -34,6 +34,11 @@ public class InternalRpcController {
     }
 
     public Response handle(Request request) {
+        // The internal endpoint is only reachable by pod IP. An external host arriving through the
+        // gateway is answered as not found instead of exposing that the route exists.
+        if (!podRegistry.host().equals(request.hostname())) {
+            return json(HTTPStatus.NOT_FOUND, RpcClient.errorResponse("not found"));
+        }
         if (!authenticated(request)) {
             return json(HTTPStatus.UNAUTHORIZED, RpcClient.errorResponse("unauthorized"));
         }
