@@ -165,3 +165,10 @@ prod：先在 UAT 通过，按 playbook 改 `fbr-prod-env-project`；执行前�
 ## 10. 评审记录
 
 - 2026-11-16：用 `gemini-4-hydrogen` 评审。主要结论：方向可行；**阻断项**是 UAT/prod 同时切 lease 与 RPC 会在滚动升级期间产生双执行。已据此把 RPC 与 lease 解耦（§2.1、§4），并补充非 IP 地址回退、endpoint 仅在 http 模式注册、HTTP client 超时、显式 response sink、404/requestId 校验、targetPod header、token 轮换和更严格的 E2E。
+
+## 11. 实施记录（dev）
+
+- 实现提交：`eaf36378`（HTTP RPC）、`c5c7d8c5`（请求 host 必须是 Pod IP）、`ddbbd909`（Redis 模式读取 token 轮换属性）；另 `fb6a5e68` 修复了阻塞构建的无关 PMD 问题。
+- 镜像：`2.0.250`；dev `SYS_RPC_TRANSPORT=http`，`SYS_LEASE_BACKEND=postgres`，无新增 Flyway。
+- dev E2E：外网 `/_internal/rpc` 404、token/目标/类型校验、新→新 HTTP（Redis MONITOR 无该 RPC 的 XADD）、旧→新 Redis 兼容、新→旧 404 回退 Redis、回滚 redis 与再切回 http 均 0 健康检查失败、删除 owner Pod 后会话重建且 RPC 成功。
+- 详见 `docs/validation/2026-11-17-dev-stage3-rpc-http.md`。
