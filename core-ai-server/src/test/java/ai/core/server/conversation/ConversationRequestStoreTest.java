@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class ConversationRequestStoreTest {
     @Test
@@ -43,7 +43,7 @@ class ConversationRequestStoreTest {
         var receipt = store.find("key").orElseThrow();
         assertEquals(ConversationRequestStore.STATUS_FAILED, receipt.status());
         assertEquals("agent unavailable", receipt.errorMessage());
-        assertTrue(receipt.responseJson() == null);
+        assertNull(receipt.responseJson());
     }
 
     @Test
