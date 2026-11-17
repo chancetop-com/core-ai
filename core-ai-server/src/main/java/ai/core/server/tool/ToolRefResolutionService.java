@@ -352,7 +352,7 @@ class ToolRefResolutionService {
     private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
         var tools = internalApiToolLoader != null && InternalApiToolLoader.isApiToolId(ref.id)
             ? internalApiToolLoader.loadByToolId(ref.id) : List.<ToolCall>of();
-        if (tools.isEmpty() && internalApiToolLoader != null && ref.source != null && !InternalApiToolLoader.isApiToolId(ref.id)) {
+        if (internalApiToolLoader != null && ref.source != null && tools.isEmpty() && !InternalApiToolLoader.isApiToolId(ref.id)) {
             tools = internalApiToolLoader.loadApiAppTools(ref.source);
         }
         if (tools.isEmpty()) {
