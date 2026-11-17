@@ -1,4 +1,4 @@
-import { Activity, Bell, ClipboardCheck, ListChecks, PlugZap, Settings as SettingsIcon, Shield, ShieldCheck, User } from 'lucide-react';
+import { Activity, Bell, ListChecks, PlugZap, Settings as SettingsIcon, Shield, ShieldCheck, User } from 'lucide-react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 import { getSystemSettingsAccess, hasPermission } from '../../api/permissions';
@@ -95,7 +95,7 @@ export default function Settings() {
             </NavLink>
           )}
           {hasPermission(user?.permissions, 'agent.quality.manage') && (
-            <NavLink to="/settings/agent-quality"
+            <NavLink to="/settings/quality"
               className={() =>
                 'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
               }
@@ -105,21 +105,7 @@ export default function Settings() {
                 fontWeight: isActive ? 500 : 400,
               })}>
               <ShieldCheck size={16} />
-              Agent Quality
-            </NavLink>
-          )}
-          {user?.role === 'admin' && (
-            <NavLink to="/settings/skill-quality"
-              className={() =>
-                'flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors'
-              }
-              style={({ isActive }) => ({
-                background: isActive ? 'var(--color-primary-bg)' : 'transparent',
-                color: isActive ? 'var(--color-primary)' : 'var(--color-text-secondary)',
-                fontWeight: isActive ? 500 : 400,
-              })}>
-              <ClipboardCheck size={16} />
-              Skill Quality
+              Quality
             </NavLink>
           )}
           {user?.role === 'admin' && (

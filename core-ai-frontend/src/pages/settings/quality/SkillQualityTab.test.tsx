@@ -1,8 +1,8 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { skillQualityApi, type SkillQualityRule } from '../../api/quality';
-import SkillQuality from './SkillQuality';
+import { skillQualityApi, type SkillQualityRule } from '../../../api/quality';
+import SkillQualityTab from './SkillQualityTab';
 
 function rule(index: number): SkillQualityRule {
   return {
@@ -15,7 +15,7 @@ function rule(index: number): SkillQualityRule {
   };
 }
 
-describe('Skill quality rules', () => {
+describe('Skill quality tab', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     window.sessionStorage.clear();
@@ -27,13 +27,29 @@ describe('Skill quality rules', () => {
       rules: Array.from({ length: 10 }, (_, i) => rule(i + 1)),
     });
 
-    render(<SkillQuality />);
+    render(<SkillQualityTab />);
 
     expect(await screen.findByText('SKILL.RULE_1')).toBeTruthy();
     expect(screen.getByText('规则由代码定义，修改需发版。')).toBeTruthy();
-    expect(screen.getByText(/本页只读/)).toBeTruthy();
     expect(screen.getByText('Showing 1-10 of 10')).toBeTruthy();
     expect(screen.getByText('Policy revision 1')).toBeTruthy();
+  });
+
+  it('opens a read-only detail panel with a locked enabled switch', async () => {
+    vi.spyOn(skillQualityApi, 'rules').mockResolvedValue({
+      policy_revision: 1,
+      rules: [rule(1)],
+    });
+
+    render(<SkillQualityTab />);
+    await userEvent.click(await screen.findByText('SKILL.RULE_1'));
+
+    expect(screen.getByText('Code-defined')).toBeTruthy();
+    expect(screen.getAllByText('Requirement 1').length).toBeGreaterThan(1);
+    expect(screen.getByText(/不可在运行时修改/)).toBeTruthy();
+    const toggle = screen.getByRole<HTMLButtonElement>('switch', { name: /enabled/i });
+    expect(toggle.disabled).toBe(true);
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
   });
 
   it('pages client-side without dropping the read-only contract', async () => {
@@ -42,7 +58,7 @@ describe('Skill quality rules', () => {
       rules: Array.from({ length: 25 }, (_, i) => rule(i + 1)),
     });
 
-    render(<SkillQuality />);
+    render(<SkillQualityTab />);
 
     expect(await screen.findByText('SKILL.RULE_20')).toBeTruthy();
     expect(screen.queryByText('SKILL.RULE_21')).toBeNull();

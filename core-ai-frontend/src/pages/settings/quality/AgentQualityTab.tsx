@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FlaskConical, History, Plus, RefreshCw, Trash2 } from 'lucide-react';
-import { api } from '../../api/client';
-import type { AgentDefinition } from '../../api/client';
-import { qualityApi, type QualityPolicy, type QualityRule, type RuleTemplate, type RuleTestResponse } from '../../api/quality';
-import Pagination from '../../components/Pagination';
-import { useListState } from '../../hooks/useListState';
+import { api } from '../../../api/client';
+import type { AgentDefinition } from '../../../api/client';
+import { qualityApi, type QualityPolicy, type QualityRule, type RuleTemplate, type RuleTestResponse } from '../../../api/quality';
+import Pagination from '../../../components/Pagination';
+import ToggleSwitch from '../../../components/ToggleSwitch';
+import { useListState } from '../../../hooks/useListState';
+import EnforcementBadge from './EnforcementBadge';
 
 const EMPTY_RULE = {
   key: '',
@@ -23,7 +25,9 @@ const EMPTY_RULE = {
   parameters: {},
 };
 
-export default function AgentQuality() {
+type EnforcementLevel = 'BLOCK' | 'WARN';
+
+export default function AgentQualityTab() {
   const [rules, setRules] = useState<QualityRule[]>([]);
   const [templates, setTemplates] = useState<RuleTemplate[]>([]);
   const [inputOptions, setInputOptions] = useState<string[]>([]);
@@ -39,6 +43,8 @@ export default function AgentQuality() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [enforceEnabled, setEnforceEnabled] = useState(false);
+  const [enforceLevel, setEnforceLevel] = useState<EnforcementLevel>('BLOCK');
   const [offset, setOffset] = useListState('agent-quality.offset', 0);
   const [limit, setLimit] = useListState('agent-quality.limit', 20);
 
@@ -78,6 +84,7 @@ export default function AgentQuality() {
   const pageRules = rules.slice(offset, offset + limit);
 
   const select = (rule: QualityRule) => {
+    const activeLevel = rule.enforcement === 'BLOCK' || rule.enforcement === 'WARN' ? rule.enforcement : null;
     setSelected(rule);
     setDraft({
       name: rule.name,
@@ -93,6 +100,9 @@ export default function AgentQuality() {
       remediation_template: rule.remediation_template || '',
       parameters: rule.parameters || {},
     });
+    setEnforceEnabled(Boolean(activeLevel));
+    setEnforceLevel(activeLevel === 'WARN' ? 'WARN' : 'BLOCK');
+    setCreating(false);
     setTestResult(null);
     setMessage('');
   };
@@ -155,9 +165,10 @@ export default function AgentQuality() {
     }
   };
 
-  const activate = async (enforcement: 'SHADOW' | 'BLOCK' | 'WARN') => {
+  const applyPolicy = async () => {
     if (!selected) return;
     if (!changeReason.trim()) { setMessage('激活策略必须填写变更原因。'); return; }
+    const enforcement = enforceEnabled ? enforceLevel : 'SHADOW';
     setBusy(true);
     try {
       await qualityApi.activate({
@@ -167,7 +178,7 @@ export default function AgentQuality() {
         expected_generation: policy?.generation,
         change_reason: changeReason,
       });
-      setMessage(`已激活 ${enforcement}；新检查将使用该策略。`);
+      setMessage(`已应用 ${enforcement}；新检查将使用该策略。`);
       await load();
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Activate failed');
@@ -208,42 +219,39 @@ export default function AgentQuality() {
     }
   };
 
-  return (
-    <div className="p-6 max-w-7xl">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold">Agent Quality</h1>
-          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-            发布质量规则、阈值与策略版本。规则修改保存为新 revision，测试后再激活；激活立即影响所有发布。
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={load} disabled={busy} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
-            <RefreshCw size={14} /> Refresh
-          </button>
-          <button onClick={() => { setCreating(true); setSelected(null); setDraft(EMPTY_RULE); }} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
-            <Plus size={14} /> New decision rule
-          </button>
-        </div>
-      </div>
+  const policyDirty = !selected
+    ? false
+    : selected.enforcement == null
+      ? enforceEnabled
+      : enforceEnabled ? selected.enforcement !== enforceLevel : selected.enforcement !== 'SHADOW';
 
+  return (
+    <div>
       {message && (
         <div className="rounded-lg px-3 py-2 mb-4 text-sm" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
           {message}
         </div>
       )}
 
-      <div className="flex items-center gap-3 mb-4 text-sm">
+      <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
         <span className="px-2 py-1 rounded" style={{ background: 'var(--color-bg-tertiary)' }}>
           Active policy revision {policy?.revision ?? '-'} · generation {policy?.generation ?? '-'}
         </span>
         <span style={{ color: 'var(--color-text-secondary)' }}>
           {policy?.bindings?.filter(b => b.enforcement === 'BLOCK').length ?? 0} blocking · {policy?.bindings?.filter(b => b.enforcement === 'SHADOW').length ?? 0} shadow
         </span>
-        <input value={changeReason} onChange={e => setChangeReason(e.target.value)}
-          placeholder="Change reason (required for activation)"
-          className="ml-auto px-2 py-1 rounded border text-sm w-72"
-          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
+        <div className="ml-auto flex items-center gap-2">
+          <input value={changeReason} onChange={e => setChangeReason(e.target.value)}
+            placeholder="Change reason (required for policy changes)"
+            className="px-2 py-1 rounded border text-sm w-72"
+            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
+          <button onClick={load} disabled={busy} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
+            <RefreshCw size={14} /> Refresh
+          </button>
+          <button onClick={() => { setCreating(true); setSelected(null); setDraft(EMPTY_RULE); setEnforceEnabled(false); setEnforceLevel('BLOCK'); }} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
+            <Plus size={14} /> New decision rule
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)_460px] gap-4">
@@ -270,12 +278,7 @@ export default function AgentQuality() {
                     </td>
                     <td className="px-3 py-2 text-xs">{rule.kind}</td>
                     <td className="px-3 py-2 text-xs">{rule.lifecycle}</td>
-                    <td className="px-3 py-2 text-xs">
-                      <span className="px-1.5 py-0.5 rounded" style={{
-                        background: rule.enforcement === 'BLOCK' ? 'rgba(220,38,38,0.12)' : rule.enforcement === 'WARN' ? 'rgba(217,119,6,0.12)' : 'var(--color-bg-tertiary)',
-                        color: rule.enforcement === 'BLOCK' ? 'var(--color-error)' : 'var(--color-text-secondary)',
-                      }}>{rule.enforcement || '-'}</span>
-                    </td>
+                    <td className="px-3 py-2 text-xs"><EnforcementBadge enforcement={rule.enforcement} /></td>
                     <td className="px-3 py-2 text-xs">{rule.revision}</td>
                     <td className="px-3 py-2 text-xs">{rule.tested ? <CheckCircle2 size={14} style={{ color: 'var(--color-success)' }} /> : '-'}</td>
                   </tr>
@@ -299,7 +302,42 @@ export default function AgentQuality() {
         <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
           {creating || selected ? (
             <>
-              <h3 className="font-medium mb-3">{creating ? 'New decision rule' : selected?.key}</h3>
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="font-medium">{creating ? 'New decision rule' : selected?.key}</h3>
+                  {!creating && <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{selected?.name}</div>}
+                </div>
+                {!creating && (
+                  <label className="flex items-center gap-2 text-xs shrink-0" style={{ color: 'var(--color-text-secondary)' }}>
+                    Enforce
+                    <ToggleSwitch checked={enforceEnabled} onChange={setEnforceEnabled} label="Enforce rule" />
+                  </label>
+                )}
+              </div>
+
+              {!creating && (
+                <div className="flex items-center gap-2 mb-3 text-xs">
+                  <div className="inline-flex rounded-lg border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
+                    {(['BLOCK', 'WARN'] as const).map(level => (
+                      <button key={level} type="button" onClick={() => setEnforceLevel(level)} disabled={!enforceEnabled}
+                        className="px-3 py-1 cursor-pointer disabled:opacity-40"
+                        style={{
+                          background: enforceEnabled && enforceLevel === level ? 'var(--color-primary)' : 'transparent',
+                          color: enforceEnabled && enforceLevel === level ? 'white' : 'var(--color-text-secondary)',
+                        }}>
+                        {level}
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{ color: 'var(--color-text-secondary)' }}>
+                    {selected?.enforcement == null
+                      ? (enforceEnabled ? `${enforceLevel} on publish` : 'Not in active policy')
+                      : enforceEnabled ? `${enforceLevel} on publish` : 'SHADOW — observe only'}
+                  </span>
+                  {policyDirty && <span style={{ color: 'var(--color-primary)' }}>Unsaved policy change</span>}
+                </div>
+              )}
+
               {creating && (
                 <label className="block text-xs mb-2">Key
                   <input value={String(draft.key || '')} onChange={e => setDraft({ ...draft, key: e.target.value })}
@@ -390,9 +428,9 @@ export default function AgentQuality() {
                   : (
                     <>
                       <button onClick={save} disabled={busy} className="px-3 py-1.5 rounded text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>Save new revision</button>
-                      <button onClick={() => activate('SHADOW')} disabled={busy} className="px-3 py-1.5 rounded text-sm border cursor-pointer" style={{ borderColor: 'var(--color-border)' }}>Activate shadow</button>
-                      <button onClick={() => activate('BLOCK')} disabled={busy} className="px-3 py-1.5 rounded text-sm border cursor-pointer" style={{ borderColor: 'var(--color-error)', color: 'var(--color-error)' }}>Activate block</button>
-                      <button onClick={() => activate('WARN')} disabled={busy} className="px-3 py-1.5 rounded text-sm border cursor-pointer" style={{ borderColor: 'var(--color-border)' }}>Activate warn</button>
+                      <button onClick={applyPolicy} disabled={busy} className="px-3 py-1.5 rounded text-sm border cursor-pointer" style={{ borderColor: policyDirty ? 'var(--color-primary)' : 'var(--color-border)', color: policyDirty ? 'var(--color-primary)' : 'var(--color-text-secondary)' }}>
+                        Apply policy
+                      </button>
                       <button onClick={retire} disabled={busy} className="px-3 py-1.5 rounded text-sm border cursor-pointer" style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}><Trash2 size={12} className="inline" /> Retire</button>
                     </>
                   )}
