@@ -383,6 +383,25 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .nav-sessions-row .new-session:hover { background: #21406e; color: var(--text); }
 .nav-sessions-row .new-session .ic { width: 12px; height: 12px; }
 
+.nav-sessions-row .session-reload {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.nav-sessions-row .session-reload:hover { background: var(--bg-elev); color: var(--text); }
+.nav-sessions-row .session-reload .ic { width: 13px; height: 13px; }
+.nav-sessions-row .session-reload.busy { color: var(--accent); }
+.nav-sessions-row .session-reload.busy .ic { animation: spin-ring 0.9s linear infinite; }
+
 .session-sub { display: flex; flex-direction: column; gap: 1px; padding: 0 6px 6px 28px; }
 .session-sub-empty { color: var(--faint); font-size: 12px; padding: 4px 8px; }
 
@@ -583,6 +602,7 @@ select:hover, .btn:hover { border-color: var(--accent); }
 #app.sidebar-collapsed .nav-sessions-row .new-session { justify-content: center; width: 100%; padding: 6px 0; }
 #app.sidebar-collapsed .nav-sessions-row .new-session .new-session-text { display: none; }
 #app.sidebar-collapsed .nav-sessions-row .new-session .ic { width: 14px; height: 14px; }
+#app.sidebar-collapsed .nav-sessions-row .session-reload { display: none; }
 
 #app.sidebar-collapsed #sidebar-footer { align-items: center; padding: 8px 6px 10px; }
 #app.sidebar-collapsed .footer-workspace { display: none; }

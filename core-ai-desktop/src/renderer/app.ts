@@ -1607,8 +1607,32 @@ function buildSessionsNavRow(): HTMLElement {
     void startNewConversation();
   };
 
-  row.append(label, add, toggle);
+  const reload = el('button', 'session-reload');
+  reload.title = 'Reload session list';
+  reload.setAttribute('aria-label', 'Reload session list');
+  reload.append(icon('refresh'));
+  reload.onclick = (event) => {
+    event.stopPropagation();
+    void reloadSessionList(reload);
+  };
+
+  row.append(label, add, reload, toggle);
   return row;
+}
+
+/**
+ * Re-reads the workspace from the engine instead of the rows this window has cached, so a session
+ * created outside it (another CLI process, the IM bridge, a scheduled task) appears.
+ */
+async function reloadSessionList(button: HTMLButtonElement): Promise<void> {
+  if (button.classList.contains('busy')) return;
+  button.classList.add('busy');
+  try {
+    await refreshSessionList();
+    await loadSummaries();
+  } finally {
+    button.classList.remove('busy');
+  }
 }
 
 async function loadSummaries(): Promise<void> {
