@@ -590,6 +590,7 @@ Completion notifications     <target label or "Not configured">
 | v0.1 | 2026-11-13 | core-ai | 初稿：原始需求、源码事实、main 投递架构、settings/IPC、OCG target、UI、异常、验证与 ADR | 先给用户 Review，不实施 | 待 Review |
 | v0.1-impl | 2026-11-13 | core-ai | 追加第 13 节实施记录、落地选择与已知限制；状态改为 Implemented | 用户决定跳过 Review 直接实施 | 用户决定 |
 | v0.2 | 2026-11-17 | core-ai | 追加 N7/N8、4.9 勾选时校验与预热流程、`notifications:verify` IPC、异常与测试、ADR-11、实施记录 13.5 | 用户要求勾选时立即校验通道，失败时引导预热后重试 | 用户提出需求 |
+| v0.2-e2e | 2026-11-17 | core-ai | 追加 13.5.1 真实通道 E2E 记录 | 用户要求 E2E | 用户要求 |
 
 ### 11.4 设计自查记录
 
@@ -656,7 +657,7 @@ Completion notifications     <target label or "Not configured">
 - 不做离线队列、进程重启补发或跨设备同步。
 - CLI 打开同一会话时不会读取 desktop 的按会话开关。
 - 已删除会话的开关键不会立即清理；读取只按当前 session id 命中，残留键不影响新会话。
-- 未做真实桌面 E2E（按用户要求不安装/重启正在运行的 desktop）；本次验证为单测 + TypeScript 检查 + 构建。
+- 未做真实桌面 E2E（按用户要求不安装/重启正在运行的 desktop）；本次验证为单测 + TypeScript 检查 + 构建。（v0.2 已补做隔离实例的真实通道 E2E，见 13.5。）
 
 ### 13.5 勾选校验实施记录（2026-11-17）
 
@@ -667,4 +668,14 @@ Completion notifications     <target label or "Not configured">
 - 失败对话框：显示目标 label、原始错误、微信/QQ 预热指引；按钮为 `I have sent it — retry`、`Open Settings → IM channels`、`Cancel`。
 - 验证：`npm --prefix core-ai-desktop run check` 通过；`npm --prefix core-ai-desktop test` 194/194 通过（新增 `notifyNeedsWarmup` / `notifyVerifyFailureHint` / `NOTIFY_HANDSHAKE_TEXT` 断言）；`npm --prefix core-ai-desktop run build` 通过。
 - 已知限制：`@tencent-weixin/openclaw-weixin@2.4.4` 忽略 `ret:-2`，会把未送达误报为成功；升级到 2.4.6+ 后 OCG 才会返回 `PLATFORM_SEND_FAILED`，desktop 才能展示预热失败。
+
+#### 13.5.1 真实通道 E2E（2026-11-17）
+
+环境：用独立 `--user-data-dir` 启动源码 dev 实例（不影响正在运行的安装版），workspace 为临时目录，OCG 使用本机已登录的 `openclaw-weixin`；通过 CDP 驱动 renderer，真实目标为本机微信 `o9cq…@im.wechat`。
+
+1. **失败路径**：将 `notifyTarget` 换成不存在的 target 后勾选 Notify。OCG 返回 `sendMessage ret=-3 errmsg=invalid arguments`；renderer 弹出对话框，文本包含目标 label、原始错误、微信/QQ 预热指引、`I have sent it — retry`、`Open Settings → IM channels`、`Cancel`；勾选框未保持开启。
+2. **重试成功**：在对话框打开期间把 target 恢复为真实微信地址，点击 `I have sent it — retry`。OCG 日志 `ok:true`，对话框关闭，勾选框保持勾选，toast 为 `Notifications on — 微信 · … (channel verified)`；真实微信收到确认消息（textLength=27）。
+3. **空白窗口转正式会话**：真实 target 下勾选 Notify（确认消息 `ok:true`，textLength=27），随后发送 `hi`；首条消息创建 `cli-20261117-141321-4hq5`，`settings.json` 写入 `notifySessions["<workspace>::cli-20261117-141321-4hq5"]=true`。
+4. **回合完成通知**：该回合 3 秒完成，OCG 日志出现第三条发送 `ok:true`（textLength=123），即 `Session finished — hi` 完成通知；微信实际收到。
+5. 清理：关闭 dev 实例，安装版保持运行；临时 profile 位于 `tmp/e2e-notify`（已被 .gitignore 覆盖）。
 
