@@ -63,6 +63,8 @@ public interface AgentQualityStore {
 
     Optional<AgentQualityRun> findLatestRun(String agentId);
 
+    List<AgentQualityRun> listRuns(String agentId, int limit);
+
     boolean updateRun(AgentQualityRun run, QualityRunStatus expectedStatus);
 
     void insertPublicationRecord(AgentPublicationRecord record);

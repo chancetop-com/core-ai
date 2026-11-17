@@ -180,6 +180,12 @@ public class PgAgentQualityStore implements AgentQualityStore {
     }
 
     @Override
+    public List<AgentQualityRun> listRuns(String agentId, int limit) {
+        return select(RUNS, AgentQualityRun.class,
+            " WHERE data ->> ? = ? ORDER BY data ->> ? DESC LIMIT ?", "agentId", agentId, "createdAt", limit);
+    }
+
+    @Override
     public boolean updateRun(AgentQualityRun run, QualityRunStatus expectedStatus) {
         return database.execute("UPDATE " + RUNS + " SET data = ?::jsonb, updated_at = now() "
                 + "WHERE id = ? AND data ->> ? = ?",

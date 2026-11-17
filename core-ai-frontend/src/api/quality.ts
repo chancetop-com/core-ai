@@ -191,6 +191,21 @@ export interface RuleTestResponse {
   lifecycle?: string;
 }
 
+export interface AgentQualityRun {
+  run_id: string;
+  mode?: string;
+  run_status?: string;
+  gate_result?: string;
+  policy_revision?: number;
+  definition_revision?: number;
+  checks_complete?: boolean;
+  warn_count?: number;
+  block_fail_count?: number;
+  incomplete_count?: number;
+  created_at?: string;
+  finished_at?: string;
+}
+
 export interface SkillQualityRule {
   key: string;
   revision: number;
@@ -211,6 +226,8 @@ export const qualityApi = {
       method: 'POST',
       headers: { ...getAuthHeaders(), ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
     }),
+  runs: (agentId: string) =>
+    request<{ runs: AgentQualityRun[] }>(`/api/agents/${encodeURIComponent(agentId)}/quality-checks`),
   report: (agentId: string, runId = 'latest') =>
     request<QualityReport>(`/api/agents/${agentId}/quality-checks/${encodeURIComponent(runId)}`),
   templates: () =>

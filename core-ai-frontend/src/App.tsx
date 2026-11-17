@@ -21,6 +21,7 @@ const PromptEditor = lazy(() => import('./pages/prompts/PromptEditor'));
 const Dashboard = lazy(() => import('./pages/dashboard/Dashboard'));
 const AgentList = lazy(() => import('./pages/agents/AgentList'));
 const AgentEditor = lazy(() => import('./pages/agents/AgentEditor'));
+const AgentQualityHistoryPage = lazy(() => import('./pages/agents/AgentQualityHistory'));
 const WorkflowList = lazy(() => import('./pages/workflows/WorkflowList'));
 const WorkflowExplore = lazy(() => import('./pages/workflows/WorkflowExplore'));
 const WorkflowEditor = lazy(() => import('./pages/workflows/WorkflowEditor'));
@@ -205,6 +206,7 @@ function AuthenticatedApp() {
                     {caps.prompts && <Route path="/prompts/:id" element={<RequirePermission permission="prompt.view"><PromptEditor /></RequirePermission>} />}
                     <Route path="/agents" element={<RequirePermission permission="agent.view"><AgentList /></RequirePermission>} />
                     <Route path="/agents/:id" element={<RequirePermission permission="agent.view"><AgentEditor /></RequirePermission>} />
+                    <Route path="/agents/:id/quality-history" element={<RequirePermission permission="agent.view"><AgentQualityHistoryPage /></RequirePermission>} />
                     <Route path="/agents/:id/memories" element={<RequirePermission permission="agent.view"><AgentMemory /></RequirePermission>} />
                     <Route path="/runs/:id" element={<RequirePermission permission="agent.view"><RunDetail /></RequirePermission>} />
                     <Route path="/experiments" element={<RequirePermission permission="experiment.view"><ReplayExperimentList origin="BLANK" /></RequirePermission>} />

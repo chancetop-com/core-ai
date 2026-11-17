@@ -112,6 +112,10 @@ public class QualityPublicationService {
         return qualityStore.findLatestRun(agentId).orElse(null);
     }
 
+    public List<AgentQualityRun> runs(String agentId, int limit) {
+        return qualityStore.listRuns(agentId, limit);
+    }
+
     public AgentQualityRun run(String runId) {
         return qualityStore.getRun(runId).orElse(null);
     }

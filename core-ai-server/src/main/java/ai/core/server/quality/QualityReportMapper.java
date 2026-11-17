@@ -2,6 +2,7 @@ package ai.core.server.quality;
 
 import ai.core.api.server.agent.AgentQualityIssueView;
 import ai.core.api.server.agent.AgentQualityReportView;
+import ai.core.api.server.agent.AgentQualityRunView;
 import ai.core.server.quality.domain.AgentQualityRun;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityGateResult;
@@ -35,13 +36,51 @@ public final class QualityReportMapper {
         view.finishedAt = run.finishedAt;
 
         var issues = new ArrayList<AgentQualityIssueView>();
-        int warn = 0;
-        int blockFail = 0;
-        int incomplete = 0;
         if (run.issues != null) {
             for (var issue : run.issues) {
                 if (!includeShadow && issue.enforcement == QualityEnforcement.SHADOW) continue;
                 issues.add(issueView(issue));
+            }
+        }
+        view.issues = issues;
+        var counts = counts(run.issues);
+        view.warnCount = counts[0];
+        view.blockFailCount = counts[1];
+        view.incompleteCount = counts[2];
+        view.rulesEvaluated = run.ruleResults == null ? 0 : run.ruleResults.size();
+        view.rulesApplicable = run.ruleResults == null ? 0 : run.ruleResults.size();
+        return view;
+    }
+
+    public static List<AgentQualityRunView> runViews(List<AgentQualityRun> runs) {
+        if (runs == null) return List.of();
+        return runs.stream().map(QualityReportMapper::runView).toList();
+    }
+
+    public static AgentQualityRunView runView(AgentQualityRun run) {
+        var view = new AgentQualityRunView();
+        view.runId = run.id;
+        view.mode = run.mode == null ? null : run.mode.name();
+        view.runStatus = run.runStatus == null ? null : run.runStatus.name();
+        view.gateResult = run.gateResult == null ? QualityGateResult.UNAVAILABLE.name() : run.gateResult.name();
+        view.policyRevision = run.policyRevision;
+        view.definitionRevision = run.definitionRevision;
+        view.checksComplete = run.checksComplete;
+        view.createdAt = run.createdAt;
+        view.finishedAt = run.finishedAt;
+        var counts = counts(run.issues);
+        view.warnCount = counts[0];
+        view.blockFailCount = counts[1];
+        view.incompleteCount = counts[2];
+        return view;
+    }
+
+    private static int[] counts(List<StoredQualityIssue> issues) {
+        int warn = 0;
+        int blockFail = 0;
+        int incomplete = 0;
+        if (issues != null) {
+            for (var issue : issues) {
                 if (issue.enforcement == QualityEnforcement.WARN
                     && (issue.status == QualityIssueStatus.FAIL
                     || issue.status == QualityIssueStatus.INDETERMINATE
@@ -56,13 +95,7 @@ public final class QualityReportMapper {
                 }
             }
         }
-        view.issues = issues;
-        view.warnCount = warn;
-        view.blockFailCount = blockFail;
-        view.incompleteCount = incomplete;
-        view.rulesEvaluated = run.ruleResults == null ? 0 : run.ruleResults.size();
-        view.rulesApplicable = run.ruleResults == null ? 0 : run.ruleResults.size();
-        return view;
+        return new int[]{warn, blockFail, incomplete};
     }
 
     public static AgentQualityIssueView issueView(StoredQualityIssue issue) {

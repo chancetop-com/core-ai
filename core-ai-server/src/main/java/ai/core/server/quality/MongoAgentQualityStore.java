@@ -167,6 +167,15 @@ public class MongoAgentQualityStore implements AgentQualityStore {
     }
 
     @Override
+    public List<AgentQualityRun> listRuns(String agentId, int limit) {
+        var query = new Query();
+        query.filter = Filters.eq("agent_id", agentId);
+        query.sort = Sorts.descending("created_at");
+        query.limit = limit;
+        return runCollection.find(query);
+    }
+
+    @Override
     public boolean updateRun(AgentQualityRun run, QualityRunStatus expectedStatus) {
         // claim the status transition with a filtered scalar update, then persist the full document; the
         // full document contains nested issue lists whose $set encoding is not guaranteed by the codec

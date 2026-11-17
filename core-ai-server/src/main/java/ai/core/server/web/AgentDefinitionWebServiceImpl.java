@@ -3,6 +3,7 @@ package ai.core.server.web;
 import ai.core.api.server.AgentDefinitionWebService;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.AgentQualityReportView;
+import ai.core.api.server.agent.AgentQualityRunListResponse;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -129,6 +130,12 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
         var userId = AuthContext.userId(webContext);
         ActionLogContext.put("user_id", userId);
         return agentDefinitionService.checkQuality(id, userId, idempotencyKey());
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_VIEW)
+    public AgentQualityRunListResponse qualityRuns(String id) {
+        return agentDefinitionService.qualityRuns(id, AuthContext.userId(webContext));
     }
 
     @Override

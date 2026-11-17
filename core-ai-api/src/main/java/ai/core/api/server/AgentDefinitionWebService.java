@@ -2,6 +2,7 @@ package ai.core.api.server;
 
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.AgentQualityReportView;
+import ai.core.api.server.agent.AgentQualityRunListResponse;
 import ai.core.api.server.agent.ConvertJavaToSchemaRequest;
 import ai.core.api.server.agent.ConvertJavaToSchemaResponse;
 import ai.core.api.server.agent.CreateAgentRequest;
@@ -74,6 +75,10 @@ public interface AgentDefinitionWebService {
     @POST
     @Path("/api/agents/:id/quality-checks")
     AgentQualityReportView checkQuality(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/agents/:id/quality-checks")
+    AgentQualityRunListResponse qualityRuns(@PathParam("id") String id);
 
     /**
      * {@code runId} may be literal {@code latest}: the editor reads the newest report after a publish

@@ -53,6 +53,8 @@ public class AgentDefinitionService {
     AgentPublishService agentPublishService;
     @Inject
     ai.core.server.quality.PublishQualityGate qualityGate;
+    @Inject
+    ai.core.server.quality.QualityPublicationService qualityPublicationService;
 
     private volatile Runnable catalogInvalidator;
 
@@ -368,6 +370,16 @@ public class AgentDefinitionService {
         requireAdminForSystemDefault(entity, userId);
         requirePersonalAssistantOwnerOrAdmin(entity, userId);
         return qualityGate.report(id, runId);
+    }
+
+    public ai.core.api.server.agent.AgentQualityRunListResponse qualityRuns(String id, String userId) {
+        var entity = agentDefinitionStore.get(id)
+                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
+        requireAdminForSystemDefault(entity, userId);
+        requirePersonalAssistantOwnerOrAdmin(entity, userId);
+        var response = new ai.core.api.server.agent.AgentQualityRunListResponse();
+        response.runs = ai.core.server.quality.QualityReportMapper.runViews(qualityPublicationService.runs(id, 50));
+        return response;
     }
 
     private List<String> requireAccessibleSkills(List<String> skillIds, String userId) {

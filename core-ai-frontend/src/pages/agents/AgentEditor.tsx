@@ -12,7 +12,6 @@ import StatusBadge from '../../components/StatusBadge';
 import { agentVersionApi } from '../../api/comparison';
 import type { AgentVersion, ComparisonVariantConfig } from '../../api/comparison';
 import QualityReportPanel from './QualityReportPanel';
-import PolicyHistoryModal from '../settings/quality/PolicyHistoryModal';
 import { ApiError, publishAgent, qualityApi, type QualityReport } from '../../api/quality';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
@@ -150,7 +149,6 @@ export default function AgentEditor({ versionId }: { versionId?: string } = {}) 
   const [saveError, setSaveError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
-  const [policyHistoryOpen, setPolicyHistoryOpen] = useState(false);
   const [checkingQuality, setCheckingQuality] = useState(false);
   const [publishWarnings, setPublishWarnings] = useState(0);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -1042,7 +1040,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
             <Download size={14} /> Export
           </button>
           {!isNew && hasPermission(user?.permissions, 'agent.quality.manage') && (
-            <button onClick={() => setPolicyHistoryOpen(true)}
+            <button onClick={() => navigate(`/agents/${encodeURIComponent(agent.id)}/quality-history`)}
               className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
               style={{ borderColor: 'var(--color-border)' }}>
               <History size={14} /> Policy history
@@ -1082,10 +1080,6 @@ The system prompt should define how this agent behaves, its capabilities, and it
             document.getElementById(`agent-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           onClose={() => setQualityReport(null)} />
-      )}
-
-      {policyHistoryOpen && (
-        <PolicyHistoryModal onClose={() => setPolicyHistoryOpen(false)} />
       )}
 
       {showImportConfirm && (
