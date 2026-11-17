@@ -56,4 +56,9 @@ public class PropertiesFileSource implements PropertySource {
     public void putProperty(String key, String value) {
         properties.setProperty(key, value);
     }
+
+    /** Drops a property so a restricted bootstrap cannot start workspace/global executables. */
+    public void removeProperty(String key) {
+        properties.remove(key);
+    }
 }

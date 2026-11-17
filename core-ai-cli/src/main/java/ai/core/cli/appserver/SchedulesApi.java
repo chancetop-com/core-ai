@@ -108,6 +108,7 @@ final class SchedulesApi {
     }
 
     ObjectNode trigger(ObjectNode params) {
+        bootstrap.requireTrusted("running scheduled tasks");
         var id = Params.requiredText(params, "id");
         var run = scheduler.triggerNow(id);
         var node = Params.object();

@@ -97,8 +97,32 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("transcript");
         capabilities.add("speech");
         node.put("workspace", bootstrap.workspace.toString());
-        scheduler.start();
+        node.set("trustState", trustNode());
+        if (bootstrap.workspaceTrusted) scheduler.start();
         return node;
+    }
+
+    private ObjectNode trustNode() {
+        var trust = Params.object();
+        trust.put("state", bootstrap.workspaceTrusted ? "trusted" : "restricted");
+        trust.put("key", bootstrap.workspaceTrust.key());
+        trust.put("fingerprint", bootstrap.workspaceTrust.fingerprint());
+        trust.put("hasExecutableInputs", bootstrap.workspaceTrust.hasExecutableInputs());
+        trust.put("reason", bootstrap.workspaceTrust.reason());
+        trust.put("engineRestricted", !bootstrap.workspaceTrusted);
+        return trust;
+    }
+
+    private ObjectNode quiesce(ObjectNode params) {
+        scheduler.pause();
+        var node = registry.intake.quiesce(params, registry::activeSessions);
+        if (!node.path("acquired").asBoolean(false)) scheduler.resume();
+        return node;
+    }
+
+    private ObjectNode resumeIntake(ObjectNode params) {
+        scheduler.resume();
+        return registry.intake.resumeIntake(params);
     }
 
     @Override
@@ -126,10 +150,10 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/approve", registry::approve),
                 Map.entry("session/compact", registry::compact),
                 Map.entry("session/undo", registry::undo),
-                Map.entry("session/delete", registry::delete),
-                Map.entry("session/rename", registry::rename),
+                Map.entry("session/delete", registry::delete), Map.entry("session/rename", registry::rename),
                 Map.entry("session/export", registry::export),
                 Map.entry("session/stats", registry::stats),
+                Map.entry("engine/quiesce", this::quiesce), Map.entry("engine/resumeIntake", this::resumeIntake),
                 Map.entry("schedules/list", schedulesApi::list),
                 Map.entry("schedules/get", schedulesApi::get),
                 Map.entry("schedules/update", schedulesApi::update),
@@ -146,6 +170,7 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("speech/models", ignored -> speechApi.models()), Map.entry("speech/transcribe", speechApi::transcribe),
                 Map.entry("permissions/get", ignored -> permissionsGet()),
                 Map.entry("permissions/update", this::permissionsUpdate),
+                Map.entry("workspace/trust", ignored -> trustNode()),
                 Map.entry("artifacts/list", params -> LocalArtifacts.list(bootstrap.workspace, params)),
                 Map.entry("memory/list", params -> LocalMemory.list(bootstrap.workspace, params)),
                 Map.entry("memory/read", params -> LocalMemory.read(bootstrap.workspace, params)),

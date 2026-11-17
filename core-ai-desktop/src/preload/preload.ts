@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('coreai', {
   call: (workspace: string, method: string, params: Record<string, unknown>) =>
     ipcRenderer.invoke('engine:call', workspace, method, params),
   chooseWorkspace: () => ipcRenderer.invoke('workspace:choose'),
+  workspaceTrust: (workspace: string) => ipcRenderer.invoke('workspace:trust', workspace),
+  workspaceSetTrust: (workspace: string, trusted: boolean) => ipcRenderer.invoke('workspace:setTrust', workspace, trusted),
   defaultWorkspace: () => ipcRenderer.invoke('workspace:default'),
   workspaceSummaries: () => ipcRenderer.invoke('workspaces:summaries'),
   authStatus: () => ipcRenderer.invoke('auth:status'),

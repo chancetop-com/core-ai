@@ -21,6 +21,7 @@ import ai.core.cli.memory.MdMemoryProvider;
 import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.media.MediaModelCatalog;
+import ai.core.cli.plugin.PluginGrantGate;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.plugin.PluginSkillRoots;
 import ai.core.cli.speech.SpeechClient;
@@ -74,29 +75,11 @@ public class CliAgent {
         var pluginManager = PluginManager.getInstance(Path.of(System.getProperty("user.home"), ".core-ai"));
         var auth = AuthConfig.load();
         var decisionSupport = DecisionSupport.create(auth);
-        var toolRegistry = ToolRegistryFactory.create(buildFactoryContext(config));
-        toolRegistry.registerProvider(new McpToolProvider());
-        toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager), config.workspace.toAbsolutePath().toString()));
-        toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
-        var mediaTools = mediaTools(config);
-        if (!mediaTools.isEmpty()) {
-            toolRegistry.registerProvider(ListToolProvider.of(mediaTools));
-        }
-        if (decisionSupport.available()) {
-            toolRegistry.registerProvider(ListToolProvider.of(List.of(decideTool(decisionSupport))));
-        }
-        if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
-            toolRegistry.registerProvider(ListToolProvider.of(List.of(TranscribeAudioTool.builder(
-                    new SpeechClient(auth.serverUrl(), auth.apiKey(), auth.insecure())).build())));
-        }
-        toolRegistry.registerProvider(buildRemoteAgentProvider(config));
-        var helperProvider = buildHelperProvider(config, toolRegistry);
-        if (helperProvider != null) {
-            toolRegistry.registerProvider(helperProvider);
-        }
+        var restricted = Boolean.getBoolean("core.ai.workspace.restricted");
+        var toolRegistry = buildToolRegistry(config, pluginManager, auth, decisionSupport);
 
-        var hookConfig = HookConfig.load(config.workspace, pluginManager);
-        var hookLifecycle = hookConfig.isEmpty() ? null
+        var hookConfig = restricted ? null : HookConfig.load(config.workspace, pluginManager);
+        var hookLifecycle = hookConfig == null || hookConfig.isEmpty() ? null
                 : new ScriptHookLifecycle(hookConfig, new ScriptHookRunner(config.workspace));
         String hookOutput = hookLifecycle != null ? hookLifecycle.runSessionStartHooks() : "";
         var builder = Agent.builder()
@@ -119,6 +102,34 @@ public class CliAgent {
         }
         configureExecutionContext(agent, config, auth, decisionSupport, hookOutput);
         return agent;
+    }
+
+    private static ToolRegistry buildToolRegistry(Config config, PluginManager pluginManager,
+                                                  AuthConfig auth, DecisionSupport decisionSupport) {
+        var pluginGate = PluginGrantGate.fromEnvironment();
+        var toolRegistry = ToolRegistryFactory.create(buildFactoryContext(config));
+        toolRegistry.registerProvider(new McpToolProvider());
+        toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager),
+                config.workspace.toAbsolutePath().toString(),
+                skill -> pluginGate.permits(skill.getSkillDir())));
+        toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
+        var mediaTools = mediaTools(config);
+        if (!mediaTools.isEmpty()) {
+            toolRegistry.registerProvider(ListToolProvider.of(mediaTools));
+        }
+        if (decisionSupport.available()) {
+            toolRegistry.registerProvider(ListToolProvider.of(List.of(decideTool(decisionSupport))));
+        }
+        if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
+            toolRegistry.registerProvider(ListToolProvider.of(List.of(TranscribeAudioTool.builder(
+                    new SpeechClient(auth.serverUrl(), auth.apiKey(), auth.insecure())).build())));
+        }
+        toolRegistry.registerProvider(buildRemoteAgentProvider(config));
+        var helperProvider = buildHelperProvider(config, toolRegistry);
+        if (helperProvider != null) {
+            toolRegistry.registerProvider(helperProvider);
+        }
+        return toolRegistry;
     }
 
     private static ToolCall decideTool(DecisionSupport decisionSupport) {
@@ -223,14 +234,23 @@ public class CliAgent {
     }
 
     private static SkillConfig buildSkillConfig(Config config, PluginManager pluginManager) {
+        return skillConfig(config.workspace, pluginManager.getEnabledPluginSkillSources());
+    }
+
+    static SkillConfig skillConfig(Path workspace, List<String[]> pluginSources) {
         // Lower priority value wins in SkillRegistry: workspace overrides plugins overrides user.
-        var builder = SkillConfig.builder()
-                .source("workspace", config.workspace.resolve(".core-ai/skills").toString(), 50)
-                .source("user", userSkillsDir().toString(), 100);
+        boolean restricted = Boolean.getBoolean("core.ai.workspace.restricted");
+        var builder = SkillConfig.builder();
+        if (!restricted) {
+            builder.source("workspace", workspace.resolve(".core-ai/skills").toString(), 50);
+        }
+        builder.source("user", userSkillsDir().toString(), 100);
 
         int priority = 75; // Between workspace (50) and user (100)
-        for (var source : pluginManager.getEnabledPluginSkillSources()) {
-            builder.source("plugin:" + source[0], source[1], priority);
+        if (!restricted) {
+            for (var source : pluginSources) {
+                builder.source("plugin:" + source[0], source[1], priority);
+            }
         }
 
         // Desktop-managed plugin packages: the host injects only active, granted roots.

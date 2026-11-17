@@ -24,13 +24,16 @@ import java.util.regex.Pattern;
 public final class PluginSkillRoots {
     public static final String ROOTS_ENV = "CORE_AI_PLUGIN_SKILL_ROOTS";
     public static final String STORE_ROOT_ENV = "CORE_AI_PLUGIN_STORE_ROOT";
+    public static final String STATE_FILE_ENV = "CORE_AI_PLUGIN_STATE_FILE";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(PluginSkillRoots.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern SAFE_NAME = Pattern.compile("[A-Za-z0-9._-]{1,128}");
+    private static final Pattern DIGEST = Pattern.compile("[a-f0-9]{64}");
     private static final int MAX_ROOTS = 50;
 
     public static List<Root> fromEnvironment() {
+        if (Boolean.getBoolean("core.ai.workspace.restricted")) return List.of();
         var storeRoot = System.getenv(STORE_ROOT_ENV);
         var packagesRoot = storeRoot != null && !storeRoot.isBlank()
                 ? Path.of(storeRoot)
@@ -55,7 +58,9 @@ public final class PluginSkillRoots {
                 if (!entry.isObject()) continue;
                 var name = entry.path("name").asText("");
                 var dir = entry.path("dir").asText("");
-                var validated = validate(root, name, dir);
+                var digest = entry.path("digest").asText("");
+                var grantEpoch = entry.path("grantEpoch").asLong(-1);
+                var validated = validate(root, name, dir, digest, grantEpoch);
                 if (validated != null) roots.putIfAbsent(validated.dir(), validated);
             }
         } catch (IOException | RuntimeException e) {
@@ -65,9 +70,13 @@ public final class PluginSkillRoots {
         return List.copyOf(new ArrayList<>(roots.values()));
     }
 
-    private static Root validate(Path packagesRoot, String name, String dir) {
+    private static Root validate(Path packagesRoot, String name, String dir, String digest, long grantEpoch) {
         if (!SAFE_NAME.matcher(name).matches()) {
             LOGGER.warn("ignoring plugin skill root with invalid name: {}", name);
+            return null;
+        }
+        if (!DIGEST.matcher(digest).matches() || grantEpoch < 0) {
+            LOGGER.warn("ignoring plugin skill root with invalid digest or epoch: {}", name);
             return null;
         }
         Path candidate;
@@ -92,7 +101,7 @@ public final class PluginSkillRoots {
                 LOGGER.warn("ignoring plugin skill root escaping the package store via a link: {}", candidate);
                 return null;
             }
-            return new Root(name, realCandidate.toString());
+            return new Root(name, realCandidate.toString(), digest, grantEpoch);
         } catch (IOException e) {
             LOGGER.warn("ignoring unresolvable plugin skill root: {}", candidate);
             return null;
@@ -102,6 +111,6 @@ public final class PluginSkillRoots {
     private PluginSkillRoots() {
     }
 
-    public record Root(String name, String dir) {
+    public record Root(String name, String dir, String digest, long grantEpoch) {
     }
 }

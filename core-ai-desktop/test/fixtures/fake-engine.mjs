@@ -15,7 +15,12 @@ rl.on('line', (line) => {
   const { id, method, params } = frame;
   switch (method) {
     case 'initialize':
-      send({ jsonrpc: '2.0', id, result: { protocolVersion: '1.0', engineVersion: 'fake', capabilities: ['scheduled_tasks'] } });
+      send({ jsonrpc: '2.0', id, result: {
+        protocolVersion: '1.0',
+        engineVersion: 'fake',
+        capabilities: ['scheduled_tasks'],
+        trustState: { state: 'trusted', key: 'C:\\ws', fingerprint: 'abc123', hasExecutableInputs: false, reason: null, engineRestricted: false },
+      } });
       send({ jsonrpc: '2.0', method: 'engine/ready', params: {} });
       return;
     case 'shutdown':
@@ -24,6 +29,12 @@ rl.on('line', (line) => {
       return;
     case 'echo':
       send({ jsonrpc: '2.0', id, result: params ?? {} });
+      return;
+    case 'engine/quiesce':
+      send({ jsonrpc: '2.0', id, result: { acquired: true, active: 0 } });
+      return;
+    case 'engine/resumeIntake':
+      send({ jsonrpc: '2.0', id, result: { resumed: true } });
       return;
     case 'exit':
       process.exit(0);

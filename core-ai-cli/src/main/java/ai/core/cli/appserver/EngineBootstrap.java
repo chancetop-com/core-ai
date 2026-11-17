@@ -21,6 +21,7 @@ import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.schedule.FileScheduledTaskStore;
 import ai.core.cli.utils.PathUtils;
+import ai.core.cli.workspace.WorkspaceTrust;
 import ai.core.context.CompressionConfig;
 import ai.core.media.MediaProvider;
 import ai.core.schedule.ScheduledTaskStore;
@@ -71,6 +72,12 @@ public class EngineBootstrap {
         return dir;
     }
 
+    private static WorkspaceTrust.Evaluation evaluateTrust(Path workspace) {
+        var evaluation = WorkspaceTrust.evaluate(workspace);
+        System.setProperty(WorkspaceTrust.RESTRICTED_PROPERTY, String.valueOf(!evaluation.trusted()));
+        return evaluation;
+    }
+
     public final Path workspace;
     public final Path sessionsDir;
     public final SessionLock engineLock;
@@ -101,9 +108,13 @@ public class EngineBootstrap {
     public final SubagentModelResolver subagentModelResolver;
     public final ScheduledTaskStore scheduledTaskStore;
     public final Set<String> disabledTools;
+    public final WorkspaceTrust.Evaluation workspaceTrust;
+    public final boolean workspaceTrusted;
 
     public EngineBootstrap(Path workspace, Path configFile) {
         this.workspace = workspace.toAbsolutePath();
+        this.workspaceTrust = evaluateTrust(this.workspace);
+        this.workspaceTrusted = workspaceTrust.trusted();
         this.sessionsDir = prepareSessionsDir(this.workspace);
         var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
         if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
@@ -111,14 +122,14 @@ public class EngineBootstrap {
         }
         this.engineLock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
         CliLogger.initialize(this.workspace, "app-server");
-        this.props = loadProperties(configFile);
+        this.props = loadProperties(configFile, !workspaceTrusted);
         var bootstrap = new AgentBootstrap(props);
         CliAppHelper.registerMcpLoadingListener();
         this.result = bootstrap.initialize();
         this.providerStore = initializeProviders(result);
         this.maxTurn = intFlag("agent.max.turn", 100);
-        this.memoryEnabled = boolFlag("agent.memory.enabled", true);
-        this.dailyLogsEnabled = boolFlag("agent.memory.daily.logs.enabled", false);
+        this.memoryEnabled = workspaceTrusted && boolFlag("agent.memory.enabled", true);
+        this.dailyLogsEnabled = workspaceTrusted && boolFlag("agent.memory.daily.logs.enabled", false);
         this.coding = boolFlag("agent.coding.enabled", false);
         this.todoV2Enabled = boolFlag("agent.todo.v2.enabled", false);
         this.promptExtractionEnabled = boolFlag("agent.memory.prompt.extraction", false);
@@ -145,6 +156,14 @@ public class EngineBootstrap {
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
     }
 
+    /** Execution entry points call this before running a turn, a compaction or a scheduled task. */
+    public void requireTrusted(String action) {
+        if (workspaceTrusted) return;
+        throw RpcException.business("TRUST_REQUIRED",
+                "this workspace is not trusted; trust it in Settings → Plugins before " + action,
+                "reason", workspaceTrust.reason());
+    }
+
     private LlmProviderStore initializeProviders(BootstrapResult result) {
         var store = LlmProviderStore.load();
         ProviderWiring.apply(store, result, props);
@@ -154,7 +173,7 @@ public class EngineBootstrap {
         return store;
     }
 
-    private PropertiesFileSource loadProperties(Path configFile) {
+    private PropertiesFileSource loadProperties(Path configFile, boolean restricted) {
         var resolved = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
         PropertiesFileSource props;
         if (Files.exists(resolved)) {
@@ -163,7 +182,15 @@ public class EngineBootstrap {
             LOGGER.info("app-server: no config file at {}, using defaults", resolved);
             props = new PropertiesFileSource(new Properties());
         }
-        CliAppHelper.mergeWorkspaceConfig(props, workspace);
+        if (!restricted) {
+            CliAppHelper.mergeWorkspaceConfig(props, workspace);
+        } else {
+            // A restricted workspace must not contribute provider overrides, MCP servers or other
+            // executable configuration. Global MCP is also suppressed: the design treats hooks/MCP
+            // as executable components that require an explicit trust decision.
+            props.removeProperty("mcp.servers.json");
+            LOGGER.info("app-server: workspace is restricted; workspace config and MCP are not loaded");
+        }
         CliAppHelper.injectLiteLLMFallback(props);
         return props;
     }

@@ -12,6 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PluginSkillRootsTest {
 
+    private static final String DIGEST = "a".repeat(64);
+
     @TempDir
     Path temp;
 
@@ -21,54 +23,69 @@ class PluginSkillRootsTest {
         return dir;
     }
 
+    private String entry(String name, Path dir) {
+        return "{\"name\":\"" + name + "\",\"dir\":\"" + dir.toString().replace("\\", "\\\\")
+                + "\",\"digest\":\"" + DIGEST + "\",\"grantEpoch\":1}";
+    }
+
     @Test
     void parsesRootsInsideThePackageStore() throws IOException {
         var root = skillRoot("abc123");
-        var json = "[{\"name\":\"example.hello\",\"dir\":\"" + root.toString().replace("\\", "\\\\") + "\"}]";
 
-        var roots = PluginSkillRoots.parse(json, temp);
+        var roots = PluginSkillRoots.parse("[" + entry("example.hello", root) + "]", temp);
 
         assertEquals(1, roots.size());
         assertEquals("example.hello", roots.get(0).name());
+        assertEquals(DIGEST, roots.get(0).digest());
+        assertEquals(1, roots.get(0).grantEpoch());
         assertEquals(root.toRealPath().toString(), roots.get(0).dir());
     }
 
     @Test
     void rejectsRootsOutsideThePackageStore() throws IOException {
         var outside = Files.createDirectories(temp.getParent().resolve("plugin-skills-outside"));
-        var json = "[{\"name\":\"outside\",\"dir\":\"" + outside.toString().replace("\\", "\\\\") + "\"}]";
 
-        assertTrue(PluginSkillRoots.parse(json, temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[" + entry("outside", outside) + "]", temp).isEmpty());
     }
 
     @Test
     void rejectsTraversalAndTheStoreRootItself() throws IOException {
         var escaped = temp.resolve("abc123").resolve("..").resolve("..").resolve("escaped-skills");
         Files.createDirectories(escaped);
-        var traversalJson = "[{\"name\":\"traversal\",\"dir\":\"" + escaped.toString().replace("\\", "\\\\") + "\"}]";
-        var rootJson = "[{\"name\":\"root\",\"dir\":\"" + temp.toString().replace("\\", "\\\\") + "\"}]";
+        var rootJson = "{\"name\":\"root\",\"dir\":\"" + temp.toString().replace("\\", "\\\\")
+                + "\",\"digest\":\"" + DIGEST + "\",\"grantEpoch\":1}";
 
-        assertTrue(PluginSkillRoots.parse(traversalJson, temp).isEmpty());
-        assertTrue(PluginSkillRoots.parse(rootJson, temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[" + entry("traversal", escaped) + "]", temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[" + rootJson + "]", temp).isEmpty());
         assertTrue(Files.isDirectory(escaped));
     }
 
     @Test
     void rejectsInvalidNamesMissingDirectoriesAndMalformedJson() throws IOException {
         var root = skillRoot("abc123");
-        var escaped = root.toString().replace("\\", "\\\\");
-        assertTrue(PluginSkillRoots.parse("[{\"name\":\"bad name\",\"dir\":\"" + escaped + "\"}]", temp).isEmpty());
-        assertTrue(PluginSkillRoots.parse("[{\"name\":\"missing\",\"dir\":\"" + temp.resolve("nope").toString().replace("\\", "\\\\") + "\"}]", temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[{\"name\":\"bad name\",\"dir\":\"" + root.toString().replace("\\", "\\\\")
+                + "\",\"digest\":\"" + DIGEST + "\",\"grantEpoch\":1}]", temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[" + entry("missing", temp.resolve("nope")) + "]", temp).isEmpty());
         assertTrue(PluginSkillRoots.parse("{not json", temp).isEmpty());
         assertTrue(PluginSkillRoots.parse("[]", temp).isEmpty());
         assertTrue(PluginSkillRoots.parse(null, temp).isEmpty());
     }
 
     @Test
-    void deduplicatesByResolvedDirectory() throws IOException {
+    void rejectsMissingDigestAndNegativeEpoch() throws IOException {
         var root = skillRoot("abc123");
         var escaped = root.toString().replace("\\", "\\\\");
-        var json = "[{\"name\":\"one\",\"dir\":\"" + escaped + "\"},{\"name\":\"two\",\"dir\":\"" + escaped + "\"}]";
+        var noDigest = "{\"name\":\"x\",\"dir\":\"" + escaped + "\",\"grantEpoch\":1}";
+        var negativeEpoch = "{\"name\":\"x\",\"dir\":\"" + escaped + "\",\"digest\":\"" + DIGEST + "\",\"grantEpoch\":-1}";
+
+        assertTrue(PluginSkillRoots.parse("[" + noDigest + "]", temp).isEmpty());
+        assertTrue(PluginSkillRoots.parse("[" + negativeEpoch + "]", temp).isEmpty());
+    }
+
+    @Test
+    void deduplicatesByResolvedDirectory() throws IOException {
+        var root = skillRoot("abc123");
+        var json = "[" + entry("one", root) + "," + entry("two", root) + "]";
 
         var roots = PluginSkillRoots.parse(json, temp);
 

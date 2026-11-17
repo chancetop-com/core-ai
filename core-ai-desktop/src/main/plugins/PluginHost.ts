@@ -11,6 +11,8 @@ import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
 export const PLUGIN_STORE_ROOT_ENV = 'CORE_AI_PLUGIN_STORE_ROOT';
+export const PLUGIN_STATE_FILE_ENV = 'CORE_AI_PLUGIN_STATE_FILE';
+export const PLUGIN_HOME_ENV = 'CORE_AI_PLUGIN_HOME';
 
 export interface PluginHostOptions extends PluginStoreOptions {
   onChanged?: () => void;
@@ -74,7 +76,11 @@ export class PluginHost {
   /** Engine environment for one workspace; omitted keys leave the engine unchanged. */
   async engineEnv(): Promise<Record<string, string>> {
     const roots = await this.skillRoots();
-    const env: Record<string, string> = { [PLUGIN_STORE_ROOT_ENV]: path.join(this.rootDir, 'packages') };
+    const env: Record<string, string> = {
+      [PLUGIN_STORE_ROOT_ENV]: path.join(this.rootDir, 'packages'),
+      [PLUGIN_STATE_FILE_ENV]: path.join(this.rootDir, 'state.json'),
+      [PLUGIN_HOME_ENV]: this.rootDir,
+    };
     if (roots.length) env[PLUGIN_SKILL_ROOTS_ENV] = JSON.stringify(roots);
     return env;
   }

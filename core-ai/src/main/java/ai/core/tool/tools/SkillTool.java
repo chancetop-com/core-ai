@@ -67,6 +67,7 @@ public class SkillTool extends ToolCall {
     }
 
     private SkillRegistry registry;
+    private SkillAccessGuard accessGuard;
 
     @Override
     public ToolCallResult execute(String arguments) {
@@ -89,6 +90,11 @@ public class SkillTool extends ToolCall {
         SkillMetadata skill = registry != null ? registry.find(name) : null;
         if (skill == null) {
             return ToolCallResult.failed("Skill '" + name + "' not found. Available skills: " + skillNameList())
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+        if (accessGuard != null && !accessGuard.allow(skill)) {
+            return ToolCallResult.failed("Skill '" + name + "' is unavailable: the plugin that provides it is "
+                            + "disabled or its permission was revoked. Do not retry it; continue without this skill.")
                     .withDuration(System.currentTimeMillis() - startTime);
         }
         try {
@@ -133,11 +139,18 @@ public class SkillTool extends ToolCall {
         return sb.toString();
     }
 
+    /** Checked immediately before a skill's content is read, so revocation applies mid-turn. */
+    @FunctionalInterface
+    public interface SkillAccessGuard {
+        boolean allow(SkillMetadata skill);
+    }
+
     public static class Builder extends ToolCall.Builder<Builder, SkillTool> {
         private SkillRegistry registry;
         private List<SkillSource> sources;
         private int maxFileSize = 10 * 1024 * 1024;
         private String workspaceDir;
+        private SkillAccessGuard accessGuard;
 
         @Override
         protected Builder self() {
@@ -164,6 +177,11 @@ public class SkillTool extends ToolCall {
             return this;
         }
 
+        public Builder accessGuard(SkillAccessGuard accessGuard) {
+            this.accessGuard = accessGuard;
+            return this;
+        }
+
         public SkillTool build() {
             if (registry == null) {
                 registry = new SkillRegistry();
@@ -186,6 +204,7 @@ public class SkillTool extends ToolCall {
             var tool = new SkillTool();
             build(tool);
             tool.registry = this.registry;
+            tool.accessGuard = this.accessGuard;
             return tool;
         }
     }

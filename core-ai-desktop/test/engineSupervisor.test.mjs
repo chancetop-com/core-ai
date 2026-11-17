@@ -25,10 +25,24 @@ test('caches capabilities from initialize and reports process liveness', async (
   const workspace = path.dirname(fakeEngine);
   await supervisor.call(workspace, 'echo', {});
   assert.deepEqual(supervisor.capabilities(workspace), ['scheduled_tasks']);
+  assert.equal(supervisor.trustState(workspace).state, 'trusted');
+  assert.equal(supervisor.trustState(workspace).fingerprint, 'abc123');
+  assert.equal(await supervisor.quiesce(workspace), 'ok');
+  await supervisor.resumeIntake(workspace);
   assert.equal(supervisor.isRunning(workspace), true);
   assert.deepEqual(supervisor.runningWorkspaces(), [workspace]);
   await supervisor.shutdownAll();
   assert.equal(supervisor.isRunning(workspace), false);
+});
+
+test('ensureTrustState starts the engine and returns the handshake trust state', async () => {
+  const { supervisor } = createSupervisor();
+  const workspace = path.dirname(fakeEngine);
+  const trust = await supervisor.ensureTrustState(workspace);
+  assert.equal(trust.state, 'trusted');
+  assert.equal(trust.engineRestricted, false);
+  assert.equal(supervisor.trustState(workspace).key, 'C:\\ws');
+  await supervisor.shutdownAll();
 });
 
 test('discards a dead engine entry and respawns it on the next call', async () => {

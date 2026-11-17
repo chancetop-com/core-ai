@@ -1780,3 +1780,11 @@ select.rich-card-input[multiple] { padding: 3px; }
 .plugin-dock-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 .plugin-dock-table th, .plugin-dock-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .plugin-dock-table th { color: var(--muted); font-weight: 500; }
+
+/* --- workspace trust (design-desktop-plugin-system §7.1, §8.3) -------------------------------- */
+.workspace-trust-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--yellow, #e0b252) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--yellow, #e0b252) 10%, var(--bg-panel)); }
+.workspace-trust-banner[hidden] { display: none; }
+.workspace-trust-text { min-width: 0; }
+.workspace-trust-title { font-size: 13px; color: var(--text); margin-bottom: 2px; }
+.workspace-trust-meta { font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-top: 3px; word-break: break-all; }
+.workspace-trust-actions { display: flex; gap: 6px; flex: 0 0 auto; }

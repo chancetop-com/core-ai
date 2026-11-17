@@ -17,10 +17,15 @@ public class SkillToolProvider implements ToolProvider {
     private final SkillTool tool;
 
     public SkillToolProvider(SkillConfig skillConfig, String workspaceDir) {
+        this(skillConfig, workspaceDir, null);
+    }
+
+    public SkillToolProvider(SkillConfig skillConfig, String workspaceDir, SkillTool.SkillAccessGuard accessGuard) {
         this.tool = SkillTool.builder()
                 .sources(skillConfig.getSources())
                 .maxFileSize(skillConfig.getMaxSkillFileSize())
                 .workspaceDir(workspaceDir)
+                .accessGuard(accessGuard)
                 .build();
     }
 

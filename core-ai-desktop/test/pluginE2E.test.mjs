@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pluginHostModule from '../dist/test/pluginHost.js';
 
-const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV } = pluginHostModule;
+const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV, PLUGIN_STATE_FILE_ENV, PLUGIN_HOME_ENV } = pluginHostModule;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.resolve(here, '..', 'examples', 'plugins', 'hello-plugin');
 
@@ -43,9 +43,17 @@ test('the example plugin installs, activates and reaches the engine environment'
 
   const env = await host.engineEnv();
   assert.equal(env[PLUGIN_STORE_ROOT_ENV], path.join(host.rootDir, 'packages'));
+  assert.equal(env[PLUGIN_STATE_FILE_ENV], path.join(host.rootDir, 'state.json'));
+  assert.equal(env[PLUGIN_HOME_ENV], host.rootDir);
   const advertised = JSON.parse(env[PLUGIN_SKILL_ROOTS_ENV]);
   assert.equal(advertised.length, 1);
   assert.equal(advertised[0].dir, roots[0].dir);
+  assert.equal(advertised[0].name, 'example.hello-plugin');
+  assert.equal(advertised[0].digest, roots[0].digest);
+  assert.equal(typeof advertised[0].grantEpoch, 'number');
+
+  const state = JSON.parse(await fs.readFile(env[PLUGIN_STATE_FILE_ENV], 'utf8'));
+  assert.equal(state.packages[roots[0].digest].requiredCapabilities.includes('engine.skills'), true);
 
   const revoked = await host.revoke('example.hello-plugin');
   assert.equal(revoked.status, 'awaiting-consent');

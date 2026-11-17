@@ -30,6 +30,7 @@ import {
 import { createRichCard, parseRichCard } from './richCard';
 import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections } from './pluginView';
 import type { PluginOperationResult, PluginView } from '../shared/pluginManifest';
+import type { WorkspaceTrustState } from '../shared/workspaceTrust';
 import {
   configureRemoteChat,
   deactivateRemoteSession,
@@ -377,6 +378,8 @@ interface ProviderProbeResult {
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
+  workspaceTrust(workspace: string): Promise<WorkspaceTrustState | null>;
+  workspaceSetTrust(workspace: string, trusted: boolean): Promise<{ ok: boolean; trust?: WorkspaceTrustState | null; error?: string }>;
   defaultWorkspace(): Promise<string>;
   workspaceSummaries(): Promise<WorkspaceSummary[]>;
   authStatus(): Promise<AuthStatus>;
@@ -570,6 +573,7 @@ const state: {
   notifySessions: Record<string, boolean>;
   notifyPending: boolean;
   plugins: PluginView[];
+  workspaceTrust: WorkspaceTrustState | null;
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -609,6 +613,7 @@ const state: {
   notifySessions: {},
   notifyPending: false,
   plugins: [],
+  workspaceTrust: null,
 };
 
 let chatView: HTMLElement | null = null;
@@ -669,6 +674,7 @@ let browserTabEl: HTMLButtonElement | null = null;
 let artifactsTabEl: HTMLButtonElement | null = null;
 let rightDockTabsEl: HTMLElement | null = null;
 let pluginDockPanelsEl: HTMLElement | null = null;
+let workspaceTrustBannerEl: HTMLElement | null = null;
 /** Plugin dock tab buttons/panels rebuilt from the active contributions on every plugin refresh. */
 let pluginDockNodes: Array<{ key: string; button: HTMLButtonElement; panel: HTMLElement }> = [];
 let artifactsToggleEl: HTMLButtonElement | null = null;
@@ -2502,6 +2508,7 @@ function renderComposerControls(): void {
 async function connect(workspace: string): Promise<void> {
   state.workspace = workspace;
   state.capabilities = await window.coreai.engineCapabilities(workspace).catch(() => []);
+  state.workspaceTrust = await window.coreai.workspaceTrust(workspace).catch(() => null);
   renderSidebar();
   if (workspace === state.info?.defaultWorkspacePath) state.defaultExists = true;
   state.sessionId = null;
@@ -2541,11 +2548,13 @@ async function connect(workspace: string): Promise<void> {
   await refreshArtifactBase();
   void refreshArtifactBaseline();
   renderContent();
+  renderWorkspaceTrust();
 }
 
 async function enterDefaultMode(): Promise<void> {
   state.workspace = null;
   state.capabilities = [];
+  state.workspaceTrust = null;
   state.sessionId = null;
   state.sessionTitle = '';
   state.sessions = [];
@@ -2779,6 +2788,62 @@ async function openSession(sessionId: string): Promise<void> {
 
 function updateChatHeader(): void {
   if (chatTitleEl) chatTitleEl.textContent = state.sessionTitle || 'new session';
+  renderWorkspaceTrust();
+}
+
+/** A restricted workspace can read history but cannot run its hooks, MCP servers or skills. */
+function renderWorkspaceTrust(): void {
+  if (!workspaceTrustBannerEl) return;
+  const trust = state.workspaceTrust;
+  const restricted = Boolean(state.workspace && trust && trust.state === 'restricted' && trust.engineRestricted);
+  workspaceTrustBannerEl.hidden = !restricted;
+  workspaceTrustBannerEl.replaceChildren();
+  if (!restricted) return;
+
+  const text = el('div', 'workspace-trust-text');
+  text.append(el('div', 'workspace-trust-title', 'This workspace is restricted'));
+  text.append(el('div', 'hint', 'Hooks, MCP servers, workspace config and skills are not loaded until you trust this workspace. History is still readable.'));
+  if (trust?.reason) text.append(el('div', 'workspace-trust-meta', `${trust.reason} · ${trust.fingerprint.slice(0, 12)}`));
+  const actions = el('div', 'workspace-trust-actions');
+  const trustButton = el('button', 'btn small primary', 'Trust this workspace…') as HTMLButtonElement;
+  trustButton.type = 'button';
+  trustButton.onclick = () => void trustCurrentWorkspace();
+  const settings = el('button', 'btn small', 'Open Settings') as HTMLButtonElement;
+  settings.type = 'button';
+  settings.onclick = () => {
+    state.nav = 'settings';
+    void renderContent();
+    renderSidebar();
+  };
+  actions.append(trustButton, settings);
+  workspaceTrustBannerEl.append(text, actions);
+}
+
+async function trustCurrentWorkspace(): Promise<void> {
+  const workspace = state.workspace;
+  if (!workspace) return;
+  const fingerprint = state.workspaceTrust?.fingerprint.slice(0, 16) ?? '';
+  const confirmed = window.confirm(
+    `Trust this workspace?\n\n`
+    + `Files under .core-ai (agent.properties, hooks.json, MCP.json, plugins, skills) become executable inputs for the local agent. `
+    + `Only trust a workspace you control.\n\nFingerprint: ${fingerprint}…`);
+  if (!confirmed) return;
+  await applyWorkspaceTrust(true);
+}
+
+async function applyWorkspaceTrust(trusted: boolean): Promise<void> {
+  const workspace = state.workspace;
+  if (!workspace) return;
+  const result = await window.coreai.workspaceSetTrust(workspace, trusted);
+  if (!result.ok) {
+    toast(result.error ?? 'Could not update workspace trust', 'error');
+    return;
+  }
+  state.workspaceTrust = result.trust ?? null;
+  renderWorkspaceTrust();
+  if (state.nav === 'settings') await renderContent();
+  toast(trusted ? 'Workspace trusted — the engine reloaded' : 'Workspace trust revoked — the engine reloaded');
+  await resumeOpenSession();
 }
 
 function showBlankHint(): void {
@@ -2825,8 +2890,11 @@ function buildChatView(): void {
   sessionStackEl = el('div', 'session-stack');
   mountedView = null;
   const chatMain = el('div', 'chat-main');
-  chatMain.append(header, sessionStackEl, buildComposer());
+  workspaceTrustBannerEl = el('div', 'workspace-trust-banner');
+  workspaceTrustBannerEl.hidden = true;
+  chatMain.append(header, sessionStackEl, workspaceTrustBannerEl, buildComposer());
   chatView.append(chatMain, buildRightDock());
+  renderWorkspaceTrust();
 }
 
 function buildComposer(): HTMLElement {
@@ -7376,9 +7444,50 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   body.append(await renderBrowserAutomationSection());
   body.append(await renderChannelsSection());
   body.append(await renderComputerUseSection());
+  body.append(renderWorkspaceTrustSection());
   body.append(await renderPluginsSection());
   body.append(renderAboutSection());
   return root;
+}
+
+function renderWorkspaceTrustSection(): HTMLElement {
+  const trust = state.workspaceTrust;
+  const section = collapsibleSettingsSection('Workspace trust', state.workspace
+    ? `Hooks, MCP servers and skills from ${workspaceLabel(state.workspace)}`
+    : 'Connect a workspace to review its executable configuration.');
+  if (!state.workspace) {
+    section.body.append(el('div', 'hint', 'No workspace is connected.'));
+    return section.root;
+  }
+  const grid = el('dl', 'settings-grid');
+  grid.append(el('dt', undefined, 'State'));
+  grid.append(el('dd', undefined, trust ? (trust.state === 'trusted' ? 'trusted' : 'restricted') : 'unknown'));
+  grid.append(el('dt', undefined, 'Executable inputs'));
+  grid.append(el('dd', undefined, trust?.hasExecutableInputs ? 'present' : 'none'));
+  if (trust?.reason) {
+    grid.append(el('dt', undefined, 'Reason'));
+    grid.append(el('dd', undefined, trust.reason));
+  }
+  grid.append(el('dt', undefined, 'Fingerprint'));
+  grid.append(el('dd', undefined, trust?.fingerprint ? `${trust.fingerprint.slice(0, 24)}…` : '—'));
+  section.body.append(grid);
+  section.body.append(el('div', 'hint',
+    'A restricted workspace still shows history, but hooks, MCP servers and skills are not loaded. Trust is bound to the fingerprint: editing those files requires trust again.'));
+  const actions = el('div', 'settings-actions');
+  if (trust?.state === 'restricted') {
+    const button = el('button', 'btn small primary', 'Trust this workspace…') as HTMLButtonElement;
+    button.onclick = () => void trustCurrentWorkspace();
+    actions.append(button);
+  } else if (trust?.hasExecutableInputs) {
+    const button = el('button', 'btn small danger', 'Revoke workspace trust') as HTMLButtonElement;
+    button.onclick = async () => {
+      if (!window.confirm('Revoke trust? The engine reloads in restricted mode and this workspace\'s hooks, MCP servers and skills stop loading.')) return;
+      await applyWorkspaceTrust(false);
+    };
+    actions.append(button);
+  }
+  section.body.append(actions);
+  return section.root;
 }
 
 /**
@@ -9482,6 +9591,12 @@ async function bootstrap(): Promise<void> {
   });
   window.coreai.onEngineReloaded((payload) => {
     if (payload?.workspace && state.workspace && payload.workspace !== state.workspace) return;
+    if (state.workspace) {
+      void window.coreai.workspaceTrust(state.workspace).then((trust) => {
+        state.workspaceTrust = trust;
+        renderWorkspaceTrust();
+      }).catch(() => undefined);
+    }
     const sessionId = state.sessionId;
     if (sessionId) {
       void call('session/resume', { sessionId }).then((resumed) => {

@@ -51,6 +51,7 @@ import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latest
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { PluginHost } from './plugins/PluginHost';
+import { WorkspaceTrustStore } from './plugins/workspaceTrust';
 import type { PluginView } from '../shared/pluginManifest';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
 import { readEngineManifest, standaloneCliTargets, syncStandaloneClis } from './update/CliUpdate';
@@ -95,6 +96,7 @@ const clientVersion = __APP_VERSION__;
 let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let pluginHost: PluginHost | null = null;
+let workspaceTrustStore: WorkspaceTrustStore | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
 let builtinSkills: BuiltinSkills | null = null;
@@ -113,6 +115,7 @@ let quitting = false;
 // background workspace or a channel/schedule turn must not be killed by a Settings save.
 const providerRunningSessions = new Map<string, Set<string>>();
 const providerPendingReload = new Set<string>();
+const providerReloadInFlight = new Set<string>();
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -417,11 +420,31 @@ function trackProviderTurnStatus(workspace: string, method: string, params: Reco
   if (providerPendingReload.has(workspace)) void applyProviderReload(workspace);
 }
 
-async function applyProviderReload(workspace: string): Promise<void> {
-  providerPendingReload.delete(workspace);
-  if (!supervisor) return;
-  await supervisor.restart(workspace);
-  send('engine:reloaded', { workspace });
+async function applyProviderReload(workspace: string): Promise<boolean> {
+  if (providerReloadInFlight.has(workspace)) return false;
+  providerReloadInFlight.add(workspace);
+  try {
+    if (!supervisor) return false;
+    // The engine's intake/scheduler pause is authoritative; the desktop's turn tracking is only a
+    // hint. A busy engine keeps the change pending and is retried when its last turn ends.
+    const quiesce = await supervisor.quiesce(workspace, 3_000);
+    if (quiesce === 'busy') {
+      providerPendingReload.add(workspace);
+      return false;
+    }
+    try {
+      await supervisor.restart(workspace);
+    } catch {
+      if (quiesce === 'ok') await supervisor.resumeIntake(workspace);
+      providerPendingReload.add(workspace);
+      return false;
+    }
+    providerPendingReload.delete(workspace);
+    send('engine:reloaded', { workspace });
+    return true;
+  } finally {
+    providerReloadInFlight.delete(workspace);
+  }
 }
 
 /** Applies a provider edit: idle engines restart now, busy ones after their last turn ends. */
@@ -880,6 +903,28 @@ function registerIpc(): void {
     if (result.canceled || !result.filePaths.length) return null;
     rememberWorkspace(result.filePaths[0]);
     return settings.lastWorkspace;
+  });
+  ipcMain.handle('workspace:trust', async (event, workspace: string) => {
+    if (!isMainFrameSender(event) || typeof workspace !== 'string' || !workspace || !supervisor) return null;
+    return supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask').catch(() => null);
+  });
+  ipcMain.handle('workspace:setTrust', async (event, workspace: string, trusted: boolean) => {
+    if (!isMainFrameSender(event)) return { ok: false, error: 'workspace trust is only available from the app window' };
+    if (typeof workspace !== 'string' || !workspace || !supervisor || !workspaceTrustStore) {
+      return { ok: false, error: 'workspace trust is not available' };
+    }
+    try {
+      const current = await supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask');
+      if (!current) return { ok: false, error: 'the engine did not report a trust state' };
+      if (trusted) await workspaceTrustStore.trust(current.key, current.fingerprint);
+      else await workspaceTrustStore.revoke(current.key);
+      // The running engine keeps the mode it booted with; a new engine re-evaluates the record.
+      await supervisor.restart(workspace);
+      const next = await supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask').catch(() => null);
+      return { ok: true, trust: next };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   ipcMain.handle('workspace:default', () => defaultWorkspace());
   ipcMain.handle('workspaces:summaries', () => buildWorkspaceSummaries());
@@ -1535,6 +1580,7 @@ else {
         void reloadEnginesAtSafePoint();
       },
     });
+    workspaceTrustStore = new WorkspaceTrustStore(path.join(os.homedir(), '.core-ai', 'plugin-store'));
     updateService = new UpdateService({
       currentVersion: clientVersion,
       isPackaged: app.isPackaged,

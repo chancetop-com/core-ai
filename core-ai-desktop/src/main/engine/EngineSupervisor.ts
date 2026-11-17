@@ -2,7 +2,8 @@
 // approval-policy-aware restart and graceful shutdown.
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { RpcClient } from './RpcClient';
+import type { WorkspaceTrustState } from '../../shared/workspaceTrust';
+import { RpcCallError, RpcClient } from './RpcClient';
 
 export interface EngineSupervisorOptions {
   enginePath: string;
@@ -12,7 +13,13 @@ export interface EngineSupervisorOptions {
   onEvent: (workspace: string, method: string, params: Record<string, unknown>) => void;
   onLog?: (workspace: string, line: string) => void;
 }
-interface EngineState { client: RpcClient; approvalPolicy: string; capabilities: string[]; ready: Promise<void> }
+interface EngineState {
+  client: RpcClient;
+  approvalPolicy: string;
+  capabilities: string[];
+  trustState: WorkspaceTrustState | null;
+  ready: Promise<void>;
+}
 
 // Long-running calls get their own budget; speech transcription uploads the whole clip and waits
 // for the upstream model, so the default two-minute RPC timeout is too tight for a long recording.
@@ -30,7 +37,35 @@ export class EngineSupervisor {
   isRunning(workspace: string): boolean { return this.engines.get(workspace)?.client.isRunning ?? false; }
   runningWorkspaces(): string[] { return [...this.engines.entries()].filter(([, state]) => state.client.isRunning).map(([workspace]) => workspace); }
   capabilities(workspace: string): string[] { return this.engines.get(workspace)?.capabilities ?? []; }
+  trustState(workspace: string): WorkspaceTrustState | null { return this.engines.get(workspace)?.trustState ?? null; }
   async ensureRunning(workspace: string, approvalPolicy = 'ask'): Promise<void> { await this.acquire(workspace, approvalPolicy); }
+  /** Starts the engine when needed and returns the trust state reported by its handshake. */
+  async ensureTrustState(workspace: string, approvalPolicy = 'ask'): Promise<WorkspaceTrustState | null> {
+    await this.acquire(workspace, approvalPolicy);
+    return this.trustState(workspace);
+  }
+
+  /**
+   * Pauses new turns/schedule claims and waits for accepted turns to drain. `unsupported` keeps a
+   * legacy engine working with the old safe-point heuristic; `busy` means do not restart yet.
+   */
+  async quiesce(workspace: string, timeoutMs = 3_000): Promise<'ok' | 'busy' | 'unsupported'> {
+    const state = this.engines.get(workspace);
+    if (!state || !state.client.isRunning) return 'ok';
+    try {
+      const result = await state.client.call<{ acquired?: boolean }>('engine/quiesce', { timeoutMs }, timeoutMs + 2_000);
+      return result?.acquired === true ? 'ok' : 'busy';
+    } catch (error) {
+      if (error instanceof RpcCallError && error.code === -32601) return 'unsupported';
+      return 'busy';
+    }
+  }
+
+  async resumeIntake(workspace: string): Promise<void> {
+    const state = this.engines.get(workspace);
+    if (!state || !state.client.isRunning) return;
+    await state.client.call('engine/resumeIntake', {}, 5_000).catch(() => undefined);
+  }
 
   private async acquire(workspace: string, approvalPolicy: string): Promise<EngineState> {
     let state = this.engines.get(workspace);
@@ -42,7 +77,7 @@ export class EngineSupervisor {
     if (state && state.approvalPolicy !== approvalPolicy) { await this.dispose(workspace); state = undefined; }
     if (!state) {
       const client = await this.spawnClient(workspace);
-      const created: EngineState = { client, approvalPolicy, capabilities: [], ready: Promise.resolve() };
+      const created: EngineState = { client, approvalPolicy, capabilities: [], trustState: null, ready: Promise.resolve() };
       created.ready = this.initialize(created, workspace).catch((error: Error) => { this.engines.delete(workspace); throw error; });
       this.engines.set(workspace, created);
       state = created;
@@ -52,11 +87,12 @@ export class EngineSupervisor {
   }
 
   private async initialize(state: EngineState, workspace: string): Promise<void> {
-    const result = await state.client.call<{ capabilities?: string[] }>('initialize', {
+    const result = await state.client.call<{ capabilities?: string[]; trustState?: WorkspaceTrustState }>('initialize', {
       protocolVersion: '1.0', client: { name: 'core-ai-desktop', version: this.options.clientVersion }, workspace, approvalPolicy: state.approvalPolicy,
     });
     state.capabilities = Array.isArray(result?.capabilities) ? result.capabilities : [];
-    this.options.onLog?.(workspace, `engine ready (pid ${state.client.pid ?? '?'}), policy=${state.approvalPolicy}`);
+    state.trustState = result?.trustState && typeof result.trustState === 'object' ? result.trustState : null;
+    this.options.onLog?.(workspace, `engine ready (pid ${state.client.pid ?? '?'}), policy=${state.approvalPolicy}, trust=${state.trustState?.state ?? 'unknown'}`);
   }
 
   private async spawnClient(workspace: string): Promise<RpcClient> {

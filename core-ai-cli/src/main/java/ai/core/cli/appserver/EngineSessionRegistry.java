@@ -1,14 +1,11 @@
 package ai.core.cli.appserver;
 
 import ai.core.api.server.session.ApprovalDecision;
-import ai.core.api.server.session.CustomEvent;
-import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.memory.MdMemoryProvider;
-import ai.core.cli.memory.MemoryExtractionReport;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.llm.LLMProviderType;
 import ai.core.session.InProcessAgentSession;
@@ -58,10 +55,12 @@ public class EngineSessionRegistry {
     private final EngineSessionModels models;
     private final MdMemoryProvider memoryProvider;
     private final Map<String, EngineSession> sessions = new ConcurrentHashMap<>();
+    private final MemoryActivityReporter memoryReporter = new MemoryActivityReporter(sessions::values);
     private final SessionTitleResolver titleResolver;
     private final SessionLifecycle lifecycle;
     private volatile String approvalPolicy = "ask";
     private volatile String clientType = "cli";
+    final EngineQuiesce intake = new EngineQuiesce();
     private volatile WorkspaceAutoPermissionStore workspaceAutoStore;
     private volatile EngineScheduler scheduler;
 
@@ -75,7 +74,7 @@ public class EngineSessionRegistry {
         this.lifecycle = new SessionLifecycle(bootstrap, sessions, sidecars, () -> scheduler, sinkSupplier);
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
         if (bootstrap.memoryEnabled) {
-            MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(this::publishMemoryActivity);
+            MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(memoryReporter::publish);
         }
         SessionRetention.retain(bootstrap, titles, models);
     }
@@ -91,6 +90,10 @@ public class EngineSessionRegistry {
 
     void setScheduler(EngineScheduler scheduler) {
         this.scheduler = scheduler;
+    }
+
+    long activeSessions() {
+        return sessions.values().stream().filter(EngineSession::running).count();
     }
 
     public ObjectNode list(ObjectNode params) {
@@ -111,6 +114,7 @@ public class EngineSessionRegistry {
     }
 
     public ObjectNode create(ObjectNode params) {
+        intake.requireIdle("creating a session");
         var title = Params.optionalText(params, "title");
         for (int attempt = 0; attempt < 3; attempt++) {
             var id = CliAppHelper.defaultSessionId("cli-");
@@ -234,6 +238,8 @@ public class EngineSessionRegistry {
     }
 
     public ObjectNode send(ObjectNode params) {
+        bootstrap.requireTrusted("sending a message");
+        intake.requireIdle("sending a message");
         var session = requireSession(params);
         var parsed = SendParts.parse(params, bootstrap.workspace, SessionLifecycle.stagingDir(session.id()));
         if (!parsed.hasContent()) {
@@ -296,10 +302,12 @@ public class EngineSessionRegistry {
     }
 
     public ObjectNode compact(ObjectNode params) {
+        bootstrap.requireTrusted("compacting a session");
         return requireSession(params).compact();
     }
 
     public ObjectNode undo(ObjectNode params) {
+        bootstrap.requireTrusted("undoing a turn");
         return requireSession(params).undo();
     }
 
@@ -334,26 +342,6 @@ public class EngineSessionRegistry {
 
     public void closeAll() {
         lifecycle.closeAll();
-    }
-
-    /**
-     * Routes a memory extraction report to the session whose agent the run was forked from, as a
-     * {@code memory} custom event. Reports for agents no live session owns are dropped.
-     */
-    private void publishMemoryActivity(Agent agent, MemoryExtractionReport report) {
-        sessions.values().stream()
-                .filter(session -> session.agent().equals(agent))
-                .findFirst()
-                .ifPresent(session -> dispatchMemoryActivity(session, report));
-    }
-
-    private void dispatchMemoryActivity(EngineSession session, MemoryExtractionReport report) {
-        try {
-            var data = MemoryActivityJson.payload(report).toString();
-            session.inProcess().dispatchEvent(CustomEvent.of(session.id(), "memory", data, null, null));
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to publish memory activity, sessionId={}, error={}", session.id(), e.getMessage());
-        }
     }
 
     private EngineSession build(String sessionId, boolean load, SessionLock lock) {

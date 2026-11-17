@@ -75,6 +75,7 @@ public class EngineScheduler implements AutoCloseable {
     });
     private final Object snapshotLock = new Object();
     private volatile Map<String, SnapshotEntry> snapshot;
+    private volatile boolean paused;
 
     public EngineScheduler(EngineBootstrap bootstrap, EngineSessionRegistry registry, Supplier<NotificationSink> sink) {
         this(bootstrap.scheduledTaskStore, bootstrap.workspace, new RegistrySessions(registry), sink);
@@ -97,7 +98,17 @@ public class EngineScheduler implements AutoCloseable {
         ticker.shutdownNow();
     }
 
+    /** Stops new schedule claims while a change is applied; already claimed runs finish normally. */
+    void pause() {
+        paused = true;
+    }
+
+    void resume() {
+        paused = false;
+    }
+
     void tick() {
+        if (paused) return;
         sessions.evictIdle();
         var tasks = store.listAll();
         notifyChanged(tasks);

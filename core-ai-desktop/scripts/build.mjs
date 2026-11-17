@@ -55,6 +55,7 @@ const targets = [
   { entryPoints: ['src/main/plugins/zip.ts'], outfile: 'dist/test/pluginZip.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/pluginStore.ts'], outfile: 'dist/test/pluginStore.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/PluginHost.ts'], outfile: 'dist/test/pluginHost.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/plugins/workspaceTrust.ts'], outfile: 'dist/test/workspaceTrust.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/pluginView.ts'], outfile: 'dist/test/pluginView.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/reducer.ts'], outfile: 'dist/test/transcript.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/classify.ts'], outfile: 'dist/test/transcriptClassify.js', platform: 'node', target: 'node20', format: 'cjs' },

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.3（记录用户授权、决策落地与实现偏差） |
+| 文档版本 | v0.4（信任边界与 per-call 撤销已实现；见 §14） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -646,8 +646,8 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | D1 | 近期插件范围 | 先 P1 Agent 包纳管 + P2 只读/受限 UI；P3 任意代码非前置 | 采纳：实现 P1 包管理 + P2a 声明式 UI；P3 未做 |
 | D2 | 共享控制面与存储所有者 | Java 无 UI PluginServices；pinned metadata command + app-server facade；单 state/lock/grant schema | **部分采纳**：state/control.lock/digest 在 desktop main 单点实现；共享 Java 控制命令与 app-server facade 未做，见 §14.2-4 |
 | D3 | 可执行构件/代码信任模式 | P1 hooks/MCP 显式可信本机执行；P2 受限 UI；P3 再选可信 Node 或真受限 runtime/OS 沙箱 | **最保守收窄**：hooks/MCP/commands/agents/LSP 标记 unsupported，不执行；仅 skills 注入 |
-| D4 | 存量工作区/config/旧CLI兼容 | 不grandfather；restricted先于agent.properties/MCP/hooks/plugin执行；新版pinned入口预查最低版本，不能约束独立旧CLI | **未实现** restricted/trusted bootstrap 与 workspace trust gate；见 §14.2-1 |
-| D5 | 默认启用与更新/撤销 | 新包 installed-disabled；普通变更安全点；显式 revoke 立即 gate，可信本机进程清理 best-effort | 采纳默认 disabled、digest 变更重新授权、安全点 reload；**未实现** per-call epoch gate，见 §14.2-2 |
+| D4 | 存量工作区/config/旧CLI兼容 | 不grandfather；restricted先于agent.properties/MCP/hooks/plugin执行；新版pinned入口预查最低版本，不能约束独立旧CLI | **已实现 engine 侧 trust gate**：`WorkspaceTrust` fingerprint + 用户侧 record；restricted 不合并工作区配置/MCP，不加载 workspace skills/legacy plugins/hooks，不启动 scheduler，拒执行 RPC；provider endpoint 独立 allow-list 仍未做 |
+| D5 | 默认启用与更新/撤销 | 新包 installed-disabled；普通变更安全点；显式 revoke 立即 gate，可信本机进程清理 best-effort | 默认 disabled、digest 变更重新授权已实现；**per-call gate 已实现**（`PluginGrantGate` + `SkillTool` guard，读 state.json）；hooks/MCP 不在此范围；在途进程清理仍 best-effort |
 | D6 | local/global 同 ID 选择 | 明示 source/digest 冲突，由用户选；不默默 local 覆盖 global | 仅 user scope；同 ID 重装按 digest 覆盖并要求重新授权，无 local/global 冲突 UI |
 | D7 | P2 UI容器与槽位 | 带脚本UI使用独立WebContentsView；P2a只读Dock/声明式settings，spike验证布局隔离，P2b能力按需 | 采纳声明式 Dock/Settings/Composer；scripted `view` 标记 unsupported，未建 WebContentsView |
 | D8 | 来源与企业控制 | P1 folder/zip，禁隐式 scripts/npm；预留企业 source/capability/kill policy，市场后置 | 采纳 folder/zip；无 npm/git/市场；企业策略未做 |
@@ -702,6 +702,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.1 | 2026-11-17 | 将desktop插件架构评审落为设计；保留原始需求、ADR、现状、分层方案、待决策和验收矩阵 | 用户“落到设计文档”；前置AI架构Review |
 | v0.2 | 2026-11-17 | 按文档级AI Review补restricted bootstrap、持久epoch/锁/撤销、quiesce、独立WebContentsView、旧CLI限制；收窄P2a/P2b并补测试 | gemini-4-hydrogen第一轮Review；不代表用户批准 |
 | v0.3 | 2026-11-17 | 记录用户实施授权；状态改为 Approved / Implementing；§11 记录决策落地；§14 记录实现范围与偏差 | 用户 2026-11-17 授权实施（deepseek-v4-flash） |
+| v0.4 | 2026-11-17 | 补 workspace trust gate/restricted bootstrap、per-call skill 撤销、engine quiesce；更新 §11 D4/D5 与 §14 验证/缺口 | 用户要求优先补信任边界；AI 实现与本地验证 |
 
 ### 13.2 相关材料
 
@@ -717,7 +718,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 - 授权内容仅覆盖实现与本地验证；未授权发布、部署或修改其他会话范围内的功能。
 - AI 评审与实现报告不构成用户对未落地部分的批准。
 
-## 14. 实现状态（v0.3，2026-11-17）
+## 14. 实现状态（v0.4，2026-11-17）
 
 ### 14.1 本轮已落地
 
@@ -726,30 +727,32 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | Manifest / descriptor | `.claude-plugin/plugin.json` + `coreai` 扩展；legacy 派生 ID；schema/capability/component/contribution 校验；API 版本范围；包内路径安全检查 | `core-ai-desktop/src/shared/pluginManifest.ts` |
 | 包存储 | content-addressed `~/.core-ai/plugin-store/packages/<digest>`、私有 staging、nofollow 复制、文件数/大小/设备名/zip-slip 限制、原子发布、旧包保留 | `core-ai-desktop/src/main/plugins/pluginStore.ts`、`zip.ts` |
 | 状态与授权 | 单 `state.json` + `control.lock` + revision/grantEpoch；installed-disabled；enable/disable/grant/revoke/remove；digest 变化清空授权 | `pluginStore.ts` |
-| Engine 接入 | 仅把 active + `engine.skills` granted 的 skills 目录通过 `CORE_AI_PLUGIN_SKILL_ROOTS` 注入；Java 再校验路径必须位于托管 store 内 | `PluginHost.ts`、`core-ai-cli/.../plugin/PluginSkillRoots.java`、`CliAgent.buildSkillConfig` |
-| IPC | 独立 `plugins:*` handler，验证 main window 顶层 frame，返回 typed envelope；不向插件暴露 engine 全量 bridge | `main.ts`、`preload.ts` |
-| UI 扩展点 | Settings → Plugins；宿主声明式 Dock tab、Settings 字段、Composer 插入动作；插件不可注入脚本/DOM | `renderer/pluginView.ts`、`app.ts` |
-| 生命周期 | 变更后复用 provider 的安全点 reload（空闲重启、有运行 turn 延迟） | `main.ts`、`EngineSupervisor` 的 workspace-aware env |
+| Workspace trust | engine 启动时计算 workspace 配置指纹（agent.properties/hooks/MCP/plugins/skills）；用户侧 `workspace-trust.json` 匹配才 trusted。restricted：不合并工作区配置与 MCP，不加载 workspace/legacy-plugin skills、hooks、memory，不启动 scheduler，`session/send|compact|undo`、`schedules/trigger` 返回 `TRUST_REQUIRED`；只读历史仍可用 | `core-ai-cli/.../workspace/WorkspaceTrust.java`、`EngineBootstrap`、`EngineSessionRegistry`、`AppServerEngine`；`core-ai-desktop/src/main/plugins/workspaceTrust.ts` |
+| Per-call revocation | engine 每次 `use_skill` 读取 `state.json`，校验 scope/enabled/digest/granted required/epoch；撤销、禁用、digest 变化、epoch 回滚在下一次 skill 调用即拒绝，不依赖重启 | `core-ai-cli/.../plugin/PluginGrantGate.java`、`core-ai/.../SkillTool.java` |
+| Quiesce | `engine/quiesce` 暂停 intake + scheduler 领单并等待已接受 turn drain；超时恢复；`engine/resumeIntake`；desktop reload 先 quiesce，busy 则保持 pending | `core-ai-cli/.../appserver/EngineQuiesce.java`、`AppServerEngine`、`EngineScheduler`；`EngineSupervisor.ts`、`main.ts` |
+| Engine 接入 | 仅把 active + `engine.skills` granted 的 skills 目录通过 `CORE_AI_PLUGIN_SKILL_ROOTS` 注入；Java 再校验路径必须位于托管 store 内 | `PluginHost.ts`、`PluginSkillRoots.java`、`CliAgent.skillConfig` |
+| IPC | 独立 `plugins:*` / `workspace:*` handler，验证 main window 顶层 frame，返回 typed envelope；不向插件暴露 engine 全量 bridge | `main.ts`、`preload.ts` |
+| UI 扩展点 | Settings → Plugins、Settings → Workspace trust、受限 workspace banner；宿主声明式 Dock tab、Settings 字段、Composer 插入动作；插件不可注入脚本/DOM | `renderer/pluginView.ts`、`app.ts` |
+| 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
 | 示例 | `hello-plugin`：skill + dock + settings + composer | `core-ai-desktop/examples/plugins/hello-plugin/` |
-| 测试 | 29 个插件相关 node:test（1 个 symlink 用例在无权限环境跳过）+ 5 个 Java 用例 + 真实 Electron CDP smoke | `test/plugin*.test.mjs`、`PluginSkillRootsTest.java`、`.core-ai/tasks/desktop-plugin-e2e.mjs` |
+| 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1) + Electron CDP smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`core-ai-cli/src/test/.../plugin|workspace|agent`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
 
-验证记录：`npm --prefix core-ai-desktop run check`、`build`、`test`（241 pass / 1 skip）、`:core-ai-cli:test --tests PluginSkillRootsTest`、`:core-ai-cli:checkstyleMain/checkstyleTest` 均通过；Electron smoke 观察到 Settings 中 `Hello Plugin` 为 active、Dock 出现 `Hello` tab、composer 出现 `Insert greeting prompt`。
+验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；Electron smoke：Settings 中 `Hello Plugin` active、Dock `Hello`、composer `Insert greeting prompt`；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
-1. **restricted/trusted bootstrap 与 workspace trust gate（§7.1、§8.3）未实现。** 当前 engine 仍在构造时合并工作区配置/MCP/hooks；插件机制没有改变这一既有行为。本轮只保证插件包本身不提供 hooks/MCP。这是最大的安全边界缺口，应先于开放更多构件补齐。
-2. **持久 epoch 的 per-call ActivationGate 未实现。** 授权在 desktop store 中解析，engine 只接收已授权 skills 根；撤销后的即时阻断依赖安全点 reload + 重建 engine。正在运行的 turn 不会因撤销立刻失去已加载 skill（与设计 §5.6 的严格即时 gate 不一致）。
-3. **quiesce 握手未实现。** 复用现有 provider 安全点判定，仍存在 Java scheduler 与重启的竞态（设计 §7.3）。
-4. **共享 Java 无 UI 控制面 / app-server `plugins/*` RPC 未实现。** CLI 与 desktop 尚未共用同一状态事务；跨进程撤销广播与 journal 恢复未落地（设计 §4.4、§4.5）。
-5. **scripted UI（`contributes.dock[].view`）未实现。** 只支持宿主渲染的声明式 dock/settings/composer；没有独立 WebContentsView、per-instance partition、artifact handle 协议（设计 §6.4）。
-6. **hooks/MCP/commands/agents/LSP adapter 未实现。** 包内这些构件在 descriptor 中标为 unsupported，并拒绝激活相应能力；CLI 既有插件目录行为未迁移到新 store。
-7. **workspace scope、签名/来源认证、企业策略、审计、GC、市场、npm/git 安装均未实现。** 本轮只有 `user` scope 与 folder/zip 来源。
-8. **旧 CLI/旧工作区 grandfather 策略未实现。** 新版 desktop 不会把旧插件目录自动迁移；也不会阻止用户独立运行旧 CLI。
+1. **共享 Java 无 UI 控制面 / app-server `plugins/*` RPC 未实现。** 桌面负责包安装与授权写入；engine 只读 `state.json`。外部 CLI 写入尚不存在，跨进程撤销通知/journal 恢复未落地（engine 通过每调用读 state 仍能感知外部写入，但没有 CLI 写路径）。
+2. **Workspace scope 与 provider endpoint allow-list 未实现。** 只有 user scope；信任记录是整个 workspace 的指纹，不区分“哪些 provider endpoint 可覆盖”的单独确认。
+3. **Quiesce 的 UI/channel 排队未实现。** engine 在 quiesce 期间对 `session/send`/`session/create` 返回 `ENGINE_QUIESCING`；desktop/channel 只在 turn 结束后重试 reload，没有把用户新输入排队并自动重发。scheduler 已暂停，已领取任务正常 drain。
+4. **scripted UI（`contributes.dock[].view`）未实现。** 只支持宿主渲染的声明式 dock/settings/composer；没有独立 WebContentsView、per-instance partition、artifact handle 协议（设计 §6.4）。
+5. **hooks/MCP/commands/agents/LSP adapter 未实现。** 包内这些构件在 descriptor 中标为 unsupported，并拒绝激活相应能力；CLI 既有插件目录行为未迁移到新 store。
+6. **签名/来源认证、企业策略、审计、GC、市场、npm/git 安装、旧 CLI grandfather 策略均未实现。** 本轮只有本地 folder/zip 与 user scope。
+7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 
 ### 14.3 下一步建议顺序
 
-1. 先补 §14.2-1/2（restricted bootstrap + workspace trust + per-call gate），再扩大可执行构件面。
-2. 补共享 state/控制面与 quiesce，解决 CLI/desktop 并发与调度竞态。
+1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
+2. 补 workspace scope 与 provider endpoint/TLS 独立确认。
 3. 再评估 scripted UI 的独立 WebContentsView；仍不建议开放任意 Node 插件宿主。
 
 

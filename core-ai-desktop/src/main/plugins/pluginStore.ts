@@ -54,6 +54,7 @@ interface StoredPackage {
   digest: string;
   source: string;
   installedAt: string;
+  requiredCapabilities: string[];
 }
 
 interface StoredInstall {
@@ -85,6 +86,8 @@ export interface PluginStoreOptions {
 export interface EngineSkillRoot {
   name: string;
   dir: string;
+  digest: string;
+  grantEpoch: number;
 }
 
 export interface ActivePluginContributions {
@@ -355,7 +358,9 @@ export class PluginStore {
       for (const component of resolved.components) {
         if (component.kind !== 'skills' || !component.supported) continue;
         const dir = path.join(resolved.dir, ...component.path.split('/'));
-        if (await exists(dir)) roots.push({ name: install.pluginId, dir });
+        if (await exists(dir)) {
+          roots.push({ name: install.pluginId, dir, digest: install.digest, grantEpoch: state.grantEpoch });
+        }
       }
     }
     const unique = new Map(roots.map((root) => [root.dir, root]));
@@ -410,6 +415,9 @@ export class PluginStore {
             digest,
             source: typeof value.source === 'string' ? value.source : '',
             installedAt: typeof value.installedAt === 'string' ? value.installedAt : nowIso(),
+            requiredCapabilities: Array.isArray(value.requiredCapabilities)
+              ? value.requiredCapabilities.filter((item): item is string => typeof item === 'string')
+              : [],
           };
         }
       }
@@ -651,6 +659,7 @@ export class PluginStore {
         digest,
         source,
         installedAt: state.packages[digest]?.installedAt ?? nowIso(),
+        requiredCapabilities: [...descriptor.capabilities.required],
       };
       let install = state.installs.find((candidate) => candidate.pluginId === descriptor.id && candidate.scope === scope);
       if (install) {
