@@ -829,6 +829,7 @@ Model providers
 
 ### 16.3 验证
 
+- 实现提交：`9de7cf13 cli,desktop: support direct OpenAI-compatible providers`。
 - `.\gradlew.bat :core-ai-cli:test :core-ai:test`：通过（含新增 `LlmProviderStoreTest`、`ProviderWiringTest`、`LLMProviderConfigReasoningTest`）。
 - `.\gradlew.bat :core-ai-cli:checkstyleMain :core-ai:checkstyleMain`：通过。
 - `.\gradlew.bat :core-ai-cli:spotbugsMain`：通过（`:core-ai:spotbugsMain` 仍有仓库既有的 DecisionOptions/DecisionRoute 告警，与本次无关）。
