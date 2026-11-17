@@ -435,5 +435,16 @@ public final class SessionEventHub {
 | 2026-11-17 | core-ai（AI 初稿） | Draft，待用户确认 D1–D6 | — |
 | 2026-11-17 | gemini-4-hydrogen（AI Review） | No-Go v0.1：P0-1 模块顺序会破坏 GatewayModule；P0-2 handler 在拦截器前已提交 200；P0-3 chunk 合并与 `after` 续传会重复文本；P0-4 status/stats 读旧 buffer。另有 P1-5 锁内 send/队列、P1-6 新会话 owner 等待、P1-7 非 owner 错误事件、P1-8 单行 keepalive。 | v0.2 已逐项修订：保持 `SseTransportModule` 原位并在 `MessagingInfrastructureModule` 绑定；新增 preflight；copy-on-merge + 安全回放；status/stats 按 Pod 说明；订阅者队列/锁外 send；100ms 快速 owner 轮询；POST owner 兜底；按行 keepalive。 |
 | 2026-11-17 | gemini-4-hydrogen（AI Re-review v0.2） | 条件式 Go：原 4 个 P0 已解决；新 P0 是 preflight 在 IO 线程执行 `isOwner` 会阻塞；另有 POST 不能复用 SSE preflight、100ms owner 轮询必须异步、回放/队列边界、`SseAuthInterceptor` 描述矛盾。 | 二次修订：preflight 改为 dispatch 后在 worker 执行；POST 改普通 HTTP 路由；owner resolver 异步；`MAX_REPLAY_EVENTS=1000`；统一 auth 职责。 |
-| 2026-11-17 | core-ai | v0.2 Draft，待用户确认 D1–D8 | 未实施 |
+| 2026-11-17 | core-ai | v0.2 Draft，待用户确认 D1–D8 | 用户确认后实施 |
+| 2026-11-17 | core-ai | v0.2 Implemented：2.0.263 在 dev/UAT/prod 以 `directed` 运行 | 见 §12 |
+
+## 12. 实施记录
+
+- 实现提交：`b77e76bd`（directed SSE）、`b2bbacd8` / `8f1876c6`（测试修复）、`5ae71eb0`（在 `sys.properties` 声明 `sys.sse.delivery`）、`c06249ce`（属性顺序）。
+- 镜像：`chancetop/core-ai-server:2.0.263`；无新增 Flyway。
+- 开关最终值：dev / UAT / prod 均为 `SYS_SSE_DELIVERY=directed`；`SYS_RPC_TRANSPORT=http` 保持。
+- E2E：dev 跨 Pod、重连、owner Pod 删除后重启/reclaim、rollback redis；UAT 跨 Pod + rollback/restore；prod 跨 Pod + 外部 404/401/409。详见 `docs/validation/2026-11-17-{dev,uat,prod}-stage3-sse-directed.md`。
+- 兼容：directed 模式仍双写 Redis 并在 relay 失败时回退；旧 Pod 仍能通过 Redis 广播工作。
+- 未完成：A2A `A2AEventRelay` 仍走 Redis；Redis 双写/订阅的清理版本、命令队列迁移仍待后续。
+- 发现的运维问题：`SYS_SSE_DELIVERY` 必须在 `sys.properties` 声明，否则 core-ng 不暴露该属性（2.0.261 的路由缺失即由此导致）；属性文件必须保持字母顺序（2.0.262 被 checkstyle 拦截，2.0.263 修复）。
 
