@@ -7,6 +7,7 @@ import ocgCliModule from '../dist/test/ocgCli.js';
 
 const {
   CompletionNotifier,
+  NOTIFY_HANDSHAKE_TEXT,
   formatCompletionNotice,
   formatDuration,
   normalizeNotifySessions,
@@ -21,12 +22,14 @@ const {
   normalizeNotifyTargetView,
   notifyChannelLabel,
   notifyHasMultipleChannels,
+  notifyNeedsWarmup,
   notifyTargetChannels,
   notifyTargetDisplayLabel,
   notifyTargetFromOcg,
   notifyTargetKey,
   notifyTargetOptionLabel,
   notifyTargetsForChannel,
+  notifyVerifyFailureHint,
 } = rendererModule;
 
 const { normalizeOcgTargets } = ocgCliModule;
@@ -289,4 +292,16 @@ test('normalizeOcgTargets keeps usable rows and drops malformed ones', () => {
     { channel: 'openclaw-weixin', accountId: 'acct', target: 'peer', chatType: 'direct', senderName: 'Stephen', lastSeenAt: 1, count: 2 },
     { channel: 'qqbot', target: 'group-1', chatType: 'group', groupSubject: 'Team' },
   ]);
+});
+
+test('opting in verifies warm-up channels and explains how to warm them', () => {
+  assert.match(NOTIFY_HANDSHAKE_TEXT, /任务完成后/);
+  assert.equal(notifyNeedsWarmup('openclaw-weixin'), true);
+  assert.equal(notifyNeedsWarmup('qqbot'), true);
+  assert.equal(notifyNeedsWarmup('telegram'), false);
+  assert.equal(notifyNeedsWarmup(''), false);
+  assert.match(notifyVerifyFailureHint('openclaw-weixin'), /message the bot first/);
+  assert.match(notifyVerifyFailureHint('qqbot'), /message the bot first/);
+  assert.match(notifyVerifyFailureHint('telegram'), /Settings/);
+  assert.doesNotMatch(notifyVerifyFailureHint('telegram'), /message the bot first/);
 });

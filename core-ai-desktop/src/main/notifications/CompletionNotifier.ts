@@ -40,6 +40,13 @@ export interface CompletionNotifierOptions {
 const MAX_DETAIL_LENGTH = 200;
 const MAX_SENT_KEYS = 200;
 
+/**
+ * Sent the moment the user turns the per-session switch on. It both proves the channel can be
+ * reached now and tells the user what to expect, so a broken channel fails visibly instead of
+ * silently doing nothing until the turn ends.
+ */
+export const NOTIFY_HANDSHAKE_TEXT = '好的，我会在任务完成后发消息通知您。(core-ai)';
+
 const isText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 
 /**

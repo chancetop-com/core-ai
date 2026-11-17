@@ -23,6 +23,7 @@ import {
   notifyTargetKey,
   notifyTargetOptionLabel,
   notifyTargetsForChannel,
+  notifyVerifyFailureHint,
   type NotifyTargetView,
   type OcgTargetView,
 } from './notifications';
@@ -386,6 +387,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   notificationsSessionGet(workspace: string, sessionId: string): Promise<boolean>;
   notificationsSessionSet(workspace: string, sessionId: string, enabled: boolean): Promise<boolean>;
   notificationsTest(): Promise<{ ok: boolean; error?: string }>;
+  notificationsVerify(): Promise<{ ok: boolean; error?: string }>;
   onNotificationDelivery(callback: (result: { ok: boolean; error?: string; targetLabel?: string }) => void): () => void;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
@@ -2145,6 +2147,18 @@ function renderComposerControls(): void {
         if (!configured) return;
         notifyCheckbox.checked = true;
       }
+      const target = state.notifyTarget;
+      if (!target) {
+        notifyCheckbox.checked = false;
+        return;
+      }
+      // Prove the channel before promising anything: WeChat/QQ reject proactive sends until the
+      // user has messaged the bot, and that failure must be visible now, not after the task ends.
+      toast(`Checking the notification channel — ${notifyTargetDisplayLabel(target)}`);
+      if (!(await ensureNotifyChannelVerified(target))) {
+        notifyCheckbox.checked = false;
+        return;
+      }
       if (!(await setSessionNotify(true))) {
         notifyCheckbox.checked = false;
         return;
@@ -2152,7 +2166,7 @@ function renderComposerControls(): void {
       notifyCheckbox.title = `Session notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`;
       notifyLabel.title = notifyCheckbox.title;
       renderComposerControls();
-      toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)}`);
+      toast(`Notifications on — ${notifyTargetDisplayLabel(state.notifyTarget)} (channel verified)`);
     } finally {
       notifyCheckbox.disabled = false;
     }
@@ -7646,6 +7660,102 @@ async function openNotifySetupDialog(preferCurrent = false, autoConnect = false)
     };
 
     void render();
+  });
+}
+
+async function verifyNotifyChannel(): Promise<{ ok: boolean; error?: string }> {
+  return window.coreai.notificationsVerify().catch((error: unknown) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+}
+
+/**
+ * Opting in is the moment to prove the channel works. When the handshake fails — most often
+ * because WeChat/QQ only allow proactive sends after the user messaged the bot — the retry
+ * dialog tells the user to warm the channel and lets them confirm once they have.
+ */
+async function ensureNotifyChannelVerified(target: NotifyTargetView): Promise<boolean> {
+  const first = await verifyNotifyChannel();
+  if (first.ok) return true;
+  return openNotifyWarmupDialog(target, first.error ?? 'unknown error');
+}
+
+function openNotifyWarmupDialog(target: NotifyTargetView, initialError: string): Promise<boolean> {
+  if (notifyDialogOpen) return Promise.resolve(false);
+  notifyDialogOpen = true;
+  const overlay = el('div', 'notify-overlay');
+  const box = el('div', 'notify-dialog');
+  overlay.append(box);
+  document.body.append(overlay);
+
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let busy = false;
+
+    function close(verified: boolean): void {
+      if (settled) return;
+      settled = true;
+      notifyDialogOpen = false;
+      document.removeEventListener('keydown', onKey);
+      overlay.remove();
+      resolve(verified);
+    }
+
+    function onKey(event: KeyboardEvent): void {
+      if (event.key === 'Escape') close(false);
+    }
+
+    document.addEventListener('keydown', onKey);
+    overlay.onclick = (event) => {
+      if (event.target === overlay) close(false);
+    };
+
+    const header = el('div', 'notify-dialog-head');
+    header.append(el('div', 'notify-dialog-title', 'Session notifications'));
+    const closeButton = el('button', 'notify-dialog-close') as HTMLButtonElement;
+    closeButton.append(icon('x'));
+    closeButton.title = 'Close';
+    closeButton.onclick = () => close(false);
+    header.append(closeButton);
+
+    const body = el('div', 'notify-dialog-body');
+    body.append(
+      el('div', 'notify-status error', `Could not send a message to ${notifyTargetDisplayLabel(target)}.`),
+      el('div', 'notify-status error', initialError),
+      el('div', 'hint', notifyVerifyFailureHint(target.channel)),
+    );
+
+    const status = el('div', 'notify-status');
+    const retry = el('button', 'btn small primary', 'I have sent it — retry') as HTMLButtonElement;
+    retry.onclick = async () => {
+      if (busy) return;
+      busy = true;
+      retry.disabled = true;
+      status.textContent = 'Sending…';
+      status.className = 'notify-status';
+      const result = await verifyNotifyChannel();
+      busy = false;
+      retry.disabled = false;
+      if (!result.ok) {
+        status.textContent = `Still failing: ${result.error ?? 'unknown error'}`;
+        status.className = 'notify-status error';
+        return;
+      }
+      close(true);
+    };
+    const openSettings = el('button', 'btn small', 'Open Settings → IM channels');
+    openSettings.onclick = () => {
+      close(false);
+      void openImChannelSettings();
+    };
+    const cancel = el('button', 'btn small', 'Cancel');
+    cancel.onclick = () => close(false);
+
+    const actions = el('div', 'notify-actions');
+    actions.append(retry, openSettings, cancel);
+    body.append(status, actions);
+    box.append(header, body);
   });
 }
 

@@ -32,7 +32,7 @@ import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
-import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
+import { CompletionNotifier, NOTIFY_HANDSHAKE_TEXT, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -1092,6 +1092,12 @@ function registerIpc(): void {
     const target = settings.notifyTarget;
     if (!target) return { ok: false, error: 'Notification channel is not configured' };
     return sendOcgNotification(target, 'Notification test — core-ai-desktop');
+  });
+  // Turning the switch on must prove the channel; a failure is surfaced so the user can warm it up.
+  ipcMain.handle('notifications:verify', async () => {
+    const target = settings.notifyTarget;
+    if (!target) return { ok: false, error: 'Notification channel is not configured' };
+    return sendOcgNotification(target, NOTIFY_HANDSHAKE_TEXT);
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);

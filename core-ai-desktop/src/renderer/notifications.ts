@@ -30,6 +30,20 @@ export function notifyChannelLabel(channel: string): string {
   return CHANNEL_LABELS[channel] ?? (channel || 'notification');
 }
 
+/**
+ * WeChat and QQ bots can only start a conversation after the user has messaged the bot;
+ * until then a proactive send is rejected (WeChat answers `ret:-2 prepare failed`).
+ */
+export function notifyNeedsWarmup(channel: string): boolean {
+  return channel === 'openclaw-weixin' || channel === 'qqbot';
+}
+
+export function notifyVerifyFailureHint(channel: string): string {
+  return notifyNeedsWarmup(channel)
+    ? 'WeChat and QQ usually require you to message the bot first. Open the chat with the bot, send any message (for example “你好”), then retry.'
+    : 'Check that the channel is running and the target still exists in Settings → IM channels, then retry.';
+}
+
 export function maskNotifyTarget(value: string): string {
   const text = (value ?? '').trim();
   if (text.length <= 10) return text;
