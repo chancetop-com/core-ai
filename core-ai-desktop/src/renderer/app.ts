@@ -7301,6 +7301,7 @@ async function renderProvidersSection(): Promise<HTMLElement> {
   const list = el('div', 'provider-list');
   for (const profile of providers.profiles) {
     const row = el('div', 'provider-row');
+    row.dataset.providerId = profile.id;
     const identity = el('div', 'provider-identity');
     identity.append(el('div', 'provider-name', profile.label));
     identity.append(el('div', 'provider-meta', `${profile.baseUrl}${profile.hasApiKey ? ` · key ${profile.apiKeyHint ?? '••••'}` : ' · no key'}`));
@@ -7336,6 +7337,7 @@ function openProviderDialog(providers: ProviderListResult, existing?: ProviderPr
 
   const typeLabel = el('div', 'login-label', 'Provider');
   const typeSelect = el('select', 'login-input') as HTMLSelectElement;
+  typeSelect.dataset.providerField = 'type';
   for (const type of Object.keys(PROVIDER_PRESETS)) {
     const option = el('option', undefined, PROVIDER_PRESETS[type].label);
     option.value = type;
@@ -7346,27 +7348,32 @@ function openProviderDialog(providers: ProviderListResult, existing?: ProviderPr
   dialog.append(typeLabel, typeSelect);
 
   const labelInput = el('input', 'login-input') as HTMLInputElement;
+  labelInput.dataset.providerField = 'label';
   labelInput.placeholder = 'Label (optional)';
   labelInput.value = existing?.label ?? PROVIDER_PRESETS[typeSelect.value].label;
   dialog.append(labelInput);
 
   const baseInput = el('input', 'login-input') as HTMLInputElement;
+  baseInput.dataset.providerField = 'base';
   baseInput.placeholder = 'API base URL';
   baseInput.value = existing?.baseUrl ?? PROVIDER_PRESETS[typeSelect.value].baseUrl;
   dialog.append(baseInput);
 
   const keyInput = el('input', 'login-input') as HTMLInputElement;
+  keyInput.dataset.providerField = 'key';
   keyInput.type = 'password';
   keyInput.placeholder = existing?.hasApiKey ? `${existing.apiKeyHint ?? '••••'} (saved — leave blank to keep)` : 'API key (blank for none)';
   dialog.append(keyInput);
 
   const modelsInput = el('textarea', 'login-input') as HTMLTextAreaElement;
+  modelsInput.dataset.providerField = 'models';
   modelsInput.rows = 3;
   modelsInput.placeholder = 'Models, one per line';
   modelsInput.value = (existing?.models ?? PROVIDER_PRESETS[typeSelect.value].models).join('\n');
   dialog.append(modelsInput);
 
   const defaultInput = el('input', 'login-input') as HTMLInputElement;
+  defaultInput.dataset.providerField = 'default';
   defaultInput.placeholder = 'Default model';
   defaultInput.value = existing?.defaultModel ?? PROVIDER_PRESETS[typeSelect.value].defaultModel;
   dialog.append(defaultInput);

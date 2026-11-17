@@ -836,7 +836,8 @@ Model providers
 - `npm --prefix core-ai-desktop run check`：通过。
 - `npm --prefix core-ai-desktop test`：207/207 通过（新增 `providerStore.test.mjs`、`providerProbe.test.mjs`）。
 - `.core-ai/tasks/provider-store-smoke.py`：真实 app-server 回合通过——store 直连 DeepSeek stub、`model/list` local、`model/set` provider 路由、thinking `max → xhigh`、`off` 清除、`agent.properties` 不含 key。
-- 未执行桌面 UI E2E（未重启用户正在使用的 desktop）；Node 测试 + TypeScript 检查 + 构建通过。
+- `.core-ai/tasks/provider-ui-e2e.mjs`（隔离 home + stub 8920 + CDP 9240）：**全部检查通过**——Settings 分区/掩码 key/默认连接/未登录禁用 server、Edit 对话框与 Test connection、直连模型真实回合（stub 收到 `Bearer e2e-key` 与 `deepseek-reasoner`）、Add provider 写入第二个 profile 并重载出现 `gpt-test`、Delete 后重载移除且会话保留、`agent.properties` 无 vendor key、无 renderer 异常。截图：`provider-ui-1-settings.png`、`provider-ui-2-test.png`、`provider-ui-3-session.png`。
+- 复现：`powershell -File .core-ai/tasks/provider-ui-start.ps1` → `node .core-ai/tasks/provider-ui-e2e.mjs` → `powershell -File .core-ai/tasks/provider-ui-stop.ps1`（需要先 `npm --prefix core-ai-desktop run build` 与 `.\gradlew.bat :core-ai-cli:installDist`）。
 
 ### 16.4 发布注意
 
