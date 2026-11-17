@@ -83,7 +83,7 @@ interface RemoteChatState {
   agentName: string;
   title: string;
   status: 'idle' | 'running' | 'error';
-  connection: 'connected' | 'reconnecting' | 'rejected' | 'closed';
+  connection: 'connecting' | 'connected' | 'reconnecting' | 'rejected' | 'closed';
   connectionMessage: string;
   messages: RemoteMessage[];
   live: LiveTurn | null;
@@ -248,7 +248,7 @@ export function openRemoteConversation(serverUrl: string, sessionId: string, age
     agentName: agentName ?? 'Server agent',
     title: title ?? '',
     status: 'idle',
-    connection: 'reconnecting',
+    connection: 'connecting',
     connectionMessage: '',
     messages: [],
     live: null,
@@ -629,11 +629,13 @@ function paintBanner(): void {
   }
   bannerEl.hidden = false;
   bannerEl.replaceChildren();
-  const text = active.connection === 'reconnecting'
-    ? 'Connection interrupted — the task may still be running on the server. Reconnecting…'
-    : `Cannot reach this conversation: ${active.connectionMessage || 'unknown error'}`;
+  const text = active.connection === 'connecting'
+    ? 'Connecting to the server…'
+    : active.connection === 'reconnecting'
+      ? 'Connection interrupted — the task may still be running on the server. Reconnecting…'
+      : `Cannot reach this conversation: ${active.connectionMessage || 'unknown error'}`;
   bannerEl.append(el('span', undefined, text));
-  if (active.connection === 'rejected') {
+  if (active.connection === 'rejected' || active.connection === 'closed') {
     const login = el('button', 'remote-banner-action', 'Reconnect');
     login.onclick = () => void subscribeAndLoad();
     bannerEl.append(login);
@@ -646,7 +648,7 @@ function paintStatus(): void {
   if (status) {
     status.textContent = active.status === 'running'
       ? 'Agent is running on the server'
-      : active.connection === 'connected' ? 'Connected' : 'Disconnected';
+      : active.connection === 'connected' ? 'Connected' : active.connection === 'connecting' ? 'Connecting…' : 'Disconnected';
     status.classList.toggle('running', active.status === 'running');
   }
   if (sendButton) {
