@@ -254,10 +254,11 @@ export default function AgentQualityTab() {
         </div>
       </div>
 
-      <div className="grid grid-cols-[minmax(0,1fr)_460px] gap-4">
+      <div className="grid grid-cols-1 gap-4 min-[1400px]:grid-cols-[minmax(0,1fr)_460px]">
         <div>
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--color-border)' }}>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
               <thead style={{ background: 'var(--color-bg-tertiary)' }}>
                 <tr>
                   <th className="text-left px-3 py-2">Rule</th>
@@ -285,6 +286,7 @@ export default function AgentQualityTab() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           {rules.length > 0 && (
