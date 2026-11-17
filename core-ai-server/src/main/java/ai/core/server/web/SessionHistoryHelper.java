@@ -14,10 +14,15 @@ import java.util.List;
  *
  * @author stephen
  */
-final class SessionHistoryHelper {
-    static SessionHistoryResponse build(ChatMessageService chatMessageService, String sessionId) {
-        var records = chatMessageService.history(sessionId);
-        var sessionArtifacts = chatMessageService.artifacts(sessionId);
+public final class SessionHistoryHelper {
+    public static SessionHistoryResponse build(ChatMessageService chatMessageService, String sessionId) {
+        var response = new SessionHistoryResponse();
+        response.messages = toMessages(chatMessageService.history(sessionId));
+        response.artifacts = toArtifacts(chatMessageService.artifacts(sessionId));
+        return response;
+    }
+
+    public static List<Message> toMessages(List<ai.core.server.domain.ChatMessage> records) {
         var messages = new ArrayList<Message>(records.size());
         for (var record : records) {
             var msg = new Message();
@@ -41,21 +46,21 @@ final class SessionHistoryHelper {
             }
             messages.add(msg);
         }
-        var response = new SessionHistoryResponse();
-        response.messages = messages;
-        if (sessionArtifacts != null && !sessionArtifacts.isEmpty()) {
-            response.artifacts = sessionArtifacts.stream().map(a -> {
-                var v = new SessionArtifact();
-                v.fileId = a.fileId;
-                v.fileName = a.fileName;
-                v.contentType = a.contentType;
-                v.size = a.size;
-                v.title = a.title;
-                v.description = a.description;
-                return v;
-            }).toList();
-        }
-        return response;
+        return messages;
+    }
+
+    public static List<SessionArtifact> toArtifacts(List<ai.core.server.domain.AgentRunArtifact> sessionArtifacts) {
+        if (sessionArtifacts == null || sessionArtifacts.isEmpty()) return null;
+        return sessionArtifacts.stream().map(a -> {
+            var v = new SessionArtifact();
+            v.fileId = a.fileId;
+            v.fileName = a.fileName;
+            v.contentType = a.contentType;
+            v.size = a.size;
+            v.title = a.title;
+            v.description = a.description;
+            return v;
+        }).toList();
     }
 
     private static List<Message.ToolCallRecord> toToolRecords(

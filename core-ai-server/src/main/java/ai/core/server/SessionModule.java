@@ -72,8 +72,20 @@ public class SessionModule extends Module {
         registerSseEndpoints();
         schedule().fixedRate("idle-session-cleanup", bind(IdleSessionCleanupJob.class), Duration.ofMinutes(5));
         api().service(ChatSessionWebService.class, bind(ChatSessionWebServiceImpl.class));
+        registerDirectConversation();
         // self-service notification target: any signed-in user configures their own channel
         api().service(UserNotificationWebService.class, bind(UserNotificationWebServiceImpl.class));
+    }
+
+    private void registerDirectConversation() {
+        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+            bind(ai.core.server.conversation.PgConversationRequestStore.class);
+        } else {
+            bind(new ai.core.server.conversation.InMemoryConversationRequestStore());
+        }
+        var service = bind(ai.core.server.web.ConversationWebServiceImpl.class);
+        service.allowedAgents = property("sys.conversation.agents").orElse("");
+        api().service(ai.core.api.server.conversation.ConversationWebService.class, service);
     }
 
     private void bindSessionRuntime() {

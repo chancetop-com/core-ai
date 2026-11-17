@@ -36,6 +36,9 @@ export interface AuthServerEntry {
 }
 
 export function authFile(): string {
+  // E2E seam: a scratch auth store lets a test start the app without touching the real shared login.
+  const override = process.env.COREAI_AUTH_FILE;
+  if (override) return override;
   return path.join(os.homedir(), '.core-ai', 'auth.json');
 }
 

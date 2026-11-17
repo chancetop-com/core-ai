@@ -67,6 +67,26 @@ public class ChatMessageService {
         return chatMessageStore.find(query);
     }
 
+    /**
+     * Newest page before an exclusive seq cursor, returned in ascending order. The extra row used
+     * for has-more detection is the caller's responsibility.
+     */
+    public List<ChatMessage> historyPage(String sessionId, Long beforeSeq, int limit) {
+        var query = new ChatMessageQuery();
+        query.sessionId = sessionId;
+        if (beforeSeq != null) query.maxSeq = beforeSeq - 1;
+        query.limit = limit;
+        query.sortField = "seq";
+        query.ascending = false;
+        var rows = new ArrayList<>(chatMessageStore.find(query));
+        java.util.Collections.reverse(rows);
+        return rows;
+    }
+
+    public long latestSeq(String sessionId) {
+        return chatMessageStore.latestSeq(sessionId);
+    }
+
     public ChatSession getSessionMeta(String sessionId) {
         return sessionRegistry.get(sessionId);
     }

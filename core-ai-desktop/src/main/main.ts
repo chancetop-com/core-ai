@@ -32,6 +32,7 @@ import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
+import { RemoteConversationClient } from './remote/RemoteConversationClient';
 import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifyHandshakeText, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { probeModels } from './providers/ProviderProbe';
 import {
@@ -98,6 +99,7 @@ let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
 let channelBridge: ChannelBridge | null = null;
 let completionNotifier: CompletionNotifier | null = null;
+let remoteConversations: RemoteConversationClient | null = null;
 let ocgAdmin: OcgHttpPort | null = null;
 let channelKeepAwakeId: number | null = null;
 let tray: Tray | null = null;
@@ -817,6 +819,16 @@ function configureBackgroundScheduling(): void {
     scheduleWaker.start();
   }
 }
+function remoteConversationClient(): RemoteConversationClient {
+  if (!remoteConversations) {
+    remoteConversations = new RemoteConversationClient({
+      loadEntries: () => loadAuthEntries(),
+      onPush: (event) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('remote:push', event); },
+    });
+  }
+  return remoteConversations;
+}
+
 function registerIpc(): void {
   ipcMain.handle('app:info', () => ({
     enginePath: resolveEnginePath(), engineExists: existsSync(resolveEnginePath()), desktopVersion: clientVersion,
@@ -896,6 +908,7 @@ function registerIpc(): void {
     });
     if (confirm.response !== 0) return authStatus();
     removeAuthEntries(active.server_url);
+    remoteConversations?.close();
     providerRunningSessions.clear();
     providerPendingReload.clear();
     await supervisor?.shutdownAll();
@@ -1263,6 +1276,34 @@ function registerIpc(): void {
       if (error instanceof RpcCallError) return { ok: false, error: { code: error.code, message: error.message, data: error.data } };
       return { ok: false, error: { code: 0, message: error instanceof Error ? error.message : String(error) } };
     }
+  });
+  // Direct remote conversations: the main process holds the credential and the event stream; the
+  // renderer gets only typed commands and normalized pushes.
+  ipcMain.handle('remote:servers', () => remoteConversationClient().servers());
+  ipcMain.handle('remote:capabilities', (_event, serverUrl: string) => remoteConversationClient().capabilities(String(serverUrl ?? '')));
+  ipcMain.handle('remote:agents', (_event, serverUrl: string, query: string, limit?: number) =>
+    remoteConversationClient().agents(String(serverUrl ?? ''), String(query ?? ''), Number(limit) || 50));
+  ipcMain.handle('remote:sessions', (_event, serverUrl: string, offset?: number, limit?: number) =>
+    remoteConversationClient().sessions(String(serverUrl ?? ''), Number(offset) || 0, Number(limit) || 30));
+  ipcMain.handle('remote:create', (_event, serverUrl: string, agentId: string) =>
+    remoteConversationClient().create(String(serverUrl ?? ''), String(agentId ?? '')));
+  ipcMain.handle('remote:snapshot', (_event, serverUrl: string, sessionId: string) =>
+    remoteConversationClient().snapshot(String(serverUrl ?? ''), String(sessionId ?? '')));
+  ipcMain.handle('remote:history', (_event, serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number) =>
+    remoteConversationClient().history(String(serverUrl ?? ''), String(sessionId ?? ''), beforeSeq == null ? null : Number(beforeSeq), Number(limit) || 50));
+  ipcMain.handle('remote:send', (_event, serverUrl: string, sessionId: string, message: string) =>
+    remoteConversationClient().send(String(serverUrl ?? ''), String(sessionId ?? ''), String(message ?? '')));
+  ipcMain.handle('remote:cancel', (_event, serverUrl: string, sessionId: string) =>
+    remoteConversationClient().cancel(String(serverUrl ?? ''), String(sessionId ?? '')));
+  ipcMain.handle('remote:rename', (_event, serverUrl: string, sessionId: string, title: string) =>
+    remoteConversationClient().rename(String(serverUrl ?? ''), String(sessionId ?? ''), String(title ?? '')));
+  ipcMain.handle('remote:subscribe', (_event, serverUrl: string, sessionId: string) => {
+    remoteConversationClient().subscribe(String(serverUrl ?? ''), String(sessionId ?? ''));
+    return true;
+  });
+  ipcMain.handle('remote:unsubscribe', (_event, serverUrl: string, sessionId: string) => {
+    remoteConversationClient().unsubscribe(String(serverUrl ?? ''), String(sessionId ?? ''));
+    return true;
   });
   ipcMain.handle('artifacts:base', (_event, workspace: string) => artifactBase(String(workspace ?? '')));
   // The renderer keeps live artifact entries the engine's scan does not cover yet; this tells it which

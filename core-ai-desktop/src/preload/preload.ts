@@ -102,6 +102,26 @@ contextBridge.exposeInMainWorld('coreai', {
     };
   },
   info: () => ipcRenderer.invoke('app:info'),
+  remoteServers: () => ipcRenderer.invoke('remote:servers'),
+  remoteCapabilities: (serverUrl: string) => ipcRenderer.invoke('remote:capabilities', serverUrl),
+  remoteAgents: (serverUrl: string, query: string, limit?: number) => ipcRenderer.invoke('remote:agents', serverUrl, query, limit),
+  remoteSessions: (serverUrl: string, offset?: number, limit?: number) => ipcRenderer.invoke('remote:sessions', serverUrl, offset, limit),
+  remoteCreate: (serverUrl: string, agentId: string) => ipcRenderer.invoke('remote:create', serverUrl, agentId),
+  remoteSnapshot: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:snapshot', serverUrl, sessionId),
+  remoteHistory: (serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number) =>
+    ipcRenderer.invoke('remote:history', serverUrl, sessionId, beforeSeq, limit),
+  remoteSend: (serverUrl: string, sessionId: string, message: string) => ipcRenderer.invoke('remote:send', serverUrl, sessionId, message),
+  remoteCancel: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:cancel', serverUrl, sessionId),
+  remoteRename: (serverUrl: string, sessionId: string, title: string) => ipcRenderer.invoke('remote:rename', serverUrl, sessionId, title),
+  remoteSubscribe: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:subscribe', serverUrl, sessionId),
+  remoteUnsubscribe: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:unsubscribe', serverUrl, sessionId),
+  onRemotePush: (callback: (payload: unknown) => void) => {
+    const listener = (_event: unknown, payload: unknown) => callback(payload);
+    ipcRenderer.on('remote:push', listener);
+    return () => {
+      ipcRenderer.removeListener('remote:push', listener);
+    };
+  },
   getSettings: () => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Record<string, unknown>) => ipcRenderer.invoke('settings:set', patch),
   openPath: (workspace: string, relativePath: string) => ipcRenderer.invoke('shell:openPath', workspace, relativePath),

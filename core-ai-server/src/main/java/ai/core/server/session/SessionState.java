@@ -24,6 +24,8 @@ public class SessionState {
 
     public String sessionId;
     public String userId;
+    /** Optional entry source for a new session (desktop, chat); absent means the legacy default. */
+    public String source;
     public boolean fromAgent;
     /**
      * Marks agent snapshots that were created after caller-aware dependency validation.

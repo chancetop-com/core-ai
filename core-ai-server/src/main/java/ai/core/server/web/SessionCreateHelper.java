@@ -45,7 +45,8 @@ public class SessionCreateHelper {
     String createSessionFromAgent(String agentId, SessionState state, String userId,
                                   List<IdName> loadedSubAgents, List<IdName> loadedSkills, String apiKeyId) {
         var agent = agentDefinitionService.getEntity(agentId);
-        var result = sessionManager.createSessionFromAgent(agent, state.config, userId, apiKeyId != null ? "api" : "chat", apiKeyId);
+        var source = state.source != null && !state.source.isBlank() ? state.source : apiKeyId != null ? "api" : "chat";
+        var result = sessionManager.createSessionFromAgent(agent, state.config, userId, source, apiKeyId);
         state.fromAgent = true;
         state.agentConfig = buildAgentConfigSnapshot(result.executableDefinition());
         state.agentSnapshotSecurityVersion = SessionState.CURRENT_AGENT_SNAPSHOT_SECURITY_VERSION;

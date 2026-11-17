@@ -28,6 +28,16 @@ import {
   type OcgTargetView,
 } from './notifications';
 import { createRichCard, parseRichCard } from './richCard';
+import {
+  configureRemoteChat,
+  deactivateRemoteSession,
+  handleRemotePush,
+  mountRemoteContent,
+  remoteSessionActive,
+  renderRemoteSidebar,
+  resetRemoteChatCache,
+  startRemoteConversation,
+} from './remoteChat';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
 import type { TranscriptPage, TranscriptRecord } from './transcript/records';
@@ -438,6 +448,19 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   info(): Promise<any>;
+  remoteServers(): Promise<Array<{ serverUrl: string; name: string | null; userId: string | null; active: boolean; insecure: boolean }>>;
+  remoteCapabilities(serverUrl: string): Promise<Record<string, unknown>>;
+  remoteAgents(serverUrl: string, query: string, limit?: number): Promise<Array<{ id: string; name: string; description: string | null }>>;
+  remoteSessions(serverUrl: string, offset?: number, limit?: number): Promise<{ sessions: Array<{ id: string; agentId: string | null; agentName: string | null; title: string | null; source: string | null; messageCount: number | null; createdAt: string | null; lastMessageAt: string | null }>; total: number }>;
+  remoteCreate(serverUrl: string, agentId: string): Promise<{ sessionId: string; created: boolean; agentName: string | null; model: string | null }>;
+  remoteSnapshot(serverUrl: string, sessionId: string): Promise<Record<string, unknown>>;
+  remoteHistory(serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number): Promise<{ messages: Array<Record<string, unknown>>; hasMore: boolean; oldestSeq: number | null }>;
+  remoteSend(serverUrl: string, sessionId: string, message: string): Promise<{ duplicate: boolean }>;
+  remoteCancel(serverUrl: string, sessionId: string): Promise<{ cancelled: boolean }>;
+  remoteRename(serverUrl: string, sessionId: string, title: string): Promise<string>;
+  remoteSubscribe(serverUrl: string, sessionId: string): Promise<boolean>;
+  remoteUnsubscribe(serverUrl: string, sessionId: string): Promise<boolean>;
+  onRemotePush(callback: (payload: unknown) => void): () => void;
   getSettings(): Promise<any>;
   setSettings(patch: Record<string, unknown>): Promise<any>;
   openPath(workspace: string, relativePath: string): Promise<string | null>;
@@ -1272,6 +1295,7 @@ function renderSidebar(): void {
         nav.append(sub);
         renderSessionItems();
       }
+      renderRemoteSidebar(nav);
     } else {
       const button = el('button', `nav-item${state.nav === item.key ? ' active' : ''}`);
       button.append(icon(item.icon), el('span', 'nav-text', item.label));
@@ -1349,6 +1373,7 @@ async function refreshAuth(): Promise<void> {
   if (JSON.stringify(next) !== JSON.stringify(state.auth)) {
     state.auth = next;
     hubSnapshot = null;
+    resetRemoteChatCache();
     renderSidebar();
   }
 }
@@ -1356,6 +1381,7 @@ async function refreshAuth(): Promise<void> {
 function applyAuth(next: AuthStatus | null): void {
   state.auth = next;
   hubSnapshot = null;
+  resetRemoteChatCache();
   renderSidebar();
 }
 
@@ -1662,7 +1688,16 @@ function buildSessionsNavRow(): HTMLElement {
     void reloadSessionList(reload);
   };
 
-  row.append(label, add, reload, toggle);
+  const remote = el('button', 'new-session');
+  remote.title = 'Chat with a server agent (direct conversation, no local delegation)';
+  remote.setAttribute('aria-label', 'Chat with a server agent');
+  remote.append(icon('hub'));
+  remote.onclick = (event) => {
+    event.stopPropagation();
+    void startRemoteConversation();
+  };
+
+  row.append(label, add, remote, reload, toggle);
   return row;
 }
 
@@ -2584,6 +2619,7 @@ async function refreshSessionList(): Promise<void> {
  * message, so clicking +New and walking away leaves no empty session behind.
  */
 async function startNewConversation(): Promise<void> {
+  deactivateRemoteSession();
   state.sessionId = null;
   state.sessionTitle = '';
   state.pendingModel = null;
@@ -2669,6 +2705,7 @@ async function showConversationView(): Promise<void> {
  * session that is still working shows everything exactly where it was when the user comes back.
  */
 async function openSession(sessionId: string): Promise<void> {
+  deactivateRemoteSession();
   const target = sessionId;
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
@@ -8975,6 +9012,12 @@ async function renderContent(): Promise<void> {
   // Panels load asynchronously; a render the user already navigated away from must not win.
   if (token !== contentRenderToken) return;
 
+  // A remote conversation is a first-class window: it does not need a local workspace or engine.
+  if (state.nav === 'sessions' && remoteSessionActive()) {
+    mountRemoteContent(content);
+    return;
+  }
+
   if (!info.engineExists) {
     const empty = el('div', 'empty-state');
     empty.append(el('div', 'big', 'core-ai-desktop'));
@@ -9034,6 +9077,12 @@ async function renderContent(): Promise<void> {
 // ---------- bootstrap ----------
 
 async function bootstrap(): Promise<void> {
+  configureRemoteChat({
+    requestRenderContent: () => void renderContent(),
+    requestRenderSidebar: () => renderSidebar(),
+    toast: (text, kind) => toast(text, kind),
+  });
+  window.coreai.onRemotePush(handleRemotePush);
   // The startup update check can settle while this bootstrap is still loading panels: subscribe
   // first, then pull a snapshot (covers a check that finished before this window subscribed).
   window.coreai.onUpdateState((next: UpdateState) => {
