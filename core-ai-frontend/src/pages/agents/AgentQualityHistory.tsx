@@ -63,7 +63,7 @@ export default function AgentQualityHistory() {
           <div className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
             {agent?.name || agentId}
             {' · '}
-            {runs.length} quality checks recorded for this agent
+            {runs.length} quality {runs.length === 1 ? 'check' : 'checks'} recorded for this agent
           </div>
         </div>
         <button onClick={load} disabled={loading} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
