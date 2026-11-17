@@ -138,10 +138,13 @@ final class LiteLLMResponsesBridge {
             callback.onComplete();
             return response;
         }
-        if (response == null && lastError != null) {
-            throw (RuntimeException) lastError;
+        if (response == null) {
+            if (lastError != null) {
+                throw (RuntimeException) lastError;
+            }
+            throw new RuntimeException("LLM responses stream returned no data, uri=" + req.uri);
         }
-        completeCallbacks(Objects.requireNonNull(response), callback);
+        completeCallbacks(response, callback);
         return response;
     }
 

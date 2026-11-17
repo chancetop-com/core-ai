@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, FlaskConical, History, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../../../api/client';
 import type { AgentDefinition } from '../../../api/client';
@@ -47,6 +47,9 @@ export default function AgentQualityTab() {
   const [enforceLevel, setEnforceLevel] = useState<EnforcementLevel>('BLOCK');
   const [offset, setOffset] = useListState('agent-quality.offset', 0);
   const [limit, setLimit] = useListState('agent-quality.limit', 20);
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  const revealDetail = () => requestAnimationFrame(() => detailRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }));
 
   const load = async () => {
     setBusy(true);
@@ -105,6 +108,7 @@ export default function AgentQualityTab() {
     setCreating(false);
     setTestResult(null);
     setMessage('');
+    revealDetail();
   };
 
   const template = useMemo(
@@ -248,7 +252,7 @@ export default function AgentQualityTab() {
           <button onClick={load} disabled={busy} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
             <RefreshCw size={14} /> Refresh
           </button>
-          <button onClick={() => { setCreating(true); setSelected(null); setDraft(EMPTY_RULE); setEnforceEnabled(false); setEnforceLevel('BLOCK'); }} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
+          <button onClick={() => { setCreating(true); setSelected(null); setDraft(EMPTY_RULE); setEnforceEnabled(false); setEnforceLevel('BLOCK'); revealDetail(); }} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
             <Plus size={14} /> New decision rule
           </button>
         </div>
@@ -301,7 +305,7 @@ export default function AgentQualityTab() {
           )}
         </div>
 
-        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
+        <div ref={detailRef} className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
           {creating || selected ? (
             <>
               <div className="flex items-start justify-between gap-3 mb-3">

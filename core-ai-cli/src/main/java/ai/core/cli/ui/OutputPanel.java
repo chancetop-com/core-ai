@@ -79,6 +79,11 @@ public class OutputPanel {
 
     static String parseErrorHint(String message) {
         if (message == null) return "Oops, something went wrong.";
+        if (message.startsWith("core-ai-server")) {
+            if (message.contains("partial output"))
+                return "core-ai-server connection was lost mid-reply. The partial reply is kept; send \"continue\" to resume.";
+            return "core-ai-server is unreachable. The request was retried; try again once the server is back.";
+        }
         if (message.contains("statusCode=401"))
             return "API key is invalid or expired. Please check your config with /help.";
         if (message.contains("statusCode=402"))

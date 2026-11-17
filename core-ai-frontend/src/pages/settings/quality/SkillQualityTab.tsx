@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Info, Lock, RefreshCw } from 'lucide-react';
 import { skillQualityApi, type SkillQualityRule } from '../../../api/quality';
 import Pagination from '../../../components/Pagination';
@@ -14,6 +14,12 @@ export default function SkillQualityTab() {
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [offset, setOffset] = useListState('skill-quality.offset', 0);
   const [limit, setLimit] = useListState('skill-quality.limit', 20);
+  const detailRef = useRef<HTMLDivElement>(null);
+
+  const selectRule = (key: string) => {
+    setSelectedKey(key);
+    requestAnimationFrame(() => detailRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' }));
+  };
 
   const load = async () => {
     setLoading(true);
@@ -99,7 +105,7 @@ export default function SkillQualityTab() {
                     </td>
                   </tr>
                 ) : pageRules.map(rule => (
-                  <tr key={rule.key} onClick={() => setSelectedKey(rule.key)} className="border-t cursor-pointer"
+                  <tr key={rule.key} onClick={() => selectRule(rule.key)} className="border-t cursor-pointer"
                     style={{ borderColor: 'var(--color-border)', background: selected?.key === rule.key ? 'var(--color-primary-bg)' : undefined }}>
                     <td className="px-3 py-2">
                       <div className="font-mono text-xs">{rule.key}</div>
@@ -128,7 +134,7 @@ export default function SkillQualityTab() {
           )}
         </div>
 
-        <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
+        <div ref={detailRef} className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
           {selected ? (
             <>
               <div className="flex items-start justify-between gap-3 mb-3">

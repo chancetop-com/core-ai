@@ -11,7 +11,6 @@ import ai.core.document.Embedding;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
-import ai.core.llm.LLMProviderConfig;
 import ai.core.utils.JsonUtil;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
@@ -34,8 +33,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author stephen
  */
 class LiteLLMProviderTest {
-    private final LiteLLMProvider provider = new LiteLLMProvider(new LLMProviderConfig("test-model", 0.7, null), "http://localhost", "test");
-
     @Test
     void applyGatewayHeadersPutsSessionAndAgentHeaders() {
         var request = CompletionRequest.of(List.of(), List.of(), null, "test-model", "menu-agent");
@@ -245,21 +242,21 @@ class LiteLLMProviderTest {
 
         // Chunk 1: tool_call[0] starts with id, type, name
         var chunk1 = createChunkChoice(0, "call_abc", "function", "get_weather", "");
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2: tool_call[0] arguments fragment
         var chunk2 = createChunkChoice(0, null, null, null, "{\"city\":");
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk2);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk2);
 
         // Chunk 3: tool_call[0] arguments fragment + tool_call[1] starts
         var chunk3 = createChunkChoiceMultiple(
                 new ToolCallDelta(0, null, null, null, "\"Beijing\"}"),
                 new ToolCallDelta(1, "call_def", "function", "get_time", "")
         );
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk3);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk3);
 
         // Chunk 4: tool_call[1] arguments
-        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(1, null, null, null, "{\"tz\":\"UTC\"}"));
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(1, null, null, null, "{\"tz\":\"UTC\"}"));
         finalChoice.message.finalizeStreamingFields();
 
         // Verify results
@@ -288,12 +285,12 @@ class LiteLLMProviderTest {
 
         // Chunk 1: tool call starts
         var chunk1 = createChunkChoice(0, "call_123", "function", "search", "");
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2-4: arguments fragments
-        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"q\":"));
-        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "\"hello"));
-        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, " world\"}"));
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"q\":"));
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "\"hello"));
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, " world\"}"));
         finalChoice.message.finalizeStreamingFields();
 
         var toolCalls = finalChoice.message.toolCalls;
@@ -319,7 +316,7 @@ class LiteLLMProviderTest {
         tc.id = "call_xyz";
         chunk.delta.toolCalls.add(tc);
 
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk);
 
         // Should remain empty
         assertEquals(0, finalChoice.message.toolCalls.size());
@@ -331,11 +328,11 @@ class LiteLLMProviderTest {
 
         // Chunk 1: only index and partial data
         var chunk1 = createChunkChoice(0, null, null, "my_func", "");
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // Chunk 2: id and type come later (unusual but should work)
         var chunk2 = createChunkChoice(0, "call_late", "function", null, "{\"a\":1}");
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk2);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk2);
         finalChoice.message.finalizeStreamingFields();
 
         var tc = finalChoice.message.toolCalls.get(0);
@@ -366,10 +363,10 @@ class LiteLLMProviderTest {
 
         var chunk1 = createChunkChoice(0, "call_1", "function", "run_bash_command", "");
         chunk1.delta.toolCalls.get(0).extraContent = Map.of("google", Map.of("thought_signature", "sig-1"));
-        provider.copyToolCallsToFinalChoice(finalChoice, chunk1);
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, chunk1);
 
         // later argument fragments carry no extra_content and must not clear the captured signature
-        provider.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"a\":1}"));
+        LiteLLMChunkMerger.copyToolCallsToFinalChoice(finalChoice, createChunkChoice(0, null, null, null, "{\"a\":1}"));
         finalChoice.message.finalizeStreamingFields();
 
         var toolCall = finalChoice.message.toolCalls.get(0);
@@ -474,3 +471,4 @@ class LiteLLMProviderTest {
 
     }
 }
+

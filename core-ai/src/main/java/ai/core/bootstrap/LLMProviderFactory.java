@@ -14,48 +14,48 @@ import ai.core.llm.providers.LiteLLMProvider;
 public final class LLMProviderFactory {
     public static LLMProviders create(PropertySource props) {
         var providers = new LLMProviders();
-        var config = setupLLMProperties(props);
+        var config = baseConfig(props);
 
         // LiteLLM
         props.property("litellm.api.base").ifPresent(base -> {
-            var providerConfig = createProviderConfig(props, config, "litellm");
+            var providerConfig = providerConfig(props, config, "litellm");
             var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("litellm.api.base"), props.property("litellm.api.key").orElse(""));
             providers.addProvider(LLMProviderType.LITELLM, provider);
         });
 
         // OpenRouter
         props.property("openrouter.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(props, config, "openrouter");
+            var providerConfig = providerConfig(props, config, "openrouter");
             var provider = new LiteLLMProvider(providerConfig, "https://openrouter.ai/api/v1", key);
             providers.addProvider(LLMProviderType.OPENROUTER, provider);
         });
 
         // DeepSeek
         props.property("deepseek.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(props, config, "deepseek");
+            var providerConfig = providerConfig(props, config, "deepseek");
             var provider = new LiteLLMProvider(providerConfig, "https://api.deepseek.com/v1", key);
             providers.addProvider(LLMProviderType.DEEPSEEK, provider);
         });
 
         // Azure OpenAI
         props.property("azure.api.key").ifPresent(key -> props.property("azure.api.base").ifPresent(base -> {
-            var providerConfig = createProviderConfig(props, config, "azure");
+            var providerConfig = providerConfig(props, config, "azure");
             var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("azure.api.base"), key);
             providers.addProvider(LLMProviderType.AZURE, provider);
         }));
 
         // OpenAI
         props.property("openai.api.key").ifPresent(key -> {
-            var providerConfig = createProviderConfig(props, config, "openai");
+            var providerConfig = providerConfig(props, config, "openai");
             var provider = new LiteLLMProvider(providerConfig, props.requiredProperty("openai.api.base"), key);
             providers.addProvider(LLMProviderType.OPENAI, provider);
         });
         return providers;
     }
 
-    private static LLMProviderConfig setupLLMProperties(PropertySource props) {
+    public static LLMProviderConfig baseConfig(PropertySource props) {
         var config = new LLMProviderConfig(null, 0.7d, "text-embedding-3-large");
-        applyConfigProperties(props, config, "llm");
+        applyProviderProperties(props, config, "llm");
         if (config.getModel() == null) {
             config.setModel("deepseek/deepseek-v4-flash");
         }
@@ -65,13 +65,13 @@ public final class LLMProviderFactory {
         return config;
     }
 
-    private static LLMProviderConfig createProviderConfig(PropertySource props, LLMProviderConfig baseConfig, String prefix) {
+    public static LLMProviderConfig providerConfig(PropertySource props, LLMProviderConfig baseConfig, String prefix) {
         var config = new LLMProviderConfig(baseConfig);
-        applyConfigProperties(props, config, prefix);
+        applyProviderProperties(props, config, prefix);
         return config;
     }
 
-    private static void applyConfigProperties(PropertySource props, LLMProviderConfig config, String prefix) {
+    public static void applyProviderProperties(PropertySource props, LLMProviderConfig config, String prefix) {
         props.property(prefix + ".model").ifPresent(config::setModel);
         props.property(prefix + ".model.multimodal").ifPresent(config::setMultiModalModel);
         props.property(prefix + ".temperature").ifPresent(v -> config.setTemperature(Double.parseDouble(v)));
@@ -79,6 +79,7 @@ public final class LLMProviderFactory {
         props.property(prefix + ".request.extra_body").ifPresent(config::setRequestExtraBody);
         props.property(prefix + ".timeout.seconds").ifPresent(v -> config.setTimeout(Long.valueOf(v)));
         props.property(prefix + ".connect.timeout.seconds").ifPresent(v -> config.setConnectTimeout(Long.valueOf(v)));
+        props.property(prefix + ".server.retry.seconds").ifPresent(v -> config.setServerRetrySeconds(Long.valueOf(v)));
         props.property(prefix + ".stream.buffer.size").ifPresent(v -> config.setStreamBufferSize(Integer.parseInt(v)));
         applyModelExtraBodies(props, config, prefix);
     }
@@ -96,3 +97,4 @@ public final class LLMProviderFactory {
     private LLMProviderFactory() {
     }
 }
+

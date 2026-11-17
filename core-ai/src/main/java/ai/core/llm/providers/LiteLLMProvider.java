@@ -8,16 +8,13 @@ import ai.core.document.Embedding;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
-import ai.core.llm.domain.AssistantMessage;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
-import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
-import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.Usage;
@@ -28,6 +25,8 @@ import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.util.Strings;
 import org.apache.commons.lang3.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -35,13 +34,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author stephen
  */
 public class LiteLLMProvider extends LLMProvider {
-    private static final int MAX_RETRIES = 3;
-    private static final Duration RETRY_WAIT_TIME = Duration.ofSeconds(3);
+    private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMProvider.class);
 
     /**
      * Whether this model name selects the /responses transport instead of /chat/completions.
@@ -190,62 +190,98 @@ public class LiteLLMProvider extends LLMProvider {
         }
         req.body(JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
 
-        return executeSSERequest(req, callback);
+        return executeSSERequest(req, callback, request.isPassthrough());
     }
 
-    private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback) {
+    private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback, boolean rawDataVisible) {
+        var tracker = new LLMRetrySupport.OutputTrackingCallback(callback, rawDataVisible);
+        boolean serverProxy = LLMRetrySupport.isServerProxyEndpoint(req.uri);
         CompletionResponse response = null;
-        Exception lastError = null;
-        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+        RuntimeException lastError = null;
+        long firstFailureNanos = 0;
+        int failures = 0;
+        while (true) {
             if (callback.isCancelled()) break;
             try {
-                response = consumeSSEStream(req, callback);
+                response = consumeSSEStream(req, tracker);
                 break;
             } catch (LLMStreamException e) {
                 // an in-stream error event is a definitive upstream rejection; retrying cannot help
                 throw e;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 if (callback.isCancelled()) break;
                 lastError = e;
-                if (attempt < MAX_RETRIES && !retrySleep()) break;
+                if (tracker.outputEmitted()) throw LLMRetrySupport.interruptedStream(req.uri, serverProxy, e);
+                if (!LLMRetrySupport.retryable(e)) throw e;
+                failures++;
+                if (firstFailureNanos == 0) firstFailureNanos = System.nanoTime();
+                if (!waitBeforeRetry(req.uri, serverProxy, failures, firstFailureNanos, tracker, e)) break;
             }
         }
-        if (callback.isCancelled() && !hasPartialContent(response)) {
+        if (callback.isCancelled()) return cancelled(response, callback);
+        if (response == null) {
+            throw LLMRetrySupport.unavailable(req.uri, serverProxy, failures, firstFailureNanos, lastError);
+        }
+        completeCallbacks(response, callback);
+        return response;
+    }
+
+    private boolean waitBeforeRetry(String uri, boolean serverProxy, int failures, long firstFailureNanos,
+                                    StreamingCallback callback, RuntimeException error) {
+        long delayMillis;
+        if (serverProxy) {
+            double jitter = ThreadLocalRandom.current().nextDouble(-LLMRetrySupport.SERVER_RETRY_JITTER, LLMRetrySupport.SERVER_RETRY_JITTER);
+            delayMillis = LLMRetrySupport.retryDelayMillis(failures, jitter);
+            long elapsedNanos = System.nanoTime() - firstFailureNanos;
+            if (elapsedNanos + TimeUnit.MILLISECONDS.toNanos(delayMillis) > config.getServerRetryDuration().toNanos()) {
+                LOGGER.warn("core-ai-server still unavailable after retries, endpoint={}, failures={}, elapsed={}ms, error={}",
+                        uri, failures, elapsedNanos / 1_000_000L, LLMRetrySupport.errorMessage(error));
+                return false;
+            }
+        } else {
+            if (failures > LLMRetrySupport.MAX_RETRIES) return false;
+            delayMillis = LLMRetrySupport.RETRY_WAIT_MILLIS;
+        }
+        LOGGER.warn("llm request failed, retrying, endpoint={}, failures={}, delay={}ms, error={}",
+                uri, failures, delayMillis, LLMRetrySupport.errorMessage(error));
+        return LLMRetrySupport.sleep(delayMillis, callback);
+    }
+
+    private CompletionResponse cancelled(CompletionResponse response, StreamingCallback callback) {
+        if (!hasPartialContent(response)) {
             // cancelled before any content arrived — signal cancellation instead of a null response
             throw new CancellationException(CancelReason.USER_CANCELLED);
         }
-        if (callback.isCancelled()) {
-            var choice = response.choices.getFirst();
-            choice.message.content += "\n\n[interrupted]";
-            choice.finishReason = FinishReason.STOP;
-            // flush partial reasoning to listeners (e.g. server chat history) before the
-            // turn unwinds; onComplete drains the async wrapper so the buffer write lands
-            // before TurnCompleteEvent is dispatched
-            if (!Strings.isBlank(choice.message.reasoningContent)) {
-                callback.onReasoningComplete(choice.message.reasoningContent);
-            }
-            callback.onComplete();
-            return response;
-        }
-        if (response == null) {
-            if (lastError != null) {
-                throw (RuntimeException) lastError;
-            }
-            throw new RuntimeException("LLM stream returned no data");
-        }
-        if (!Objects.requireNonNull(response).choices.getFirst().message.reasoningContent.isEmpty()) {
-            callback.onReasoningComplete(response.choices.getFirst().message.reasoningContent);
-        }
-        if (!Objects.requireNonNull(response).choices.getFirst().message.toolCalls.isEmpty()) {
-            response.choices.getFirst().message.toolCalls.removeIf(Objects::isNull);
-            callback.onToolComplete(response.choices.getFirst().message.toolCalls);
+        var choice = response.choices.getFirst();
+        choice.message.content = (choice.message.content == null ? "" : choice.message.content) + "\n\n[interrupted]";
+        choice.finishReason = FinishReason.STOP;
+        // flush partial reasoning to listeners (e.g. server chat history) before the
+        // turn unwinds; onComplete drains the async wrapper so the buffer write lands
+        // before TurnCompleteEvent is dispatched
+        if (!Strings.isBlank(choice.message.reasoningContent)) {
+            callback.onReasoningComplete(choice.message.reasoningContent);
         }
         callback.onComplete();
         return response;
     }
 
+    private void completeCallbacks(CompletionResponse response, StreamingCallback callback) {
+        var message = response.choices.getFirst().message;
+        if (message != null) {
+            if (!Strings.isBlank(message.reasoningContent)) {
+                callback.onReasoningComplete(message.reasoningContent);
+            }
+            if (message.toolCalls != null && !message.toolCalls.isEmpty()) {
+                message.toolCalls.removeIf(Objects::isNull);
+                callback.onToolComplete(message.toolCalls);
+            }
+        }
+        callback.onComplete();
+    }
+
     private CompletionResponse consumeSSEStream(HTTPRequest req, StreamingCallback callback) {
         CompletionResponse response = null;
+        boolean done = false;
         try (var eventSource = client.sse(req)) {
             callback.setActiveConnection(eventSource);
 
@@ -254,6 +290,7 @@ public class LiteLLMProvider extends LLMProvider {
                 var data = event.data();
                 callback.onRawData(data);
                 if ("[DONE]".equals(data)) {
+                    done = true;
                     break;
                 }
 
@@ -274,11 +311,13 @@ public class LiteLLMProvider extends LLMProvider {
                 }
                 if (response == null) {
                     response = chunk;
-                    initializeFinalChoiceMessage(response);
+                    LiteLLMChunkMerger.initializeFinalChoiceMessage(response);
                 }
-                mergeChunkIntoFinalResponse(response, chunk, callback);
+                LiteLLMChunkMerger.mergeChunkIntoFinalResponse(response, chunk, callback);
             }
+            if (callback.isCancelled()) return response;
             LiteLLMResponsesBridge.normalizeFinishReason(response);
+            requireCompleteStream(req.uri, response, done);
             return response;
         } finally {
             // Sync builders to String fields so partial response is usable on error/cancel
@@ -291,13 +330,14 @@ public class LiteLLMProvider extends LLMProvider {
         }
     }
 
-    private boolean retrySleep() {
-        try {
-            Thread.sleep(RETRY_WAIT_TIME.toMillis());
-            return true;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return false;
+    private void requireCompleteStream(String uri, CompletionResponse response, boolean done) {
+        if (response == null) {
+            throw LLMRetrySupport.incompleteStream(uri, LLMRetrySupport.isServerProxyEndpoint(uri), "before sending any data");
+        }
+        // a stream without [DONE] and without a finish reason was cut by a proxy restart mid-reply;
+        // accepting it would silently truncate the turn
+        if (!done && response.choices.getFirst().finishReason == null) {
+            throw LLMRetrySupport.incompleteStream(uri, LLMRetrySupport.isServerProxyEndpoint(uri), "before the reply finished");
         }
     }
 
@@ -306,117 +346,8 @@ public class LiteLLMProvider extends LLMProvider {
                 && response.choices.getFirst().message != null;
     }
 
-    private void initializeFinalChoiceMessage(CompletionResponse finalResponse) {
-        if (finalResponse.choices == null || finalResponse.choices.isEmpty()) {
-            return;
-        }
-
-        var finalChoice = finalResponse.choices.getFirst();
-        if (finalChoice.delta == null) {
-            return;
-        }
-
-        finalChoice.message = new AssistantMessage();
-        finalChoice.message.role = finalChoice.delta.role;
-        finalChoice.message.content = "";
-        finalChoice.message.reasoningContent = "";
-        finalChoice.message.toolCalls = new ArrayList<>();
-    }
-
-    private void mergeChunkIntoFinalResponse(CompletionResponse finalResponse, CompletionResponse chunk, StreamingCallback streamingCallback) {
-        if (chunk.choices != null && finalResponse.choices != null && !chunk.choices.isEmpty() && !finalResponse.choices.isEmpty()) {
-            var finalChoice = finalResponse.choices.getFirst();
-            var chunkChoice = chunk.choices.getFirst();
-
-            if (chunkChoice.delta != null) {
-                copyDeltaToFinalChoice(finalChoice, chunkChoice, streamingCallback);
-            }
-
-            // Update finish reason from chunk
-            if (chunkChoice.finishReason != null) {
-                finalChoice.finishReason = chunkChoice.finishReason;
-            }
-        }
-
-        // Update usage from chunk
-        if (chunk.usage != null) {
-            finalResponse.usage = chunk.usage;
-        }
-    }
-
-    private void copyDeltaToFinalChoice(Choice finalChoice, Choice chunkChoice, StreamingCallback streamingCallback) {
-        // Ensure message exists
-        if (finalChoice.message == null) {
-            finalChoice.message = new AssistantMessage();
-            finalChoice.message.content = "";
-            finalChoice.message.reasoningContent = "";
-            finalChoice.message.toolCalls = new ArrayList<>();
-        }
-
-        // Merge content into message using StringBuilder to avoid O(n^2) string allocations
-        if (chunkChoice.delta.content != null) {
-            finalChoice.message.appendContent(chunkChoice.delta.content);
-        }
-        if (chunkChoice.delta.reasoningContent != null) {
-            finalChoice.message.appendReasoningContent(chunkChoice.delta.reasoningContent);
-        }
-
-        // Merge tool calls into message by index
-        if (chunkChoice.delta.toolCalls != null) {
-            streamingCallback.onTool(chunkChoice.delta.toolCalls);
-            copyToolCallsToFinalChoice(finalChoice, chunkChoice);
-        }
-
-        // Merge role if not set
-        if (chunkChoice.delta.role != null && finalChoice.message.role == null) {
-            finalChoice.message.role = chunkChoice.delta.role;
-        }
-    }
-
     private String stripTrailingSlashes(String url) {
         if (url == null) return url;
         return url.replaceAll("/+$", "");
-    }
-
-    // package-private so tests can exercise the merge directly
-    void copyToolCallsToFinalChoice(Choice finalChoice, Choice chunkChoice) {
-        if (finalChoice.message.toolCalls == null) {
-            finalChoice.message.toolCalls = new ArrayList<>();
-        }
-
-        for (var deltaToolCall : chunkChoice.delta.toolCalls) {
-            if (deltaToolCall.index == null) {
-                continue;
-            }
-            while (finalChoice.message.toolCalls.size() <= deltaToolCall.index) {
-                finalChoice.message.toolCalls.add(null);
-            }
-
-            var existingToolCall = finalChoice.message.toolCalls.get(deltaToolCall.index);
-            if (existingToolCall == null) {
-                existingToolCall = new FunctionCall();
-                existingToolCall.function = new FunctionCall.Function();
-                existingToolCall.function.arguments = "";
-                finalChoice.message.toolCalls.set(deltaToolCall.index, existingToolCall);
-            }
-
-            if (deltaToolCall.id != null) {
-                existingToolCall.id = deltaToolCall.id;
-            }
-            if (deltaToolCall.type != null) {
-                existingToolCall.type = deltaToolCall.type;
-            }
-            if (deltaToolCall.extraContent != null) {
-                existingToolCall.extraContent = deltaToolCall.extraContent;
-            }
-            if (deltaToolCall.function != null) {
-                if (deltaToolCall.function.name != null) {
-                    existingToolCall.function.name = deltaToolCall.function.name;
-                }
-                if (deltaToolCall.function.arguments != null) {
-                    existingToolCall.function.appendArguments(deltaToolCall.function.arguments);
-                }
-            }
-        }
     }
 }
