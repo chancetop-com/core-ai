@@ -172,3 +172,5 @@ prod：先在 UAT 通过，按 playbook 改 `fbr-prod-env-project`；执行前�
 - 镜像：`2.0.250`；dev `SYS_RPC_TRANSPORT=http`，`SYS_LEASE_BACKEND=postgres`，无新增 Flyway。
 - dev E2E：外网 `/_internal/rpc` 404、token/目标/类型校验、新→新 HTTP（Redis MONITOR 无该 RPC 的 XADD）、旧→新 Redis 兼容、新→旧 404 回退 Redis、回滚 redis 与再切回 http 均 0 健康检查失败、删除 owner Pod 后会话重建且 RPC 成功。
 - 详见 `docs/validation/2026-11-17-dev-stage3-rpc-http.md`。
+- UAT（2.0.250）：应用 V39–V41（原 V38），保持 `SYS_LEASE_BACKEND` / `SYS_STATE_BACKEND` 为 Redis，开启 `SYS_RPC_TRANSPORT=http`；新→新、旧→新、新→旧回退、token、外网 404、回滚 redis 与切回 http 均通过，详见 `docs/validation/2026-11-17-uat-stage3-rpc-http.md`。
+- prod（2.0.250，原 2.0.234）：先做 CNPG 备份 `core-ai-pre-rpc-20261117`，应用 V39–V41；本地 agent LLM 指向 `litellm.connexup-dev.net`，不依赖 prod；滚动发布 5 分钟健康检查 0 失败，新→新 RPC 成功，外网 `/_internal/rpc` 404，详见 `docs/validation/2026-11-17-prod-stage3-rpc-http.md`。
