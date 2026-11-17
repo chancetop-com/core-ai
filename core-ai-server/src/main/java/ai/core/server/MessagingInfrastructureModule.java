@@ -46,6 +46,8 @@ class MessagingInfrastructureModule extends Module {
         var leaseBackend = StateBackend.of(property("sys.lease.backend").orElse("redis"), storeMode, "sys.lease.backend");
         var rpcMode = RpcMode.of(property("sys.rpc.transport").orElse("redis"));
         var internalToken = property("sys.internal.token").orElse("");
+        // declared in sys.properties; must be read even when RPC uses Redis so core-ng accepts the config
+        property("sys.internal.token.previous");
         if (rpcMode == RpcMode.HTTP && internalToken.isBlank()) {
             throw new IllegalArgumentException("sys.rpc.transport=http requires sys.internal.token");
         }
