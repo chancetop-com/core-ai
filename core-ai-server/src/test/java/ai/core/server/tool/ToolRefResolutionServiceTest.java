@@ -1,9 +1,11 @@
 package ai.core.server.tool;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.api.apidefinition.ApiDefinition;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.apimcp.serviceapi.service.ApiDefinitionService;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.domain.ToolRef;
@@ -465,6 +467,50 @@ class ToolRefResolutionServiceTest {
                 ToolRef.fromLegacyToolId("gbp-id"));
     }
 
+    @Test
+    void staleExactApiRefIsSkippedInsteadOfMountingTheWholeApp() {
+        var service = apiService();
+
+        var registry = service.resolveToToolRegistry(List.of(
+                ToolRef.of("api-operation:test-app:UserService:getUser", ToolSourceType.API),
+                ToolRef.of("api-operation:test-app:UserService:removedOperation", ToolSourceType.API)), null);
+
+        assertEquals(List.of("test_app_UserService_getUser"), toolNames(registry));
+    }
+
+    @Test
+    void apiAppRefStillMountsTheWholeApp() {
+        var service = apiService();
+
+        var registry = service.resolveToToolRegistry(
+                List.of(ToolRef.of("api-app:test-app", ToolSourceType.API)), null);
+
+        assertEquals(List.of("test_app_UserService_getUser"), toolNames(registry));
+    }
+
+    private ToolRefResolutionService apiService() {
+        var api = new ApiDefinition();
+        api.app = "test-app";
+        api.baseUrl = "http://127.0.0.1";
+        api.version = "1";
+        var operation = new ApiDefinition.Operation();
+        operation.name = "getUser";
+        operation.description = "Get a user";
+        operation.method = "GET";
+        operation.path = "/users";
+        var apiService = new ApiDefinition.Service();
+        apiService.name = "UserService";
+        apiService.description = "Users";
+        apiService.operations = List.of(operation);
+        api.services = List.of(apiService);
+        api.types = List.of();
+
+        var dependencies = new McpResolutionDependencies(null, null, null);
+        var service = new ToolRefResolutionService(Map.of(), Map.of(), dependencies, null, null, null);
+        service.setInternalApiToolLoader(new InternalApiToolLoader(new FakeApiDefinitionService(api)));
+        return service;
+    }
+
     private List<String> toolNames(ToolRegistry registry) {
         return registry.getToolCalls().stream().map(ToolCall::getName).sorted().toList();
     }
@@ -537,5 +583,18 @@ class ToolRefResolutionServiceTest {
         tool.setName(name);
         tool.setParameters(List.of());
         return tool;
+    }
+
+    private static final class FakeApiDefinitionService extends ApiDefinitionService {
+        private final ApiDefinition api;
+
+        private FakeApiDefinitionService(ApiDefinition api) {
+            this.api = api;
+        }
+
+        @Override
+        public List<ApiDefinition> loadAll() {
+            return List.of(api);
+        }
     }
 }

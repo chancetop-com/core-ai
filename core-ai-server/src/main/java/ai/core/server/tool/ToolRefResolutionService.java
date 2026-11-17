@@ -350,14 +350,14 @@ class ToolRefResolutionService {
     }
 
     private void registerApiProvider(ToolRegistry registry, ToolRef ref) {
-        List<ToolCall> tools = List.of();
-        if (internalApiToolLoader != null && InternalApiToolLoader.isApiToolId(ref.id)) {
-            tools = internalApiToolLoader.loadByToolId(ref.id);
-        }
-        if (internalApiToolLoader != null && ref.source != null && tools.isEmpty()) {
+        var tools = internalApiToolLoader != null && InternalApiToolLoader.isApiToolId(ref.id)
+            ? internalApiToolLoader.loadByToolId(ref.id) : List.<ToolCall>of();
+        if (tools.isEmpty() && internalApiToolLoader != null && ref.source != null && !InternalApiToolLoader.isApiToolId(ref.id)) {
             tools = internalApiToolLoader.loadApiAppTools(ref.source);
         }
-        if (!tools.isEmpty()) {
+        if (tools.isEmpty()) {
+            LOGGER.warn("api tool reference is unavailable: id={}, source={}", ref.id, ref.source);
+        } else {
             registry.registerProvider(new ListToolProvider(ToolProvider.API_TOOLS + ":" + ref.id, tools));
         }
     }
