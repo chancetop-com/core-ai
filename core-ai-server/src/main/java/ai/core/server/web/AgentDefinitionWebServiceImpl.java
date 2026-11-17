@@ -17,6 +17,7 @@ import ai.core.api.server.utils.GenerateRequest;
 import ai.core.api.server.utils.GenerateResponse;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentPortService;
+import ai.core.server.agent.AgentQualityHistoryService;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.rbac.PermissionCodes;
@@ -37,6 +38,8 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     AgentDefinitionService agentDefinitionService;
     @Inject
     AgentPortService agentPortService;
+    @Inject
+    AgentQualityHistoryService agentQualityHistoryService;
     @Inject
     JavaToSchemaService javaToSchemaService;
     @Inject
@@ -135,7 +138,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentQualityRunListResponse qualityRuns(String id) {
-        return agentDefinitionService.qualityRuns(id, AuthContext.userId(webContext));
+        return agentQualityHistoryService.runs(id, AuthContext.userId(webContext));
     }
 
     @Override

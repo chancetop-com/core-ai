@@ -6,6 +6,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.agent.AgentPortService;
 import ai.core.server.agent.AgentPublishService;
+import ai.core.server.agent.AgentQualityHistoryService;
 import ai.core.server.agent.GenerateService;
 import ai.core.server.agent.JavaToSchemaService;
 import ai.core.server.agent.PersonalAssistantService;
@@ -25,6 +26,7 @@ public class AgentDefinitionModule extends Module {
         // the publish write path is a dependency of AgentDefinitionService and of PersonalAssistantService
         bind(AgentPublishService.class);
         bind(AgentDefinitionService.class);
+        bind(AgentQualityHistoryService.class);
         bind(AgentPortService.class);
         // shared by every agent execution surface (A2AModule's ServerA2AService, AgentHubModule)
         bind(AgentCallAccessPolicy.class);

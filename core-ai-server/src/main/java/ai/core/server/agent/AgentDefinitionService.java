@@ -53,8 +53,6 @@ public class AgentDefinitionService {
     AgentPublishService agentPublishService;
     @Inject
     ai.core.server.quality.PublishQualityGate qualityGate;
-    @Inject
-    ai.core.server.quality.QualityPublicationService qualityPublicationService;
 
     private volatile Runnable catalogInvalidator;
 
@@ -356,30 +354,22 @@ public class AgentDefinitionService {
     }
 
     public ai.core.api.server.agent.AgentQualityReportView checkQuality(String id, String userId, String idempotencyKey) {
-        var entity = agentDefinitionStore.get(id)
-                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
-        requireAdminForSystemDefault(entity, userId);
-        requirePersonalAssistantOwnerOrAdmin(entity, userId);
+        var entity = requireQualityAccess(id, userId);
         requireAccessibleSkills(entity.skillIds, userId);
         return qualityGate.precheck(entity, userId, idempotencyKey).report();
     }
 
     public ai.core.api.server.agent.AgentQualityReportView qualityReport(String id, String runId, String userId) {
-        var entity = agentDefinitionStore.get(id)
-                .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
-        requireAdminForSystemDefault(entity, userId);
-        requirePersonalAssistantOwnerOrAdmin(entity, userId);
+        requireQualityAccess(id, userId);
         return qualityGate.report(id, runId);
     }
 
-    public ai.core.api.server.agent.AgentQualityRunListResponse qualityRuns(String id, String userId) {
+    AgentDefinition requireQualityAccess(String id, String userId) {
         var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
         requireAdminForSystemDefault(entity, userId);
         requirePersonalAssistantOwnerOrAdmin(entity, userId);
-        var response = new ai.core.api.server.agent.AgentQualityRunListResponse();
-        response.runs = ai.core.server.quality.QualityReportMapper.runViews(qualityPublicationService.runs(id, 50));
-        return response;
+        return entity;
     }
 
     private List<String> requireAccessibleSkills(List<String> skillIds, String userId) {
