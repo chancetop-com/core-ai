@@ -15,9 +15,9 @@ public class ConversationModule extends Module {
     @Override
     protected void initialize() {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
-            bind(PgConversationRequestStore.class);
+            bind(ConversationRequestStore.class, bind(PgConversationRequestStore.class));
         } else {
-            bind(new InMemoryConversationRequestStore());
+            bind(ConversationRequestStore.class, new InMemoryConversationRequestStore());
         }
         var service = bind(ConversationWebServiceImpl.class);
         service.allowedAgents = property("sys.conversation.agents").orElse("");
