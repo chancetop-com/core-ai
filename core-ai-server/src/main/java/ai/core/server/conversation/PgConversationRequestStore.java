@@ -38,7 +38,7 @@ public class PgConversationRequestStore implements ConversationRequestStore {
     @Override
     public Claim claim(String requestKey, String subject, String kind, String sessionId, String payloadHash, String claimToken) {
         database.execute("INSERT INTO " + TABLE + " (request_key, subject, kind, session_id, payload_hash, status, claim_token, created_at, expires_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, now(), now() + interval '7 days') ON CONFLICT (request_key) DO NOTHING",
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, now(), now() + make_interval(days => 7)) ON CONFLICT (request_key) DO NOTHING",
                 requestKey, subject, kind, sessionId, payloadHash, STATUS_PENDING, claimToken);
         return database.selectOne(SELECT + " WHERE request_key = ? AND expires_at > now()",
                 PgConversationRequestRow.class, requestKey)
