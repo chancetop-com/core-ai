@@ -14,6 +14,18 @@ contextBridge.exposeInMainWorld('coreai', {
   authLoginWithKey: (serverUrl: string, apiKey: string, insecure: boolean) => ipcRenderer.invoke('auth:loginWithKey', serverUrl, apiKey, insecure),
   authSetInsecure: (serverUrl: string, insecure: boolean) => ipcRenderer.invoke('auth:setInsecure', serverUrl, insecure),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
+  providerList: () => ipcRenderer.invoke('providers:list'),
+  providerSave: (payload: Record<string, unknown>) => ipcRenderer.invoke('providers:save', payload),
+  providerDelete: (id: string) => ipcRenderer.invoke('providers:delete', id),
+  providerSetDefault: (connection: string) => ipcRenderer.invoke('providers:setDefault', connection),
+  providerTest: (payload: Record<string, unknown>) => ipcRenderer.invoke('providers:test', payload),
+  providerDiscover: (payload: Record<string, unknown>) => ipcRenderer.invoke('providers:discover', payload),
+  providerReset: () => ipcRenderer.invoke('providers:reset'),
+  onEngineReloaded: (callback: (payload: { workspace?: string }) => void) => {
+    const listener = (_event: unknown, payload: { workspace?: string }) => callback(payload);
+    ipcRenderer.on('engine:reloaded', listener);
+    return () => ipcRenderer.removeListener('engine:reloaded', listener);
+  },
   restartEngine: (workspace: string) => ipcRenderer.invoke('engine:restart', workspace),
   engineCapabilities: (workspace: string) => ipcRenderer.invoke('engine:capabilities', workspace),
   pickAttachments: () => ipcRenderer.invoke('attachments:pick'),

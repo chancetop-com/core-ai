@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -33,6 +33,18 @@ import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
 import { CompletionNotifier, NOTIFY_HANDSHAKE_TEXT, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
+import { probeModels } from './providers/ProviderProbe';
+import {
+  deleteProfile,
+  fallbackConnection,
+  loadProviderStore,
+  providersFile,
+  saveProviderStore,
+  setDefaultConnection,
+  storeView,
+  upsertProfile,
+  type ProviderDraft,
+} from './providers/ProviderStore';
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
@@ -91,6 +103,11 @@ let channelKeepAwakeId: number | null = null;
 let tray: Tray | null = null;
 let settings: DesktopSettings = {};
 let quitting = false;
+// Direct-provider edits reload engines that are idle; engines with a running turn are marked and
+// reloaded only after their last turn terminates. Tracking lives here, not in the renderer: a
+// background workspace or a channel/schedule turn must not be killed by a Settings save.
+const providerRunningSessions = new Map<string, Set<string>>();
+const providerPendingReload = new Set<string>();
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
@@ -367,6 +384,57 @@ function buildWorkspaceSummaries(): WorkspaceSessionSummary[] {
 }
 function authStatus(): AuthStatus { return authStatusOf(loadAuthEntries()); }
 function listAuthServers(): AuthServerEntry[] { return authServersOf(loadAuthEntries()); }
+
+function providerListView(): Record<string, unknown> {
+  const loaded = loadProviderStore();
+  return { ...storeView(loaded.store, providersFile(), loaded.error), signedIn: authStatus().loggedIn };
+}
+
+function usableProviderDefault(defaultConnection: string | null | undefined, hasProfile: (id: string) => boolean, signedIn: boolean): boolean {
+  if (!defaultConnection) return false;
+  if (defaultConnection === 'server') return signedIn;
+  return hasProfile(defaultConnection);
+}
+
+function trackProviderTurnStatus(workspace: string, method: string, params: Record<string, unknown>): void {
+  if (method !== 'status_change') return;
+  const sessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
+  if (!sessionId) return;
+  const status = String(params.status ?? '').toLowerCase();
+  const running = providerRunningSessions.get(workspace) ?? new Set<string>();
+  if (status === 'running') running.add(sessionId);
+  else running.delete(sessionId);
+  if (running.size > 0) {
+    providerRunningSessions.set(workspace, running);
+    return;
+  }
+  providerRunningSessions.delete(workspace);
+  if (providerPendingReload.has(workspace)) void applyProviderReload(workspace);
+}
+
+async function applyProviderReload(workspace: string): Promise<void> {
+  providerPendingReload.delete(workspace);
+  if (!supervisor) return;
+  await supervisor.restart(workspace);
+  send('engine:reloaded', { workspace });
+}
+
+/** Applies a provider edit: idle engines restart now, busy ones after their last turn ends. */
+async function reloadEnginesForProviderChange(): Promise<void> {
+  if (!supervisor) return;
+  for (const workspace of supervisor.runningWorkspaces()) {
+    const running = providerRunningSessions.get(workspace);
+    if (running && running.size > 0) providerPendingReload.add(workspace);
+    else await applyProviderReload(workspace);
+  }
+}
+
+function savedProviderKey(store: ReturnType<typeof loadProviderStore>['store'], idOrType: string | null | undefined): string | null {
+  if (!idOrType) return null;
+  const profile = store.profiles.find((item) => item.id === idOrType || item.type === idOrType);
+  return profile?.apiKey ?? null;
+}
+
 function saveAuthEntry(serverUrl: string, apiKey: string, userId: string | null, name: string | null, insecure: boolean): void {
   writeAuthEntries(withSavedEntry(loadAuthEntries(), serverUrl, apiKey, userId, name, insecure));
 }
@@ -492,6 +560,8 @@ async function loginViaBrowser(serverUrl: string, insecure: boolean): Promise<Au
   const key = await waitForBrowserCallback(serverUrl);
   const profile = await fetchUserProfile(serverUrl, key, insecure);
   saveAuthEntry(serverUrl, key, profile?.id ?? null, profile?.name ?? null, insecure);
+  providerRunningSessions.clear();
+  providerPendingReload.clear();
   await supervisor?.shutdownAll();
   return authStatus();
 }
@@ -503,6 +573,8 @@ async function loginWithApiKey(serverUrl: string, apiKey: string, insecure: bool
       : 'API key rejected by the server, or its certificate is not trusted — tick "Self-signed certificate" for a local server (GET /api/user/me failed)');
   }
   saveAuthEntry(serverUrl, apiKey, profile.id ?? null, profile.name ?? null, insecure);
+  providerRunningSessions.clear();
+  providerPendingReload.clear();
   await supervisor?.shutdownAll();
   return authStatus();
 }
@@ -795,6 +867,8 @@ function registerIpc(): void {
     const entries = loadAuthEntries();
     if (!entries.some((entry) => entry.server_url === normalized)) throw new Error(`environment is not signed in: ${normalized}`);
     writeAuthEntries(withActive(entries, normalized));
+    providerRunningSessions.clear();
+    providerPendingReload.clear();
     await supervisor?.shutdownAll();
     return authStatus();
   });
@@ -822,8 +896,82 @@ function registerIpc(): void {
     });
     if (confirm.response !== 0) return authStatus();
     removeAuthEntries(active.server_url);
+    providerRunningSessions.clear();
+    providerPendingReload.clear();
     await supervisor?.shutdownAll();
     return authStatus();
+  });
+  ipcMain.handle('providers:list', () => providerListView());
+  ipcMain.handle('providers:save', async (_event, payload: { profile: ProviderDraft; apiKey?: string | null; clearApiKey?: boolean; makeDefault?: boolean }) => {
+    try {
+      const loaded = loadProviderStore();
+      if (loaded.error) return { ok: false, error: loaded.error };
+      const store = loaded.store;
+      const profile = upsertProfile(store, payload.profile, payload.apiKey, payload.clearApiKey === true);
+      const signedIn = authStatus().loggedIn;
+      if (payload.makeDefault === true && !usableProviderDefault(store.default, (id) => store.profiles.some((item) => item.id === id), signedIn)) {
+        store.default = profile.id;
+      }
+      saveProviderStore(store);
+      await reloadEnginesForProviderChange();
+      return { ok: true, ...providerListView() };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('providers:delete', async (_event, id: string) => {
+    try {
+      const loaded = loadProviderStore();
+      if (loaded.error) return { ok: false, error: loaded.error };
+      const store = loaded.store;
+      deleteProfile(store, String(id ?? ''));
+      if (!usableProviderDefault(store.default, (item) => store.profiles.some((profile) => profile.id === item), authStatus().loggedIn)) {
+        store.default = fallbackConnection(store, authStatus().loggedIn);
+      }
+      saveProviderStore(store);
+      await reloadEnginesForProviderChange();
+      return { ok: true, ...providerListView() };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('providers:setDefault', async (_event, connection: string) => {
+    try {
+      if (String(connection ?? '') === 'server' && !authStatus().loggedIn) {
+        return { ok: false, error: 'sign in to core-ai-server before using it as the default connection' };
+      }
+      const loaded = loadProviderStore();
+      if (loaded.error) return { ok: false, error: loaded.error };
+      const store = loaded.store;
+      setDefaultConnection(store, String(connection ?? ''));
+      saveProviderStore(store);
+      await reloadEnginesForProviderChange();
+      return { ok: true, ...providerListView() };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('providers:test', async (_event, payload: { id?: string; baseUrl?: string; apiKey?: string | null }) => {
+    const loaded = loadProviderStore();
+    const baseUrl = payload?.baseUrl || loaded.store.profiles.find((profile) => profile.id === payload?.id)?.baseUrl || '';
+    const apiKey = payload?.apiKey?.trim() ? payload.apiKey.trim() : savedProviderKey(loaded.store, payload?.id);
+    return probeModels(baseUrl, apiKey);
+  });
+  ipcMain.handle('providers:discover', async (_event, payload: { id?: string; baseUrl?: string; apiKey?: string | null }) => {
+    const loaded = loadProviderStore();
+    const baseUrl = payload?.baseUrl || loaded.store.profiles.find((profile) => profile.id === payload?.id)?.baseUrl || '';
+    const apiKey = payload?.apiKey?.trim() ? payload.apiKey.trim() : savedProviderKey(loaded.store, payload?.id);
+    return probeModels(baseUrl, apiKey);
+  });
+  ipcMain.handle('providers:reset', async () => {
+    try {
+      const file = providersFile();
+      if (existsSync(file)) renameSync(file, `${file}.bad-${Date.now()}`);
+      saveProviderStore({ version: 1, default: null, serverModel: null, profiles: [] });
+      return { ok: true, ...providerListView() };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
   });
   ipcMain.handle('engine:capabilities', async (_event, workspace: string) => {
     const target = String(workspace ?? '');
@@ -1278,6 +1426,7 @@ else {
         return env;
       },
       onEvent: (workspace, method, params) => {
+        trackProviderTurnStatus(workspace, method, params);
         channelBridge?.onEngineEvent(workspace, method, params);
         completionNotifier?.onEngineEvent(workspace, method, params);
         send('engine:event', { workspace, method, params });

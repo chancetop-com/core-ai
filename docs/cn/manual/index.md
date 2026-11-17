@@ -329,19 +329,17 @@ core-ai-cli --login=https://core-ai.example.com
 
 本地部署（仍是 core-ng 自签名证书）在登录时显式接受证书：`core-ai-cli --login=<本地地址> --insecure`，REPL 内为 `/login <本地地址> --insecure`。该选择保存在 auth.json 对应条目上，之后的 hub 命令与桌面端（Engine 读同一份 auth.json）都沿用；重新执行不带 `--insecure` 的登录即可恢复校验。
 
-路线 B：不使用 Server 模型代理。在 `~/.core-ai/agent.properties` 配置自己的兼容端点：
+路线 B：不使用 Server 模型代理。Desktop 在 **Settings → Model providers** 添加直连厂商（DeepSeek、任意 OpenAI-compatible 端点或 OpenRouter），凭据保存在 `~/.core-ai/llm-providers.json`；CLI 用 `/model add provider` 写入同一份文件。`agent.properties` 只保留非认证调优（模型名、temperature、extra_body、max.turn 等），不再承载 vendor API key。
 
 ```properties
-active.provider=litellm
-litellm.api.base=https://llm.example.com/v1
-litellm.api.key=<YOUR_TEST_KEY>
+# 可选的非认证调优；凭据请用 Settings → Model providers 或 /model add provider
 llm.model=<AVAILABLE_MODEL>
 llm.temperature=0.7
 agent.max.turn=20
 agent.memory.enabled=false
 ```
 
-保存文件后再启动，未配置时首次启动可能进入配置向导。`--config` 指定替代全局配置文件；workspace 的 `.core-ai/agent.properties` 仍可覆盖其值。LiteLLM 由 base 激活，key 可以为空以适配不要求认证的端点；OpenAI 注册要求 key 并读取必需 base；Azure 检查 key 与 base；OpenRouter 与 DeepSeek 使用固定服务 base。按自己选的 provider 配置，不混用属性名。
+旧版写入 `agent.properties` 的 `<provider>.api.key` 仍会被读取以兼容；新增配置请使用 provider store。`--config` 指定替代全局配置文件；workspace 的 `.core-ai/agent.properties` 仍可覆盖非认证调优。按自己选的 provider 配置，不混用属性名。
 
 **预期结果**：命令进入交互会话，能选择可用模型。登录、模型联网与以下 prompt 均为源码核对，未在本次调用。
 

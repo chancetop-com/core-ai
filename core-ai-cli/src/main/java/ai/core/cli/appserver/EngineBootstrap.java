@@ -13,14 +13,15 @@ import ai.core.cli.agent.CliSubagentModelResolver;
 import ai.core.cli.agent.CliToolPolicy;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.auth.RuntimeAuthConfig;
+import ai.core.cli.config.LlmProviderStore;
 import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.config.ProviderWiring;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.schedule.FileScheduledTaskStore;
 import ai.core.cli.utils.PathUtils;
 import ai.core.context.CompressionConfig;
-import ai.core.llm.LLMProviderType;
 import ai.core.media.MediaProvider;
 import ai.core.schedule.ScheduledTaskStore;
 import ai.core.session.EngineLock;
@@ -96,6 +97,7 @@ public class EngineBootstrap {
     public final String defaultVideoModel;
     public final CompressionConfig compressionConfig;
     public final ModelRegistry modelRegistry;
+    public final LlmProviderStore providerStore;
     public final SubagentModelResolver subagentModelResolver;
     public final ScheduledTaskStore scheduledTaskStore;
     public final Set<String> disabledTools;
@@ -113,9 +115,7 @@ public class EngineBootstrap {
         var bootstrap = new AgentBootstrap(props);
         CliAppHelper.registerMcpLoadingListener();
         this.result = bootstrap.initialize();
-        registerAuthListener(result);
-        CliAppHelper.configureInlineImages(result, props);
-        applyActiveProvider();
+        this.providerStore = initializeProviders(result);
         this.maxTurn = intFlag("agent.max.turn", 100);
         this.memoryEnabled = boolFlag("agent.memory.enabled", true);
         this.dailyLogsEnabled = boolFlag("agent.memory.daily.logs.enabled", false);
@@ -137,12 +137,21 @@ public class EngineBootstrap {
         this.defaultImageModel = props.property("media.image.model").orElse(null);
         this.defaultVideoModel = props.property("media.video.model").orElse(null);
         this.compressionConfig = CliAppHelper.compressionConfig(props);
-        this.modelRegistry = new ModelRegistry(result.llmProviders, props);
+        this.modelRegistry = new ModelRegistry(result.llmProviders, props, providerStore);
         this.subagentModelResolver = new CliSubagentModelResolver(modelRegistry, result.llmProviders);
         this.scheduledTaskStore = new FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), this.workspace);
         this.disabledTools = CliToolPolicy.disabledTools(props);
         LOGGER.info("app-server engine initialized, workspace={}", this.workspace);
+    }
+
+    private LlmProviderStore initializeProviders(BootstrapResult result) {
+        var store = LlmProviderStore.load();
+        ProviderWiring.apply(store, result, props);
+        registerAuthListener(result);
+        CliAppHelper.configureInlineImages(result, props);
+        ProviderWiring.applyDefault(store, result.llmProviders, props);
+        return store;
     }
 
     private PropertiesFileSource loadProperties(Path configFile) {
@@ -173,15 +182,6 @@ public class EngineBootstrap {
 
     private boolean boolFlag(String name, boolean fallback) {
         return props.property(name).map(Boolean::parseBoolean).orElse(fallback);
-    }
-
-    private void applyActiveProvider() {
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && result.llmProviders.getProvider(type) != null) {
-                result.llmProviders.setDefaultProvider(type);
-            }
-        });
     }
 
     public void close() {

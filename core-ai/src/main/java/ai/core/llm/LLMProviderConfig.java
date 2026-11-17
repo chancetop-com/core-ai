@@ -12,6 +12,23 @@ import java.util.function.UnaryOperator;
  * @author stephen
  */
 public class LLMProviderConfig {
+    private static Object stripReasoningEffort(Object value) {
+        if (!(value instanceof Map<?, ?> map) || !map.containsKey("reasoning_effort")) return value;
+        var copy = new LinkedHashMap<String, Object>();
+        map.forEach((key, item) -> {
+            if (!"reasoning_effort".equals(String.valueOf(key))) copy.put(String.valueOf(key), item);
+        });
+        return copy;
+    }
+
+    private static Object rewriteReasoningEffort(Object value, UnaryOperator<String> mapper) {
+        if (!(value instanceof Map<?, ?> map) || !(map.get("reasoning_effort") instanceof String effort)) return value;
+        var copy = new LinkedHashMap<String, Object>();
+        map.forEach((key, item) -> copy.put(String.valueOf(key), item));
+        copy.put("reasoning_effort", mapper.apply(effort));
+        return copy;
+    }
+
     private String model;
     private String multiModalModel;
     private Double temperature;
@@ -143,31 +160,14 @@ public class LLMProviderConfig {
      * levels the vendor rejects (e.g. DeepSeek sees {@code max}).
      */
     public void removeReasoningEffort() {
-        requestExtraBody = removeReasoningEffort(requestExtraBody);
-        modelExtraBodies.replaceAll((model, body) -> removeReasoningEffort(body));
+        requestExtraBody = stripReasoningEffort(requestExtraBody);
+        modelExtraBodies.replaceAll((model, body) -> stripReasoningEffort(body));
     }
 
     /** Rewrites an existing {@code reasoning_effort} value through a vendor-specific mapper. */
     public void mapReasoningEffort(UnaryOperator<String> mapper) {
-        requestExtraBody = mapReasoningEffort(requestExtraBody, mapper);
-        modelExtraBodies.replaceAll((model, body) -> mapReasoningEffort(body, mapper));
-    }
-
-    private static Object removeReasoningEffort(Object value) {
-        if (!(value instanceof Map<?, ?> map) || !map.containsKey("reasoning_effort")) return value;
-        var copy = new LinkedHashMap<String, Object>();
-        map.forEach((key, item) -> {
-            if (!"reasoning_effort".equals(String.valueOf(key))) copy.put(String.valueOf(key), item);
-        });
-        return copy;
-    }
-
-    private static Object mapReasoningEffort(Object value, UnaryOperator<String> mapper) {
-        if (!(value instanceof Map<?, ?> map) || !(map.get("reasoning_effort") instanceof String effort)) return value;
-        var copy = new LinkedHashMap<String, Object>();
-        map.forEach((key, item) -> copy.put(String.valueOf(key), item));
-        copy.put("reasoning_effort", mapper.apply(effort));
-        return copy;
+        requestExtraBody = rewriteReasoningEffort(requestExtraBody, mapper);
+        modelExtraBodies.replaceAll((model, body) -> rewriteReasoningEffort(body, mapper));
     }
 
     public int getStreamBufferSize() {

@@ -357,6 +357,11 @@ public class EngineSessionRegistry {
     }
 
     private EngineSession build(String sessionId, boolean load, SessionLock lock) {
+        if (bootstrap.result.llmProviders.getProviderTypes().isEmpty()) {
+            throw RpcException.business("NO_PROVIDER_CONFIGURED",
+                    "no LLM provider is configured; add a direct provider in Settings → Model providers "
+                            + "(or sign in to core-ai-server) and retry");
+        }
         // Helpers are re-read per session, not from the bootstrap snapshot: on a live engine a
         // helper change in helpers.json must apply to the next session (design-agent-helpers §4.1).
         var helpers = HelperConfigStore.defaultStore().list();

@@ -19,6 +19,10 @@ public class ModelRegistry {
     private final List<ModelEntry> entries = new CopyOnWriteArrayList<>();
 
     public ModelRegistry(LLMProviders providers, PropertySource props) {
+        this(providers, props, null);
+    }
+
+    public ModelRegistry(LLMProviders providers, PropertySource props, LlmProviderStore store) {
         for (var type : providers.getProviderTypes()) {
             String prefix = type.getName();
             props.property(prefix + ".models").ifPresent(models -> {
@@ -32,6 +36,20 @@ public class ModelRegistry {
             var provider = providers.getProvider(type);
             if (provider != null && provider.config.getModel() != null) {
                 appendIfAbsent(provider.config.getModel(), type);
+            }
+        }
+        if (store != null) {
+            for (var profile : store.profiles()) {
+                try {
+                    var type = profile.providerType();
+                    if (providers.getProvider(type) == null) continue;
+                    for (var model : profile.models) {
+                        if (model != null && !model.isBlank()) appendIfAbsent(model.trim(), type);
+                    }
+                    appendIfAbsent(profile.effectiveDefaultModel(), type);
+                } catch (IllegalArgumentException ignored) {
+                    // unknown type in a hand-edited store
+                }
             }
         }
     }
@@ -49,6 +67,16 @@ public class ModelRegistry {
             if (entry.model.equals(model)) return entry.providerType;
         }
         return null;
+    }
+
+    /** A provider-qualified lookup: direct models are allowed even when they are missing from the catalog. */
+    public LLMProviderType getProviderType(String model, String provider) {
+        if (provider == null || provider.isBlank()) return getProviderType(model);
+        try {
+            return LLMProviderType.fromName(provider);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
     }
 
     public void addModel(String model, LLMProviderType type) {

@@ -26,8 +26,8 @@ import ai.core.cli.appserver.Housekeeping;
 import ai.core.cli.appserver.WorkspaceDirs;
 import ai.core.cli.utils.PathUtils;
 import ai.core.context.CompressionConfig;
-import ai.core.llm.LLMProviderType;
-import ai.core.llm.LLMProviders;
+import ai.core.cli.config.LlmProviderStore;
+import ai.core.cli.config.ProviderWiring;
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.media.MediaProvider;
@@ -120,10 +120,13 @@ public class AcpAgentRunner {
         registerMcpLoadingListener();
         var result = bootstrap.initialize();
         LOGGER.info("ACP agent bootstrap initialized");
-        this.subagentModelResolver = CliSubagentModelResolver.create(props, result.llmProviders);
+        var providerStore = LlmProviderStore.load();
+        ProviderWiring.apply(providerStore, result, props);
+        this.subagentModelResolver = CliSubagentModelResolver.create(props, result.llmProviders, providerStore);
 
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result, props);
+        ProviderWiring.applyDefault(providerStore, result.llmProviders, props);
 
         var imageMediaProvider = CliAppHelper.imageMediaProvider(props);
         var videoMediaProvider = CliAppHelper.videoMediaProvider(props);
@@ -143,8 +146,6 @@ public class AcpAgentRunner {
                 CliAppHelper.compressionConfig(props),
                 CliAppHelper.mediaModelCatalog(imageMediaProvider, videoMediaProvider, AuthConfig.load()),
                 CliToolPolicy.disabledTools(props));
-        restoreActiveProvider(props, result.llmProviders);
-
         var agent = buildAgent(ctx);
         acpAgentRef.set(agent);
         LOGGER.info("ACP agent starting...");
@@ -365,15 +366,6 @@ public class AcpAgentRunner {
             throw new IllegalStateException("session is in use by " + holder);
         }
         return ((SessionLock.AcquireResult.Acquired) acquire).lock();
-    }
-
-    private void restoreActiveProvider(PropertiesFileSource props, LLMProviders providers) {
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && providers.getProvider(type) != null) {
-                providers.setDefaultProvider(type);
-            }
-        });
     }
 
     private Consumer<AgentEvent> acpPermissionDispatcher(

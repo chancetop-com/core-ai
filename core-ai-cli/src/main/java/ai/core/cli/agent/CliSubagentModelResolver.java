@@ -3,6 +3,7 @@ package ai.core.cli.agent;
 import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.agent.subagent.SubagentModelUnavailableException;
 import ai.core.bootstrap.PropertiesFileSource;
+import ai.core.cli.config.LlmProviderStore;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -18,6 +19,11 @@ import java.util.List;
 public class CliSubagentModelResolver implements SubagentModelResolver {
     public static CliSubagentModelResolver create(PropertiesFileSource props, LLMProviders providers) {
         return new CliSubagentModelResolver(new ModelRegistry(providers, props), providers);
+    }
+
+    public static CliSubagentModelResolver create(PropertiesFileSource props, LLMProviders providers,
+                                                  LlmProviderStore store) {
+        return new CliSubagentModelResolver(new ModelRegistry(providers, props, store), providers);
     }
 
     private final ModelRegistry modelRegistry;

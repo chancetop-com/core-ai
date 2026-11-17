@@ -15,7 +15,9 @@ import ai.core.cli.auth.AuthManager;
 import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.budget.CliBudgetConfig;
 import ai.core.cli.config.InteractiveConfigSetup;
+import ai.core.cli.config.LlmProviderStore;
 import ai.core.cli.config.ModelRegistry;
+import ai.core.cli.config.ProviderWiring;
 import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
@@ -27,7 +29,6 @@ import ai.core.cli.trace.HttpTraceUploader;
 import ai.core.cli.ui.AnsiTheme;
 import ai.core.cli.ui.TerminalUI;
 import ai.core.cli.utils.PathUtils;
-import ai.core.llm.LLMProviderType;
 import ai.core.session.FileSessionPersistence;
 import ai.core.session.SessionLoadState;
 import ai.core.session.SessionManager;
@@ -118,10 +119,13 @@ public class CliApp {
         ConsoleWriter.clearLine();
         LOGGER.info("bootstrap initialized");
 
+        var providerStore = LlmProviderStore.load();
+        ProviderWiring.apply(providerStore, result, props);
+
         // Register listener so LiteLLM provider is updated on login / server-switch.
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result, props);
-        applyActiveProvider(props, result);
+        ProviderWiring.applyDefault(providerStore, result.llmProviders, props);
         int maxTurn = props.property("agent.max.turn").map(Integer::parseInt).orElse(100);
         boolean memory = props.property("agent.memory.enabled").map(Boolean::parseBoolean).orElse(Boolean.TRUE);
         boolean dailyLogs = props.property("agent.memory.daily.logs.enabled").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
@@ -148,15 +152,6 @@ public class CliApp {
                 mediaProvider, imageMediaProvider, videoMediaProvider,
                 props.property("media.image.model").orElse(null), props.property("media.video.model").orElse(null),
                 props.property("media.image.edit.model").orElse(null), helpers, mediaCatalog, disabledTools);
-    }
-
-    private void applyActiveProvider(PropertiesFileSource props, BootstrapResult result) {
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && result.llmProviders.getProvider(type) != null) {
-                result.llmProviders.setDefaultProvider(type);
-            }
-        });
     }
 
     private String resolveSessionId(BootstrapCore bc, TerminalUI ui) {
@@ -251,7 +246,7 @@ public class CliApp {
         if (currentSessionId == null) currentSessionId = CliAppHelper.defaultSessionId("cli-");
         CliLogger.initialize(workspace, currentSessionId);
         var noteMemory = bc.memoryEnabled() ? new MdMemoryProvider(workspace) : null;
-        var modelRegistry = new ModelRegistry(bc.result().llmProviders, bc.props());
+        var modelRegistry = new ModelRegistry(bc.result().llmProviders, bc.props(), LlmProviderStore.load());
         boolean promptExtraction = bc.props().property("agent.memory.prompt.extraction").map(Boolean::parseBoolean).orElse(Boolean.FALSE);
         return new SessionContext(bc.result(), bc.props(), bc.maxTurn(), bc.sessionPersistence(), bc.sessionManager(), modelName,
                 currentSessionId, bc.permissionStore(), noteMemory, modelRegistry, bc.memoryEnabled(), bc.dailyLogsEnabled(),

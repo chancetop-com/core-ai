@@ -12,8 +12,8 @@ import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.utils.PathUtils;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
-import ai.core.llm.LLMProviderType;
-import ai.core.llm.LLMProviders;
+import ai.core.cli.config.LlmProviderStore;
+import ai.core.cli.config.ProviderWiring;
 import ai.core.llm.providers.LiteLLMProvider;
 import ai.core.media.CoreAiGatewayMediaProvider;
 import ai.core.media.MediaProvider;
@@ -101,17 +101,13 @@ public final class LocalToolRuntime {
         var mediaCatalog = CliAppHelper.mediaModelCatalog(imageProvider, videoProvider, auth);
         if (mediaCatalog != null) mediaCatalog.ensureLoaded(MEDIA_CATALOG_WAIT_MS);
         var llmProviders = LLMProviderFactory.create(props);
-        applyActiveProvider(props, llmProviders);
+        var providerStore = LlmProviderStore.load();
+        ProviderWiring.applyProfiles(providerStore, llmProviders, props, null);
+        var defaultType = ProviderWiring.resolveDefaultType(providerStore, llmProviders, props, ProviderWiring.signedIn());
+        if (defaultType != null) llmProviders.setDefaultProvider(defaultType);
         var llmProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getDefaultProvider();
         return new LocalToolRuntime(workspace, credentials, auth, props,
                 new Providers(mediaProvider, imageProvider, videoProvider, mediaCatalog, llmProvider));
-    }
-
-    private static void applyActiveProvider(PropertiesFileSource props, LLMProviders providers) {
-        props.property("active.provider").ifPresent(name -> {
-            var type = LLMProviderType.fromName(name);
-            if (type != null && providers.getProvider(type) != null) providers.setDefaultProvider(type);
-        });
     }
 
     /**

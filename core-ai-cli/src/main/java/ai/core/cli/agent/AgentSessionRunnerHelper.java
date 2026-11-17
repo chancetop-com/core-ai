@@ -22,18 +22,29 @@ public class AgentSessionRunnerHelper {
     // read active provider from agent.properties, merge reasoning_effort into its extra_body
     // returns null on success, or error message on failure
     public static String persistReasoningEffortToExtraBody(ReasoningEffort level) {
+        var props = loadAgentPropertiesQuietly();
+        String prefix = props == null ? "llm" : resolveProviderPrefix(props);
+        return persistReasoningEffortToExtraBody(prefix,
+                level == null ? null : level.name().toLowerCase(java.util.Locale.ROOT));
+    }
+
+    /**
+     * Provider-scoped variant used by the app-server: the level is written to {@code <prefix>.request.extra_body}
+     * so a direct provider's thinking is independent from the gateway-wide value. A null value removes the key.
+     */
+    public static String persistReasoningEffortToExtraBody(String prefix, String wireLevel) {
         try {
             var props = loadAgentProperties();
-            String activeProvider = resolveProviderPrefix(props);
-            String key = activeProvider + ".request.extra_body";
+            String safePrefix = prefix == null || prefix.isBlank() ? "llm" : prefix.trim();
+            String key = safePrefix + ".request.extra_body";
             String existingJson = props.getProperty(key, "{}").trim();
             if (existingJson.isEmpty()) existingJson = "{}";
             @SuppressWarnings("unchecked")
             var extraMap = (java.util.Map<String, Object>) JsonUtil.fromJson(java.util.Map.class, existingJson);
-            if (level == null) {
+            if (wireLevel == null || wireLevel.isBlank()) {
                 extraMap.remove("reasoning_effort");
             } else {
-                extraMap.put("reasoning_effort", level.name().toLowerCase(java.util.Locale.ROOT));
+                extraMap.put("reasoning_effort", wireLevel);
             }
             Path parent = CONFIG_FILE.getParent();
             if (parent == null) return "Invalid config file path";
@@ -133,14 +144,26 @@ public class AgentSessionRunnerHelper {
     }
 
     public static ReasoningEffort loadReasoningEffortFromExtraBody() {
+        var props = loadAgentPropertiesQuietly();
+        String prefix = props == null ? "llm" : resolveProviderPrefix(props);
+        return loadReasoningEffortFromExtraBody(prefix, true);
+    }
+
+    /**
+     * Provider-scoped read. Direct profiles do not inherit the gateway-wide value (their config strips
+     * {@code reasoning_effort}); legacy/bootstrap providers keep falling back to {@code llm.*}.
+     */
+    public static ReasoningEffort loadReasoningEffortFromExtraBody(String prefix, boolean fallbackToLlm) {
         try {
             var props = loadAgentProperties();
-            String activeProvider = resolveProviderPrefix(props);
-            String key = activeProvider + ".request.extra_body";
-            String json = props.getProperty(key, "{}").trim();
-            if (json.isEmpty() || "{}".equals(json)) return null;
+            String safePrefix = prefix == null || prefix.isBlank() ? "llm" : prefix.trim();
+            String json = props.getProperty(safePrefix + ".request.extra_body");
+            if ((json == null || json.isBlank()) && fallbackToLlm && !"llm".equals(safePrefix)) {
+                json = props.getProperty("llm.request.extra_body");
+            }
+            if (json == null || json.isBlank() || "{}".equals(json.trim())) return null;
             @SuppressWarnings("unchecked")
-            var extraMap = (java.util.Map<String, Object>) JsonUtil.fromJson(java.util.Map.class, json);
+            var extraMap = (java.util.Map<String, Object>) JsonUtil.fromJson(java.util.Map.class, json.trim());
             Object effort = extraMap.get("reasoning_effort");
             if (effort instanceof String s) {
                 return parseLevel(s.toLowerCase(java.util.Locale.ROOT));
@@ -169,6 +192,15 @@ public class AgentSessionRunnerHelper {
             }
         }
         return props;
+    }
+
+    private static Properties loadAgentPropertiesQuietly() {
+        try {
+            return loadAgentProperties();
+        } catch (IOException e) {
+            LOGGER.warn("Failed to read agent.properties", e);
+            return null;
+        }
     }
 
     public static ReasoningEffort parseLevel(String level) {

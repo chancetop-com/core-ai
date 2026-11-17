@@ -32,6 +32,8 @@ const targets = [
   { entryPoints: ['src/main/channels/OcgClient.ts'], outfile: 'dist/test/ocgClient.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/OcgCli.ts'], outfile: 'dist/test/ocgCli.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/notifications/CompletionNotifier.ts'], outfile: 'dist/test/completionNotifier.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/providers/ProviderStore.ts'], outfile: 'dist/test/providerStore.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/providers/ProviderProbe.ts'], outfile: 'dist/test/providerProbe.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/notifications.ts'], outfile: 'dist/test/notifications.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/OcgRouting.ts'], outfile: 'dist/test/ocgRouting.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/channels/OcgConfig.ts'], outfile: 'dist/test/ocgConfig.js', platform: 'node', target: 'node20', format: 'cjs' },

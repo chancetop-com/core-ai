@@ -1524,6 +1524,13 @@ select.rich-card-input[multiple] { padding: 3px; }
 .settings-section-toggle { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; }
 .settings-section-chevron { display: inline-flex; }
 .settings-section-chevron .ic { width: 12px; height: 12px; }
+.provider-connection { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 14px; max-width: 820px; }
+.provider-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; max-width: 820px; }
+.provider-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+.provider-identity { min-width: 0; }
+.provider-name { font-weight: 600; }
+.provider-meta { color: var(--muted); font-size: 12px; word-break: break-all; }
+.provider-actions { display: flex; gap: 6px; flex: 0 0 auto; }
 
 .update-actions { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .update-bar { height: 6px; max-width: 420px; border: 1px solid var(--border); border-radius: 999px; overflow: hidden; background: var(--bg-elev); margin: 6px 0 10px; }

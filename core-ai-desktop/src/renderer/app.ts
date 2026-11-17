@@ -328,6 +328,40 @@ function baseName(path: string): string {
   return slash >= 0 ? path.slice(slash + 1) : path;
 }
 
+interface ProviderProfileView {
+  id: string;
+  type: string;
+  label: string;
+  baseUrl: string;
+  models: string[];
+  defaultModel?: string | null;
+  reasoningLevels?: string[];
+  hasApiKey: boolean;
+  apiKeyHint: string | null;
+}
+
+interface ProviderListResult {
+  signedIn: boolean;
+  defaultConnection: string | null;
+  serverModel: string | null;
+  profiles: ProviderProfileView[];
+  storePath: string;
+  error?: string;
+}
+
+interface ProviderSaveResult extends Partial<ProviderListResult> {
+  ok: boolean;
+  error?: string;
+}
+
+interface ProviderProbeResult {
+  ok: boolean;
+  status: number;
+  latencyMs: number;
+  models: string[];
+  error?: string;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -340,6 +374,14 @@ interface CoreAiBridge {
   authLoginWithKey(serverUrl: string, apiKey: string, insecure: boolean): Promise<AuthStatus>;
   authSetInsecure(serverUrl: string, insecure: boolean): Promise<AuthStatus>;
   authLogout(): Promise<AuthStatus>;
+  providerList(): Promise<ProviderListResult>;
+  providerSave(payload: Record<string, unknown>): Promise<ProviderSaveResult>;
+  providerDelete(id: string): Promise<ProviderSaveResult>;
+  providerSetDefault(connection: string): Promise<ProviderSaveResult>;
+  providerTest(payload: Record<string, unknown>): Promise<ProviderProbeResult>;
+  providerDiscover(payload: Record<string, unknown>): Promise<ProviderProbeResult>;
+  providerReset(): Promise<ProviderSaveResult>;
+  onEngineReloaded(callback: (payload: { workspace?: string }) => void): () => void;
   restartEngine(workspace: string): Promise<void>;
   engineCapabilities(workspace: string): Promise<string[]>;
   pickAttachments(): Promise<{ paths: string[] }>;
@@ -469,11 +511,12 @@ const state: {
   sessionId: string | null;
   sessionTitle: string;
   status: string;
-  models: Array<{ model: string; provider?: string; displayName?: string; reasoningEfforts?: string[] }>;
+  models: Array<{ model: string; provider?: string; providerType?: string; source?: string; displayName?: string; reasoningEfforts?: string[] }>;
   modelSource: string | null;
   currentModel: string | null;
+  currentProvider: string | null;
   /** Model picked in a blank window (no session yet); applied to the session the first message creates. */
-  pendingModel: string | null;
+  pendingModel: { model: string; provider?: string } | null;
   thinkingLevel: string;
   pendingEngineRestart: boolean;
   browserStatus: BrowserStatus | null;
@@ -510,6 +553,7 @@ const state: {
   models: [],
   modelSource: null,
   currentModel: null,
+  currentProvider: null,
   pendingModel: null,
   thinkingLevel: 'off',
   pendingEngineRestart: false,
@@ -1658,10 +1702,19 @@ async function refreshModelState(): Promise<void> {
   if (listed?.models) {
     const seen = new Set<string>();
     const models: typeof state.models = [];
-    for (const entry of listed.models as Array<{ model?: string; provider?: string; displayName?: string; reasoningEfforts?: string[] }>) {
-      if (!entry?.model || seen.has(entry.model)) continue;
-      seen.add(entry.model);
-      models.push({ model: entry.model, provider: entry.provider, displayName: entry.displayName, reasoningEfforts: entry.reasoningEfforts });
+    for (const entry of listed.models as Array<{ model?: string; provider?: string; providerType?: string; source?: string; displayName?: string; reasoningEfforts?: string[] }>) {
+      if (!entry?.model) continue;
+      const key = `${entry.providerType ?? entry.provider ?? ''}\u0000${entry.model}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      models.push({
+        model: entry.model,
+        provider: entry.provider,
+        providerType: entry.providerType,
+        source: entry.source,
+        displayName: entry.displayName,
+        reasoningEfforts: entry.reasoningEfforts,
+      });
     }
     state.models = models;
     state.modelSource = typeof listed.source === 'string' ? listed.source : null;
@@ -1669,8 +1722,11 @@ async function refreshModelState(): Promise<void> {
   const current = await call('model/get', sessionId ? { sessionId } : {});
   // A reply that raced a session switch or a blank-window pick must not overwrite the newer state.
   const stillCurrent = state.sessionId === sessionId && (sessionId !== null || state.pendingModel == null);
-  if (current?.model && stillCurrent) state.currentModel = String(current.model);
-  const thinking = await call('thinking/get', {});
+  if (current?.model && stillCurrent) {
+    state.currentModel = String(current.model);
+    state.currentProvider = current.provider ? String(current.provider) : null;
+  }
+  const thinking = await call('thinking/get', { sessionId: sessionId ?? undefined, provider: state.currentProvider ?? undefined });
   if (thinking?.level) state.thinkingLevel = String(thinking.level);
   renderComposerControls();
 }
@@ -2249,36 +2305,58 @@ function renderComposerControls(): void {
   const modelPair = el('span', 'control-pair');
   modelPair.append(el('span', 'composer-label', 'Model'));
   const modelSelect = el('select', 'model-select') as HTMLSelectElement;
-  const modelOptions = state.models.length ? state.models : (state.currentModel ? [{ model: state.currentModel }] : []);
-  for (const entry of modelOptions) {
-    const option = el('option', undefined, entry.displayName && entry.displayName !== entry.model ? entry.displayName : entry.model);
-    option.value = entry.model;
-    option.title = entry.model;
+  const currentEntry = state.models.find((entry) =>
+    entry.model === state.currentModel && (entry.providerType ?? null) === (state.currentProvider ?? null))
+    ?? state.models.find((entry) => entry.model === state.currentModel);
+  const modelOptions = state.models.length ? state.models : (state.currentModel ? [{ model: state.currentModel, providerType: state.currentProvider ?? undefined }] : []);
+  const duplicateModels = new Set(modelOptions
+    .map((entry) => entry.model)
+    .filter((model, index, all) => all.indexOf(model) !== index));
+  modelOptions.forEach((entry, index) => {
+    const baseLabel = entry.displayName && entry.displayName !== entry.model ? entry.displayName : entry.model;
+    const label = duplicateModels.has(entry.model)
+      ? `${baseLabel} (${entry.source === 'server' ? 'Server' : entry.provider ?? entry.providerType ?? 'direct'})`
+      : baseLabel;
+    const option = el('option', undefined, label);
+    option.value = String(index);
+    option.title = entry.providerType ? `${entry.providerType} · ${entry.model}` : entry.model;
     modelSelect.append(option);
-  }
-  if (state.currentModel) modelSelect.value = state.currentModel;
+  });
+  let selectedIndex = modelOptions.findIndex((entry) =>
+    entry.model === state.currentModel && (entry.providerType ?? null) === (state.currentProvider ?? null));
+  if (selectedIndex < 0) selectedIndex = modelOptions.findIndex((entry) => entry.model === state.currentModel);
+  if (selectedIndex >= 0) modelSelect.value = String(selectedIndex);
   modelSelect.disabled = modelOptions.length === 0 || !state.workspace;
-  modelSelect.title = state.modelSource === 'server'
-    ? 'Models from the server hub (the same list the gateway will route)'
-    : 'Models for this workspace (local registry)';
+  modelSelect.title = state.modelSource === 'mixed'
+    ? 'Models from the server hub and direct providers; each entry routes to its own provider'
+    : state.modelSource === 'server'
+      ? 'Models from the server hub (the same list the gateway will route)'
+      : 'Models for this workspace (local registry + direct providers)';
   modelSelect.onchange = async () => {
-    const picked = modelSelect.value;
+    const picked = modelOptions[Number(modelSelect.value)];
+    if (!picked) return;
+    const provider = picked.providerType;
     if (!state.sessionId) {
       // No session yet: the pick lands on the session the first message creates.
-      state.pendingModel = picked;
-      state.currentModel = picked;
-      toast(`Model: ${picked} — applies to the new session`);
+      state.pendingModel = { model: picked.model, provider };
+      state.currentModel = picked.model;
+      state.currentProvider = provider ?? null;
+      toast(`Model: ${picked.model} — applies to the new session`);
+      renderComposerControls();
       return;
     }
     const target = state.sessionId;
-    const applied = await call('model/set', { model: picked, sessionId: target });
+    const applied = await call('model/set', { model: picked.model, provider, sessionId: target });
     if (state.sessionId !== target) return;
     if (!applied) {
-      modelSelect.value = state.currentModel ?? '';
+      modelSelect.value = String(selectedIndex);
       return;
     }
-    state.currentModel = String(applied.model ?? picked);
+    state.currentModel = String(applied.model ?? picked.model);
+    state.currentProvider = applied.provider ? String(applied.provider) : provider ?? null;
+    if (applied.warn) toast(String(applied.warn));
     toast(`Model: ${state.currentModel} — this session`);
+    renderComposerControls();
   };
   modelPair.prepend(iconMenuButton('cpu', modelSelect, 'Model'));
   modelPair.append(modelSelect);
@@ -2287,7 +2365,6 @@ function renderComposerControls(): void {
   const thinkingPair = el('span', 'control-pair');
   thinkingPair.append(el('span', 'composer-label', 'Thinking'));
   const thinkingSelect = el('select', 'thinking-select') as HTMLSelectElement;
-  const currentEntry = state.models.find((entry) => entry.model === state.currentModel);
   const efforts = currentEntry?.reasoningEfforts ?? [];
   const levels = efforts.length ? [...efforts] : ['none', 'low', 'high', 'max'];
   if (state.thinkingLevel !== 'off' && !levels.includes(state.thinkingLevel)) levels.unshift(state.thinkingLevel);
@@ -2304,7 +2381,11 @@ function renderComposerControls(): void {
     : 'Reasoning effort — takes effect after the engine reloads';
   thinkingSelect.onchange = async () => {
     const picked = thinkingSelect.value;
-    const applied = await call('thinking/set', { level: picked });
+    const applied = await call('thinking/set', {
+      level: picked,
+      sessionId: state.sessionId ?? undefined,
+      provider: state.currentProvider ?? undefined,
+    });
     if (!applied) {
       thinkingSelect.value = state.thinkingLevel;
       return;
@@ -2365,6 +2446,7 @@ async function connect(workspace: string): Promise<void> {
   sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
+  state.currentProvider = null;
   state.notifyPending = false;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
@@ -2406,6 +2488,7 @@ async function enterDefaultMode(): Promise<void> {
   sessionRename = null;
   state.pendingSessionIds.clear();
   state.pendingModel = null;
+  state.currentProvider = null;
   state.notifyPending = false;
   state.sessionCursor = null;
   state.hasMoreSessions = false;
@@ -2504,6 +2587,7 @@ async function startNewConversation(): Promise<void> {
   state.sessionId = null;
   state.sessionTitle = '';
   state.pendingModel = null;
+  state.currentProvider = null;
   state.notifyPending = false;
   clearPendingAttachments();
   surfaces.resetDraft();
@@ -2534,7 +2618,7 @@ async function startNewSession(firstMessage: string): Promise<boolean> {
   if (state.pendingModel) {
     const pending = state.pendingModel;
     state.pendingModel = null;
-    await call('model/set', { sessionId: createdId, model: pending });
+    await call('model/set', { sessionId: createdId, model: pending.model, provider: pending.provider });
   }
   // Remember it until an engine listing carries it: refreshes triggered before its first save
   // point (another session starting, any turn ending) rebuild the list from disk alone.
@@ -2589,6 +2673,7 @@ async function openSession(sessionId: string): Promise<void> {
   state.sessionId = sessionId;
   state.sessionTitle = state.sessions.find((session) => session.sessionId === sessionId)?.title ?? sessionId;
   state.pendingModel = null;
+  state.currentProvider = null;
   state.notifyPending = false;
   renderComposerControls();
   clearPendingAttachments();
@@ -4665,6 +4750,10 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
   // A card reply answers the card only: a draft and its staged attachments stay for the user's own message.
   const attachments = override ? [] : [...pendingAttachments];
   if (!text.trim() && attachments.length === 0) return;
+  if (state.workspace && state.models.length === 0) {
+    toast('No provider configured — open Settings → Model providers', 'error');
+    return;
+  }
   if (!state.sessionId && !(await startNewSession(text.trim() || baseNameOf(attachments[0]?.path ?? '')))) return;
   const view = ensureSessionView(state.sessionId);
   if (!override) {
@@ -7135,6 +7224,7 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
     body.append(section.root);
   }
 
+  body.append(await renderProvidersSection());
   if (state.workspace) body.append(await renderMediaGenerationSection());
   body.append(await renderBuiltinSkillsSection());
   body.append(await renderBrowserAutomationSection());
@@ -7148,6 +7238,233 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
  * Settings → Media generation: which gateway the engine uses, and the default image/video model.
  * The values live in ~/.core-ai/agent.properties (shared with the CLI); the engine reloads to apply them.
  */
+const PROVIDER_PRESETS: Record<string, { label: string; baseUrl: string; models: string[]; defaultModel: string }> = {
+  deepseek: { label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', models: ['deepseek-chat', 'deepseek-reasoner'], defaultModel: 'deepseek-chat' },
+  openai: { label: 'OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', models: [], defaultModel: 'gpt-4o' },
+  openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', models: [], defaultModel: 'minimax/minimax-m2.7' },
+};
+
+/**
+ * Settings → Model providers. The data lives in ~/.core-ai/llm-providers.json and is managed by the
+ * main process, so this section works without an engine, a workspace or a server login.
+ */
+async function renderProvidersSection(): Promise<HTMLElement> {
+  const section = el('div');
+  section.append(el('h2', undefined, 'Model providers'));
+  const providers = await window.coreai.providerList().catch(() => null);
+  if (!providers) {
+    section.append(el('div', 'notice error', 'Provider settings are unavailable.'));
+    return section;
+  }
+  section.append(el('div', 'hint', 'Uses a vendor API key stored on this machine (~/.core-ai/llm-providers.json). '
+    + 'It is independent of core-ai-server sign-in and environment switching.'));
+  if (providers.error) {
+    section.append(el('div', 'notice error', providers.error));
+    const reset = el('button', 'btn small', 'Reset store');
+    reset.onclick = async () => {
+      if (!window.confirm('Move the unreadable provider store aside and start empty?')) return;
+      const result = await window.coreai.providerReset();
+      toast(result.ok ? 'Provider store reset' : `Reset failed: ${result.error ?? 'unknown error'}`, result.ok ? '' : 'error');
+      if (result.ok) void renderContent();
+    };
+    section.append(reset);
+    return section;
+  }
+
+  const connection = el('div', 'provider-connection');
+  connection.append(el('div', 'composer-label', 'Connection'));
+  const effective = providers.defaultConnection ?? (providers.signedIn ? 'server' : providers.profiles[0]?.id ?? null);
+  const choices: Array<{ id: string; label: string; disabled?: boolean }> = [
+    { id: 'server', label: providers.signedIn ? `core-ai server${state.auth?.name ? ` — ${state.auth.name}` : ''}` : 'core-ai server (sign in first)', disabled: !providers.signedIn },
+    ...providers.profiles.map((profile) => ({ id: profile.id, label: `Direct — ${profile.label}` })),
+  ];
+  for (const choice of choices) {
+    const row = el('label', 'schedule-filter');
+    const radio = el('input') as HTMLInputElement;
+    radio.type = 'radio';
+    radio.name = 'provider-connection';
+    radio.checked = effective === choice.id;
+    radio.disabled = choice.disabled === true;
+    radio.onchange = async () => {
+      const result = await window.coreai.providerSetDefault(choice.id);
+      toast(result.ok ? `Default connection: ${choice.label}` : `Could not change default: ${result.error ?? 'unknown error'}`, result.ok ? '' : 'error');
+      if (result.ok) void renderContent();
+    };
+    row.append(radio, document.createTextNode(` ${choice.label}`));
+    connection.append(row);
+  }
+  if (providers.profiles.length === 0) {
+    connection.append(el('div', 'hint', 'No direct provider yet. Add one to use chat without a server login.'));
+  }
+  section.append(connection);
+
+  const list = el('div', 'provider-list');
+  for (const profile of providers.profiles) {
+    const row = el('div', 'provider-row');
+    const identity = el('div', 'provider-identity');
+    identity.append(el('div', 'provider-name', profile.label));
+    identity.append(el('div', 'provider-meta', `${profile.baseUrl}${profile.hasApiKey ? ` · key ${profile.apiKeyHint ?? '••••'}` : ' · no key'}`));
+    row.append(identity);
+    const actions = el('div', 'provider-actions');
+    const edit = el('button', 'btn small', 'Edit');
+    edit.onclick = () => openProviderDialog(providers, profile);
+    const test = el('button', 'btn small', 'Test');
+    test.onclick = async () => {
+      test.disabled = true;
+      const result = await window.coreai.providerTest({ id: profile.id });
+      test.disabled = false;
+      toast(result.ok
+        ? `${profile.label}: connected${result.models.length ? ` · ${result.models.length} models` : ''} (${result.latencyMs}ms)`
+        : `${profile.label}: ${result.error ?? `HTTP ${result.status}`}`, result.ok ? '' : 'error');
+    };
+    actions.append(edit, test);
+    row.append(actions);
+    list.append(row);
+  }
+  section.append(list);
+  const add = el('button', 'btn small primary', 'Add provider');
+  add.onclick = () => openProviderDialog(providers);
+  section.append(add);
+  return section;
+}
+
+function openProviderDialog(providers: ProviderListResult, existing?: ProviderProfileView): void {
+  const overlay = el('div', 'overlay');
+  const dialog = el('div', 'login-dialog');
+  dialog.append(el('div', 'login-title', existing ? `Edit ${existing.label}` : 'Add provider'));
+  dialog.append(el('div', 'login-hint', 'The key is stored locally and never returned to the interface.'));
+
+  const typeLabel = el('div', 'login-label', 'Provider');
+  const typeSelect = el('select', 'login-input') as HTMLSelectElement;
+  for (const type of Object.keys(PROVIDER_PRESETS)) {
+    const option = el('option', undefined, PROVIDER_PRESETS[type].label);
+    option.value = type;
+    typeSelect.append(option);
+  }
+  typeSelect.value = existing?.type ?? 'deepseek';
+  typeSelect.disabled = Boolean(existing);
+  dialog.append(typeLabel, typeSelect);
+
+  const labelInput = el('input', 'login-input') as HTMLInputElement;
+  labelInput.placeholder = 'Label (optional)';
+  labelInput.value = existing?.label ?? PROVIDER_PRESETS[typeSelect.value].label;
+  dialog.append(labelInput);
+
+  const baseInput = el('input', 'login-input') as HTMLInputElement;
+  baseInput.placeholder = 'API base URL';
+  baseInput.value = existing?.baseUrl ?? PROVIDER_PRESETS[typeSelect.value].baseUrl;
+  dialog.append(baseInput);
+
+  const keyInput = el('input', 'login-input') as HTMLInputElement;
+  keyInput.type = 'password';
+  keyInput.placeholder = existing?.hasApiKey ? `${existing.apiKeyHint ?? '••••'} (saved — leave blank to keep)` : 'API key (blank for none)';
+  dialog.append(keyInput);
+
+  const modelsInput = el('textarea', 'login-input') as HTMLTextAreaElement;
+  modelsInput.rows = 3;
+  modelsInput.placeholder = 'Models, one per line';
+  modelsInput.value = (existing?.models ?? PROVIDER_PRESETS[typeSelect.value].models).join('\n');
+  dialog.append(modelsInput);
+
+  const defaultInput = el('input', 'login-input') as HTMLInputElement;
+  defaultInput.placeholder = 'Default model';
+  defaultInput.value = existing?.defaultModel ?? PROVIDER_PRESETS[typeSelect.value].defaultModel;
+  dialog.append(defaultInput);
+
+  const status = el('div', 'login-status');
+  dialog.append(status);
+  const setStatus = (text: string, isError = false): void => {
+    status.textContent = text;
+    status.className = isError ? 'login-status error' : 'login-status';
+  };
+
+  typeSelect.onchange = () => {
+    const preset = PROVIDER_PRESETS[typeSelect.value];
+    if (!existing) {
+      labelInput.value = preset.label;
+      baseInput.value = preset.baseUrl;
+      modelsInput.value = preset.models.join('\n');
+      defaultInput.value = preset.defaultModel;
+    }
+  };
+
+  const actions = el('div', 'login-actions');
+  const save = el('button', 'btn primary', 'Save');
+  save.onclick = async () => {
+    const models = modelsInput.value.split(/[\n,]/).map((model) => model.trim()).filter(Boolean);
+    const result = await window.coreai.providerSave({
+      profile: {
+        type: typeSelect.value,
+        label: labelInput.value.trim() || PROVIDER_PRESETS[typeSelect.value].label,
+        baseUrl: baseInput.value.trim(),
+        models,
+        defaultModel: defaultInput.value.trim() || null,
+      },
+      apiKey: keyInput.value.trim() || undefined,
+      makeDefault: !providers.defaultConnection,
+    });
+    if (!result.ok) {
+      setStatus(result.error ?? 'Save failed', true);
+      return;
+    }
+    overlay.remove();
+    toast('Provider saved — engine reloads');
+    void renderContent();
+  };
+  const test = el('button', 'btn', 'Test connection');
+  test.onclick = async () => {
+    setStatus('Testing…');
+    const result = await window.coreai.providerTest({
+      id: existing?.id,
+      baseUrl: baseInput.value.trim(),
+      apiKey: keyInput.value.trim() || undefined,
+    });
+    if (result.ok) setStatus(`Connected (${result.latencyMs}ms)${result.models.length ? ` · ${result.models.length} models` : ''}`);
+    else setStatus(result.error ?? `HTTP ${result.status}`, true);
+  };
+  const fetchModels = el('button', 'btn', 'Fetch models');
+  fetchModels.onclick = async () => {
+    setStatus('Fetching models…');
+    const result = await window.coreai.providerDiscover({
+      id: existing?.id,
+      baseUrl: baseInput.value.trim(),
+      apiKey: keyInput.value.trim() || undefined,
+    });
+    if (!result.ok) {
+      setStatus(result.error ?? `HTTP ${result.status}`, true);
+      return;
+    }
+    if (result.models.length === 0) {
+      setStatus('Endpoint did not list models; enter them manually');
+      return;
+    }
+    modelsInput.value = result.models.join('\n');
+    if (!defaultInput.value.trim()) defaultInput.value = result.models[0];
+    setStatus(`${result.models.length} models`);
+  };
+  const cancel = el('button', 'btn', 'Cancel');
+  cancel.onclick = () => overlay.remove();
+  actions.append(save, test, fetchModels, cancel);
+  if (existing) {
+    const remove = el('button', 'btn danger', 'Delete');
+    remove.onclick = async () => {
+      if (!window.confirm(`Delete the ${existing.label} provider?`)) return;
+      const result = await window.coreai.providerDelete(existing.id);
+      if (!result.ok) {
+        setStatus(result.error ?? 'Delete failed', true);
+        return;
+      }
+      overlay.remove();
+      toast('Provider deleted');
+      void renderContent();
+    };
+    actions.append(remove);
+  }
+  dialog.append(actions);
+  overlay.append(dialog);
+  document.body.append(overlay);
+}
+
 async function renderMediaGenerationSection(): Promise<HTMLElement> {
   const section = el('div');
   section.append(el('h2', undefined, 'Media generation'));
@@ -8797,6 +9114,16 @@ async function bootstrap(): Promise<void> {
   });
   window.coreai.onNotificationDelivery((result) => {
     if (result && result.ok === false) toast(`Notification failed: ${result.error ?? 'unknown error'}`, 'error');
+  });
+  window.coreai.onEngineReloaded((payload) => {
+    if (payload?.workspace && state.workspace && payload.workspace !== state.workspace) return;
+    const sessionId = state.sessionId;
+    if (sessionId) {
+      void call('session/resume', { sessionId }).then((resumed) => {
+        if (!resumed) toast('Session was not saved before the engine reload; send again to start a new session', 'error');
+      });
+    }
+    void refreshModelState();
   });
   void window.coreai.browserStatus().then((status) => {
     applyBrowserStatus(status);

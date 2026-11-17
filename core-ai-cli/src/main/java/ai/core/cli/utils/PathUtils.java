@@ -20,6 +20,7 @@ public final class PathUtils {
     private static final Path CORE_AI_DIR = HOME_DIR.resolve(".core-ai");
 
     public static final Path DEFAULT_CONFIG = CORE_AI_DIR.resolve("agent.properties");
+    public static final Path LLM_PROVIDERS = CORE_AI_DIR.resolve("llm-providers.json");
     public static final Path SESSIONS_BASE_DIR = CORE_AI_DIR.resolve("sessions");
     public static final Path PLUGINS_DIR = CORE_AI_DIR.resolve("plugins");
     public static final Path LIB_DIR = CORE_AI_DIR.resolve("lib");

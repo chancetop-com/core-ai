@@ -7,32 +7,31 @@ import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.providers.LiteLLMProvider;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Properties;
 
 /**
- * Interactive provider configuration from /model command.
+ * Interactive provider configuration from /model. Direct providers are written to
+ * {@code ~/.core-ai/llm-providers.json}; {@code agent.properties} is no longer used for credentials.
  *
  * @author xander
  */
 public class ProviderConfigurator {
 
-    private static final Path CONFIG_FILE = Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties");
-
     private final TerminalUI ui;
     private final LLMProviders llmProviders;
     private final ModelRegistry modelRegistry;
+    private final LlmProviderStore store;
 
     public ProviderConfigurator(TerminalUI ui, LLMProviders llmProviders, ModelRegistry modelRegistry) {
+        this(ui, llmProviders, modelRegistry, LlmProviderStore.load());
+    }
+
+    public ProviderConfigurator(TerminalUI ui, LLMProviders llmProviders, ModelRegistry modelRegistry,
+                                LlmProviderStore store) {
         this.ui = ui;
         this.llmProviders = llmProviders;
         this.modelRegistry = modelRegistry;
+        this.store = store;
     }
 
     public Result configure() {
@@ -69,12 +68,15 @@ public class ProviderConfigurator {
 
     public void saveActiveModel(LLMProviderType type, String model) {
         try {
-            var props = loadProperties();
-            props.setProperty(type.getName() + ".model", model);
-            props.setProperty("active.provider", type.getName());
-            storeProperties(props);
+            if (type == LLMProviderType.LITELLM) {
+                store.setDefaultConnection("server");
+                store.setServerModel(model);
+            } else {
+                store.setDefaultConnection(type.getName());
+                store.setDefaultModel(type, model);
+            }
             llmProviders.setDefaultProvider(type);
-        } catch (IOException e) {
+        } catch (RuntimeException e) {
             ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save model: " + e.getMessage() + AnsiTheme.RESET + "\n");
         }
     }
@@ -107,12 +109,18 @@ public class ProviderConfigurator {
             }
             type = configured.get(idx - 1);
         }
-        String defaultModel = LLMProviders.getProviderDefaultChatModel(type);
+        var profile = store.profile(type).orElse(null);
+        if (profile == null) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  " + type.getName()
+                    + " has no provider-store profile; run 'Add Provider' first.\n" + AnsiTheme.RESET);
+            return;
+        }
+        String defaultModel = profile.effectiveDefaultModel();
         ui.printStreamingChunk("  Model [" + AnsiTheme.MUTED + defaultModel + AnsiTheme.RESET + "]: ");
         var modelLine = ui.readRawLine();
         String model = isBlank(modelLine) ? defaultModel : modelLine.trim();
+        addModel(profile, model);
         modelRegistry.addModel(model, type);
-        saveModelToFile(type, model);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model "
                 + model + " added to " + type.getName() + ".\n\n");
         new Result(type, model);
@@ -141,126 +149,71 @@ public class ProviderConfigurator {
             return;
         }
         var target = allEntries.get(idx - 1);
+        store.profile(target.providerType()).ifPresent(profile -> removeModel(profile, target.model()));
         modelRegistry.removeModel(target.model(), target.providerType());
-        removeModelFromFile(target.providerType(), target.model());
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Model "
                 + target.model() + " removed from " + target.providerType().getName() + ".\n\n");
     }
 
-    private void removeModelFromFile(LLMProviderType type, String model) {
-        try {
-            var props = loadProperties();
-            String prefix = type.getName();
-            String existing = props.getProperty(prefix + ".models", "");
-            if (!existing.isBlank()) {
-                String updated = Arrays.stream(existing.split(","))
-                        .map(String::trim)
-                        .filter(m -> !m.equals(model))
-                        .reduce((a, b) -> a + "," + b)
-                        .orElse("");
-                if (updated.isEmpty()) {
-                    props.remove(prefix + ".models");
-                } else {
-                    props.setProperty(prefix + ".models", updated);
-                }
-                storeProperties(props);
-            }
-        } catch (IOException e) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+    private void addModel(LlmProviderProfile profile, String model) {
+        if (profile.models == null) profile.models = new java.util.ArrayList<>();
+        boolean present = profile.models.stream().anyMatch(item -> item.equals(model));
+        if (!present) {
+            profile.models.add(model);
+            if (profile.defaultModel == null || profile.defaultModel.isBlank()) profile.defaultModel = model;
+            store.saveProfile(profile);
         }
     }
 
-    private void saveModelToFile(LLMProviderType type, String model) {
-        try {
-            var props = loadProperties();
-            String prefix = type.getName();
-            String existing = props.getProperty(prefix + ".models", "");
-            boolean alreadyPresent = !existing.isBlank()
-                    && Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
-            if (!alreadyPresent) {
-                String updated = existing.isBlank() ? model : existing + "," + model;
-                props.setProperty(prefix + ".models", updated);
-                storeProperties(props);
-            }
-        } catch (IOException e) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
+    private void removeModel(LlmProviderProfile profile, String model) {
+        if (profile.models == null) return;
+        profile.models.removeIf(item -> item.equals(model));
+        if (model.equals(profile.defaultModel)) {
+            profile.defaultModel = profile.models.isEmpty() ? null : profile.models.getFirst();
         }
-    }
-
-    private boolean hasFixedApiBase(LLMProviderType type) {
-        return type == LLMProviderType.DEEPSEEK || type == LLMProviderType.OPENROUTER;
+        store.saveProfile(profile);
     }
 
     private String configureProvider(LLMProviderType type) {
         String defaultBase = getDefaultApiBase(type);
-        String apiBase;
-        if (hasFixedApiBase(type)) {
-            ui.printStreamingChunk("  API Base: " + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "\n");
-            apiBase = defaultBase;
-        } else {
-            ui.printStreamingChunk("  API Base [" + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "]: ");
-            var baseLine = ui.readRawLine();
-            apiBase = isBlank(baseLine) ? defaultBase : baseLine.trim();
-        }
+        ui.printStreamingChunk("  API Base [" + AnsiTheme.MUTED + defaultBase + AnsiTheme.RESET + "]: ");
+        var baseLine = ui.readRawLine();
+        String apiBase = isBlank(baseLine) ? defaultBase : baseLine.trim();
 
-        ui.printStreamingChunk("  API Key: ");
+        ui.printStreamingChunk("  API Key (blank for none): ");
         var keyLine = ui.readRawLine();
-        if (isBlank(keyLine)) {
-            ui.printStreamingChunk(AnsiTheme.ERROR + "  API key is required.\n" + AnsiTheme.RESET);
-            return null;
-        }
+        String apiKey = keyLine == null ? "" : keyLine.trim();
 
         String defaultModel = LLMProviders.getProviderDefaultChatModel(type);
         ui.printStreamingChunk("  Model [" + AnsiTheme.MUTED + defaultModel + AnsiTheme.RESET + "]: ");
         var modelLine = ui.readRawLine();
         String model = isBlank(modelLine) ? defaultModel : modelLine.trim();
 
+        var profile = LlmProviderProfile.preset(type);
+        if (profile == null) {
+            ui.printStreamingChunk(AnsiTheme.WARNING + "  " + type.getName()
+                    + " cannot be configured as a direct provider; use a supported type.\n" + AnsiTheme.RESET);
+            return null;
+        }
+        profile.baseUrl = apiBase;
+        profile.apiKey = apiKey;
+        profile.defaultModel = model;
+        if (profile.models == null) profile.models = new java.util.ArrayList<>();
+        if (!profile.models.contains(model)) profile.models.add(model);
+        try {
+            store.saveProfile(profile);
+        } catch (RuntimeException e) {
+            ui.printStreamingChunk(AnsiTheme.ERROR + "  " + e.getMessage() + "\n" + AnsiTheme.RESET);
+            return null;
+        }
+
         var config = new LLMProviderConfig(model, 0.7d, null);
-        var provider = new LiteLLMProvider(config, apiBase, keyLine.trim());
+        var provider = new LiteLLMProvider(config, apiBase, apiKey);
         llmProviders.addProvider(type, provider);
         modelRegistry.addModel(model, type);
-        saveToFile(type, apiBase, keyLine.trim(), model);
         ui.printStreamingChunk("\n  " + AnsiTheme.SUCCESS + "✓" + AnsiTheme.RESET + " Provider "
                 + type.getName() + " configured.\n\n");
         return model;
-    }
-
-    private void saveToFile(LLMProviderType type, String apiBase, String apiKey, String model) {
-        try {
-            var props = loadProperties();
-            String prefix = type.getName();
-            if (!hasFixedApiBase(type)) {
-                props.setProperty(prefix + ".api.base", apiBase);
-            }
-            props.setProperty(prefix + ".api.key", apiKey);
-            props.setProperty(prefix + ".model", model);
-            String existing = props.getProperty(prefix + ".models", "");
-            boolean alreadyPresent = !existing.isBlank()
-                    && Arrays.stream(existing.split(",")).map(String::trim).anyMatch(m -> m.equals(model));
-            if (!alreadyPresent) {
-                String updated = existing.isBlank() ? model : existing + "," + model;
-                props.setProperty(prefix + ".models", updated);
-            }
-            storeProperties(props);
-        } catch (IOException e) {
-            ui.printStreamingChunk(AnsiTheme.WARNING + "  Failed to save config: " + e.getMessage() + AnsiTheme.RESET + "\n");
-        }
-    }
-
-    private Properties loadProperties() throws IOException {
-        var props = new Properties();
-        if (Files.exists(CONFIG_FILE)) {
-            try (InputStream is = Files.newInputStream(CONFIG_FILE)) {
-                props.load(is);
-            }
-        }
-        return props;
-    }
-
-    private void storeProperties(Properties props) throws IOException {
-        try (OutputStream os = Files.newOutputStream(CONFIG_FILE)) {
-            props.store(os, null);
-        }
     }
 
     private String getDefaultApiBase(LLMProviderType type) {
