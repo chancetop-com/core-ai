@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SessionEventHubTest {
@@ -137,7 +137,7 @@ class SessionEventHubTest {
         hub.publish(second);
 
         assertEquals("a", first.content);
-        assertFalse(first == second);
+        assertNotSame(first, second);
     }
 
     @Test
