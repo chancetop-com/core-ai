@@ -341,7 +341,7 @@ Continuation 至少保留：
 1. checkpoint 与 wait subscription 的一致性；completion 先于 park 时也能立刻进入 RESUME_READY。
 2. completion outbox/inbox 的 at-least-once + 幂等 CAS settlement；不能宣称传输 exactly-once。
 3. 先持久存结果并置 resume-ready，再 ACK；owner lease/fencing 防双重恢复。
-4. wake 定向到 chat turn / AgentRun，不通过 run:<id> 去错误地找 chat session。
+4. wake 定向到 chat turn / AgentRun，不通过 `run:<id>` 去错误地找 chat session。
 5. 崩溃扫描补偿丢 callback、park/wake race；取消/旧 generation 不复活。
 6. WAITING 逻辑 run 仍存在，但释放 active execution slots；恢复时重走 admission，等待任务占用独立并发/保留资源。
 7. sandbox / 上游任务无法恢复时明确 WAIT_UNAVAILABLE 或 terminal failure，不重做付费/发消息工作来猜结果。
