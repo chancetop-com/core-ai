@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ModelPickerChoiceTest {
@@ -48,7 +49,7 @@ class ModelPickerChoiceTest {
 
         assertEquals(2, choices.size());
         assertEquals("switched-model", choices.getFirst().model());
-        assertEquals(null, choices.getFirst().providerLabel());
+        assertNull(choices.getFirst().providerLabel());
         assertTrue(choices.getFirst().active());
     }
 
