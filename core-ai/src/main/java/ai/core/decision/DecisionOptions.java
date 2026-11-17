@@ -18,7 +18,7 @@ public record DecisionOptions(Duration timeout, Duration connectTimeout) {
         }
     }
 
-    public static DecisionOptions timeout(Duration timeout) {
+    public static DecisionOptions withTimeout(Duration timeout) {
         return new DecisionOptions(timeout, null);
     }
 

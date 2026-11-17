@@ -12,8 +12,7 @@ public record DecisionRoute(String provider, String upstreamModel, String routeF
     }
 
     public boolean isComplete() {
-        return provider != null && !provider.isBlank()
-            && upstreamModel != null && !upstreamModel.isBlank()
-            && routeFingerprint != null && !routeFingerprint.isBlank();
+        return provider != null && upstreamModel != null && routeFingerprint != null
+            && !provider.isBlank() && !upstreamModel.isBlank() && !routeFingerprint.isBlank();
     }
 }

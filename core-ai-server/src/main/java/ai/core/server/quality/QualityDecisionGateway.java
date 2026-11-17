@@ -53,7 +53,7 @@ public class QualityDecisionGateway {
                 "decision budget exhausted", true, null);
         }
         var request = new DecisionRequest(modelAlias, state, questions);
-        var options = DecisionOptions.timeout(budget.callTimeout());
+        var options = DecisionOptions.withTimeout(budget.callTimeout());
         DecisionResponse response;
         try {
             response = decisionProvider.decide(request, options);
