@@ -69,7 +69,15 @@ Or let auto-detection pick the first configured provider.
 
 ## Model Picker
 
-The `/model` command shows available models. Populate the picker:
+The `/model` command shows available models.
+
+When logged in to a core-ai-server (`core-ai-cli --login`), the picker reads the server's model
+catalog (`/api/hub/models`, the same source the desktop model picker uses) and appends the locally
+configured models. It falls back to the local registry when not logged in or the server is
+unreachable; the catalog is cached for one minute. Picking a server model switches the current
+session only and does not rewrite `agent.properties`.
+
+Populate the local picker:
 ```properties
 openai.models=gpt-4o,gpt-4o-mini,gpt-4.1,o3-mini
 ```

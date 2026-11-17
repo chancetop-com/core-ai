@@ -11,6 +11,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -103,8 +104,8 @@ public class SkillHubClient {
         return apiClient(timeout).postMultipart("/api/skills/upload", fields, toMultipart(files));
     }
 
-    private java.util.Map<String, RemoteApiClient.MultipartFile> toMultipart(Map<String, Path> files) {
-        var mapped = new java.util.LinkedHashMap<String, RemoteApiClient.MultipartFile>();
+    private Map<String, RemoteApiClient.MultipartFile> toMultipart(Map<String, Path> files) {
+        var mapped = new LinkedHashMap<String, RemoteApiClient.MultipartFile>();
         files.forEach((name, file) -> mapped.put(name,
             new RemoteApiClient.MultipartFile(file, null, "application/octet-stream")));
         return mapped;

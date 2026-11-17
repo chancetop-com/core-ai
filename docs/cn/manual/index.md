@@ -356,7 +356,7 @@ core-ai-cli --resume
 
 Windows 路径例为 `--workspace 'C:\work\my-project'`。`--prompt` 发一条输入、打印回复后退出；根命令还有 `--time-limit-seconds`，用于 Agent 墙钟限制，但返回后提取和清理仍会执行，不应把它视为整个进程严格秒级中止。
 
-交互中先输入 `/help` 查看实际命令。常用 `/model`、`/model <name>`、`/resume`、`/login <server-url>`、`/memory search <keyword>`、`/agents`、`/exit`。`/model` 保存配置的代码路径指向全局 agent.properties，即使启动时用了 `--config` 也应核对实际保存位置。
+交互中先输入 `/help` 查看实际命令。常用 `/model`、`/model <name>`、`/resume`、`/login <server-url>`、`/memory search <keyword>`、`/agents`、`/exit`。登录 server 后 `/model` 会列出服务端模型目录（`/api/hub/models`，与桌面一致），再追加本地配置的模型；选择服务端模型只影响当前会话，不改写 `agent.properties`。本地模型的切换仍会把选择保存到全局 agent.properties，即使启动时用了 `--config` 也应核对实际保存位置。
 
 工具审批出现时查看工具名称、目标路径或外部资源与参数。根参数 `--dangerously-skip-permissions` 会跳过所有工具审批，首次练习不需要它。调试信息可用 `--debug`，共享前先脱敏。
 

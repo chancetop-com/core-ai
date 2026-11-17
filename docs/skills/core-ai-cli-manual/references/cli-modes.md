@@ -53,8 +53,8 @@ Root flags such as `--debug` do not apply to hub subcommands; those have their o
 ### Model and reasoning
 | Command | Description |
 |---------|-------------|
-| `/model` | Interactive model picker (`/models` is an alias) |
-| `/model <name>` | Switch to model |
+| `/model` | Interactive model picker (`/models` is an alias); lists the server catalog when logged in, else the local registry |
+| `/model <name>` | Switch to model; a server model applies to the current session only |
 | `/thinking` | Interactive reasoning-effort picker |
 | `/thinking none\|low\|high\|max\|off` | Set reasoning effort; `off` uses the provider default |
 | `/debug` | Toggle debug mode |
