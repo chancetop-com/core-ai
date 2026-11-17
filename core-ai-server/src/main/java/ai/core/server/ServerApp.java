@@ -285,6 +285,8 @@ public class ServerApp extends App {
         load(new HubCatalogModule());
         load(new TriggerModule());
         load(new MessagingRuntimeModule());
+        // direct desktop conversations inject AgentHubService and CommandPublisher, so they load last.
+        load(new ai.core.server.conversation.ConversationModule());
         load(new SessionSchedulerModule());
         load(new ChannelModule());
         load(new WorkflowModule());
