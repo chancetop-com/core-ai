@@ -42,11 +42,9 @@ public final class SkillQualityGate {
         return ruleCatalog().stream().map(SkillRuleMeta::key).toList();
     }
 
-    private final List<SkillQualityRule> rules = RULES;
-
     public SkillQualityResult evaluate(SkillPublishCandidate candidate) {
         var outcomes = new ArrayList<QualityRunAggregator.RuleOutcome>();
-        for (var rule : rules) {
+        for (var rule : RULES) {
             outcomes.add(evaluate(rule, candidate));
         }
         var aggregated = QualityRunAggregator.aggregate(outcomes);
