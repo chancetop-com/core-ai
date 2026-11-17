@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthContext, type AuthUser } from '../../api/auth';
 import Quality from './Quality';
 
-vi.mock('./quality/AgentQualityTab', () => ({ default: () => <div>agent rules</div> }));
-vi.mock('./quality/SkillQualityTab', () => ({ default: () => <div>skill rules</div> }));
+vi.mock('./quality/AgentQualityList', () => ({ default: () => <div>agent rules</div> }));
+vi.mock('./quality/SkillQualityList', () => ({ default: () => <div>skill rules</div> }));
 
 function renderQuality(user: AuthUser, entry = '/settings/quality') {
   render(

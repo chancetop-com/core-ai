@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../../../api/client';
 import { qualityApi, type QualityPolicy, type QualityRule } from '../../../api/quality';
-import AgentQualityTab from './AgentQualityTab';
+import AgentQualityDetail from './AgentQualityDetail';
 
 const POLICY: QualityPolicy = { revision: 1, generation: 2, bindings: [] };
 
@@ -28,18 +29,28 @@ function mockLoad(enforcement = 'BLOCK') {
   vi.spyOn(api.agents, 'list').mockResolvedValue({ agents: [], total: 0 });
 }
 
-describe('Agent quality tab', () => {
+function renderDetail() {
+  render(
+    <MemoryRouter initialEntries={[`/settings/quality/agent/${encodeURIComponent('qrule:1')}`]}>
+      <Routes>
+        <Route path="/settings/quality/agent/:ruleId" element={<AgentQualityDetail />} />
+        <Route path="/settings/quality" element={<div>quality list</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+}
+
+describe('Agent quality detail', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    window.sessionStorage.clear();
   });
 
-  it('turns enforcement off into SHADOW through the detail switch', async () => {
+  it('turns enforcement off into SHADOW through the policy switch', async () => {
     mockLoad('BLOCK');
     const activate = vi.spyOn(qualityApi, 'activate').mockResolvedValue(POLICY);
 
-    render(<AgentQualityTab />);
-    await userEvent.click(await screen.findByText('PROMPT.OUTPUT_REQUIREMENT_PRESENT'));
+    renderDetail();
+    expect(await screen.findByText('PROMPT.OUTPUT_REQUIREMENT_PRESENT')).toBeTruthy();
 
     const toggle = screen.getByRole<HTMLButtonElement>('switch', { name: /enforce rule/i });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
@@ -49,7 +60,7 @@ describe('Agent quality tab', () => {
     expect(screen.getByText('SHADOW — observe only')).toBeTruthy();
     expect(screen.getByText('Unsaved policy change')).toBeTruthy();
 
-    await userEvent.type(screen.getByPlaceholderText(/change reason/i), 'observe only');
+    await userEvent.type(screen.getByPlaceholderText(/required for save/i), 'observe only');
     await userEvent.click(screen.getByRole('button', { name: /apply policy/i }));
 
     expect(activate).toHaveBeenCalledWith(expect.objectContaining({
@@ -58,5 +69,12 @@ describe('Agent quality tab', () => {
       enforcement: 'SHADOW',
       change_reason: 'observe only',
     }));
+  });
+
+  it('returns to the list from the back link', async () => {
+    mockLoad('BLOCK');
+    renderDetail();
+    await userEvent.click(await screen.findByRole('button', { name: /back to quality/i }));
+    expect(screen.getByText('quality list')).toBeTruthy();
   });
 });

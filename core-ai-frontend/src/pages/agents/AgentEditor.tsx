@@ -1,16 +1,18 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain, HelpCircle, History } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig, GatewayAvailableModel } from '../../api/client';
 import { sessionApi } from '../../api/session';
 import type { SseTextChunkEvent, SseErrorEvent } from '../../api/session';
 import KeyValueVariablesEditor from '../../components/KeyValueVariablesEditor';
 import { useAuth } from '../../api/auth';
+import { hasPermission } from '../../api/permissions';
 import StatusBadge from '../../components/StatusBadge';
 import { agentVersionApi } from '../../api/comparison';
 import type { AgentVersion, ComparisonVariantConfig } from '../../api/comparison';
 import QualityReportPanel from './QualityReportPanel';
+import PolicyHistoryModal from '../settings/quality/PolicyHistoryModal';
 import { ApiError, publishAgent, qualityApi, type QualityReport } from '../../api/quality';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
@@ -148,6 +150,7 @@ export default function AgentEditor({ versionId }: { versionId?: string } = {}) 
   const [saveError, setSaveError] = useState('');
   const [publishSuccess, setPublishSuccess] = useState(false);
   const [qualityReport, setQualityReport] = useState<QualityReport | null>(null);
+  const [policyHistoryOpen, setPolicyHistoryOpen] = useState(false);
   const [checkingQuality, setCheckingQuality] = useState(false);
   const [publishWarnings, setPublishWarnings] = useState(0);
   const [promptExpanded, setPromptExpanded] = useState(false);
@@ -1038,6 +1041,13 @@ The system prompt should define how this agent behaves, its capabilities, and it
             style={{ borderColor: 'var(--color-border)' }}>
             <Download size={14} /> Export
           </button>
+          {!isNew && hasPermission(user?.permissions, 'agent.quality.manage') && (
+            <button onClick={() => setPolicyHistoryOpen(true)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+              style={{ borderColor: 'var(--color-border)' }}>
+              <History size={14} /> Policy history
+            </button>
+          )}
           <button onClick={handleCheckQuality} disabled={checkingQuality || isNew || publishing}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
             style={{ borderColor: 'var(--color-border)' }}>
@@ -1072,6 +1082,10 @@ The system prompt should define how this agent behaves, its capabilities, and it
             document.getElementById(`agent-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
           }}
           onClose={() => setQualityReport(null)} />
+      )}
+
+      {policyHistoryOpen && (
+        <PolicyHistoryModal onClose={() => setPolicyHistoryOpen(false)} />
       )}
 
       {showImportConfirm && (

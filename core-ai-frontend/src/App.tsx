@@ -39,6 +39,8 @@ const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
 const QualityPage = lazy(() => import('./pages/settings/Quality'));
+const AgentQualityDetailPage = lazy(() => import('./pages/settings/quality/AgentQualityDetail'));
+const SkillQualityDetailPage = lazy(() => import('./pages/settings/quality/SkillQualityDetail'));
 const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
 const Tasks = lazy(() => import('./pages/tasks/Tasks'));
 const Mcp = lazy(() => import('./pages/mcp/Mcp'));
@@ -252,6 +254,9 @@ function AuthenticatedApp() {
                       <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><Navigate to="/settings/system?tab=sandbox" replace /></RequirePermission>} />
                       <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
                       <Route path="quality" element={<RequirePermission permission="agent.quality.manage"><QualityPage /></RequirePermission>} />
+                      <Route path="quality/agent/new" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
+                      <Route path="quality/agent/:ruleId" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
+                      <Route path="quality/skill/:ruleKey" element={user?.role === 'admin' ? <SkillQualityDetailPage /> : <Navigate to="/settings/quality" replace />} />
                       <Route path="agent-quality" element={<Navigate to="/settings/quality?tab=agent" replace />} />
                       <Route path="skill-quality" element={<Navigate to="/settings/quality?tab=skill" replace />} />
                       <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />
