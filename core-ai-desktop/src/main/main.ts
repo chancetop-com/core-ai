@@ -32,7 +32,7 @@ import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
-import { CompletionNotifier, NOTIFY_HANDSHAKE_TEXT, normalizeNotifySessions, normalizeNotifyTarget, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
+import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifyHandshakeText, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { probeModels } from './providers/ProviderProbe';
 import {
   deleteProfile,
@@ -1242,10 +1242,13 @@ function registerIpc(): void {
     return sendOcgNotification(target, 'Notification test — core-ai-desktop');
   });
   // Turning the switch on must prove the channel; a failure is surfaced so the user can warm it up.
-  ipcMain.handle('notifications:verify', async () => {
+  ipcMain.handle('notifications:verify', async (_event, workspace?: string, sessionId?: string) => {
     const target = settings.notifyTarget;
     if (!target) return { ok: false, error: 'Notification channel is not configured' };
-    return sendOcgNotification(target, NOTIFY_HANDSHAKE_TEXT);
+    const title = typeof workspace === 'string' && workspace && typeof sessionId === 'string' && sessionId
+      ? readSessionTitle(workspace, sessionId)
+      : null;
+    return sendOcgNotification(target, notifyHandshakeText(title));
   });
   ipcMain.handle('update:status', () => updateService?.snapshot() ?? null);
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);

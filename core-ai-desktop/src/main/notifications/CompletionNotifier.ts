@@ -38,14 +38,21 @@ export interface CompletionNotifierOptions {
 }
 
 const MAX_DETAIL_LENGTH = 200;
+const MAX_HANDSHAKE_TITLE_LENGTH = 60;
 const MAX_SENT_KEYS = 200;
 
 /**
  * Sent the moment the user turns the per-session switch on. It both proves the channel can be
  * reached now and tells the user what to expect, so a broken channel fails visibly instead of
- * silently doing nothing until the turn ends.
+ * silently doing nothing until the turn ends. The session title names the session that will
+ * notify, so several sessions sharing one channel stay distinguishable.
  */
-export const NOTIFY_HANDSHAKE_TEXT = '好的，我会在任务完成后发消息通知您。(core-ai)';
+export function notifyHandshakeText(sessionTitle?: string | null): string {
+  const text = (sessionTitle ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return '好的，我会在任务完成后发消息通知您。(core-ai)';
+  const label = text.length <= MAX_HANDSHAKE_TITLE_LENGTH ? text : `${text.slice(0, MAX_HANDSHAKE_TITLE_LENGTH)}...`;
+  return `好的，我会在会话「${label}」的任务完成后发消息通知您。(core-ai)`;
+}
 
 const isText = (value: unknown): value is string => typeof value === 'string' && value.trim().length > 0;
 

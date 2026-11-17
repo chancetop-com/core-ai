@@ -429,7 +429,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   notificationsSessionGet(workspace: string, sessionId: string): Promise<boolean>;
   notificationsSessionSet(workspace: string, sessionId: string, enabled: boolean): Promise<boolean>;
   notificationsTest(): Promise<{ ok: boolean; error?: string }>;
-  notificationsVerify(): Promise<{ ok: boolean; error?: string }>;
+  notificationsVerify(workspace?: string, sessionId?: string): Promise<{ ok: boolean; error?: string }>;
   onNotificationDelivery(callback: (result: { ok: boolean; error?: string; targetLabel?: string }) => void): () => void;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
@@ -7995,7 +7995,8 @@ async function openNotifySetupDialog(preferCurrent = false, autoConnect = false)
 }
 
 async function verifyNotifyChannel(): Promise<{ ok: boolean; error?: string }> {
-  return window.coreai.notificationsVerify().catch((error: unknown) => ({
+  // The handshake names the session, so a channel shared by several sessions stays readable.
+  return window.coreai.notificationsVerify(state.workspace ?? undefined, state.sessionId ?? undefined).catch((error: unknown) => ({
     ok: false,
     error: error instanceof Error ? error.message : String(error),
   }));

@@ -7,11 +7,11 @@ import ocgCliModule from '../dist/test/ocgCli.js';
 
 const {
   CompletionNotifier,
-  NOTIFY_HANDSHAKE_TEXT,
   formatCompletionNotice,
   formatDuration,
   normalizeNotifySessions,
   normalizeNotifyTarget,
+  notifyHandshakeText,
   notifySessionKey,
 } = notifierModule;
 
@@ -295,7 +295,11 @@ test('normalizeOcgTargets keeps usable rows and drops malformed ones', () => {
 });
 
 test('opting in verifies warm-up channels and explains how to warm them', () => {
-  assert.match(NOTIFY_HANDSHAKE_TEXT, /任务完成后/);
+  assert.match(notifyHandshakeText(), /任务完成后/);
+  assert.match(notifyHandshakeText('Investigate the flaky build'), /会话「Investigate the flaky build」/);
+  assert.match(notifyHandshakeText('  spaced \n title  '), /会话「spaced title」/);
+  const long = notifyHandshakeText('x'.repeat(200));
+  assert.match(long, /会话「x{60}\.\.\.」/);
   assert.equal(notifyNeedsWarmup('openclaw-weixin'), true);
   assert.equal(notifyNeedsWarmup('qqbot'), true);
   assert.equal(notifyNeedsWarmup('telegram'), false);

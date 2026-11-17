@@ -279,7 +279,7 @@ Duration: 1m 04s · failed — <error message 前 200 字符>
   │
   ├─ 解析目标（已有 notifyTarget，或配置对话框刚保存，或从最近联系人自动选定）
   │
-  ├─ 立即发送确认消息：「好的，我会在任务完成后发消息通知您。(core-ai)」
+  ├─ 立即发送确认消息：好的，我会在会话「{会话标题}」的任务完成后发消息通知您。(core-ai)
   │     ├─ 成功 ──► 写入会话开关，勾选框保持勾选，toast 提示 Notifications on
   │     └─ 失败 ──► 弹出发送失败对话框（见下）
   │
@@ -350,7 +350,7 @@ interface DesktopSettings {
 | `notifications:sessionGet` | `workspace, sessionId` | `boolean` | composer 初始化/切换会话时读取开关 |
 | `notifications:sessionSet` | `workspace, sessionId, enabled` | `boolean` | 写入/删除 `notifySessions` 键；主进程立即持久化 |
 | `notifications:test` | — | `OcgResult` | 用已保存 target 发一条测试消息，验证 daemon / secret / 账号 |
-| `notifications:verify` | — | `OcgResult` | 勾选时发送固定的确认消息（`NOTIFY_HANDSHAKE_TEXT`），成功才允许打开会话开关；失败原因返回 renderer 供预热对话框展示 |
+| `notifications:verify` | `workspace?, sessionId?` | `OcgResult` | 勾选时发送确认消息（`notifyHandshakeText(会话标题)`），成功才允许打开会话开关；失败原因返回 renderer 供预热对话框展示 |
 | `notifications:delivery`（main → renderer push） | `{ ok, targetLabel?, error? }` | — | 发送失败时提供 toast；成功时默认不打扰用户 |
 
 Preload 只暴露以上方法，不暴露 `fs`、`path` 或原始 OCG 客户端。`notifications:targets` 是只读查询，不启动 daemon、不修改 OCG 配置。
@@ -490,7 +490,7 @@ Completion notifications     <target label or "Not configured">
 - `ocgTargets` 解析：正常数组、`ok:false`、非 JSON、空 targets。
 - 目标身份：同 target 不同 accountId 不相等；group 与 direct 的 label 区分。
 - `notifyNeedsWarmup` / `notifyVerifyFailureHint`：微信、QQ 返回预热指引；其它 channel 返回 Settings 指引。
-- `NOTIFY_HANDSHAKE_TEXT`：勾选校验正文固定，包含“任务完成后”语义。
+- `notifyHandshakeText`：勾选校验正文包含“任务完成后”语义；带会话标题时正文为“好的，我会在会话「{标题}」的任务完成后发消息通知您。(core-ai)”，标题压缩空白并截断到 60 字符；无标题时回退到固定句子。
 
 ### 8.2 Renderer / UI 测试
 
@@ -663,6 +663,7 @@ Completion notifications     <target label or "Not configured">
 
 - 需求：用户追加“勾选时立即给 channel 发一条确认消息；失败要告诉用户，微信/QQ 先发消息预热，点击已发送后重试确认”。
 - main：`CompletionNotifier.ts` 新增 `NOTIFY_HANDSHAKE_TEXT`；`main.ts` 新增 `notifications:verify` IPC，复用 `sendOcgNotification`（HTTP `/ocg/v1/send`）。
+- 2026-11-17 追加：确认消息加入会话标题（`notifyHandshakeText(会话标题)`，`notifications:verify` 接收 `workspace, sessionId` 并由 main 用 `readSessionTitle` 解析），让多个会话共用一个 channel 时能分辨通知来源。
 - preload：新增 `notificationsVerify()`。
 - renderer：`notifications.ts` 新增 `notifyNeedsWarmup` / `notifyVerifyFailureHint`；`app.ts` 的勾选流程改为“解析目标 → 发送确认消息 → 成功才 `setSessionNotify(true)`”；失败时打开预热对话框，重试成功后才开启。
 - 失败对话框：显示目标 label、原始错误、微信/QQ 预热指引；按钮为 `I have sent it — retry`、`Open Settings → IM channels`、`Cancel`。
