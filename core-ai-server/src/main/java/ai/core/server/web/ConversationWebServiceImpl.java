@@ -250,14 +250,14 @@ public class ConversationWebServiceImpl implements ConversationWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
-        if (turnStateRegistry.liveness(sessionId) == TurnStateRegistry.TurnLiveness.RUNNING) {
-            throw new ConflictException("SESSION_BUSY");
-        }
-
         var key = ConversationRequestKeys.requestKey(userId, "send", sessionId, request.clientRequestId);
         var payloadHash = ConversationRequestKeys.payloadHash(userId, "send", sessionId, request.message);
         var existing = existingSend(key, payloadHash);
         if (existing != null) return existing;
+
+        if (turnStateRegistry.liveness(sessionId) == TurnStateRegistry.TurnLiveness.RUNNING) {
+            throw new ConflictException("SESSION_BUSY");
+        }
 
         var claimToken = UUID.randomUUID().toString();
         if (requestStore.claim(key, userId, "send", sessionId, payloadHash, claimToken) == ConversationRequestStore.Claim.EXISTS) {
