@@ -25,7 +25,7 @@ class SessionChannelServiceDirectedTest {
         store.hostname = ownership.getHostname();
         var hubRegistry = new SessionEventHubRegistry();
         var channelService = mock(ChannelService.class);
-        when(channelService.send(any(), any(), any())).thenReturn(true);
+        when(channelService.send(any(), any(), any())).thenReturn(Boolean.TRUE);
         var service = new SessionChannelService(SseDeliveryMode.DIRECTED, hubRegistry, ownership, null, "", channelService);
         var channel = (Channel<SseBaseEvent>) mock(Channel.class);
 
