@@ -20,10 +20,12 @@ public class ChannelService {
     }
 
     public void send(String sessionId, SseBaseEvent event) {
+        send(sessionId, null, event);
+    }
+
+    public boolean send(String sessionId, String eventId, SseBaseEvent event) {
         var channel = channelMap.get(sessionId);
-        if (channel != null) {
-            channel.send(event);
-        }
+        return channel != null && channel.send(eventId, event);
     }
 
     public void close(String sessionId) {

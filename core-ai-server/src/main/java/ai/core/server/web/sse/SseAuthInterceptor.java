@@ -25,6 +25,7 @@ import core.framework.web.exception.ForbiddenException;
  * @author core-ai
  */
 public class SseAuthInterceptor implements SseChannelInterceptor {
+    public static final String INTERNAL_EVENTS_PATH = "/_internal/sessions/events";
     private final RequestAuthenticator requestAuthenticator;
     private final SessionIdentity sessionIdentity;
     private final PermissionService permissionService;
@@ -40,6 +41,10 @@ public class SseAuthInterceptor implements SseChannelInterceptor {
 
     @Override
     public void onConnect(Request request, WebContext webContext) {
+        // The internal route has already passed the pre-200 host/token/owner check; user auth and
+        // RBAC must not run for pod-to-pod traffic.
+        if (INTERNAL_EVENTS_PATH.equals(request.path())) return;
+
         var identity = sessionIdentity.getUserIdentityOrNull();
         if (identity != null) {
             SubUserDelegationResolver.rejectHeaderIfPresent(request);

@@ -2,6 +2,7 @@ package ai.core.server.sse;
 
 import ai.core.sse.PatchedServerSentEventConfig;
 import ai.core.sse.SseChannelInterceptor;
+import ai.core.sse.SsePreflight;
 import core.framework.http.HTTPMethod;
 import core.framework.web.sse.ChannelListener;
 
@@ -32,5 +33,10 @@ public class SseEndpointRegistryImpl implements SseEndpointRegistry {
     @Override
     public void addInterceptor(SseChannelInterceptor interceptor) {
         config.intercept(interceptor);
+    }
+
+    @Override
+    public void preflight(HTTPMethod method, String path, SsePreflight preflight) {
+        config.preflight(method, path, preflight);
     }
 }

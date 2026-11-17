@@ -16,6 +16,7 @@ import ai.core.server.messaging.RedisRpcTransport;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcMode;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.SseDeliveryMode;
 import ai.core.server.messaging.TurnStateRegistry;
 import ai.core.server.session.PgSessionBudgetStore;
 import ai.core.server.session.RedisSessionBudgetStore;
@@ -24,6 +25,9 @@ import ai.core.server.state.StateBackend;
 import ai.core.server.state.StateExpiryCleanupJob;
 import ai.core.server.state.StateSchemaCheck;
 import ai.core.server.web.PodLocalExecutor;
+import ai.core.server.web.sse.ChannelService;
+import ai.core.server.web.sse.SessionChannelService;
+import ai.core.server.web.sse.SessionEventHubRegistry;
 import core.framework.module.Module;
 import redis.clients.jedis.JedisPool;
 
@@ -45,19 +49,31 @@ class MessagingInfrastructureModule extends Module {
         var stateBackend = StateBackend.of(property("sys.state.backend").orElse("redis"), storeMode, "sys.state.backend");
         var leaseBackend = StateBackend.of(property("sys.lease.backend").orElse("redis"), storeMode, "sys.lease.backend");
         var rpcMode = RpcMode.of(property("sys.rpc.transport").orElse("redis"));
+        var sseDeliveryMode = SseDeliveryMode.of(property("sys.sse.delivery").orElse("redis"));
         var internalToken = property("sys.internal.token").orElse("");
         // declared in sys.properties; must be read even when RPC uses Redis so core-ng accepts the config
         property("sys.internal.token.previous");
         if (rpcMode == RpcMode.HTTP && internalToken.isBlank()) {
             throw new IllegalArgumentException("sys.rpc.transport=http requires sys.internal.token");
         }
+        if (sseDeliveryMode == SseDeliveryMode.DIRECTED && internalToken.isBlank()) {
+            throw new IllegalArgumentException("sys.sse.delivery=directed requires sys.internal.token");
+        }
 
         var ownershipRegistry = ownershipRegistry(jedisPool, leaseBackend);
         var podRegistry = podRegistry(leaseBackend, rpcMode, ownershipRegistry);
+        if (sseDeliveryMode == SseDeliveryMode.DIRECTED && podRegistry == null) {
+            throw new IllegalArgumentException("sys.sse.delivery=directed requires sys.rpc.transport=http or sys.lease.backend=postgres");
+        }
         var turnStateRegistry = turnStateRegistry(jedisPool, leaseBackend, podRegistry);
         onStartup(turnStateRegistry::start);
         onShutdown(turnStateRegistry::stop);
-        bind(new EventPublisher(jedisPool));
+        var hubRegistry = bind(new SessionEventHubRegistry());
+        bind(new EventPublisher(jedisPool, sseDeliveryMode, hubRegistry, ownershipRegistry, podRegistry, internalToken));
+        var sessionChannelService = bind(new SessionChannelService(sseDeliveryMode, hubRegistry, ownershipRegistry,
+                podRegistry, internalToken, bean(ChannelService.class)));
+        onStartup(sessionChannelService::start);
+        onShutdown(sessionChannelService::stop);
         bind(new A2ATaskRegistry(a2aTaskStore(jedisPool, stateBackend), ownershipRegistry));
         bind(new A2AEventRelay(jedisPool));
         var httpRpcTransport = rpcMode == RpcMode.HTTP ? new HttpRpcTransport(podRegistry::address, internalToken) : null;

@@ -80,6 +80,15 @@ public class PatchedServerSentEventConfig extends Config {
         patchedServerSentEventHandler.addInterceptor(interceptor);
     }
 
+    /**
+     * Register a check that runs before the SSE handler commits HTTP 200. The handler dispatches
+     * to a worker thread first, so the check may use blocking IO (database / internal auth).
+     */
+    public void preflight(HTTPMethod method, String path, SsePreflight preflight) {
+        ensureHandler();
+        patchedServerSentEventHandler.addPreflight(method, path, preflight);
+    }
+
     private void ensureHandler() {
         if (patchedServerSentEventHandler == null) {
             patchedServerSentEventHandler = new PatchedServerSentEventHandler(context.logManager, context.httpServer.siteManager.sessionManager, context.httpServer.handlerContext);

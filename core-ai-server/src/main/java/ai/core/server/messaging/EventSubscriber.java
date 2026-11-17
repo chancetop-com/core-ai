@@ -1,15 +1,11 @@
 package ai.core.server.messaging;
 
-import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.web.sse.SessionChannelService;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPubSub;
-
-import java.util.Map;
 
 /**
  * @author stephen
@@ -17,23 +13,6 @@ import java.util.Map;
 public class EventSubscriber {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventSubscriber.class);
     private static final String CHANNEL_PATTERN = "coreai:sse:*";
-    private static final Map<String, Class<? extends SseBaseEvent>> EVENT_CLASSES = Map.ofEntries(
-            Map.entry("SseTextChunkEvent", ai.core.api.server.session.sse.SseTextChunkEvent.class),
-            Map.entry("SseReasoningChunkEvent", ai.core.api.server.session.sse.SseReasoningChunkEvent.class),
-            Map.entry("SseToolStartEvent", ai.core.api.server.session.sse.SseToolStartEvent.class),
-            Map.entry("SseToolResultEvent", ai.core.api.server.session.sse.SseToolResultEvent.class),
-            Map.entry("SseToolApprovalRequestEvent", ai.core.api.server.session.sse.SseToolApprovalRequestEvent.class),
-            Map.entry("SseTurnCompleteEvent", ai.core.api.server.session.sse.SseTurnCompleteEvent.class),
-            Map.entry("SseErrorEvent", ai.core.api.server.session.sse.SseErrorEvent.class),
-            Map.entry("SseStatusChangeEvent", ai.core.api.server.session.sse.SseStatusChangeEvent.class),
-            Map.entry("SsePlanUpdateEvent", ai.core.api.server.session.sse.SsePlanUpdateEvent.class),
-            Map.entry("SseCompressionEvent", ai.core.api.server.session.sse.SseCompressionEvent.class),
-            Map.entry("SseSandboxEvent", ai.core.api.server.session.sse.SseSandboxEvent.class),
-            Map.entry("SseBatchToolStartEvent", ai.core.api.server.session.sse.SseBatchToolStartEvent.class),
-            Map.entry("SseEnvironmentOutputChunkEvent", ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent.class),
-            Map.entry("SseTaskStatusEvent", ai.core.api.server.session.sse.SseTaskStatusEvent.class),
-            Map.entry("SseCustomEvent", ai.core.api.server.session.sse.SseCustomEvent.class)
-    );
 
     private final JedisPool jedisPool;
     private final SessionChannelService sessionChannelService;
@@ -93,6 +72,9 @@ public class EventSubscriber {
             var sessionId = channel.substring("coreai:sse:".length());
             if (sessionId.isEmpty()) return;
 
+            // A healthy directed relay owns this session; skip JSON parsing entirely.
+            if (sessionChannelService.hasHealthyRelay(sessionId)) return;
+
             // Message format: "SseTextChunkEvent\n{...json...}"
             var newlineIdx = message.indexOf('\n');
             if (newlineIdx <= 0) {
@@ -100,18 +82,14 @@ public class EventSubscriber {
                 return;
             }
 
-            var className = message.substring(0, newlineIdx);
             var json = message.substring(newlineIdx + 1);
-
-            var eventClass = EVENT_CLASSES.get(className);
-            if (eventClass == null) {
-                LOGGER.warn("unknown event class: {}, channel={}", className, channel);
+            var event = SseEventCodec.fromJson(json);
+            if (event == null) {
+                LOGGER.warn("unknown event payload, channel={}", channel);
                 return;
             }
 
-            @SuppressWarnings("unchecked")
-            var event = JSON.fromJSON((Class<SseBaseEvent>) eventClass, json);
-            sessionChannelService.send(sessionId, event);
+            sessionChannelService.onBroadcast(sessionId, event);
         } catch (Exception e) {
             LOGGER.warn("failed to handle event, channel={}", channel, e);
         }

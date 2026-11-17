@@ -18,7 +18,9 @@ import ai.core.api.server.session.sse.SseToolApprovalRequestEvent;
 import ai.core.api.server.session.sse.SseToolResultEvent;
 import ai.core.api.server.session.sse.SseToolStartEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
-import core.framework.inject.Inject;
+import ai.core.server.messaging.PodRegistry;
+import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.SseDeliveryMode;
 import core.framework.web.sse.Channel;
 
 import java.time.ZonedDateTime;
@@ -116,13 +118,35 @@ public class SessionChannelService {
         return value == null ? 0 : STRING_OVERHEAD_BYTES + 2L * value.length();
     }
 
-    @Inject
     ChannelService channelService;
+    private final DirectedSessionDelivery directed;
 
     private final Map<String, SessionChannelState> stateMap = new ConcurrentHashMap<>();
     private final AtomicLong droppedEvents = new AtomicLong();
     // visible for tests; production keeps the default
     volatile long maxBufferBytes = DEFAULT_MAX_BUFFER_BYTES;
+
+    SessionChannelService() {
+        this(SseDeliveryMode.REDIS, null, null, null, "", null);
+    }
+
+    public SessionChannelService(SseDeliveryMode mode, SessionEventHubRegistry hubRegistry,
+                                 SessionOwnershipRegistry ownershipRegistry, PodRegistry podRegistry,
+                                 String internalToken, ChannelService channelService) {
+        this.channelService = channelService;
+        this.directed = mode == SseDeliveryMode.DIRECTED
+                ? new DirectedSessionDelivery(hubRegistry, ownershipRegistry, podRegistry, internalToken, channelService)
+                : null;
+    }
+
+    public void start() {
+        if (directed != null) directed.start();
+    }
+
+    public void stop() {
+        if (directed != null) directed.stop();
+        stateMap.clear();
+    }
 
     /**
      * Returns true if a local session state exists for the given session ID.
@@ -133,7 +157,15 @@ public class SessionChannelService {
         return stateMap.containsKey(sessionId);
     }
 
+    public boolean hasHealthyRelay(String sessionId) {
+        return directed != null && directed.hasHealthyRelay(sessionId);
+    }
+
     public void connect(Channel<SseBaseEvent> channel, String sessionId) {
+        if (directed != null) {
+            directed.connect(channel, sessionId);
+            return;
+        }
         var state = stateMap.computeIfAbsent(sessionId, k -> new SessionChannelState());
 
         synchronized (state) {
@@ -142,6 +174,18 @@ public class SessionChannelService {
                 channelService.send(sessionId, event);
             }
         }
+    }
+
+    /**
+     * Redis fallback path. In directed mode this is used only while the owner relay is unavailable
+     * or still being established; a healthy relay skips it to avoid duplicate delivery.
+     */
+    public void onBroadcast(String sessionId, SseBaseEvent sseEvent) {
+        if (directed != null) {
+            directed.onBroadcast(sessionId, sseEvent);
+            return;
+        }
+        send(sessionId, sseEvent);
     }
 
     public void send(String sessionId, SseBaseEvent sseEvent) {
@@ -324,16 +368,16 @@ public class SessionChannelService {
 
     /** Heap currently held by replay buffers on this pod. */
     public long bufferedBytes() {
-        return total(state -> state.bufferedBytes);
+        return directed != null ? directed.bufferedBytes() : total(state -> state.bufferedBytes);
     }
 
     public long bufferedEvents() {
-        return total(state -> state.eventBuffer.size());
+        return directed != null ? directed.bufferedEvents() : total(state -> state.eventBuffer.size());
     }
 
     /** Events that were sent live but not retained for replay because the buffer budget was exhausted. */
     public long droppedTotal() {
-        return droppedEvents.get();
+        return directed != null ? directed.droppedTotal() : droppedEvents.get();
     }
 
     private long total(ToLongFunction<SessionChannelState> reader) {
@@ -347,6 +391,7 @@ public class SessionChannelService {
     }
 
     public SessionStatus status(String sessionId) {
+        if (directed != null) return directed.status(sessionId);
         var state = stateMap.get(sessionId);
         if (state == null) return SessionStatus.IDLE;
         synchronized (state) {
@@ -365,11 +410,19 @@ public class SessionChannelService {
     }
 
     public void close(String sessionId) {
+        if (directed != null) {
+            directed.close(sessionId);
+            return;
+        }
         stateMap.remove(sessionId);
         channelService.close(sessionId);
     }
 
     public void closeIfCurrent(String sessionId, Channel<SseBaseEvent> channel) {
+        if (directed != null) {
+            directed.closeIfCurrent(sessionId, channel);
+            return;
+        }
         // intentionally do NOT remove stateMap here: buffer must survive client disconnects
         // so a returning user can replay the in-progress turn. Lifecycle cleanup happens in close().
         channelService.closeIfCurrent(sessionId, channel);

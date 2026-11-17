@@ -21,6 +21,7 @@ import ai.core.server.messaging.RpcResponseSubscriber;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.messaging.SessionCommandDependencies;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.messaging.SseDeliveryMode;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandboxhub.SandboxHubService;
 import ai.core.server.domain.SessionAttachmentRefRepository;
@@ -31,7 +32,9 @@ import ai.core.server.sse.SseEndpointRegistry;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.web.AgentSessionWebServiceImpl;
 import ai.core.server.web.sse.AgentMessageStreamChannelListener;
+import ai.core.server.web.sse.InternalSseEventController;
 import ai.core.server.web.sse.SessionChannelService;
+import ai.core.server.web.sse.SessionEventHubRegistry;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -72,6 +75,12 @@ class MessagingRuntimeModule extends Module {
             var controller = new InternalRpcController(commandHandler, bean(PodRegistry.class),
                 property("sys.internal.token").orElse(""), property("sys.internal.token.previous").orElse(""));
             http().route(HTTPMethod.POST, "/_internal/rpc", controller::handle);
+        }
+        if (SseDeliveryMode.of(property("sys.sse.delivery").orElse("redis")) == SseDeliveryMode.DIRECTED) {
+            var controller = new InternalSseEventController(bean(PodRegistry.class), ownershipRegistry,
+                    bean(SessionEventHubRegistry.class), property("sys.internal.token").orElse(""),
+                    property("sys.internal.token.previous").orElse(""));
+            http().route(HTTPMethod.POST, "/_internal/sessions/events", controller::handle);
         }
         // unowned sessions run on the instance that received the request (its SSE channel is here; nothing else on the
         // same Redis can race for the turn); false restores distribution through the shared unowned stream

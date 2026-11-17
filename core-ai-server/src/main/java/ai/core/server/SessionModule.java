@@ -32,6 +32,8 @@ import ai.core.server.web.auth.RequestAuthenticator;
 import ai.core.server.web.auth.SubUserDelegationResolver;
 import ai.core.server.web.sse.AgentSessionChannelListener;
 import ai.core.server.web.sse.CliProxyChannelListener;
+import ai.core.server.web.sse.InternalSessionEventChannelListener;
+import ai.core.server.web.sse.InternalSsePreflight;
 import ai.core.server.web.sse.SseAuthInterceptor;
 import ai.core.server.state.StateBackend;
 import ai.core.utils.ImageDownscaler;
@@ -120,6 +122,16 @@ public class SessionModule extends Module {
                 bean(ai.core.server.web.session.SessionIdentity.class),
                 bean(ai.core.server.apiuser.PermissionService.class),
                 bean(SubUserDelegationResolver.class)));
+        if (ai.core.server.messaging.SseDeliveryMode.of(property("sys.sse.delivery").orElse("redis"))
+                == ai.core.server.messaging.SseDeliveryMode.DIRECTED) {
+            registry.preflight(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH,
+                    new InternalSsePreflight(bean(ai.core.server.messaging.PodRegistry.class),
+                            bean(ai.core.server.messaging.SessionOwnershipRegistry.class),
+                            property("sys.internal.token").orElse(""),
+                            property("sys.internal.token.previous").orElse("")));
+            registry.register(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH, SseBaseEvent.class,
+                    bind(InternalSessionEventChannelListener.class), false);
+        }
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
         var cliProxyListener = bind(CliProxyChannelListener.class);
         registry.register(HTTPMethod.POST, CliProxyChannelListener.PATH, Object.class, cliProxyListener, false);

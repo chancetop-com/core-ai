@@ -1,6 +1,7 @@
 package ai.core.sse.internal;
 
 import ai.core.sse.SseChannelInterceptor;
+import ai.core.sse.SsePreflight;
 import core.framework.http.HTTPMethod;
 import core.framework.internal.async.VirtualThread;
 import core.framework.internal.log.ActionLog;
@@ -49,6 +50,7 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     private final Map<String, PatchedChannelSupport<?>> supports = new HashMap<>();
     private final Set<String> acceptGatedKeys = new HashSet<>();
     private final List<SseChannelInterceptor> interceptors = new ArrayList<>();
+    private final Map<String, SsePreflight> preflights = new HashMap<>();
     public WebContextImpl webContext;
 
     public PatchedServerSentEventHandler(LogManager logManager, SessionManager sessionManager, HTTPHandlerContext handlerContext) {
@@ -115,15 +117,59 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
             return;
         }
 
+        var preflight = preflights.get(key(exchange.getRequestMethod().toString(), exchange.getRequestPath()));
+        if (preflight != null) {
+            exchange.dispatch(() -> handlePreflight(exchange, preflight));
+            return;
+        }
+
+        startStream(exchange, false);
+    }
+
+    private void handlePreflight(HttpServerExchange exchange, SsePreflight preflight) {
+        SsePreflight.Result result;
+        try {
+            result = preflight.check(request(exchange));
+        } catch (Throwable e) {
+            logger.warn("sse preflight failed, path={}, error={}", exchange.getRequestPath(), e.getMessage(), e);
+            result = SsePreflight.Result.error(500, "{\"errorCode\":\"INTERNAL_ERROR\"}");
+        }
+        if (result.status() != 200) {
+            exchange.setStatusCode(result.status());
+            exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "application/json");
+            exchange.getResponseSender().send(result.body() == null ? "" : result.body());
+            return;
+        }
+        startStream(exchange, true);
+    }
+
+    private SsePreflight.Request request(HttpServerExchange exchange) {
+        var headers = new HashMap<String, String>();
+        for (var header : exchange.getRequestHeaders()) {
+            headers.putIfAbsent(header.getHeaderName().toString(), header.getFirst());
+        }
+        var queryParams = new HashMap<String, String>();
+        for (var entry : exchange.getQueryParameters().entrySet()) {
+            var values = entry.getValue();
+            if (values != null && !values.isEmpty()) queryParams.put(entry.getKey(), values.getFirst());
+        }
+        return new SsePreflight.Request(exchange.getRequestMethod().toString(), exchange.getRequestPath(),
+                exchange.getHostName(), headers, queryParams);
+    }
+
+    private void startStream(HttpServerExchange exchange, boolean alreadyOnWorker) {
         exchange.getResponseHeaders().put(Headers.CONTENT_TYPE, "text/event-stream");
         exchange.setPersistent(false);
         StreamSinkChannel sink = exchange.getResponseChannel();
         try {
             if (sink.flush()) {
-                exchange.dispatch(() -> handle(exchange, sink));
+                if (alreadyOnWorker) handle(exchange, sink);
+                else exchange.dispatch(() -> handle(exchange, sink));
             } else {
-                var listener = ChannelListeners.flushingChannelListener(_ -> exchange.dispatch(() -> handle(exchange, sink)),
-                    (_, e) -> {
+                var listener = ChannelListeners.flushingChannelListener(_ -> {
+                    if (alreadyOnWorker) handle(exchange, sink);
+                    else exchange.dispatch(() -> handle(exchange, sink));
+                }, (_, e) -> {
                         logger.warn("failed to establish sse connection, error={}", e.getMessage(), e);
                         IoUtils.safeClose(exchange.getConnection());
                     });
@@ -156,6 +202,11 @@ public class PatchedServerSentEventHandler extends ServerSentEventHandler {
     public void addInterceptor(SseChannelInterceptor interceptor) {
         interceptors.add(interceptor);
         logger.info("add sse interceptor, interceptor={}", interceptor.getClass().getCanonicalName());
+    }
+
+    public void addPreflight(HTTPMethod method, String path, SsePreflight preflight) {
+        preflights.put(key(method.name(), path), preflight);
+        logger.info("add sse preflight, method={}, path={}, preflight={}", method, path, preflight.getClass().getCanonicalName());
     }
 
     private void connect(HttpServerExchange exchange, StreamSinkChannel sink, ActionLog actionLog) {
