@@ -655,6 +655,8 @@ select:hover, .btn:hover { border-color: var(--accent); }
 .browser-address:disabled { opacity: 0.5; }
 .browser-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong, #3a4150); flex: 0 0 auto; }
 .browser-dot.on { background: var(--green, #4caf7d); box-shadow: 0 0 6px rgba(76, 175, 125, 0.55); }
+/* header toggles keep the dot slot so Browser and Artifacts never change width with their state */
+.browser-toggle .browser-dot:not(.on) { visibility: hidden; }
 .browser-tabs { display: flex; align-items: center; gap: 4px; padding: 6px 10px 0; border-bottom: 1px solid var(--border); overflow-x: auto; background: var(--bg-panel); }
 .browser-tabs[hidden] { display: none; }
 .browser-tab { display: inline-flex; align-items: center; gap: 6px; max-width: 190px; padding: 3px 6px 3px 10px; border: 1px solid transparent; border-bottom: none; border-radius: 7px 7px 0 0; color: var(--muted); font-size: 11.5px; cursor: default; flex: 0 0 auto; }

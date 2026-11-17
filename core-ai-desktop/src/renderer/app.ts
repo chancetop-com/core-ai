@@ -3261,9 +3261,20 @@ function renderArtifactsToggle(): void {
   artifactsToggleEl.title = open
     ? 'Collapse the artifacts pane'
     : 'Local artifacts — generated images/videos and workspace output';
-  artifactsToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Artifacts'));
-  if (!open && surface.artifactUnread) artifactsToggleEl.append(el('span', 'browser-dot on'));
-  artifactsToggleEl.append(icon(open ? 'chevron-right' : 'chevron-left'));
+  renderDockToggle(artifactsToggleEl, 'Artifacts', !open && surface.artifactUnread, open);
+}
+
+/**
+ * Both header toggles share one anatomy — label, status dot, chevron — so only the state differs:
+ * the dot is lit while the surface is live/unread (the slot stays reserved when it is not), and the
+ * chevron always points where the pane moves.
+ */
+function renderDockToggle(button: HTMLButtonElement, label: string, active: boolean, open: boolean): void {
+  button.replaceChildren(
+    el('span', 'browser-toggle-label', label),
+    el('span', active ? 'browser-dot on' : 'browser-dot'),
+    icon(open ? 'chevron-right' : 'chevron-left'),
+  );
 }
 
 // --- artifacts pane (gallery + preview/source) ------------------------------------------------
@@ -3891,25 +3902,21 @@ function renderBrowserTabs(): void {
 }
 
 /**
- * The single browser button (chat header, rightmost): 'Browser' starts it; while running it shows
- * a status dot and a chevron pointing where the pane moves — collapsing never stops the browser.
+ * The single browser button (chat header, rightmost): 'Browser' starts it; the dot marks the running
+ * browser and the chevron where the pane moves — collapsing never stops the browser.
  */
 function renderBrowserToggle(running: boolean): void {
   if (!browserToggleEl) return;
+  const open = running && surface.dock === 'browser';
   if (!running) {
     browserToggleEl.title = 'Embedded browser — start it; the agent drives the same tabs';
-    browserToggleEl.replaceChildren(el('span', 'browser-toggle-label', 'Browser'));
+    renderDockToggle(browserToggleEl, 'Browser', false, false);
     return;
   }
-  const open = surface.dock === 'browser';
   browserToggleEl.title = open
     ? 'Collapse the browser pane — the browser keeps running'
     : 'Expand the browser pane — the browser keeps running';
-  browserToggleEl.replaceChildren(
-    el('span', 'browser-toggle-label', 'Browser'),
-    el('span', 'browser-dot on'),
-    icon(open ? 'chevron-right' : 'chevron-left'),
-  );
+  renderDockToggle(browserToggleEl, 'Browser', true, open);
 }
 
 /**
