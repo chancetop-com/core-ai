@@ -5,6 +5,7 @@ import ai.core.agent.AgentBuilder;
 import ai.core.agent.AttachedContent;
 import ai.core.api.server.run.LLMCallRequest;
 import ai.core.agent.ExecutionContext;
+import ai.core.tool.wait.WaitCapability;
 import ai.core.llm.LLMProviders;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.media.MediaProvider;
@@ -226,6 +227,10 @@ public class AgentRunBuilder {
                         new ServerImageOutputSink(definition.userId, fileService,
                                 new AgentRunArtifactSink(runEntity.id, agentRunStore, artifactBinder), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
+                // Server runs use a fixed platform-thread pool (AgentRunner). A parked run would hold one
+                // of its ten slots while its completion producer cannot get one, so live-stack waits stay
+                // disabled here until the stackless continuation phase.
+                .waitCapability(WaitCapability.DISABLED)
                 .build();
         // quota metering per LLM call: sub-agents and tool-internal calls share this context, so the
         // whole run's token usage is accounted against the run initiator (runEntity.userId) synchronously

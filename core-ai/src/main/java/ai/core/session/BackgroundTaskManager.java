@@ -6,6 +6,8 @@ import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.wait.TaskCompletionRegistry;
+import ai.core.tool.wait.TaskRef;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import io.opentelemetry.context.Context;
@@ -18,6 +20,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -87,6 +90,7 @@ public class BackgroundTaskManager {
     private final Map<String, RunningTask> runningTasks = new ConcurrentHashMap<>();
     private final Map<String, TerminalTask> terminalTasks;
     private final ConsumedTasks consumedTasks;
+    private final TaskCompletionRegistry completions;
     private final SessionCommandQueue commandQueue;
     private final SubagentOutputSinkFactory sinkFactory;
     private final ExecutorService executor;
@@ -99,7 +103,8 @@ public class BackgroundTaskManager {
 
     BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher, ExecutorService executor) {
         this(commandQueue, sinkFactory, sessionId, dispatcher, executor,
-                new SharedTaskState(new ConcurrentHashMap<>(), new ConsumedTasks()));
+                new SharedTaskState(new ConcurrentHashMap<>(), new ConsumedTasks(),
+                        new TaskCompletionRegistry("background", null)));
     }
 
     private BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
@@ -111,18 +116,15 @@ public class BackgroundTaskManager {
         this.executor = executor;
         this.terminalTasks = sharedState.terminalTasks();
         this.consumedTasks = sharedState.consumedTasks();
-        commandQueue.setConsumedTaskFilter(this.consumedTasks::isConsumed);
+        this.completions = sharedState.completions();
+        commandQueue.setTaskNotificationFilter(this::isNotificationSuperseded);
     }
 
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token) {
         return submit(taskId, agentRunner, token, null, true);
     }
 
-    /**
-     * @param onNeverStarted invoked when the task is cancelled before its runnable has begun, so a
-     *                      caller that armed state for the run can release it — in that case the
-     *                      runnable (and with it any cleanup it owns) never executes
-     */
+    /** onNeverStarted releases caller state when the task is cancelled before its runnable begins. */
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token, Runnable onNeverStarted) {
         return submit(taskId, agentRunner, token, onNeverStarted, true);
     }
@@ -134,14 +136,15 @@ public class BackgroundTaskManager {
     @SuppressWarnings("PMD.UseTryWithResources")
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token, Runnable onNeverStarted, boolean notify) {
         LOGGER.debug("submitting background task, taskId={}", taskId);
+        // A reused id must not answer with the previous run's result while the new one starts.
         terminalTasks.remove(taskId);
-        consumedTasks.remove(taskId);
         var sink = sinkFactory.create(taskId);
         var outputRef = sink.getReference();
         var notified = new AtomicBoolean(false);
-        // Registered before the executor submit so notifyTerminal on the worker thread
-        // always observes the entry (the reverse order could leave a stale entry behind).
-        var running = new RunningTask(null, notified, outputRef, onNeverStarted, notify);
+        // Both registrations precede the executor submit: a waiter can never miss a completion, and
+        // the worker always observes its running entry (a later order could leave a stale entry).
+        var completion = completions.register(taskId, sessionId);
+        var running = new RunningTask(null, notified, outputRef, onNeverStarted, notify, completion);
         runningTasks.put(taskId, running);
         var otelContext = Context.current();
         var future = executor.submit(() -> {
@@ -246,8 +249,28 @@ public class BackgroundTaskManager {
         consumedTasks.mark(taskId);
     }
 
+    /** Consumption is generation-scoped: a new run of the same id still owes its own notification. */
+    public void markConsumed(TaskRef ref) {
+        consumedTasks.mark(ref.taskId(), ref.generation());
+    }
+
     public boolean isConsumed(String taskId) {
         return consumedTasks.isConsumed(taskId);
+    }
+
+    /**
+     * The manager instance is already the session's authorization boundary: every context holding it
+     * is entitled to the tasks it launched, so no second owner check is applied here. (Its session id
+     * may differ from the agent context's, e.g. a test harness or a rebuilt session.)
+     */
+    public Optional<TaskCompletionRegistry.Entry> findCompletion(String taskId) {
+        return completions.find(taskId);
+    }
+
+    /** Consumed or wait-suppressed notifications are dropped when the session drains its queue. */
+    private boolean isNotificationSuperseded(String taskId, Long generation) {
+        return consumedTasks.isConsumed(taskId, generation)
+                || completions.isNotificationSuppressed(taskId, generation);
     }
 
     /** Reading a finished task's output file is an implicit consumption: the result already reached the model. */
@@ -258,19 +281,21 @@ public class BackgroundTaskManager {
         });
     }
 
-    private void recordTerminal(String taskId, String status, String result, String error, String outputRef) {
-        terminalTasks.put(taskId, new TerminalTask(status, terminalResult(result, outputRef), error, outputRef));
+    private void recordTerminal(String taskId, String status, String result, String error, String outputRef,
+                                TaskCompletionRegistry.Entry completion) {
+        var terminal = new TerminalTask(status, terminalResult(result, outputRef), error, outputRef);
+        terminalTasks.put(taskId, terminal);
         trimTerminalTasks();
+        completion.complete(terminal.toResult().withStats("taskStatus", status));
     }
 
     private void trimTerminalTasks() {
         while (terminalTasks.size() > MAX_TERMINAL_TASKS) {
             terminalTasks.entrySet().stream()
                     .min(Comparator.comparingLong(entry -> entry.getValue().completedAtMs))
-                    .ifPresent(entry -> {
-                        terminalTasks.remove(entry.getKey());
-                        consumedTasks.remove(entry.getKey());
-                    });
+                    // Notification suppression and consumption are generation tombstones and deliberately
+                    // outlive the terminal result, so an already-queued notification cannot resurrect.
+                    .ifPresent(entry -> terminalTasks.remove(entry.getKey()));
         }
     }
 
@@ -279,8 +304,8 @@ public class BackgroundTaskManager {
         runningTasks.remove(taskId, running);
         running.future.cancel(true);
         runNeverStarted(taskId, running);
-        recordTerminal(taskId, "cancelled", null, "cancelled by user", running.outputRef);
-        publishTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user", running.notify);
+        recordTerminal(taskId, "cancelled", null, "cancelled by user", running.outputRef, running.completion);
+        publishTerminal(taskId, "cancelled", running.outputRef, null, "cancelled by user", running);
         return true;
     }
 
@@ -300,13 +325,16 @@ public class BackgroundTaskManager {
     private void notifyTerminal(String taskId, String status, String result, String error, RunningTask running) {
         if (!running.notified.compareAndSet(false, true)) return;
         runningTasks.remove(taskId, running);
-        recordTerminal(taskId, status, result, error, running.outputRef);
-        publishTerminal(taskId, status, running.outputRef, result, error, running.notify);
+        recordTerminal(taskId, status, result, error, running.outputRef, running.completion);
+        publishTerminal(taskId, status, running.outputRef, result, error, running);
     }
 
-    private void publishTerminal(String taskId, String status, String outputRef, String result, String error, boolean notify) {
-        if (notify) {
-            commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error));
+    private void publishTerminal(String taskId, String status, String outputRef, String result, String error,
+                                 RunningTask running) {
+        // A live wait suppresses only the automatic turn; the UI status event below is always delivered.
+        if (running.notify && !running.completion.isNotificationSuppressed()) {
+            commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error,
+                    running.completion.ref().generation()));
         }
         dispatcher.accept(TaskStatusEvent.of(sessionId, taskId, status));
     }
@@ -326,19 +354,21 @@ public class BackgroundTaskManager {
 
     public BackgroundTaskManager createChild() {
         return new BackgroundTaskManager(commandQueue, sinkFactory, sessionId, dispatcher, executor,
-                new SharedTaskState(terminalTasks, consumedTasks));
+                new SharedTaskState(terminalTasks, consumedTasks, completions));
     }
 
     public List<Task> getTasks() {
         return Collections.unmodifiableList(tasks);
     }
 
-    private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error) {
+    private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error,
+                                        long generation) {
         var resultXml = "completed".equals(status)
                 ? "<result>" + truncateResult(result, outputRef) + "</result>"
                 : "<error>" + truncateResult(error, outputRef) + "</error>";
         var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        return "<task-notification>%n<task-id>%s</task-id>%n<status>%s</status>%n%s%s%n</task-notification>%n".formatted(taskId, status, outputRefXml, resultXml);
+        return "<task-notification>%n<task-id>%s</task-id>%n<task-generation>%d</task-generation>%n<status>%s</status>%n%s%s%n</task-notification>%n"
+                .formatted(taskId, generation, status, outputRefXml, resultXml);
     }
 
     private String truncateResult(String text, String outputRef) {
@@ -359,35 +389,49 @@ public class BackgroundTaskManager {
         final String outputRef;
         final Runnable onNeverStarted;
         final boolean notify;
+        final TaskCompletionRegistry.Entry completion;
 
-        private RunningTask(Future<?> future, AtomicBoolean notified, String outputRef, Runnable onNeverStarted, boolean notify) {
+        private RunningTask(Future<?> future, AtomicBoolean notified, String outputRef, Runnable onNeverStarted,
+                            boolean notify, TaskCompletionRegistry.Entry completion) {
             this.future = future;
             this.notified = notified;
             this.outputRef = outputRef;
             this.onNeverStarted = onNeverStarted;
             this.notify = notify;
+            this.completion = completion;
         }
     }
 
     private record TaskRunResult(String status, String result, String error) {
     }
 
-    private record SharedTaskState(Map<String, TerminalTask> terminalTasks, ConsumedTasks consumedTasks) {
+    private record SharedTaskState(Map<String, TerminalTask> terminalTasks, ConsumedTasks consumedTasks,
+                                   TaskCompletionRegistry completions) {
     }
 
+    /** Consumption tombstones are generation-keyed: a re-run owes a notification, old ones stay dropped. */
     private static final class ConsumedTasks {
-        private final Set<String> taskIds = ConcurrentHashMap.newKeySet();
+        private static final String ALL_GENERATIONS = "#*";
+
+        private final Set<String> keys = ConcurrentHashMap.newKeySet();
 
         private void mark(String taskId) {
-            taskIds.add(taskId);
+            keys.add(taskId + ALL_GENERATIONS);
         }
 
-        private void remove(String taskId) {
-            taskIds.remove(taskId);
+        private void mark(String taskId, long generation) {
+            keys.add(taskId + "#" + generation);
         }
 
         private boolean isConsumed(String taskId) {
-            return taskIds.contains(taskId);
+            var prefix = taskId + "#";
+            return keys.stream().anyMatch(key -> key.startsWith(prefix));
+        }
+
+        private boolean isConsumed(String taskId, Long generation) {
+            if (keys.contains(taskId + ALL_GENERATIONS)) return true;
+            if (generation == null) return isConsumed(taskId);
+            return keys.contains(taskId + "#" + generation);
         }
     }
 

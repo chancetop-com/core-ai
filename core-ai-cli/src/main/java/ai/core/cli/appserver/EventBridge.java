@@ -2,6 +2,7 @@ package ai.core.cli.appserver;
 
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.AgentWaitEvent;
 import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
@@ -120,6 +121,11 @@ public class EventBridge implements AgentEventListener {
     @Override
     public void onTaskStatus(TaskStatusEvent event) {
         forward("task_status", event);
+    }
+
+    @Override
+    public void onAgentWait(AgentWaitEvent event) {
+        forward("agent_wait", event);
     }
 
     @Override

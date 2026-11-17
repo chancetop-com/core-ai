@@ -15,6 +15,8 @@ import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.tool.ToolCallAsyncTaskManager;
+import ai.core.tool.wait.WaitCapability;
+import ai.core.tool.wait.WaitEventListener;
 import ai.core.prompt.PromptInject;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
@@ -74,6 +76,8 @@ public final class ExecutionContext {
     private AgentProfileRegistry agentProfileRegistry;
     private RunBudget runBudget;
     private volatile SubagentThreadRegistry subagentThreads;
+    private WaitCapability waitCapability;
+    private WaitEventListener waitEventListener;
 
     ExecutionContext(ExecutionContextBuilder builder) {
         this.sessionId = builder.sessionId;
@@ -93,6 +97,7 @@ public final class ExecutionContext {
         this.backgroundTaskManager = builder.backgroundTaskManager;
         this.cancellationToken = builder.cancellationToken;
         this.runBudget = builder.runBudget;
+        this.waitCapability = builder.waitCapability;
     }
 
     public String getSessionId() {
@@ -396,5 +401,23 @@ public final class ExecutionContext {
 
     public void setRunBudget(RunBudget runBudget) {
         this.runBudget = runBudget;
+    }
+
+    /** Explicit host permission for live-stack waits; disabled unless a host opts in. */
+    public WaitCapability getWaitCapability() {
+        return waitCapability;
+    }
+
+    public void setWaitCapability(WaitCapability waitCapability) {
+        this.waitCapability = waitCapability;
+    }
+
+    /** Non-terminal wait progress for the current session; null in heads that do not display it. */
+    public WaitEventListener getWaitEventListener() {
+        return waitEventListener;
+    }
+
+    public void setWaitEventListener(WaitEventListener waitEventListener) {
+        this.waitEventListener = waitEventListener;
     }
 }

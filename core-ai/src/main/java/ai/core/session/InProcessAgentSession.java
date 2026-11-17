@@ -2,6 +2,7 @@ package ai.core.session;
 
 import ai.core.agent.Agent;
 import ai.core.agent.AttachedContent;
+import ai.core.agent.CancelReason;
 import ai.core.agent.CancellationToken;
 import ai.core.agent.MaxTurnsExceededException;
 import ai.core.agent.lifecycle.PlanUpdateLifecycle;
@@ -75,6 +76,7 @@ public class InProcessAgentSession implements AgentSession {
         this.turnInput = new SessionTurnInput(agent);
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
         var context = agent.getExecutionContext();
+        context.setWaitEventListener(this::dispatch);
         if (context.getSubagentOutputSinkFactory() != null) {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch));
         }
@@ -415,6 +417,10 @@ public class InProcessAgentSession implements AgentSession {
         // dispatchTerminal is a CAS, so whichever side gets there first is the only one that fires.
         if (turnActive.get()) {
             logger.warn("session closed while a turn was still running, aborting it, sessionId={}", sessionId);
+            // The interrupt alone wakes a parked wait but leaves the agent loop running (it would try
+            // another model call); cancelling the turn token is what actually ends the turn.
+            var token = agent.getExecutionContext().getCancellationToken();
+            if (token != null) token.cancel(CancelReason.USER_CANCELLED);
             TurnPersistence.save(agent, sessionId, logger, "forced close");
             var cancelled = TurnCompleteEvent.cancelled(sessionId, agent.getOutput());
             cancelled.turnId = currentTurnId;

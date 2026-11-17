@@ -36,6 +36,8 @@ public enum EventType {
     ENVIRONMENT_OUTPUT_CHUNK,
     @Property(name = "task_status")
     TASK_STATUS,
+    @Property(name = "agent_wait")
+    AGENT_WAIT,
     @Property(name = "custom")
     CUSTOM
 }

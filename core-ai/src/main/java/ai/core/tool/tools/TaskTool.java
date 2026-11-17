@@ -288,6 +288,7 @@ public class TaskTool extends ToolCall {
                 .taskId(taskId)
                 .taskName(taskName)
                 .runBudget(context.getRunBudget() == null ? null : context.getRunBudget().childScope())
+                .waitCapability(context.getWaitCapability())
                 .build();
         // nested subagents share the session's threads: same registry, same persistence, same gate
         subContext.setSubagentThreads(context.getSubagentThreads());

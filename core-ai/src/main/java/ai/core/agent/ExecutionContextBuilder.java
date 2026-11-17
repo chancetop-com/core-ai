@@ -8,6 +8,7 @@ import ai.core.session.BackgroundTaskManager;
 import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import ai.core.tool.wait.WaitCapability;
 import ai.core.tool.tools.TodoStoreFactory;
 import core.framework.util.Maps;
 
@@ -37,6 +38,7 @@ public final class ExecutionContextBuilder {
     BackgroundTaskManager backgroundTaskManager;
     CancellationToken cancellationToken;
     RunBudget runBudget;
+    WaitCapability waitCapability = WaitCapability.DISABLED;
     final Map<String, Object> customVariables = Maps.newHashMap();
 
     public ExecutionContextBuilder sessionId(String sessionId) {
@@ -124,6 +126,11 @@ public final class ExecutionContextBuilder {
 
     public ExecutionContextBuilder runBudget(RunBudget runBudget) {
         this.runBudget = runBudget;
+        return this;
+    }
+
+    public ExecutionContextBuilder waitCapability(WaitCapability waitCapability) {
+        if (waitCapability != null) this.waitCapability = waitCapability;
         return this;
     }
 

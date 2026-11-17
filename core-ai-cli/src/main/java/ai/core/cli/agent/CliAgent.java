@@ -9,6 +9,7 @@ import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.agent.budget.RunBudget;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.agent.profile.BuiltinAgentProfileProvider;
+import ai.core.tool.wait.WaitCapability;
 import ai.core.cli.agent.profile.FilesystemAgentProfileProvider;
 import ai.core.cli.auth.AuthConfig;
 import ai.core.cli.decision.DecisionSupport;
@@ -151,6 +152,9 @@ public class CliAgent {
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
                 .promptSections(constructPromptSection(config, hookOutput))
                 .runBudget(config.runBudget())
+                // the CLI turn thread is a dedicated virtual thread: parking it does not hold a shared
+                // execution slot, so an explicit async wait can block the turn until the task is terminal
+                .waitCapability(WaitCapability.ENABLED)
                 .build();
         execCtx.setMediaProvider(config.mediaProvider);
         execCtx.setImageMediaProvider(config.imageMediaProvider);

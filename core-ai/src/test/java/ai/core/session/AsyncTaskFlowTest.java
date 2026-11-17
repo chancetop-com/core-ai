@@ -30,6 +30,7 @@ import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
+import ai.core.tool.wait.WaitCapability;
 import ai.core.tool.tools.AskUserTool;
 import ai.core.tool.tools.AsyncTaskOutputTool;
 import ai.core.tool.tools.ShellCommandTool;
@@ -82,6 +83,12 @@ class AsyncTaskFlowTest {
         return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
     }
 
+    private static CompletionResponse asyncTaskOutputWaitCallResponse(String taskId) {
+        String json = """
+                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_wait_1","type":"function","function":{"name":"async_task_output","arguments":"{\\"action\\":\\"wait\\",\\"task_id\\":\\"%s\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}""".formatted(taskId);
+        return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
+    }
+
     private static CompletionResponse shellToolCallResponse() {
         String json = """
                 {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_shell_1","type":"function","function":{"name":"run_bash_command","arguments":"{\\"command\\":\\"ssh -L 16379:localhost:6379 host\\"}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}
@@ -116,6 +123,8 @@ class AsyncTaskFlowTest {
         var context = ExecutionContext.builder()
                 .sessionId("async-test-session")
                 .subagentOutputSinkFactory(sinkFactory)
+                // these tests act like the CLI/desktop host, whose turn thread may park on a wait
+                .waitCapability(WaitCapability.ENABLED)
                 .build();
         context.setAgentProfileRegistry(profileRegistry);
         if (subProvider != null) {
@@ -163,6 +172,46 @@ class AsyncTaskFlowTest {
                     "notification turn output must be dispatched, actual: " + listener.turnOutputs);
             assertTrue(listener.text().contains("The background task bg-1 finished"),
                     "notification turn text chunks must be dispatched, actual: " + listener.text());
+        } finally {
+            session.close();
+        }
+    }
+
+    @Test
+    void waitParksTheTurnWithoutCallingTheModelUntilTheTaskCompletes() throws Exception {
+        var waitReached = new CountDownLatch(1);
+        var provider = new StreamingMockLLMProvider() {
+            @Override
+            protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
+                var response = super.doCompletionStream(request, callback);
+                if (getCallCount() == 2) waitReached.countDown();
+                return response;
+            }
+        };
+        provider.addResponse(taskToolCallResponse("bg-wait"));       // main: launch task
+        provider.addResponse(asyncTaskOutputWaitCallResponse("bg-wait")); // main: wait for it
+        provider.addResponse(simpleResponse("got it"));              // main: after the wait returns
+
+        var subProvider = new SlowStreamingMockLLMProvider(800);
+        subProvider.addResponse(simpleResponse("background work result"));
+
+        var agent = buildAgent(provider, new InMemorySinkFactory(), testAgentProfile("You are a test agent", null),
+                List.of(AsyncTaskOutputTool.builder().build()), subProvider);
+        var session = new InProcessAgentSession("async-test-session-wait", agent, true, new InMemoryToolPermissionStore());
+        var listener = new RecordingListener();
+        session.onEvent(listener);
+
+        try {
+            session.sendMessage("launch a task and wait for it");
+            assertTrue(waitReached.await(10, TimeUnit.SECONDS), "the wait tool call must reach the model");
+            Thread.sleep(300);
+            assertEquals(2, provider.getCallCount(),
+                    "the agent must not call the model while parked on the task");
+
+            assertTrue(listener.firstTurn.await(10, TimeUnit.SECONDS), "the turn must finish after the task completes");
+            assertEquals(1, listener.turnCount(), "a wait must not start a notification turn of its own");
+            assertTrue(listener.text().contains("got it"), listener.text());
+            assertEquals(3, provider.getCallCount(), "the model runs again only after the wait result is delivered");
         } finally {
             session.close();
         }

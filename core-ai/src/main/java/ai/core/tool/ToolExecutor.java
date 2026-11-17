@@ -9,6 +9,8 @@ import ai.core.sandbox.SandboxImageReader;
 import ai.core.telemetry.AgentTracer;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.tools.AsyncTaskOutputTool;
+import ai.core.tool.wait.RuntimeWaitTool;
+import ai.core.tool.wait.TaskAwaitCoordinator;
 import ai.core.tool.tools.ReadFileTool;
 import ai.core.tool.tools.WriteFileTool;
 import ai.core.tool.tools.WriteTodosTool;
@@ -140,8 +142,7 @@ public class ToolExecutor {
 
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult doExecute(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context) {
-        // Caller identity rides the OpenTelemetry Context so async tool threads (supplyAsync + makeCurrent)
-        // see it too; outbound HTTP injection points read it via OutboundCallerContext.current().
+        // Caller identity rides the OTel context so async tool threads see it too.
         var caller = context.getCaller();
         if (caller != null) {
             try (var scope = OutboundCallerContext.set(caller)) {
@@ -170,7 +171,13 @@ public class ToolExecutor {
         var startTime = System.currentTimeMillis();
 
         ToolCallResult result;
-        if (useSandbox) {
+        var waitRequest = tool instanceof RuntimeWaitTool waitTool ? waitTool.prepareWait(args) : null;
+        if (waitRequest != null) {
+            // A runtime wait is a control path, not a query: park this thread on the task's completion
+            // instead of running the tool in a bounded worker and returning an intermediate status.
+            result = traceToolSpan(functionCall, tool.isSubAgent(),
+                    () -> TaskAwaitCoordinator.getInstance().await(waitRequest, functionCall, context));
+        } else if (useSandbox) {
             LOGGER.debug("sandbox intercepting tool: {}", tool.getName());
             // a sandbox that cannot be acquired (docker daemon unreachable, pool exhausted) is a failed tool call the
             // agent can report and route around — not a dead turn with nothing shown to the user
@@ -269,9 +276,8 @@ public class ToolExecutor {
         }
     }
 
-    // The sandbox HTTP call has no per-call timeout of its own (the runtime bounds the command), so a run that is
-    // cancelled or timed out must not stay parked on it: the wait is bound to the cancellation token and returns
-    // as soon as the token fires, while the abandoned call finishes on its own thread and is discarded.
+    // No per-call timeout: the wait is bound to the cancellation token, and an abandoned call finishes
+    // on its own thread and is discarded.
     @SuppressWarnings({"try", "PMD.UnusedLocalVariable"})
     private ToolCallResult executeInSandbox(ToolCall tool, FunctionCall functionCall, Map<String, Object> args, ExecutionContext context, ai.core.sandbox.Sandbox sandbox) {
         var budget = context.getRunBudget();
@@ -401,11 +407,7 @@ public class ToolExecutor {
         return existing.get().isTerminal() && tool.getName().equals(existing.get().tool().getName());
     }
 
-    /**
-     * A background task's output file is its result. Once the model reads that file the completion
-     * notification has nothing left to deliver, so the run is marked consumed and its notification turn
-     * is skipped.
-     */
+    /** Reading a finished task's output file is an implicit consumption: its notification turn is skipped. */
     private void markTaskOutputRead(ToolCall tool, Map<String, Object> args, ExecutionContext context) {
         if (!ReadFileTool.TOOL_NAME.equals(tool.getName())) return;
         var taskManager = context.getTaskManager();
@@ -418,18 +420,19 @@ public class ToolExecutor {
         if (!result.isPending() && !result.isWaitingForInput()) {
             return;
         }
-        // async_task_output only relays another task's status. A relay for a task the manager does not track yet
-        // (e.g. one owned by AsyncToolTaskExecutor) must not be registered here: the record would carry a tool that
+        // async_task_output only relays another task's status; registering it here would store a tool that
         // cannot poll, and the next check would drop the task with "does not support polling".
         if (AsyncTaskOutputTool.TOOL_NAME.equals(tool.getName())) return;
 
+        if (result.isPending()) {
+            // Bind the issuing session so a later wait can reject another session's id.
+            AsyncToolTaskExecutor.getInstance().bindOwner(result.getTaskId(), context.getSessionId());
+        }
+
         var asyncTaskManager = context.getAsyncTaskManager();
-        // Register only fresh async work. A pending result that polls a task the manager already tracks or that a
-        // manager owns (poll relay from async_task_output) must not be re-registered: the overwrite would replace
-        // the stored tool with the polling tool, which does not support poll and can never turn the task terminal.
-        // A finished record under the same id from the same tool is a previous batch, not a live task (tools that
-        // key a task per subject, e.g. one render queue per episode, reuse ids): the new work replaces it, otherwise
-        // nobody polls it and the session waits for a completion notice that never comes.
+        // Register only fresh async work: a relay for a task the manager already tracks must not overwrite it
+        // with the polling tool. A finished record under the same id from the same tool is a previous batch
+        // (tools that key a task per subject reuse ids), so the new work replaces it and gets polled.
         if (asyncTaskManager != null && !result.isManagedTask() && isFreshTask(asyncTaskManager, result.getTaskId(), tool)) {
             var asyncTask = new ToolCallAsyncTask(result.getTaskId(), tool, functionCall, result);
             // tagged with the issuing session so the terminal notification finds its way back

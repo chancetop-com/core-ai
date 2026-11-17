@@ -150,6 +150,27 @@ public final class ToolCallResult {
         return this;
     }
 
+    /**
+     * An independent copy for another reader (a wait result, a second waiter). Model usage and cost stay
+     * with the original call: reading a finished task again must not account the same tokens twice.
+     */
+    public ToolCallResult snapshotCopy() {
+        var copy = new ToolCallResult();
+        copy.status = status;
+        copy.taskId = taskId;
+        copy.result = result;
+        copy.toolName = toolName;
+        copy.durationMs = durationMs;
+        copy.stats.putAll(stats);
+        copy.directReturn = directReturn;
+        copy.runtimeException = runtimeException;
+        copy.managedTask = managedTask;
+        copy.type = type;
+        copy.imageBase64 = imageBase64;
+        copy.imageFormat = imageFormat;
+        return copy;
+    }
+
     public Map<String, Object> getStats() {
         return stats;
     }

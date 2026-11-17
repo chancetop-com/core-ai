@@ -4,6 +4,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.session.SessionCommandQueue;
 import ai.core.tool.subagent.SubagentOutputSink;
+import ai.core.tool.wait.WaitCapability;
 import org.junit.jupiter.api.Test;
 
 import java.util.concurrent.CountDownLatch;
@@ -41,7 +42,7 @@ class AsyncTaskOutputToolTest {
     void waitReturnsResultAndSuppressesNotification() throws Exception {
         var queue = new SessionCommandQueue();
         var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
-        var context = ExecutionContext.builder().sessionId("test-session").taskManager(manager).build();
+        var context = ExecutionContext.builder().sessionId("test-session").taskManager(manager).waitCapability(WaitCapability.ENABLED).build();
         manager.submit("wait-1", () -> {
             sleepQuietly(50);
             return "done";
@@ -55,10 +56,10 @@ class AsyncTaskOutputToolTest {
     }
 
     @Test
-    void waitReturnsPendingWhenTimeoutExpires() throws Exception {
+    void waitReturnsTimeoutWithoutCancellingTheTask() throws Exception {
         var queue = new SessionCommandQueue();
         var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
-        var context = ExecutionContext.builder().sessionId("test-session").taskManager(manager).build();
+        var context = ExecutionContext.builder().sessionId("test-session").taskManager(manager).waitCapability(WaitCapability.ENABLED).build();
         var started = new CountDownLatch(1);
         var gate = new CountDownLatch(1);
         manager.submit("wait-2", () -> {
@@ -70,8 +71,25 @@ class AsyncTaskOutputToolTest {
 
         var result = tool().execute("{\"action\":\"wait\",\"task_id\":\"wait-2\",\"timeout_ms\":100}", context);
 
-        assertTrue(result.isPending());
+        assertTrue(result.isFailed());
+        assertEquals("timeout", result.getStats().get("waitOutcome"));
+        assertTrue(manager.isRunning("wait-2"), "a bounded wait must not cancel the task");
         gate.countDown();
+        assertTrue(manager.awaitTask("wait-2", 5000).isCompleted());
+    }
+
+    @Test
+    void waitWithoutCapabilityIsRejected() throws Exception {
+        var queue = new SessionCommandQueue();
+        var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session", event -> { });
+        var context = ExecutionContext.builder().sessionId("test-session").taskManager(manager).build();
+        manager.submit("wait-3", () -> "done", null);
+
+        var result = tool().execute("{\"action\":\"wait\",\"task_id\":\"wait-3\"}", context);
+
+        assertTrue(result.isFailed());
+        assertEquals("unsupported", result.getStats().get("waitOutcome"));
+        assertTrue(result.getResult().startsWith("WAIT_UNSUPPORTED"));
     }
 
     private static final class InMemorySink implements SubagentOutputSink {

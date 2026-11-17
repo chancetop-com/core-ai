@@ -2,6 +2,7 @@ package ai.core.session;
 
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.AgentWaitEvent;
 import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
@@ -43,6 +44,7 @@ final class SessionEventDispatcher {
             case EnvironmentOutputChunkEvent e -> listener.onEnvironmentOutput(e);
             case BatchToolStartEvent e -> listener.onBatchToolStart(e);
             case TaskStatusEvent e -> listener.onTaskStatus(e);
+            case AgentWaitEvent e -> listener.onAgentWait(e);
             case CustomEvent e -> listener.onCustomEvent(e);
             default -> {
             }

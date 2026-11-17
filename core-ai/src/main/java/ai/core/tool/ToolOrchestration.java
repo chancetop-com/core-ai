@@ -7,6 +7,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.tool.wait.WaitRequests;
 import io.opentelemetry.context.Context;
 
 import java.util.ArrayList;
@@ -60,9 +61,17 @@ public class ToolOrchestration {
     public List<Message> execute(List<FunctionCall> toolCalls) {
         var batches = partition(toolCalls);
         List<Message> allMessages = new ArrayList<>();
-        for (var batch : batches) {
+        for (int i = 0; i < batches.size(); i++) {
             context.throwIfCancelled();
+            var batch = batches.get(i);
+            var waited = batch.stream().anyMatch(this::isWaitCall);
             allMessages.addAll(executeBatch(batch));
+            // A steering message that arrived while the turn was parked must reach the model next, not
+            // start (and immediately cancel) side-effecting calls that the model made before the wait.
+            if (waited && context.hasWaitingUserInput()) {
+                addSkippedMessages(allMessages, batches, i + 1);
+                break;
+            }
         }
         return allMessages;
     }
@@ -74,7 +83,9 @@ public class ToolOrchestration {
 
         for (var tc : toolCalls) {
             var group = resolveGroup(tc);
-            if (!isCallConcurrencySafe(tc)) {
+            // A runtime wait is exclusive regardless of its declared group: it parks the calling
+            // thread, so it must never share a concurrent batch or be followed inside that batch.
+            if (!isCallConcurrencySafe(tc) || isWaitCall(tc)) {
                 group = null;
             }
             boolean sameGroup = group != null && group.equals(currentGroup);
@@ -227,6 +238,14 @@ public class ToolOrchestration {
         return msgs;
     }
 
+    private void addSkippedMessages(List<Message> messages, List<List<FunctionCall>> batches, int from) {
+        for (int i = from; i < batches.size(); i++) {
+            for (var tc : batches.get(i)) {
+                messages.add(skippedMessage(tc));
+            }
+        }
+    }
+
     private String resolveGroup(FunctionCall tc) {
         return groupIndex.get(tc.function.name);
     }
@@ -239,5 +258,16 @@ public class ToolOrchestration {
 
     private Message buildToolNotFoundMessage(FunctionCall tc) {
         return AgentHelper.buildToolMessage(tc, ToolCallResult.failed("tool not found: " + tc.function.name));
+    }
+
+    /** Pure classification: no waiter registration, no task lookup, no execution side effect. */
+    private boolean isWaitCall(FunctionCall tc) {
+        return WaitRequests.prepare(resolveTool(tc), tc.function.arguments) != null;
+    }
+
+    private Message skippedMessage(FunctionCall tc) {
+        return AgentHelper.buildToolMessage(tc, ToolCallResult.failed(
+                "Tool call skipped: the user sent a new message while the agent was waiting for an async task. "
+                        + "Read the latest user message instead of retrying this call."), false, context);
     }
 }

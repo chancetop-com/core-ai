@@ -12,7 +12,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiPredicate;
 import java.util.function.Predicate;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -23,6 +25,7 @@ import java.util.regex.Pattern;
 public class SessionCommandQueue {
 
     private static final Pattern TASK_ID_PATTERN = Pattern.compile("<task-id>\\s*([^<]+?)\\s*</task-id>");
+    private static final Pattern TASK_GENERATION_PATTERN = Pattern.compile("<task-generation>\\s*(\\d+)\\s*</task-generation>");
 
     private final Queue<QueuedCommand> queue = new PriorityQueue<>(
             Comparator.comparingInt((QueuedCommand command) -> command.mode().priority)
@@ -31,15 +34,21 @@ public class SessionCommandQueue {
     private final AtomicLong sequence = new AtomicLong();
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
-    private volatile Predicate<String> consumedTaskFilter;
+    private volatile BiPredicate<String, Long> taskNotificationFilter;
 
     /**
-     * A terminal task whose result the session already consumed must not start a notification turn.
-     * The filter is keyed by task id and is consulted when the queue is drained, so a task consumed
-     * while its notification is still waiting is dropped as well.
+     * A terminal task whose result the session already consumed (or whose automatic notification a
+     * live wait suppressed) must not start a notification turn. The filter is keyed by task id and
+     * generation and is consulted when the queue is drained, so a task consumed while its notification
+     * is still waiting is dropped as well. A notification without a generation is matched by task id.
      */
+    void setTaskNotificationFilter(BiPredicate<String, Long> filter) {
+        this.taskNotificationFilter = filter;
+    }
+
+    /** Compatibility for hosts that only know task ids; a generation-less notification is matched by id. */
     void setConsumedTaskFilter(Predicate<String> filter) {
-        this.consumedTaskFilter = filter;
+        this.taskNotificationFilter = (taskId, generation) -> filter.test(taskId);
     }
 
     public void enqueueUserInput(String value, Map<String, Object> variables) {
@@ -168,10 +177,13 @@ public class SessionCommandQueue {
     }
 
     private boolean isConsumedNotification(String notification) {
-        var filter = consumedTaskFilter;
+        var filter = taskNotificationFilter;
         if (filter == null) return false;
-        var matcher = TASK_ID_PATTERN.matcher(notification);
-        return matcher.find() && filter.test(matcher.group(1));
+        Matcher taskId = TASK_ID_PATTERN.matcher(notification);
+        if (!taskId.find()) return false;
+        Matcher generation = TASK_GENERATION_PATTERN.matcher(notification);
+        var parsedGeneration = generation.find() ? Long.valueOf(generation.group(1)) : null;
+        return filter.test(taskId.group(1), parsedGeneration);
     }
 
     public enum CommandMode {
