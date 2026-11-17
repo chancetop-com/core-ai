@@ -1,14 +1,14 @@
 package ai.core.api.server.conversation;
 
-import core.framework.api.json.Property;
+import core.framework.api.web.service.QueryParam;
 
 /**
  * @author core-ai
  */
 public class ConversationAgentListRequest {
-    @Property(name = "query")
+    @QueryParam(name = "query")
     public String query;
 
-    @Property(name = "limit")
+    @QueryParam(name = "limit")
     public Integer limit;
 }
