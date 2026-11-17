@@ -7,7 +7,8 @@
  * @author stephen
  */
 
-export type DockKind = 'none' | 'browser' | 'artifacts';
+/** Built-in docks keep their stable keys; plugin docks use `plugin:<pluginId>:<contributionId>`. */
+export type DockKind = 'none' | 'browser' | 'artifacts' | `plugin:${string}`;
 
 /** Whether the artifact pane shows the conversation's own files or the whole workspace. */
 export type ArtifactScope = 'session' | 'workspace';

@@ -87,6 +87,24 @@ contextBridge.exposeInMainWorld('coreai', {
   updateCheck: () => ipcRenderer.invoke('update:check'),
   updateDownload: () => ipcRenderer.invoke('update:download'),
   updateInstall: () => ipcRenderer.invoke('update:install'),
+  pluginsList: () => ipcRenderer.invoke('plugins:list'),
+  pluginsContributions: () => ipcRenderer.invoke('plugins:contributions'),
+  pluginsInstallFolder: () => ipcRenderer.invoke('plugins:installFolder'),
+  pluginsInstallZip: () => ipcRenderer.invoke('plugins:installZip'),
+  pluginsEnable: (pluginId: string) => ipcRenderer.invoke('plugins:enable', pluginId),
+  pluginsDisable: (pluginId: string) => ipcRenderer.invoke('plugins:disable', pluginId),
+  pluginsGrant: (pluginId: string, capabilities: string[]) => ipcRenderer.invoke('plugins:grant', pluginId, capabilities),
+  pluginsRevoke: (pluginId: string) => ipcRenderer.invoke('plugins:revoke', pluginId),
+  pluginsRemove: (pluginId: string) => ipcRenderer.invoke('plugins:remove', pluginId),
+  pluginsSetSetting: (pluginId: string, key: string, value: string | number | boolean) =>
+    ipcRenderer.invoke('plugins:setSetting', pluginId, key, value),
+  onPluginsChanged: (callback: () => void) => {
+    const listener = () => callback();
+    ipcRenderer.on('plugins:changed', listener);
+    return () => {
+      ipcRenderer.removeListener('plugins:changed', listener);
+    };
+  },
   onUpdateState: (callback: (state: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('update:state', listener);

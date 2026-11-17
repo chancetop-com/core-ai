@@ -8,7 +8,7 @@ export interface EngineSupervisorOptions {
   enginePath: string;
   engineArgs?: string[];
   clientVersion: string;
-  extraEnv?: () => Record<string, string>;
+  extraEnv?: (workspace: string) => Record<string, string> | Promise<Record<string, string>>;
   onEvent: (workspace: string, method: string, params: Record<string, unknown>) => void;
   onLog?: (workspace: string, line: string) => void;
 }
@@ -41,7 +41,7 @@ export class EngineSupervisor {
     }
     if (state && state.approvalPolicy !== approvalPolicy) { await this.dispose(workspace); state = undefined; }
     if (!state) {
-      const client = this.spawnClient(workspace);
+      const client = await this.spawnClient(workspace);
       const created: EngineState = { client, approvalPolicy, capabilities: [], ready: Promise.resolve() };
       created.ready = this.initialize(created, workspace).catch((error: Error) => { this.engines.delete(workspace); throw error; });
       this.engines.set(workspace, created);
@@ -59,9 +59,10 @@ export class EngineSupervisor {
     this.options.onLog?.(workspace, `engine ready (pid ${state.client.pid ?? '?'}), policy=${state.approvalPolicy}`);
   }
 
-  private spawnClient(workspace: string): RpcClient {
+  private async spawnClient(workspace: string): Promise<RpcClient> {
     const enginePath = this.options.enginePath;
-    const clientOptions = { cwd: workspace, env: { ...process.env, ...(this.options.extraEnv?.() ?? {}) }, onStderr: (line: string) => this.options.onLog?.(workspace, line) };
+    const extraEnv = (await this.options.extraEnv?.(workspace)) ?? {};
+    const clientOptions = { cwd: workspace, env: { ...process.env, ...extraEnv }, onStderr: (line: string) => this.options.onLog?.(workspace, line) };
     if (this.options.engineArgs) return this.attach(new RpcClient(enginePath, this.options.engineArgs, clientOptions), workspace, `engine spawned: ${enginePath} ${this.options.engineArgs.join(' ')}`);
     if (process.platform === 'win32' && /\.(bat|cmd)$/i.test(enginePath)) {
       const libDir = path.join(path.dirname(path.dirname(enginePath)), 'lib');

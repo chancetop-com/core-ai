@@ -28,6 +28,8 @@ import {
   type OcgTargetView,
 } from './notifications';
 import { createRichCard, parseRichCard } from './richCard';
+import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections } from './pluginView';
+import type { PluginOperationResult, PluginView } from '../shared/pluginManifest';
 import {
   configureRemoteChat,
   deactivateRemoteSession,
@@ -446,6 +448,17 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   updateDownload(): Promise<UpdateState | null>;
   updateInstall(): Promise<UpdateState | null>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
+  pluginsList(): Promise<PluginView[]>;
+  pluginsContributions(): Promise<Array<{ pluginId: string; name: string; contributions: { dock: any[]; settings: any[]; composer: any[] } }>>;
+  pluginsInstallFolder(): Promise<PluginOperationResult | null>;
+  pluginsInstallZip(): Promise<PluginOperationResult | null>;
+  pluginsEnable(pluginId: string): Promise<PluginOperationResult>;
+  pluginsDisable(pluginId: string): Promise<PluginOperationResult>;
+  pluginsGrant(pluginId: string, capabilities: string[]): Promise<PluginOperationResult>;
+  pluginsRevoke(pluginId: string): Promise<PluginOperationResult>;
+  pluginsRemove(pluginId: string): Promise<PluginOperationResult>;
+  pluginsSetSetting(pluginId: string, key: string, value: string | number | boolean): Promise<PluginOperationResult>;
+  onPluginsChanged(callback: () => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   info(): Promise<any>;
   remoteServers(): Promise<Array<{ serverUrl: string; name: string | null; userId: string | null; active: boolean; insecure: boolean }>>;
@@ -556,6 +569,7 @@ const state: {
   notifyTarget: NotifyTargetView | null;
   notifySessions: Record<string, boolean>;
   notifyPending: boolean;
+  plugins: PluginView[];
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -594,6 +608,7 @@ const state: {
   notifyTarget: null,
   notifySessions: {},
   notifyPending: false,
+  plugins: [],
 };
 
 let chatView: HTMLElement | null = null;
@@ -652,6 +667,10 @@ let rightDockWasOpen = false;
 let appliedDockFullscreen = false;
 let browserTabEl: HTMLButtonElement | null = null;
 let artifactsTabEl: HTMLButtonElement | null = null;
+let rightDockTabsEl: HTMLElement | null = null;
+let pluginDockPanelsEl: HTMLElement | null = null;
+/** Plugin dock tab buttons/panels rebuilt from the active contributions on every plugin refresh. */
+let pluginDockNodes: Array<{ key: string; button: HTMLButtonElement; panel: HTMLElement }> = [];
 let artifactsToggleEl: HTMLButtonElement | null = null;
 let artifactPaneEl: HTMLElement | null = null;
 let artifactGalleryEl: HTMLElement | null = null;
@@ -2278,6 +2297,16 @@ function renderComposerControls(): void {
     composerControlsEl.append(channelButton);
   }
 
+  // Plugin composer actions only insert text; sending still goes through the normal composer path
+  // and its approvals, so a plugin cannot send a message on its own.
+  for (const action of composerActions(state.plugins)) {
+    const button = el('button', 'composer-plugin-action', action.title) as HTMLButtonElement;
+    button.type = 'button';
+    button.title = `Insert “${action.title}” from ${action.pluginId}`;
+    button.onclick = () => insertComposerText(action.insertText);
+    composerControlsEl.append(button);
+  }
+
   const workspacePair = el('span', 'control-pair');
   workspacePair.append(el('span', 'composer-label', 'Workspace'));
   const workspace = el('select');
@@ -3244,12 +3273,14 @@ function buildRightDock(): HTMLElement {
   const dock = el('div', 'right-dock');
   rightDockEl = dock;
   const tabs = el('div', 'right-dock-tabs');
+  rightDockTabsEl = tabs;
   browserTabEl = el('button', 'right-dock-tab', 'Browser') as HTMLButtonElement;
   browserTabEl.onclick = () => setRightDock(surface.dock === 'browser' ? 'none' : 'browser');
   artifactsTabEl = el('button', 'right-dock-tab', 'Artifacts') as HTMLButtonElement;
   artifactsTabEl.onclick = () => toggleArtifactsDock();
   tabs.append(browserTabEl, artifactsTabEl);
-  dock.append(tabs, buildBrowserPanel(), buildArtifactPane());
+  pluginDockPanelsEl = el('div', 'right-dock-plugin-panels');
+  dock.append(tabs, buildBrowserPanel(), buildArtifactPane(), pluginDockPanelsEl);
   renderDock();
   return dock;
 }
@@ -3262,10 +3293,12 @@ function setRightDock(dock: DockKind): void {
 }
 
 function renderDock(): void {
+  renderPluginDock();
   const open = surface.dock !== 'none';
   if (rightDockEl) rightDockEl.hidden = !open;
   if (browserPanelEl) browserPanelEl.hidden = surface.dock !== 'browser';
   if (artifactPaneEl) artifactPaneEl.hidden = surface.dock !== 'artifacts';
+  for (const node of pluginDockNodes) node.panel.hidden = surface.dock !== node.key;
   renderDockTabs();
   renderBrowserToggle(Boolean(state.browserStatus?.running));
   renderArtifactsToggle();
@@ -3274,9 +3307,78 @@ function renderDock(): void {
   scheduleBrowserBounds();
 }
 
+/**
+ * Rebuilds plugin dock tabs from the currently active contributions. A removed or revoked plugin
+ * cannot leave a live panel behind: its tab disappears and a selected stale key falls back to none.
+ */
+function renderPluginDock(): void {
+  if (!rightDockTabsEl || !pluginDockPanelsEl) return;
+  for (const node of pluginDockNodes) {
+    node.button.remove();
+    node.panel.remove();
+  }
+  pluginDockNodes = [];
+  for (const tab of dockTabs(state.plugins)) {
+    const button = el('button', 'right-dock-tab', tab.title) as HTMLButtonElement;
+    button.onclick = () => setRightDock(surface.dock === tab.key ? 'none' : (tab.key as DockKind));
+    rightDockTabsEl.append(button);
+    const panel = el('div', 'plugin-dock-panel');
+    panel.append(pluginDockPanel(tab.pluginId, tab.title, tab.blocks));
+    pluginDockPanelsEl.append(panel);
+    pluginDockNodes.push({ key: tab.key, button, panel });
+  }
+  if (isPluginDockKey(surface.dock) && !pluginDockNodes.some((node) => node.key === surface.dock)) {
+    surface.dock = 'none';
+    if (rightDockEl) rightDockEl.hidden = true;
+  }
+}
+
+function pluginDockPanel(pluginId: string, title: string, blocks: Array<{ type: string; text?: string; items?: Array<{ label: string; value: string }>; columns?: string[]; rows?: string[][] }>): HTMLElement {
+  const root = el('div', 'plugin-dock');
+  const head = el('div', 'plugin-dock-head');
+  head.append(el('span', 'plugin-dock-title', title));
+  head.append(el('span', 'plugin-dock-source', pluginId));
+  root.append(head);
+  const body = el('div', 'plugin-dock-body');
+  for (const block of blocks) {
+    if (block.type === 'divider') {
+      body.append(el('div', 'plugin-dock-divider'));
+      continue;
+    }
+    if (block.type === 'text' && typeof block.text === 'string') {
+      body.append(el('div', 'plugin-dock-text', block.text));
+      continue;
+    }
+    if (block.type === 'key_values' && Array.isArray(block.items)) {
+      const list = el('dl', 'plugin-dock-kv');
+      for (const item of block.items) {
+        list.append(el('dt', undefined, item.label));
+        list.append(el('dd', undefined, item.value));
+      }
+      body.append(list);
+      continue;
+    }
+    if (block.type === 'table' && Array.isArray(block.columns) && Array.isArray(block.rows)) {
+      const table = el('table', 'plugin-dock-table');
+      const headRow = el('tr');
+      for (const column of block.columns) headRow.append(el('th', undefined, column));
+      table.append(headRow);
+      for (const row of block.rows) {
+        const tr = el('tr');
+        for (const cell of row) tr.append(el('td', undefined, cell));
+        table.append(tr);
+      }
+      body.append(table);
+    }
+  }
+  root.append(body);
+  return root;
+}
+
 function renderDockTabs(): void {
   browserTabEl?.classList.toggle('active', surface.dock === 'browser');
   artifactsTabEl?.classList.toggle('active', surface.dock === 'artifacts');
+  for (const node of pluginDockNodes) node.button.classList.toggle('active', surface.dock === node.key);
   artifactsTabEl?.classList.toggle('unread', surface.artifactUnread && surface.dock !== 'artifacts');
 }
 
@@ -7274,8 +7376,200 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   body.append(await renderBrowserAutomationSection());
   body.append(await renderChannelsSection());
   body.append(await renderComputerUseSection());
+  body.append(await renderPluginsSection());
   body.append(renderAboutSection());
   return root;
+}
+
+/**
+ * Settings → Plugins. Packages are installed disabled; the card shows exactly which capabilities
+ * the package declares, what is granted, and whether the engine/UI parts are active. Scripted UI
+ * and hook/MCP components are surfaced as unsupported rather than silently ignored.
+ */
+async function renderPluginsSection(): Promise<HTMLElement> {
+  await loadPlugins();
+  const active = state.plugins.filter((plugin) => plugin.status === 'active').length;
+  const section = collapsibleSettingsSection('Plugins',
+    state.plugins.length
+      ? `${active}/${state.plugins.length} active · local folder or .zip packages only`
+      : 'Install a local plugin folder or .zip. Packages start disabled and ask for capabilities before activation.');
+  const actions = el('div', 'settings-actions');
+  const installFolder = el('button', 'btn small primary', 'Install folder…') as HTMLButtonElement;
+  installFolder.type = 'button';
+  installFolder.onclick = async () => {
+    installFolder.disabled = true;
+    try {
+      const result = await window.coreai.pluginsInstallFolder();
+      await afterPluginOperation(result, 'Plugin installed — grant its capabilities to activate it');
+    } finally {
+      installFolder.disabled = false;
+    }
+  };
+  const installZip = el('button', 'btn small', 'Install .zip…') as HTMLButtonElement;
+  installZip.type = 'button';
+  installZip.onclick = async () => {
+    installZip.disabled = true;
+    try {
+      const result = await window.coreai.pluginsInstallZip();
+      await afterPluginOperation(result, 'Plugin installed — grant its capabilities to activate it');
+    } finally {
+      installZip.disabled = false;
+    }
+  };
+  const refresh = el('button', 'btn small', 'Refresh') as HTMLButtonElement;
+  refresh.type = 'button';
+  refresh.onclick = async () => {
+    await loadPlugins();
+    await renderContent();
+  };
+  actions.append(installFolder, installZip, refresh);
+  section.body.append(actions);
+  section.body.append(el('div', 'hint',
+    'Only skills can be contributed to the local agent in this build. Hook, MCP, command and scripted UI components are reported as unsupported and are never executed.'));
+
+  if (!state.plugins.length) {
+    section.body.append(el('div', 'hint', 'No plugins installed.'));
+    return section.root;
+  }
+
+  for (const plugin of state.plugins) {
+    section.body.append(pluginCard(plugin));
+  }
+  return section.root;
+}
+
+function pluginCard(plugin: PluginView): HTMLElement {
+  const card = el('div', `plugin-card status-${plugin.status}`);
+  const head = el('div', 'plugin-card-head');
+  head.append(el('span', 'plugin-card-name', plugin.name));
+  head.append(el('span', 'plugin-card-version', `v${plugin.version}`));
+  head.append(el('span', `plugin-card-status status-${plugin.status}`, plugin.status));
+  card.append(head);
+  card.append(el('div', 'plugin-card-id', `${plugin.id} · ${plugin.scope} · ${plugin.digest.slice(0, 12)}`));
+  if (plugin.reason) card.append(el('div', 'hint', plugin.reason));
+
+  const declared = [...plugin.requiredCapabilities, ...plugin.optionalCapabilities];
+  if (declared.length) {
+    const caps = el('div', 'plugin-capabilities');
+    for (const capability of declared) {
+      const granted = plugin.granted.includes(capability);
+      const chip = el('span', `plugin-capability${granted ? ' granted' : ''}`,
+        `${granted ? '✓' : '○'} ${pluginCapabilityLabel(capability)}`);
+      chip.title = capability;
+      caps.append(chip);
+    }
+    card.append(caps);
+  }
+
+  const contributions = [
+    plugin.contributions.dock.length ? `dock: ${plugin.contributions.dock.map((item) => item.title).join(', ')}` : '',
+    plugin.contributions.settings.length ? `settings: ${plugin.contributions.settings.map((item) => item.title).join(', ')}` : '',
+    plugin.contributions.composer.length ? `composer: ${plugin.contributions.composer.map((item) => item.title).join(', ')}` : '',
+  ].filter(Boolean);
+  if (contributions.length) card.append(el('div', 'hint', contributions.join(' · ')));
+  if (plugin.unsupported.length) {
+    card.append(el('div', 'hint plugin-unsupported', `Unsupported in this build: ${[...new Set(plugin.unsupported)].join(', ')}`));
+  }
+
+  const buttons = el('div', 'settings-actions');
+  if (plugin.enabled) {
+    const disable = el('button', 'btn small', 'Disable') as HTMLButtonElement;
+    disable.onclick = async () => afterPluginOperation(await window.coreai.pluginsDisable(plugin.id), 'Plugin disabled');
+    buttons.append(disable);
+  } else {
+    const enable = el('button', 'btn small primary', 'Enable') as HTMLButtonElement;
+    enable.onclick = async () => afterPluginOperation(await window.coreai.pluginsEnable(plugin.id), 'Plugin enabled');
+    buttons.append(enable);
+  }
+  if (pluginNeedsConsent(plugin)) {
+    const grant = el('button', 'btn small', 'Review permissions…') as HTMLButtonElement;
+    grant.onclick = async () => {
+      const lines = declared.map((capability) =>
+        `${plugin.requiredCapabilities.includes(capability) ? '[required]' : '[optional]'} ${capability} — ${pluginCapabilityLabel(capability)}`);
+      const detail = plugin.components.some((component) => component.kind === 'skills')
+        ? '\n\nThis plugin adds skills to the local agent. Skills can instruct the agent to use tools; the normal tool approval still applies.'
+        : '';
+      if (!window.confirm(`Grant these capabilities to ${plugin.name}?\n\n${lines.join('\n')}${detail}`)) return;
+      await afterPluginOperation(await window.coreai.pluginsGrant(plugin.id, declared), 'Permissions granted');
+    };
+    buttons.append(grant);
+  } else if (plugin.granted.length) {
+    const revoke = el('button', 'btn small danger', 'Revoke permissions') as HTMLButtonElement;
+    revoke.onclick = async () => {
+      if (!window.confirm(`Revoke all permissions from ${plugin.name}? Its skills and panels stop being used.`)) return;
+      await afterPluginOperation(await window.coreai.pluginsRevoke(plugin.id), 'Permissions revoked');
+    };
+    buttons.append(revoke);
+  }
+  const remove = el('button', 'btn small danger', 'Remove') as HTMLButtonElement;
+  remove.onclick = async () => {
+    if (!window.confirm(`Remove ${plugin.name}? Its settings stay on disk until you reinstall it.`)) return;
+    await afterPluginOperation(await window.coreai.pluginsRemove(plugin.id), 'Plugin removed');
+  };
+  buttons.append(remove);
+  card.append(buttons);
+
+  for (const group of settingsSections([plugin])) {
+    const box = el('div', 'plugin-settings');
+    box.append(el('div', 'plugin-settings-title', group.title));
+    for (const field of group.fields) {
+      const row = el('label', 'plugin-setting-row');
+      row.append(el('span', 'plugin-setting-label', field.label));
+      const current = plugin.settings[field.key] ?? field.default;
+      if (field.type === 'boolean') {
+        const input = el('input') as HTMLInputElement;
+        input.type = 'checkbox';
+        input.checked = current === true;
+        input.onchange = async () => {
+          await afterPluginOperation(await window.coreai.pluginsSetSetting(plugin.id, field.key, input.checked), 'Setting saved', false);
+        };
+        row.append(input);
+      } else {
+        const input = el('input', 'settings-input') as HTMLInputElement;
+        input.type = field.type === 'number' ? 'number' : 'text';
+        input.value = current === undefined ? '' : String(current);
+        if (field.placeholder) input.placeholder = field.placeholder;
+        input.onchange = async () => {
+          const value = field.type === 'number' ? Number(input.value) : input.value;
+          await afterPluginOperation(await window.coreai.pluginsSetSetting(plugin.id, field.key, value), 'Setting saved', false);
+        };
+        row.append(input);
+      }
+      box.append(row);
+    }
+    card.append(box);
+  }
+  return card;
+}
+
+async function afterPluginOperation(result: PluginOperationResult | null, message: string, refreshContent = true): Promise<void> {
+  if (result === null) return;
+  if (!result.ok) {
+    if (result.code !== 'cancelled') toast(result.message || result.code, 'error');
+    return;
+  }
+  await loadPlugins();
+  toast(message);
+  if (refreshContent && state.nav === 'settings') await renderContent();
+}
+
+async function loadPlugins(): Promise<void> {
+  try {
+    state.plugins = normalizePlugins(await window.coreai.pluginsList());
+  } catch {
+    state.plugins = [];
+  }
+  renderPluginDock();
+}
+
+function insertComposerText(text: string): void {
+  if (!composerInput || !text) return;
+  const current = composerInput.value;
+  const separator = current && !/\s$/.test(current) ? ' ' : '';
+  composerInput.value = `${current}${separator}${text}`;
+  surface.draft = composerInput.value;
+  composerAutoGrow?.();
+  composerInput.focus();
 }
 
 /**
@@ -9100,6 +9394,13 @@ async function bootstrap(): Promise<void> {
   state.notifySessions = normalizeNotifySessionsMap(settings?.notifySessions);
   state.capabilities = state.workspace ? await window.coreai.engineCapabilities(state.workspace).catch(() => []) : [];
   state.colorScheme = normalizeColorScheme(settings?.colorScheme);
+  await loadPlugins();
+  window.coreai.onPluginsChanged(() => {
+    void loadPlugins().then(() => {
+      renderComposerControls();
+      if (state.nav === 'settings') void renderContent();
+    });
+  });
   try {
     state.auth = await window.coreai.authStatus();
   } catch {

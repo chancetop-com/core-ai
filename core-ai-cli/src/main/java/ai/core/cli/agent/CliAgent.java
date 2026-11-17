@@ -22,6 +22,7 @@ import ai.core.cli.memory.MemorySystemPrompt;
 import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.plugin.PluginManager;
+import ai.core.cli.plugin.PluginSkillRoots;
 import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
@@ -230,6 +231,11 @@ public class CliAgent {
         int priority = 75; // Between workspace (50) and user (100)
         for (var source : pluginManager.getEnabledPluginSkillSources()) {
             builder.source("plugin:" + source[0], source[1], priority);
+        }
+
+        // Desktop-managed plugin packages: the host injects only active, granted roots.
+        for (var root : PluginSkillRoots.fromEnvironment()) {
+            builder.source("plugin-store:" + root.name(), root.dir(), priority);
         }
 
         return builder.build();

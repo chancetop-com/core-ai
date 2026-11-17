@@ -50,6 +50,8 @@ import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
+import { PluginHost } from './plugins/PluginHost';
+import type { PluginView } from '../shared/pluginManifest';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
 import { readEngineManifest, standaloneCliTargets, syncStandaloneClis } from './update/CliUpdate';
 import { installArgs, UpdateService } from './update/UpdateService';
@@ -92,6 +94,7 @@ declare const __APP_VERSION__: string;
 const clientVersion = __APP_VERSION__;
 let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
+let pluginHost: PluginHost | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
 let builtinSkills: BuiltinSkills | null = null;
@@ -429,6 +432,15 @@ async function reloadEnginesForProviderChange(): Promise<void> {
     if (running && running.size > 0) providerPendingReload.add(workspace);
     else await applyProviderReload(workspace);
   }
+}
+
+/**
+ * Plugin installs, grants and revocations change the engine's skill roots. Reuse the provider
+ * safe-point rule: an engine with a running turn is reloaded after that turn instead of being
+ * killed mid-flight.
+ */
+function reloadEnginesAtSafePoint(): Promise<void> {
+  return reloadEnginesForProviderChange();
 }
 
 function savedProviderKey(store: ReturnType<typeof loadProviderStore>['store'], idOrType: string | null | undefined): string | null {
@@ -1362,6 +1374,93 @@ function registerIpc(): void {
     const error = await shell.openPath(target);
     return error ? { ok: false, error } : { ok: true };
   });
+
+  // Plugin IPC is a separate surface from the legacy engine bridge: every handler is bound to the
+  // main window's top frame and returns a typed envelope instead of throwing across IPC.
+  ipcMain.handle('plugins:list', (event) => {
+    if (!isMainFrameSender(event)) return [];
+    return pluginHost?.list() ?? [];
+  });
+  ipcMain.handle('plugins:contributions', (event) => {
+    if (!isMainFrameSender(event)) return [];
+    return pluginHost?.contributions() ?? [];
+  });
+  ipcMain.handle('plugins:installFolder', async (event) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin install is only available from the app window');
+    if (!pluginHost) return pluginFailure('unavailable', 'plugin host is not ready');
+    const picked = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+    if (picked.canceled || !picked.filePaths.length) return null;
+    return pluginOperation(() => pluginHost!.installFolder(picked.filePaths[0]));
+  });
+  ipcMain.handle('plugins:installZip', async (event) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin install is only available from the app window');
+    if (!pluginHost) return pluginFailure('unavailable', 'plugin host is not ready');
+    const picked = await dialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: 'Plugin archive', extensions: ['zip'] }] });
+    if (picked.canceled || !picked.filePaths.length) return null;
+    return pluginOperation(() => pluginHost!.installZip(picked.filePaths[0]));
+  });
+  ipcMain.handle('plugins:enable', async (event, pluginId: string) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
+    return pluginOperation(() => pluginHost!.setEnabled(pluginId, true));
+  });
+  ipcMain.handle('plugins:disable', async (event, pluginId: string) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
+    return pluginOperation(() => pluginHost!.setEnabled(pluginId, false));
+  });
+  ipcMain.handle('plugins:grant', async (event, pluginId: string, capabilities: string[]) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId) || !Array.isArray(capabilities)) {
+      return pluginFailure('invalid_request', 'invalid plugin grant request');
+    }
+    return pluginOperation(() => pluginHost!.grant(pluginId, capabilities.filter((capability): capability is string => typeof capability === 'string')));
+  });
+  ipcMain.handle('plugins:revoke', async (event, pluginId: string) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
+    return pluginOperation(() => pluginHost!.revoke(pluginId));
+  });
+  ipcMain.handle('plugins:remove', async (event, pluginId: string) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
+    return pluginOperation(async () => {
+      await pluginHost!.remove(pluginId);
+      return null;
+    });
+  });
+  ipcMain.handle('plugins:setSetting', async (event, pluginId: string, key: string, value: string | number | boolean) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId) || typeof key !== 'string' || !key) return pluginFailure('invalid_request', 'invalid plugin setting');
+    if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'boolean') {
+      return pluginFailure('invalid_request', 'invalid plugin setting value');
+    }
+    return pluginOperation(() => pluginHost!.setSetting(pluginId, key, value));
+  });
+}
+
+type PluginOperationResult = { ok: true; plugin: PluginView | null } | { ok: false; code: string; message: string };
+
+function pluginFailure(code: string, message: string): PluginOperationResult {
+  return { ok: false, code, message };
+}
+
+async function pluginOperation(action: () => Promise<PluginView | null>): Promise<PluginOperationResult> {
+  try {
+    return { ok: true, plugin: await action() };
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    return pluginFailure(typeof code === 'string' ? code : 'plugin_failed', error instanceof Error ? error.message : String(error));
+  }
+}
+
+function validPluginId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value);
+}
+
+function isMainFrameSender(event: Electron.IpcMainInvokeEvent): boolean {
+  const contents = mainWindow?.webContents;
+  return Boolean(contents) && event.sender === contents && event.senderFrame === contents.mainFrame;
 }
 function resolveInsideWorkspace(workspace: string, relativePath: string): string | null {
   const root = path.resolve(workspace);
@@ -1428,6 +1527,14 @@ else {
       onLog: (message) => console.log(`[skills] ${message}`),
     });
     installConfiguredBuiltins();
+    pluginHost = new PluginHost({
+      root: path.join(os.homedir(), '.core-ai', 'plugin-store'),
+      log: (line) => console.log(`[plugins] ${line}`),
+      onChanged: () => {
+        send('plugins:changed', {});
+        void reloadEnginesAtSafePoint();
+      },
+    });
     updateService = new UpdateService({
       currentVersion: clientVersion,
       isPackaged: app.isPackaged,
@@ -1452,11 +1559,12 @@ else {
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,
-      extraEnv: () => {
+      extraEnv: async (workspace: string) => {
         const enginePath = resolveEnginePath();
         let env: Record<string, string> = {
           ...(browserManager?.engineEnv() ?? {}),
           ...(cuaManager?.engineEnv(settings.computerUse === true) ?? {}),
+          ...(await pluginHost?.engineEnv() ?? {}),
           CORE_AI_CLI_BIN: enginePath,
           CORE_AI_BROWSER_TOOL: resolveExecutable('browser-use') ? 'ready' : 'missing',
         };

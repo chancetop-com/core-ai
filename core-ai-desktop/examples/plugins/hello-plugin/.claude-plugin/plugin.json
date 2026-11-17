@@ -1,0 +1,56 @@
+{
+  "name": "Hello Plugin",
+  "version": "1.0.0",
+  "description": "Example desktop plugin: one skill, one read-only dock panel, declarative settings and a composer template.",
+  "coreai": {
+    "schemaVersion": 1,
+    "id": "example.hello-plugin",
+    "desktopApi": "^1.0",
+    "components": [
+      { "kind": "skills", "path": "skills" }
+    ],
+    "capabilities": {
+      "required": ["engine.skills", "ui.dock", "ui.settings", "ui.composer"],
+      "optional": []
+    },
+    "contributes": {
+      "dock": [
+        {
+          "id": "overview",
+          "title": "Hello",
+          "blocks": [
+            { "type": "text", "text": "This panel is drawn by the desktop host from the plugin's declarative blocks. No third-party script runs in the main window." },
+            { "type": "key_values", "items": [
+              { "label": "Plugin", "value": "example.hello-plugin" },
+              { "label": "Skill", "value": "skills/hello-plugin/SKILL.md" }
+            ] },
+            { "type": "divider" },
+            { "type": "table", "columns": ["Slot", "Status"], "rows": [
+              ["Skill", "injected into the local engine when granted"],
+              ["Dock", "host-rendered"],
+              ["Composer", "insert-only"]
+            ] }
+          ]
+        }
+      ],
+      "settings": [
+        {
+          "id": "greeting",
+          "title": "Greeting",
+          "fields": [
+            { "key": "name", "label": "Name used by the skill", "type": "text", "default": "Ada", "placeholder": "Your name" },
+            { "key": "copies", "label": "Copies", "type": "number", "default": 1 },
+            { "key": "enabled", "label": "Suggest the greeting", "type": "boolean", "default": true }
+          ]
+        }
+      ],
+      "composer": [
+        {
+          "id": "insert-greeting",
+          "title": "Insert greeting prompt",
+          "insertText": "Use the hello-plugin skill to greet me. Keep it to one short paragraph."
+        }
+      ]
+    }
+  }
+}
