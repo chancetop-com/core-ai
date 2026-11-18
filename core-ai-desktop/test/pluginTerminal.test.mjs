@@ -4,7 +4,7 @@ import { mkdtempSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { runPluginTerminal, sanitizedEnv } from '../dist/test/pluginTerminal.js';
+import { runPluginTerminal, sanitizedEnv, resolveExecutable } from '../dist/test/pluginTerminal.js';
 
 function command(operation) {
   return { pluginId: 'test.plugin', pluginName: 'Test', commandId: 'run', name: 'run', description: 'run', operation };
@@ -23,6 +23,13 @@ test('strips credential-shaped environment variables', () => {
   assert.equal(env.PATH, 'p');
   assert.equal(env.CORE_AI_TEST_SECRET, undefined);
   assert.equal(env.GIT_CONFIG_VALUE_0, undefined);
+});
+
+test('resolves executables outside the workspace only', () => {
+  const workspace = mkdtempSync(path.join(os.tmpdir(), 'coreai-terminal-'));
+  const nodePath = resolveExecutable('node', workspace);
+  assert.ok(nodePath && path.isAbsolute(nodePath));
+  assert.equal(resolveExecutable('node', path.dirname(nodePath)), null);
 });
 
 test('rejects an operation outside the allowlist', async () => {

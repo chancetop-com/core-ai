@@ -4,6 +4,8 @@
  * credentials are stripped before the child starts.
  */
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import type { PluginTerminalCommandDescriptor } from './pluginStore';
 
 export interface PluginTerminalResult {
@@ -43,6 +45,8 @@ export async function runPluginTerminal(
   const timeoutMs = Math.max(1_000, Math.min(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 120_000));
   const maxOutput = Math.max(1_024, Math.min(options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES, 256 * 1024));
   const [executable, ...args] = argv;
+  const resolved = resolveExecutable(executable, options.workspace);
+  if (!resolved) throw new Error(`executable is not available outside the workspace: ${executable}`);
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
@@ -50,7 +54,7 @@ export async function runPluginTerminal(
     let stderrBytes = 0;
     let truncated = false;
     let settled = false;
-    const child = spawn(executable, args, {
+    const child = spawn(resolved, args, {
       cwd: options.workspace,
       shell: false,
       windowsHide: true,
@@ -97,6 +101,23 @@ export async function runPluginTerminal(
       });
     });
   });
+}
+
+export function resolveExecutable(name: string, workspace: string): string | null {
+  if (path.isAbsolute(name) || name.includes('/') || name.includes('\\')) return null;
+  const extensions = process.platform === 'win32' ? ['.exe'] : [''];
+  const root = path.resolve(workspace);
+  for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+    if (!dir || !path.isAbsolute(dir)) continue;
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `${name}${extension}`);
+      if (!existsSync(candidate)) continue;
+      const relative = path.relative(root, candidate);
+      if (relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative))) continue;
+      return candidate;
+    }
+  }
+  return null;
 }
 
 export function sanitizedEnv(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {

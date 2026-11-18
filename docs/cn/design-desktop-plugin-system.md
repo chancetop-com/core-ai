@@ -630,7 +630,7 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `prompt.sections`（P3 首期） | `contributes.promptSections` 的静态文本经 `CORE_AI_PLUGIN_PROMPT_SECTIONS` 注入 engine system prompt；restricted workspace 跳过；不执行插件代码 |
 | `browser.control`（P3 首期） | 页面 bridge `browser.status/tabs/open/navigate/activate/close`；只操作托管的内置浏览器，URL 仅 http(s)，不暴露 CDP；首次 open 可启动浏览器 |
 | `tools.register`（P3 首期） | `contributes.tools` 只支持只读主机工具 `artifacts.list` / `memory.list`；desktop 只把 active + granted 的描述符经 `CORE_AI_PLUGIN_TOOLS` 传给 engine，Java 再次校验并注册 `plugin_<plugin>_<tool>`；不加载插件代码；restricted 跳过 |
-| `terminal.exec`（P3 首期） | 页面 bridge `terminal.commands/run`；只允许 manifest 选择主机预定义操作 `git.status`/`git.log`/`git.diff`/`node.version`，argv 由宿主固定，无 shell、无页面参数、脱敏环境；需 grant + trusted workspace，6 次/分钟 |
+| `terminal.exec`（P3 首期） | 页面 bridge `terminal.commands/run`；只允许 manifest 选择主机预定义操作 `git.status`/`git.log`/`git.diff`/`node.version`，argv 由宿主固定，可执行文件按系统 PATH 解析为绝对路径且拒绝 workspace 内文件；无 shell/页面参数、脱敏环境；需 grant + trusted workspace，6 次/分钟 |
 | `hooks.guard`（P3 首期） | `contributes.guards` 只支持 `action=deny` + 精确 toolNames；desktop 经 `CORE_AI_PLUGIN_GUARDS` 传给 engine，Java 解析后装到主 agent 与 subagent 的 lifecycle；不执行插件代码；restricted 跳过 |
 | `usage.read` | `usage.summary(range)` 从持久化 transcript 聚合已完成、未被 rewind 的 turn 的 input/output/cached tokens 与 cost；默认 all，也支持 7d/30d |
 | `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
