@@ -96,7 +96,8 @@ class MessagingRuntimeModule extends Module {
             var pgConsumer = new PgCommandConsumer(pgQueue, commandHandler, ownershipRegistry);
             onStartup(pgConsumer::start);
             onShutdown(pgConsumer::stop);
-            schedule().fixedRate("pg-command-cleanup", context -> pgQueue.cleanup(), java.time.Duration.ofSeconds(30));
+            var cleanupJob = bind(new ai.core.server.messaging.PgCommandCleanupJob(pgQueue));
+            schedule().fixedRate("pg-command-cleanup", cleanupJob, java.time.Duration.ofSeconds(30));
         }
         // finished long-running tool calls ride the command bus back into their session, so the
         // notification reaches the owning replica and rebuilds an evicted session instead of being
