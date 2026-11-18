@@ -5,6 +5,7 @@ import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.agent.Agent;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.apiuser.ApiUserQuotaService;
+import ai.core.server.apiuser.PermissionService;
 import ai.core.server.artifact.ChatArtifactSetup;
 import ai.core.server.artifact.PublicUrlConfiguration;
 import ai.core.server.dataset.DatasetRecordService;
@@ -24,6 +25,7 @@ import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillSdkCapabilityResolver;
 import ai.core.server.skill.SkillService;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
@@ -60,6 +62,8 @@ public class AgentSessionManager {
 
     @Inject
     ToolRegistryService toolRegistryService;
+    @Inject
+    PermissionService permissionService;
     @Inject
     MongoSkillProvider mongoSkillProvider;
     @Inject
@@ -121,7 +125,10 @@ public class AgentSessionManager {
     // per-user live-session budget (Redis, cross-replica): assigned by RuntimeGovernanceModule
     public UserSessionBudget userSessionBudget;
     private SessionSkillManager skillManager() {
-        if (skillManager == null) skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
+        if (skillManager == null) {
+            skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
+            skillManager.setCapabilityResolver(new SkillSdkCapabilityResolver(toolRegistryService, permissionService));
+        }
         return skillManager;
     }
     private SessionSubAgentManager subAgentManager() {

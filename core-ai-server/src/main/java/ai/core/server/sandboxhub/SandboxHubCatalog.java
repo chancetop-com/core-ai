@@ -8,6 +8,7 @@ import ai.core.api.server.sandboxhub.SandboxHubToolSummary;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetToolProvider;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCall;
 import ai.core.tool.registry.ToolExposure;
@@ -19,6 +20,7 @@ import ai.core.utils.JsonUtil;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -70,9 +72,18 @@ public final class SandboxHubCatalog {
         var materialization = registry.materialize(context);
         var providerIndex = materialization.getToolProviderIndex();
         var entries = new ArrayList<Entry>();
+        var names = new LinkedHashSet<String>();
         for (var tool : materialization.getDispatchMap().values()) {
             if (excluded(tool)) continue;
-            entries.add(entry(tool, providerIndex.get(tool.getName())));
+            var entry = entry(tool, providerIndex.get(tool.getName()));
+            if (names.add(entry.name())) entries.add(entry);
+        }
+        for (var capability : context.getSkillCapabilities()) {
+            if (capability == null || capability.tool() == null || excluded(capability.tool())) continue;
+            var name = scriptName(capability.path());
+            if (!names.add(name)) continue;
+            entries.add(new Entry(name, capability.kind(), capability.group(), capability.path(), capability.refId(),
+                    capability.tool().getDescription(), "skill", true, capability.tool()));
         }
         entries.sort(Comparator.comparing(Entry::kind).thenComparing(Entry::path));
         return new SandboxHubCatalog(entries, datasetProvider(registry));

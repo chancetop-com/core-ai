@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentDefinition;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.ServerSkillTool;
 import ai.core.server.skill.SkillArchiveBuilder;
+import ai.core.server.skill.SkillSdkCapabilityResolver;
 import ai.core.server.skill.SkillService;
 import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
@@ -31,6 +32,7 @@ public class SessionSkillManager {
     private final MongoSkillProvider mongoSkillProvider;
     private final SkillArchiveBuilder skillArchiveBuilder;
     private final ChatMessageService chatMessageService;
+    private SkillSdkCapabilityResolver capabilityResolver;
 
     public SessionSkillManager(SkillService skillService, MongoSkillProvider mongoSkillProvider,
                                 SkillArchiveBuilder skillArchiveBuilder, ChatMessageService chatMessageService) {
@@ -38,6 +40,10 @@ public class SessionSkillManager {
         this.mongoSkillProvider = mongoSkillProvider;
         this.skillArchiveBuilder = skillArchiveBuilder;
         this.chatMessageService = chatMessageService;
+    }
+
+    public void setCapabilityResolver(SkillSdkCapabilityResolver capabilityResolver) {
+        this.capabilityResolver = capabilityResolver;
     }
 
     public List<String> unloadSkills(String sessionId, List<String> skillIds, String callerUserId) {
@@ -50,8 +56,10 @@ public class SessionSkillManager {
             return state == null ? List.of() : List.copyOf(state.allowedIds);
         }
         state.allowedIds.removeAll(cleanSkillIds);
+        cleanSkillIds.forEach(state.skills::remove);
         state.registry.invalidateCache();
         chatMessageService.removeLoadedSkillIds(sessionId, cleanSkillIds);
+        recomputeCapabilities(state, null);
         return List.copyOf(state.allowedIds);
     }
 
@@ -77,7 +85,7 @@ public class SessionSkillManager {
 
     List<String> loadResolvedDefinitionSkills(InProcessAgentSession session, ResolvedDefinitionSkills resolved) {
         if (resolved.skillIds.isEmpty()) return List.of();
-        var qualifiedNames = applyResolvedSkillsToSession(session, resolved.skillIds, resolved.skills);
+        var qualifiedNames = applyResolvedSkillsToSession(session, resolved.skillIds, resolved.skills, null);
         chatMessageService.addLoadedSkillIds(session.id(), resolved.skillIds);
         return qualifiedNames;
     }
@@ -115,7 +123,7 @@ public class SessionSkillManager {
         if (skills.isEmpty()) {
             throw new NotFoundException("no skills found for ids: " + cleanSkillIds);
         }
-        return applyResolvedSkillsToSession(session, cleanSkillIds, skills);
+        return applyResolvedSkillsToSession(session, cleanSkillIds, skills, null);
     }
 
     List<String> applyCallerSkillsToSession(InProcessAgentSession session, List<String> skillIds,
@@ -123,7 +131,7 @@ public class SessionSkillManager {
         var cleanSkillIds = IdLists.clean(skillIds);
         if (cleanSkillIds.isEmpty()) return List.of();
         var skills = skillService.resolveAccessibleSkills(cleanSkillIds, callerUserId);
-        return applyResolvedSkillsToSession(session, cleanSkillIds, skills);
+        return applyResolvedSkillsToSession(session, cleanSkillIds, skills, callerUserId);
     }
 
     void restoreDefinitionSkills(InProcessAgentSession session, List<String> skillIds) {
@@ -138,11 +146,29 @@ public class SessionSkillManager {
     }
 
     private List<String> applyResolvedSkillsToSession(InProcessAgentSession session, List<String> cleanSkillIds,
-                                                       List<SkillMetadata> skills) {
+                                                       List<SkillMetadata> skills, String callerUserId) {
         var state = sessionSkillStates.computeIfAbsent(session.id(), k -> initSkillState(session));
         state.allowedIds.addAll(cleanSkillIds);
+        for (int i = 0; i < cleanSkillIds.size() && i < skills.size(); i++) {
+            state.skills.put(cleanSkillIds.get(i), skills.get(i));
+        }
         state.registry.invalidateCache();
+        recomputeCapabilities(state, callerUserId);
         return skills.stream().map(SkillMetadata::getQualifiedName).toList();
+    }
+
+    private void recomputeCapabilities(SessionSkillState state, String callerUserId) {
+        if (state == null || capabilityResolver == null) return;
+        var agent = state.session.agent();
+        if (agent == null) return;
+        var userId = callerUserId != null ? callerUserId : agent.getExecutionContext().getUserId();
+        try {
+            agent.getExecutionContext().setSkillCapabilities(
+                    capabilityResolver.resolve(state.session.id(), userId, state.skills));
+        } catch (RuntimeException e) {
+            logger.warn("failed to resolve skill capabilities, sessionId={}", state.session.id(), e);
+            agent.getExecutionContext().setSkillCapabilities(List.of());
+        }
     }
 
     public void removeSkillState(String sessionId) {
@@ -150,7 +176,7 @@ public class SessionSkillManager {
     }
 
     private SessionSkillState initSkillState(InProcessAgentSession session) {
-        var fresh = new SessionSkillState();
+        var fresh = new SessionSkillState(session);
         fresh.registry.addProvider(mongoSkillProvider.scoped(fresh.allowedIds));
         ToolCall skillTool = ServerSkillTool.builder()
                 .registry(fresh.registry)
@@ -163,8 +189,14 @@ public class SessionSkillManager {
     }
 
     static final class SessionSkillState {
+        final InProcessAgentSession session;
         final Set<String> allowedIds = ConcurrentHashMap.newKeySet();
+        final ConcurrentMap<String, SkillMetadata> skills = new ConcurrentHashMap<>();
         final SkillRegistry registry = new SkillRegistry();
+
+        SessionSkillState(InProcessAgentSession session) {
+            this.session = session;
+        }
     }
 
     record ResolvedDefinitionSkills(List<String> skillIds, List<SkillMetadata> skills) {

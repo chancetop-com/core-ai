@@ -60,13 +60,13 @@ class SkillSdkCapabilityManifestTest {
     }
 
     @Test
-    void deduplicatesAndNormalizesCase() {
+    void deduplicatesIdenticalEntries() {
         var manifest = SkillSdkCapabilityManifest.parse(
-                List.of("MCP:Analytics/Run_Query", "mcp:analytics/run_query"),
+                List.of("mcp:analytics/run_query", "mcp:analytics/run_query"),
                 Map.of(SkillSdkCapabilityManifest.CONTRACT_VERSION_KEY, "1"));
 
         assertEquals(1, manifest.entries().size());
-        assertEquals("mcp:analytics/run-query", manifest.entries().getFirst().canonical());
+        assertEquals("mcp:analytics/run_query", manifest.entries().getFirst().canonical());
     }
 
     @Test

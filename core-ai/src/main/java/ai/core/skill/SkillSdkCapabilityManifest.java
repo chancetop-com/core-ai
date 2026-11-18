@@ -93,7 +93,7 @@ public final class SkillSdkCapabilityManifest {
         var parts = new ArrayList<String>();
         for (var part : rest.split("/")) {
             if (part.isBlank()) return null;
-            parts.add(canonical(part));
+            parts.add(part.trim());
         }
         var supported = SDK_KINDS.contains(kind) && !containsWildcard(parts);
         return new Entry(kind, List.copyOf(parts), raw, supported);
@@ -107,7 +107,7 @@ public final class SkillSdkCapabilityManifest {
     }
 
     private static String canonical(String value) {
-        return value.trim().toLowerCase(java.util.Locale.ROOT).replace('_', '-');
+        return value.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
     private final boolean enabled;

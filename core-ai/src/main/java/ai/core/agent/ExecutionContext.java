@@ -12,6 +12,7 @@ import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.tool.ToolCallAsyncTaskManager;
@@ -73,6 +74,7 @@ public final class ExecutionContext {
     private Map<String, SubAgentConfig> subAgentConfigs;
     private SubagentModelResolver subagentModelResolver;
     private ToolRegistry toolRegistry;
+    private volatile List<SkillCapability> skillCapabilities = List.of();
     private AgentProfileRegistry agentProfileRegistry;
     private RunBudget runBudget;
     private volatile SubagentThreadRegistry subagentThreads;
@@ -354,6 +356,14 @@ public final class ExecutionContext {
 
     public ToolRegistry getToolRegistry() {
         return toolRegistry;
+    }
+
+    public List<SkillCapability> getSkillCapabilities() {
+        return skillCapabilities;
+    }
+
+    public void setSkillCapabilities(List<SkillCapability> skillCapabilities) {
+        this.skillCapabilities = skillCapabilities == null ? List.of() : List.copyOf(skillCapabilities);
     }
 
     public void setToolRegistry(ToolRegistry toolRegistry) {

@@ -15,6 +15,7 @@ import ai.core.server.domain.DatasetPermission;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.function.Function;
@@ -178,6 +179,27 @@ class SandboxHubCatalogTest {
         field.type = SchemaFieldType.STRING;
         dataset.schema = List.of(field);
         return dataset;
+    }
+
+    @Test
+    void skillCapabilitiesAreMergedWithoutEnteringToolRegistry() {
+        var registry = new ToolRegistry();
+        var context = ExecutionContext.builder().build();
+        context.setToolRegistry(registry);
+        var tool = tool("run_query");
+        context.setSkillCapabilities(List.of(new SkillCapability("skill-1", "Admin/analytics", "mcp",
+                "mcp:analytics:run_query", "analytics/run_query", "analytics", tool)));
+
+        var catalog = SandboxHubCatalog.of(context);
+        var entry = only(catalog);
+
+        assertEquals("mcp", entry.kind());
+        assertEquals("analytics", entry.group());
+        assertEquals("analytics/run_query", entry.path());
+        assertEquals("mcp:analytics:run_query", entry.refId());
+        assertEquals("skill", entry.exposure());
+        assertTrue(entry.callable());
+        assertTrue(registry.getToolCalls().isEmpty());
     }
 
     @Test
