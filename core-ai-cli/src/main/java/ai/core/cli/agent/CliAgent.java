@@ -25,6 +25,7 @@ import ai.core.cli.plugin.PluginGrantGate;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.plugin.PluginPromptSections;
 import ai.core.cli.plugin.PluginSkillRoots;
+import ai.core.cli.plugin.PluginTools;
 import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
 import ai.core.cli.a2a.A2ARemoteServerConfig;
@@ -117,6 +118,10 @@ public class CliAgent {
         var mediaTools = mediaTools(config);
         if (!mediaTools.isEmpty()) {
             toolRegistry.registerProvider(ListToolProvider.of(mediaTools));
+        }
+        var pluginTools = PluginTools.fromEnvironment();
+        if (!pluginTools.isEmpty()) {
+            toolRegistry.registerProvider(ListToolProvider.of(pluginTools));
         }
         if (decisionSupport.available()) {
             toolRegistry.registerProvider(ListToolProvider.of(List.of(decideTool(decisionSupport))));

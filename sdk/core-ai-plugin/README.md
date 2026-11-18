@@ -102,6 +102,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `ui.renderers` | artifact renderer entry points that open a plugin page |
 | `artifacts.read` | reads a text artifact opened through an artifact renderer |
 | `prompt.sections` | injects static prompt sections into the agent system prompt |
+| `tools.register` | registers read-only host tools (`artifacts.list`, `memory.list`) |
 | `browser.control` | opens, navigates, activates and closes tabs in the managed browser |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |

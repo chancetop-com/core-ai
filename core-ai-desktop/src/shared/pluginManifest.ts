@@ -26,6 +26,7 @@ export const SUPPORTED_CAPABILITIES = [
   'engine.skills',
   'prompt.sections',
   'browser.control',
+  'tools.register',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -133,6 +134,16 @@ export interface PluginPromptSectionContribution {
   content: string;
 }
 
+export type PluginToolOperation = 'artifacts.list' | 'memory.list';
+
+export interface PluginToolContribution {
+  id: string;
+  name: string;
+  description: string;
+  operation: PluginToolOperation;
+  limit: number;
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -141,6 +152,7 @@ export interface PluginContributions {
   slots: PluginSlotContribution[];
   renderers: PluginRendererContribution[];
   promptSections: PluginPromptSectionContribution[];
+  tools: PluginToolContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -484,6 +496,27 @@ function parsePromptSections(value: unknown): PluginPromptSectionContribution[] 
   return sections;
 }
 
+function parseTools(value: unknown): PluginToolContribution[] {
+  if (!Array.isArray(value)) return [];
+  const tools: PluginToolContribution[] = [];
+  const names = new Set<string>();
+  for (const raw of value.slice(0, 10)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const name = typeof entry.name === 'string' && /^[a-z][a-z0-9_]{1,63}$/.test(entry.name) ? entry.name : null;
+    const description = boundedText(entry.description, 1000);
+    const operation = entry.operation === 'artifacts.list' || entry.operation === 'memory.list' ? entry.operation : null;
+    if (!id || !name || !description || !operation || names.has(name)) continue;
+    const limit = typeof entry.limit === 'number' && Number.isInteger(entry.limit)
+      ? Math.max(1, Math.min(entry.limit, 200))
+      : 50;
+    names.add(name);
+    tools.push({ id, name, description, operation, limit });
+  }
+  return tools;
+}
+
 function stringList(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
@@ -567,6 +600,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     slots: [],
     renderers: [],
     promptSections: [],
+    tools: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -618,6 +652,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.slots = parseSlots(contributes.slots, unsupported);
           contributions.renderers = parseRenderers(contributes.renderers, unsupported);
           contributions.promptSections = parsePromptSections(contributes.promptSections);
+          contributions.tools = parseTools(contributes.tools);
         }
       }
 
@@ -666,13 +701,14 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
     if (kind === 'promptSections') return 'prompt.sections';
+    if (kind === 'tools') return 'tools.register';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

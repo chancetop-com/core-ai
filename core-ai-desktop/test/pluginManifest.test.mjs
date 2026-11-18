@@ -190,7 +190,7 @@ test('missing name, schema or id is fatal', () => {
 test('unsupported required capabilities and component paths are rejected', () => {
   const unknownCapability = parsePluginManifest(JSON.stringify({
     name: 'x',
-    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['browser.control'] } },
+    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['terminal.exec'] } },
   }));
   assert.equal(unknownCapability.ok, false);
   assert.ok(unknownCapability.errors.some((error) => error.includes('unsupported required capability')));

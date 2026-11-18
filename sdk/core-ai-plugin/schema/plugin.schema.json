@@ -137,6 +137,20 @@
                   "content": { "type": "string" }
                 }
               }
+            },
+            "tools": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "operation"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "operation": { "enum": ["artifacts.list", "memory.list"] },
+                  "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
+                }
+              }
             }
           },
           "additionalProperties": false

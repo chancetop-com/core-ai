@@ -107,6 +107,16 @@ export interface PluginPromptSectionContribution {
   content: string;
 }
 
+export type PluginToolOperation = 'artifacts.list' | 'memory.list';
+
+export interface PluginToolContribution {
+  id: string;
+  name: string;
+  description: string;
+  operation: PluginToolOperation;
+  limit?: number;
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -131,6 +141,7 @@ export interface PluginManifest {
       slots?: PluginSlotContribution[];
       renderers?: PluginRendererContribution[];
       promptSections?: PluginPromptSectionContribution[];
+      tools?: PluginToolContribution[];
     };
   };
 }

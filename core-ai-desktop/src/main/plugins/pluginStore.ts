@@ -100,6 +100,13 @@ export interface PluginPromptSection {
   content: string;
 }
 
+export interface PluginToolDescriptor {
+  name: string;
+  description: string;
+  operation: 'artifacts.list' | 'memory.list';
+  limit: number;
+}
+
 export interface ResolvedPluginPage {
   pluginId: string;
   pluginName: string;
@@ -454,7 +461,7 @@ export class PluginStore {
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers, promptSections },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [] },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -477,6 +484,27 @@ export class PluginStore {
       }
     }
     return sections;
+  }
+
+  /** Read-only host tools of active installs that granted tools.register. */
+  async tools(): Promise<PluginToolDescriptor[]> {
+    const state = await this.readState();
+    const tools: PluginToolDescriptor[] = [];
+    for (const install of state.installs) {
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('tools.register')) continue;
+      const prefix = install.pluginId.replace(/[^a-z0-9_]/g, '_');
+      for (const tool of resolved.descriptor.contributions.tools) {
+        tools.push({
+          name: `plugin_${prefix}_${tool.name}`,
+          description: `${resolved.descriptor.name}: ${tool.description}`,
+          operation: tool.operation,
+          limit: tool.limit,
+        });
+      }
+    }
+    return tools;
   }
 
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
@@ -724,7 +752,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [] },
       settings: { ...install.settings },
     };
   }

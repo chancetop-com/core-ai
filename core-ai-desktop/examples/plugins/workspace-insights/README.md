@@ -7,6 +7,7 @@ A read-only P2d page that demonstrates the general host services:
 - `sessions.list()` for session metadata
 - `ui.slots` actions in the sidebar footer, composer dock, turn tail and message actions
 - `ui.renderers` + `artifacts.read` for a text artifact opened from the Artifacts panel
+- `tools.register` read-only tools (`list_artifacts`, `list_memory`)
 - `memory.list()` for memory files
 - `memory.write()` for plugin notes under `knowledge/`
 - `plugin.storage` for a page-owned counter

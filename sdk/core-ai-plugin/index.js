@@ -125,13 +125,13 @@ export function validateManifest(input) {
       errors.push('coreai.requires must be an array of service ids');
     }
   }
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : kind === 'tools' ? 'tools.register' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -193,6 +193,17 @@ export function validateManifest(input) {
           || typeof item.title !== 'string'
           || typeof item.content !== 'string') {
           errors.push('each prompt section needs id, title and content');
+        }
+      }
+    }
+    if (kind === 'tools') {
+      for (const item of contributes.tools) {
+        if (!isObject(item)
+          || typeof item.id !== 'string'
+          || typeof item.name !== 'string'
+          || typeof item.description !== 'string'
+          || (item.operation !== 'artifacts.list' && item.operation !== 'memory.list')) {
+          errors.push('each tool needs id, name, description and a supported operation');
         }
       }
     }
