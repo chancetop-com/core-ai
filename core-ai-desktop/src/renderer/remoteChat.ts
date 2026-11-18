@@ -9,6 +9,7 @@ marked.setOptions({ gfm: true, breaks: true });
 export interface RemoteChatHost {
   requestRenderContent(): void;
   requestRenderSidebar(): void;
+  selectSessionsTab(tab: 'local' | 'server'): void;
   toast(text: string, kind?: string): void;
 }
 
@@ -242,6 +243,7 @@ export function openRemoteConversation(serverUrl: string, sessionId: string, age
     return;
   }
   deactivateRemoteSession();
+  host?.selectSessionsTab('server');
   active = {
     serverUrl,
     sessionId,
@@ -342,6 +344,22 @@ function paintChat(): void {
 
 function chatKey(): string {
   return active ? `${active.serverUrl}\u0000${active.sessionId}` : '';
+}
+
+export function mountRemoteHome(container: HTMLElement): void {
+  container.replaceChildren();
+  const root = el('div', 'chat remote-chat remote-home-chat');
+  const main = el('div', 'chat-main');
+  const empty = el('div', 'remote-empty remote-home');
+  empty.append(el('div', 'remote-empty-title', 'Talk to a server agent'));
+  empty.append(el('div', 'remote-empty-body',
+    'A direct conversation runs on the selected server. The agent cannot access this computer’s workspace, browser or credentials.'));
+  const choose = el('button', 'remote-home-action', 'Chat with a server agent…');
+  choose.onclick = () => void startRemoteConversation();
+  empty.append(choose);
+  main.append(empty);
+  root.append(main);
+  container.replaceChildren(root);
 }
 
 export function mountRemoteContent(container: HTMLElement): void {
@@ -868,20 +886,11 @@ function handleRemoteEvent(event: Record<string, unknown>): void {
 
 export function renderRemoteSidebar(nav: HTMLElement): void {
   const section = el('div', 'remote-sidebar');
-  const title = el('div', 'remote-sidebar-title');
-  title.append(el('span', undefined, 'Server agents'));
-  const refresh = el('button', 'remote-sidebar-refresh', '↻');
-  refresh.title = 'Reload server conversations';
-  refresh.onclick = () => {
-    sessionsLoaded = false;
-    void loadSessions(true).then(() => host?.requestRenderSidebar());
-  };
-  title.append(refresh);
-  section.append(title);
-
-  const create = el('button', 'remote-sidebar-new', '+ Chat with a server agent…');
-  create.onclick = () => void startRemoteConversation();
-  section.append(create);
+  const server = preferredServer();
+  if (server) {
+    const head = el('div', 'remote-sidebar-host', `${serverHost(server.serverUrl)}${server.userId ? ` · ${server.userId}` : ''}`);
+    section.append(head);
+  }
 
   if (!cachedServers) {
     section.append(el('div', 'remote-sidebar-empty', 'Checking sign-in…'));
@@ -907,6 +916,7 @@ export function renderRemoteSidebar(nav: HTMLElement): void {
   }
   if (!cachedSessions.length) {
     section.append(el('div', 'remote-sidebar-empty', 'No server conversations yet.'));
+    section.append(el('div', 'remote-sidebar-empty', 'Only agents enabled for direct chat by the server can be started here.'));
   } else {
     for (const row of cachedSessions.slice(0, 8)) {
       const button = el('button', `remote-sidebar-row${active?.sessionId === row.id ? ' active' : ''}`);
@@ -924,7 +934,11 @@ export function renderRemoteSidebar(nav: HTMLElement): void {
   nav.append(section);
 }
 
-// ---------- agent picker ----------
+export async function refreshRemoteSessions(): Promise<void> {
+  sessionsLoaded = false;
+  await loadSessions(true);
+  host?.requestRenderSidebar();
+}
 
 export async function startRemoteConversation(): Promise<void> {
   if (pickerEl) return;
@@ -967,7 +981,8 @@ export async function startRemoteConversation(): Promise<void> {
   modal.append(search);
   const list = el('div', 'remote-picker-list');
   modal.append(list);
-  modal.append(el('div', 'remote-picker-note', 'Messages go to this server. The agent cannot access this computer’s workspace, browser or credentials.'));
+  modal.append(el('div', 'remote-picker-note',
+    'Only agents enabled for direct conversations by the server are listed. Messages go to this server; the agent cannot access this computer’s workspace, browser or credentials.'));
   overlay.append(modal);
   overlay.onclick = (event) => {
     if (event.target === overlay) closePicker();
@@ -990,7 +1005,8 @@ function paintPickerList(list: HTMLElement, serverUrl: string): void {
   const agents = pickerAgents.filter((agent) =>
     !pickerAgentFilter || `${agent.name} ${agent.description ?? ''}`.toLowerCase().includes(pickerAgentFilter));
   if (!agents.length) {
-    list.append(el('div', 'remote-sidebar-empty', 'No agents visible to this account.'));
+    list.append(el('div', 'remote-picker-empty-title', 'No agents are enabled for direct conversations on this server.'));
+    list.append(el('div', 'remote-picker-empty-body', 'Ask a server administrator to add the agent id to SYS_CONVERSATION_AGENTS, then reopen this dialog.'));
     return;
   }
   for (const agent of agents) {

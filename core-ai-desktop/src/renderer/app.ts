@@ -36,6 +36,8 @@ import {
   deactivateRemoteSession,
   handleRemotePush,
   mountRemoteContent,
+  mountRemoteHome,
+  refreshRemoteSessions,
   remoteSessionActive,
   renderRemoteSidebar,
   resetRemoteChatCache,
@@ -521,6 +523,8 @@ interface UiTask {
 
 const SECTION_PAGE_SIZE = 10;
 const COLLAPSE_KEY = 'coreai.sessionsCollapsed';
+const SESSIONS_TAB_KEY = 'coreai.sessionsTab';
+type SessionsTab = 'local' | 'server';
 
 const NAV: Array<{ key: NavKey; label: string; icon: keyof typeof ICONS }> = [
   { key: 'sessions', label: 'Sessions', icon: 'sessions' },
@@ -547,6 +551,7 @@ const state: {
   /** Sessions created here whose first turn has not saved yet — a listing must not drop them. */
   pendingSessionIds: Set<string>;
   sessionsCollapsed: boolean;
+  sessionsTab: SessionsTab;
   sessionId: string | null;
   sessionTitle: string;
   status: string;
@@ -588,6 +593,7 @@ const state: {
   hasMoreSessions: false,
   pendingSessionIds: new Set(),
   sessionsCollapsed: localStorage.getItem(COLLAPSE_KEY) === '1',
+  sessionsTab: localStorage.getItem(SESSIONS_TAB_KEY) === 'server' ? 'server' : 'local',
   sessionId: null,
   sessionTitle: '',
   status: 'idle',
@@ -1315,12 +1321,17 @@ function renderSidebar(): void {
     if (item.key === 'sessions') {
       nav.append(buildSessionsNavRow());
       if (!state.sessionsCollapsed) {
-        const sub = el('div', 'session-sub');
-        sessionItemsEl = sub;
-        nav.append(sub);
-        renderSessionItems();
+        nav.append(buildSessionsTabs());
+        nav.append(buildSessionsActions());
+        if (state.sessionsTab === 'server') {
+          renderRemoteSidebar(nav);
+        } else {
+          const sub = el('div', 'session-sub');
+          sessionItemsEl = sub;
+          nav.append(sub);
+          renderSessionItems();
+        }
       }
-      renderRemoteSidebar(nav);
     } else {
       const button = el('button', `nav-item${state.nav === item.key ? ' active' : ''}`);
       button.append(icon(item.icon), el('span', 'nav-text', item.label));
@@ -1691,39 +1702,50 @@ function buildSessionsNavRow(): HTMLElement {
     renderContent();
   };
 
-  const add = el('button', 'new-session');
-  add.title = 'New session';
-  add.append(icon('plus'), el('span', 'new-session-text', 'New'));
-  add.onclick = (event) => {
-    event.stopPropagation();
-    if (state.sessionsCollapsed) {
-      state.sessionsCollapsed = false;
-      localStorage.setItem(COLLAPSE_KEY, '0');
-      renderSidebar();
-    }
-    void startNewConversation();
+  row.append(label, toggle);
+  return row;
+}
+
+function buildSessionsTabs(): HTMLElement {
+  const tabs = el('div', 'sessions-tabs');
+  for (const [tab, label] of [['local', 'Local'], ['server', 'Server']] as const) {
+    const button = el('button', `sessions-tab${state.sessionsTab === tab ? ' active' : ''}`, label);
+    button.onclick = () => selectSessionsTab(tab);
+    tabs.append(button);
+  }
+  return tabs;
+}
+
+function buildSessionsActions(): HTMLElement {
+  const actions = el('div', 'sessions-actions');
+  const add = el('button', 'sessions-action sessions-action-new');
+  add.append(icon('plus'), el('span', undefined, 'New'));
+  add.title = state.sessionsTab === 'server' ? 'Chat with a server agent' : 'New local session';
+  add.onclick = () => {
+    if (state.sessionsTab === 'server') void startRemoteConversation();
+    else void startNewConversation();
   };
 
-  const reload = el('button', 'session-reload');
-  reload.title = 'Reload session list';
-  reload.setAttribute('aria-label', 'Reload session list');
+  const reload = el('button', 'sessions-action sessions-action-refresh');
+  reload.title = state.sessionsTab === 'server' ? 'Reload server conversations' : 'Reload session list';
+  reload.setAttribute('aria-label', reload.title);
   reload.append(icon('refresh'));
   reload.onclick = (event) => {
     event.stopPropagation();
-    void reloadSessionList(reload);
+    if (state.sessionsTab === 'server') void refreshRemoteSessions();
+    else void reloadSessionList(reload);
   };
 
-  const remote = el('button', 'new-session');
-  remote.title = 'Chat with a server agent (direct conversation, no local delegation)';
-  remote.setAttribute('aria-label', 'Chat with a server agent');
-  remote.append(icon('hub'));
-  remote.onclick = (event) => {
-    event.stopPropagation();
-    void startRemoteConversation();
-  };
+  actions.append(add, reload);
+  return actions;
+}
 
-  row.append(label, add, remote, reload, toggle);
-  return row;
+function selectSessionsTab(tab: SessionsTab): void {
+  if (state.sessionsTab === tab) return;
+  state.sessionsTab = tab;
+  localStorage.setItem(SESSIONS_TAB_KEY, tab);
+  renderSidebar();
+  void renderContent();
 }
 
 /**
@@ -2017,16 +2039,10 @@ function openSessionMenu(anchor: HTMLElement, session: SessionRow): void {
     };
     menu.append(retry);
   }
-  const close = el('button', 'session-menu-item');
-  close.append(el('span', undefined, 'Close'));
-  close.onclick = () => {
-    closeSessionMenu();
-    void call('session/close', { sessionId: session.sessionId });
-  };
   if (session.state && session.state !== 'ok') {
-    menu.append(close, remove);
+    menu.append(remove);
   } else {
-    menu.append(rename, close, remove);
+    menu.append(rename, remove);
   }
   document.body.append(menu);
   const rect = anchor.getBoundingClientRect();
@@ -2657,6 +2673,8 @@ async function refreshSessionList(): Promise<void> {
  * message, so clicking +New and walking away leaves no empty session behind.
  */
 async function startNewConversation(): Promise<void> {
+  state.sessionsTab = 'local';
+  localStorage.setItem(SESSIONS_TAB_KEY, 'local');
   deactivateRemoteSession();
   state.sessionId = null;
   state.sessionTitle = '';
@@ -2743,6 +2761,8 @@ async function showConversationView(): Promise<void> {
  * session that is still working shows everything exactly where it was when the user comes back.
  */
 async function openSession(sessionId: string): Promise<void> {
+  state.sessionsTab = 'local';
+  localStorage.setItem(SESSIONS_TAB_KEY, 'local');
   deactivateRemoteSession();
   const target = sessionId;
   state.sessionId = sessionId;
@@ -9415,9 +9435,10 @@ async function renderContent(): Promise<void> {
   // Panels load asynchronously; a render the user already navigated away from must not win.
   if (token !== contentRenderToken) return;
 
-  // A remote conversation is a first-class window: it does not need a local workspace or engine.
-  if (state.nav === 'sessions' && remoteSessionActive()) {
-    mountRemoteContent(content);
+  // The Server tab owns the content area: an active remote conversation, or a picker landing.
+  if (state.nav === 'sessions' && state.sessionsTab === 'server') {
+    if (remoteSessionActive()) mountRemoteContent(content);
+    else mountRemoteHome(content);
     return;
   }
 
@@ -9483,6 +9504,11 @@ async function bootstrap(): Promise<void> {
   configureRemoteChat({
     requestRenderContent: () => void renderContent(),
     requestRenderSidebar: () => renderSidebar(),
+    selectSessionsTab: (tab) => {
+      state.sessionsTab = tab;
+      localStorage.setItem(SESSIONS_TAB_KEY, tab);
+      renderSidebar();
+    },
     toast: (text, kind) => toast(text, kind),
   });
   window.coreai.onRemotePush(handleRemotePush);
