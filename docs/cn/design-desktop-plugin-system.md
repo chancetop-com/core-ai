@@ -1005,7 +1005,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
-验证记录（2026-11-18，P2d + slots + writes）：desktop `check`、`build`、`test`（262 tests：261 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`LocalMemoryTest`、`UsageApiTest`、`:core-ai-cli:checkstyleMain/checkstyleTest` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
+验证记录（2026-11-18，P2d + slots + writes + artifact renderer）：desktop `check`、`build`、`test`（264 tests：263 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、artifact、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`LocalMemoryTest`、`UsageApiTest`、`:core-ai-cli:checkstyleMain/checkstyleTest` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
