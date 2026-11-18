@@ -152,7 +152,11 @@ public class AgentDefinitionService {
             }
         } else {
             var query = query(userId, effectiveRequest);
-            var assistant = forkPersonalAssistant(listHelper, userId, effectiveRequest);
+            // browsing other users' agents is not "using" the assistant: the lazy fork and the pin belong to the
+            // listings that contain the caller's own agents, otherwise the shared tab offers the caller's own copy
+            var assistant = query.scope == AgentDefinitionQuery.Scope.SHARED
+                ? null
+                : forkPersonalAssistant(listHelper, userId, effectiveRequest);
             paged = assistant != null
                 ? listHelper.listWithAssistantFirst(query, skip, limit, assistant)
                 : listHelper.findAgents(query, skip, limit);

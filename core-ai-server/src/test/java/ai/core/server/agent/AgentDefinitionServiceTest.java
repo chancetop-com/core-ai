@@ -252,6 +252,30 @@ class AgentDefinitionServiceTest {
     }
 
     @Test
+    void sharedListingDoesNotForkOrPinTheCallersPersonalAssistant() {
+        var collection = agentCollection();
+        var shared = definition("shared-agent", "user-2", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        when(collection.find(any(Query.class))).thenReturn(new ArrayList<>(List.of(shared)));
+        when(collection.count(any(Bson.class))).thenReturn(1L);
+        var assistant = definition("assistant:user-1", "user-1", DefinitionType.AGENT, AgentStatus.PUBLISHED);
+        assistant.forkedFrom = PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID;
+        when(collection.findOne(any(Bson.class))).thenReturn(Optional.of(assistant));
+        var service = service(collection);
+        when(service.personalAssistantService.findOrFork(any(), eq("user-1"))).thenReturn(assistant);
+        var request = new ListAgentsRequest();
+        request.myAgents = "false";
+        request.page = 1;
+        request.limit = 10;
+
+        var response = service.list("user-1", request);
+
+        assertEquals(List.of("shared-agent"), response.agents.stream().map(a -> a.id).toList(),
+            "the shared tab lists other users' agents only, never the caller's own personal assistant");
+        assertEquals(1, response.total);
+        verify(service.personalAssistantService, never()).findOrFork(any(), any());
+    }
+
+    @Test
     void listWithUnpaginatedRequestAcceptsReadOnlyStoreResults() {
         var service = new AgentDefinitionService();
         service.agentDefinitionStore = mock(AgentDefinitionStore.class);
