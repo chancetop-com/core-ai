@@ -111,7 +111,11 @@ public final class LocalMemory {
             throw RpcException.invalidParams("mode must be append or overwrite");
         }
         try {
-            Files.createDirectories(target.getParent());
+            var parent = target.getParent();
+            if (parent == null) {
+                throw RpcException.business("PATH_NOT_ALLOWED", "path must have a parent directory");
+            }
+            Files.createDirectories(parent);
             if ("append".equals(mode)) {
                 Files.writeString(target, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
             } else {
@@ -128,7 +132,9 @@ public final class LocalMemory {
     }
 
     private static void writeAtomically(Path target, String content) throws IOException {
-        var temp = Files.createTempFile(target.getParent(), ".memory-", ".tmp");
+        var parent = target.getParent();
+        if (parent == null) throw new IOException("target has no parent directory");
+        var temp = Files.createTempFile(parent, ".memory-", ".tmp");
         try {
             Files.writeString(temp, content, StandardCharsets.UTF_8);
             Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
@@ -136,7 +142,15 @@ public final class LocalMemory {
         } catch (java.nio.file.AtomicMoveNotSupportedException e) {
             Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         } finally {
-            Files.deleteIfExists(temp);
+            deleteQuietly(temp);
+        }
+    }
+
+    private static void deleteQuietly(Path path) {
+        try {
+            Files.deleteIfExists(path);
+        } catch (IOException ignored) {
+            // best-effort cleanup; the write result is already decided
         }
     }
 

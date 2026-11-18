@@ -74,7 +74,9 @@ final class PluginMediaReferences {
         if (size > MAX_REFERENCE_BYTES || total[0] > MAX_TOTAL_REFERENCE_BYTES) {
             throw RpcException.invalidParams("reference images are too large");
         }
-        var contentType = contentType(realFile.getFileName().toString());
+        var fileName = realFile.getFileName();
+        if (fileName == null) throw RpcException.invalidParams("unsupported reference image: " + relative);
+        var contentType = contentType(fileName.toString());
         if (contentType == null) throw RpcException.invalidParams("unsupported reference image type: " + relative);
         byte[] bytes;
         try {

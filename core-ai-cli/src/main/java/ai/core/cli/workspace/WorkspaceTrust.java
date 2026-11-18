@@ -114,15 +114,14 @@ public final class WorkspaceTrust {
     private static List<Path> listFiles(Path root) {
         var files = new ArrayList<Path>();
         try (var stream = Files.walk(root)) {
-            stream.filter(Files::isRegularFile)
-                    .filter(file -> {
-                        var relative = root.relativize(file);
-                        for (var segment : relative) {
-                            if (".git".equals(segment.toString())) return false;
-                        }
-                        return true;
-                    })
-                    .forEach(files::add);
+            stream.filter(file -> {
+                if (!Files.isRegularFile(file)) return false;
+                var relative = root.relativize(file);
+                for (var segment : relative) {
+                    if (".git".equals(segment.toString())) return false;
+                }
+                return true;
+            }).forEach(files::add);
         } catch (IOException e) {
             LOGGER.warn("failed to list workspace trust input {}: {}", root, e.getMessage());
         }

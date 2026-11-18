@@ -1,4 +1,10 @@
 <FindBugsFilter>
+    <!-- Test fixtures: JUnit assertions and platform-dependent temp paths are not production null-safety signals -->
+    <Match>
+        <Class name="~ai\.core\.cli\..*Test" />
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,VA_FORMAT_STRING_USES_NEWLINE,LSC_LITERAL_STRING_COMPARISON" />
+    </Match>
+
     <!-- Unavoidable: registry pattern with static mutable state -->
     <Match>
         <Class name="ai.core.prompt.langfuse.LangfusePromptProviderRegistry" />

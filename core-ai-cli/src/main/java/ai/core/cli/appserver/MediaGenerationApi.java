@@ -143,7 +143,7 @@ public class MediaGenerationApi {
         } catch (RpcException e) {
             throw e;
         } catch (Exception e) {
-            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e));
+            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e), e);
         }
     }
 
@@ -176,7 +176,7 @@ public class MediaGenerationApi {
         } catch (RpcException e) {
             throw e;
         } catch (Exception e) {
-            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e));
+            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e), e);
         }
     }
 
@@ -259,7 +259,7 @@ public class MediaGenerationApi {
         } catch (RpcException e) {
             throw e;
         } catch (Exception e) {
-            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e));
+            throw RpcException.business("MEDIA_GENERATION_FAILED", message(e), e);
         }
     }
 
@@ -268,19 +268,27 @@ public class MediaGenerationApi {
         if (!target.startsWith(workspace.normalize())) {
             throw RpcException.business("MEDIA_GENERATION_FAILED", "invalid media path");
         }
+        var parent = target.getParent();
+        if (parent == null) {
+            throw RpcException.business("MEDIA_GENERATION_FAILED", "invalid media path");
+        }
         try {
-            Files.createDirectories(target.getParent());
+            Files.createDirectories(parent);
             Files.write(target, bytes);
         } catch (IOException e) {
             throw RpcException.business("MEDIA_WRITE_FAILED", "failed to save generated media: " + e.getMessage(), e);
         }
-        return new SavedFile(relativePath.replace('\\', '/'), target.getFileName().toString(), contentType, bytes.length);
+        var fileName = target.getFileName();
+        if (fileName == null) {
+            throw RpcException.business("MEDIA_GENERATION_FAILED", "invalid media path");
+        }
+        return new SavedFile(relativePath.replace('\\', '/'), fileName.toString(), contentType, bytes.length);
     }
 
     private byte[] decode(String value) {
         var payload = value;
         var comma = payload.indexOf(',');
-        if (payload.startsWith("data:") && comma >= 0) payload = payload.substring(comma + 1);
+        if (comma >= 0 && payload.startsWith("data:")) payload = payload.substring(comma + 1);
         try {
             return Base64.getDecoder().decode(payload);
         } catch (IllegalArgumentException e) {

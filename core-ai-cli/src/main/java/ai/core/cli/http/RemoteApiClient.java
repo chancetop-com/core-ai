@@ -373,9 +373,9 @@ public class RemoteApiClient {
                 .append(": ")
                 .append(string(issue.get("message")));
             var fieldPath = string(issue.get("field_path"));
-            if (fieldPath != null && !fieldPath.isBlank()) lines.append(" (").append(fieldPath).append(')');
+            if (!fieldPath.isBlank()) lines.append(" (").append(fieldPath).append(')');
             var suggestion = string(issue.get("suggestion"));
-            if (suggestion != null && !suggestion.isBlank()) {
+            if (!suggestion.isBlank()) {
                 lines.append("\n  Suggestion: ").append(suggestion);
             }
             var probability = issue.get("affirmative_probability");

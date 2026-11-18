@@ -55,7 +55,6 @@ public class EngineSessionRegistry {
     private final EngineSessionModels models;
     private final MdMemoryProvider memoryProvider;
     private final Map<String, EngineSession> sessions = new ConcurrentHashMap<>();
-    private final MemoryActivityReporter memoryReporter = new MemoryActivityReporter(sessions::values);
     private final SessionTitleResolver titleResolver;
     private final SessionLifecycle lifecycle;
     private volatile String approvalPolicy = "ask";
@@ -75,7 +74,8 @@ public class EngineSessionRegistry {
         this.lifecycle = new SessionLifecycle(bootstrap, sessions, sidecars, () -> scheduler, sinkSupplier);
         this.memoryProvider = bootstrap.memoryEnabled ? new MdMemoryProvider(bootstrap.workspace) : null;
         if (bootstrap.memoryEnabled) {
-            MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(memoryReporter::publish);
+            MemoryTriggerService.getInstance(bootstrap.workspace).addActivityListener(
+                new MemoryActivityReporter(sessions::values)::publish);
         }
         SessionRetention.retain(bootstrap, titles, models);
     }

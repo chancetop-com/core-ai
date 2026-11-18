@@ -96,7 +96,7 @@ public final class LocalSdkBroker implements AutoCloseable {
                 return;
             }
             route(exchange, route, engineSession);
-        } catch (Exception e) {
+        } catch (IOException | RuntimeException e) {
             writeFailure(exchange, e);
         }
     }
@@ -175,7 +175,7 @@ public final class LocalSdkBroker implements AutoCloseable {
         return node;
     }
 
-    private ObjectNode tools(EngineSession session, String query) throws IOException {
+    private ObjectNode tools(EngineSession session, String query) {
         var node = JsonUtil.OBJECT_MAPPER.createObjectNode();
         var tools = node.putArray("tools");
         var filter = query == null ? "" : URLDecoder.decode(query, StandardCharsets.UTF_8);

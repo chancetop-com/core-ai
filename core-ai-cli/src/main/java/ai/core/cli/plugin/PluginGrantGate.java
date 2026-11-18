@@ -112,7 +112,7 @@ public final class PluginGrantGate {
                 if (!(item instanceof Map<?, ?> install)) continue;
                 if (!SCOPE.equals(String.valueOf(install.get("scope")))) continue;
                 if (!root.name().equals(String.valueOf(install.get("pluginId")))) continue;
-                if (install.get("enabled") != Boolean.TRUE) return false;
+                if (!Boolean.TRUE.equals(install.get("enabled"))) return false;
                 if (!root.digest().equals(String.valueOf(install.get("digest")))) return false;
                 match = install;
             }
@@ -143,7 +143,9 @@ public final class PluginGrantGate {
 
     private List<String> requiredFromManifest(String digest) {
         if (stateFile == null) return List.of();
-        var packageDir = stateFile.getParent().resolve("packages").resolve(digest);
+        var parent = stateFile.getParent();
+        if (parent == null) return List.of();
+        var packageDir = parent.resolve("packages").resolve(digest);
         for (var relative : List.of(".claude-plugin/plugin.json", "plugin.json")) {
             var manifest = packageDir.resolve(relative);
             if (!Files.isRegularFile(manifest)) continue;

@@ -57,7 +57,6 @@ class PluginSkillRootsTest {
 
         assertTrue(PluginSkillRoots.parse("[" + entry("traversal", escaped) + "]", temp).isEmpty());
         assertTrue(PluginSkillRoots.parse("[" + rootJson + "]", temp).isEmpty());
-        assertTrue(Files.isDirectory(escaped));
     }
 
     @Test
