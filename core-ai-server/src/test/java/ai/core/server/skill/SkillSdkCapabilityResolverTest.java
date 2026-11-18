@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.server.apiuser.PermissionService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.skill.SkillCapability;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillSdkCapabilityManifest;
 import ai.core.tool.ToolCall;
@@ -56,7 +57,7 @@ class SkillSdkCapabilityResolverTest {
                 "mcp:analytics/run_query", "api-tool:crm/leads/list", "llm-call:lead-summary")));
 
         assertEquals(2, capabilities.size());
-        assertEquals(List.of("mcp", "api"), capabilities.stream().map(cap -> cap.kind()).toList());
+        assertEquals(List.of("mcp", "api"), capabilities.stream().map(SkillCapability::kind).toList());
         assertEquals("mcp:analytics:run_query", capabilities.getFirst().refId());
         assertEquals("analytics/run_query", capabilities.getFirst().path());
         assertEquals("skill-1", capabilities.getFirst().skillId());

@@ -23,6 +23,7 @@ import core.framework.web.exception.NotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -170,7 +171,8 @@ public class SandboxHubService {
 
         trimTasks();
         var eventSession = agentSession;
-        var future = CompletableFuture.supplyAsync(() -> execute(session, eventSession, agent, entry, arguments, context, callId),
+        var functionCall = FunctionCall.of(callId, FUNCTION_TYPE, entry.tool().getName(), arguments);
+        var future = CompletableFuture.supplyAsync(() -> execute(session, eventSession, agent, entry, functionCall, context),
                 AsyncToolTaskExecutor.getInstance().getExecutor());
         tasks.put(callId, new InFlight(future, System.currentTimeMillis() + TASK_RETENTION_MILLIS));
         try {
@@ -221,11 +223,11 @@ public class SandboxHubService {
     }
 
     private SandboxHubCallResponse execute(SandboxHubSession session, InProcessAgentSession agentSession, Agent agent,
-                                           SandboxHubCatalog.Entry entry, String arguments, ExecutionContext context, String callId) {
+                                           SandboxHubCatalog.Entry entry, FunctionCall functionCall, ExecutionContext context) {
         var startedAt = System.currentTimeMillis();
+        var callId = functionCall.id;
         ToolCallResult result;
         try {
-            var functionCall = FunctionCall.of(callId, FUNCTION_TYPE, entry.tool().getName(), arguments);
             result = agent.executeToolOutsideTurn(entry.tool(), functionCall, context);
         } catch (RuntimeException e) {
             LOGGER.warn("sandbox hub call failed, tool={}, call={}", entry.name(), callId, e);
@@ -254,21 +256,21 @@ public class SandboxHubService {
             var contributors = contributors(agent.getExecutionContext(), entry);
             // Ordinary agent tools that a script happens to call are not part of the skill SDK surface.
             if (contributors.isEmpty()) return;
-            var items = new java.util.ArrayList<java.util.Map<String, String>>();
-            items.add(java.util.Map.of("label", "Capability", "value", entry.kind() + ": " + entry.path()));
-            items.add(java.util.Map.of("label", "Status", "value", Boolean.TRUE.equals(response.isError) ? "failed" : "completed"));
+            var items = new ArrayList<Map<String, String>>();
+            items.add(Map.of("label", "Capability", "value", entry.kind() + ": " + entry.path()));
+            items.add(Map.of("label", "Status", "value", Boolean.TRUE.equals(response.isError) ? "failed" : "completed"));
             if (!contributors.isEmpty()) {
-                items.add(java.util.Map.of("label", "Skill", "value", String.join(", ", contributors)));
+                items.add(Map.of("label", "Skill", "value", String.join(", ", contributors)));
             }
-            items.add(java.util.Map.of("label", "Duration", "value", response.durationMs + " ms"));
+            items.add(Map.of("label", "Duration", "value", response.durationMs + " ms"));
             if (response.errorMessage != null && !response.errorMessage.isBlank()) {
-                items.add(java.util.Map.of("label", "Error", "value", response.errorMessage));
+                items.add(Map.of("label", "Error", "value", response.errorMessage));
             }
-            var card = JsonUtil.toJson(java.util.Map.of(
+            var card = JsonUtil.toJson(Map.of(
                     "schema_version", 1,
                     "title", "Skill SDK · " + entry.path(),
-                    "blocks", java.util.List.of(java.util.Map.of("type", "key_values", "items", items))));
-            var data = JsonUtil.toJson(java.util.Map.of(
+                    "blocks", List.of(Map.of("type", "key_values", "items", items))));
+            var data = JsonUtil.toJson(Map.of(
                     "call_id", response.callId,
                     "capability", entry.refId(),
                     "kind", entry.kind(),
@@ -282,7 +284,7 @@ public class SandboxHubService {
     }
 
     private List<String> contributors(ExecutionContext context, SandboxHubCatalog.Entry entry) {
-        var result = new java.util.ArrayList<String>();
+        var result = new ArrayList<String>();
         for (SkillCapability capability : context.getSkillCapabilities()) {
             if (capability == null) continue;
             if (!entry.refId().equals(capability.refId())) continue;

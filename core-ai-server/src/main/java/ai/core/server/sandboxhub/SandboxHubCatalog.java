@@ -8,7 +8,6 @@ import ai.core.api.server.sandboxhub.SandboxHubToolSummary;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetToolProvider;
-import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolCall;
 import ai.core.tool.registry.ToolExposure;

@@ -1,7 +1,6 @@
 package ai.core.server.session;
 
 import ai.core.server.agent.AgentDefinitionStore;
-
 import ai.core.agent.Agent;
 import ai.core.api.server.session.SessionConfig;
 import ai.core.server.apiuser.ApiUserQuotaService;
@@ -283,8 +282,7 @@ public class AgentSessionManager {
     private void renewSessionOwnership(String sessionId) {
         sessionAgentHelper.renewSessionOwnership(sessionId);
     }
-    // Called while idle and every few seconds during a turn: a long turn produces no commands, so the
-    // activity touch is what keeps cleanupIdleSessions from closing a session that is still working.
+    // Called while idle and every few seconds during a turn: the activity touch keeps cleanupIdleSessions from closing a working session.
     void onSessionHeartbeat(String sessionId, InProcessAgentSession session) {
         renewSessionOwnership(sessionId);
         if (session.isTurnRunning()) touchActivity(sessionId);
@@ -317,8 +315,7 @@ public class AgentSessionManager {
             logger.info("session not found locally, attempting to rebuild, sessionId={}", id);
             var rebuilt = rebuildManager().rebuildSession(id, effectiveState, callerUserId);
             if (rebuilt != null) {
-                // Take over the driver heartbeat so a long turn on a rebuilt session also keeps
-                // its activity fresh, not just its ownership lease.
+                // Take over the driver heartbeat so a long turn on a rebuilt session also stays fresh.
                 rebuilt.setOnIdle(() -> onSessionHeartbeat(id, rebuilt));
                 if (!sessionAgentHelper.claimOrConfirmOwnership(id)) {
                     logger.warn("failed to claim rebuilt session ownership, sessionId={}", id);
@@ -375,8 +372,7 @@ public class AgentSessionManager {
         var session = sessions.remove(sessionId);
         runtimeStats.onClosed(sessionId, session != null);
         if (session != null && userSessionBudget != null) userSessionBudget.release(session.agent().getExecutionContext().getUserId());
-        // close() aborts an in-flight turn and lets its terminal event flush first, so the listeners
-        // below still see the reply and the turn state before their buffers are discarded.
+        // close() aborts an in-flight turn and lets its terminal event flush first, so listeners still see the reply.
         if (session != null) session.close();
         // the turn key must never outlive the runtime that owns it
         if (turnStateRegistry != null) turnStateRegistry.clear(sessionId);

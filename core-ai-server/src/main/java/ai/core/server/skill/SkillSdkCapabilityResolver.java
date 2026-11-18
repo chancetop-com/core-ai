@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Resolves the supported declarations of loaded skills into concrete session capabilities.
@@ -54,8 +55,7 @@ public class SkillSdkCapabilityResolver {
      */
     public List<SkillCapability> resolve(String sessionId, String userId, Map<String, SkillMetadata> skills) {
         if (toolRegistryService == null || skills == null || skills.isEmpty()) return List.of();
-        var result = new ArrayList<SkillCapability>();
-        var seen = new HashSet<String>();
+        var resolution = new Resolution(sessionId, userId);
         for (var skill : skills.entrySet()) {
             var skillId = skill.getKey();
             var metadata = skill.getValue();
@@ -63,27 +63,32 @@ public class SkillSdkCapabilityResolver {
             var manifest = SkillSdkCapabilityManifest.parse(metadata.getAllowedTools(), metadata.getMetadata());
             if (!manifest.enabled()) continue;
             for (var entry : manifest.entries()) {
-                if (!canGrant(userId, entry)) continue;
-                var ref = toToolRef(userId, entry);
-                if (ref == null) {
-                    LOGGER.debug("skip unresolved skill capability, skill={}, entry={}", metadata.getQualifiedName(), entry.raw());
-                    continue;
-                }
-                try {
-                    var tools = toolRegistryService.resolveToolRefs(List.of(ref), sessionId, userId);
-                    for (var tool : tools) {
-                        var capability = capability(skillId, metadata, entry, tool);
-                        if (seen.add(capability.skillId() + "|" + capability.refId() + "|" + tool.getName())) {
-                            result.add(capability);
-                        }
-                    }
-                } catch (RuntimeException e) {
-                    LOGGER.warn("failed to resolve skill capability, skill={}, entry={}, error={}",
-                            metadata.getQualifiedName(), entry.raw(), e.getMessage());
-                }
+                resolveEntry(resolution, skillId, metadata, entry);
             }
         }
-        return List.copyOf(result);
+        return List.copyOf(resolution.result);
+    }
+
+    private void resolveEntry(Resolution resolution, String skillId, SkillMetadata metadata,
+                              SkillSdkCapabilityManifest.Entry entry) {
+        if (!canGrant(resolution.userId, entry)) return;
+        var ref = toToolRef(resolution.userId, entry);
+        if (ref == null) {
+            LOGGER.debug("skip unresolved skill capability, skill={}, entry={}", metadata.getQualifiedName(), entry.raw());
+            return;
+        }
+        try {
+            var tools = toolRegistryService.resolveToolRefs(List.of(ref), resolution.sessionId, resolution.userId);
+            for (var tool : tools) {
+                var capability = capability(skillId, metadata, entry, tool);
+                if (resolution.seen.add(capability.skillId() + "|" + capability.refId() + "|" + tool.getName())) {
+                    resolution.result.add(capability);
+                }
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to resolve skill capability, skill={}, entry={}, error={}",
+                    metadata.getQualifiedName(), entry.raw(), e.getMessage());
+        }
     }
 
     private boolean canGrant(String userId, SkillSdkCapabilityManifest.Entry entry) {
@@ -161,5 +166,17 @@ public class SkillSdkCapabilityResolver {
         }
         return new SkillCapability(skillId, metadata.getQualifiedName(), KIND_API,
                 String.join("/", parts), String.join("/", parts), parts.get(0), tool);
+    }
+
+    private static final class Resolution {
+        final String sessionId;
+        final String userId;
+        final List<SkillCapability> result = new ArrayList<>();
+        final Set<String> seen = new HashSet<>();
+
+        Resolution(String sessionId, String userId) {
+            this.sessionId = sessionId;
+            this.userId = userId;
+        }
     }
 }
