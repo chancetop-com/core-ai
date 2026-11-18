@@ -6,14 +6,17 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSdkCapabilityManifest;
+import ai.core.session.CustomEventEmitter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.SkillTool;
+import ai.core.utils.JsonUtil;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -83,6 +86,7 @@ public class ServerSkillTool extends ToolCall {
             var baseDir = materializeIfPossible(sandbox, definition);
 
             var content = renderSkill(meta, definition, baseDir);
+            emitCapabilities(context, meta, definition);
             if (sandbox != null && baseDir == null) {
                 content += "\n\n[Sandbox unavailable: the skill content is loaded, but scripts cannot run until a sandbox is available.]";
             }
@@ -113,8 +117,28 @@ public class ServerSkillTool extends ToolCall {
         }
     }
 
-    private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {
-        var content = def.content != null ? def.content : "";
+    private void emitCapabilities(ExecutionContext context, SkillMetadata meta, SkillDefinition def) {
+        var emitter = context.getCustomVariable(CustomEventEmitter.CONTEXT_KEY, CustomEventEmitter.class);
+        if (emitter == null) return;
+        var manifest = SkillSdkCapabilityManifest.parse(def.allowedTools, def.metadata);
+        if (!manifest.enabled() || manifest.entries().isEmpty()) return;
+        var items = new ArrayList<Map<String, String>>();
+        for (var entry : manifest.entries()) {
+            items.add(Map.of("label", entry.kind(), "value", entry.displayPath()));
+        }
+        var card = JsonUtil.toJson(Map.of(
+                "schema_version", 1,
+                "title", "Skill · " + meta.getQualifiedName(),
+                "blocks", List.of(Map.of("type", "key_values", "items", items))));
+        var data = JsonUtil.toJson(Map.of(
+                "skill", meta.getQualifiedName(),
+                "capabilities", manifest.entries().stream().map(e -> e.kind() + ":" + e.displayPath()).toList(),
+                "version", manifest.contractVersion()));
+        var error = emitter.emit("skill_capabilities", data, card, context.getCurrentToolCallId());
+        if (error != null) LOGGER.debug("skill capability card not emitted: {}", error);
+    }
+
+    private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {        var content = def.content != null ? def.content : "";
         var sb = new StringBuilder(content.length() + 256);
         sb.append("<skill name=\"").append(meta.getQualifiedName()).append('"');
         if (baseDir != null) {
