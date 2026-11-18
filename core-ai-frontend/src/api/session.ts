@@ -432,10 +432,10 @@ export const sessionApi = {
       body: JSON.stringify({ tools }),
     }),
 
-  loadSkills: (sessionId: string, skillIds: string[]) =>
+  loadSkills: (sessionId: string, skillIds: string[], sdkPlanDigest?: string) =>
     request<LoadSkillsResponse>(`/api/sessions/${sessionId}/skills`, {
       method: 'POST',
-      body: JSON.stringify({ skill_ids: skillIds }),
+      body: JSON.stringify({ skill_ids: skillIds, sdk_plan_digest: sdkPlanDigest }),
     }),
 
   loadSubAgents: (sessionId: string, agentIds: string[]) =>

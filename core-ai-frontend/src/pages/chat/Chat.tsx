@@ -2044,7 +2044,13 @@ export default function Chat() {
     }
 
     try {
-      const res = await sessionApi.loadSkills(sessionId, skillIdsToLoad);
+      let planDigest: string | undefined;
+      try {
+        planDigest = (await api.skills.sdkPlan(skillIdsToLoad)).plan_digest;
+      } catch {
+        // older server without the preview endpoint: keep the legacy load path
+      }
+      const res = await sessionApi.loadSkills(sessionId, skillIdsToLoad, planDigest);
       if (res.loaded_skills && res.loaded_skills.length > 0) {
         setLoadedSkillIds(prev => {
           const next = new Set(prev);

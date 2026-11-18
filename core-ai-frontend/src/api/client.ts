@@ -955,6 +955,17 @@ export interface SkillSdkCapability {
     supported: boolean;
 }
 
+export interface SkillSdkPlanResponse {
+    plan_digest: string;
+    skills: {
+        skill_id: string;
+        qualified_name: string;
+        content_digest: string;
+        sdk_capabilities_version?: string;
+        capabilities: SkillSdkCapability[];
+    }[];
+}
+
 export interface SkillDefinition {
     id: string;
     namespace: string;
@@ -2539,6 +2550,11 @@ export const api = {
         },
         get: (id: string) =>
             request<SkillDefinition>(`/api/skills/${id}`),
+        sdkPlan: (skillIds: string[]) =>
+            request<SkillSdkPlanResponse>('/api/skills/sdk-plan', {
+                method: 'POST',
+                body: JSON.stringify({ skill_ids: skillIds }),
+            }),
         update: (id: string, data: UpdateSkillRequest) =>
             request<SkillDefinition>(`/api/skills/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
         delete: (id: string) =>
