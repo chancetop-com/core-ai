@@ -1,6 +1,6 @@
 // Unit tests for the allowlisted plugin terminal operations.
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -26,10 +26,22 @@ test('strips credential-shaped environment variables', () => {
 });
 
 test('resolves executables outside the workspace only', () => {
-  const workspace = mkdtempSync(path.join(os.tmpdir(), 'coreai-terminal-'));
-  const nodePath = resolveExecutable('node', workspace);
-  assert.ok(nodePath && path.isAbsolute(nodePath));
-  assert.equal(resolveExecutable('node', path.dirname(nodePath)), null);
+  const root = mkdtempSync(path.join(os.tmpdir(), 'coreai-terminal-'));
+  const workspace = path.join(root, 'workspace');
+  const bin = path.join(root, 'bin');
+  mkdirSync(workspace);
+  mkdirSync(bin);
+  const exeName = process.platform === 'win32' ? 'node.exe' : 'node';
+  const exe = path.join(bin, exeName);
+  writeFileSync(exe, '');
+  const originalPath = process.env.PATH;
+  process.env.PATH = bin;
+  try {
+    assert.equal(resolveExecutable('node', workspace), exe);
+    assert.equal(resolveExecutable('node', bin), null);
+  } finally {
+    process.env.PATH = originalPath;
+  }
 });
 
 test('rejects an operation outside the allowlist', async () => {
