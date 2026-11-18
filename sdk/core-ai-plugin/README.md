@@ -99,6 +99,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `media.assets.write` | imports a reference image into the workspace media directory |
 | `sessions.read` | lists session metadata for the current workspace |
 | `memory.read` | lists and reads memory files in the workspace |
+| `memory.write` | appends/overwrites Markdown under `knowledge/` |
 | `workspace.read` | reads a small workspace summary |
 | `usage.read` | reads workspace token/cost totals from persisted transcripts |
 | `plugin.storage` | namespaced string storage persisted with the plugin install |

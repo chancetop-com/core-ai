@@ -11,6 +11,7 @@ export type PluginCapability =
   | 'media.generate'
   | 'sessions.read'
   | 'memory.read'
+  | 'memory.write'
   | 'workspace.read'
   | 'usage.read'
   | 'plugin.storage'

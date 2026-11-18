@@ -28,6 +28,8 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   memory: {
     list: (params: Record<string, unknown> = {}) => call('memory.list', params),
     read: (path: string) => call('memory.read', { path }),
+    write: (path: string, content: string, mode: 'append' | 'overwrite' = 'append') =>
+      call('memory.write', { path, content, mode }),
   },
   workspace: {
     summary: () => call('workspace.summary'),

@@ -150,6 +150,7 @@ export interface CoreAiPluginBridge {
   memory: {
     list(params?: { limit?: number; cursor?: number }): Promise<{ files: PluginMemoryFile[]; nextCursor?: string }>;
     read(path: string): Promise<{ path: string; content: string }>;
+    write(path: string, content: string, mode?: 'append' | 'overwrite'): Promise<{ path: string; mode: string; size: number }>;
   };
   workspace: {
     summary(): Promise<PluginWorkspaceSummary>;

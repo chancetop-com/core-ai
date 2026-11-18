@@ -21,6 +21,7 @@
     .grow { flex: 1; min-width: 0; }
     button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
     button.ghost { color: var(--muted); background: transparent; border: 1px solid var(--border); font-weight: 500; }
+    textarea { width: 100%; min-height: 74px; resize: vertical; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
     ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
     li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
     li:last-child { border-bottom: 0; }
@@ -70,6 +71,16 @@
       <button id="reset" class="ghost" type="button">Reset</button>
     </div>
     <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Memory note</h2>
+    <textarea id="note" placeholder="Append a note to knowledge/plugin-notes/workspace-insights.md"></textarea>
+    <div class="row" style="margin-top:8px">
+      <span class="grow"></span>
+      <button id="save-note" class="ghost" type="button">Append note</button>
+    </div>
+    <div class="status" id="note-status"></div>
   </div>
 
   <div class="card">
@@ -204,6 +215,24 @@
   $('reset').onclick = async () => {
     counter = 0;
     await saveCounter();
+  };
+  $('save-note').onclick = async () => {
+    const note = $('note').value.trim();
+    if (!note) {
+      $('note-status').textContent = 'Write a note first.';
+      $('note-status').className = 'status error';
+      return;
+    }
+    try {
+      await bridge.memory.write('knowledge/plugin-notes/workspace-insights.md', `${note}\n`);
+      $('note').value = '';
+      $('note-status').textContent = 'Note appended.';
+      $('note-status').className = 'status';
+      await loadMemory();
+    } catch (error) {
+      $('note-status').textContent = `Note failed: ${error.message || error}`;
+      $('note-status').className = 'status error';
+    }
   };
   $('notify').onclick = async () => {
     $('notify-status').textContent = 'Sending…';

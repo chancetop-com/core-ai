@@ -260,6 +260,16 @@ export class PluginPageHost {
         this.requireCapability(instance, 'memory.read');
         if (typeof args.path !== 'string') throw new PluginPageError('invalid_request', 'path is required');
         return this.engine(instance, 'memory/read', { path: args.path });
+      case 'memory.write':
+        this.requireCapability(instance, 'memory.write');
+        if (typeof args.path !== 'string' || typeof args.content !== 'string') {
+          throw new PluginPageError('invalid_request', 'path and content are required');
+        }
+        return this.engine(instance, 'memory/write', {
+          path: args.path,
+          content: args.content,
+          mode: typeof args.mode === 'string' ? args.mode : 'append',
+        });
       case 'workspace.summary':
         this.requireCapability(instance, 'workspace.read');
         return this.workspaceSummary(instance);

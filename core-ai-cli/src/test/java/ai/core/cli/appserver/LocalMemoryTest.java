@@ -84,6 +84,37 @@ class LocalMemoryTest {
     }
 
     @Test
+    void appendsAndOverwritesKnowledgeNotes() throws Exception {
+        var path = "knowledge/plugin-notes/plugin-a.md";
+        LocalMemory.write(workspace, Params.object().put("path", path).put("content", "first\n"));
+        LocalMemory.write(workspace, Params.object().put("path", path).put("content", "second\n"));
+        var appended = LocalMemory.read(workspace, Params.object().put("path", path), globalFile());
+        assertEquals("first\nsecond\n", appended.get("content").asText());
+
+        LocalMemory.write(workspace, Params.object().put("path", path).put("content", "replaced")
+                .put("mode", "overwrite"));
+        var replaced = LocalMemory.read(workspace, Params.object().put("path", path), globalFile());
+        assertEquals("replaced", replaced.get("content").asText());
+    }
+
+    @Test
+    void rejectsMemoryWritesOutsideKnowledge() {
+        var error = assertThrows(RpcException.class, () -> LocalMemory.write(workspace,
+                Params.object().put("path", "knowledge/../secret.md").put("content", "x")));
+        assertEquals("PATH_NOT_ALLOWED", error.data().path("code").asText());
+        var outside = assertThrows(RpcException.class, () -> LocalMemory.write(workspace,
+                Params.object().put("path", "episodes/x.md").put("content", "x")));
+        assertEquals("PATH_NOT_ALLOWED", outside.data().path("code").asText());
+    }
+
+    @Test
+    void rejectsOversizedMemoryWrites() {
+        var error = assertThrows(RpcException.class, () -> LocalMemory.write(workspace,
+                Params.object().put("path", "knowledge/big.md").put("content", "x".repeat(300 * 1024))));
+        assertEquals("FILE_TOO_LARGE", error.data().path("code").asText());
+    }
+
+    @Test
     void listsAndReadsTheGlobalUserMemory() throws Exception {
         var home = tempDir.resolve("home/.core-ai");
         Files.createDirectories(home);

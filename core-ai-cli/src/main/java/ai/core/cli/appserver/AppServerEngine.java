@@ -210,6 +210,10 @@ public class AppServerEngine implements EngineApi {
                     bootstrap.requireTrusted("reading media jobs");
                     return mediaGeneration.jobs(params);
                 },
+                "memory/write", params -> {
+                    bootstrap.requireTrusted("writing memory");
+                    return LocalMemory.write(bootstrap.workspace, params);
+                },
                 "usage/summary", usageApi::summary);
     }
 

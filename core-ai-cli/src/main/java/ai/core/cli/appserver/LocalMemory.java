@@ -11,6 +11,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -29,6 +30,7 @@ import java.util.stream.Stream;
 public final class LocalMemory {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalMemory.class);
     private static final long MAX_READ_BYTES = 256 * 1024;
+    private static final long MAX_WRITE_BYTES = 256 * 1024;
     private static final List<String> ROOTS = List.of("knowledge", "episodes", "daily-logs");
     private static final String GLOBAL_PREFIX = "global/";
     private static final int DEFAULT_PAGE = 200;
@@ -82,6 +84,60 @@ public final class LocalMemory {
             throw RpcException.business("FILE_NOT_FOUND", "memory file not found: " + relative, "path", relative);
         }
         return readContent(resolved, root.relativize(resolved).toString().replace('\\', '/'));
+    }
+
+    /** Appends or replaces one Markdown file; plugins may only write under .core-ai/knowledge. */
+    public static ObjectNode write(Path workspace, ObjectNode params) {
+        var relative = Params.requiredText(params, "path").replace('\\', '/');
+        if (!relative.startsWith("knowledge/")) {
+            throw RpcException.business("PATH_NOT_ALLOWED", "path must be under knowledge/");
+        }
+        var content = Params.requiredText(params, "content");
+        if (content.isBlank()) throw RpcException.invalidParams("content is required");
+        var bytes = content.getBytes(StandardCharsets.UTF_8).length;
+        if (bytes > MAX_WRITE_BYTES) throw RpcException.business("FILE_TOO_LARGE", "memory write is larger than 256KB");
+        var coreAi = CanonicalPath.ofOrNormalized(workspace.resolve(".core-ai"));
+        var root = CanonicalPath.of(coreAi.resolve("knowledge"));
+        if (root == null || !root.startsWith(coreAi)) {
+            throw RpcException.business("PATH_NOT_ALLOWED", "knowledge directory must stay inside .core-ai");
+        }
+        var target = CanonicalPath.of(root.resolve(relative.substring("knowledge/".length())).normalize());
+        if (target == null || !target.startsWith(root) || target.equals(root)) {
+            throw RpcException.business("PATH_NOT_ALLOWED", "path must stay inside the workspace knowledge directory");
+        }
+        var mode = Params.optionalText(params, "mode");
+        if (mode == null) mode = "append";
+        if (!"append".equals(mode) && !"overwrite".equals(mode)) {
+            throw RpcException.invalidParams("mode must be append or overwrite");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            if ("append".equals(mode)) {
+                Files.writeString(target, content, StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                writeAtomically(target, content);
+            }
+        } catch (IOException e) {
+            throw RpcException.business("MEMORY_WRITE_FAILED", "failed to write memory file: " + e.getMessage(), e);
+        }
+        var node = Params.object();
+        node.put("path", relative);
+        node.put("mode", mode);
+        node.put("size", bytes);
+        return node;
+    }
+
+    private static void writeAtomically(Path target, String content) throws IOException {
+        var temp = Files.createTempFile(target.getParent(), ".memory-", ".tmp");
+        try {
+            Files.writeString(temp, content, StandardCharsets.UTF_8);
+            Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
+            Files.move(temp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temp);
+        }
     }
 
     /**
