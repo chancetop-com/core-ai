@@ -34,6 +34,8 @@ import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.session.SessionState;
+import ai.core.server.settings.DesktopConversationPolicy;
+import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.user.UserStore;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.web.sse.SessionChannelService;
@@ -80,9 +82,8 @@ public class ConversationWebServiceImpl implements ConversationWebService {
     }
 
     /**
-     * Comma-separated agent ids allowed to be used as a direct conversation target. Empty means the
-     * feature is closed; "*" is the explicit opt-in to the whole catalog for a controlled rollout.
-     * This is the P0 safety gate while the server still auto-approves tools.
+     * Deployment fallback, used when the server UI policy is "inherit": comma-separated agent ids,
+     * empty closes the surface, "*" opens the whole visible catalog.
      */
     public String allowedAgents = "";
 
@@ -112,6 +113,8 @@ public class ConversationWebServiceImpl implements ConversationWebService {
     ConversationRequestStore requestStore;
     @Inject
     UserStore userStore;
+    @Inject
+    SystemSettingsService systemSettingsService;
 
     @Override
     public ConversationCapabilitiesResponse capabilities() {
@@ -122,7 +125,7 @@ public class ConversationWebServiceImpl implements ConversationWebService {
         response.subjectType = userStore.get(userId)
                 .map(user -> "api".equals(user.userType) ? "api_service" : "human")
                 .orElse("unknown");
-        response.directConversation = !allowedAgents.isBlank();
+        response.directConversation = desktopConversationEnabled();
         response.idempotentCommands = Boolean.TRUE;
         response.historyPaging = Boolean.TRUE;
         // P0 deliberately exposes no upload/approval contract until the server owns those guarantees.
@@ -361,6 +364,26 @@ public class ConversationWebServiceImpl implements ConversationWebService {
     }
 
     private boolean isAllowed(String agentId) {
+        var mode = systemSettingsService.desktopDirectConversationMode();
+        if (DesktopConversationPolicy.MODE_OFF.equals(mode)) return false;
+        if (DesktopConversationPolicy.MODE_ALL.equals(mode)) return true;
+        if (DesktopConversationPolicy.MODE_SELECTED.equals(mode)) {
+            return systemSettingsService.desktopDirectConversationAgents().contains(agentId);
+        }
+        return deploymentAllows(agentId);
+    }
+
+    private boolean desktopConversationEnabled() {
+        var mode = systemSettingsService.desktopDirectConversationMode();
+        if (DesktopConversationPolicy.MODE_OFF.equals(mode)) return false;
+        if (DesktopConversationPolicy.MODE_ALL.equals(mode)) return true;
+        if (DesktopConversationPolicy.MODE_SELECTED.equals(mode)) {
+            return !systemSettingsService.desktopDirectConversationAgents().isEmpty();
+        }
+        return allowedAgents != null && !allowedAgents.isBlank();
+    }
+
+    private boolean deploymentAllows(String agentId) {
         if (allowedAgents == null || allowedAgents.isBlank()) return false;
         var value = allowedAgents.trim();
         if ("*".equals(value)) return true;

@@ -101,6 +101,14 @@ public class SystemSettings {
     @Field(name = "github_app_private_key")
     public String githubAppPrivateKey;
 
+    // desktop direct conversation policy: inherit | off | all | selected (null/inherit uses the deployment env)
+    @Field(name = "desktop_direct_conversation_mode")
+    public String desktopDirectConversationMode;
+
+    // comma-separated agent ids for mode=selected
+    @Field(name = "desktop_direct_conversation_agents")
+    public String desktopDirectConversationAgents;
+
     @Field(name = "rbac_roles")
     public String rbacRoles;
 

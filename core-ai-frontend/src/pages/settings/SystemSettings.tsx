@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Gauge, Image as ImageIcon, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
+import { Box, CheckCircle2, ChevronDown, CircleAlert, Cpu, Database, Gauge, Image as ImageIcon, Monitor, PlugZap, RefreshCw, Save, Settings, Sparkles } from 'lucide-react';
 import { api, type GatewayModel, type SystemSettings as SystemSettingsData } from '../../api/client';
 import { Navigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
@@ -7,7 +7,7 @@ import { getSystemSettingsAccess } from '../../api/permissions';
 import RuntimePanel from './RuntimePanel';
 import SnapshotRetentionSettings from './SnapshotRetentionSettings';
 
-type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'runtime' | 'integrations';
+type TabKey = 'llm' | 'media' | 'storage' | 'sandbox' | 'skills' | 'desktop' | 'runtime' | 'integrations';
 
 const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'llm', label: 'LLM Models', icon: <Cpu size={14} /> },
@@ -15,6 +15,7 @@ const TABS: { key: TabKey; label: string; icon: ReactNode }[] = [
   { key: 'storage', label: 'Storage', icon: <Database size={14} /> },
   { key: 'sandbox', label: 'Sandbox', icon: <Box size={14} /> },
   { key: 'skills', label: 'Skills', icon: <Sparkles size={14} /> },
+  { key: 'desktop', label: 'Desktop', icon: <Monitor size={14} /> },
   { key: 'runtime', label: 'Runtime', icon: <Gauge size={14} /> },
   { key: 'integrations', label: 'Integrations', icon: <PlugZap size={14} /> },
 ];
@@ -67,6 +68,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
   const [sandboxAttachmentMaxMb, setSandboxAttachmentMaxMb] = useState('');
   const [skillRepoSyncEnabled, setSkillRepoSyncEnabled] = useState(true);
   const [skillRepoSyncIntervalMinutes, setSkillRepoSyncIntervalMinutes] = useState('30');
+  const [desktopMode, setDesktopMode] = useState('inherit');
+  const [desktopAgents, setDesktopAgents] = useState('');
   const [traceArchiveIntervalMinutes, setTraceArchiveIntervalMinutes] = useState('1440');
   const [loading, setLoading] = useState(canManageSystem);
   const [saving, setSaving] = useState(false);
@@ -159,6 +162,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setAzureSpeechEndpoint(settingsResponse.azure_speech_endpoint || '');
       setGithubAppId(settingsResponse.github_app_id || '');
       setGithubAppInstallationId(settingsResponse.github_app_installation_id || '');
+      setDesktopMode(settingsResponse.desktop_direct_conversation_mode || 'inherit');
+      setDesktopAgents((settingsResponse.desktop_direct_conversation_agents || []).join('\n'));
       setGithubAppPrivateKey('');
       setSandboxSnapshotEnabled(settingsResponse.sandbox_snapshot_enabled === true);
       setSandboxAttachmentMaxMb(megabytes(settingsResponse.sandbox_attachment_max_bytes));
@@ -232,6 +237,10 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
         sandbox_attachment_max_bytes: sandboxAttachmentMaxMb.trim() ? Math.round(attachmentMaxMb * 1024 * 1024) : null,
         skill_repo_sync_enabled: skillRepoSyncEnabled,
         skill_repo_sync_interval_minutes: syncIntervalValid ? syncInterval : null,
+        desktop_direct_conversation_mode: desktopMode,
+        desktop_direct_conversation_agents: desktopMode === 'selected'
+          ? desktopAgents.split(/[\n,]+/).map(value => value.trim()).filter(Boolean)
+          : null,
         trace_archive_interval_minutes: traceInterval,
       });
       setSettings(response);
@@ -262,6 +271,8 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
       setSandboxAttachmentMaxMb(megabytes(response.sandbox_attachment_max_bytes));
       setSkillRepoSyncEnabled(response.skill_repo_sync_enabled !== false);
       setSkillRepoSyncIntervalMinutes(String(response.skill_repo_sync_interval_minutes ?? 30));
+      setDesktopMode(response.desktop_direct_conversation_mode || 'inherit');
+      setDesktopAgents((response.desktop_direct_conversation_agents || []).join('\n'));
       setTraceArchiveIntervalMinutes(String(response.trace_archive_interval_minutes ?? 1440));
       setMessage('System settings saved. Changes take effect immediately.');
       setSaved(true);
@@ -732,6 +743,68 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
                   Changes take effect on the next scheduled check, no restart required.
                 </span>
               </label>
+            </div>
+          </section>
+        </>
+      )}
+
+      {activeTab === 'desktop' && (
+        <>
+          <section className="rounded-xl border mt-6" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+            <div className="p-5 border-b" style={{ borderColor: 'var(--color-border)' }}>
+              <h2 className="font-semibold">Desktop direct conversations</h2>
+              <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+                Controls which server agents desktop users can open as a root conversation. Agent visibility and
+                the user's existing agent permissions still apply — this only removes the extra desktop allowlist.
+              </p>
+            </div>
+            <div className="p-5 space-y-4">
+              {[
+                { value: 'inherit', label: 'Deployment default', hint: 'Use the server deployment setting (SYS_CONVERSATION_AGENTS).' },
+                { value: 'off', label: 'Off', hint: 'No desktop direct conversations. Existing conversations stay readable.' },
+                { value: 'all', label: 'All visible agents', hint: 'Any published agent the signed-in user can already use on the server.' },
+                { value: 'selected', label: 'Selected agents only', hint: 'Allow only the agent ids listed below.' },
+              ].map(option => (
+                <label key={option.value} className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="desktop-direct-mode"
+                    value={option.value}
+                    checked={desktopMode === option.value}
+                    onChange={() => setDesktopMode(option.value)}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{option.label}</span>
+                    <span className="block text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>{option.hint}</span>
+                  </span>
+                </label>
+              ))}
+              {desktopMode === 'selected' && (
+                <label className="block">
+                  <span className="block text-sm font-medium mb-2">Agent ids</span>
+                  <textarea
+                    value={desktopAgents}
+                    onChange={event => setDesktopAgents(event.target.value)}
+                    rows={5}
+                    placeholder="one agent id per line, or comma-separated"
+                    className="w-full px-3 py-2 rounded-lg text-sm border outline-none font-mono"
+                    style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}
+                  />
+                  <span className="block text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                    Use the id shown on the agent page (for example builtin-project-report-renderer or assistant:user@example.com).
+                  </span>
+                </label>
+              )}
+              <div className="rounded-lg p-4 text-sm" style={{ background: 'var(--color-bg-tertiary)' }}>
+                <div style={{ color: 'var(--color-text-secondary)' }}>Effective policy</div>
+                <div className="font-mono mt-1">
+                  {desktopMode === 'inherit' && 'Deployment allowlist (SYS_CONVERSATION_AGENTS)'}
+                  {desktopMode === 'off' && 'Disabled'}
+                  {desktopMode === 'all' && 'All visible agents'}
+                  {desktopMode === 'selected' && `${desktopAgents.split(/[\n,]+/).map(value => value.trim()).filter(Boolean).length} selected agent(s)`}
+                </div>
+              </div>
             </div>
           </section>
         </>

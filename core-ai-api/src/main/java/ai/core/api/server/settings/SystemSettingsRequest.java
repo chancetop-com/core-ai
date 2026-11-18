@@ -2,6 +2,8 @@ package ai.core.api.server.settings;
 
 import core.framework.api.json.Property;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -89,4 +91,11 @@ public class SystemSettingsRequest {
 
     @Property(name = "github_app_private_key")
     public String githubAppPrivateKey;
+
+    /** inherit | off | all | selected; inherit keeps the deployment's SYS_CONVERSATION_AGENTS rule. */
+    @Property(name = "desktop_direct_conversation_mode")
+    public String desktopDirectConversationMode;
+
+    @Property(name = "desktop_direct_conversation_agents")
+    public List<String> desktopDirectConversationAgents;
 }

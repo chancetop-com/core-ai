@@ -14,7 +14,7 @@ import core.framework.web.exception.ForbiddenException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.time.ZonedDateTime;
-import java.util.Base64;
+import java.util.List;
 
 /**
  * @author stephen
@@ -46,7 +46,7 @@ public class SystemSettingsService {
         requireAdmin(userId);
         if (request == null) throw new BadRequestException("request is required");
         var models = normalizeAndValidate(request);
-        validateIntegrations(request);
+        SystemSettingsValidation.validateIntegrations(request);
 
         var now = ZonedDateTime.now();
         var entity = entity();
@@ -58,6 +58,7 @@ public class SystemSettingsService {
             applyModels(entity, models);
             applyIntegrations(entity, request);
             applySkillRepoSync(entity, request);
+            DesktopConversationPolicy.apply(entity, request);
             TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
@@ -66,6 +67,7 @@ public class SystemSettingsService {
             applyModels(entity, models);
             applyIntegrations(entity, request);
             applySkillRepoSync(entity, request);
+            DesktopConversationPolicy.apply(entity, request);
             TraceArchiveSettings.apply(entity, request);
             entity.updatedBy = userId;
             entity.updatedAt = now;
@@ -149,40 +151,12 @@ public class SystemSettingsService {
         }
     }
 
-    private void validateIntegrations(SystemSettingsRequest request) {
-        if (request.azureBlobAccountKey != null && !request.azureBlobAccountKey.isBlank()) {
-            try {
-                Base64.getDecoder().decode(request.azureBlobAccountKey.trim());
-            } catch (IllegalArgumentException e) {
-                throw new BadRequestException("azure blob account key must be valid base64", "INVALID_BASE64", e);
-            }
-        }
-        if (request.githubAppPrivateKey != null && !request.githubAppPrivateKey.isBlank()
-                && !request.githubAppPrivateKey.contains("BEGIN")) {
-            throw new BadRequestException("github app private key must be a PEM key");
-        }
-        validateNumeric(request.githubAppId, "githubAppId");
-        validateNumeric(request.githubAppInstallationId, "githubAppInstallationId");
-        validateSkillRepoSyncInterval(request.skillRepoSyncIntervalMinutes);
-        SandboxAttachmentLimit.validate(request.sandboxAttachmentMaxBytes);
-        TraceArchiveSettings.validate(request);
+    public String desktopDirectConversationMode() {
+        return DesktopConversationPolicy.mode(entity());
     }
 
-    private void validateSkillRepoSyncInterval(Integer interval) {
-        if (interval == null) return;
-        if (interval < MIN_SKILL_REPO_SYNC_INTERVAL_MINUTES || interval > MAX_SKILL_REPO_SYNC_INTERVAL_MINUTES) {
-            throw new BadRequestException("skill repo sync interval must be between " + MIN_SKILL_REPO_SYNC_INTERVAL_MINUTES
-                    + " and " + MAX_SKILL_REPO_SYNC_INTERVAL_MINUTES + " minutes");
-        }
-    }
-
-    private void validateNumeric(String value, String field) {
-        if (value == null || value.isBlank()) return;
-        try {
-            Long.parseLong(value.trim());
-        } catch (NumberFormatException e) {
-            throw new BadRequestException(field + " must be a number", "INVALID_NUMBER", e);
-        }
+    public List<String> desktopDirectConversationAgents() {
+        return DesktopConversationPolicy.agents(entity());
     }
 
     public String memoryExtractionModel() {
@@ -423,6 +397,8 @@ public class SystemSettingsService {
         view.githubAppId = entity == null ? null : normalizeModel(entity.githubAppId);
         view.githubAppInstallationId = entity == null ? null : normalizeModel(entity.githubAppInstallationId);
         view.hasGithubAppPrivateKey = entity != null && entity.githubAppPrivateKey != null;
+        view.desktopDirectConversationMode = DesktopConversationPolicy.mode(entity);
+        view.desktopDirectConversationAgents = DesktopConversationPolicy.agents(entity);
         view.createdBy = entity == null ? null : entity.createdBy;
         view.updatedBy = entity == null ? null : entity.updatedBy;
         view.createdAt = entity == null ? null : entity.createdAt;

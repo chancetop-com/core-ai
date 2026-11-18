@@ -49,6 +49,46 @@ describe('SystemSettings sub-tabs', () => {
     expect(screen.getByText('Azure Speech')).toBeTruthy();
     expect(screen.getByText('GitHub App')).toBeTruthy();
     expect(screen.queryByText('Object Storage')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Desktop' }));
+    expect(screen.getByText('Desktop direct conversations')).toBeTruthy();
+  });
+});
+
+describe('SystemSettings desktop direct conversations', () => {
+  it('saves an all-agents policy', async () => {
+    mockLoad({ desktop_direct_conversation_mode: 'inherit' });
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({
+      desktop_direct_conversation_mode: 'all',
+      desktop_direct_conversation_agents: [],
+    });
+
+    renderSettings();
+    await openTab('Desktop');
+    await userEvent.click(await screen.findByRole('radio', { name: /all visible agents/i }));
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      desktop_direct_conversation_mode: 'all',
+      desktop_direct_conversation_agents: null,
+    }));
+  });
+
+  it('sends the selected agent ids', async () => {
+    mockLoad({ desktop_direct_conversation_mode: 'selected', desktop_direct_conversation_agents: ['agent-1'] });
+    const update = vi.spyOn(api.systemSettings, 'update').mockResolvedValue({});
+
+    renderSettings();
+    await openTab('Desktop');
+    const ids = await screen.findByRole<HTMLTextAreaElement>('textbox', { name: /agent ids/i });
+    await userEvent.clear(ids);
+    await userEvent.type(ids, 'agent-1{enter}agent-2');
+    await userEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      desktop_direct_conversation_mode: 'selected',
+      desktop_direct_conversation_agents: ['agent-1', 'agent-2'],
+    }));
   });
 });
 

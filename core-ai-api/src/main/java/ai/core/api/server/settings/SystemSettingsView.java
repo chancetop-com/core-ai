@@ -3,6 +3,7 @@ package ai.core.api.server.settings;
 import core.framework.api.json.Property;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 /**
  * @author stephen
@@ -121,6 +122,12 @@ public class SystemSettingsView {
 
     @Property(name = "has_github_app_private_key")
     public Boolean hasGithubAppPrivateKey;
+
+    @Property(name = "desktop_direct_conversation_mode")
+    public String desktopDirectConversationMode;
+
+    @Property(name = "desktop_direct_conversation_agents")
+    public List<String> desktopDirectConversationAgents;
 
     @Property(name = "created_by")
     public String createdBy;

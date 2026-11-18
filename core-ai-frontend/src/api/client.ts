@@ -2054,6 +2054,8 @@ export interface SystemSettings {
   github_app_id?: string | null;
   github_app_installation_id?: string | null;
   has_github_app_private_key?: boolean;
+  desktop_direct_conversation_mode?: string | null;
+  desktop_direct_conversation_agents?: string[] | null;
   sandbox_snapshot_enabled?: boolean;
   sandbox_snapshot_deployment_allowed?: boolean;
   sandbox_snapshot_storage_ready?: boolean;
@@ -2093,6 +2095,8 @@ export interface SystemSettingsRequest {
   github_app_id?: string | null;
   github_app_installation_id?: string | null;
   github_app_private_key?: string | null;
+  desktop_direct_conversation_mode?: string | null;
+  desktop_direct_conversation_agents?: string[] | null;
   sandbox_snapshot_enabled?: boolean;
   sandbox_attachment_max_bytes?: number | null;
   skill_repo_sync_enabled?: boolean | null;
