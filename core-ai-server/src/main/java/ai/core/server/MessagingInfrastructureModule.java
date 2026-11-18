@@ -5,6 +5,7 @@ import ai.core.server.a2a.A2ATaskRegistry;
 import ai.core.server.a2a.A2ATaskSnapshotStore;
 import ai.core.server.a2a.PgA2ATaskSnapshotStore;
 import ai.core.server.a2a.RedisA2ATaskSnapshotStore;
+import ai.core.server.messaging.CommandBackend;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.HttpRpcTransport;
 import ai.core.server.messaging.JedisConfig;
@@ -50,6 +51,7 @@ class MessagingInfrastructureModule extends Module {
         var leaseBackend = StateBackend.of(property("sys.lease.backend").orElse("redis"), storeMode, "sys.lease.backend");
         var rpcMode = RpcMode.of(property("sys.rpc.transport").orElse("redis"));
         var sseDeliveryMode = SseDeliveryMode.of(property("sys.sse.delivery").orElse("redis"));
+        var commandBackend = CommandBackend.of(property("sys.command.backend").orElse("redis"));
         var internalToken = property("sys.internal.token").orElse("");
         // declared in sys.properties; must be read even when RPC uses Redis so core-ng accepts the config
         property("sys.internal.token.previous");
@@ -59,11 +61,14 @@ class MessagingInfrastructureModule extends Module {
         if (sseDeliveryMode == SseDeliveryMode.DIRECTED && internalToken.isBlank()) {
             throw new IllegalArgumentException("sys.sse.delivery=directed requires sys.internal.token");
         }
+        if (commandBackend == CommandBackend.POSTGRES && !"pg".equals(storeMode)) {
+            throw new IllegalArgumentException("sys.command.backend=postgres requires sys.store.mode=pg");
+        }
 
         var ownershipRegistry = ownershipRegistry(jedisPool, leaseBackend);
-        var podRegistry = podRegistry(leaseBackend, rpcMode, ownershipRegistry);
-        if (sseDeliveryMode == SseDeliveryMode.DIRECTED && podRegistry == null) {
-            throw new IllegalArgumentException("sys.sse.delivery=directed requires sys.rpc.transport=http or sys.lease.backend=postgres");
+        var podRegistry = podRegistry(leaseBackend, rpcMode, commandBackend, ownershipRegistry);
+        if ((sseDeliveryMode == SseDeliveryMode.DIRECTED || commandBackend == CommandBackend.POSTGRES) && podRegistry == null) {
+            throw new IllegalArgumentException("directed SSE or PostgreSQL command queue requires sys.rpc.transport=http or sys.lease.backend=postgres");
         }
         var turnStateRegistry = turnStateRegistry(jedisPool, leaseBackend, podRegistry);
         onStartup(turnStateRegistry::start);
@@ -97,9 +102,11 @@ class MessagingInfrastructureModule extends Module {
         return bind(new SessionOwnershipRegistry(jedisPool));
     }
 
-    private PodRegistry podRegistry(StateBackend leaseBackend, RpcMode rpcMode, SessionOwnershipRegistry ownershipRegistry) {
-        if (leaseBackend != StateBackend.POSTGRES && rpcMode != RpcMode.HTTP) return null;
-        var podRegistry = bind(new PodRegistry(ownershipRegistry.getHostname(), podAddress(ownershipRegistry.getHostname())));
+    private PodRegistry podRegistry(StateBackend leaseBackend, RpcMode rpcMode, CommandBackend commandBackend,
+                                    SessionOwnershipRegistry ownershipRegistry) {
+        if (leaseBackend != StateBackend.POSTGRES && rpcMode != RpcMode.HTTP && commandBackend != CommandBackend.POSTGRES) return null;
+        var podRegistry = bind(new PodRegistry(ownershipRegistry.getHostname(), podAddress(ownershipRegistry.getHostname()),
+                commandBackend == CommandBackend.POSTGRES ? "postgres" : "redis"));
         onStartup(podRegistry::start);
         onShutdown(podRegistry::stop);
         schedule().fixedRate("lease-cleanup", bind(new LeaseCleanupJob(leaseBackend == StateBackend.POSTGRES)), Duration.ofMinutes(1));

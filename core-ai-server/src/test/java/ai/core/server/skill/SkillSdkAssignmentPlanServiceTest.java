@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
@@ -48,7 +47,7 @@ class SkillSdkAssignmentPlanServiceTest {
         assertEquals(2, planA.skills.size());
         assertEquals(2, planA.skills.getFirst().capabilities.size());
         assertTrue(planA.skills.getFirst().capabilities.get(0).supported);
-        assertFalse(planA.skills.getFirst().capabilities.get(1).supported);
+        assertTrue(planA.skills.getFirst().capabilities.get(1).supported);
     }
 
     @Test

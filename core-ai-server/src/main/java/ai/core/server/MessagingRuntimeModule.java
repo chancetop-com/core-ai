@@ -6,6 +6,7 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.asynctask.AsyncToolTaskService;
+import ai.core.server.messaging.CommandBackend;
 import ai.core.server.messaging.CommandBusTaskNotificationDispatcher;
 import ai.core.server.messaging.CommandConsumer;
 import ai.core.server.messaging.CommandPublisher;
@@ -14,6 +15,8 @@ import ai.core.server.messaging.EventSubscriber;
 import ai.core.server.messaging.InProcessCommandHandler;
 import ai.core.server.messaging.InternalRpcController;
 import ai.core.server.messaging.CommandRpcDependencies;
+import ai.core.server.messaging.PgCommandConsumer;
+import ai.core.server.messaging.PgCommandQueue;
 import ai.core.server.messaging.PodRegistry;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcMode;
@@ -85,7 +88,16 @@ class MessagingRuntimeModule extends Module {
         // unowned sessions run on the instance that received the request (its SSE channel is here; nothing else on the
         // same Redis can race for the turn); false restores distribution through the shared unowned stream
         var claimLocally = "true".equalsIgnoreCase(property("sys.session.claimLocally").orElse("true"));
-        var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService, commandHandler, claimLocally));
+        var commandBackend = CommandBackend.of(property("sys.command.backend").orElse("redis"));
+        var pgQueue = commandBackend == CommandBackend.POSTGRES ? bind(PgCommandQueue.class) : null;
+        var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService, commandHandler,
+                claimLocally, new CommandPublisher.QueueDependencies(commandBackend, pgQueue, bean(PodRegistry.class))));
+        if (pgQueue != null) {
+            var pgConsumer = new PgCommandConsumer(pgQueue, commandHandler, ownershipRegistry);
+            onStartup(pgConsumer::start);
+            onShutdown(pgConsumer::stop);
+            schedule().fixedRate("pg-command-cleanup", context -> pgQueue.cleanup(), java.time.Duration.ofSeconds(30));
+        }
         // finished long-running tool calls ride the command bus back into their session, so the
         // notification reaches the owning replica and rebuilds an evicted session instead of being
         // dropped when the session is not live in this JVM

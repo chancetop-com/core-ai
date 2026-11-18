@@ -23,12 +23,18 @@ public class PodRegistry {
 
     private final String podId;
     private final String address;
+    private final String commandBackend;
     private volatile boolean running = true;
     private Thread heartbeatThread;
 
     public PodRegistry(String podId, String address) {
+        this(podId, address, "redis");
+    }
+
+    public PodRegistry(String podId, String address, String commandBackend) {
         this.podId = podId;
         this.address = address;
+        this.commandBackend = commandBackend;
     }
 
     public String podId() {
@@ -53,10 +59,25 @@ public class PodRegistry {
         }
     }
 
+    public String commandBackend(String podId) {
+        try {
+            return database.selectOne("SELECT command_backend FROM messaging.pods WHERE pod_id = ? "
+                    + "AND heartbeat_at > now() - make_interval(secs => ?)",
+                PgPodCommandBackendRow.class, podId, PgOwnershipStore.LIVENESS_SECONDS)
+                .map(row -> row.commandBackend)
+                .orElse(null);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to resolve pod command backend, podId={}", podId, e);
+            return null;
+        }
+    }
+
     public void start() {
-        database.execute("INSERT INTO messaging.pods (pod_id, address, started_at, heartbeat_at) VALUES (?, ?, now(), now()) "
-            + "ON CONFLICT (pod_id) DO UPDATE SET address = EXCLUDED.address, started_at = EXCLUDED.started_at, heartbeat_at = now()",
-            podId, address);
+        database.execute("INSERT INTO messaging.pods (pod_id, address, command_backend, started_at, heartbeat_at) "
+            + "VALUES (?, ?, ?, now(), now()) "
+            + "ON CONFLICT (pod_id) DO UPDATE SET address = EXCLUDED.address, command_backend = EXCLUDED.command_backend, "
+            + "started_at = EXCLUDED.started_at, heartbeat_at = now()",
+            podId, address, commandBackend);
         heartbeatThread = Thread.ofVirtual().name("pod-heartbeat-" + podId).start(this::heartbeatLoop);
         LOGGER.info("pod registered, podId={}, address={}", podId, address);
     }

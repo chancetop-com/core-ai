@@ -17,24 +17,63 @@ public class CommandPublisher {
     private final SandboxService sandboxService;
     private final InProcessCommandHandler commandHandler;
     private final boolean claimLocally;
+    private final CommandBackend commandBackend;
+    private final PgCommandQueue pgQueue;
+    private final PodRegistry podRegistry;
 
     public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
                             InProcessCommandHandler commandHandler) {
-        this(jedisPool, ownershipRegistry, sandboxService, commandHandler, true);
+        this(jedisPool, ownershipRegistry, sandboxService, commandHandler, true,
+                new QueueDependencies(CommandBackend.REDIS, null, null));
+    }
+
+    public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
+                            InProcessCommandHandler commandHandler, boolean claimLocally) {
+        this(jedisPool, ownershipRegistry, sandboxService, commandHandler, claimLocally,
+                new QueueDependencies(CommandBackend.REDIS, null, null));
     }
 
     /** @param claimLocally sys.session.claimLocally — unowned sessions run on the receiving instance (default) or go through the shared stream */
     public CommandPublisher(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry, SandboxService sandboxService,
-                            InProcessCommandHandler commandHandler, boolean claimLocally) {
+                            InProcessCommandHandler commandHandler, boolean claimLocally, QueueDependencies dependencies) {
         this.jedisPool = jedisPool;
         this.ownershipRegistry = ownershipRegistry;
         this.sandboxService = sandboxService;
         this.commandHandler = commandHandler;
         this.claimLocally = claimLocally;
+        this.commandBackend = dependencies.backend();
+        this.pgQueue = dependencies.pgQueue();
+        this.podRegistry = dependencies.podRegistry();
     }
 
     public void publish(SessionCommand command) {
         if (claimAndProcessLocally(command)) return;
+        if (commandBackend == CommandBackend.POSTGRES && pgQueue != null
+                && publishPostgres(command)) {
+            return;
+        }
+        publishRedis(command);
+    }
+
+    private boolean publishPostgres(SessionCommand command) {
+        var owner = ownershipRegistry.getOwner(command.sessionId());
+        if (owner != null && podRegistry != null) {
+            var backend = podRegistry.commandBackend(owner);
+            if (!"postgres".equals(backend)) return false;
+        }
+        try {
+            pgQueue.publish(command, owner);
+            LOGGER.info("[PUBLISH] command published via PostgreSQL, type={}, sessionId={}, targetPod={}",
+                    command.type(), command.sessionId(), owner);
+            return true;
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to publish command to PostgreSQL, falling back to Redis, type={}, sessionId={}",
+                    command.type(), command.sessionId(), e);
+            return false;
+        }
+    }
+
+    private void publishRedis(SessionCommand command) {
         var targetStream = resolveTargetStream(command.sessionId());
         LOGGER.info("[PUBLISH] publishing command: type={}, sessionId={}, targetStream={}",
                 command.type(), command.sessionId(), targetStream);
@@ -88,4 +127,7 @@ public class CommandPublisher {
         }
         return SessionCommand.UNOWNED_STREAM;
     }
+    public record QueueDependencies(CommandBackend backend, PgCommandQueue pgQueue, PodRegistry podRegistry) {
+    }
+
 }
