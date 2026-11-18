@@ -10,6 +10,7 @@ import ai.core.server.domain.DefinitionType;
  * never see an agent the execution layer would reject:
  * <ul>
  *   <li>visible: published, or owned by the caller, or the system default agent;</li>
+ *   <li>a personal assistant fork is a per-user private copy, so only its owner ever sees or runs it;</li>
  *   <li>runnable: the owner's live draft for AGENT, otherwise a usable published snapshot —
  *       an LLM_CALL always runs its published config.</li>
  * </ul>
@@ -19,6 +20,7 @@ import ai.core.server.domain.DefinitionType;
 public final class AgentVisibility {
     public static boolean isVisible(AgentDefinition definition, String callerUserId) {
         if (definition == null) return false;
+        if (isForeignFork(definition, callerUserId)) return false;
         if (definition.status == AgentStatus.PUBLISHED) return true;
         if (callerUserId != null && callerUserId.equals(definition.userId)) return true;
         return Boolean.TRUE.equals(definition.systemDefault);
@@ -26,11 +28,18 @@ public final class AgentVisibility {
 
     public static boolean isRunnable(AgentDefinition definition, String callerUserId) {
         if (definition == null) return false;
+        if (isForeignFork(definition, callerUserId)) return false;
         if (definition.type == DefinitionType.LLM_CALL) {
             return AgentDependencyAccessPolicy.hasUsablePublishedLlmCall(definition);
         }
         if (AgentDependencyAccessPolicy.isOwnedEditable(definition, callerUserId)) return true;
         return AgentDependencyAccessPolicy.hasUsablePublishedConfig(definition);
+    }
+
+    // publishing a personal assistant must not turn a private copy into a shared agent
+    private static boolean isForeignFork(AgentDefinition definition, String callerUserId) {
+        return definition.forkedFrom != null
+                && (callerUserId == null || !callerUserId.equals(definition.userId));
     }
 
     /**

@@ -178,6 +178,22 @@ class AgentCatalogServiceTest {
     }
 
     @Test
+    void aPersonalAssistantForkIsVisibleAndRunnableOnlyForItsOwner() {
+        var fork = publishedAgent("assistant:alice", "alice", "Alice's Assistant");
+        fork.forkedFrom = "default-assistant";
+        stubFind(fork);
+
+        assertEquals(List.of(), ids(search(OWNER, null, null, null)), "another user's assistant must not be listed");
+        assertEquals(List.of(), ids(catalog.catalog(OWNER)));
+        assertEquals(List.of(), ids(catalog.lookup(OWNER, "Alice's Assistant")));
+        assertNull(catalog.find(OWNER, "assistant:alice"));
+
+        assertEquals(List.of("assistant:alice"), ids(search("alice", null, null, null)),
+            "the owner keeps seeing its own personal assistant");
+        assertNotNull(catalog.find("alice", "assistant:alice"));
+    }
+
+    @Test
     void listingPutsTheSystemDefaultFirstThenMostRecentlyPublished() {
         var older = publishedAgent("agent-1", OWNER, "older");
         older.publishedAt = ZonedDateTime.parse("2026-09-01T00:00:00Z");
