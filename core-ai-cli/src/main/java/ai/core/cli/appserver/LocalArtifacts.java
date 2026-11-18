@@ -68,6 +68,7 @@ public final class LocalArtifacts {
         var owners = owners(registered);
         var entries = new ArrayList<Entry>();
         collectRoot(workspace, ".core-ai/media/images", "image", owners, entries);
+        collectRoot(workspace, ".core-ai/media/imports", "image", owners, entries);
         collectRoot(workspace, ".core-ai/media/videos", "video", owners, entries);
         if (sessionId == null) {
             collectRoot(workspace, ".core-ai/tasks", "file", owners, entries);

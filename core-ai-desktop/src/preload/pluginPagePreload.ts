@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   context: () => call('context'),
   assets: {
     list: () => call('assets.list'),
+    import: (input: { name: string; data: string }) => call('assets.import', input),
   },
   media: {
     models: () => call('media.models'),

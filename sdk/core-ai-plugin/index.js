@@ -20,6 +20,7 @@ export const CAPABILITIES = Object.freeze([
   'ui.pages',
   'engine.skills',
   'media.assets.read',
+  'media.assets.write',
   'media.models.read',
   'media.generate',
 ]);

@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.9（P2c 首期已实现，未发布；预留契约见 §6.7.3） |
+| 文档版本 | v0.10（P2c 首期 + 素材导入/图片参考图；未发布） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -500,10 +500,11 @@ P2 spike 只评估 WebContentsView 的 bounds、焦点、隐藏截图、z-order 
 | `contributes.pages` + `ui.pages` + 页面导航 | 已实现；页面在左侧导航显示，打开时重新校验 active/grant |
 | 独立 `WebContentsView` + 每实例 partition + 固定 preload | 已实现；`sandbox`、`contextIsolation`、无 Node、无网络 |
 | `coreai-plugin-page://` / `coreai-plugin-asset://` | 已实现；asset 协议只在 `media.assets.read` 授权时安装，且只服务 `.core-ai/media/` |
-| `coreaiPlugin.context` / `assets.list` / `media.models` / `media.generate` / `media.jobs.get/list` | 已实现；每次 bridge 调用重新解析 grant，撤销/禁用后立即拒绝 |
+| `coreaiPlugin.context` / `assets.list` / `assets.import` / `media.models` / `media.generate` / `media.jobs.get/list` | 已实现；每次 bridge 调用重新解析 grant，撤销/禁用后立即拒绝 |
 | 非 agent 生成面 | 实现为 `MediaGenerationApi`，直接复用既有 `MediaProvider`；未把 `GenerateImageTool`/`GenerateVideoTool` 的 reference/sink 编排抽成同一个类 |
-| 媒体工作台示例 | `examples/plugins/media-studio/`；只读素材 + 单模型图片/视频生成 |
-| `media.assets.write` / import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job | 未实现 |
+| 素材导入与参考图 | 已实现 `assets.import`（png/jpg/webp/gif，≤10 MiB，写入 `.core-ai/media/imports`）和 `inputImages`/`inputReferences` 路径解析；参考图只允许 `.core-ai/media/` 下文件 |
+| 媒体工作台示例 | `examples/plugins/media-studio/`；只读素材 + 参考图导入 + 单模型图片/视频生成 |
+| `media.assets.delete` / rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio | 未实现 |
 | app/workspace scope 行为差异 | 未实现；两种 scope 目前都绑定当前 workspace 的 media 目录 |
 - 不把 RichCard 扩展成页面协议，也不允许插件向 transcript 注入任意 HTML。
 - 首期不允许页面自带任意 Node 后端；需要自定义生成逻辑时走 P3 的受管插件后端/受限运行时。
@@ -924,6 +925,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.7 | 2026-11-17 | 新增 §6.7 DSH 生态能力地图：六类能力面、代表性插件、预留能力 ID、Tier 0/1/2；新增 R11–R13、P2d/B8/D12 | 用户要求调研 DSH 热门插件并预留非媒体场景扩展性 |
 | v0.8 | 2026-11-17 | 冻结预留契约字段（provides/requires/pages/slots/renderers/events）、slot ID 表、事件 envelope、host service 草案与能力风险分类 | 继续把 §6.7 的能力地图落成可实现契约；运行时仍未实现 |
 | v0.9 | 2026-11-18 | P2c 首期实现：页面贡献/导航、实例 WebContentsView、page/asset 协议、`coreaiPlugin` bridge、`MediaGenerationApi` + `media/*` RPC、媒体工作台示例；补充 §6.6.6 与 §14 实现状态 | 继续实现插件页面与直连动作面；明确未做的 assets.write/reference/job 持久化 |
+| v0.10 | 2026-11-18 | 增加 `media.assets.write`/`assets.import` 和图片参考图解析（`.core-ai/media/imports` 路径）；媒体工作台支持导入参考图 | 继续让页面支持真实素材工作流 |
 
 ### 13.2 相关材料
 
@@ -959,21 +961,22 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | Author SDK | `sdk/core-ai-plugin`（与 `sdk/core-ai-session` 同级）：TS 类型、JSON Schema、`definePlugin`、本地 `validateManifest`；非运行时桥 | `sdk/core-ai-plugin/` |
 | 插件页面（P2c 首期） | `contributes.pages`、`ui.pages`、左侧页面导航、实例 `WebContentsView`、`coreai-plugin-page://`/`coreai-plugin-asset://`、固定 preload bridge、每次调用重新校验 grant、插件变更关闭页面 | `pluginManifest.ts`、`PluginPageHost.ts`、`PluginPageProtocol.ts`、`pluginPagePaths.ts`、`pluginPagePreload.ts`、`app.ts`、`styles.css` |
 | 非 agent 媒体面 | app-server `media/models`、`media/generate`、`media/jobs/get|list`；`MediaGenerationApi` 复用既有 `MediaProvider`，图片写 `.core-ai/media/images`，视频写 `.core-ai/media/videos`；restricted workspace 拒绝生成 | `AppServerEngine.java`、`MediaGenerationApi.java` |
-| 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
+| 素材导入/参考图 | `assets.import`（capability `media.assets.write`）写 `.core-ai/media/imports`；`inputImages`/`inputReferences` 只解析 `.core-ai/media/` 下的路径为 data URL，支持图片参考 | `PluginPageHost.ts`、`pluginPagePreload.ts`、`MediaGenerationApi.java` |
+| 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、导入参考图、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
 | 示例 | `hello-plugin`：skill + dock + settings + composer | `core-ai-desktop/examples/plugins/hello-plugin/` |
-| 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1)、`MediaGenerationApiTest` (3) + Electron page smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`test/pluginPageHost.smoke.cjs`、`core-ai-cli/src/test/.../plugin|workspace|agent|appserver`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
+| 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1)、`MediaGenerationApiTest` (5) + Electron page smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`test/pluginPageHost.smoke.cjs`、`core-ai-cli/src/test/.../plugin|workspace|agent|appserver`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
-验证记录（2026-11-18，P2c 首期）：desktop `check`、`build`、`test`（257 tests：256 pass / 1 skip）、`pluginPageHost.smoke.cjs` 通过（页面 context、assets 协议、图片加载、media.generate、撤销后 `not_granted`）；SDK 7 例通过；`MediaGenerationApiTest` 3 例通过；`:core-ai-cli:checkstyleMain` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
+验证记录（2026-11-18，P2c 首期）：desktop `check`、`build`、`test`（257 tests：256 pass / 1 skip）、`pluginPageHost.smoke.cjs` 通过（页面 context、assets 协议、图片加载、`assets.import`、`media.generate`、撤销后 `not_granted`）；SDK 7 例通过；`MediaGenerationApiTest` 5 例通过（图片/视频/参考图/job owner）；`:core-ai-cli:checkstyleMain` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
 1. **共享 Java 无 UI 控制面 / app-server `plugins/*` RPC 未实现。** 桌面负责包安装与授权写入；engine 只读 `state.json`。外部 CLI 写入尚不存在，跨进程撤销通知/journal 恢复未落地（engine 通过每调用读 state 仍能感知外部写入，但没有 CLI 写路径）。
 2. **Workspace scope 与 provider endpoint allow-list 未实现。** 只有 user scope；信任记录是整个 workspace 的指纹，不区分“哪些 provider endpoint 可覆盖”的单独确认。
 3. **Quiesce 的 UI/channel 排队未实现。** engine 在 quiesce 期间对 `session/send`/`session/create` 返回 `ENGINE_QUIESCING`；desktop/channel 只在 turn 结束后重试 reload，没有把用户新输入排队并自动重发。scheduler 已暂停，已领取任务正常 drain。
-4. **scripted UI 只实现了 P2c 首期。** `contributes.pages`、页面导航、实例 WebContentsView、`coreaiPlugin` bridge、`media/models|generate|jobs/get|list` 已落地；`media.assets.write`/import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job、app/workspace scope 行为差异仍未实现。`contributes.dock[].view` 仍标为 unsupported；RichCard 仍只属于 agent/skill 输出与历史 fallback。
+4. **scripted UI 只实现了 P2c 首期。** `contributes.pages`、页面导航、实例 WebContentsView、`coreaiPlugin` bridge、`media/models|generate|jobs/get|list`、`assets.import`、图片参考图已落地；`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio、app/workspace scope 行为差异仍未实现。`contributes.dock[].view` 仍标为 unsupported；RichCard 仍只属于 agent/skill 输出与历史 fallback。
 5. **hooks/MCP/commands/agents/LSP adapter 未实现。** 包内这些构件在 descriptor 中标为 unsupported，并拒绝激活相应能力；CLI 既有插件目录行为未迁移到新 store。
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
@@ -983,7 +986,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
-2. 补 P2c 剩余：`media.assets.write`/import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
+2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
 3. 实现 P2d：冻结 slot/capability/event ID，先做只读 sessions/usage/memory/assets + storage/job，再接受控写；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
 
 

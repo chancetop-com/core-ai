@@ -5,6 +5,7 @@ export type PluginCapability =
   | 'ui.pages'
   | 'engine.skills'
   | 'media.assets.read'
+  | 'media.assets.write'
   | 'media.models.read'
   | 'media.generate';
 export type PluginComponentKind = 'skills' | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';

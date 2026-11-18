@@ -13,6 +13,7 @@ Install it from **Plugins → Install folder**, then enable it and grant:
 
 - `ui.pages`
 - `media.assets.read`
+- `media.assets.write`
 - `media.models.read`
 - `media.generate`
 

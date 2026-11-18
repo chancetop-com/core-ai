@@ -33,12 +33,12 @@
           "properties": {
             "required": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.models.read", "media.generate"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate"] },
               "uniqueItems": true
             },
             "optional": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.models.read", "media.generate"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate"] },
               "uniqueItems": true
             }
           },

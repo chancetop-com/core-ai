@@ -3,6 +3,7 @@ package ai.core.cli.appserver;
 import ai.core.media.MediaProvider;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageData;
+import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.VideoGenerationRequest;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
@@ -88,13 +89,22 @@ public class MediaGenerationApi {
         return node;
     }
 
+    private List<MediaReference> imageReferences(ObjectNode params) {
+        var references = PluginMediaReferences.resolve(workspace, params, "inputImages");
+        if (!references.isEmpty() && !imageProvider.acceptsImageReferences()) {
+            throw RpcException.business("UNSUPPORTED", "the configured image provider does not accept reference images");
+        }
+        return references;
+    }
+
     private ObjectNode generateImage(ObjectNode params) {
         if (imageProvider == null) throw RpcException.business("NOT_CONFIGURED", "no image media provider is configured");
         var prompt = Params.optionalText(params, "prompt");
         if (prompt == null || prompt.isBlank()) throw RpcException.invalidParams("prompt is required");
-        if (params.has("inputImages") || params.has("mask")) {
-            throw RpcException.business("UNSUPPORTED", "reference images are not available on plugin pages yet");
+        if (params.has("mask")) {
+            throw RpcException.business("UNSUPPORTED", "masks are not available on plugin pages yet");
         }
+        var inputImages = imageReferences(params);
         var model = Params.optionalText(params, "model");
         if (model == null) model = effectiveModel("image");
         var request = new ImageGenerationRequest(
@@ -106,7 +116,7 @@ public class MediaGenerationApi {
                 Params.optionalText(params, "outputFormat"),
                 intOrNull(params, "outputCompression"),
                 Params.optionalText(params, "background"),
-                List.of(),
+                inputImages,
                 null,
                 Params.optionalText(params, "providerExtra"),
                 Params.optionalText(params, "previousInteractionId"));
@@ -141,9 +151,7 @@ public class MediaGenerationApi {
         if (videoProvider == null) throw RpcException.business("NOT_CONFIGURED", "no video media provider is configured");
         var prompt = Params.optionalText(params, "prompt");
         if (prompt == null || prompt.isBlank()) throw RpcException.invalidParams("prompt is required");
-        if (params.has("inputReferences")) {
-            throw RpcException.business("UNSUPPORTED", "reference media is not available on plugin pages yet");
-        }
+        var inputReferences = PluginMediaReferences.resolve(workspace, params, "inputReferences");
         var model = Params.optionalText(params, "model");
         if (model == null) model = effectiveModel("video");
         var request = new VideoGenerationRequest(
@@ -151,7 +159,7 @@ public class MediaGenerationApi {
                 prompt,
                 intOrNull(params, "seconds"),
                 Params.optionalText(params, "size"),
-                List.of(),
+                inputReferences,
                 Params.optionalText(params, "providerExtra"),
                 Params.optionalText(params, "previousVideoId"));
         try {

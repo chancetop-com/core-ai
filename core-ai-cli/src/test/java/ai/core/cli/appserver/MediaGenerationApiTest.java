@@ -64,6 +64,29 @@ class MediaGenerationApiTest {
     }
 
     @Test
+    void referenceImagesAreReadFromTheWorkspaceMediaRoot() throws Exception {
+        Files.createDirectories(workspace.resolve(".core-ai/media/imports"));
+        Files.write(workspace.resolve(".core-ai/media/imports/ref.png"), new byte[]{1, 2, 3});
+        var provider = new FakeMediaProvider(new byte[]{4}, "completed");
+        var api = new MediaGenerationApi(workspace, provider, null, "image-model", null, null);
+
+        var params = JsonNodeFactory.instance.objectNode();
+        params.put("kind", "image");
+        params.put("prompt", "edit this");
+        var references = params.putArray("inputImages");
+        var reference = references.addObject();
+        reference.put("path", ".core-ai/media/imports/ref.png");
+        reference.put("name", "subject");
+        reference.put("role", "subject");
+        api.generate(params);
+
+        assertThat(provider.lastImageRequest.inputImages()).hasSize(1);
+        assertThat(provider.lastImageRequest.inputImages().getFirst().b64Json())
+                .startsWith("data:image/png;base64,");
+        assertThat(provider.lastImageRequest.inputImages().getFirst().name()).isEqualTo("subject");
+    }
+
+    @Test
     void missingProviderAndPromptAreRejected() {
         var api = new MediaGenerationApi(workspace, null, null, null, null, null);
         var params = JsonNodeFactory.instance.objectNode();
@@ -103,6 +126,7 @@ class MediaGenerationApiTest {
     private static final class FakeMediaProvider implements MediaProvider {
         private final byte[] bytes;
         private final String videoStatus;
+        private ImageGenerationRequest lastImageRequest;
 
         private FakeMediaProvider(byte[] bytes, String videoStatus) {
             this.bytes = bytes;
@@ -111,6 +135,7 @@ class MediaGenerationApiTest {
 
         @Override
         public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
+            lastImageRequest = request;
             return new ImageGenerationResponse(List.of(new ImageData(Base64.getEncoder().encodeToString(bytes), null, null)), null);
         }
 

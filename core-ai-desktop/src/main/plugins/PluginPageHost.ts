@@ -5,6 +5,8 @@
  */
 import { BrowserWindow, WebContentsView, ipcMain, nativeTheme, session, type IpcMainInvokeEvent, type Session } from 'electron';
 import { randomUUID } from 'node:crypto';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import type { ResolvedPluginPage } from './pluginStore';
 import type { PluginHost } from './PluginHost';
 import type { EngineSupervisor } from '../engine/EngineSupervisor';
@@ -61,6 +63,14 @@ export class PluginPageError extends Error {
 }
 
 const ALLOWED_SCHEMES = new Set(['coreai-plugin-page:', 'coreai-plugin-asset:']);
+const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+const IMAGE_IMPORT_EXTENSIONS: Record<string, string> = {
+  '.png': 'png',
+  '.jpg': 'jpg',
+  '.jpeg': 'jpg',
+  '.webp': 'webp',
+  '.gif': 'gif',
+};
 
 export class PluginPageHost {
   private readonly instances = new Map<string, PageInstance>();
@@ -204,6 +214,9 @@ export class PluginPageHost {
       case 'assets.list':
         this.requireCapability(instance, 'media.assets.read');
         return this.listAssets(instance);
+      case 'assets.import':
+        this.requireCapability(instance, 'media.assets.write');
+        return this.importAsset(instance, args);
       case 'media.models':
         this.requireCapability(instance, 'media.models.read');
         return this.engine(instance, 'media/models', {});
@@ -238,8 +251,7 @@ export class PluginPageHost {
     }
   }
 
-  private async listAssets(instance: PageInstance): Promise<{ files: unknown[] }> {
-    const result = await this.engine(instance, 'artifacts/list', { limit: 200 }) as {
+  private async listAssets(instance: PageInstance): Promise<{ files: unknown[] }> {    const result = await this.engine(instance, 'artifacts/list', { limit: 200 }) as {
       files?: Array<Record<string, unknown>>;
     };
     const files = Array.isArray(result?.files) ? result.files : [];
@@ -255,6 +267,35 @@ export class PluginPageHost {
           createdAt: file.createdAt,
           url: assetUrl(String(file.path)),
         })),
+    };
+  }
+
+  private async importAsset(instance: PageInstance, args: Record<string, unknown>): Promise<{ file: Record<string, unknown> }> {
+    const name = typeof args.name === 'string' ? args.name.trim() : '';
+    const data = typeof args.data === 'string' ? args.data : '';
+    if (!name || name.length > 200 || !data) throw new PluginPageError('invalid_request', 'name and data are required');
+    const extension = IMAGE_IMPORT_EXTENSIONS[path.extname(name).toLowerCase()];
+    if (!extension) throw new PluginPageError('unsupported_type', 'only png, jpg, webp and gif imports are supported');
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(data)) throw new PluginPageError('invalid_request', 'data must be base64');
+    const encoded = data.replace(/\s+/g, '');
+    const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0;
+    const byteLength = Math.floor(encoded.length * 3 / 4) - padding;
+    if (byteLength <= 0 || byteLength > MAX_IMPORT_BYTES) throw new PluginPageError('too_large', 'reference image is too large');
+    const bytes = Buffer.from(encoded, 'base64');
+    const relative = `.core-ai/media/imports/import-${randomUUID()}.${extension}`;
+    const root = path.resolve(instance.workspace, '.core-ai', 'media', 'imports');
+    const target = path.resolve(instance.workspace, ...relative.split('/'));
+    if (!target.startsWith(`${root}${path.sep}`)) throw new PluginPageError('invalid_request', 'invalid import path');
+    await fs.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+    await fs.writeFile(target, bytes, { mode: 0o600 });
+    return {
+      file: {
+        name,
+        kind: 'image',
+        size: bytes.length,
+        path: relative,
+        url: assetUrl(relative),
+      },
     };
   }
 

@@ -34,7 +34,7 @@ async function main() {
   const page = {
     pluginId: 'test.page', pluginName: 'Test Page', pageId: 'main', title: 'Test Page',
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
-    granted: ['ui.pages', 'media.assets.read', 'media.models.read', 'media.generate'],
+    granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -79,8 +79,19 @@ async function main() {
   })`);
   assert.equal(loaded, 'ok');
   assert.equal(await view.webContents.executeJavaScript('typeof require'), 'undefined');
+  const imported = await view.webContents.executeJavaScript(
+    `window.coreaiPlugin.assets.import({ name: "ref.png", data: "${Buffer.from('tiny').toString('base64')}" })`,
+  );
+  assert.match(imported.file.path, /^\.core-ai\/media\/imports\/import-[0-9a-f-]+\.png$/);
+  assert.equal(imported.file.kind, 'image');
   await view.webContents.executeJavaScript('window.coreaiPlugin.media.generate({ kind: "image", prompt: "x" })');
   assert.deepEqual(calls, ['artifacts/list', 'media/generate']);
+
+  granted = granted.filter((capability) => capability !== 'media.assets.write');
+  await assert.rejects(
+    view.webContents.executeJavaScript('window.coreaiPlugin.assets.import({ name: "ref.png", data: "dGlueQ==" })'),
+    /media\.assets\.write is not granted/,
+  );
 
   // A grant change is visible to the next bridge call without reopening the page.
   granted = granted.filter((capability) => capability !== 'media.generate');

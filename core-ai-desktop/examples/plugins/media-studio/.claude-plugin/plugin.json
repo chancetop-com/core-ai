@@ -7,7 +7,7 @@
     "id": "core-ai.media-studio",
     "desktopApi": "^1.0.0",
     "capabilities": {
-      "required": ["ui.pages", "media.assets.read", "media.models.read", "media.generate"]
+      "required": ["ui.pages", "media.assets.read", "media.assets.write", "media.models.read", "media.generate"]
     },
     "contributes": {
       "pages": [

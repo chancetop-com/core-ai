@@ -19,6 +19,15 @@ export interface PluginAsset {
   size: number;
   createdAt: string;
   url: string;
+  path?: string;
+}
+
+export interface PluginImportedAsset {
+  name: string;
+  kind: 'image';
+  size: number;
+  url: string;
+  path: string;
 }
 
 export interface PluginMediaModel {
@@ -65,6 +74,8 @@ export interface PluginGenerateParams {
   providerExtra?: string;
   previousInteractionId?: string;
   previousVideoId?: string;
+  inputImages?: Array<{ path: string; name?: string; role?: string }>;
+  inputReferences?: Array<{ path: string; name?: string; role?: string }>;
 }
 
 export interface PluginGenerateResult {
@@ -80,6 +91,7 @@ export interface CoreAiPluginBridge {
   context(): Promise<PluginPageContext>;
   assets: {
     list(): Promise<{ files: PluginAsset[] }>;
+    import(input: { name: string; data: string }): Promise<{ file: PluginImportedAsset }>;
   };
   media: {
     models(): Promise<PluginMediaModels>;

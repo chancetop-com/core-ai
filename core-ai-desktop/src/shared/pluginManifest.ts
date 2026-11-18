@@ -22,6 +22,7 @@ export const SUPPORTED_CAPABILITIES = [
   'ui.pages',
   'engine.skills',
   'media.assets.read',
+  'media.assets.write',
   'media.models.read',
   'media.generate',
 ] as const;

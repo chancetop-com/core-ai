@@ -75,7 +75,7 @@ test('a page is resolvable only while its install is active and ui.pages is gran
   const host = new PluginHost({ root: tempRoot() });
   await host.installFolder(mediaSample);
   await host.setEnabled('core-ai.media-studio', true);
-  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.models.read', 'media.generate']);
+  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate']);
 
   const page = await host.resolvePage('core-ai.media-studio', 'studio');
   assert.ok(page);
@@ -90,6 +90,6 @@ test('a page is resolvable only while its install is active and ui.pages is gran
   await host.revoke('core-ai.media-studio');
   assert.equal(await host.resolvePage('core-ai.media-studio', 'studio'), null);
 
-  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.models.read', 'media.generate']);
+  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate']);
   assert.ok(await host.resolvePage('core-ai.media-studio', 'studio'));
 });

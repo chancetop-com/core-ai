@@ -78,6 +78,7 @@ requires `id`, `title` and a package-relative `view`; the matching capability is
 | `ui.composer` | insert-only composer action |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
+| `media.assets.write` | imports a reference image into the workspace media directory |
 | `media.models.read` | reads the configured image/video model catalog |
 | `media.generate` | starts image/video generation through the engine's media service |
 

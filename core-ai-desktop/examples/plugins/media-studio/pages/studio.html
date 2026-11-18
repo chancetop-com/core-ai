@@ -21,6 +21,11 @@
     textarea { min-height: 110px; resize: vertical; }
     button { margin-top: 14px; width: 100%; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
     button:disabled { opacity: .55; cursor: default; }
+    button.ghost { margin-top: 8px; color: var(--muted); background: transparent; border: 1px solid var(--border); font-weight: 500; }
+    input[type="file"] { width: 100%; color: var(--muted); font-size: 12px; }
+    .reference { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+    .reference img { width: 56px; height: 56px; object-fit: cover; border: 1px solid var(--border); border-radius: 8px; background: #000; }
+    .reference .name { flex: 1; min-width: 0; color: var(--muted); font-size: 11.5px; overflow-wrap: anywhere; }
     .row { display: flex; gap: 8px; }
     .row > * { flex: 1; }
     .status { min-height: 18px; margin-top: 10px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
@@ -40,6 +45,13 @@
     <div class="sub" id="context">Loading plugin context…</div>
     <label for="prompt">Prompt</label>
     <textarea id="prompt" placeholder="A quiet coastal town at blue hour, cinematic light"></textarea>
+    <label for="reference-input">Reference image (optional)</label>
+    <input id="reference-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif">
+    <div id="reference-preview" class="reference" hidden>
+      <img id="reference-image" alt="Reference">
+      <span class="name" id="reference-name"></span>
+      <button id="clear-reference" class="ghost" type="button" style="width:auto; margin:0">Remove</button>
+    </div>
     <label for="kind">Kind</label>
     <select id="kind">
       <option value="image">Image</option>
@@ -85,12 +97,46 @@
   let models = { image: [], video: [] };
   let context = null;
   let polling = null;
+  let reference = null;
 
   function text(value) { return typeof value === 'string' ? value : ''; }
 
   function showStatus(message, error) {
     $('status').textContent = message || '';
     $('status').className = `status${error ? ' error' : ''}`;
+  }
+
+  function bytesToBase64(bytes) {
+    let binary = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(binary);
+  }
+
+  function renderReference() {
+    const preview = $('reference-preview');
+    preview.hidden = !reference;
+    if (!reference) return;
+    $('reference-image').src = reference.url;
+    $('reference-name').textContent = reference.name;
+  }
+
+  async function importReference(file) {
+    if (!file) return;
+    showStatus('Importing reference…');
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const result = await bridge.assets.import({ name: file.name, data: bytesToBase64(bytes) });
+      reference = result.file;
+      renderReference();
+      showStatus(`Reference ready: ${reference.name}`);
+    } catch (error) {
+      reference = null;
+      renderReference();
+      showStatus(`Reference failed: ${error.message || error}`, true);
+    }
   }
 
   async function loadContext() {
@@ -207,6 +253,10 @@
     if ($('model').value) params.model = $('model').value;
     if ($('size').value) params.size = $('size').value;
     if (kind === 'video' && $('seconds').value) params.seconds = Number($('seconds').value);
+    if (reference) {
+      const field = kind === 'video' ? 'inputReferences' : 'inputImages';
+      params[field] = [{ path: reference.path, name: 'reference', role: 'subject' }];
+    }
     $('generate').disabled = true;
     showStatus(kind === 'video' ? 'Submitting video…' : 'Generating image…');
     try {
@@ -229,6 +279,16 @@
   $('kind').onchange = fillModels;
   $('generate').onclick = generate;
   $('refresh').onclick = loadAssets;
+  $('reference-input').onchange = (event) => {
+    const file = event.target.files && event.target.files[0];
+    event.target.value = '';
+    void importReference(file);
+  };
+  $('clear-reference').onclick = () => {
+    reference = null;
+    renderReference();
+    showStatus('');
+  };
   (async () => {
     await loadContext();
     await Promise.all([loadModels(), loadAssets()]);
