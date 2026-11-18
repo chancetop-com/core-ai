@@ -14,12 +14,20 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -65,8 +73,8 @@ class McpServerConnectionManagerTest {
     void disabledSandboxServerDoesNotStartSessionProcess() {
         var entry = entry(false, sandboxConfig());
 
-        assertFalse(connectionManager.registerOnSession(entry, mcpManager, sandbox));
-        assertFalse(connectionManager.registerOnSession(entry, mcpManager, sandbox, 7));
+        connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", false);
+        connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", true);
 
         verifyNoInteractions(applicationManager, mcpManager, sandboxService, discoveryClient, sandbox);
     }
@@ -95,14 +103,49 @@ class McpServerConnectionManagerTest {
     }
 
     @Test
-    void enabledSandboxServerStartsSessionProcess() {
+    void blockingSessionStartRegistersTransportAfterTheProcessIsReady() {
         var entry = entry(true, sandboxConfig());
 
-        assertTrue(connectionManager.registerOnSession(entry, mcpManager, sandbox));
+        connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", false);
 
-        verify(sandbox).startMcpServer(entry.id, "python", List.of("server.py"), Map.of(), SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+        verify(sandbox).startMcpServer(entry.id, "python", List.of("server.py"), Map.of(), SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS);
+        verify(sandboxService).recordSessionMcpServer("session-id", entry.id);
         verify(mcpManager).addServer(any(McpServerConfig.class));
-        verifyNoInteractions(applicationManager, sandboxService, discoveryClient);
+        verifyNoInteractions(applicationManager, discoveryClient);
+    }
+
+    @Test
+    void backgroundSessionStartDoesNotBlockTheCaller() throws Exception {
+        var entry = entry(true, sandboxConfig());
+        var release = new CountDownLatch(1);
+        when(sandbox.startMcpServer(anyString(), anyString(), anyList(), anyMap(), anyInt()))
+                .thenAnswer(invocation -> {
+                    release.await(5, TimeUnit.SECONDS);
+                    return entry.id;
+                });
+
+        long begin = System.nanoTime();
+        connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", true);
+        long elapsedMs = (System.nanoTime() - begin) / 1_000_000;
+
+        assertTrue(elapsedMs < 1000, "session registration must not wait for the sandbox start, took " + elapsedMs + "ms");
+        release.countDown();
+        verify(sandbox, timeout(2000)).startMcpServer(entry.id, "python", List.of("server.py"), Map.of(), SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+        verify(mcpManager, timeout(2000)).addServer(any(McpServerConfig.class));
+        verify(sandboxService, timeout(2000)).recordSessionMcpServer("session-id", entry.id);
+    }
+
+    @Test
+    void backgroundSessionStartRegistersNothingWhenTheSandboxStartFails() {
+        var entry = entry(true, sandboxConfig());
+        when(sandbox.startMcpServer(anyString(), anyString(), anyList(), anyMap(), anyInt()))
+                .thenThrow(new RuntimeException("timeout"));
+
+        connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", true);
+
+        verify(sandbox, timeout(2000)).startMcpServer(anyString(), anyString(), anyList(), anyMap(), anyInt());
+        verify(mcpManager, never()).addServer(any(McpServerConfig.class));
+        verifyNoInteractions(sandboxService);
     }
 
     private Map<String, String> sandboxConfig() {

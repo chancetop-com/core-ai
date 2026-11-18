@@ -2,8 +2,6 @@ package ai.core.server.tool;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.media.MediaProvider;
-import ai.core.sandbox.Sandbox;
-import ai.core.sandbox.SandboxConstants;
 import ai.core.server.agent.AgentDependencyAccessPolicy;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.domain.ToolRef;
@@ -21,7 +19,6 @@ import ai.core.tool.registry.ToolProvider.RefreshPolicy;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.registry.ToolRegistryFactory;
 import ai.core.tool.github.GitHubTokenProvider;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,6 +53,7 @@ class ToolRefResolutionService {
     private final Map<String, ToolRegistryEntry> tools;
     private final Map<String, List<ToolCall>> dynamicToolSets;
     private final McpResolutionDependencies mcpDependencies;
+    private final SessionSandboxMcpStarter sessionMcpStarter;
     private InternalApiToolLoader internalApiToolLoader;
     private final MediaProvider mediaProvider;
     private final GitHubTokenProvider gitHubTokenProvider;
@@ -76,6 +74,7 @@ class ToolRefResolutionService {
         this.tools = tools;
         this.dynamicToolSets = dynamicToolSets;
         this.mcpDependencies = mcpDependencies;
+        this.sessionMcpStarter = new SessionSandboxMcpStarter(tools, mcpDependencies);
         this.mediaProvider = mediaProvider;
         this.gitHubTokenProvider = gitHubTokenProvider;
         this.videoService = videoService;
@@ -137,7 +136,7 @@ class ToolRefResolutionService {
         if (sessionId != null && mcpDependencies.sandboxService() != null && !toolRefs.isEmpty()) {
             var sandbox = mcpDependencies.sandboxService().getSandbox(sessionId);
             if (sandbox != null) {
-                sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
+                sessionMgr = sessionMcpStarter.prepare(toolRefs, sessionId, sandbox, false);
             }
         }
         var resolver = new ToolRefResolver(tools, internalApiToolLoader, dynamicToolSets, mediaProvider, gitHubTokenProvider,
@@ -177,7 +176,7 @@ class ToolRefResolutionService {
      * registry can apply priority-based dedup and respect {@code ToolExposure}.
      * <p>
      * MCP sandbox isolation is handled per-session: sandbox-hosted MCP refs are prepared
-     * via {@link #prepareSessionMcpServers} and registered with a session-scoped manager.
+     * via {@link SessionSandboxMcpStarter} and registered with a session-scoped manager.
      *
      * @param toolRefs the tool references to resolve
      * @param sessionId the session/run id, or {@code null} for non-session callers
@@ -188,6 +187,18 @@ class ToolRefResolutionService {
     }
 
     ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
+        return resolveToToolRegistry(toolRefs, sessionId, callerUserId, false);
+    }
+
+    /**
+     * @param backgroundSessionMcp start sandbox-hosted MCP servers in the background instead of
+     *                             waiting for them. Used while building a chat session's agent:
+     *                             a cold `npx` start can take minutes and the session create API
+     *                             must not block on it. The tool provider registered for the
+     *                             session picks the server up on the first turn after it is ready.
+     */
+    ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId, String callerUserId,
+                                       boolean backgroundSessionMcp) {
         var registry = ToolRegistryFactory.createEmpty();
         if (toolRefs == null || toolRefs.isEmpty()) return registry;
         validateDeclaredTypes(toolRefs);
@@ -196,7 +207,7 @@ class ToolRefResolutionService {
         if (sessionId != null && mcpDependencies.sandboxService() != null) {
             var sandbox = mcpDependencies.sandboxService().getSandbox(sessionId);
             if (sandbox != null) {
-                sessionMgr = prepareSessionMcpServers(toolRefs, sessionId, sandbox);
+                sessionMgr = sessionMcpStarter.prepare(toolRefs, sessionId, sandbox, backgroundSessionMcp);
             }
         }
 
@@ -329,11 +340,22 @@ class ToolRefResolutionService {
                                    McpClientManager sessionMgr) {
         var entry = findMcpEntryByLookupKey(lookupKey);
         if (entry != null && !Boolean.TRUE.equals(entry.enabled)) return;
-        var mgr = pickMcpManager(lookupKey, sessionMgr);
-        if (mgr == null || !mgr.hasServer(lookupKey)) return;
-        var sandbox = sessionMgr != null && sessionMgr.hasServer(lookupKey);
+        var sandboxHosted = entry != null && entry.config != null
+                && "sandbox_hosted".equalsIgnoreCase(entry.config.get("transport"));
+        McpClientManager mgr;
+        var policy = RefreshPolicy.EVERY_TURN;
+        if (sandboxHosted && sessionMgr != null) {
+            // The process may still be starting in the background: register the provider now and
+            // let it list the server's tools lazily, retrying while the server is not registered
+            // yet, then caching the tool set until the registry is invalidated.
+            mgr = sessionMgr;
+            policy = RefreshPolicy.ONCE_NON_EMPTY;
+        } else {
+            mgr = pickMcpManager(lookupKey, sessionMgr);
+            if (mgr == null || !mgr.hasServer(lookupKey)) return;
+        }
         var serverName = entry != null ? entry.name : lookupKey;
-        registry.registerProvider(new McpToolProvider(lookupKey, serverName, mgr, includes, sandbox ? RefreshPolicy.MANUAL : RefreshPolicy.EVERY_TURN));
+        registry.registerProvider(new McpToolProvider(lookupKey, serverName, mgr, includes, policy));
     }
 
     private ToolRegistryEntry findMcpEntryByLookupKey(String lookupKey) {
@@ -391,60 +413,5 @@ class ToolRefResolutionService {
             case API -> registerApiProvider(registry, ref);
             default -> LOGGER.warn("unknown tool type in legacy ref, id={}, type={}", ref.id, entry.type);
         }
-    }
-
-    private McpClientManager prepareSessionMcpServers(List<ToolRef> toolRefs, String sessionId, Sandbox sandbox) {
-        var sandboxHostedEntries = collectSandboxHostedEntries(toolRefs);
-        if (sandboxHostedEntries.isEmpty()) return null;
-
-        if (mcpDependencies.sandboxService() != null) mcpDependencies.sandboxService().ensureSandboxReady(sessionId);
-
-        var sessionMgr = mcpDependencies.sandboxService() != null ? mcpDependencies.sandboxService().getOrCreateSessionMcpManager(sessionId) : null;
-        if (sessionMgr == null) return null;
-
-        var startupTimeout = SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS;
-
-        sandboxHostedEntries.parallelStream().forEach(entry -> {
-            try {
-                var registered = mcpDependencies.connectionManager().registerOnSession(entry, sessionMgr, sandbox, startupTimeout);
-                if (registered && mcpDependencies.sandboxService() != null) {
-                    mcpDependencies.sandboxService().recordSessionMcpServer(sessionId, entry.id);
-                }
-            } catch (Exception e) {
-                LOGGER.warn("failed to start sandbox-hosted mcp server during session creation, id={}, name={}: {}",
-                        entry.id, entry.name, e.getMessage());
-            }
-        });
-
-        return sessionMgr;
-    }
-
-    private List<ToolRegistryEntry> collectSandboxHostedEntries(List<ToolRef> toolRefs) {
-        var seen = new LinkedHashSet<String>();
-        var result = new ArrayList<ToolRegistryEntry>();
-        for (var ref : toolRefs) {
-            if (ref == null || ref.id == null) continue;
-            var entry = findMcpEntryForRef(ref);
-            if (entry != null && Boolean.TRUE.equals(entry.enabled)
-                    && "sandbox_hosted".equalsIgnoreCase(entry.config.get("transport")) && seen.add(entry.id)) {
-                result.add(entry);
-            }
-        }
-        return result;
-    }
-
-    private ToolRegistryEntry findMcpEntryForRef(ToolRef ref) {
-        var entry = tools.get(ref.id);
-        if (entry != null && entry.type == ToolType.MCP) return entry;
-        var parsed = ToolRef.parseMcpToolId(ref.id, ref.source);
-        if (parsed != null && parsed.serverId() != null) {
-            var serverEntry = tools.get(parsed.serverId());
-            if (serverEntry != null && serverEntry.type == ToolType.MCP) return serverEntry;
-        }
-        if (ref.source != null) {
-            var srcEntry = tools.get(ref.source);
-            if (srcEntry != null && srcEntry.type == ToolType.MCP) return srcEntry;
-        }
-        return null;
     }
 }

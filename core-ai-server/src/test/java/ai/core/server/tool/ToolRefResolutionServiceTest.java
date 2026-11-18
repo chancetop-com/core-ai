@@ -114,6 +114,34 @@ class ToolRefResolutionServiceTest {
     }
 
     @Test
+    void sandboxMcpProviderPicksUpToolsOnceTheBackgroundStartRegistersTheServer() {
+        var entry = new ToolRegistryEntry();
+        entry.id = "mongo-id";
+        entry.name = "MongoDB";
+        entry.type = ToolType.MCP;
+        entry.enabled = Boolean.TRUE;
+        entry.config = Map.of("transport", "sandbox_hosted", "command", "npx", "args", "[\"-y\",\"mongodb-mcp-server\"]");
+        var sandbox = mock(Sandbox.class);
+        var sessionManager = mock(McpClientManager.class);
+        // the async /mcp/start registers the transport only after the process is ready
+        when(sessionManager.hasServer(entry.id)).thenReturn(Boolean.FALSE, Boolean.TRUE);
+        when(sessionManager.safeListTools(entry.id)).thenReturn(List.of(mcpTool("list_collections")));
+        var sandboxService = mock(SandboxService.class);
+        when(sandboxService.getSandbox("session-1")).thenReturn(sandbox);
+        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        var connectionManager = mock(McpServerConnectionManager.class);
+        var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, new ApplicationMcpManager());
+        var service = new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
+
+        var registry = service.resolveToToolRegistry(
+                List.of(ToolRef.of(entry.id, ToolSourceType.MCP)), "session-1", null, true);
+
+        assertTrue(toolNames(registry).isEmpty());
+        assertEquals(List.of("list_collections"), toolNames(registry));
+        verify(connectionManager).registerOnSession(entry, sessionManager, sandbox, "session-1", true);
+    }
+
+    @Test
     void multipleSelectedMcpToolsRemainCallableAndVisibleWithoutExposingUnselectedTools() {
         var manager = mock(McpClientManager.class);
         when(manager.hasServer("gbp-id")).thenReturn(Boolean.TRUE);

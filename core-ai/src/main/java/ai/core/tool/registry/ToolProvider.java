@@ -18,6 +18,7 @@ import java.util.Map;
  *   <li>{@link RefreshPolicy#EVERY_TURN EVERY_TURN} — call every time tools are materialized (default)</li>
  *   <li>{@link RefreshPolicy#ONCE ONCE} — call once, cache forever</li>
  *   <li>{@link RefreshPolicy#MANUAL MANUAL} — cache until explicitly invalidated</li>
+ *   <li>{@link RefreshPolicy#ONCE_NON_EMPTY ONCE_NON_EMPTY} — cache the first non-empty result</li>
  * </ul>
  *
  * @author Lim Chen
@@ -58,12 +59,17 @@ public interface ToolProvider {
      *   <li>{@code EVERY_TURN} — {@code provide()} is invoked on every materialization.</li>
      *   <li>{@code ONCE} — the result of the first {@code provide()} call is cached indefinitely.</li>
      *   <li>{@code MANUAL} — cached until {@link ToolRegistry#invalidateCache(String)} is called.</li>
+     *   <li>{@code ONCE_NON_EMPTY} — the first non-empty result is cached until it is explicitly
+     *       invalidated; while {@code provide()} returns nothing it is retried on the next
+     *       materialization. Used by sandbox-hosted MCP servers, which may still be starting when
+     *       the session's registry is first materialized.</li>
      * </ul>
      */
     enum RefreshPolicy {
         EVERY_TURN,
         ONCE,
-        MANUAL
+        MANUAL,
+        ONCE_NON_EMPTY
     }
 
     default RefreshPolicy refreshPolicy() {

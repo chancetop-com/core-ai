@@ -153,21 +153,24 @@ public class SubAgentAssembler {
 
     public ToolRegistry resolveToolsToRegistry(AgentDefinition definition, String sessionId, String callerUserId) {
         requireUsablePublishedSubAgent(definition);
-        return resolveConfiguredToolsToRegistry(definition.publishedConfig.tools, sessionId, callerUserId);
+        return resolveConfiguredToolsToRegistry(definition.publishedConfig.tools, sessionId, callerUserId, false);
     }
 
     public ToolRegistry resolveTopLevelToolsToRegistry(AgentDefinition definition, String sessionId,
                                                        String callerUserId) {
         var source = definition.publishedConfig;
         var tools = source != null ? source.tools : definition.tools;
-        return resolveConfiguredToolsToRegistry(tools, sessionId, callerUserId);
+        // top-level tools belong to a long-lived chat session and must not hold session creation
+        // while a sandbox-hosted MCP server downloads its package
+        return resolveConfiguredToolsToRegistry(tools, sessionId, callerUserId, true);
     }
 
-    private ToolRegistry resolveConfiguredToolsToRegistry(List<ToolRef> tools,
-                                                          String sessionId, String callerUserId) {
-        return tools != null && !tools.isEmpty()
-            ? toolRegistryService.resolveToToolRegistry(tools, sessionId, callerUserId)
-            : ToolRegistryFactory.createEmpty();
+    private ToolRegistry resolveConfiguredToolsToRegistry(List<ToolRef> tools, String sessionId,
+                                                          String callerUserId, boolean chatSessionTools) {
+        if (tools == null || tools.isEmpty()) return ToolRegistryFactory.createEmpty();
+        return chatSessionTools
+            ? toolRegistryService.resolveToToolRegistryForChatSession(tools, sessionId, callerUserId)
+            : toolRegistryService.resolveToToolRegistry(tools, sessionId, callerUserId);
     }
 
     public List<ToolCall> resolveTools(AgentDefinition definition, String sessionId) {

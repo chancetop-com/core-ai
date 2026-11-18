@@ -340,20 +340,17 @@ public class ToolRegistryService {
         return resolveToolRefs(toolRefs, null, null);
     }
 
-    public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId) {
-        return resolveToolRefs(toolRefs, sessionId, null);
-    }
-
     public List<ToolCall> resolveToolRefs(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
         return GatewayDecisionToolEnhancer.enhance(resolutionService.resolveToolRefs(toolRefs, sessionId, callerUserId), gatewayRoutingEngine);
     }
 
-    public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId) {
-        return resolutionService.resolveToToolRegistry(toolRefs, sessionId);
-    }
-
     public ToolRegistry resolveToToolRegistry(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
         return resolutionService.resolveToToolRegistry(toolRefs, sessionId, callerUserId);
+    }
+
+    // a chat session's build must not wait for a cold sandbox MCP start; the provider lists its tools later
+    public ToolRegistry resolveToToolRegistryForChatSession(List<ToolRef> toolRefs, String sessionId, String callerUserId) {
+        return resolutionService.resolveToToolRegistry(toolRefs, sessionId, callerUserId, true);
     }
 
     public List<String> extractAgentIds(List<ToolRef> toolRefs) {

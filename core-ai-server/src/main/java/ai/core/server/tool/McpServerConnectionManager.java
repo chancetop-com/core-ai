@@ -12,6 +12,8 @@ import org.slf4j.LoggerFactory;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author stephen
@@ -50,8 +52,16 @@ class McpServerConnectionManager {
         }
     }
 
+    private static String command(ToolRegistryEntry entry) {
+        var command = entry.config.get("command");
+        return command == null || command.isBlank() ? null : command;
+    }
+
     private final SandboxService sandboxService;
     private final ApplicationMcpManager applicationMcpManager;
+    // sessionId + '\0' + serverId of sandbox-hosted starts in flight, so a repeated resolution
+    // (e.g. two concurrent tool resolutions on the same session) never starts the process twice.
+    private final Set<String> startingOnSession = ConcurrentHashMap.newKeySet();
 
     McpServerConnectionManager(SandboxService sandboxService, ApplicationMcpManager applicationMcpManager) {
         this.sandboxService = sandboxService;
@@ -140,37 +150,48 @@ class McpServerConnectionManager {
         return McpServerConfig.fromMap(entry.id, resolved);
     }
 
-    // Register a sandbox-hosted MCP server in a session-scoped manager, starting the
-    // MCP process on the given session sandbox. Each session gets its own manager
-    // and child process so concurrent sessions don't collide.
-    boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox) {
-        return registerOnSession(entry, sessionManager, sandbox, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+    // Register a sandbox-hosted MCP server in a session-scoped manager. The transport is
+    // registered only once /mcp/start reports the process ready, so a tool listing never races
+    // a half-started process. background=true is used while building a chat session: a cold
+    // start (`npx` downloading a package) can take minutes, and session creation must not wait
+    // for it — the tool provider bound to the manager resolves the server lazily on later turns.
+    void registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox,
+                           String sessionId, boolean background) {
+        if (!Boolean.TRUE.equals(entry.enabled)) return;
+        if (!isSandboxHosted(entry.config)) return;
+        if (sessionManager.hasServer(entry.id)) return;
+        if (command(entry) == null) {
+            LOGGER.warn("command is required for sandbox-hosted mcp server, id={}", entry.id);
+            return;
+        }
+        if (!background) {
+            startOnSession(entry, sessionManager, sandbox, sessionId, SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS);
+            return;
+        }
+
+        var key = sessionId + '\u0000' + entry.id;
+        if (!startingOnSession.add(key)) return;
+        Thread.startVirtualThread(() -> {
+            try {
+                startOnSession(entry, sessionManager, sandbox, sessionId, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+            } finally {
+                startingOnSession.remove(key);
+            }
+        });
     }
 
-    // Register with a specific startup timeout — session creation uses a shorter timeout
-    // so a stuck MCP server does not block session creation for minutes.
-    boolean registerOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox, int startupTimeoutSeconds) {
-        if (!Boolean.TRUE.equals(entry.enabled)) return false;
-        if (!isSandboxHosted(entry.config)) return false;
-        if (sessionManager.hasServer(entry.id)) return true;
+    private void startOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox,
+                                String sessionId, int startupTimeoutSeconds) {
         try {
-            var configMap = new HashMap<String, Object>();
-            configMap.putAll(entry.config);
-            var command = (String) configMap.get("command");
-            if (command == null || command.isBlank()) {
-                LOGGER.warn("command is required for sandbox-hosted mcp server, id={}", entry.id);
-                return false;
-            }
-            var args = parseArgsList(configMap.get("args"));
-            var env = McpServerConfig.parseEnv(configMap.get("env"));
+            var command = command(entry);
+            var args = parseArgsList(entry.config.get("args"));
+            var env = McpServerConfig.parseEnv(entry.config.get("env"));
             sandbox.startMcpServer(entry.id, command, args, env, startupTimeoutSeconds);
-            var serverConfig = buildSandboxBackedConfig(entry, sandbox);
-            sessionManager.addServer(serverConfig);
-            LOGGER.info("registered sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, sandbox.ip(), startupTimeoutSeconds);
-            return true;
+            if (sandboxService != null) sandboxService.recordSessionMcpServer(sessionId, entry.id);
+            sessionManager.addServer(buildSandboxBackedConfig(entry, sandbox));
+            LOGGER.info("started sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, sandbox.ip(), startupTimeoutSeconds);
         } catch (Exception e) {
-            LOGGER.warn("failed to register sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
-            return false;
+            LOGGER.warn("failed to start sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
         }
     }
 

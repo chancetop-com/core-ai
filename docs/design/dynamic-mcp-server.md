@@ -45,14 +45,15 @@ Endpoints on `core-ai-sandbox-runtime :8080`:
 
 | Method | Path | Description |
 |---|---|---|
-| POST | `/mcp/start` | Start an MCP child process. Body: `{"id":"...","command":"npx","args":["-y","@xxx/mcp"],"env":{}}`. Returns once the process survives a 3-second crash-detection window; longer survival monitoring is asynchronous (see `exitWatcher`). |
+| POST | `/mcp/start` | Start an MCP child process. Body: `{"id":"...","command":"npx","args":["-y","@xxx/mcp"],"env":{}}`. Blocks for a 3-second crash-detection window and then for a readiness `ping`; a cold `npx` package download can push this to well over a minute. |
 | GET  | `/mcp`       | List running MCP server ids. |
 | POST | `/mcp`       | MCP JSON-RPC bridge. Routes to the target process. Header `X-Mcp-Server-Id` identifies the target. |
 | POST | `/mcp/stop`  | Stop the MCP child process. Body: `{"id":"..."}`. |
 
-The HTTP handler returns within ~3s of `cmd.Start()` — long enough to catch
-immediate `npm` failures (ECONNRESET, missing package), short enough that the
-Java client's 30/60s read timeout never fires on a healthy startup.
+The HTTP handler returns only after the child answers the readiness ping (up to 120s), so
+an `npx`-hosted server whose package is not cached is slow on its first start in every new
+sandbox. Callers must not put this call on a latency-sensitive path: chat session creation
+starts the process in the background (see below).
 
 ## Java Side
 
@@ -72,10 +73,14 @@ Three registration entry points:
   the discovery sandbox and registers an HTTP transport pointing at it in the
   **global** `McpClientManager`. Called by `connectMcpServer` and
   `listMcpServerToolDetails` (the tool-browser flow).
-- `registerOnSession(entry, sessionManager, sandbox)` — starts the MCP process
-  on the session's sandbox and registers an HTTP transport in the **session-scoped**
-  `McpClientManager` passed in. Called by `prepareSessionMcpServers` during
-  `resolveToolRefs(refs, sessionId)`.
+- `registerOnSession(entry, sessionManager, sandbox, sessionId, background)` — starts the MCP
+  process on the session's sandbox and registers an HTTP transport in the **session-scoped**
+  `McpClientManager` passed in, only after `/mcp/start` reports the process ready. Called by
+  `SessionSandboxMcpStarter` during `resolveToolRefs(refs, sessionId)`. With `background=true`
+  (chat session creation) the start runs on a virtual thread and the call returns immediately;
+  the tool provider bound to the session manager uses `ONCE_NON_EMPTY`, so it retries on later
+  turns until the server appears and then caches the tool set. The blocking mode is kept for
+  one-shot runs whose first turn needs the tools.
 
 ### `SandboxService`
 
@@ -132,7 +137,9 @@ lifetime of the session.
 
 Chat sessions go through the same flow via `AgentSessionManager.createSessionFromAgent`
 and `SessionRebuildManager.doRebuild`, which both create the LazySandbox before
-calling `resolveToolRefs`.
+calling `resolveToolRefs`. Session creation passes `backgroundStart=true`: the create API
+returns without waiting for `/mcp/start`, and the session's provider lists the server's tools
+from the first turn that happens after the process is ready.
 
 ## Concurrency
 

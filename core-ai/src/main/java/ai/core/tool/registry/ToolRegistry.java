@@ -129,6 +129,13 @@ public class ToolRegistry {
         if (policy == ToolProvider.RefreshPolicy.MANUAL) {
             return providerCache.computeIfAbsent(provider.id(), k -> provider.provide());
         }
+        if (policy == ToolProvider.RefreshPolicy.ONCE_NON_EMPTY) {
+            var cached = providerCache.get(provider.id());
+            if (cached != null) return cached;
+            var provided = provider.provide();
+            if (!provided.isEmpty()) providerCache.put(provider.id(), provided);
+            return provided;
+        }
         return provider.provide();
     }
 

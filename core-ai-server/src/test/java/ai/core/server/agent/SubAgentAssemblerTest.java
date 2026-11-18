@@ -263,7 +263,7 @@ class SubAgentAssemblerTest {
         definition.publishedConfig.tools = List.of(ToolRef.fromLegacyToolId("builtin-service"));
         var expected = ToolRegistryFactory.createEmpty();
         var registryService = mock(ToolRegistryService.class);
-        when(registryService.resolveToToolRegistry(
+        when(registryService.resolveToToolRegistryForChatSession(
             definition.publishedConfig.tools, "session-1", "owner-1")).thenReturn(expected);
         assembler.toolRegistryService = registryService;
 
