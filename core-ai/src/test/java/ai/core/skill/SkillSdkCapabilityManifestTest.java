@@ -40,12 +40,12 @@ class SkillSdkCapabilityManifestTest {
     @Test
     void recordsUnsupportedDeclarationsWithoutGrantingThem() {
         var manifest = SkillSdkCapabilityManifest.parse(
-                List.of("tool:read-file", "subagent:research", "mcp:*", "dataset:sales"),
+                List.of("subagent:research", "mcp:*", "dataset:sales"),
                 Map.of(SkillSdkCapabilityManifest.CONTRACT_VERSION_KEY, "1"));
 
         assertTrue(manifest.enabled());
         assertEquals(List.of(), manifest.entries());
-        assertEquals(4, manifest.unsupported().size());
+        assertEquals(3, manifest.unsupported().size());
         assertTrue(manifest.unsupported().stream().noneMatch(SkillSdkCapabilityManifest.Entry::supported));
     }
 
@@ -62,7 +62,7 @@ class SkillSdkCapabilityManifestTest {
     @Test
     void summaryMarksCapabilitiesAsScriptOnly() {
         var manifest = SkillSdkCapabilityManifest.parse(
-                List.of("api-tool:crm/leads/list", "tool:read-file"),
+                List.of("api-tool:crm/leads/list", "subagent:research"),
                 Map.of(SkillSdkCapabilityManifest.CONTRACT_VERSION_KEY, "1"));
 
         var summary = manifest.summary();
@@ -70,7 +70,7 @@ class SkillSdkCapabilityManifestTest {
         assertTrue(summary.contains("script-only"));
         assertTrue(summary.contains("api-tool: crm/leads/list"));
         assertTrue(summary.contains("Unsupported declarations"));
-        assertTrue(summary.contains("tool:read-file"));
+        assertTrue(summary.contains("subagent:research"));
     }
 
     @Test

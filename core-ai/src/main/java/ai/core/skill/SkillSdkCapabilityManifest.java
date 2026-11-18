@@ -34,7 +34,7 @@ public final class SkillSdkCapabilityManifest {
     private static final Set<String> KNOWN_KINDS = Set.of(
             KIND_TOOL, KIND_MCP, KIND_API_TOOL, KIND_LLM_CALL, KIND_SUBAGENT, KIND_DATASET, KIND_MEDIA, KIND_DECISION
     );
-    private static final Set<String> SDK_KINDS = Set.of(KIND_MCP, KIND_API_TOOL, KIND_LLM_CALL);
+    private static final Set<String> SDK_KINDS = Set.of(KIND_TOOL, KIND_MCP, KIND_API_TOOL, KIND_LLM_CALL);
     private static final Map<String, String> ALIASES = Map.of(
             "bash", "tool:code-execution",
             "read", "tool:read-file",
@@ -102,6 +102,7 @@ public final class SkillSdkCapabilityManifest {
     // V1 resolves exact references only; group selectors stay unsupported until expansion is implemented.
     private static boolean exactArity(String kind, List<String> parts) {
         return switch (kind) {
+            case KIND_TOOL -> parts.size() == 1;
             case KIND_MCP -> parts.size() == 2;
             case KIND_API_TOOL -> parts.size() == 3;
             case KIND_LLM_CALL -> parts.size() == 1;
