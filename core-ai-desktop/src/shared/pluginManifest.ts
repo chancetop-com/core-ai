@@ -123,6 +123,11 @@ export interface PluginContributions {
   slots: PluginSlotContribution[];
 }
 
+export interface PluginServiceDeclaration {
+  id: string;
+  version?: string;
+}
+
 export interface PluginComponent {
   kind: PluginComponentKind;
   path: string;
@@ -141,6 +146,8 @@ export interface ResolvedPluginDescriptor {
   unsupported: string[];
   contributions: PluginContributions;
   capabilities: { required: string[]; optional: string[] };
+  provides: PluginServiceDeclaration[];
+  requires: string[];
   legacy: boolean;
 }
 
@@ -160,6 +167,7 @@ const CAPABILITY_SET = new Set<string>(SUPPORTED_CAPABILITIES);
 const COMPONENT_SET = new Set<string>(SUPPORTED_COMPONENT_KINDS);
 
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const SERVICE_ID = /^[a-z][a-z0-9._-]{0,63}$/;
 const SAFE_PATH_SEGMENT = /^[^\\/:*?"<>|\u0000-\u001f]+$/;
 const WINDOWS_DEVICE = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\..*)?$/i;
 
@@ -429,6 +437,31 @@ function stringList(value: unknown): string[] | null {
   return [...new Set(result)];
 }
 
+function parseProvides(value: unknown): PluginServiceDeclaration[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return null;
+  const services: PluginServiceDeclaration[] = [];
+  for (const item of value.slice(0, 20)) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return null;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.id !== 'string' || !SERVICE_ID.test(entry.id)) return null;
+    const version = boundedText(entry.version, 20);
+    services.push({ id: entry.id, ...(version ? { version } : {}) });
+  }
+  return [...new Map(services.map((service) => [service.id, service])).values()];
+}
+
+function parseRequires(value: unknown): string[] | null {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 20) return null;
+  const services: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || !SERVICE_ID.test(item)) return null;
+    services.push(item);
+  }
+  return [...new Set(services)];
+}
+
 /**
  * Parses either a new `coreai` manifest or the legacy Claude Code shape.
  *
@@ -471,6 +504,8 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
   const contributions: PluginContributions = { dock: [], settings: [], composer: [], pages: [], slots: [] };
   let required: string[] = [];
   let optional: string[] = [];
+  let provides: PluginServiceDeclaration[] = [];
+  let requires: string[] = [];
 
   if (coreai !== undefined) {
     if (!coreai || typeof coreai !== 'object' || Array.isArray(coreai)) {
@@ -542,6 +577,13 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           }
         }
       }
+
+      const parsedProvides = parseProvides(block.provides);
+      if (parsedProvides === null) errors.push('coreai.provides must be an array of { id, version? }');
+      else provides = parsedProvides;
+      const parsedRequires = parseRequires(block.requires);
+      if (parsedRequires === null) errors.push('coreai.requires must be an array of service ids');
+      else requires = parsedRequires;
     }
   } else {
     // Legacy packages stay inspectable and installable, but activation still requires the
@@ -593,6 +635,8 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     unsupported: [...new Set(unsupported)],
     contributions,
     capabilities: { required, optional },
+    provides,
+    requires,
     legacy,
   };
   return { ok: true, errors, warnings, descriptor };
@@ -614,6 +658,8 @@ export interface PluginView {
   granted: string[];
   requiredCapabilities: string[];
   optionalCapabilities: string[];
+  provides: PluginServiceDeclaration[];
+  requires: string[];
   status: PluginStatus;
   reason: string | null;
   source: string | null;

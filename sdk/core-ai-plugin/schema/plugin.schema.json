@@ -42,6 +42,21 @@
               "uniqueItems": true
             }
           },
+          "provides": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id"],
+              "properties": {
+                "id": { "type": "string" },
+                "version": { "type": "string" }
+              }
+            }
+          },
+          "requires": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
           "additionalProperties": false
         },
         "contributes": {

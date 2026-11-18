@@ -172,6 +172,8 @@ export function normalizePlugins(value: unknown): PluginView[] {
       granted: stringArray(entry.granted),
       requiredCapabilities: stringArray(entry.requiredCapabilities),
       optionalCapabilities: stringArray(entry.optionalCapabilities),
+      provides: normalizeProvides(entry.provides),
+      requires: stringArray(entry.requires),
       status,
       reason: typeof entry.reason === 'string' ? entry.reason : null,
       source: typeof entry.source === 'string' ? entry.source : null,
@@ -191,6 +193,14 @@ export function normalizePlugins(value: unknown): PluginView[] {
 
 function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizeProvides(value: unknown): PluginView['provides'] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    .filter((item) => typeof item.id === 'string')
+    .map((item) => ({ id: item.id as string, ...(typeof item.version === 'string' ? { version: item.version } : {}) }));
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {

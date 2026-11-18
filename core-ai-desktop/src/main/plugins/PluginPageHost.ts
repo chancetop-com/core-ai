@@ -319,6 +319,8 @@ export class PluginPageHost {
       case 'events.subscribe':
         this.requireCapability(instance, 'events.read');
         return this.subscribeEvents(instance, args.types);
+      case 'services.list':
+        return this.listServices(instance);
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -389,6 +391,28 @@ export class PluginPageHost {
         size: bytes.length,
         path: relative,
         url: assetUrl(relative),
+      },
+    };
+  }
+
+  private async listServices(instance: PageInstance): Promise<Record<string, unknown>> {
+    const host = this.options.pluginHost();
+    const plugins = host ? await host.list() : [];
+    const active = plugins.filter((plugin) => plugin.status === 'active');
+    const own = active.find((plugin) => plugin.id === instance.pluginId);
+    return {
+      host: [
+        'memory.read', 'memory.write', 'media.generate', 'sessions.read', 'sessions.write',
+        'schedules.read', 'schedules.write', 'plugin.storage', 'events.read', 'notification.send', 'usage.read',
+      ],
+      plugins: active.map((plugin) => ({
+        pluginId: plugin.id,
+        provides: plugin.provides,
+        requires: plugin.requires,
+      })),
+      own: {
+        provides: own?.provides ?? [],
+        requires: own?.requires ?? [],
       },
     };
   }

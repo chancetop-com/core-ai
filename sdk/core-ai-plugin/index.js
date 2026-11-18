@@ -105,6 +105,22 @@ export function validateManifest(input) {
   }
 
   const contributes = isObject(coreai.contributes) ? coreai.contributes : {};
+  if (coreai.provides !== undefined) {
+    if (!Array.isArray(coreai.provides)) errors.push('coreai.provides must be an array');
+    else {
+      for (const item of coreai.provides) {
+        if (!isObject(item) || typeof item.id !== 'string' || !/^[a-z][a-z0-9._-]{0,63}$/.test(item.id)) {
+          errors.push('each provides entry needs a lowercase service id');
+        }
+      }
+    }
+  }
+  if (coreai.requires !== undefined) {
+    if (!Array.isArray(coreai.requires)
+      || coreai.requires.some((item) => typeof item !== 'string' || !/^[a-z][a-z0-9._-]{0,63}$/.test(item))) {
+      errors.push('coreai.requires must be an array of service ids');
+    }
+  }
   for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {

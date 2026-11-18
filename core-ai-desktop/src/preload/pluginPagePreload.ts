@@ -60,4 +60,7 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   notify: {
     send: (text: string) => call('notify.send', { text }),
   },
+  services: {
+    list: () => call('services.list'),
+  },
 });

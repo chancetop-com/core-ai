@@ -690,6 +690,8 @@ export class PluginStore {
       granted: [...install.granted],
       requiredCapabilities: descriptor?.capabilities.required ?? [],
       optionalCapabilities: descriptor?.capabilities.optional ?? [],
+      provides: descriptor?.provides ?? [],
+      requires: descriptor?.requires ?? [],
       status,
       reason,
       source: stored?.source ?? null,

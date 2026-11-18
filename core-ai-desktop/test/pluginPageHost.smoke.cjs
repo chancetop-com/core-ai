@@ -88,6 +88,12 @@ async function main() {
   const host = new PluginPageHost({
     pluginHost: () => ({
       resolvePage: async () => ({ ...page, granted }),
+      list: async () => [{
+        id: 'test.page',
+        status: 'active',
+        provides: [{ id: 'demo.provider', version: '1' }],
+        requires: ['memory.read'],
+      }],
       storageGet: async (_pluginId, key) => storage.get(key) ?? null,
       storageSet: async (_pluginId, key, value) => { storage.set(key, value); },
       storageDelete: async (_pluginId, key) => storage.delete(key),
@@ -154,6 +160,10 @@ async function main() {
   );
   assert.equal(written.mode, 'append');
   assert.equal(written.size, 5);
+  const services = await view.webContents.executeJavaScript('window.coreaiPlugin.services.list()');
+  assert.equal(services.plugins[0].provides[0].id, 'demo.provider');
+  assert.equal(services.own.requires[0], 'memory.read');
+  assert.ok(services.host.includes('memory.write'));
   const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);

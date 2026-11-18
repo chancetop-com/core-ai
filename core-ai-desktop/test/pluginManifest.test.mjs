@@ -76,6 +76,29 @@ test('slot actions need ui.slots and a supported action', () => {
   assert.ok(unsupported.descriptor.unsupported.some((item) => item.includes('ui.slots.slot')));
 });
 
+test('provides and requires parse service metadata', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Services',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.services',
+      provides: [{ id: 'memory.provider', version: '1.0' }],
+      requires: ['events.session'],
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.deepEqual(parsed.descriptor.provides, [{ id: 'memory.provider', version: '1.0' }]);
+  assert.deepEqual(parsed.descriptor.requires, ['events.session']);
+
+  const invalid = parsePluginManifest(JSON.stringify({
+    name: 'Services',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.services', provides: [{ id: 'Bad Service' }] },
+  }));
+  assert.equal(invalid.ok, false);
+});
+
 test('a plugin page needs ui.pages and a package-relative view', () => {  const parsed = parsePluginManifest(JSON.stringify({
     name: 'Media Studio',
     version: '0.1.0',

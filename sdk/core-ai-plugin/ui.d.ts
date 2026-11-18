@@ -144,6 +144,18 @@ export interface PluginEvent {
   data: Record<string, unknown>;
 }
 
+export interface PluginServiceInfo {
+  pluginId: string;
+  provides: Array<{ id: string; version?: string }>;
+  requires: string[];
+}
+
+export interface PluginServiceCatalog {
+  host: string[];
+  plugins: PluginServiceInfo[];
+  own: { provides: Array<{ id: string; version?: string }>; requires: string[] };
+}
+
 export interface CoreAiPluginBridge {
   context(): Promise<PluginPageContext>;
   assets: {
@@ -190,6 +202,9 @@ export interface CoreAiPluginBridge {
   };
   notify: {
     send(text: string): Promise<{ ok: boolean; error?: string }>;
+  };
+  services: {
+    list(): Promise<PluginServiceCatalog>;
   };
 }
 

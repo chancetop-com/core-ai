@@ -82,6 +82,7 @@ page bridge exposes:
 - `storage.get/set/delete/keys` with `plugin.storage` (string values, 64 KiB per value)
 - `events.subscribe(types)` and `events.on(callback)` with `events.read`
 - `notify.send(text)` with `notification.send` (configured target; 5/minute per page, 2000 chars)
+- `services.list()` for declared `provides`/`requires` metadata and host service ids
 
 Events are allowlisted and redacted: `session.status`, `turn.completed`, `tool.started`,
 `tool.finished`, `turn.failed`, `plan.updated`, `task.updated`, `tool.batch_started`, `agent.wait`

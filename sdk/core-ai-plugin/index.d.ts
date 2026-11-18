@@ -98,9 +98,14 @@ export interface PluginManifest {
     id: string;
     desktopApi?: string;
     engineApi?: string;
-    components?: PluginComponent[];
-    capabilities?: { required?: PluginCapability[]; optional?: PluginCapability[] };
-    contributes?: {
+        components?: PluginComponent[];
+        capabilities?: {
+          required?: PluginCapability[];
+          optional?: PluginCapability[];
+        };
+        provides?: Array<{ id: string; version?: string }>;
+        requires?: string[];
+        contributes?: {
       dock?: PluginDockContribution[];
       settings?: PluginSettingsContribution[];
       composer?: PluginComposerContribution[];
