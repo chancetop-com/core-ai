@@ -76,6 +76,28 @@ test('slot actions need ui.slots and a supported action', () => {
   assert.ok(unsupported.descriptor.unsupported.some((item) => item.includes('ui.slots.slot')));
 });
 
+test('artifact renderers need ui.renderers and extensions', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Renderer',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.renderer',
+      capabilities: { required: ['ui.renderers'] },
+      contributes: { renderers: [{ id: 'viewer', kind: 'artifact', title: 'Viewer', pageId: 'main', extensions: ['.md', '.txt'] }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.renderers[0].extensions.length, 2);
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Renderer',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.renderer', contributes: { renderers: [{ id: 'viewer', kind: 'artifact', title: 'Viewer', pageId: 'main', extensions: ['.md'] }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',

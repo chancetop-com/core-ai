@@ -12,6 +12,7 @@ import {
   type PluginDockBlock,
   type PluginDockContribution,
   type PluginPageContribution,
+  type PluginRendererContribution,
   type PluginSlotContribution,
   type PluginSlotId,
   type PluginSettingsContribution,
@@ -38,6 +39,14 @@ export interface PluginSlotAction {
   slot: PluginSlotId;
   title: string;
   action: PluginSlotContribution['action'];
+}
+
+export interface PluginArtifactRenderer {
+  key: string;
+  pluginId: string;
+  title: string;
+  pageId: string;
+  extensions: string[];
 }
 
 export interface PluginSettingsSection {
@@ -104,6 +113,26 @@ export function slotActions(plugins: PluginView[], slot: PluginSlotId): PluginSl
     }
   }
   return actions;
+}
+
+export function artifactRenderers(plugins: PluginView[], fileName: string): PluginArtifactRenderer[] {
+  const extension = fileName.toLowerCase().match(/\.[a-z0-9]{1,10}$/)?.[0] ?? '';
+  if (!extension) return [];
+  const renderers: PluginArtifactRenderer[] = [];
+  for (const plugin of plugins) {
+    if (plugin.status !== 'active' || !plugin.granted.includes('ui.renderers')) continue;
+    for (const contribution of plugin.contributions?.renderers ?? []) {
+      if (!contribution.extensions.includes(extension)) continue;
+      renderers.push({
+        key: `${plugin.id}:${contribution.id}`,
+        pluginId: plugin.id,
+        title: contribution.title,
+        pageId: contribution.pageId,
+        extensions: contribution.extensions,
+      });
+    }
+  }
+  return renderers;
 }
 
 export function settingsSections(plugins: PluginView[]): PluginSettingsSection[] {
@@ -204,7 +233,7 @@ function normalizeProvides(value: unknown): PluginView['provides'] {
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {
-  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [] };
+  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [] };
   if (!value || typeof value !== 'object') return empty;
   const raw = value as Record<string, unknown>;
   return {
@@ -213,7 +242,18 @@ function normalizeContributions(value: unknown): PluginView['contributions'] {
     composer: Array.isArray(raw.composer) ? raw.composer.filter(isComposerContribution) : [],
     pages: Array.isArray(raw.pages) ? raw.pages.filter(isPageContribution) : [],
     slots: Array.isArray(raw.slots) ? raw.slots.filter(isSlotContribution) : [],
+    renderers: Array.isArray(raw.renderers) ? raw.renderers.filter(isRendererContribution) : [],
   };
+}
+
+function isRendererContribution(value: unknown): value is PluginRendererContribution {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return entry.kind === 'artifact'
+    && typeof entry.id === 'string'
+    && typeof entry.title === 'string'
+    && typeof entry.pageId === 'string'
+    && Array.isArray(entry.extensions);
 }
 
 function isSlotContribution(value: unknown): value is PluginSlotContribution {

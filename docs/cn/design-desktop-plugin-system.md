@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.19（P2d：只读服务 + storage + events + usage + notification + slots + writes + service metadata） |
+| 文档版本 | v0.20（P2d：只读服务 + storage + events + usage + notification + slots + writes + service metadata + artifact renderer） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -626,13 +626,14 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `memory.write` | `memory.write(path, content, mode)` 仅允许 `knowledge/` 下的 Markdown；≤256 KiB，append/overwrite，realpath 防逃逸 |
 | `sessions.write` / `schedules.*` | `sessions.rename`（仅当前 workspace 已存在 session）；`schedules.list/get/update/delete/trigger` 仅限 scheduler 归属于当前 workspace 的任务；写/触发要求 workspace trusted |
 | `provides` / `requires` | manifest 声明服务 ID；页面 `services.list()` 返回 host service IDs、active 插件的 provides/requires 与自身声明；仅元数据，不执行跨插件调用 |
+| `ui.renderers` / `artifacts.read` | `contributes.renderers` 的 artifact renderer 在 Artifacts 面板增加入口；打开插件页时传 `artifactPath`，页面可用 `artifacts.read()` 读取 ≤2 MiB 文本；不支持二进制/scripted inline renderer |
 | `usage.read` | `usage.summary(range)` 从持久化 transcript 聚合已完成、未被 rewind 的 turn 的 input/output/cached tokens 与 cost；默认 all，也支持 7d/30d |
 | `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
 | `events.read` | `events.subscribe([...])` + `events.on(...)`；宿主按 allowlist 转发 `session.status`、`turn.completed`、`tool.started/finished`、`turn.failed`、`plan.updated`、`task.updated`、`tool.batch_started`、`agent.wait`、`custom`；只给脱敏字段，不给 text/tool args/tool result |
 | `notification.send` | `notify.send(text)` 走已配置的 OCG 通知目标；1–2000 字符、每页面 5 次/分钟；未配置目标返回错误 |
 | `ui.slots`（首期） | 声明式 action-only slot：`sidebar.footer.action`、`composer.dock`、`conversation.turn.tail`、`conversation.message.actions`；action 仅支持 `openPage` / `insertText`，不执行插件脚本 |
 | 示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed |
-| 仍未实现 | scripted/renderer slots（message renderer、artifact viewer 等）；`provides/requires` 目前只有发现元数据，没有跨插件调用运行时 |
+| 仍未实现 | scripted/renderer slots（message renderer、scripted inline artifact viewer 等）；`provides/requires` 目前只有发现元数据，没有跨插件调用运行时 |
 
 ## 7. Engine 接入与生命周期
 
@@ -951,6 +952,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.17 | 2026-11-18 | P2d memory write：`memory.write` + `memory/write`，只写 `knowledge/` 下 Markdown，append/overwrite、≤256 KiB、realpath 边界；示例加 Memory note | 开放受控知识写入，schedules/sessions 写仍待做 |
 | v0.18 | 2026-11-18 | P2d session/schedule writes：`sessions.rename`、`schedules.list/get/update/delete/trigger`；workspace scope 校验，写/触发要求 trusted | 补齐会话与自动化插件入口 |
 | v0.19 | 2026-11-18 | P2d service metadata：manifest `provides`/`requires` + `services.list()`；只做发现，不做跨插件调用 | 补齐服务注册契约，运行时服务调用仍留待后续 |
+| v0.20 | 2026-11-18 | P2d artifact renderer：`ui.renderers` + `artifacts.read`；Artifacts 面板打开插件页并传 `artifactPath`，页面读文本 artifact | 覆盖 artifact viewer 场景，scripted inline renderer 仍未做 |
 
 ### 13.2 相关材料
 
@@ -991,6 +993,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | P2d memory write | `memory.write` + engine `memory/write`；仅 `knowledge/` 下 Markdown、≤256 KiB、append/overwrite、realpath 边界 | `LocalMemory.java`、`PluginPageHost.ts`、`pluginPagePreload.ts` |
 | P2d session/schedule write | `sessions.rename`、`schedules.list/get/update/delete/trigger`；workspace 归属校验，写/触发走 `trustedEngine` | `PluginPageHost.ts`、`pluginPagePreload.ts` |
 | P2d service metadata | manifest `provides`/`requires` + `services.list()`；返回 host service IDs 与 active 插件声明，不执行跨插件调用 | `pluginManifest.ts`、`PluginPageHost.ts`、`pluginPagePreload.ts` |
+| P2d artifact renderer | `ui.renderers` + `artifacts.read`；Artifacts 面板按钮打开插件页并传 `artifactPath`，页面读取 ≤2 MiB 文本 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`PluginPageHost.ts`、`artifactPath.ts` |
 | P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | P2d notification | `notification.send` + `notify.send`；接现有 OCG 目标，5 次/分钟/页、2000 字符上限；无目标明确报错 | `PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
 | P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码；turn tail 在实时 turn 和历史 transcript 都渲染 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
@@ -1014,12 +1017,12 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
-9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`、action-only 的 sidebar/composer/turn-tail/message-actions slots、`memory.write`、`sessions.rename`、workspace-scoped `schedules.*`，以及 `provides`/`requires` 发现元数据；仍没有 scripted/renderer slots（message renderer、artifact viewer 等）或跨插件服务调用运行时。
+9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`、action-only 的 sidebar/composer/turn-tail/message-actions slots、`memory.write`、`sessions.rename`、workspace-scoped `schedules.*`、`provides`/`requires` 发现元数据，以及 artifact renderer（打开插件页并读取文本 artifact）；仍没有 scripted inline renderer、message renderer 或跨插件服务调用运行时。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
 2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
-3. 补 P2d 剩余：scripted/renderer slots（message renderer、artifact viewer 等）与跨插件服务调用运行时；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
+3. 补 P2d 剩余：scripted inline renderer、message renderer 与跨插件服务调用运行时；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
 
 

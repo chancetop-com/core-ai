@@ -83,6 +83,7 @@ page bridge exposes:
 - `events.subscribe(types)` and `events.on(callback)` with `events.read`
 - `notify.send(text)` with `notification.send` (configured target; 5/minute per page, 2000 chars)
 - `services.list()` for declared `provides`/`requires` metadata and host service ids
+- `artifacts.read()` for the text artifact attached by an artifact renderer
 
 Events are allowlisted and redacted: `session.status`, `turn.completed`, `tool.started`,
 `tool.finished`, `turn.failed`, `plan.updated`, `task.updated`, `tool.batch_started`, `agent.wait`
@@ -97,6 +98,8 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `ui.settings` | declarative settings fields stored in the plugin store |
 | `ui.composer` | insert-only composer action |
 | `ui.slots` | action-only host slots: sidebar footer, composer dock, turn tail and message actions |
+| `ui.renderers` | artifact renderer entry points that open a plugin page |
+| `artifacts.read` | reads a text artifact opened through an artifact renderer |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
 | `media.assets.write` | imports a reference image into the workspace media directory |

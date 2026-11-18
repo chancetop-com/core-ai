@@ -1592,6 +1592,7 @@ function registerIpc(): void {
         pluginId: input.pluginId,
         pageId: input.pageId,
         bounds: pluginPageBounds(input.bounds),
+        artifactPath: typeof input.artifactPath === 'string' ? input.artifactPath : undefined,
       });
       return { ok: true, ...opened };
     } catch (error) {

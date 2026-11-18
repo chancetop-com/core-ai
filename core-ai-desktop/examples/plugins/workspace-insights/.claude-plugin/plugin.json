@@ -7,7 +7,7 @@
     "id": "core-ai.workspace-insights",
     "desktopApi": "^1.0.0",
     "capabilities": {
-      "required": ["ui.pages", "ui.slots", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
+      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
     },
     "contributes": {
       "pages": [
@@ -42,6 +42,15 @@
           "slot": "conversation.message.actions",
           "title": "Review in Insights",
           "action": { "kind": "insertText", "text": "Review this message in Workspace Insights." }
+        }
+      ],
+      "renderers": [
+        {
+          "id": "text-viewer",
+          "kind": "artifact",
+          "title": "Insights",
+          "pageId": "insights",
+          "extensions": [".md", ".txt", ".json", ".log"]
         }
       ]
     }

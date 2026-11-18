@@ -17,6 +17,7 @@ const packageDir = path.join(root, 'package');
 const workspace = path.join(root, 'workspace');
 mkdirSync(packageDir, { recursive: true });
 mkdirSync(path.join(workspace, '.core-ai', 'media', 'images'), { recursive: true });
+writeFileSync(path.join(workspace, '.core-ai', 'report.md'), '# smoke artifact\n');
 writeFileSync(path.join(packageDir, 'index.html'), '<!doctype html><meta charset="utf-8"><body><script>window.pageReady=true</script><p>ok</p></body>');
 writeFileSync(path.join(workspace, '.core-ai', 'media', 'images', 'one.png'),
   Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64'));
@@ -36,7 +37,7 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write'],
+      'schedules.read', 'schedules.write', 'artifacts.read'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -110,6 +111,7 @@ async function main() {
   const { token } = await host.open({
     window, workspace, pluginId: 'test.page', pageId: 'main',
     bounds: { x: 0, y: 0, width: 800, height: 600 },
+    artifactPath: '.core-ai/report.md',
   });
   console.log('page opened', token);
   const view = host.instances.get(token).view;
@@ -120,6 +122,9 @@ async function main() {
   const context = await view.webContents.executeJavaScript('window.coreaiPlugin.context()');
   assert.equal(context.pluginId, 'test.page');
   assert.deepEqual(context.capabilities, page.granted);
+  assert.equal(context.artifactPath, '.core-ai/report.md');
+  const artifact = await view.webContents.executeJavaScript('window.coreaiPlugin.artifacts.read()');
+  assert.equal(artifact.content, '# smoke artifact\n');
   const assets = await view.webContents.executeJavaScript('window.coreaiPlugin.assets.list()');
   const assetResponse = await view.webContents.session.fetch(assets.files[0].url).catch((error) => ({ error }));
   console.log('asset response', assetResponse.status, assetResponse.error ? assetResponse.error.message : '');

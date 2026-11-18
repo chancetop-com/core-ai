@@ -4,6 +4,8 @@ export type PluginCapability =
   | 'ui.composer'
   | 'ui.pages'
   | 'ui.slots'
+  | 'ui.renderers'
+  | 'artifacts.read'
   | 'engine.skills'
   | 'media.assets.read'
   | 'media.assets.write'
@@ -89,6 +91,14 @@ export interface PluginSlotContribution {
   action: PluginSlotAction;
 }
 
+export interface PluginRendererContribution {
+  id: string;
+  kind: 'artifact';
+  title: string;
+  pageId: string;
+  extensions: string[];
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -111,6 +121,7 @@ export interface PluginManifest {
       composer?: PluginComposerContribution[];
       pages?: PluginPageContribution[];
       slots?: PluginSlotContribution[];
+      renderers?: PluginRendererContribution[];
     };
   };
 }

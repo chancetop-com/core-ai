@@ -29,7 +29,7 @@ import {
   type OcgTargetView,
 } from './notifications';
 import { createRichCard, parseRichCard } from './richCard';
-import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections, slotActions, type PluginSlotAction } from './pluginView';
+import { artifactRenderers, composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections, slotActions, type PluginSlotAction } from './pluginView';
 import type { PluginOperationResult, PluginView } from '../shared/pluginManifest';
 import type { RegistryListResult, RegistryPlugin } from '../shared/pluginRegistry';
 import type { WorkspaceTrustState } from '../shared/workspaceTrust';
@@ -468,7 +468,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   pluginsSetSetting(pluginId: string, key: string, value: string | number | boolean): Promise<PluginOperationResult>;
   pluginsRegistryList(query: string): Promise<RegistryListResult>;
   pluginsRegistryInstall(pluginId: string): Promise<PluginOperationResult>;
-  pluginPageOpen(request: { pluginId: string; pageId: string; workspace: string; bounds: { x: number; y: number; width: number; height: number } }):
+  pluginPageOpen(request: { pluginId: string; pageId: string; workspace: string; bounds: { x: number; y: number; width: number; height: number }; artifactPath?: string }):
     Promise<{ ok: true; token: string; title: string } | { ok: false; code: string; message: string }>;
   pluginPageSetBounds(token: string, bounds: { x: number; y: number; width: number; height: number }): Promise<boolean>;
   pluginPageClose(token: string): Promise<boolean>;
@@ -3658,6 +3658,12 @@ function renderArtifactHead(): void {
   artifactHeadEl.append(el('span', 'artifact-meta', `${entry.kind} · ${artifactContentType(entry)} · ${fmtBytes(entry.size)}`));
   const actions = el('div', 'artifact-actions');
   if (state.sessionId) actions.append(artifactScopeControl());
+  for (const renderer of artifactRenderers(state.plugins, entry.name)) {
+    const open = el('button', 'btn small', renderer.title) as HTMLButtonElement;
+    open.title = `Open ${entry.name} in ${renderer.title}`;
+    open.onclick = () => void openPluginPage(renderer.pluginId, renderer.pageId, renderer.title, entry.path);
+    actions.append(open);
+  }
   if (artifactSupportsSource(entry)) {
     const toggle = el('button', 'btn small', surface.artifactSource ? 'Preview' : 'Source');
     toggle.onclick = () => { surface.artifactSource = !surface.artifactSource; renderArtifactPanel(); };
@@ -9530,7 +9536,7 @@ function runPluginSlot(action: PluginSlotAction): void {
   void openPluginPage(action.pluginId, page.id, page.title);
 }
 
-async function openPluginPage(pluginId: string, pageId: string, title: string): Promise<void> {
+async function openPluginPage(pluginId: string, pageId: string, title: string, artifactPath?: string): Promise<void> {
   if (!state.workspace) {
     toast('Choose a workspace before opening a plugin page');
     return;
@@ -9551,6 +9557,7 @@ async function openPluginPage(pluginId: string, pageId: string, title: string): 
     pageId,
     workspace: state.workspace,
     bounds: pluginPageBounds(host),
+    ...(artifactPath ? { artifactPath } : {}),
   });
   if (!result.ok) {
     dismissPluginPage();

@@ -21,6 +21,8 @@ export const SUPPORTED_CAPABILITIES = [
   'ui.composer',
   'ui.pages',
   'ui.slots',
+  'ui.renderers',
+  'artifacts.read',
   'engine.skills',
   'media.assets.read',
   'media.assets.write',
@@ -115,12 +117,21 @@ export interface PluginSlotContribution {
   action: PluginSlotAction;
 }
 
+export interface PluginRendererContribution {
+  id: string;
+  kind: 'artifact';
+  title: string;
+  pageId: string;
+  extensions: string[];
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
   composer: PluginComposerContribution[];
   pages: PluginPageContribution[];
   slots: PluginSlotContribution[];
+  renderers: PluginRendererContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -426,6 +437,30 @@ function parseSlotAction(value: unknown): PluginSlotAction | null {
   return null;
 }
 
+function parseRenderers(value: unknown, unsupported: string[]): PluginRendererContribution[] {
+  if (!Array.isArray(value)) return [];
+  const renderers: PluginRendererContribution[] = [];
+  for (const raw of value.slice(0, MAX_CONTRIBUTIONS_PER_KIND)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const title = boundedText(entry.title, 120);
+    const pageId = contributionId(entry.pageId);
+    if (entry.kind !== 'artifact' || !id || !title || !pageId) {
+      if (typeof entry.kind === 'string') unsupported.push(`ui.renderers.kind:${entry.kind}`);
+      continue;
+    }
+    const extensions = Array.isArray(entry.extensions)
+      ? [...new Set(entry.extensions
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.toLowerCase())
+        .filter((item) => /^\.[a-z0-9]{1,10}$/.test(item)))]
+      : [];
+    if (extensions.length) renderers.push({ id, kind: 'artifact', title, pageId, extensions });
+  }
+  return renderers;
+}
+
 function stringList(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
@@ -501,7 +536,14 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
   let desktopApi = '*';
   let engineApi: string | undefined;
   const components: PluginComponent[] = [];
-  const contributions: PluginContributions = { dock: [], settings: [], composer: [], pages: [], slots: [] };
+  const contributions: PluginContributions = {
+    dock: [],
+    settings: [],
+    composer: [],
+    pages: [],
+    slots: [],
+    renderers: [],
+  };
   let required: string[] = [];
   let optional: string[] = [];
   let provides: PluginServiceDeclaration[] = [];
@@ -550,6 +592,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.composer = parseComposer(contributes.composer);
           contributions.pages = parsePages(contributes.pages);
           contributions.slots = parseSlots(contributes.slots, unsupported);
+          contributions.renderers = parseRenderers(contributes.renderers, unsupported);
         }
       }
 
@@ -598,9 +641,12 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots'): string =>
-    kind === 'slots' ? 'ui.slots' : `ui.${kind}`;
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots'] as const) {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers'): string => {
+    if (kind === 'slots') return 'ui.slots';
+    if (kind === 'renderers') return 'ui.renderers';
+    return `ui.${kind}`;
+  };
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

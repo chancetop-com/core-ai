@@ -19,6 +19,8 @@ export const CAPABILITIES = Object.freeze([
   'ui.composer',
   'ui.pages',
   'ui.slots',
+  'ui.renderers',
+  'artifacts.read',
   'engine.skills',
   'media.assets.read',
   'media.assets.write',
@@ -121,13 +123,13 @@ export function validateManifest(input) {
       errors.push('coreai.requires must be an array of service ids');
     }
   }
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = kind === 'slots' ? 'ui.slots' : `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -167,6 +169,18 @@ export function validateManifest(input) {
         }
         if (action.kind === 'insertText' && typeof action.text !== 'string') {
           errors.push('insertText slot action needs text');
+        }
+      }
+    }
+    if (kind === 'renderers') {
+      for (const item of contributes.renderers) {
+        if (!isObject(item)
+          || item.kind !== 'artifact'
+          || typeof item.id !== 'string'
+          || typeof item.title !== 'string'
+          || typeof item.pageId !== 'string'
+          || !Array.isArray(item.extensions)) {
+          errors.push('each renderer needs kind=artifact, id, title, pageId and extensions');
         }
       }
     }

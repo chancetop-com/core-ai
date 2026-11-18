@@ -33,12 +33,12 @@
           "properties": {
             "required": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "sessions.write", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send", "schedules.read", "schedules.write"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "sessions.write", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send", "schedules.read", "schedules.write"] },
               "uniqueItems": true
             },
             "optional": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "sessions.write", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send", "schedules.read", "schedules.write"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "sessions.write", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send", "schedules.read", "schedules.write"] },
               "uniqueItems": true
             }
           },
@@ -109,6 +109,20 @@
                       "text": { "type": "string" }
                     }
                   }
+                }
+              }
+            },
+            "renderers": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "kind", "title", "pageId", "extensions"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "kind": { "enum": ["artifact"] },
+                  "title": { "type": "string" },
+                  "pageId": { "type": "string" },
+                  "extensions": { "type": "array", "items": { "type": "string" } }
                 }
               }
             }

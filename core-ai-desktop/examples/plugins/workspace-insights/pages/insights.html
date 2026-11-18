@@ -51,6 +51,12 @@
     <div class="card"><h2>Usage</h2><div class="metric" id="usage-tokens">–</div><div class="sub" id="usage-cost"></div></div>
   </div>
 
+  <div class="card" id="artifact-card" hidden>
+    <h2>Artifact</h2>
+    <div class="sub" id="artifact-path"></div>
+    <pre id="artifact-content" class="events" style="white-space:pre-wrap; max-height:280px; overflow:auto"></pre>
+  </div>
+
   <div class="card">
     <h2>Recent sessions</h2>
     <ul id="sessions"></ul>
@@ -113,6 +119,20 @@
   async function loadContext() {
     const context = await bridge.context();
     $('context').textContent = `${context.pluginName} · ${context.workspace}`;
+    if (context.artifactPath) await loadArtifact();
+  }
+
+  async function loadArtifact() {
+    try {
+      const artifact = await bridge.artifacts.read();
+      $('artifact-card').hidden = false;
+      $('artifact-path').textContent = `${artifact.path} · ${Math.max(1, Math.round(artifact.size / 1024))} KB`;
+      $('artifact-content').textContent = artifact.content;
+    } catch (error) {
+      $('artifact-card').hidden = false;
+      $('artifact-path').textContent = 'Artifact unavailable';
+      $('artifact-content').textContent = error.message || String(error);
+    }
   }
 
   async function loadSummary() {

@@ -63,4 +63,7 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   services: {
     list: () => call('services.list'),
   },
+  artifacts: {
+    read: () => call('artifacts.read'),
+  },
 });

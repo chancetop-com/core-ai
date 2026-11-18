@@ -10,6 +10,7 @@ export interface PluginPageContext {
   scope: 'workspace' | 'app';
   workspace: string;
   capabilities: string[];
+  artifactPath: string | null;
   theme: 'light' | 'dark';
 }
 
@@ -205,6 +206,9 @@ export interface CoreAiPluginBridge {
   };
   services: {
     list(): Promise<PluginServiceCatalog>;
+  };
+  artifacts: {
+    read(): Promise<{ path: string; contentType: string; size: number; content: string }>;
   };
 }
 

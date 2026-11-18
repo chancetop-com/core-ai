@@ -11,6 +11,7 @@ import type { ResolvedPluginPage } from './pluginStore';
 import type { PluginHost } from './PluginHost';
 import type { EngineSupervisor } from '../engine/EngineSupervisor';
 import { assetUrl, pageUrl } from './pluginPagePaths.js';
+import { contentTypeFor, isArtifactPathAllowed, resolveInsideWorkspace } from '../artifacts/artifactPath';
 import {
   installPluginAssetProtocol,
   installPluginPageProtocol,
@@ -38,6 +39,7 @@ export interface OpenPluginPageOptions {
   pluginId: string;
   pageId: string;
   bounds: PluginPageBounds;
+  artifactPath?: string;
 }
 
 interface PageInstance {
@@ -48,6 +50,7 @@ interface PageInstance {
   workspace: string;
   packageDir: string;
   page: ResolvedPluginPage;
+  artifactPath?: string;
   ses: Session;
   view: WebContentsView;
   closed: boolean;
@@ -66,6 +69,7 @@ export class PluginPageError extends Error {
 }
 
 const ALLOWED_SCHEMES = new Set(['coreai-plugin-page:', 'coreai-plugin-asset:']);
+const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const IMAGE_IMPORT_EXTENSIONS: Record<string, string> = {
   '.png': 'png',
@@ -134,6 +138,7 @@ export class PluginPageHost {
       workspace: options.workspace,
       packageDir: page.dir,
       page,
+      artifactPath: typeof options.artifactPath === 'string' ? options.artifactPath : undefined,
       ses,
       view,
       closed: false,
@@ -230,6 +235,7 @@ export class PluginPageHost {
           scope: instance.page.scope,
           workspace: instance.workspace,
           capabilities: instance.page.granted,
+          artifactPath: instance.artifactPath ?? null,
           theme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
         };
       case 'assets.list':
@@ -321,6 +327,9 @@ export class PluginPageHost {
         return this.subscribeEvents(instance, args.types);
       case 'services.list':
         return this.listServices(instance);
+      case 'artifacts.read':
+        this.requireCapability(instance, 'artifacts.read');
+        return this.readArtifact(instance);
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -393,6 +402,32 @@ export class PluginPageHost {
         url: assetUrl(relative),
       },
     };
+  }
+
+  private async readArtifact(instance: PageInstance): Promise<Record<string, unknown>> {
+    const relative = instance.artifactPath;
+    if (!relative || !isArtifactPathAllowed(instance.workspace, relative)) {
+      throw new PluginPageError('not_available', 'no artifact is attached to this page');
+    }
+    const target = resolveInsideWorkspace(instance.workspace, relative);
+    if (!target) throw new PluginPageError('not_available', 'artifact is not available');
+    const contentType = contentTypeFor(target);
+    if (!contentType.startsWith('text/') && contentType !== 'application/json' && contentType !== 'application/xml') {
+      throw new PluginPageError('unsupported_type', 'only text artifacts can be read by a plugin page');
+    }
+    try {
+      const stat = await fs.stat(target);
+      if (stat.size > MAX_ARTIFACT_BYTES) throw new PluginPageError('too_large', 'artifact is larger than 2 MiB');
+      return {
+        path: relative,
+        contentType,
+        size: stat.size,
+        content: await fs.readFile(target, 'utf8'),
+      };
+    } catch (error) {
+      if (error instanceof PluginPageError) throw error;
+      throw new PluginPageError('read_failed', messageOf(error));
+    }
   }
 
   private async listServices(instance: PageInstance): Promise<Record<string, unknown>> {
