@@ -68,7 +68,27 @@ public class Prompts {
     public static final String EMPTY_RESPONSE_REMINDER = "Your previous response was empty. Please provide a complete response.";
     public static final String COMPRESSION_SUMMARY_PREFIX = "[Previous Conversation Summary]\n";
     public static final String COMPRESSION_SUMMARY_SUFFIX = "\n[End Summary]";
-    public static final String COMPRESSION_PROMPT = "Summarize the following conversation into a concise summary.%nRequirements:%n1. Preserve key facts, decisions, and context%n2. Keep important user preferences and goals mentioned%n3. Remove redundant back-and-forth and filler content%n4. Use bullet points for clarity%n5. Keep within %d words%n%nConversation to summarize:%n%s%n%nOutput summary directly:%n";
+    public static final String COMPRESSION_PROMPT = """
+            Summarize the conversation below into a compact handoff for another LLM that will continue the work.
+
+            Requirements:
+            1. Preserve key facts, decisions, constraints, user preferences, and goals.
+            2. Include a "Working state" section with exactly these subsections:
+               - Done: completed work and the evidence for it (files changed, commands run, tests passed, outputs observed). Do not claim work is done unless the conversation contains evidence for it.
+               - In progress: what was being worked on at the end, and the current state.
+               - Next step: the single next action, or "none" if the work is complete.
+               - Blockers / open questions: unresolved errors, missing decisions, or unknowns.
+            3. If the conversation contains a todo list or plan, treat it as intent, not verified progress. Reconcile it with the evidence above and mark uncertain items as uncertain.
+            4. Preserve exact file paths, commands, error strings, identifiers, and numeric values when they matter for continuing the work.
+            5. Remove redundant back-and-forth and filler content. Use bullet points.
+            6. Keep within %d words.
+            7. Do not mention this summarization request or that the context was compacted.
+
+            Conversation to summarize:
+            %s
+
+            Output the handoff directly:
+            """;
     public static final String MEMORY_EXTRACTION_PROMPT = "You are analyzing a conversation between a user and an AI coding assistant.%nExtract knowledge that will make the assistant more effective in future sessions on this project.%n%nEXTRACT these types (use the exact type string):%n- \"feedback\": The user corrected the assistant, said \"no\"/\"don't\"/\"stop doing X\", or explicitly validated a non-obvious approach. Format content as: \"<The rule>. **Why:** <reason given>. **How to apply:** <when this kicks in>.\"%n- \"user\": The user's technical expertise, role, workflow preferences, or tool choices that affect how to collaborate.%n- \"project\": Non-obvious project facts, architectural decisions, constraints, or ongoing work context not derivable from code.%n- \"reference\": Locations of key files, external systems, docs, dashboards, or named resources the user pointed to.%n%nDO NOT extract:%n- Step-by-step execution history (\"user ran X then Y\")%n- Information already obvious from reading the code%n- One-off task details with no future relevance%n- Small talk or greetings%n%nFor each memory:%n- \"content\": concise standalone statement (feedback type: follow the rule/Why/How-to-apply structure)%n- \"type\": one of \"user\", \"feedback\", \"project\", \"reference\"%n- \"topic\": broad 2-4 word kebab-case label (e.g. \"memory-management\", \"self-improvement\", \"coding-conventions\"). Semantically related knowledge MUST share the same topic — it will be merged into one file. Avoid fine-grained per-fact topics; prefer broader themes that group related rules together.%n- \"importance\": 0.0-1.0 (skip anything below 0.6)%n%nTOPIC GROUPING RULES (critical):%n- All feedback about memory indexing, aggregation, or description writing → topic: \"memory-management\"%n- All feedback about code style, naming, or comments → topic: \"coding-conventions\"%n- All project facts about the self-improvement system, learnings workflow, or session extraction → topic: \"self-improvement\"%n- When in doubt: fewer, broader topics are better than many narrow ones.%n%nReturn [] if nothing is worth preserving.%n%nConversation:%n%s%n%nResponse format:%n[{\"content\": \"...\", \"type\": \"feedback\", \"topic\": \"memory-management\", \"importance\": 0.8}, ...]%n";
 
     public static final String MEMORY_WRITER_PROMPT = """

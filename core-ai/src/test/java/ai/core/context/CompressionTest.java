@@ -308,6 +308,26 @@ class CompressionTest {
     }
 
     @Test
+    void testCompressionPromptRequestsEvidenceBasedWorkingState() {
+        var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
+        Compression target = new Compression(provider, "test-model");
+
+        target.forceCompress(createTestMessages(10));
+
+        String prompt = provider.getLastPrompt();
+        assertNotNull(prompt);
+        assertTrue(prompt.contains("Working state"));
+        assertTrue(prompt.contains("Done:"));
+        assertTrue(prompt.contains("In progress:"));
+        assertTrue(prompt.contains("Next step:"));
+        assertTrue(prompt.contains("Blockers / open questions:"));
+        assertTrue(prompt.contains("evidence"));
+        assertTrue(prompt.contains("intent, not verified progress"));
+
+        LOGGER.info("Compression prompt requests evidence-based working state test passed");
+    }
+
+    @Test
     void testSummaryCallUsageIsReported() {
         var usage = new Usage(1200, 300, 1500);
         var provider = new MockLLMProvider("Compressed summary", usage);
@@ -604,6 +624,7 @@ class CompressionTest {
         private final String summaryResponse;
         private final Usage usage;
         private String lastRequestModel;
+        private CompletionRequest lastRequest;
 
         MockLLMProvider(String summaryResponse) {
             this(summaryResponse, null);
@@ -619,8 +640,16 @@ class CompressionTest {
             return lastRequestModel;
         }
 
+        String getLastPrompt() {
+            if (lastRequest == null || lastRequest.messages.isEmpty()) {
+                return null;
+            }
+            return lastRequest.messages.getFirst().getTextContent();
+        }
+
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
+            lastRequest = request;
             lastRequestModel = request.model;
             if (summaryResponse != null) {
                 var response = new CompletionResponse();
