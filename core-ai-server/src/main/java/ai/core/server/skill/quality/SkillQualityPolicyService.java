@@ -1,0 +1,348 @@
+package ai.core.server.skill.quality;
+
+import ai.core.server.quality.QualityBudget;
+import ai.core.server.quality.domain.QualityEnforcement;
+import ai.core.server.quality.domain.QualityRuleBinding;
+import ai.core.server.quality.domain.QualityRuleKind;
+import ai.core.server.quality.domain.QualityRuleLifecycle;
+import ai.core.server.skill.quality.domain.SkillQualityPolicyHead;
+import ai.core.server.skill.quality.domain.SkillQualityPolicyRevision;
+import ai.core.server.skill.quality.domain.SkillQualityRule;
+import ai.core.server.skill.quality.domain.SkillQualityRuleRevision;
+import ai.core.server.user.UserStore;
+import core.framework.inject.Inject;
+import core.framework.web.exception.BadRequestException;
+import core.framework.web.exception.ConflictException;
+import core.framework.web.exception.ForbiddenException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Versioned skill policy. Seeding is idempotent so replicas can start together; activation is one
+ * conditional head update, never a sequence of per-rule writes that could expose half a policy.
+ *
+ * @author core-ai
+ */
+public class SkillQualityPolicyService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SkillQualityPolicyService.class);
+    public static final String SCOPE_SKILL_SERVER = "skill:server";
+    public static final int MAX_DECISION_RULES = QualityBudget.MAX_PROVIDER_CALLS;
+    public static final int MAX_POLICY_QUESTIONS = QualityBudget.MAX_QUESTIONS;
+
+    public static String ruleId(String key) {
+        return "sqrule:" + key;
+    }
+
+    @Inject
+    SkillQualityStore store;
+    @Inject
+    SkillQualityRuleRegistry registry;
+    @Inject
+    UserStore userStore;
+
+    public void seed() {
+        var now = ZonedDateTime.now();
+        for (var rule : SkillQualityGate.builtInRules()) {
+            seedRule(rule.meta(), now);
+        }
+        seedPolicy(now);
+        seedHead(now);
+        LOGGER.info("skill quality policy seeded, rules={}", SkillQualityGate.builtInRules().size());
+    }
+
+    private void seedRule(SkillRuleMeta meta, ZonedDateTime now) {
+        var id = ruleId(meta.key());
+        var rule = new SkillQualityRule();
+        rule.id = id;
+        rule.key = meta.key();
+        rule.name = meta.name();
+        rule.category = meta.category();
+        rule.builtIn = Boolean.TRUE;
+        rule.latestRevision = 1;
+        rule.lifecycle = meta.enforcement() == QualityEnforcement.SHADOW
+            ? QualityRuleLifecycle.SHADOW : QualityRuleLifecycle.ENFORCING;
+        rule.createdBy = "system";
+        rule.createdAt = now;
+        rule.updatedBy = "system";
+        rule.updatedAt = now;
+        store.insertRuleIfAbsent(rule);
+
+        var revision = new SkillQualityRuleRevision();
+        revision.id = id + ":1";
+        revision.ruleId = id;
+        revision.ruleKey = meta.key();
+        revision.revision = 1;
+        revision.name = meta.name();
+        revision.category = meta.category();
+        revision.description = meta.requirement();
+        revision.rationale = "Built-in skill rule defined in code.";
+        revision.kind = QualityRuleKind.CODE;
+        revision.evaluatorKey = meta.key();
+        revision.evaluatorVersion = meta.revision();
+        revision.parameters = Map.of();
+        revision.inputSelector = List.of();
+        revision.affirmativeThreshold = 0.80;
+        revision.negativeThreshold = 0.20;
+        revision.tested = Boolean.TRUE;
+        revision.testSummary = "Built-in rule verified with the release.";
+        revision.changeReason = "built-in seed";
+        revision.createdBy = "system";
+        revision.createdAt = now;
+        store.insertRevisionIfAbsent(revision);
+    }
+
+    private void seedPolicy(ZonedDateTime now) {
+        if (!store.listPolicies().isEmpty()) return;
+        var bindings = new ArrayList<QualityRuleBinding>();
+        for (var rule : SkillQualityGate.builtInRules()) {
+            var binding = new QualityRuleBinding();
+            binding.ruleId = ruleId(rule.meta().key());
+            binding.ruleRevision = 1;
+            binding.enforcement = rule.meta().enforcement();
+            bindings.add(binding);
+        }
+        var policy = new SkillQualityPolicyRevision();
+        policy.id = "skill-policy:1";
+        policy.revision = 1;
+        policy.scope = SCOPE_SKILL_SERVER;
+        policy.bindings = bindings;
+        policy.changeReason = "initial built-in skill policy";
+        policy.activatedBy = "system";
+        policy.activatedAt = now;
+        policy.generation = 1;
+        store.insertPolicyIfAbsent(policy);
+    }
+
+    private void seedHead(ZonedDateTime now) {
+        if (store.getHead(SCOPE_SKILL_SERVER).isPresent()) return;
+        var activeRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(1);
+        var head = new SkillQualityPolicyHead();
+        head.id = SCOPE_SKILL_SERVER;
+        head.scope = SCOPE_SKILL_SERVER;
+        head.activeRevision = activeRevision;
+        head.generation = 1;
+        head.updatedBy = "system";
+        head.updatedAt = now;
+        store.insertHeadIfAbsent(head);
+    }
+
+    public ActivePolicy active() {
+        var head = requireHead();
+        var policy = store.getPolicy(head.activeRevision)
+            .orElseThrow(() -> new IllegalStateException("active skill policy is missing, revision=" + head.activeRevision));
+        var rules = new ArrayList<ActiveRule>();
+        for (var binding : policy.bindings == null ? List.<QualityRuleBinding>of() : policy.bindings) {
+            var revision = store.getRevision(binding.ruleId, binding.ruleRevision).orElse(null);
+            if (revision == null) {
+                LOGGER.warn("active skill policy references a missing rule revision, rule={}, revision={}",
+                    binding.ruleId, binding.ruleRevision);
+                continue;
+            }
+            var enforcement = binding.enforcement == null ? QualityEnforcement.SHADOW : binding.enforcement;
+            rules.add(new ActiveRule(revision, enforcement));
+        }
+        return new ActivePolicy(policy, head, rules);
+    }
+
+    public SkillQualityPolicyHead requireHead() {
+        return store.getHead(SCOPE_SKILL_SERVER)
+            .orElseThrow(() -> new IllegalStateException("skill quality policy head is not initialized"));
+    }
+
+    public SkillQualityPolicyRevision createPolicy(ActivateCommand command, String userId) {
+        var head = requireHead();
+        if (command.expectedGeneration() != null && !command.expectedGeneration().equals(head.generation)) {
+            throw new ConflictException("skill quality policy was changed by another administrator; refresh and retry");
+        }
+        var base = command.rollbackRevision() != null
+            ? bindingsOf(command.rollbackRevision())
+            : bindingsOf(head.activeRevision);
+        var bindings = new ArrayList<>(base);
+        applyCommand(bindings, command);
+        validateBudget(bindings);
+        return activatePolicy(head, bindings, command.changeReason(), userId);
+    }
+
+    private void applyCommand(List<QualityRuleBinding> bindings, ActivateCommand command) {
+        if (command.ruleId() != null) {
+            var rule = requireRule(command.ruleId());
+            if (rule.lifecycle == QualityRuleLifecycle.RETIRED) {
+                throw new BadRequestException("retired skill quality rule cannot be activated: " + rule.key);
+            }
+            var revision = requireRevision(rule.id, command.ruleRevision() == null
+                ? rule.latestRevision : command.ruleRevision());
+            registry.require(revision.evaluatorKey);
+            replaceBinding(bindings, rule.id, revision.revision, command.enforcement());
+        }
+        if (command.suspend() != null) {
+            for (var ruleId : command.suspend()) {
+                requireBinding(bindings, ruleId).enforcement = QualityEnforcement.SHADOW;
+            }
+        }
+        if (command.resume() != null) {
+            for (var ruleId : command.resume()) {
+                requireBinding(bindings, ruleId).enforcement = command.enforcement() == null
+                    ? QualityEnforcement.BLOCK : command.enforcement();
+            }
+        }
+    }
+
+    private SkillQualityPolicyRevision activatePolicy(SkillQualityPolicyHead head, List<QualityRuleBinding> bindings,
+                                                      String changeReason, String userId) {
+        int nextRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(0) + 1;
+        var policy = new SkillQualityPolicyRevision();
+        policy.id = "skill-policy:" + nextRevision;
+        policy.revision = nextRevision;
+        policy.scope = SCOPE_SKILL_SERVER;
+        policy.bindings = bindings;
+        policy.changeReason = changeReason;
+        policy.activatedBy = userId;
+        policy.activatedAt = ZonedDateTime.now();
+        policy.generation = head.generation + 1;
+        store.insertPolicy(policy);
+
+        var newHead = new SkillQualityPolicyHead();
+        newHead.id = SCOPE_SKILL_SERVER;
+        newHead.scope = SCOPE_SKILL_SERVER;
+        newHead.activeRevision = nextRevision;
+        newHead.generation = head.generation + 1;
+        newHead.updatedBy = userId;
+        newHead.updatedAt = ZonedDateTime.now();
+        if (!store.replaceHead(newHead, head.generation)) {
+            throw new ConflictException("skill quality policy was changed by another administrator; refresh and retry");
+        }
+        LOGGER.info("skill quality policy activated, revision={}, generation={}, by={}",
+            nextRevision, newHead.generation, userId);
+        return policy;
+    }
+
+    public List<SkillQualityPolicyRevision> history() {
+        return store.listPolicies();
+    }
+
+    public void retireRule(String ruleId, String userId) {
+        var head = requireHead();
+        var bindings = bindingsOf(head.activeRevision);
+        if (bindings.removeIf(binding -> ruleId.equals(binding.ruleId))) {
+            activatePolicy(head, bindings, "retire skill rule " + ruleId, userId);
+        }
+        var rule = requireRule(ruleId);
+        rule.lifecycle = QualityRuleLifecycle.RETIRED;
+        rule.retiredAt = ZonedDateTime.now();
+        rule.updatedAt = rule.retiredAt;
+        rule.updatedBy = userId;
+        store.replaceRule(rule);
+    }
+
+    private List<QualityRuleBinding> bindingsOf(int revision) {
+        var policy = store.getPolicy(revision)
+            .orElseThrow(() -> new BadRequestException("unknown skill quality policy revision: " + revision));
+        var bindings = new ArrayList<QualityRuleBinding>();
+        if (policy.bindings == null) return bindings;
+        for (var binding : policy.bindings) {
+            var copy = new QualityRuleBinding();
+            copy.ruleId = binding.ruleId;
+            copy.ruleRevision = binding.ruleRevision;
+            copy.enforcement = binding.enforcement;
+            bindings.add(copy);
+        }
+        return bindings;
+    }
+
+    private void replaceBinding(List<QualityRuleBinding> bindings, String ruleId, int revision,
+                                QualityEnforcement enforcement) {
+        var existing = findBinding(bindings, ruleId);
+        if (existing == null) {
+            var created = new QualityRuleBinding();
+            created.ruleId = ruleId;
+            created.ruleRevision = revision;
+            created.enforcement = enforcement == null ? QualityEnforcement.SHADOW : enforcement;
+            bindings.add(created);
+            return;
+        }
+        existing.ruleRevision = revision;
+        existing.enforcement = enforcement == null ? existing.enforcement : enforcement;
+    }
+
+    private QualityRuleBinding requireBinding(List<QualityRuleBinding> bindings, String ruleId) {
+        var binding = findBinding(bindings, ruleId);
+        if (binding == null) throw new BadRequestException("rule is not part of the active skill policy: " + ruleId);
+        return binding;
+    }
+
+    private QualityRuleBinding findBinding(List<QualityRuleBinding> bindings, String ruleId) {
+        return bindings.stream().filter(binding -> ruleId.equals(binding.ruleId)).findFirst().orElse(null);
+    }
+
+    private void validateBudget(List<QualityRuleBinding> bindings) {
+        int decisionRules = 0;
+        int questions = 0;
+        for (var binding : bindings) {
+            if (binding.enforcement == QualityEnforcement.SHADOW) continue;
+            var revision = store.getRevision(binding.ruleId, binding.ruleRevision).orElse(null);
+            if (revision == null) continue;
+            if (SkillDecisionQualityRule.EVALUATOR_KEY.equals(revision.evaluatorKey)) {
+                decisionRules++;
+                questions++;
+            }
+        }
+        if (decisionRules > MAX_DECISION_RULES || questions > MAX_POLICY_QUESTIONS) {
+            throw new BadRequestException("skill quality policy exceeds the enforceable decision budget: rules="
+                + decisionRules + ", questions=" + questions);
+        }
+    }
+
+    public SkillQualityRule requireRule(String ruleId) {
+        return store.getRule(ruleId)
+            .orElseThrow(() -> new BadRequestException("unknown skill quality rule: " + ruleId));
+    }
+
+    public SkillQualityRuleRevision requireRevision(String ruleId, int revision) {
+        return store.getRevision(ruleId, revision)
+            .orElseThrow(() -> new BadRequestException("unknown skill quality rule revision: " + ruleId + "@" + revision));
+    }
+
+    public void requireAdmin(String userId) {
+        var user = userStore.get(userId).orElse(null);
+        if (user == null || !"admin".equals(user.role) || "api".equals(user.userType)) {
+            throw new ForbiddenException("only a human platform admin can manage skill quality rules");
+        }
+    }
+
+    public Map<String, QualityEnforcement> enforcements() {
+        var result = new LinkedHashMap<String, QualityEnforcement>();
+        try {
+            for (var rule : active().rules()) {
+                result.put(rule.revision().ruleId, rule.enforcement());
+            }
+        } catch (RuntimeException e) {
+            LOGGER.warn("skill quality policy is not available: {}", e.getMessage());
+        }
+        return result;
+    }
+
+    public record ActiveRule(SkillQualityRuleRevision revision, QualityEnforcement enforcement) {
+    }
+
+    public record ActivePolicy(SkillQualityPolicyRevision policy, SkillQualityPolicyHead head,
+                               List<ActiveRule> rules) {
+        public int revision() {
+            return policy.revision;
+        }
+
+        public int generation() {
+            return head.generation;
+        }
+    }
+
+    public record ActivateCommand(Integer rollbackRevision, String ruleId, Integer ruleRevision,
+                                  QualityEnforcement enforcement, Integer expectedGeneration,
+                                  String changeReason, List<String> suspend, List<String> resume) {
+    }
+}

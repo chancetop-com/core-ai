@@ -11,7 +11,8 @@ import java.util.List;
  */
 public record SkillQualityResult(String runId, QualityGateResult gateResult, boolean checksComplete,
                                  List<StoredQualityIssue> issues, List<StoredRuleResult> ruleResults,
-                                 String routeFingerprint, String ruleResultDigest, int warnCount) {
+                                 String routeFingerprint, String ruleResultDigest, int warnCount,
+                                 int policyRevision) {
     public SkillQualityResult {
         issues = issues == null ? List.of() : List.copyOf(issues);
         ruleResults = ruleResults == null ? List.of() : List.copyOf(ruleResults);

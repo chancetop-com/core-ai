@@ -9,7 +9,7 @@
 | 作者 | core-ai |
 | 参考设计 | `docs/cn/design-agent-publish-quality-gate.md` |
 | 范围 | Skill 发布（upload / editor save / repo import / sync / marketplace install）质量门禁、身份与元数据、权限声明、渐进式披露、Eval 数据集 |
-| 本次交付 | 设计文档 + 2026-11-16 确定性门禁实现（见 §14.6）；语义规则、迁移与部署未实施 |
+| 本次交付 | 设计文档 + 2026-11-16 确定性门禁实现（见 §14.6）+ 2026-11-18 规则管理与自定义 DECISION 规则（见 §14.7）；内置语义规则与 run/report 持久化未实施 |
 | 设计依据 | 用户原始需求、实际源代码、Agent Skills 生态的公开资料、AI 技术评审意见 |
 
 ## 0. 原始需求与文档治理
@@ -1563,6 +1563,28 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 - dev E2E（2026-11-16，`2.0.246`，镜像 digest `sha256:f39cb352…c8dbed`）：通过。已验证 valid upload、missing eval、undeclared SDK usage、broken reference、missing `skill_dir`、directory mismatch、valid update（PG `revision=2` + receipt）、failed update 不改变 revision 与 receipt、成功响应 header。记录见 `docs/validation/2026-11-16-dev-skill-quality-gate.md`。
 - E2E 发现并修复：`PgSkillStore.replaceIfRevision` 的 SQL 直接写了 JSON key 的单引号，core-ng 拒绝单引号导致编辑上传 500；已改为绑定参数 `data ->> ?`，在 `2.0.246` 复测通过。
 - 仍未做真实模型校准、并发压力、旧 skill dry-run、repo/marketplace 端到端。
+
+### 14.7 规则管理与自定义 DECISION 实现（2026-11-18）
+
+本轮交付把 §4.2/§4.3/§7.1 的规则管理落到 skill gate，并保持既有确定性规则的行为不变。
+
+**已实现**
+
+- `SkillQualityRule` / `SkillQualityRuleRevision` / `SkillQualityPolicyRevision` / `SkillQualityPolicyHead` + `SkillQualityStore`（Mongo 与 PostgreSQL 两种模式，迁移 `V44__skill_quality_rules.sql`）。
+- 启动时幂等 seed 10 条内置规则与初始 skill policy；内置规则仍由代码实现，只有 enforcement 可通过策略调整。
+- `SkillQualityRuleRegistry`：内置规则的 evaluator key 即 rule key；自定义规则统一使用 `SKILL.DECISION.CUSTOM`，输入选择器限定为 `DESCRIPTION` / `SKILL_CONTENT` / `METADATA` / `ALLOWED_TOOLS` / `RESOURCE_MANIFEST` / `EVAL_DATASET`。
+- `SkillDecisionQualityRule` 复用 `QualityDecisionGateway` 的严格响应、路由指纹、阈值与预算；模型不可用、预算耗尽、协议错误一律 ERROR，按 BLOCK 聚合为 `UNAVAILABLE`，不伪装通过。
+- `SkillQualityPolicyService`：规则生命周期、不可变 revision、单文档原子激活、`BLOCK/WARN/SHADOW` 绑定、变更原因与测试后阻断校验。
+- 管理 API：`/api/admin/skill-quality/rule-templates`、`rules`（GET/POST）、`rules/:id`（PUT）、`rules/:id/test`、`rules/:id/retire`、`policies`、`policies/activate`；沿用 human admin 双重校验。
+- 规则试测：从既有 skill 重建 `SkillPublishCandidate`（可覆盖 SKILL.md），只读、不写 blob/skill。
+- Skill Quality 管理页与 Agent Quality 共用规则编辑器：新增/编辑 decision rule、试测、应用策略、retire；内置规则只读定义，仅可调整 enforcement。
+
+**仍未实现（保持设计提案）**
+
+- 内置 HYBRID 语义规则（SQ5–SQ9、description/name 语义、eval 用例质量）及其 batch coordinator。
+- skill quality run/report 持久化与查询、publication record；当前报告仍只随写入响应返回。
+- 每个内置规则可编辑 typed parameters（本轮内置规则参数固定）。
+- per-namespace 策略、shadow 数据校准、真实误阻断率评估。
 
 ## 15. 参考资料
 

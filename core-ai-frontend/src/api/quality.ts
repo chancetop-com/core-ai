@@ -114,6 +114,7 @@ export interface QualityRule {
   lifecycle?: string;
   revision?: number;
   description?: string;
+  requirement?: string;
   rationale?: string;
   kind?: string;
   evaluator_key?: string;
@@ -206,21 +207,54 @@ export interface AgentQualityRun {
   finished_at?: string;
 }
 
-export interface SkillQualityRule {
-  key: string;
-  revision: number;
-  name: string;
-  category?: string;
-  enforcement?: 'BLOCK' | 'WARN' | 'SHADOW';
-  requirement?: string;
-}
+export type SkillQualityRule = QualityRule;
 
 export interface SkillQualityRuleListResponse {
   rules: SkillQualityRule[];
   policy_revision: number;
 }
 
+export interface QualityAdminApi {
+  templates: () => Promise<{ templates: RuleTemplate[]; input_options: string[] }>;
+  rules: () => Promise<{ rules: QualityRule[]; policy_revision: number }>;
+  createRule: (data: Record<string, unknown>) => Promise<QualityRule>;
+  updateRule: (id: string, data: Record<string, unknown>) => Promise<QualityRule>;
+  testRule: (id: string, data: Record<string, unknown>) => Promise<RuleTestResponse>;
+  retireRule: (id: string) => Promise<QualityRule>;
+  policies: () => Promise<{ active: QualityPolicy; history: QualityPolicy[] }>;
+  activate: (data: Record<string, unknown>) => Promise<QualityPolicy>;
+}
+
+function qualityAdminApi(prefix: 'agent' | 'skill'): QualityAdminApi {
+  const base = `/api/admin/${prefix}-quality`;
+  return {
+    templates: () => request<{ templates: RuleTemplate[]; input_options: string[] }>(`${base}/rule-templates`),
+    rules: () => request<{ rules: QualityRule[]; policy_revision: number }>(`${base}/rules`),
+    createRule: (data: Record<string, unknown>) =>
+      request<QualityRule>(`${base}/rules`, { method: 'POST', body: JSON.stringify(data) }),
+    updateRule: (id: string, data: Record<string, unknown>) =>
+      request<QualityRule>(`${base}/rules/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(data),
+      }),
+    testRule: (id: string, data: Record<string, unknown>) =>
+      request<RuleTestResponse>(`${base}/rules/${encodeURIComponent(id)}/test`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+    retireRule: (id: string) =>
+      request<QualityRule>(`${base}/rules/${encodeURIComponent(id)}/retire`, { method: 'POST' }),
+    policies: () => request<{ active: QualityPolicy; history: QualityPolicy[] }>(`${base}/policies`),
+    activate: (data: Record<string, unknown>) =>
+      request<QualityPolicy>(`${base}/policies/activate`, {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }),
+  };
+}
+
 export const qualityApi = {
+  ...qualityAdminApi('agent'),
   check: (agentId: string, idempotencyKey?: string) =>
     request<QualityReport>(`/api/agents/${agentId}/quality-checks`, {
       method: 'POST',
@@ -229,37 +263,12 @@ export const qualityApi = {
   runs: (agentId: string) =>
     request<{ runs: AgentQualityRun[] }>(`/api/agents/${encodeURIComponent(agentId)}/quality-checks`),
   report: (agentId: string, runId = 'latest') =>
-    request<QualityReport>(`/api/agents/${agentId}/quality-checks/${encodeURIComponent(runId)}`),
-  templates: () =>
-    request<{ templates: RuleTemplate[]; input_options: string[] }>('/api/admin/agent-quality/rule-templates'),
-  rules: () =>
-    request<{ rules: QualityRule[]; policy_revision: number }>('/api/admin/agent-quality/rules'),
-  createRule: (data: Record<string, unknown>) =>
-    request<QualityRule>('/api/admin/agent-quality/rules', { method: 'POST', body: JSON.stringify(data) }),
-  updateRule: (id: string, data: Record<string, unknown>) =>
-    request<QualityRule>(`/api/admin/agent-quality/rules/${encodeURIComponent(id)}`, {
-      method: 'PUT',
-      body: JSON.stringify(data),
-    }),
-  testRule: (id: string, data: { agent_id: string; sample_name?: string; description?: string; system_prompt?: string; expected_result?: string }) =>
-    request<RuleTestResponse>(`/api/admin/agent-quality/rules/${encodeURIComponent(id)}/test`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  retireRule: (id: string) =>
-    request<QualityRule>(`/api/admin/agent-quality/rules/${encodeURIComponent(id)}/retire`, { method: 'POST' }),
-  policies: () =>
-    request<{ active: QualityPolicy; history: QualityPolicy[] }>('/api/admin/agent-quality/policies'),
-  activate: (data: Record<string, unknown>) =>
-    request<QualityPolicy>('/api/admin/agent-quality/policies/activate', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
+    request<QualityReport>(`/api/agents/${encodeURIComponent(agentId)}/quality-checks/${encodeURIComponent(runId)}`),
 };
 
-export const skillQualityApi = {
-  rules: () => request<SkillQualityRuleListResponse>('/api/admin/skill-quality/rules'),
-};
+export const skillQualityApi = qualityAdminApi('skill');
+
+
 
 export function issueTargetSection(fieldPath?: string): string | null {
   if (!fieldPath) return null;

@@ -258,7 +258,7 @@ function AuthenticatedApp() {
                       <Route path="quality" element={<RequirePermission permission="agent.quality.manage"><QualityPage /></RequirePermission>} />
                       <Route path="quality/agent/new" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
                       <Route path="quality/agent/:ruleId" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
-                      <Route path="quality/skill/:ruleKey" element={user?.role === 'admin' ? <SkillQualityDetailPage /> : <Navigate to="/settings/quality" replace />} />
+                      <Route path="quality/skill/:ruleId" element={user?.role === 'admin' ? <SkillQualityDetailPage /> : <Navigate to="/settings/quality" replace />} />
                       <Route path="agent-quality" element={<Navigate to="/settings/quality?tab=agent" replace />} />
                       <Route path="skill-quality" element={<Navigate to="/settings/quality?tab=skill" replace />} />
                       <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />

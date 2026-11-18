@@ -34,7 +34,8 @@ public class SkillPublishService {
     @Inject
     SkillBlobStore blobStore;
 
-    private final SkillQualityGate gate = new SkillQualityGate();
+    @Inject
+    SkillQualityGate gate;
 
     public SkillPublishOutcome publish(SkillPublishRequest request) {
         var content = request.content != null ? request.content : existingContent(request.existing);
@@ -104,7 +105,7 @@ public class SkillPublishService {
     private SkillQualityReceipt receipt(SkillPublishCandidate candidate, SkillQualityResult result) {
         var receipt = new SkillQualityReceipt();
         receipt.runId = result.runId();
-        receipt.policyRevision = SkillQualityGate.POLICY_REVISION;
+        receipt.policyRevision = result.policyRevision();
         receipt.revision = candidate.revision;
         receipt.packageDigest = candidate.packageDigest;
         receipt.metadataHash = candidate.metadataHash;

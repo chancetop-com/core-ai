@@ -27,6 +27,7 @@ public class SkillModule extends Module {
         bind(SkillBlobStore.class);
         bind(SkillPublishService.class);
         bind(SkillService.class);
+        bind(ai.core.server.skill.SkillQualityFixtureBuilder.class);
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
         bind(SkillArchiveBuilder.class);

@@ -325,6 +325,7 @@ class SkillServiceTest {
         var publishService = new SkillPublishService();
         publishService.skillStore = store;
         publishService.blobStore = blobStore;
+        publishService.gate = new ai.core.server.skill.quality.SkillQualityGate();
         return publishService;
     }
 

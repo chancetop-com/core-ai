@@ -1,9 +1,14 @@
 package ai.core.server.skill.quality;
 
+import ai.core.server.quality.QualityIssues;
+import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityEvidenceKind;
 import ai.core.server.quality.domain.QualityIssueStatus;
 import ai.core.server.quality.domain.QualityRecommendedAction;
 import ai.core.server.quality.domain.StoredQualityIssue;
+import ai.core.server.skill.quality.domain.SkillQualityRuleRevision;
+
+import java.util.Map;
 
 /**
  * Skill-specific issue builder. It writes the rule identity directly instead of borrowing the Agent rule
@@ -29,6 +34,30 @@ public final class SkillQualityIssues {
         issue.category = meta.category();
         issue.message = message;
         issue.suggestion = suggestion;
+        return issue;
+    }
+
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public static StoredQualityIssue fromRevision(SkillQualityRuleRevision rule, QualityEnforcement enforcement,
+                                                  QualityIssueStatus status, String fieldPath,
+                                                  QualityEvidenceKind evidenceKind, String reason,
+                                                  QualityRecommendedAction action, boolean retryable,
+                                                  String fallbackMessage, String fallbackSuggestion) {
+        var issue = new StoredQualityIssue();
+        issue.ruleId = rule.ruleKey != null ? rule.ruleKey : rule.ruleId;
+        issue.ruleRevision = rule.revision;
+        issue.ruleName = rule.name;
+        issue.ruleRequirement = rule.description;
+        issue.status = status;
+        issue.enforcement = enforcement;
+        issue.fieldPath = fieldPath;
+        issue.evidenceKind = evidenceKind;
+        issue.issueReason = reason;
+        issue.recommendedAction = action;
+        issue.retryable = retryable;
+        issue.category = rule.category;
+        issue.message = QualityIssues.render(rule.messageTemplate, Map.of(), fallbackMessage);
+        issue.suggestion = QualityIssues.render(rule.remediationTemplate, Map.of(), fallbackSuggestion);
         return issue;
     }
 

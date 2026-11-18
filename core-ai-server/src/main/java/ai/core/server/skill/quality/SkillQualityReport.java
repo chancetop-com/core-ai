@@ -26,6 +26,7 @@ public class SkillQualityReport {
         report.warnCount = result.warnCount();
         report.issues = result.issues();
         report.ruleResults = result.ruleResults();
+        report.policyRevision = result.policyRevision();
         return report;
     }
 
@@ -35,7 +36,7 @@ public class SkillQualityReport {
     public String skillId;
     public String candidateHash;
     public String metadataHash;
-    public int policyRevision = SkillQualityGate.POLICY_REVISION;
+    public int policyRevision = SkillQualityGate.FALLBACK_POLICY_REVISION;
     public QualityGateResult gateResult;
     public boolean checksComplete;
     public int warnCount;

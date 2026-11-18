@@ -238,6 +238,9 @@ public class ServerApp extends App {
     }
 
     private void loadDomainModules() {
+        // the skill quality store and rule kernel must exist before SkillModule binds the publish gate
+        load(new SkillQualityStoreModule());
+        load(new SkillQualityModule());
         load(new SkillModule());
         // publish gate must exist before AgentDefinitionModule binds AgentDefinitionService
         load(new QualityGateModule());
@@ -314,6 +317,8 @@ public class ServerApp extends App {
             var capabilityResolver = bean(ai.core.server.quality.EffectiveCapabilityResolver.class);
             capabilityResolver.setToolRegistryService(toolRegistry);
             capabilityResolver.setGatewayRoutingEngine(bean(ai.core.server.gateway.GatewayRoutingEngine.class));
+            bean(ai.core.server.skill.quality.SkillQualityGate.class)
+                .setDecisions(bean(ai.core.server.quality.QualityDecisionGateway.class));
         } catch (Error e) {
             // wiring tests load a subset of modules; a real missing bean is still rethrown (only the
             // explicit "not bound" error is tolerated, and the gate reports unavailable if never wired)
@@ -401,6 +406,10 @@ public class ServerApp extends App {
         mongo.collection(ai.core.server.quality.domain.AgentQualityPolicyHead.class);
         mongo.collection(ai.core.server.quality.domain.AgentQualityRun.class);
         mongo.collection(ai.core.server.quality.domain.AgentPublicationRecord.class);
+        mongo.collection(ai.core.server.skill.quality.domain.SkillQualityRule.class);
+        mongo.collection(ai.core.server.skill.quality.domain.SkillQualityRuleRevision.class);
+        mongo.collection(ai.core.server.skill.quality.domain.SkillQualityPolicyRevision.class);
+        mongo.collection(ai.core.server.skill.quality.domain.SkillQualityPolicyHead.class);
         mongo.collection(ChannelConfigView.class);
         mongo.collection(OcgConfigView.class);
         mongo.collection(AgentSchedule.class);
