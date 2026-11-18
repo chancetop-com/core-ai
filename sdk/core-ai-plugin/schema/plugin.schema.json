@@ -178,6 +178,19 @@
                   "action": { "enum": ["deny"] }
                 }
               }
+            },
+            "sandboxProviders": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "isolation"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "isolation": { "enum": ["process", "container", "os"] }
+                }
+              }
             }
           },
           "additionalProperties": false

@@ -29,6 +29,7 @@ export const SUPPORTED_CAPABILITIES = [
   'tools.register',
   'terminal.exec',
   'hooks.guard',
+  'sandbox.provider',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -163,6 +164,13 @@ export interface PluginGuardContribution {
   action: 'deny';
 }
 
+export interface PluginSandboxProviderContribution {
+  id: string;
+  name: string;
+  description: string;
+  isolation: 'process' | 'container' | 'os';
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -174,6 +182,7 @@ export interface PluginContributions {
   tools: PluginToolContribution[];
   terminal: PluginTerminalContribution[];
   guards: PluginGuardContribution[];
+  sandboxProviders: PluginSandboxProviderContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -579,6 +588,26 @@ function parseGuards(value: unknown): PluginGuardContribution[] {
   return guards;
 }
 
+function parseSandboxProviders(value: unknown): PluginSandboxProviderContribution[] {
+  if (!Array.isArray(value)) return [];
+  const providers: PluginSandboxProviderContribution[] = [];
+  const names = new Set<string>();
+  for (const raw of value.slice(0, 5)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const name = typeof entry.name === 'string' && /^[a-z][a-z0-9_-]{1,63}$/.test(entry.name) ? entry.name : null;
+    const description = boundedText(entry.description, 1000);
+    const isolation = entry.isolation === 'process' || entry.isolation === 'container' || entry.isolation === 'os'
+      ? entry.isolation
+      : null;
+    if (!id || !name || !description || !isolation || names.has(name)) continue;
+    names.add(name);
+    providers.push({ id, name, description, isolation });
+  }
+  return providers;
+}
+
 function stringList(value: unknown): string[] | null {  if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
@@ -664,6 +693,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     tools: [],
     terminal: [],
     guards: [],
+    sandboxProviders: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -718,6 +748,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.tools = parseTools(contributes.tools);
           contributions.terminal = parseTerminal(contributes.terminal);
           contributions.guards = parseGuards(contributes.guards);
+          contributions.sandboxProviders = parseSandboxProviders(contributes.sandboxProviders);
         }
       }
 
@@ -766,16 +797,17 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal' | 'guards'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal' | 'guards' | 'sandboxProviders'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
     if (kind === 'promptSections') return 'prompt.sections';
     if (kind === 'tools') return 'tools.register';
     if (kind === 'terminal') return 'terminal.exec';
     if (kind === 'guards') return 'hooks.guard';
+    if (kind === 'sandboxProviders') return 'sandbox.provider';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards', 'sandboxProviders'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

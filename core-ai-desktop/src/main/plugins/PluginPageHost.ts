@@ -370,6 +370,15 @@ export class PluginPageHost {
       case 'terminal.run':
         this.requireCapability(instance, 'terminal.exec');
         return this.runTerminal(instance, args.commandId);
+      case 'sandbox.providers':
+        this.requireCapability(instance, 'sandbox.provider');
+        return { providers: await this.sandboxProviders(instance) };
+      case 'sandbox.status':
+        this.requireCapability(instance, 'sandbox.provider');
+        return {
+          execution: 'disabled',
+          reason: 'sandbox execution is not implemented in this build; providers are descriptors only',
+        };
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -458,6 +467,19 @@ export class PluginPageHost {
       commandId: command.commandId,
       name: command.name,
       description: command.description,
+    }));
+  }
+
+  private async sandboxProviders(instance: PageInstance): Promise<Array<Record<string, unknown>>> {
+    const host = this.options.pluginHost();
+    if (!host) throw new PluginPageError('unavailable', 'plugin host is not ready');
+    const providers = await host.sandboxProviders(instance.pluginId);
+    return providers.map((provider) => ({
+      providerId: provider.providerId,
+      name: provider.name,
+      description: provider.description,
+      isolation: provider.isolation,
+      execution: 'reserved',
     }));
   }
 

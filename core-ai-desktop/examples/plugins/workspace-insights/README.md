@@ -10,6 +10,7 @@ A read-only P2d page that demonstrates the general host services:
 - `tools.register` read-only tools (`list_artifacts`, `list_memory`)
 - `terminal.exec` fixed operation `git.status` (no shell, no page arguments)
 - `hooks.guard` denies direct `shell`/`bash` tool calls in this workspace
+- `sandbox.provider` reserves a descriptor; no sandbox execution is available yet
 - `memory.list()` for memory files
 - `memory.write()` for plugin notes under `knowledge/`
 - `plugin.storage` for a page-owned counter

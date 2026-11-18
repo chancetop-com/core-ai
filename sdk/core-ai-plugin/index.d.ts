@@ -134,6 +134,13 @@ export interface PluginGuardContribution {
   action: 'deny';
 }
 
+export interface PluginSandboxProviderContribution {
+  id: string;
+  name: string;
+  description: string;
+  isolation: 'process' | 'container' | 'os';
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -161,6 +168,7 @@ export interface PluginManifest {
       tools?: PluginToolContribution[];
       terminal?: PluginTerminalContribution[];
       guards?: PluginGuardContribution[];
+      sandboxProviders?: PluginSandboxProviderContribution[];
     };
   };
 }

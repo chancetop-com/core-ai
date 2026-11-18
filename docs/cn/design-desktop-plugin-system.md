@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.25（P2d 完成 + P3：prompt sections + browser control + read-only tools + allowlisted terminal + tool guards） |
+| 文档版本 | v0.26（P2d 完成 + P3：prompt/browser/tools/terminal/guards + sandbox 描述符） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -632,6 +632,7 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `tools.register`（P3 首期） | `contributes.tools` 只支持只读主机工具 `artifacts.list` / `memory.list`；desktop 只把 active + granted 的描述符经 `CORE_AI_PLUGIN_TOOLS` 传给 engine，Java 再次校验并注册 `plugin_<plugin>_<tool>`；不加载插件代码；restricted 跳过 |
 | `terminal.exec`（P3 首期） | 页面 bridge `terminal.commands/run`；只允许 manifest 选择主机预定义操作 `git.status`/`git.log`/`git.diff`/`node.version`，argv 由宿主固定，可执行文件按系统 PATH 解析为绝对路径且拒绝 workspace 内文件；无 shell/页面参数、脱敏环境；需 grant + trusted workspace，6 次/分钟 |
 | `hooks.guard`（P3 首期） | `contributes.guards` 只支持 `action=deny` + 精确 toolNames；desktop 经 `CORE_AI_PLUGIN_GUARDS` 传给 engine，Java 解析后装到主 agent 与 subagent 的 lifecycle；不执行插件代码；restricted 跳过 |
+| `sandbox.provider`（P3 首期，仅描述符） | `contributes.sandboxProviders` 只登记 `process/container/os` 隔离诉求；页面 `sandbox.providers()` 返回 `execution: reserved`，`sandbox.status()` 明确 `disabled`；**没有执行入口**，不加载插件代码；restricted 也只做发现 |
 | `usage.read` | `usage.summary(range)` 从持久化 transcript 聚合已完成、未被 rewind 的 turn 的 input/output/cached tokens 与 cost；默认 all，也支持 7d/30d |
 | `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
 | `events.read` | `events.subscribe([...])` + `events.on(...)`；宿主按 allowlist 转发 `session.status`、`turn.completed`、`tool.started/finished`、`turn.failed`、`plan.updated`、`task.updated`、`tool.batch_started`、`agent.wait`、`custom`；只给脱敏字段，不给 text/tool args/tool result |
@@ -963,6 +964,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.23 | 2026-11-18 | P3 tools.register：只读 host tools（artifacts.list/memory.list），env 描述符 + Java 校验注册；示例加 list_artifacts/list_memory | 工具面先做只读，执行类工具仍待 sandbox |
 | v0.24 | 2026-11-18 | P3 terminal.exec：只允许预定义主机操作（git.status/log/diff、node.version），无 shell/页面参数；grant + trusted + 限流 | 不做通用终端，避免变相执行插件代码 |
 | v0.25 | 2026-11-18 | P3 hooks.guard：数据化 tool deny guard，主 agent + subagent lifecycle 都生效；示例加 no-shell | guard 先做 deny，不做脚本/审批回调 |
+| v0.26 | 2026-11-18 | P3 sandbox.provider：只登记隔离描述符；页面可发现但 `execution=reserved`，无执行入口 | 不假装有沙箱后端，执行留待真实隔离实现 |
 
 ### 13.2 相关材料
 
@@ -1009,6 +1011,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | P3 read-only tools | `tools.register` + `contributes.tools`；只注册 `artifacts.list`/`memory.list` 主机工具，env 描述符 + `PluginTools.java` 校验；不执行插件代码 | `pluginManifest.ts`、`PluginHost.ts`、`CliAgent.java`、`PluginTools.java` |
 | P3 allowlisted terminal | `terminal.exec` + 预定义操作；页面只传 commandId，宿主映射固定 argv，无 shell、脱敏环境、trusted workspace、限流 | `pluginManifest.ts`、`PluginPageHost.ts`、`pluginTerminal.ts`、`main.ts` |
 | P3 tool guards | `hooks.guard` + `contributes.guards`；只支持 deny 精确 toolNames；env 描述符 + `PluginGuards.java` 主/subagent lifecycle；不执行插件代码 | `pluginManifest.ts`、`PluginHost.ts`、`CliAgent.java`、`AgentFork.java`、`PluginGuards.java` |
+| P3 sandbox descriptors | `sandbox.provider` + `contributes.sandboxProviders`；只做描述符与状态，`execution=reserved`；无执行入口 | `pluginManifest.ts`、`PluginStore.ts`、`PluginPageHost.ts`、`pluginPagePreload.ts` |
 | P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | P2d notification | `notification.send` + `notify.send`；接现有 OCG 目标，5 次/分钟/页、2000 字符上限；无目标明确报错 | `PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
 | P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码；turn tail 在实时 turn 和历史 transcript 都渲染 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
@@ -1020,7 +1023,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
-验证记录（2026-11-18，P2d 完成 + P3 prompt/browser/tools/terminal/guards）：desktop `check`、`build`、`test`（272 tests：271 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、artifact、browser、terminal、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`PluginGuardsTest`、`PluginToolsTest`、`PluginPromptSectionsTest`、`LocalMemoryTest`、`UsageApiTest` 通过。**`:core-ai-cli:checkstyleMain` 当前被其他会话的 `AppServerEngine`/`EngineSessionRegistry`/`LocalSdkBroker` 改动拖红；本特性新增 Java 文件未出现在报告中。**
+验证记录（2026-11-18，P2d 完成 + P3 prompt/browser/tools/terminal/guards/sandbox）：desktop `check`、`build`、`test`（273 tests：272 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、artifact、browser、terminal、sandbox、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`PluginGuardsTest`、`PluginToolsTest`、`PluginPromptSectionsTest`、`LocalMemoryTest`、`UsageApiTest` 通过。**`:core-ai-cli:checkstyleMain` 当前被其他会话的 `AppServerEngine`/`EngineSessionRegistry`/`LocalSdkBroker` 改动拖红；本特性新增 Java 文件未出现在报告中。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
@@ -1033,12 +1036,12 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
 9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`、action-only 的 sidebar/composer/turn-tail/message-actions slots、`memory.write`、`sessions.rename`、workspace-scoped `schedules.*`、`provides`/`requires` 发现元数据，以及 artifact renderer（打开插件页并读取文本 artifact）；仍没有 scripted inline renderer、message renderer 或跨插件服务调用运行时。
-10. **P3 只开始了 prompt sections、browser control、只读 tools、受限 terminal 与数据化 guard。** `prompt.sections` 可注入静态 system prompt；`browser.control` 可操作托管浏览器；`tools.register` 只注册 `artifacts.list`/`memory.list` 主机工具；`terminal.exec` 只运行预定义只读操作；`hooks.guard` 只做精确 tool deny。providers/sandbox/agents 运行时、可编程 hooks、凭据边界与审计仍未实现。
+10. **P3 已开始 prompt/browser/tools/terminal/guards 与 sandbox 描述符。** `prompt.sections` 可注入静态 system prompt；`browser.control` 可操作托管浏览器；`tools.register` 只注册 `artifacts.list`/`memory.list` 主机工具；`terminal.exec` 只运行预定义只读操作；`hooks.guard` 只做精确 tool deny；`sandbox.provider` 只有描述符和 `reserved` 状态，不能执行。providers/agents 运行时、可编程 hooks、跨插件服务调用运行时、凭据边界与审计仍未实现。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
 2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
-3. 继续 P3：providers/sandbox/agents 运行时，按信任等级分批；同时补 scripted inline renderer、message renderer 与跨插件服务调用运行时。
+3. 继续 P3：agents 运行时与跨插件服务调用，按信任等级分批；同时补 scripted inline renderer、message renderer。
 
 

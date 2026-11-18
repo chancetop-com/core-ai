@@ -125,13 +125,13 @@ export function validateManifest(input) {
       errors.push('coreai.requires must be an array of service ids');
     }
   }
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards', 'sandboxProviders']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : kind === 'tools' ? 'tools.register' : kind === 'terminal' ? 'terminal.exec' : kind === 'guards' ? 'hooks.guard' : `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : kind === 'tools' ? 'tools.register' : kind === 'terminal' ? 'terminal.exec' : kind === 'guards' ? 'hooks.guard' : kind === 'sandboxProviders' ? 'sandbox.provider' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -229,6 +229,17 @@ export function validateManifest(input) {
           || item.toolNames.length === 0
           || item.toolNames.some((tool) => typeof tool !== 'string' || !tool)) {
           errors.push('each guard needs id, name, description, action=deny and toolNames');
+        }
+      }
+    }
+    if (kind === 'sandboxProviders') {
+      for (const item of contributes.sandboxProviders) {
+        if (!isObject(item)
+          || typeof item.id !== 'string'
+          || typeof item.name !== 'string'
+          || typeof item.description !== 'string'
+          || !['process', 'container', 'os'].includes(item.isolation)) {
+          errors.push('each sandbox provider needs id, name, description and isolation');
         }
       }
     }

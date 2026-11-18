@@ -37,7 +37,7 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec'],
+      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec', 'sandbox.provider'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -101,6 +101,10 @@ async function main() {
       storageSet: async (_pluginId, key, value) => { storage.set(key, value); },
       storageDelete: async (_pluginId, key) => storage.delete(key),
       storageKeys: async () => [...storage.keys()],
+      sandboxProviders: async () => [{
+        pluginId: 'test.page', pluginName: 'Test Page', providerId: 'reserved', name: 'reserved',
+        description: 'Reserved sandbox', isolation: 'process',
+      }],
     }),
     supervisor: () => supervisor,
     preloadPath: path.join(__dirname, '..', 'dist', 'pluginPagePreload.js'),
@@ -204,6 +208,10 @@ async function main() {
   const terminalResult = await view.webContents.executeJavaScript('window.coreaiPlugin.terminal.run("version")');
   assert.equal(terminalResult.stdout, 'ok\n');
   assert.deepEqual(terminalCalls[0], ['test.page', 'version', workspace]);
+  const sandboxProviders = await view.webContents.executeJavaScript('window.coreaiPlugin.sandbox.providers()');
+  assert.equal(sandboxProviders.providers[0].execution, 'reserved');
+  const sandboxStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.sandbox.status()');
+  assert.equal(sandboxStatus.execution, 'disabled');
   const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);

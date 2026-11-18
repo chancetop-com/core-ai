@@ -188,6 +188,40 @@ test('tool guards need hooks.guard and exact tool names', () => {
   assert.equal(missingCapability.ok, false);
 });
 
+test('sandbox providers are descriptor-only and need sandbox.provider', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Sandbox',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.sandbox',
+      capabilities: { required: ['sandbox.provider'] },
+      contributes: { sandboxProviders: [{ id: 'reserved', name: 'reserved', description: 'Reserved', isolation: 'process' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.sandboxProviders[0].isolation, 'process');
+
+  const unsupportedIsolation = parsePluginManifest(JSON.stringify({
+    name: 'Sandbox',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.sandbox',
+      capabilities: { required: ['sandbox.provider'] },
+      contributes: { sandboxProviders: [{ id: 'bad', name: 'bad', description: 'Bad', isolation: 'none' }] },
+    },
+  }));
+  assert.equal(unsupportedIsolation.descriptor.contributions.sandboxProviders.length, 0);
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Sandbox',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.sandbox', contributes: { sandboxProviders: [{ id: 'reserved', name: 'reserved', description: 'x', isolation: 'process' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',
@@ -258,7 +292,7 @@ test('missing name, schema or id is fatal', () => {
 test('unsupported required capabilities and component paths are rejected', () => {
   const unknownCapability = parsePluginManifest(JSON.stringify({
     name: 'x',
-    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['sandbox.provider'] } },
+    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['providers.register'] } },
   }));
   assert.equal(unknownCapability.ok, false);
   assert.ok(unknownCapability.errors.some((error) => error.includes('unsupported required capability')));

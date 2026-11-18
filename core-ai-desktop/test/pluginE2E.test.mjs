@@ -123,7 +123,7 @@ test('a read-only insights page resolves with the general host capabilities', as
   const host = new PluginHost({ root: tempRoot() });
   await host.installFolder(insightsSample);
   await host.setEnabled('core-ai.workspace-insights', true);
-  const granted = ['ui.pages', 'ui.slots', 'ui.renderers', 'artifacts.read', 'tools.register', 'terminal.exec', 'hooks.guard', 'sessions.read', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'];
+  const granted = ['ui.pages', 'ui.slots', 'ui.renderers', 'artifacts.read', 'tools.register', 'terminal.exec', 'hooks.guard', 'sandbox.provider', 'sessions.read', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'];
   await host.grant('core-ai.workspace-insights', granted);
   const page = await host.resolvePage('core-ai.workspace-insights', 'insights');
   assert.ok(page);
@@ -142,4 +142,7 @@ test('a read-only insights page resolves with the general host capabilities', as
   const guards = JSON.parse(env.CORE_AI_PLUGIN_GUARDS);
   assert.equal(guards.length, 1);
   assert.deepEqual(guards[0].toolNames, ['shell', 'bash']);
+  const sandbox = await host.sandboxProviders('core-ai.workspace-insights');
+  assert.equal(sandbox.length, 1);
+  assert.equal(sandbox[0].isolation, 'process');
 });

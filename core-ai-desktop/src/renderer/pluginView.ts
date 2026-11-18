@@ -233,7 +233,7 @@ function normalizeProvides(value: unknown): PluginView['provides'] {
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {
-  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [] };
+  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [] };
   if (!value || typeof value !== 'object') return empty;
   const raw = value as Record<string, unknown>;
   return {
@@ -247,6 +247,7 @@ function normalizeContributions(value: unknown): PluginView['contributions'] {
     tools: [],
     terminal: [],
     guards: [],
+    sandboxProviders: [],
   };
 }
 

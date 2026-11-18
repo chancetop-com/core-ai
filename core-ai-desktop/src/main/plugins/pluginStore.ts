@@ -122,6 +122,15 @@ export interface PluginGuardDescriptor {
   toolNames: string[];
 }
 
+export interface PluginSandboxProviderDescriptor {
+  pluginId: string;
+  pluginName: string;
+  providerId: string;
+  name: string;
+  description: string;
+  isolation: 'process' | 'container' | 'os';
+}
+
 export interface ResolvedPluginPage {
   pluginId: string;
   pluginName: string;
@@ -476,7 +485,7 @@ export class PluginStore {
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [], guards: [] },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [], guards: [], sandboxProviders: [] },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -562,6 +571,29 @@ export class PluginStore {
       }
     }
     return guards;
+  }
+
+  /** Descriptor-only sandbox providers of active installs that granted sandbox.provider. */
+  async sandboxProviders(pluginId?: string): Promise<PluginSandboxProviderDescriptor[]> {
+    const state = await this.readState();
+    const providers: PluginSandboxProviderDescriptor[] = [];
+    for (const install of state.installs) {
+      if (pluginId && install.pluginId !== pluginId) continue;
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('sandbox.provider')) continue;
+      for (const provider of resolved.descriptor.contributions.sandboxProviders) {
+        providers.push({
+          pluginId: install.pluginId,
+          pluginName: resolved.descriptor.name,
+          providerId: provider.id,
+          name: provider.name,
+          description: provider.description,
+          isolation: provider.isolation,
+        });
+      }
+    }
+    return providers;
   }
 
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
@@ -809,7 +841,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [] },
       settings: { ...install.settings },
     };
   }

@@ -67,6 +67,10 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
     commands: () => call('terminal.commands'),
     run: (commandId: string) => call('terminal.run', { commandId }),
   },
+  sandbox: {
+    providers: () => call('sandbox.providers'),
+    status: () => call('sandbox.status'),
+  },
   artifacts: {
     read: () => call('artifacts.read'),
   },

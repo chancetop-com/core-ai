@@ -7,7 +7,7 @@
     "id": "core-ai.workspace-insights",
     "desktopApi": "^1.0.0",
     "capabilities": {
-      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "terminal.exec", "hooks.guard", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
+      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "terminal.exec", "hooks.guard", "sandbox.provider", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
     },
     "contributes": {
       "pages": [
@@ -84,6 +84,14 @@
           "description": "Deny direct shell tool use in this workspace.",
           "toolNames": ["shell", "bash"],
           "action": "deny"
+        }
+      ],
+      "sandboxProviders": [
+        {
+          "id": "reserved-process",
+          "name": "reserved-process",
+          "description": "Reserved descriptor for a future process-isolated sandbox.",
+          "isolation": "process"
         }
       ]
     }
