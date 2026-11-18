@@ -6,6 +6,7 @@ import ai.core.llm.streaming.StreamingCallback;
 import core.framework.http.HTTPClientException;
 import core.framework.util.Strings;
 import org.apache.commons.lang3.StringUtils;
+import org.jspecify.annotations.Nullable;
 
 import java.io.IOException;
 import java.io.InterruptedIOException;
@@ -83,8 +84,12 @@ final class LLMRetrySupport {
     }
 
     static RuntimeException incompleteStream(String uri, boolean serverProxy, String phase) {
+        return incompleteStream(uri, serverProxy, phase, null);
+    }
+
+    static RuntimeException incompleteStream(String uri, boolean serverProxy, String phase, Throwable cause) {
         var message = endpointLabel(uri, serverProxy) + " closed the connection " + phase + " (it may be restarting)";
-        return new IncompleteStreamException(message);
+        return new IncompleteStreamException(message, cause);
     }
 
     static RuntimeException interruptedStream(String uri, boolean serverProxy, RuntimeException cause) {
@@ -227,8 +232,8 @@ final class LLMRetrySupport {
     static final class IncompleteStreamException extends RuntimeException {
         private static final long serialVersionUID = 6192837465019283746L;
 
-        private IncompleteStreamException(String message) {
-            super(message);
+        private IncompleteStreamException(String message, @Nullable Throwable cause) {
+            super(message, cause);
         }
     }
 }

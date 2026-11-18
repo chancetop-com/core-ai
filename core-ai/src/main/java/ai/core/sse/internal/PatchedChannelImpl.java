@@ -15,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.xnio.ChannelListener;
 import org.xnio.channels.StreamSinkChannel;
 
+import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -34,6 +35,8 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
 
     // a writer stuck holding the lock must never stall app shutdown: k8s sigkills the pod once the grace period expires
     static final long SHUTDOWN_LOCK_TIMEOUT_IN_MILLIS = 500;
+    // close keeps the exchange open until queued bytes are flushed, but a client that stopped reading must not pin it forever
+    static final long CLOSE_DRAIN_TIMEOUT_SECONDS = 60;
 
     // extracted so the framing logic (id:/event:/data: line construction) is unit-testable
     // without standing up the Undertow exchange/sink this class otherwise requires
@@ -76,6 +79,9 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     long eventCount;
     long eventSize;
 
+    // set by close() (under lock) so no new event is accepted; volatile for sendBytes on caller threads
+    private volatile boolean closing;
+
     @Nullable
     String traceId;
 
@@ -101,7 +107,7 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     }
 
     boolean sendBytes(byte[] event) {
-        if (exchange.isResponseComplete()) return false;
+        if (closing || exchange.isResponseComplete()) return false;
 
         var watch = new StopWatch();
         try {
@@ -152,20 +158,22 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
     @Override
     public void close() {
         LOGGER.debug("close sse connection, channel={}", id);
+        // stop accepting events before the io thread runs, so nothing is queued behind the close
+        closing = true;
         sink.getIoThread().execute(() -> {
             try {
                 lock.lock();
                 if (exchange.isResponseComplete()) return;
 
-                // for flow like
-                // channel.sendBytes("error");
-                // channel.close();
-                // the close logic (this closure) could run first in different IO thread while sendBytes is blocked due to lock
-                // so here we should try to send remaining messages in queue before close
-                if (!queue.isEmpty()) {
-                    writeListener.handleEvent(sink);
+                // sendBytes never blocks: it only queues the message and schedules the writer, so
+                // close (typically called right after the last send) must not end the exchange
+                // before those bytes are on the wire, otherwise the client sees a half event
+                writeListener.handleEvent(sink);
+                if (!exchange.isResponseComplete()) {
+                    // the socket buffer is full: the writable event finishes the drain, but a client
+                    // that stopped reading must not keep the exchange (and its action log) alive
+                    sink.getIoThread().executeAfter(this::forceEndExchange, CLOSE_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
                 }
-                exchange.endExchange();
             } finally {
                 lock.unlock();
             }
@@ -273,30 +281,25 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
             try {
                 lock.lock();
 
-                if (buffer == null && queue.isEmpty()) {    // be called on browser refreshing, to notify old connection
-                    if (channel.flush()) {                  // check if connection is broken, will trigger end exchange event
-                        channel.suspendWrites();
-                    }
-                    return;
-                }
-
-                if (buffer == null) {
-                    buffer = poll();
-                }
-
                 while (true) {
-                    int written = channel.write(buffer);
-                    boolean flushed = channel.flush();
-
-                    // write() returns 0 once the socket buffer is full, while xnio flush() reports true for a buffer
-                    // that was not drained: retrying here would pin this io thread at 100% cpu while holding the lock,
-                    // so hand the channel back to the io thread and wait for the writable event instead
-                    if (written == 0 || !flushed) {
-                        channel.resumeWrites();
+                    if (buffer == null && queue.isEmpty()) {    // be called on browser refreshing, to notify old connection
+                        endOrSuspendWhenIdle(channel);
                         return;
                     }
-                    if (!buffer.hasRemaining()) {
-                        buffer = null;
+                    if (buffer == null) {
+                        buffer = poll();
+                    }
+                    if (!writeBuffer(channel)) {
+                        return;
+                    }
+                    if (buffer.hasRemaining()) continue;
+
+                    buffer = null;
+                    if (closing && queue.isEmpty()) {           // drain every queued event before ending a closing exchange
+                        exchange.endExchange();
+                        return;
+                    }
+                    if (!closing) {
                         channel.suspendWrites();
                         return;
                     }
@@ -307,6 +310,30 @@ class PatchedChannelImpl<T> implements java.nio.channels.Channel, RawSseChannel<
             } finally {
                 lock.unlock();
             }
+        }
+
+        private void endOrSuspendWhenIdle(StreamSinkChannel channel) throws IOException {
+            if (closing) {
+                exchange.endExchange();
+                return;
+            }
+            if (channel.flush()) {                              // check if connection is broken, will trigger end exchange event
+                channel.suspendWrites();
+            }
+        }
+
+        private boolean writeBuffer(StreamSinkChannel channel) throws IOException {
+            int written = channel.write(buffer);
+            boolean flushed = channel.flush();
+
+            // write() returns 0 once the socket buffer is full, while xnio flush() reports true for a buffer
+            // that was not drained: retrying here would pin this io thread at 100% cpu while holding the lock,
+            // so hand the channel back to the io thread and wait for the writable event instead
+            if (written == 0 || !flushed) {
+                channel.resumeWrites();
+                return false;
+            }
+            return true;
         }
     }
 }

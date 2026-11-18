@@ -19,6 +19,7 @@ import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.Usage;
 import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.core.io.JsonEOFException;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
@@ -28,6 +29,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -294,7 +296,7 @@ public class LiteLLMProvider extends LLMProvider {
                     break;
                 }
 
-                var chunk = LiteLLMCompletionChunkParser.parse(data);
+                var chunk = parseChunk(req.uri, data);
                 if (chunk.usage != null && response != null) {
                     response.usage = chunk.usage;
                 }
@@ -327,6 +329,20 @@ public class LiteLLMProvider extends LLMProvider {
                     finalChoice.message.finalizeStreamingFields();
                 }
             }
+        }
+    }
+
+    private CompletionResponse parseChunk(String uri, String data) {
+        try {
+            return LiteLLMCompletionChunkParser.parse(data);
+        } catch (UncheckedIOException e) {
+            // core-ng EventSource hands out the last partial line as a regular event when the
+            // connection drops mid-frame; report that as an interrupted transport, not as a
+            // malformed model reply, so the retry policy and the caller see the real cause
+            if (e.getCause() instanceof JsonEOFException) {
+                throw LLMRetrySupport.incompleteStream(uri, LLMRetrySupport.isServerProxyEndpoint(uri), "mid-event", e);
+            }
+            throw e;
         }
     }
 

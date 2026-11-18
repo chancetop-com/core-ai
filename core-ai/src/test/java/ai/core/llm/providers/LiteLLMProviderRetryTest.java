@@ -50,6 +50,15 @@ class LiteLLMProviderRetryTest {
         }
     }
 
+    private static void truncatedEvent(HttpExchange exchange, String partial) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+        exchange.sendResponseHeaders(200, 0);
+        try (OutputStream out = exchange.getResponseBody()) {
+            out.write(("data: " + partial).getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        }
+    }
+
     private HttpServer server;
     private final AtomicInteger requests = new AtomicInteger();
 
@@ -137,6 +146,56 @@ class LiteLLMProviderRetryTest {
         assertTrue(error.getMessage().contains("statusCode=400"), error.getMessage());
         assertFalse(error instanceof LLMUnavailableException);
         assertEquals(1, requests.get());
+    }
+
+    @Test
+    void retriesWhenTheConnectionDropsInTheMiddleOfAnEvent() {
+        var provider = provider((exchange, attempt) -> {
+            if (attempt == 1) {
+                truncatedEvent(exchange, "{\"id\":\"chatcmpl-");
+            } else {
+                sse(exchange,
+                        "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"recovered\"}}]}",
+                        "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}",
+                        "[DONE]");
+            }
+        }, 5);
+
+        var response = provider.completionStream(request(), new DefaultStreamingCallback());
+
+        assertEquals("recovered", response.choices.getFirst().message.content);
+        assertEquals(2, requests.get());
+    }
+
+    @Test
+    void reportsAnInterruptedStreamWhenEveryAttemptIsTruncated() {
+        var provider = provider((exchange, attempt) -> truncatedEvent(exchange, "{\"id\":\"chatcmpl-"), 5);
+
+        var error = assertThrows(LLMUnavailableException.class,
+                () -> provider.completionStream(request(), new DefaultStreamingCallback()));
+
+        assertTrue(error.getMessage().contains("closed the connection mid-event"), error.getMessage());
+        assertFalse(error.getMessage().contains("JsonEOFException"), error.getMessage());
+    }
+
+    @Test
+    void reportsAnInterruptedStreamAfterPartialOutput() {
+        var provider = provider((exchange, attempt) -> {
+            exchange.getResponseHeaders().set("Content-Type", "text/event-stream");
+            exchange.sendResponseHeaders(200, 0);
+            try (var out = exchange.getResponseBody()) {
+                out.write(("data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n"
+                           + "data: {\"choices\":[{\"delta\":").getBytes(StandardCharsets.UTF_8));
+                out.flush();
+            }
+        }, 10);
+
+        var error = assertThrows(RuntimeException.class,
+                () -> provider.completionStream(request(), new DefaultStreamingCallback()));
+
+        assertTrue(error.getMessage().contains("connection lost after partial output"), error.getMessage());
+        assertTrue(error.getMessage().contains("mid-event"), error.getMessage());
+        assertEquals(1, requests.get(), "a retry after streamed text would duplicate it");
     }
 
     @Test

@@ -5,7 +5,9 @@ import io.undertow.server.HttpServerExchange;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentMatchers;
+import org.mockito.InOrder;
 import org.mockito.Mockito;
+import org.xnio.XnioIoThread;
 import org.xnio.channels.StreamSinkChannel;
 
 import java.nio.ByteBuffer;
@@ -15,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PatchedChannelImplTest {
@@ -26,9 +29,16 @@ class PatchedChannelImplTest {
     void setUp() {
         exchange = Mockito.mock(HttpServerExchange.class);
         sink = Mockito.mock(StreamSinkChannel.class);
+        var ioThread = Mockito.mock(XnioIoThread.class);
         var request = Mockito.mock(RequestImpl.class);
         Mockito.when(request.path()).thenReturn("/api/sessions/events");
         Mockito.when(request.clientIP()).thenReturn("127.0.0.1");
+        Mockito.when(sink.getIoThread()).thenReturn(ioThread);
+        // run io thread tasks inline so close() is observable from the test thread
+        Mockito.doAnswer(invocation -> {
+            invocation.getArgument(0, Runnable.class).run();
+            return null;
+        }).when(ioThread).execute(ArgumentMatchers.any(Runnable.class));
 
         channel = new PatchedChannelImpl<>(exchange, sink, new PatchedServerSentEventContextImpl<>(), null, "ref", request);
         channel.queue.add("data: 1\n\n".getBytes(StandardCharsets.UTF_8));
@@ -120,6 +130,56 @@ class PatchedChannelImplTest {
 
         Mockito.verify(exchange).endExchange();
         assertTrue(channel.queue.isEmpty());
+    }
+
+    @Test
+    void closeDrainsQueuedEventsBeforeEndingExchange() throws Exception {
+        channel.queue.add("data: 2\n\n".getBytes(StandardCharsets.UTF_8));
+        stubAcceptedWrites();
+
+        channel.close();
+
+        InOrder inOrder = Mockito.inOrder(sink, exchange);
+        inOrder.verify(sink, Mockito.atLeastOnce()).write(ArgumentMatchers.any(ByteBuffer.class));
+        inOrder.verify(exchange).endExchange();
+        assertTrue(channel.queue.isEmpty());
+        Mockito.verify(sink, Mockito.never()).suspendWrites();
+    }
+
+    @Test
+    void closeWaitsForTheWritableEventWhenTheSocketBufferIsFull() throws Exception {
+        Mockito.when(sink.write(ArgumentMatchers.any(ByteBuffer.class))).thenReturn(0);
+        Mockito.when(sink.flush()).thenReturn(Boolean.TRUE);
+
+        channel.close();
+
+        Mockito.verify(sink).resumeWrites();
+        Mockito.verify(exchange, Mockito.never()).endExchange();
+
+        stubAcceptedWrites();
+        channel.writeListener.handleEvent(sink);
+
+        Mockito.verify(exchange).endExchange();
+    }
+
+    @Test
+    void closeEndsExchangeImmediatelyWhenNothingIsQueued() throws Exception {
+        channel.queue.clear();
+
+        channel.close();
+
+        Mockito.verify(exchange).endExchange();
+        Mockito.verify(sink, Mockito.never()).write(ArgumentMatchers.any(ByteBuffer.class));
+    }
+
+    @Test
+    void rejectsNewEventsAfterClose() throws Exception {
+        channel.queue.clear();
+
+        channel.close();
+
+        assertFalse(channel.sendBytes("data: late\n\n".getBytes(StandardCharsets.UTF_8)));
+        Mockito.verify(sink, Mockito.never()).write(ArgumentMatchers.any(ByteBuffer.class));
     }
 
     private void stubAcceptedWrites() throws Exception {
