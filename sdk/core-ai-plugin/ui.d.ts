@@ -210,6 +210,14 @@ export interface CoreAiPluginBridge {
   artifacts: {
     read(): Promise<{ path: string; contentType: string; size: number; content: string }>;
   };
+  browser: {
+    status(): Promise<Record<string, unknown>>;
+    tabs(): Promise<{ tabs: Array<Record<string, unknown>> }>;
+    open(url: string): Promise<Record<string, unknown>>;
+    navigate(url: string): Promise<Record<string, unknown>>;
+    activate(targetId: string): Promise<{ ok: true }>;
+    close(targetId: string): Promise<{ ok: true }>;
+  };
 }
 
 declare global {

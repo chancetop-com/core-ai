@@ -31,6 +31,14 @@ export interface PluginPageHostOptions {
   preloadPath: string;
   onLog?: (line: string) => void;
   notify?: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  browser?: {
+    status: () => unknown;
+    open: (url: string) => Promise<unknown>;
+    navigate: (url: string) => unknown;
+    close: (targetId: string) => Promise<void>;
+    activate: (targetId: string) => void;
+    tabs: () => unknown[];
+  };
 }
 
 export interface OpenPluginPageOptions {
@@ -330,6 +338,26 @@ export class PluginPageHost {
       case 'artifacts.read':
         this.requireCapability(instance, 'artifacts.read');
         return this.readArtifact(instance);
+      case 'browser.status':
+        this.requireCapability(instance, 'browser.control');
+        return this.browser().status();
+      case 'browser.tabs':
+        this.requireCapability(instance, 'browser.control');
+        return { tabs: this.browser().tabs() };
+      case 'browser.open':
+        this.requireCapability(instance, 'browser.control');
+        return this.browser().open(browserUrl(args.url));
+      case 'browser.navigate':
+        this.requireCapability(instance, 'browser.control');
+        return this.browser().navigate(browserUrl(args.url));
+      case 'browser.activate':
+        this.requireCapability(instance, 'browser.control');
+        this.browser().activate(targetId(args.targetId));
+        return { ok: true };
+      case 'browser.close':
+        this.requireCapability(instance, 'browser.control');
+        await this.browser().close(targetId(args.targetId));
+        return { ok: true };
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -402,6 +430,12 @@ export class PluginPageHost {
         url: assetUrl(relative),
       },
     };
+  }
+
+  private browser(): NonNullable<PluginPageHostOptions['browser']> {
+    const browser = this.options.browser;
+    if (!browser) throw new PluginPageError('unavailable', 'the managed browser is not available');
+    return browser;
   }
 
   private async readArtifact(instance: PageInstance): Promise<Record<string, unknown>> {
@@ -601,6 +635,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pageOwner(instance: PageInstance): string {
   return `${instance.pluginId}/${instance.pageId}`;
+}
+
+function browserUrl(value: unknown): string {
+  if (typeof value !== 'string' || !/^https?:\/\//i.test(value)) {
+    throw new PluginPageError('invalid_request', 'browser URL must be http(s)');
+  }
+  return value;
+}
+
+function targetId(value: unknown): string {
+  if (typeof value !== 'string' || !value) throw new PluginPageError('invalid_request', 'targetId is required');
+  return value;
 }
 
 function storageKey(value: unknown): string {

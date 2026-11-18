@@ -37,12 +37,13 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write', 'artifacts.read'],
+      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control'],
   };
   let granted = [...page.granted];
   const calls = [];
   const storage = new Map();
   let notifications = 0;
+  const browserCalls = [];
   const supervisor = {
     ensureTrustState: async () => ({ state: 'trusted' }),
     call: async (_workspace, method) => {
@@ -107,6 +108,20 @@ async function main() {
       notifications += 1;
       return { ok: true };
     },
+    browser: {
+      status: () => ({ running: true, tabs: [{ targetId: 'tab-1' }], activeId: 'tab-1' }),
+      tabs: () => [{ targetId: 'tab-1' }],
+      open: async (url) => {
+        browserCalls.push(['open', url]);
+        return { targetId: 'tab-1', url };
+      },
+      navigate: (url) => {
+        browserCalls.push(['navigate', url]);
+        return { running: true, activeId: 'tab-1', url };
+      },
+      close: async (id) => { browserCalls.push(['close', id]); },
+      activate: (id) => { browserCalls.push(['activate', id]); },
+    },
   });
   const { token } = await host.open({
     window, workspace, pluginId: 'test.page', pageId: 'main',
@@ -169,6 +184,13 @@ async function main() {
   assert.equal(services.plugins[0].provides[0].id, 'demo.provider');
   assert.equal(services.own.requires[0], 'memory.read');
   assert.ok(services.host.includes('memory.write'));
+  const browserStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.browser.status()');
+  assert.equal(browserStatus.running, true);
+  await view.webContents.executeJavaScript('window.coreaiPlugin.browser.open("https://example.com")');
+  await view.webContents.executeJavaScript('window.coreaiPlugin.browser.navigate("https://example.com/docs")');
+  await view.webContents.executeJavaScript('window.coreaiPlugin.browser.activate("tab-1")');
+  await view.webContents.executeJavaScript('window.coreaiPlugin.browser.close("tab-1")');
+  assert.deepEqual(browserCalls.map((call) => call[0]), ['open', 'navigate', 'activate', 'close']);
   const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);

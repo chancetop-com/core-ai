@@ -66,4 +66,12 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   artifacts: {
     read: () => call('artifacts.read'),
   },
+  browser: {
+    status: () => call('browser.status'),
+    tabs: () => call('browser.tabs'),
+    open: (url: string) => call('browser.open', { url }),
+    navigate: (url: string) => call('browser.navigate', { url }),
+    activate: (targetId: string) => call('browser.activate', { targetId }),
+    close: (targetId: string) => call('browser.close', { targetId }),
+  },
 });

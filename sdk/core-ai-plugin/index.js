@@ -22,6 +22,8 @@ export const CAPABILITIES = Object.freeze([
   'ui.renderers',
   'artifacts.read',
   'engine.skills',
+  'prompt.sections',
+  'browser.control',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',

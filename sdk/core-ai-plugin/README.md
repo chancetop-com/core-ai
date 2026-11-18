@@ -82,6 +82,7 @@ page bridge exposes:
 - `storage.get/set/delete/keys` with `plugin.storage` (string values, 64 KiB per value)
 - `events.subscribe(types)` and `events.on(callback)` with `events.read`
 - `notify.send(text)` with `notification.send` (configured target; 5/minute per page, 2000 chars)
+- `browser.status/tabs/open/navigate/activate/close` with `browser.control`
 - `services.list()` for declared `provides`/`requires` metadata and host service ids
 - `artifacts.read()` for the text artifact attached by an artifact renderer
 
@@ -101,6 +102,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `ui.renderers` | artifact renderer entry points that open a plugin page |
 | `artifacts.read` | reads a text artifact opened through an artifact renderer |
 | `prompt.sections` | injects static prompt sections into the agent system prompt |
+| `browser.control` | opens, navigates, activates and closes tabs in the managed browser |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
 | `media.assets.write` | imports a reference image into the workspace media directory |

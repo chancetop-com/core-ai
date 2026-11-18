@@ -25,6 +25,7 @@ export const SUPPORTED_CAPABILITIES = [
   'artifacts.read',
   'engine.skills',
   'prompt.sections',
+  'browser.control',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
