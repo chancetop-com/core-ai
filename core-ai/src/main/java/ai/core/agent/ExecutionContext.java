@@ -75,6 +75,7 @@ public final class ExecutionContext {
     private SubagentModelResolver subagentModelResolver;
     private ToolRegistry toolRegistry;
     private volatile List<SkillCapability> skillCapabilities = List.of();
+    private volatile boolean skillCapabilityScopeActive;
     private volatile Map<String, String> processEnvironment = Map.of();
     private AgentProfileRegistry agentProfileRegistry;
     private RunBudget runBudget;
@@ -365,6 +366,18 @@ public final class ExecutionContext {
 
     public void setSkillCapabilities(List<SkillCapability> skillCapabilities) {
         this.skillCapabilities = skillCapabilities == null ? List.of() : List.copyOf(skillCapabilities);
+    }
+
+    /**
+     * True once a local skill has declared its SDK capabilities for this context. The local broker
+     * then treats the capability set as authoritative instead of exposing every agent tool.
+     */
+    public boolean isSkillCapabilityScopeActive() {
+        return skillCapabilityScopeActive;
+    }
+
+    public void activateSkillCapabilityScope() {
+        this.skillCapabilityScopeActive = true;
     }
 
     /** Environment entries injected into shell / Python processes spawned for this execution context. */

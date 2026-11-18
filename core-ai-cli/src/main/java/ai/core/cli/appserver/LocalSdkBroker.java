@@ -211,6 +211,17 @@ public final class LocalSdkBroker implements AutoCloseable {
     }
 
     private List<ToolCall> visibleTools(EngineSession session) {
+        var context = session.agent().getExecutionContext();
+        if (context.isSkillCapabilityScopeActive()) {
+            var capabilities = new ArrayList<ToolCall>();
+            for (var capability : context.getSkillCapabilities()) {
+                if (capability == null || capability.tool() == null) continue;
+                if (capabilities.stream().noneMatch(tool -> tool.getName().equals(capability.tool().getName()))) {
+                    capabilities.add(capability.tool());
+                }
+            }
+            return capabilities;
+        }
         var result = new ArrayList<ToolCall>();
         for (var tool : session.agent().getToolCalls()) {
             if (SandboxConstants.INTERCEPTED_TOOLS.contains(tool.getName())) continue;

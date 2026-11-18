@@ -3,6 +3,7 @@ package ai.core.cli.appserver;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.session.InProcessAgentSession;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolExposure;
@@ -72,6 +73,33 @@ class LocalSdkBrokerTest {
             assertEquals(200, call.statusCode());
             assertTrue(call.body().contains("\"completed\""));
             assertTrue(call.body().contains("menu found"));
+        }
+    }
+
+    @Test
+    void capabilityScopeOnlyExposesDeclaredTools() throws Exception {
+        var search = tool();
+        var other = tool();
+        other.setName("other");
+        var context = ExecutionContext.builder().build();
+        context.setSkillCapabilities(List.of(new SkillCapability("skill-1", "Admin/skill", "builtin",
+                "search", "search", null, search)));
+        context.activateSkillCapabilityScope();
+        var agent = mock(Agent.class);
+        when(agent.getName()).thenReturn("local-agent");
+        when(agent.getToolCalls()).thenReturn(List.of(search, other));
+        when(agent.getExecutionContext()).thenReturn(context);
+        var session = mock(EngineSession.class);
+        when(session.id()).thenReturn("local-1");
+        when(session.agent()).thenReturn(agent);
+
+        try (var broker = new LocalSdkBroker(id -> session)) {
+            var base = URI.create(broker.bind("local-1"));
+            var catalog = HttpClient.newHttpClient().send(
+                    HttpRequest.newBuilder(URI.create(base + "/catalog")).build(), HttpResponse.BodyHandlers.ofString());
+
+            assertTrue(catalog.body().contains("search"));
+            assertTrue(!catalog.body().contains("other"));
         }
     }
 

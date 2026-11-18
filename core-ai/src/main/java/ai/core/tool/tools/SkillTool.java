@@ -1,6 +1,8 @@
 package ai.core.tool.tools;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.skill.FilesystemSkillProvider;
+import ai.core.skill.SkillCapability;
 import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
@@ -9,10 +11,13 @@ import ai.core.skill.SkillSource;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.mcp.McpToolCall;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Tool that allows the agent to load and use skills by name.
@@ -71,7 +76,16 @@ public class SkillTool extends ToolCall {
     private SkillAccessGuard accessGuard;
 
     @Override
+    public ToolCallResult execute(String arguments, ExecutionContext context) {
+        return doExecute(arguments, context);
+    }
+
+    @Override
     public ToolCallResult execute(String arguments) {
+        return doExecute(arguments, null);
+    }
+
+    private ToolCallResult doExecute(String arguments, ExecutionContext context) {
         long startTime = System.currentTimeMillis();
         try {
             var args = parseArguments(arguments);
@@ -80,14 +94,14 @@ public class SkillTool extends ToolCall {
                 return ToolCallResult.failed("'name' is required. Available skills: " + skillNameList())
                         .withDuration(System.currentTimeMillis() - startTime);
             }
-            return loadSkill(name.trim(), startTime);
+            return loadSkill(name.trim(), startTime, context);
         } catch (Exception e) {
             return ToolCallResult.failed("Failed: " + e.getMessage())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
 
-    private ToolCallResult loadSkill(String name, long startTime) {
+    private ToolCallResult loadSkill(String name, long startTime, ExecutionContext context) {
         SkillMetadata skill = registry != null ? registry.find(name) : null;
         if (skill == null) {
             return ToolCallResult.failed("Skill '" + name + "' not found. Available skills: " + skillNameList())
@@ -100,6 +114,7 @@ public class SkillTool extends ToolCall {
         }
         try {
             String content = readSkillContent(skill);
+            applyCapabilities(skill, context);
             return ToolCallResult.completed(content)
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (SkillLoadException e) {
@@ -107,6 +122,62 @@ public class SkillTool extends ToolCall {
             return ToolCallResult.failed("Failed to read skill '" + name + "': " + e.getMessage())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private void applyCapabilities(SkillMetadata skill, ExecutionContext context) {
+        if (context == null) return;
+        var manifest = SkillSdkCapabilityManifest.parse(skill.getAllowedTools(), skill.getMetadata());
+        if (!manifest.enabled()) return;
+        var registry = context.getToolRegistry();
+        if (registry == null) return;
+        var tools = registry.materialize(context).getDispatchMap().values();
+        var capabilities = new ArrayList<SkillCapability>(context.getSkillCapabilities());
+        for (var entry : manifest.entries()) {
+            var tool = match(entry, tools);
+            if (tool == null) continue;
+            var capability = capability(skill, entry, tool);
+            if (capabilities.stream().noneMatch(existing -> existing.refId().equals(capability.refId())
+                    && existing.tool().getName().equals(capability.tool().getName()))) {
+                capabilities.add(capability);
+            }
+        }
+        context.setSkillCapabilities(capabilities);
+        context.activateSkillCapabilityScope();
+    }
+
+    private ToolCall match(SkillSdkCapabilityManifest.Entry entry, java.util.Collection<ToolCall> tools) {
+        var parts = entry.parts();
+        if (SkillSdkCapabilityManifest.KIND_MCP.equals(entry.kind()) && parts.size() == 2) {
+            for (var tool : tools) {
+                if (!"mcp".equals(tool.getSourceType())) continue;
+                if (!(tool instanceof McpToolCall mcp)) continue;
+                if (!parts.get(0).equals(mcp.getServerLabel())) continue;
+                if (tool.getName().equals(parts.get(1)) || tool.getName().endsWith("_" + parts.get(1))) return tool;
+            }
+            return null;
+        }
+        if (SkillSdkCapabilityManifest.KIND_TOOL.equals(entry.kind()) && parts.size() == 1) {
+            var wanted = normalize(parts.getFirst());
+            for (var tool : tools) {
+                if (normalize(tool.getName()).equals(wanted)) return tool;
+            }
+        }
+        return null;
+    }
+
+    private String normalize(String value) {
+        return value.toLowerCase(Locale.ROOT).replace('_', '-');
+    }
+
+    private SkillCapability capability(SkillMetadata skill, SkillSdkCapabilityManifest.Entry entry, ToolCall tool) {
+        var parts = entry.parts();
+        if (SkillSdkCapabilityManifest.KIND_MCP.equals(entry.kind())) {
+            return new SkillCapability(skill.getQualifiedName(), skill.getQualifiedName(), "mcp",
+                    "mcp:" + parts.get(0) + ":" + parts.get(1),
+                    parts.get(0) + "/" + parts.get(1), parts.get(0), tool);
+        }
+        return new SkillCapability(skill.getQualifiedName(), skill.getQualifiedName(), "builtin",
+                tool.getName(), tool.getName(), tool.getNamespace(), tool);
     }
 
     private String readSkillContent(SkillMetadata skill) {
