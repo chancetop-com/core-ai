@@ -13,7 +13,8 @@ export type PluginCapability =
   | 'workspace.read'
   | 'usage.read'
   | 'plugin.storage'
-  | 'events.read';
+  | 'events.read'
+  | 'notification.send';
 export type PluginComponentKind = 'skills' | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';
 
 export interface PluginComponent {

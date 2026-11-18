@@ -79,6 +79,7 @@ page bridge exposes:
 - `usage.summary(range)` with `usage.read` (`all`, `7d`, `30d`; token/cost totals from transcripts)
 - `storage.get/set/delete/keys` with `plugin.storage` (string values, 64 KiB per value)
 - `events.subscribe(types)` and `events.on(callback)` with `events.read`
+- `notify.send(text)` with `notification.send` (configured target; 5/minute per page, 2000 chars)
 
 Events are allowlisted and redacted: `session.status`, `turn.completed`, `tool.started`,
 `tool.finished`, `turn.failed`, `plan.updated`, `task.updated`, `tool.batch_started`, `agent.wait`
@@ -101,6 +102,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `usage.read` | reads workspace token/cost totals from persisted transcripts |
 | `plugin.storage` | namespaced string storage persisted with the plugin install |
 | `events.read` | subscribes to an allowlist of redacted session events |
+| `notification.send` | sends a bounded text message to the configured notification target |
 | `media.models.read` | reads the configured image/video model catalog |
 | `media.generate` | starts image/video generation through the engine's media service |
 

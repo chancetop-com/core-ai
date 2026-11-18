@@ -33,12 +33,12 @@
           "properties": {
             "required": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
               "uniqueItems": true
             },
             "optional": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
               "uniqueItems": true
             }
           },

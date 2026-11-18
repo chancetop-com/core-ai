@@ -29,6 +29,7 @@ export const CAPABILITIES = Object.freeze([
   'usage.read',
   'plugin.storage',
   'events.read',
+  'notification.send',
 ]);
 export const COMPONENT_KINDS = Object.freeze(['skills', 'commands', 'hooks', 'agents', 'mcp', 'lsp']);
 

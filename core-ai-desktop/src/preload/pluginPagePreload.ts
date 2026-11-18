@@ -47,4 +47,7 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
       ipcRenderer.on('pluginPage:event', (_event, payload) => callback(payload));
     },
   },
+  notify: {
+    send: (text: string) => call('notify.send', { text }),
+  },
 });

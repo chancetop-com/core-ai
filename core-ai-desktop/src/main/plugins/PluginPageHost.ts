@@ -29,6 +29,7 @@ export interface PluginPageHostOptions {
   supervisor: () => EngineSupervisor | null;
   preloadPath: string;
   onLog?: (line: string) => void;
+  notify?: (text: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface OpenPluginPageOptions {
@@ -51,6 +52,7 @@ interface PageInstance {
   view: WebContentsView;
   closed: boolean;
   events: Set<string>;
+  notifyTimes: number[];
 }
 
 export class PluginPageError extends Error {
@@ -136,6 +138,7 @@ export class PluginPageHost {
       view,
       closed: false,
       events: new Set(),
+      notifyTimes: [],
     };
     this.instances.set(token, instance);
     this.wireWebContents(instance);
@@ -279,6 +282,9 @@ export class PluginPageHost {
       case 'events.subscribe':
         this.requireCapability(instance, 'events.read');
         return this.subscribeEvents(instance, args.types);
+      case 'notify.send':
+        this.requireCapability(instance, 'notification.send');
+        return this.sendNotification(instance, args.text);
       default:
         throw new PluginPageError('unknown_method', `unknown page method: ${method}`);
     }
@@ -374,8 +380,26 @@ export class PluginPageHost {
     return host;
   }
 
-  private subscribeEvents(instance: PageInstance, value: unknown): { types: string[] } {
-    if (value !== undefined && !Array.isArray(value)) throw new PluginPageError('invalid_request', 'types must be an array');
+  private async sendNotification(instance: PageInstance, value: unknown): Promise<{ ok: boolean; error?: string }> {
+    if (typeof value !== 'string' || !value.trim() || value.length > 2000) {
+      throw new PluginPageError('invalid_request', 'notification text must be 1-2000 characters');
+    }
+    const now = Date.now();
+    instance.notifyTimes = instance.notifyTimes.filter((time) => now - time < 60_000);
+    if (instance.notifyTimes.length >= 5) {
+      throw new PluginPageError('rate_limited', 'notification rate limit reached (5/minute)');
+    }
+    const notify = this.options.notify;
+    if (!notify) throw new PluginPageError('unavailable', 'notifications are not available');
+    instance.notifyTimes.push(now);
+    try {
+      return await notify(value);
+    } catch (error) {
+      return { ok: false, error: messageOf(error) };
+    }
+  }
+
+  private subscribeEvents(instance: PageInstance, value: unknown): { types: string[] } {    if (value !== undefined && !Array.isArray(value)) throw new PluginPageError('invalid_request', 'types must be an array');
     const types = Array.isArray(value)
       ? [...new Set(value.filter((item): item is string => typeof item === 'string'))]
       : [];

@@ -167,6 +167,9 @@ export interface CoreAiPluginBridge {
     subscribe(types: string[]): Promise<{ types: string[] }>;
     on(callback: (event: PluginEvent) => void): void;
   };
+  notify: {
+    send(text: string): Promise<{ ok: boolean; error?: string }>;
+  };
 }
 
 declare global {

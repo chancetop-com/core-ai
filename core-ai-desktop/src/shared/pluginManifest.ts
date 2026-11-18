@@ -31,6 +31,7 @@ export const SUPPORTED_CAPABILITIES = [
   'usage.read',
   'plugin.storage',
   'events.read',
+  'notification.send',
 ] as const;
 export type PluginCapability = (typeof SUPPORTED_CAPABILITIES)[number];
 

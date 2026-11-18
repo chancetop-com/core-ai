@@ -1774,6 +1774,11 @@ else {
       supervisor: () => supervisor,
       preloadPath: path.join(__dirname, 'pluginPagePreload.js'),
       onLog: (line) => console.log(`[plugins] ${line}`),
+      notify: async (text) => {
+        const target = settings.notifyTarget;
+        if (!target) return { ok: false, error: 'Notification target is not configured' };
+        return sendOcgNotification(target, text);
+      },
     });
     completionNotifier = new CompletionNotifier({
       isEnabled: (workspace, sessionId) => settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true,

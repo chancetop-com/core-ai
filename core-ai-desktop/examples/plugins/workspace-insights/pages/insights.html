@@ -73,6 +73,15 @@
   </div>
 
   <div class="card">
+    <h2>Notifications</h2>
+    <div class="row">
+      <span class="grow">Send a test message to the configured notification target.</span>
+      <button id="notify" class="ghost" type="button">Send test</button>
+    </div>
+    <div class="status" id="notify-status"></div>
+  </div>
+
+  <div class="card">
     <h2>Live events</h2>
     <ul id="events" class="events"></ul>
     <div id="events-empty" class="empty">Waiting for session events…</div>
@@ -195,6 +204,18 @@
   $('reset').onclick = async () => {
     counter = 0;
     await saveCounter();
+  };
+  $('notify').onclick = async () => {
+    $('notify-status').textContent = 'Sending…';
+    $('notify-status').className = 'status';
+    try {
+      const result = await bridge.notify.send('Workspace Insights test message');
+      $('notify-status').textContent = result.ok ? 'Notification sent.' : `Notification failed: ${result.error || 'unknown error'}`;
+      $('notify-status').className = `status${result.ok ? '' : ' error'}`;
+    } catch (error) {
+      $('notify-status').textContent = `Notification failed: ${error.message || error}`;
+      $('notify-status').className = 'status error';
+    }
   };
 
   (async () => {

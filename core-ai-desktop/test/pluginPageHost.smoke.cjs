@@ -35,11 +35,12 @@ async function main() {
     pluginId: 'test.page', pluginName: 'Test Page', pageId: 'main', title: 'Test Page',
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
-      'sessions.read', 'memory.read', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read'],
+      'sessions.read', 'memory.read', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'],
   };
   let granted = [...page.granted];
   const calls = [];
   const storage = new Map();
+  let notifications = 0;
   const supervisor = {
     ensureTrustState: async () => ({ state: 'trusted' }),
     call: async (_workspace, method) => {
@@ -73,6 +74,10 @@ async function main() {
     supervisor: () => supervisor,
     preloadPath: path.join(__dirname, '..', 'dist', 'pluginPagePreload.js'),
     onLog: (line) => console.log('[page]', line),
+    notify: async () => {
+      notifications += 1;
+      return { ok: true };
+    },
   });
   const { token } = await host.open({
     window, workspace, pluginId: 'test.page', pageId: 'main',
@@ -118,6 +123,16 @@ async function main() {
   assert.equal(summary.memoryFileCount, 1);
   const usage = await view.webContents.executeJavaScript('window.coreaiPlugin.usage.summary("all")');
   assert.equal(usage.totals.inputTokens, 10);
+  const sent = await view.webContents.executeJavaScript('window.coreaiPlugin.notify.send("hello")');
+  assert.equal(sent.ok, true);
+  assert.equal(notifications, 1);
+  for (let i = 0; i < 4; i++) {
+    await view.webContents.executeJavaScript('window.coreaiPlugin.notify.send("hello")');
+  }
+  await assert.rejects(
+    view.webContents.executeJavaScript('window.coreaiPlugin.notify.send("hello")'),
+    /rate limit/,
+  );
   await view.webContents.executeJavaScript('window.coreaiPlugin.storage.set("counter", "1")');
   const stored = await view.webContents.executeJavaScript('window.coreaiPlugin.storage.get("counter")');
   assert.equal(stored.value, '1');
