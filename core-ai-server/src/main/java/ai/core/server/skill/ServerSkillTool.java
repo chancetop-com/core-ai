@@ -138,7 +138,8 @@ public class ServerSkillTool extends ToolCall {
         if (error != null) LOGGER.debug("skill capability card not emitted: {}", error);
     }
 
-    private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {        var content = def.content != null ? def.content : "";
+    private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {
+        var content = def.content != null ? def.content : "";
         var sb = new StringBuilder(content.length() + 256);
         sb.append("<skill name=\"").append(meta.getQualifiedName()).append('"');
         if (baseDir != null) {
@@ -213,3 +214,4 @@ public class ServerSkillTool extends ToolCall {
         }
     }
 }
+

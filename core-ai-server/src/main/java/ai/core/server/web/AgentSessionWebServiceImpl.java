@@ -416,7 +416,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             return rpcClient.call(command, LoadSubAgentsResponse.class);
         }
     }
-
     @Override
     public void close(String sessionId) {
         var userId = AuthContext.userId(webContext);
@@ -425,7 +424,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         var command = SessionCommand.closeSession(sessionId, userId);
         commandPublisher.publish(command);
     }
-
     /**
      * Comparison sessions run a frozen tool set: loading extra tools/skills/sub-agents at runtime would
      * go around the confirmed whitelist, so the attach endpoints are refused for them.
@@ -436,12 +434,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
             throw new BadRequestException("comparison sessions do not support runtime tool or skill loading");
         }
     }
-
     private SessionState resolveSessionState(String sessionId) {
         Session httpSession = webContext.request().session();
         if (httpSession == null) return null;
-        var json = httpSession.get(SESSION_STATE_KEY + ":" + sessionId).orElse(null);
-        return SessionState.fromJson(json);
+        return SessionState.fromJson(httpSession.get(SESSION_STATE_KEY + ":" + sessionId).orElse(null));
     }
 
     /**
@@ -449,8 +445,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
      * to the RPC path which forwards the request to the owning Pod.
      */
     private boolean isLocalOwner(String sessionId) {
-        if (ownershipRegistry == null) return true;  // CLI / no-Redis mode
-        return ownershipRegistry.isOwner(sessionId);
+        return ownershipRegistry == null || ownershipRegistry.isOwner(sessionId);  // null = CLI / no-Redis mode
     }
-
 }

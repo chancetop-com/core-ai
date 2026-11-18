@@ -250,6 +250,7 @@ public class SandboxHubService {
      * Projects a script call into the session UI. Custom cards are the existing renderable
      * surface on Web and Desktop; the call is attributed by capability contribution, not by process.
      */
+    @SuppressWarnings("checkstyle:ParameterNumber")
     private void emitCall(SandboxHubSession session, InProcessAgentSession agentSession, Agent agent,
                           SandboxHubCatalog.Entry entry, String callId, String status, Long durationMs, String error) {
         try {
@@ -271,13 +272,15 @@ public class SandboxHubService {
                     "schema_version", 1,
                     "title", "Skill SDK · " + entry.path(),
                     "blocks", List.of(Map.of("type", "key_values", "items", items))));
+            Long reportedDuration = durationMs;
+            if (reportedDuration == null) reportedDuration = 0L;
             var data = JsonUtil.toJson(Map.of(
                     "call_id", callId,
                     "capability", entry.refId(),
                     "kind", entry.kind(),
                     "status", status,
                     "contributors", contributors,
-                    "duration_ms", durationMs == null ? 0L : durationMs));
+                    "duration_ms", reportedDuration));
             agentSession.dispatchEvent(CustomEvent.of(session.sessionId(), "skill_sdk_call", data, card, callId));
         } catch (RuntimeException e) {
             LOGGER.warn("failed to emit skill sdk call event, session={}, call={}", session.sessionId(), callId, e);

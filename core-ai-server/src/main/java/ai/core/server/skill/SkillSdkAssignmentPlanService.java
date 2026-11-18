@@ -80,8 +80,8 @@ public class SkillSdkAssignmentPlanService {
             var bytes = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             var hex = new StringBuilder(bytes.length * 2);
             for (var b : bytes) {
-                hex.append(Character.forDigit((b >> 4) & 0xF, 16));
-                hex.append(Character.forDigit(b & 0xF, 16));
+                hex.append(Character.forDigit((b >> 4) & 0xF, 16))
+                    .append(Character.forDigit(b & 0xF, 16));
             }
             return hex.toString();
         } catch (NoSuchAlgorithmException e) {
@@ -89,3 +89,4 @@ public class SkillSdkAssignmentPlanService {
         }
     }
 }
+
