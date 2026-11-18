@@ -165,7 +165,7 @@ public final class SkillSdkCapabilityManifest {
      */
     public String summary() {
         if (!enabled || (entries.isEmpty() && unsupported.isEmpty())) return "";
-        var sb = new StringBuilder("\n\nSDK capabilities (script-only; not available as model tools):\n");
+        var sb = new StringBuilder("\n\nSDK capabilities declared by this skill (script-only; not available as model tools):\n");
         for (var entry : entries) {
             sb.append("- ").append(entry.kind()).append(": ").append(entry.displayPath()).append('\n');
         }
