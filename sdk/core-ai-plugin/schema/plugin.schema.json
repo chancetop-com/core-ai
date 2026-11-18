@@ -33,12 +33,12 @@
           "properties": {
             "required": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
               "uniqueItems": true
             },
             "optional": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "engine.skills", "media.assets.read", "media.assets.write", "media.models.read", "media.generate", "sessions.read", "memory.read", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"] },
               "uniqueItems": true
             }
           },
@@ -73,6 +73,27 @@
                   "view": { "type": "string" },
                   "icon": { "type": "string", "maxLength": 16 },
                   "scope": { "enum": ["workspace", "app"] }
+                }
+              }
+            },
+            "slots": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "slot", "title", "action"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "slot": { "enum": ["sidebar.footer.action", "composer.dock"] },
+                  "title": { "type": "string" },
+                  "action": {
+                    "type": "object",
+                    "required": ["kind"],
+                    "properties": {
+                      "kind": { "enum": ["openPage", "insertText"] },
+                      "pageId": { "type": "string" },
+                      "text": { "type": "string" }
+                    }
+                  }
                 }
               }
             }

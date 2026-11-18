@@ -18,6 +18,7 @@ export const CAPABILITIES = Object.freeze([
   'ui.settings',
   'ui.composer',
   'ui.pages',
+  'ui.slots',
   'engine.skills',
   'media.assets.read',
   'media.assets.write',
@@ -100,13 +101,13 @@ export function validateManifest(input) {
   }
 
   const contributes = isObject(coreai.contributes) ? coreai.contributes : {};
-  for (const kind of ['dock', 'settings', 'composer', 'pages']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -122,6 +123,27 @@ export function validateManifest(input) {
           || typeof item.title !== 'string' || !item.title
           || !safePath(item.view)) {
           errors.push('each page needs id, title and a package-relative view path');
+        }
+      }
+    }
+    if (kind === 'slots') {
+      for (const item of contributes.slots) {
+        if (!isObject(item) || typeof item.slot !== 'string' || typeof item.action !== 'object') {
+          errors.push('each slot needs slot and action');
+          continue;
+        }
+        if (item.slot !== 'sidebar.footer.action' && item.slot !== 'composer.dock') {
+          errors.push(`unsupported slot: ${item.slot}`);
+        }
+        const action = item.action;
+        if (action.kind !== 'openPage' && action.kind !== 'insertText') {
+          errors.push('slot action must be openPage or insertText');
+        }
+        if (action.kind === 'openPage' && typeof action.pageId !== 'string') {
+          errors.push('openPage slot action needs pageId');
+        }
+        if (action.kind === 'insertText' && typeof action.text !== 'string') {
+          errors.push('insertText slot action needs text');
         }
       }
     }

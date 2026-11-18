@@ -99,10 +99,12 @@ test('a read-only insights page resolves with the general host capabilities', as
   const host = new PluginHost({ root: tempRoot() });
   await host.installFolder(insightsSample);
   await host.setEnabled('core-ai.workspace-insights', true);
-  const granted = ['ui.pages', 'sessions.read', 'memory.read', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'];
+  const granted = ['ui.pages', 'ui.slots', 'sessions.read', 'memory.read', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'];
   await host.grant('core-ai.workspace-insights', granted);
   const page = await host.resolvePage('core-ai.workspace-insights', 'insights');
   assert.ok(page);
   assert.equal(page.view, 'pages/insights.html');
   assert.deepEqual(page.granted.sort(), [...granted].sort());
+  const contributions = await host.contributions();
+  assert.equal(contributions[0].contributions.slots.length, 2);
 });

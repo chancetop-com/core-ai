@@ -441,11 +441,12 @@ export class PluginStore {
       const settings = install.granted.includes('ui.settings') ? resolved.descriptor.contributions.settings : [];
       const composer = install.granted.includes('ui.composer') ? resolved.descriptor.contributions.composer : [];
       const pages = install.granted.includes('ui.pages') ? resolved.descriptor.contributions.pages : [];
-      if (!dock.length && !settings.length && !composer.length && !pages.length) continue;
+      const slots = install.granted.includes('ui.slots') ? resolved.descriptor.contributions.slots : [];
+      if (!dock.length && !settings.length && !composer.length && !pages.length && !slots.length) continue;
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages },
+        contributions: { dock, settings, composer, pages, slots },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -694,7 +695,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [] },
       settings: { ...install.settings },
     };
   }

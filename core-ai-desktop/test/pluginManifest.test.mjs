@@ -30,8 +30,53 @@ test('a coreai manifest resolves to a descriptor with contributions', () => {
   assert.equal(isDescriptorCompatible(parsed.descriptor), true);
 });
 
-test('a plugin page needs ui.pages and a package-relative view', () => {
+test('slot actions need ui.slots and a supported action', () => {
   const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Slots',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.slots',
+      capabilities: { required: ['ui.slots'] },
+      contributes: {
+        slots: [
+          { id: 'open', slot: 'sidebar.footer.action', title: 'Open', action: { kind: 'openPage', pageId: 'main' } },
+          { id: 'insert', slot: 'composer.dock', title: 'Insert', action: { kind: 'insertText', text: 'hello' } },
+        ],
+      },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.slots.length, 2);
+  assert.equal(parsed.descriptor.contributions.slots[0].action.kind, 'openPage');
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Slots',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.slots',
+      contributes: { slots: [{ id: 'open', slot: 'sidebar.footer.action', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }] },
+    },
+  }));
+  assert.equal(missingCapability.ok, false);
+
+  const unsupported = parsePluginManifest(JSON.stringify({
+    name: 'Slots',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.slots',
+      capabilities: { required: ['ui.slots'] },
+      contributes: { slots: [{ id: 'open', slot: 'conversation.turn.tail', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }] },
+    },
+  }));
+  assert.equal(unsupported.ok, true);
+  assert.equal(unsupported.descriptor.contributions.slots.length, 0);
+  assert.ok(unsupported.descriptor.unsupported.some((item) => item.includes('ui.slots.slot')));
+});
+
+test('a plugin page needs ui.pages and a package-relative view', () => {  const parsed = parsePluginManifest(JSON.stringify({
     name: 'Media Studio',
     version: '0.1.0',
     coreai: {

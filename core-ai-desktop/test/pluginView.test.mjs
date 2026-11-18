@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import pluginView from '../dist/test/pluginView.js';
 
-const { dockTabs, composerActions, settingsSections, normalizePlugins, pluginNeedsConsent, isPluginDockKey, pluginSummary } = pluginView;
+const { dockTabs, composerActions, slotActions, settingsSections, normalizePlugins, pluginNeedsConsent, isPluginDockKey, pluginSummary } = pluginView;
 
 function plugin(overrides = {}) {
   return {
@@ -12,7 +12,7 @@ function plugin(overrides = {}) {
     digest: 'a'.repeat(64),
     scope: 'user',
     enabled: true,
-    granted: ['engine.skills', 'ui.dock', 'ui.settings', 'ui.composer'],
+    granted: ['engine.skills', 'ui.dock', 'ui.settings', 'ui.composer', 'ui.slots'],
     requiredCapabilities: ['engine.skills'],
     optionalCapabilities: [],
     status: 'active',
@@ -24,6 +24,7 @@ function plugin(overrides = {}) {
       dock: [{ id: 'panel', title: 'Panel', blocks: [{ type: 'text', text: 'hello' }] }],
       settings: [{ id: 'general', title: 'General', fields: [{ key: 'name', label: 'Name', type: 'text' }] }],
       composer: [{ id: 'insert', title: 'Insert', insertText: 'hello' }],
+      slots: [{ id: 'open', slot: 'sidebar.footer.action', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }],
     },
     settings: {},
     ...overrides,
@@ -37,6 +38,9 @@ test('dock tabs and composer actions require an active plugin with the matching 
 
   assert.equal(composerActions([plugin()]).length, 1);
   assert.equal(composerActions([plugin({ granted: ['ui.dock'] })]).length, 0);
+  assert.equal(slotActions([plugin()], 'sidebar.footer.action').length, 1);
+  assert.equal(slotActions([plugin()], 'composer.dock').length, 0);
+  assert.equal(slotActions([plugin({ granted: ['ui.dock'] })], 'sidebar.footer.action').length, 0);
   assert.equal(isPluginDockKey('plugin:example.demo:panel'), true);
   assert.equal(isPluginDockKey('browser'), false);
 });

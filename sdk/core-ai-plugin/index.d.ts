@@ -3,6 +3,7 @@ export type PluginCapability =
   | 'ui.settings'
   | 'ui.composer'
   | 'ui.pages'
+  | 'ui.slots'
   | 'engine.skills'
   | 'media.assets.read'
   | 'media.assets.write'
@@ -67,6 +68,19 @@ export interface PluginPageContribution {
   scope?: 'workspace' | 'app';
 }
 
+export type PluginSlotId = 'sidebar.footer.action' | 'composer.dock';
+
+export type PluginSlotAction =
+  | { kind: 'openPage'; pageId: string }
+  | { kind: 'insertText'; text: string };
+
+export interface PluginSlotContribution {
+  id: string;
+  slot: PluginSlotId;
+  title: string;
+  action: PluginSlotAction;
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -83,6 +97,7 @@ export interface PluginManifest {
       settings?: PluginSettingsContribution[];
       composer?: PluginComposerContribution[];
       pages?: PluginPageContribution[];
+      slots?: PluginSlotContribution[];
     };
   };
 }

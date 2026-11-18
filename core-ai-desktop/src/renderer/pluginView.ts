@@ -12,6 +12,8 @@ import {
   type PluginDockBlock,
   type PluginDockContribution,
   type PluginPageContribution,
+  type PluginSlotContribution,
+  type PluginSlotId,
   type PluginSettingsContribution,
   type PluginView,
 } from '../shared/pluginManifest';
@@ -28,6 +30,14 @@ export interface PluginComposerAction {
   pluginId: string;
   title: string;
   insertText: string;
+}
+
+export interface PluginSlotAction {
+  key: string;
+  pluginId: string;
+  slot: PluginSlotId;
+  title: string;
+  action: PluginSlotContribution['action'];
 }
 
 export interface PluginSettingsSection {
@@ -72,6 +82,24 @@ export function composerActions(plugins: PluginView[]): PluginComposerAction[] {
         pluginId: plugin.id,
         title: contribution.title,
         insertText: contribution.insertText,
+      });
+    }
+  }
+  return actions;
+}
+
+export function slotActions(plugins: PluginView[], slot: PluginSlotId): PluginSlotAction[] {
+  const actions: PluginSlotAction[] = [];
+  for (const plugin of plugins) {
+    if (plugin.status !== 'active' || !plugin.granted.includes('ui.slots')) continue;
+    for (const contribution of plugin.contributions?.slots ?? []) {
+      if (contribution.slot !== slot) continue;
+      actions.push({
+        key: `${plugin.id}:${contribution.id}`,
+        pluginId: plugin.id,
+        slot,
+        title: contribution.title,
+        action: contribution.action,
       });
     }
   }
@@ -166,7 +194,7 @@ function stringArray(value: unknown): string[] {
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {
-  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [] };
+  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [] };
   if (!value || typeof value !== 'object') return empty;
   const raw = value as Record<string, unknown>;
   return {
@@ -174,7 +202,21 @@ function normalizeContributions(value: unknown): PluginView['contributions'] {
     settings: Array.isArray(raw.settings) ? raw.settings.filter(isSettingsContribution) : [],
     composer: Array.isArray(raw.composer) ? raw.composer.filter(isComposerContribution) : [],
     pages: Array.isArray(raw.pages) ? raw.pages.filter(isPageContribution) : [],
+    slots: Array.isArray(raw.slots) ? raw.slots.filter(isSlotContribution) : [],
   };
+}
+
+function isSlotContribution(value: unknown): value is PluginSlotContribution {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.id !== 'string' || typeof entry.title !== 'string' || typeof entry.slot !== 'string') return false;
+  if (entry.slot !== 'sidebar.footer.action' && entry.slot !== 'composer.dock') return false;
+  const action = entry.action;
+  if (!action || typeof action !== 'object') return false;
+  const kind = (action as Record<string, unknown>).kind;
+  if (kind === 'openPage') return typeof (action as Record<string, unknown>).pageId === 'string';
+  if (kind === 'insertText') return typeof (action as Record<string, unknown>).text === 'string';
+  return false;
 }
 
 function isPageContribution(value: unknown): value is PluginPageContribution {

@@ -20,6 +20,7 @@ export const SUPPORTED_CAPABILITIES = [
   'ui.settings',
   'ui.composer',
   'ui.pages',
+  'ui.slots',
   'engine.skills',
   'media.assets.read',
   'media.assets.write',
@@ -41,6 +42,7 @@ const MAX_SETTINGS_FIELDS = 30;
 const MAX_DOCK_ITEMS = 40;
 const MAX_TEXT = 4000;
 const MAX_ID = 64;
+const SUPPORTED_SLOTS: PluginSlotId[] = ['sidebar.footer.action', 'composer.dock'];
 
 export interface PluginDockBlock {
   type: 'text' | 'key_values' | 'table' | 'divider';
@@ -87,11 +89,25 @@ export interface PluginPageContribution {
   scope: 'workspace' | 'app';
 }
 
+export type PluginSlotId = 'sidebar.footer.action' | 'composer.dock';
+
+export type PluginSlotAction =
+  | { kind: 'openPage'; pageId: string }
+  | { kind: 'insertText'; text: string };
+
+export interface PluginSlotContribution {
+  id: string;
+  slot: PluginSlotId;
+  title: string;
+  action: PluginSlotAction;
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
   composer: PluginComposerContribution[];
   pages: PluginPageContribution[];
+  slots: PluginSlotContribution[];
 }
 
 export interface PluginComponent {
@@ -354,6 +370,41 @@ function parsePages(value: unknown): PluginPageContribution[] {
   return contributions;
 }
 
+function parseSlots(value: unknown, unsupported: string[]): PluginSlotContribution[] {
+  if (!Array.isArray(value)) return [];
+  const contributions: PluginSlotContribution[] = [];
+  for (const raw of value.slice(0, MAX_CONTRIBUTIONS_PER_KIND)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const title = boundedText(entry.title, 120);
+    const slot = typeof entry.slot === 'string' && SUPPORTED_SLOTS.includes(entry.slot as PluginSlotId)
+      ? entry.slot as PluginSlotId
+      : null;
+    if (!id || !title || !slot) {
+      if (typeof entry.slot === 'string') unsupported.push(`ui.slots.slot:${entry.slot}`);
+      continue;
+    }
+    const action = parseSlotAction(entry.action);
+    if (action) contributions.push({ id, slot, title, action });
+  }
+  return contributions;
+}
+
+function parseSlotAction(value: unknown): PluginSlotAction | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const action = value as Record<string, unknown>;
+  if (action.kind === 'openPage') {
+    const pageId = contributionId(action.pageId);
+    return pageId ? { kind: 'openPage', pageId } : null;
+  }
+  if (action.kind === 'insertText') {
+    const text = boundedText(action.text, MAX_TEXT);
+    return text ? { kind: 'insertText', text } : null;
+  }
+  return null;
+}
+
 function stringList(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
@@ -404,7 +455,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
   let desktopApi = '*';
   let engineApi: string | undefined;
   const components: PluginComponent[] = [];
-  const contributions: PluginContributions = { dock: [], settings: [], composer: [], pages: [] };
+  const contributions: PluginContributions = { dock: [], settings: [], composer: [], pages: [], slots: [] };
   let required: string[] = [];
   let optional: string[] = [];
 
@@ -450,6 +501,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.settings = parseSettings(contributes.settings);
           contributions.composer = parseComposer(contributes.composer);
           contributions.pages = parsePages(contributes.pages);
+          contributions.slots = parseSlots(contributes.slots, unsupported);
         }
       }
 
@@ -491,8 +543,9 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages'): string => `ui.${kind}`;
-  for (const kind of ['dock', 'settings', 'composer', 'pages'] as const) {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots'): string =>
+    kind === 'slots' ? 'ui.slots' : `ui.${kind}`;
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

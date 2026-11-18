@@ -93,6 +93,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `ui.dock` | host-rendered read-only dock panel |
 | `ui.settings` | declarative settings fields stored in the plugin store |
 | `ui.composer` | insert-only composer action |
+| `ui.slots` | action-only host slots: `sidebar.footer.action` and `composer.dock` |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
 | `media.assets.write` | imports a reference image into the workspace media directory |

@@ -29,7 +29,7 @@ import {
   type OcgTargetView,
 } from './notifications';
 import { createRichCard, parseRichCard } from './richCard';
-import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections } from './pluginView';
+import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections, slotActions, type PluginSlotAction } from './pluginView';
 import type { PluginOperationResult, PluginView } from '../shared/pluginManifest';
 import type { RegistryListResult, RegistryPlugin } from '../shared/pluginRegistry';
 import type { WorkspaceTrustState } from '../shared/workspaceTrust';
@@ -1379,6 +1379,15 @@ function renderSidebarFooter(): void {
   workspace.title = state.workspace ?? (state.info?.defaultWorkspacePath ?? '');
   footer.append(workspace);
 
+  for (const action of slotActions(state.plugins, 'sidebar.footer.action')) {
+    const button = el('button', 'footer-plugin-action') as HTMLButtonElement;
+    button.type = 'button';
+    button.title = `${action.title} — ${action.pluginId}`;
+    button.append(icon('artifacts'), el('span', 'nav-text', action.title));
+    button.onclick = () => runPluginSlot(action);
+    footer.append(button);
+  }
+
   const auth = state.auth;
   const loggedIn = Boolean(auth?.loggedIn);
   const display = loggedIn ? (auth?.name ?? auth?.userId ?? '?') : '?';
@@ -2348,6 +2357,13 @@ function renderComposerControls(): void {
     button.type = 'button';
     button.title = `Insert “${action.title}” from ${action.pluginId}`;
     button.onclick = () => insertComposerText(action.insertText);
+    composerControlsEl.append(button);
+  }
+  for (const action of slotActions(state.plugins, 'composer.dock')) {
+    const button = el('button', 'composer-plugin-action', action.title) as HTMLButtonElement;
+    button.type = 'button';
+    button.title = `${action.title} — ${action.pluginId}`;
+    button.onclick = () => runPluginSlot(action);
     composerControlsEl.append(button);
   }
 
@@ -9467,6 +9483,21 @@ function dismissPluginPage(): void {
   state.pluginPage = null;
   disposePluginPageBounds();
   if (page?.token) void window.coreai.pluginPageClose(page.token);
+}
+
+function runPluginSlot(action: PluginSlotAction): void {
+  const slotAction = action.action;
+  if (slotAction.kind === 'insertText') {
+    insertComposerText(slotAction.text);
+    return;
+  }
+  const plugin = state.plugins.find((candidate) => candidate.id === action.pluginId);
+  const page = plugin?.contributions?.pages?.find((candidate) => candidate.id === slotAction.pageId);
+  if (!page) {
+    toast('Plugin page is not available');
+    return;
+  }
+  void openPluginPage(action.pluginId, page.id, page.title);
 }
 
 async function openPluginPage(pluginId: string, pageId: string, title: string): Promise<void> {
