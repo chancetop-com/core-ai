@@ -37,7 +37,7 @@ public class PgPluginRegistryStore implements PluginRegistryStore {
     @Override
     public List<PluginRegistryEntry> search(String queryText, int offset, int limit) {
         var params = new ArrayList<Object>();
-        var sql = new StringBuilder(SELECT).append(where(queryText, params))
+        var sql = new StringBuilder(SELECT.length() + 128).append(SELECT).append(where(queryText, params))
             .append(" ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?");
         params.add(Math.clamp(limit, 1, 100));
         params.add(Math.max(0, offset));

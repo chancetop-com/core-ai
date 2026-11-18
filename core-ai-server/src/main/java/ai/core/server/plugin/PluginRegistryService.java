@@ -90,7 +90,7 @@ public class PluginRegistryService {
         var downloadUrl = validateUrl(request.downloadUrl, "download_url");
         var homepage = request.homepage == null || request.homepage.isBlank()
             ? null : validateUrl(request.homepage, "homepage");
-        var sha256 = request.sha256 == null ? "" : request.sha256.trim().toLowerCase();
+        var sha256 = request.sha256 == null ? "" : request.sha256.trim().toLowerCase(java.util.Locale.ROOT);
         if (!DIGEST.matcher(sha256).matches()) {
             throw new BadRequestException("sha256 must be 64 hexadecimal characters");
         }
