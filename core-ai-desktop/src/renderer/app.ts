@@ -8,6 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
+import { addAssistantChips, addTranscriptToggle, createAssistToggle, fillPlanBlock, planBlockEl, planState, TOOL_USE_CHIPS, transcriptPre, type AssistToggle } from './chat/transcriptView';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import {
@@ -704,17 +705,6 @@ let artifactHeadEl: HTMLElement | null = null;
 let artifactBodyEl: HTMLElement | null = null;
 /** Artifacts produced by a tool call, keyed by callId, so the tool card can show a thumbnail. */
 const artifactByCallId = new Map<string, ArtifactEntry>();
-interface AssistToggle {
-  chip: HTMLButtonElement;
-  panel: HTMLElement;
-  body: HTMLElement;
-  setLabel(label: string): void;
-  setOpen(open: boolean): void;
-  /** Fires when the panel becomes visible; used to reset a sealed block to its first line. */
-  onOpen(listener: () => void): void;
-  /** True once the user clicked the chip or its collapse footer — auto-collapse must respect that. */
-  userToggled(): boolean;
-}
 
 interface MemoryRun {
   runId: string;
@@ -4597,24 +4587,19 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
     const wrapper = addMessageBubble(view, 'assistant', text.join('\n\n'), [], turn.startedAt);
     const bubble = wrapper.querySelector('.bubble') as HTMLElement | null;
     if (bubble) {
-      const chips = el('div', 'assist-chips');
-      const panels = el('div', 'assist-panels');
-      bubble.prepend(panels);
-      bubble.prepend(chips);
-      if (reasoning.length) {
-        const body = el('div');
-        for (const entry of reasoning) body.append(transcriptPre(entry, 'record-reasoning'));
-        addTranscriptToggle(chips, panels, 'Thinking', body);
-      }
-      if (toolItems.length) addTranscriptTools(view, chips, panels, toolItems);
-      const webTools = toolItems.filter((tool) => tool.useKind === 'web');
-      if (webTools.length) addTranscriptToolUse(chips, panels, 'web', webTools);
-      if (compressions.length) addTranscriptCompressions(chips, panels, compressions);
-      if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
-      if (taskItems.length) addTranscriptTasks(chips, panels, taskItems);
+      addAssistantChips(bubble, {
+        reasoning,
+        tools: toolItems,
+        onLoadFull: (row, seq, field, className) => addTranscriptFullButton(view, row, seq, field, className),
+        extra: (chips, panels) => {
+          if (compressions.length) addTranscriptCompressions(chips, panels, compressions);
+          if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
+          if (taskItems.length) addTranscriptTasks(chips, panels, taskItems);
+        },
+      });
     }
   }
-  if (turn.plan) view.transcript.append(transcriptPlan(turn.plan));
+  if (turn.plan) view.transcript.append(planBlockEl(turn.plan));
   for (const custom of customs) renderTranscriptCustom(view, custom);
   for (const notice of notices) renderTranscriptNotice(view, notice);
   const summary = summaryText(turn.summary);
@@ -4622,53 +4607,6 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   if (turn.partial !== 'none') {
     view.transcript.append(el('div', 'notice', 'Part of this turn was not loaded yet.'));
   }
-}
-
-function addTranscriptToggle(chips: HTMLElement, panels: HTMLElement, label: string, body: HTMLElement): void {
-  const toggle = createAssistToggle(label);
-  toggle.body.append(body);
-  chips.append(toggle.chip);
-  panels.append(toggle.panel);
-}
-
-function addTranscriptTools(view: SessionView, chips: HTMLElement, panels: HTMLElement,
-                            tools: ToolItem[]): void {
-  const body = el('div');
-  for (const tool of tools) {
-    const row = el('div', 'record-tool');
-    const head = el('div', 'record-tool-head');
-    head.append(el('span', 'record-tool-name', tool.name));
-    head.append(el('span', `record-tool-status ${tool.status}`, tool.status));
-    if (tool.approval) head.append(el('span', 'record-tool-approval', tool.approval));
-    row.append(head);
-    if (tool.arguments) row.append(transcriptPre(tool.arguments, 'record-tool-args'));
-    const result = tool.result ?? tool.resultPreview;
-    if (result) row.append(transcriptPre(result, 'record-tool-result'));
-    if (tool.resultRef && tool.resultSeq !== undefined) {
-      addTranscriptFullButton(view, row, tool.resultSeq, 'result', 'record-tool-result');
-    }
-    body.append(row);
-  }
-  addTranscriptToggle(chips, panels, `Tool use (${tools.length})`, body);
-}
-
-/** Same chip a live turn gets, rebuilt from records when the session is reopened. */
-function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, kind: ToolUseKind, tools: ToolItem[]): void {
-  const counts = new Map<string, number>();
-  for (const tool of tools) {
-    const label = toolUseLabel(kind, tool.name, tool.arguments);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  const body = el('div');
-  for (const [label, count] of counts) {
-    body.append(el('div', 'tool-use-row', count > 1 ? `${label} · ×${count}` : label));
-  }
-  const meta = TOOL_USE_CHIPS[kind];
-  const toggle = createAssistToggle(`${meta.label} (${counts.size})`);
-  toggle.chip.classList.add(meta.chipClass);
-  toggle.body.append(body);
-  chips.append(toggle.chip);
-  panels.append(toggle.panel);
 }
 
 function addTranscriptCompressions(chips: HTMLElement, panels: HTMLElement, compressions: CompressionItem[]): void {
@@ -4701,27 +4639,22 @@ function addTranscriptTasks(chips: HTMLElement, panels: HTMLElement, tasks: Task
   addTranscriptToggle(chips, panels, `Tasks (${tasks.length})`, body);
 }
 
-function transcriptPlan(todos: unknown[]): HTMLElement {
-  const block = el('div', 'plan-block');
-  const head = el('div', 'plan-head');
-  head.append(el('span', 'plan-title', 'plan'));
-  const items = todos.filter((todo): todo is Record<string, unknown> => todo !== null && typeof todo === 'object');
-  const done = items.filter((todo) => planState(String(todo.status)) === 'done').length;
-  head.append(el('span', 'plan-count', `${done}/${items.length}`));
-  block.append(head);
-  for (const todo of items) {
-    const state = planState(String(todo.status));
-    const item = el('div', `plan-item ${state}`);
-    item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(todo.content ?? todo.text ?? '')));
-    block.append(item);
-  }
-  return block;
-}
-
 function renderTranscriptNotice(view: SessionView, notice: NoticeItem): void {
   const text = notice.text ?? notice.textPreview;
   if (!text) return;
   view.transcript.append(el('div', `notice ${notice.level ?? ''}`, text));
+}
+
+function parseRecordJson(text: string | undefined): Record<string, unknown> {
+  if (!text) return {};
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 function renderTranscriptCustom(view: SessionView, item: CustomItem): void {
@@ -4770,26 +4703,9 @@ function transcriptAttachments(input: InputItem): PendingAttachment[] {
   });
 }
 
-function transcriptPre(text: string, className: string): HTMLElement {
-  const pre = el('pre', className);
-  pre.textContent = text;
-  return pre;
-}
-
-function parseRecordJson(text: string | undefined): Record<string, unknown> {
-  if (!text) return {};
-  try {
-    const parsed: unknown = JSON.parse(text);
-    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return {};
-  }
-}
-
 function addTranscriptFullButton(view: SessionView, parent: HTMLElement, seq: number,
                                  field: string, className: string): void {
+
   const button = el('button', 'record-load-full', 'Load full') as HTMLButtonElement;
   button.onclick = () => {
     button.disabled = true;
@@ -4948,17 +4864,6 @@ function appendNotice(text: string, kind = '', parent?: HTMLElement | null): voi
   (parent ?? activeSessionView()?.transcript)?.append(notice);
 }
 
-type PlanState = 'done' | 'active' | 'pending';
-
-const PLAN_MARKS: Record<PlanState, string> = { done: '✓', active: '▶', pending: '○' };
-
-function planState(status: unknown): PlanState {
-  const value = String(status ?? '').toLowerCase();
-  if (value === 'completed' || value === 'done') return 'done';
-  if (value === 'in_progress' || value === 'in-progress' || value === 'active') return 'active';
-  return 'pending';
-}
-
 /**
  * Sized and aligned like the assistant messages; the session owns one plan card — write_todos
  * re-emits the whole list on every update, so the same block is rewritten and kept at the newest
@@ -4975,18 +4880,7 @@ function renderPlanUpdate(view: SessionView, event: any): void {
     block = el('div', 'plan-block');
     view.planBlock = block;
   }
-  const head = el('div', 'plan-head');
-  head.append(el('span', 'plan-title', 'plan'));
-  const done = todos.filter((todo) => planState(todo?.status) === 'done').length;
-  head.append(el('span', 'plan-count', `${done}/${todos.length}`));
-  block.replaceChildren(head);
-  for (const todo of todos) {
-    const state = planState(todo?.status);
-    const item = el('div', `plan-item ${state}`);
-    const content = todo?.content ?? todo?.text ?? JSON.stringify(todo);
-    item.append(el('span', 'plan-mark', PLAN_MARKS[state]), el('span', 'plan-text', String(content)));
-    block.append(item);
-  }
+  fillPlanBlock(block, todos);
   // Appending an existing node moves it: the card tracks the newest activity instead of being
   // stranded at the position its first update created it in.
   if (view.transcript.lastElementChild !== block) view.transcript.append(block);
@@ -5148,43 +5042,6 @@ function ensureTurnStatusChip(current: StreamingState): void {
  * A chip toggle with its panel. The collapse footer stays at the end of the expanded content, so a
  * long panel (thinking, tool output) can be closed without scrolling back up to the chip.
  */
-function createAssistToggle(label: string): AssistToggle {
-  const chip = el('button', 'assist-chip') as HTMLButtonElement;
-  const group = el('div', 'assist-panel');
-  const body = el('div', 'assist-panel-body');
-  const collapse = el('button', 'assist-collapse', 'Collapse') as HTMLButtonElement;
-  let base = label;
-  let open = false;
-  let touched = false;
-  let openListener: (() => void) | null = null;
-  const render = () => {
-    group.hidden = !open;
-    chip.textContent = `${open ? '▾' : '▸'} ${base}`;
-    chip.classList.toggle('active', open);
-  };
-  const setOpen = (next: boolean) => {
-    const wasOpen = open;
-    open = next;
-    render();
-    if (!wasOpen && open) openListener?.();
-  };
-  chip.onclick = () => {
-    touched = true;
-    setOpen(!open);
-  };
-  collapse.onclick = () => {
-    touched = true;
-    setOpen(false);
-  };
-  group.append(body, collapse);
-  const setLabel = (next: string) => {
-    base = next;
-    render();
-  };
-  setLabel(label);
-  return { chip, panel: group, body, setLabel, setOpen, onOpen: (listener) => { openListener = listener; }, userToggled: () => touched };
-}
-
 function formatSeconds(ms: number): string {
   const seconds = ms / 1000;
   return seconds >= 10 ? `${Math.round(seconds)}s` : `${Math.round(seconds * 10) / 10}s`;
@@ -5261,15 +5118,6 @@ function appendToolStart(view: SessionView, event: any): void {
   view.toolMap.set(tool.callId, tool);
   scrollTranscript(view);
 }
-
-const TOOL_USE_CHIPS: Record<ToolUseKind, { label: string; chipClass: string }> = {
-  skill: { label: 'Skill use', chipClass: 'skills-chip' },
-  subagent: { label: 'Subagent', chipClass: 'subagent-chip' },
-  mcp: { label: 'MCP', chipClass: 'mcp-chip' },
-  api: { label: 'API tool', chipClass: 'api-chip' },
-  agent: { label: 'Agent', chipClass: 'agent-chip' },
-  web: { label: 'Web', chipClass: 'web-chip' },
-};
 
 /** One chip per tool origin next to thinking / tool use; expanding lists everything called this turn. */
 function recordToolUse(current: StreamingState, kind: ToolUseKind, text: string): void {
