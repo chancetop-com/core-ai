@@ -267,7 +267,7 @@ class ModelSettingsApi {
         var profile = type == null ? null : bootstrap.providerStore.profile(type).orElse(null);
         var internal = effort == null ? null : effort.name().toLowerCase(Locale.ROOT);
         validateEffort(profile, internal);
-        var wire = internal == null ? null : (profile == null ? internal : profile.wireEffort(internal));
+        var wire = internal == null ? null : profile == null ? internal : profile.wireEffort(internal);
         var error = AgentSessionRunnerHelper.persistReasoningEffortToExtraBody(prefix, wire);
         if (error != null) throw RpcException.business("CONFIG_WRITE_FAILED", error);
         var node = Params.object();

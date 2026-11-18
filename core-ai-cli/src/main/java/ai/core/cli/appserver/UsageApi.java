@@ -38,14 +38,10 @@ public final class UsageApi {
     }
 
     private static TranscriptReader.Usage usageOf(Path sessionsDir, String sessionId) {
-        TranscriptStore store = null;
-        try {
-            store = TranscriptStore.open(sessionsDir, sessionId);
+        try (var store = TranscriptStore.open(sessionsDir, sessionId)) {
             return new TranscriptReader(store).usage();
         } catch (RuntimeException e) {
             return null;
-        } finally {
-            if (store != null) store.close();
         }
     }
 

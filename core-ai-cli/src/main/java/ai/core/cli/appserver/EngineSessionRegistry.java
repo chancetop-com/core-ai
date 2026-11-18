@@ -355,21 +355,7 @@ public class EngineSessionRegistry {
                     "no LLM provider is configured; add a direct provider in Settings → Model providers "
                             + "(or sign in to core-ai-server) and retry");
         }
-        // Helpers are re-read per session, not from the bootstrap snapshot: on a live engine a
-        // helper change in helpers.json must apply to the next session (design-agent-helpers §4.1).
-        var helpers = HelperConfigStore.defaultStore().list();
-        var agentConfig = new CliAgent.Config(bootstrap.result.llmProviders, null, bootstrap.maxTurn,
-                bootstrap.sessionPersistence, bootstrap.workspace, NO_INTERACTIVE_USER,
-                bootstrap.memoryEnabled, bootstrap.dailyLogsEnabled, bootstrap.coding, bootstrap.todoV2Enabled,
-                sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
-                bootstrap.a2aAutoDiscover, bootstrap.mediaProvider,
-                CliAppHelper.sessionMediaProvider(bootstrap.imageMediaProvider, sessionId),
-                CliAppHelper.sessionMediaProvider(bootstrap.videoMediaProvider, sessionId),
-                bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
-                bootstrap.props.property("media.image.edit.model").orElse(null),
-                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers,
-                bootstrap.mediaModelCatalog, null, bootstrap.disabledTools, bootstrap.subagentModelResolver);
-        var agent = CliAgent.of(agentConfig);
+        var agent = CliAgent.of(agentConfig(sessionId));
         if (load && agent.hasPersistenceProvider()) {
             switch (SessionLoads.load(bootstrap.sessionPersistence, sessionId)) {
                 case SessionLoad.Ok ok -> agent.restore(sessionId, ok.domain());
@@ -411,6 +397,23 @@ public class EngineSessionRegistry {
         return new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
     }
 
+    private CliAgent.Config agentConfig(String sessionId) {
+        // Helpers are re-read per session, not from the bootstrap snapshot: on a live engine a
+        // helper change in helpers.json must apply to the next session (design-agent-helpers §4.1).
+        var helpers = HelperConfigStore.defaultStore().list();
+        return new CliAgent.Config(bootstrap.result.llmProviders, null, bootstrap.maxTurn,
+                bootstrap.sessionPersistence, bootstrap.workspace, NO_INTERACTIVE_USER,
+                bootstrap.memoryEnabled, bootstrap.dailyLogsEnabled, bootstrap.coding, bootstrap.todoV2Enabled,
+                sessionId, bootstrap.remoteAgents, bootstrap.remoteServers, bootstrap.subAgentConfigs,
+                bootstrap.a2aAutoDiscover, bootstrap.mediaProvider,
+                CliAppHelper.sessionMediaProvider(bootstrap.imageMediaProvider, sessionId),
+                CliAppHelper.sessionMediaProvider(bootstrap.videoMediaProvider, sessionId),
+                bootstrap.defaultImageModel, bootstrap.defaultVideoModel,
+                bootstrap.props.property("media.image.edit.model").orElse(null),
+                bootstrap.scheduledTaskStore, bootstrap.compressionConfig, clientType, helpers,
+                bootstrap.mediaModelCatalog, null, bootstrap.disabledTools, bootstrap.subagentModelResolver);
+    }
+
     private ToolPermissionStore permissionStore() {
         if (!"workspace-auto".equals(approvalPolicy)) {
             return bootstrap.permissionStore;
@@ -441,9 +444,7 @@ public class EngineSessionRegistry {
     private boolean sessionFileExists(String id) {
         return bootstrap.sessionPersistence.exists(id);
     }
-
     public boolean sessionExists(String id) {
         return bootstrap.sessionPersistence.exists(id);
     }
-
 }

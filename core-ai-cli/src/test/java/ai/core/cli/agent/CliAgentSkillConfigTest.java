@@ -1,5 +1,6 @@
 package ai.core.cli.agent;
 
+import ai.core.skill.SkillSource;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
@@ -16,7 +17,7 @@ class CliAgentSkillConfigTest {
 
     private Set<String> names(Path workspace, List<String[]> plugins) {
         return CliAgent.skillConfig(workspace, plugins).getSources().stream()
-                .map(source -> source.name())
+                .map(SkillSource::name)
                 .collect(Collectors.toSet());
     }
 

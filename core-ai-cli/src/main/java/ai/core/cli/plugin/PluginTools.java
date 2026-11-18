@@ -90,14 +90,15 @@ public final class PluginTools {
             if (!(workspace instanceof String path) || path.isBlank()) {
                 return ToolCallResult.failed(getName() + " requires a workspace");
             }
+            if (!"artifacts.list".equals(operation) && !"memory.list".equals(operation)) {
+                return ToolCallResult.failed(getName() + " failed: unsupported operation: " + operation);
+            }
             try {
                 var params = JsonUtil.OBJECT_MAPPER.createObjectNode();
                 params.put("limit", limit);
-                var result = switch (operation) {
-                    case "artifacts.list" -> LocalArtifacts.list(Path.of(path), params);
-                    case "memory.list" -> LocalMemory.list(Path.of(path), params);
-                    default -> throw new IllegalStateException("unsupported operation: " + operation);
-                };
+                var result = "artifacts.list".equals(operation)
+                        ? LocalArtifacts.list(Path.of(path), params)
+                        : LocalMemory.list(Path.of(path), params);
                 return ToolCallResult.completed(JsonUtil.toJson(result));
             } catch (RuntimeException e) {
                 return ToolCallResult.failed(getName() + " failed: " + e.getMessage(), e);

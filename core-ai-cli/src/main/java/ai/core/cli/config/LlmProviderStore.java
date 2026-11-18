@@ -139,7 +139,7 @@ public final class LlmProviderStore {
         var fresh = read(file);
         fresh.profiles.removeIf(profile -> profile.id.equalsIgnoreCase(id) || profile.type.equalsIgnoreCase(id));
         if (fresh.defaultConnection != null
-                && (fresh.defaultConnection.equalsIgnoreCase(id))) {
+                && fresh.defaultConnection.equalsIgnoreCase(id)) {
             fresh.defaultConnection = null;
         }
         write(fresh);

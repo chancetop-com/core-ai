@@ -1,7 +1,5 @@
 package ai.core.cli.appserver;
 
-import ai.core.agent.Agent;
-import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.SandboxConstants;
@@ -23,7 +21,6 @@ import java.net.InetSocketAddress;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -100,11 +97,15 @@ public final class LocalSdkBroker implements AutoCloseable {
             }
             route(exchange, route, engineSession);
         } catch (Exception e) {
-            try {
-                write(exchange, 500, error(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-            } catch (IOException ignored) {
-                // the client is already gone
-            }
+            writeFailure(exchange, e);
+        }
+    }
+
+    private void writeFailure(HttpExchange exchange, Exception e) {
+        try {
+            write(exchange, 500, error(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+        } catch (IOException ignored) {
+            // the client is already gone
         }
     }
 

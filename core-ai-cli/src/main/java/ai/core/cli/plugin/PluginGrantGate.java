@@ -107,19 +107,21 @@ public final class PluginGrantGate {
             }
             var installs = state.get("installs");
             if (!(installs instanceof List<?> list)) return false;
+            Map<?, ?> match = null;
             for (var item : list) {
                 if (!(item instanceof Map<?, ?> install)) continue;
                 if (!SCOPE.equals(String.valueOf(install.get("scope")))) continue;
                 if (!root.name().equals(String.valueOf(install.get("pluginId")))) continue;
                 if (install.get("enabled") != Boolean.TRUE) return false;
                 if (!root.digest().equals(String.valueOf(install.get("digest")))) return false;
-                var granted = stringList(install.get("granted"));
-                if (!granted.contains(ENGINE_SKILLS)) return false;
-                var capabilities = capabilitiesOf(state, root.digest());
-                if (capabilities == null) return false;
-                return granted.containsAll(capabilities.required());
+                match = install;
             }
-            return false;
+            if (match == null) return false;
+            var granted = stringList(match.get("granted"));
+            if (!granted.contains(ENGINE_SKILLS)) return false;
+            var capabilities = capabilitiesOf(state, root.digest());
+            if (capabilities == null) return false;
+            return granted.containsAll(capabilities.required());
         } catch (IOException | RuntimeException e) {
             LOGGER.warn("plugin grant check failed, pluginId={}, error={}", root.name(), e.getMessage());
             return false;

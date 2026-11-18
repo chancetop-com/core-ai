@@ -35,6 +35,18 @@ public class AppServerEngine implements EngineApi {
         return clientName == null ? "cli" : TRACE_CLIENT_TYPES.getOrDefault(clientName, "cli");
     }
 
+    private static LocalSdkBroker startSdkBroker(EngineSessionRegistry registry) {
+        try {
+            var broker = new LocalSdkBroker(registry::find);
+            registry.setSdkBroker(broker);
+            LOGGER.info("local SDK broker started on a loopback port");
+            return broker;
+        } catch (IOException e) {
+            LOGGER.warn("failed to start the local SDK broker; scripts fall back to the user-level CLI", e);
+            return null;
+        }
+    }
+
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
@@ -149,18 +161,6 @@ public class AppServerEngine implements EngineApi {
     public void shutdown() {
         if (sdkBroker != null) sdkBroker.close();
         AppServerShutdown.close(scheduler, registry, bootstrap);
-    }
-
-    private static LocalSdkBroker startSdkBroker(EngineSessionRegistry registry) {
-        try {
-            var broker = new LocalSdkBroker(registry::find);
-            registry.setSdkBroker(broker);
-            LOGGER.info("local SDK broker started on a loopback port");
-            return broker;
-        } catch (IOException e) {
-            LOGGER.warn("failed to start the local SDK broker; scripts fall back to the user-level CLI", e);
-            return null;
-        }
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> buildHandlers() {
