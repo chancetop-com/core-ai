@@ -46,8 +46,8 @@ class SkillSdkCapabilityResolverTest {
     void resolvesMcpAndApiButNotUnwiredLlmCall() {
         var registry = mock(ToolRegistryService.class);
         var permissions = mock(PermissionService.class);
-        when(permissions.has("user-1", PermissionCodes.MCP_CALL)).thenReturn(true);
-        when(permissions.has("user-1", PermissionCodes.APITOOL_CALL)).thenReturn(true);
+        when(permissions.has("user-1", PermissionCodes.MCP_CALL)).thenReturn(Boolean.TRUE);
+        when(permissions.has("user-1", PermissionCodes.APITOOL_CALL)).thenReturn(Boolean.TRUE);
         when(registry.resolveToolRefs(anyList(), eq("session-1"), eq("user-1")))
                 .thenReturn(List.of(tool("run_query")));
 
@@ -67,11 +67,11 @@ class SkillSdkCapabilityResolverTest {
     void apiWhitelistRejectsOnlyThatCapability() {
         var registry = mock(ToolRegistryService.class);
         var permissions = mock(PermissionService.class);
-        when(permissions.has("user-1", PermissionCodes.MCP_CALL)).thenReturn(true);
-        when(permissions.has("user-1", PermissionCodes.APITOOL_CALL)).thenReturn(true);
-        when(permissions.isApiUser("user-1")).thenReturn(true);
-        when(permissions.checkResource("user-1", PermissionService.RESOURCE_TYPE_API_APP, "crm")).thenReturn(false);
-        when(permissions.checkResource("user-1", PermissionService.RESOURCE_TYPE_MCP_SERVER, "analytics")).thenReturn(true);
+        when(permissions.has("user-1", PermissionCodes.MCP_CALL)).thenReturn(Boolean.TRUE);
+        when(permissions.has("user-1", PermissionCodes.APITOOL_CALL)).thenReturn(Boolean.TRUE);
+        when(permissions.isApiUser("user-1")).thenReturn(Boolean.TRUE);
+        when(permissions.checkResource("user-1", PermissionService.RESOURCE_TYPE_API_APP, "crm")).thenReturn(Boolean.FALSE);
+        when(permissions.checkResource("user-1", PermissionService.RESOURCE_TYPE_MCP_SERVER, "analytics")).thenReturn(Boolean.TRUE);
         when(registry.resolveToolRefs(anyList(), eq("session-1"), eq("user-1")))
                 .thenReturn(List.of(tool("run_query")));
 
