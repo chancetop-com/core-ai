@@ -95,6 +95,18 @@ export interface PluginSession {
   updatedAt: string;
 }
 
+export interface PluginSchedule {
+  id: string;
+  name?: string;
+  cronExpression?: string;
+  timezone?: string;
+  input?: string;
+  enabled?: boolean;
+  nextRunAt?: string;
+  sessionId?: string;
+  [key: string]: unknown;
+}
+
 export interface PluginMemoryFile {
   path: string;
   size: number;
@@ -146,6 +158,14 @@ export interface CoreAiPluginBridge {
   };
   sessions: {
     list(params?: { limit?: number; cursor?: number }): Promise<{ sessions: PluginSession[]; nextCursor?: string }>;
+    rename(sessionId: string, title: string): Promise<{ sessionId: string }>;
+  };
+  schedules: {
+    list(params?: { enabledOnly?: boolean }): Promise<{ tasks: PluginSchedule[] }>;
+    get(id: string): Promise<{ task: PluginSchedule; runs?: unknown[] }>;
+    update(params: Partial<PluginSchedule> & { id: string }): Promise<{ task: PluginSchedule }>;
+    delete(id: string): Promise<Record<string, unknown>>;
+    trigger(id: string): Promise<{ run: unknown }>;
   };
   memory: {
     list(params?: { limit?: number; cursor?: number }): Promise<{ files: PluginMemoryFile[]; nextCursor?: string }>;

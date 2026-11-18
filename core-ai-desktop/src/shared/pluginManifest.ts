@@ -27,6 +27,7 @@ export const SUPPORTED_CAPABILITIES = [
   'media.models.read',
   'media.generate',
   'sessions.read',
+  'sessions.write',
   'memory.read',
   'memory.write',
   'workspace.read',
@@ -34,6 +35,8 @@ export const SUPPORTED_CAPABILITIES = [
   'plugin.storage',
   'events.read',
   'notification.send',
+  'schedules.read',
+  'schedules.write',
 ] as const;
 export type PluginCapability = (typeof SUPPORTED_CAPABILITIES)[number];
 

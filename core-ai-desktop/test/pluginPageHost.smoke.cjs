@@ -35,7 +35,8 @@ async function main() {
     pluginId: 'test.page', pluginName: 'Test Page', pageId: 'main', title: 'Test Page',
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
-      'sessions.read', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send'],
+      'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
+      'schedules.read', 'schedules.write'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -50,6 +51,24 @@ async function main() {
       }
       if (method === 'session/list') {
         return { sessions: [{ sessionId: 's-1', title: 'One', state: 'ok', status: 'idle', updatedAt: '2026-11-18T00:00:00Z' }] };
+      }
+      if (method === 'session/rename') {
+        return { sessionId: 's-1' };
+      }
+      if (method === 'schedules/list') {
+        return { tasks: [{ id: 'task-1', name: 'Daily', enabled: true }] };
+      }
+      if (method === 'schedules/get') {
+        return { task: { id: 'task-1', name: 'Daily', enabled: true }, runs: [] };
+      }
+      if (method === 'schedules/update') {
+        return { task: { id: 'task-1', name: 'Daily', enabled: false } };
+      }
+      if (method === 'schedules/trigger') {
+        return { run: { id: 'run-1' } };
+      }
+      if (method === 'schedules/delete') {
+        return {};
       }
       if (method === 'memory/list') {
         return { files: [{ path: 'knowledge/a.md', size: 10, modifiedAt: '2026-11-18T00:00:00Z' }] };
@@ -118,6 +137,16 @@ async function main() {
 
   const sessions = await view.webContents.executeJavaScript('window.coreaiPlugin.sessions.list({ limit: 10 })');
   assert.equal(sessions.sessions[0].sessionId, 's-1');
+  const renamed = await view.webContents.executeJavaScript('window.coreaiPlugin.sessions.rename("s-1", "Renamed")');
+  assert.equal(renamed.sessionId, 's-1');
+  const schedules = await view.webContents.executeJavaScript('window.coreaiPlugin.schedules.list()');
+  assert.equal(schedules.tasks[0].id, 'task-1');
+  const schedule = await view.webContents.executeJavaScript('window.coreaiPlugin.schedules.get("task-1")');
+  assert.equal(schedule.task.enabled, true);
+  const updated = await view.webContents.executeJavaScript('window.coreaiPlugin.schedules.update({ id: "task-1", enabled: false })');
+  assert.equal(updated.task.enabled, false);
+  await view.webContents.executeJavaScript('window.coreaiPlugin.schedules.trigger("task-1")');
+  await view.webContents.executeJavaScript('window.coreaiPlugin.schedules.delete("task-1")');
   const memory = await view.webContents.executeJavaScript('window.coreaiPlugin.memory.list()');
   assert.equal(memory.files[0].path, 'knowledge/a.md');
   const written = await view.webContents.executeJavaScript(

@@ -10,13 +10,16 @@ export type PluginCapability =
   | 'media.models.read'
   | 'media.generate'
   | 'sessions.read'
+  | 'sessions.write'
   | 'memory.read'
   | 'memory.write'
   | 'workspace.read'
   | 'usage.read'
   | 'plugin.storage'
   | 'events.read'
-  | 'notification.send';
+  | 'notification.send'
+  | 'schedules.read'
+  | 'schedules.write';
 export type PluginComponentKind = 'skills' | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';
 
 export interface PluginComponent {

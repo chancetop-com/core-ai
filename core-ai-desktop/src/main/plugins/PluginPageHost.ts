@@ -253,6 +253,33 @@ export class PluginPageHost {
       case 'sessions.list':
         this.requireCapability(instance, 'sessions.read');
         return this.engine(instance, 'session/list', { limit: 50, cursor: typeof args.cursor === 'number' ? args.cursor : 0 });
+      case 'sessions.rename':
+        this.requireCapability(instance, 'sessions.write');
+        if (typeof args.sessionId !== 'string' || typeof args.title !== 'string' || !args.title.trim()) {
+          throw new PluginPageError('invalid_request', 'sessionId and title are required');
+        }
+        return this.trustedEngine(instance, 'session/rename', { sessionId: args.sessionId, title: args.title });
+      case 'schedules.list':
+        this.requireCapability(instance, 'schedules.read');
+        return this.engine(instance, 'schedules/list', {
+          scope: 'workspace',
+          enabledOnly: args.enabledOnly === true,
+        });
+      case 'schedules.get':
+        this.requireCapability(instance, 'schedules.read');
+        return this.engine(instance, 'schedules/get', {
+          id: await this.workspaceScheduleId(instance, args.id),
+          runsLimit: typeof args.runsLimit === 'number' ? args.runsLimit : 20,
+        });
+      case 'schedules.update':
+        this.requireCapability(instance, 'schedules.write');
+        return this.trustedEngine(instance, 'schedules/update', await this.scheduleUpdate(instance, args));
+      case 'schedules.delete':
+        this.requireCapability(instance, 'schedules.write');
+        return this.trustedEngine(instance, 'schedules/delete', { id: await this.workspaceScheduleId(instance, args.id) });
+      case 'schedules.trigger':
+        this.requireCapability(instance, 'schedules.write');
+        return this.trustedEngine(instance, 'schedules/trigger', { id: await this.workspaceScheduleId(instance, args.id) });
       case 'memory.list':
         this.requireCapability(instance, 'memory.read');
         return this.engine(instance, 'memory/list', { limit: 200, cursor: typeof args.cursor === 'number' ? args.cursor : 0 });
@@ -364,6 +391,27 @@ export class PluginPageHost {
         url: assetUrl(relative),
       },
     };
+  }
+
+  private async workspaceScheduleId(instance: PageInstance, value: unknown): Promise<string> {
+    if (typeof value !== 'string' || !value) throw new PluginPageError('invalid_request', 'schedule id is required');
+    const result = await this.engine(instance, 'schedules/list', { scope: 'workspace' }) as {
+      tasks?: Array<Record<string, unknown>>;
+    };
+    const tasks = Array.isArray(result?.tasks) ? result.tasks : [];
+    if (!tasks.some((task) => task.id === value)) {
+      throw new PluginPageError('not_found', `scheduled task is not owned by this workspace: ${value}`);
+    }
+    return value;
+  }
+
+  private async scheduleUpdate(instance: PageInstance, args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const params: Record<string, unknown> = { id: await this.workspaceScheduleId(instance, args.id) };
+    for (const field of ['name', 'cronExpression', 'timezone', 'input']) {
+      if (typeof args[field] === 'string') params[field] = args[field];
+    }
+    if (typeof args.enabled === 'boolean') params.enabled = args.enabled;
+    return params;
   }
 
   private async workspaceSummary(instance: PageInstance): Promise<Record<string, unknown>> {

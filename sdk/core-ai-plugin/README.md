@@ -74,6 +74,8 @@ A plugin page gets only `window.coreaiPlugin`. Besides `context`, `assets` and `
 page bridge exposes:
 
 - `sessions.list({ limit?, cursor? })` with `sessions.read`
+- `sessions.rename(sessionId, title)` with `sessions.write`
+- `schedules.list/get/update/delete/trigger` with `schedules.read` / `schedules.write`
 - `memory.list({ limit?, cursor? })` and `memory.read(path)` with `memory.read`
 - `workspace.summary()` with `workspace.read` (counts are `null` for capabilities not granted)
 - `usage.summary(range)` with `usage.read` (`all`, `7d`, `30d`; token/cost totals from transcripts)
@@ -98,6 +100,9 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
 | `media.assets.write` | imports a reference image into the workspace media directory |
 | `sessions.read` | lists session metadata for the current workspace |
+| `sessions.write` | renames a session in the current workspace |
+| `schedules.read` | lists and reads scheduled tasks owned by the workspace |
+| `schedules.write` | updates, deletes or triggers workspace scheduled tasks |
 | `memory.read` | lists and reads memory files in the workspace |
 | `memory.write` | appends/overwrites Markdown under `knowledge/` |
 | `workspace.read` | reads a small workspace summary |

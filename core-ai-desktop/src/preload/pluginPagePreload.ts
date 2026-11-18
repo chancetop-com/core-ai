@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   },
   sessions: {
     list: (params: Record<string, unknown> = {}) => call('sessions.list', params),
+    rename: (sessionId: string, title: string) => call('sessions.rename', { sessionId, title }),
+  },
+  schedules: {
+    list: (params: Record<string, unknown> = {}) => call('schedules.list', params),
+    get: (id: string) => call('schedules.get', { id }),
+    update: (params: Record<string, unknown>) => call('schedules.update', params),
+    delete: (id: string) => call('schedules.delete', { id }),
+    trigger: (id: string) => call('schedules.trigger', { id }),
   },
   memory: {
     list: (params: Record<string, unknown> = {}) => call('memory.list', params),
