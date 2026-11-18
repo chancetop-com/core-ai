@@ -948,6 +948,13 @@ export interface ListRunsResponse {
   total: number;
 }
 
+export interface SkillSdkCapability {
+    kind: string;
+    path: string;
+    raw: string;
+    supported: boolean;
+}
+
 export interface SkillDefinition {
     id: string;
     namespace: string;
@@ -956,6 +963,8 @@ export interface SkillDefinition {
     description: string;
     source_type: 'UPLOAD' | 'REPO';
     allowed_tools: string[];
+    sdk_capabilities?: SkillSdkCapability[];
+    sdk_capabilities_version?: string;
     metadata: Record<string, string>;
     version: string;
     user_id: string;

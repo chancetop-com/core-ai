@@ -498,6 +498,11 @@ function SkillsTab(props: ChatConfigModalProps) {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>{s.qualified_name}</div>
                     {s.description && <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-secondary)' }}>{s.description}</div>}
+                    {s.sdk_capabilities && s.sdk_capabilities.length > 0 && (
+                      <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+                        SDK: {s.sdk_capabilities.filter(c => c.supported).map(c => `${c.kind}:${c.path}`).join(' · ')}
+                      </div>
+                    )}
                   </div>
                 </button>
               );

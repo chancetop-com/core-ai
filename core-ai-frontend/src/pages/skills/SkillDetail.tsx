@@ -167,6 +167,30 @@ export default function SkillDetail() {
         </div>
       )}
 
+      {/* SDK capabilities */}
+      {skill.sdk_capabilities && skill.sdk_capabilities.length > 0 && (
+        <div className="mb-6 p-4 rounded-xl border"
+          style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
+          <h3 className="text-sm font-medium mb-2" style={{ color: 'var(--color-text-secondary)' }}>
+            SDK Capabilities
+            <span className="ml-2 text-xs font-normal" style={{ color: 'var(--color-text-muted)' }}>script-only, not model tools</span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            {skill.sdk_capabilities.map(cap => (
+              <span key={`${cap.kind}:${cap.path}`} className="px-2 py-1 rounded text-xs"
+                title={cap.supported ? undefined : 'Not granted in this deployment'}
+                style={{
+                  background: cap.supported ? 'var(--color-primary)' + '12' : 'var(--color-warning)' + '12',
+                  color: cap.supported ? 'var(--color-text)' : 'var(--color-warning)',
+                  textDecoration: cap.supported ? undefined : 'line-through',
+                }}>
+                {cap.kind}: {cap.path}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Metadata */}
       {skill.metadata && Object.keys(skill.metadata).length > 0 && (
         <div className="mb-6 p-4 rounded-xl border"

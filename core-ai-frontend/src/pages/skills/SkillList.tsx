@@ -413,6 +413,9 @@ export default function SkillList() {
                                 <div className="mt-1 ml-7 flex items-center gap-4 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                                     <span>Namespace: {s.namespace}</span>
                                     {s.allowed_tools?.length > 0 && <span>Tools: {s.allowed_tools.length}</span>}
+                                    {s.sdk_capabilities && s.sdk_capabilities.length > 0 && (
+                                        <span>SDK: {s.sdk_capabilities.filter(c => c.supported).length}</span>
+                                    )}
                                     {s.user_id && <span>By: {s.user_id}</span>}
                                 </div>
                                 {s.description && (

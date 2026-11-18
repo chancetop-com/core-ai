@@ -160,6 +160,25 @@ public final class SkillSdkCapabilityManifest {
     }
 
     /**
+     * Human-readable summary appended to the skill content. It is deliberately marked as script-only:
+     * the declarations are not model tools and must not be called by the model directly.
+     */
+    public String summary() {
+        if (!enabled || (entries.isEmpty() && unsupported.isEmpty())) return "";
+        var sb = new StringBuilder("\n\nSDK capabilities (script-only; not available as model tools):\n");
+        for (var entry : entries) {
+            sb.append("- ").append(entry.kind()).append(": ").append(entry.displayPath()).append('\n');
+        }
+        if (!unsupported.isEmpty()) {
+            sb.append("\nUnsupported declarations (not granted):\n");
+            for (var entry : unsupported) {
+                sb.append("- ").append(entry.raw()).append('\n');
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
      * Stable digest over the supported declarations, used to bind a preview to the set a user saw.
      */
     public String digest() {

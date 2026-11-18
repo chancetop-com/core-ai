@@ -5,6 +5,7 @@ import ai.core.sandbox.Sandbox;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
+import ai.core.skill.SkillSdkCapabilityManifest;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -126,6 +127,7 @@ public class ServerSkillTool extends ToolCall {
                 sb.append("- ").append(r.path).append('\n');
             }
         }
+        sb.append(SkillSdkCapabilityManifest.parse(def.allowedTools, def.metadata).summary());
         if (baseDir != null) {
             sb.append(SANDBOX_HUB_HINT);
         }

@@ -4,6 +4,7 @@ import ai.core.skill.FilesystemSkillProvider;
 import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
+import ai.core.skill.SkillSdkCapabilityManifest;
 import ai.core.skill.SkillSource;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
@@ -123,6 +124,7 @@ public class SkillTool extends ToolCall {
                 sb.append("- ").append(resource).append('\n');
             }
         }
+        sb.append(SkillSdkCapabilityManifest.parse(skill.getAllowedTools(), skill.getMetadata()).summary());
         sb.append("</skill>");
         return sb.toString();
     }

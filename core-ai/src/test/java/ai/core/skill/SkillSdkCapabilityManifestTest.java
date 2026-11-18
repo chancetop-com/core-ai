@@ -60,6 +60,20 @@ class SkillSdkCapabilityManifestTest {
     }
 
     @Test
+    void summaryMarksCapabilitiesAsScriptOnly() {
+        var manifest = SkillSdkCapabilityManifest.parse(
+                List.of("api-tool:crm/leads/list", "tool:read-file"),
+                Map.of(SkillSdkCapabilityManifest.CONTRACT_VERSION_KEY, "1"));
+
+        var summary = manifest.summary();
+
+        assertTrue(summary.contains("script-only"));
+        assertTrue(summary.contains("api-tool: crm/leads/list"));
+        assertTrue(summary.contains("Unsupported declarations"));
+        assertTrue(summary.contains("tool:read-file"));
+    }
+
+    @Test
     void rejectsUnknownAndMalformedEntries() {
         var manifest = SkillSdkCapabilityManifest.parse(
                 List.of("unknown:value", "mcp:", "api-tool:crm//list"),
