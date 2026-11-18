@@ -8,6 +8,7 @@ import ai.core.sandbox.SandboxConstants;
 import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
+import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.registry.ToolExposure;
 import ai.core.tool.tools.ToolActivationTool;
 import ai.core.utils.JsonUtil;
@@ -117,6 +118,12 @@ public final class LocalSdkBroker implements AutoCloseable {
             write(exchange, 200, catalog(session));
             return;
         }
+        if ("GET".equals(method) && "/datasets".equals(route)) {
+            var node = JsonUtil.OBJECT_MAPPER.createObjectNode();
+            node.putArray("datasets");
+            write(exchange, 200, node);
+            return;
+        }
         if ("GET".equals(method) && "/tools".equals(route)) {
             write(exchange, 200, tools(session, exchange.getRequestURI().getQuery()));
             return;
@@ -137,7 +144,7 @@ public final class LocalSdkBroker implements AutoCloseable {
             return;
         }
         if ("GET".equals(method) && route.startsWith("/tasks/")) {
-            write(exchange, 404, error("task not found"));
+            task(exchange, decode(route.substring("/tasks/".length())));
             return;
         }
         write(exchange, 404, error("not found"));
@@ -282,6 +289,26 @@ public final class LocalSdkBroker implements AutoCloseable {
         var response = result(result, callId);
         write(exchange, 200, response);
         emit(session, tool, response);
+    }
+
+    private void task(HttpExchange exchange, String taskId) throws IOException {
+        var executor = AsyncToolTaskExecutor.getInstance();
+        if (!executor.hasTask(taskId)) {
+            write(exchange, 404, error("task not found"));
+            return;
+        }
+        ToolCallResult result;
+        try {
+            result = executor.poll(taskId);
+        } catch (RuntimeException e) {
+            write(exchange, 404, error("task not found"));
+            return;
+        }
+        if (result == null) {
+            write(exchange, 404, error("task not found"));
+            return;
+        }
+        write(exchange, 200, result(result, taskId));
     }
 
     private ObjectNode result(ToolCallResult result, String callId) {

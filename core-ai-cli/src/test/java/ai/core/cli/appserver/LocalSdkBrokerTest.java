@@ -65,6 +65,13 @@ class LocalSdkBrokerTest {
             assertEquals(200, catalog.statusCode());
             assertTrue(catalog.body().contains("search"));
 
+            var datasets = client.send(HttpRequest.newBuilder(URI.create(base + "/datasets")).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, datasets.statusCode());
+            assertEquals("{\"datasets\":[]}", datasets.body());
+
+            var missingTask = client.send(HttpRequest.newBuilder(URI.create(base + "/tasks/ghost")).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, missingTask.statusCode());
+
             var call = client.send(HttpRequest.newBuilder(URI.create(base + "/tools/search/call"))
                             .header("Content-Type", "application/json")
                             .POST(HttpRequest.BodyPublishers.ofString("{\"arguments\":\"{}\",\"timeout_seconds\":10}"))

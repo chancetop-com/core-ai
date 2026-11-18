@@ -75,12 +75,15 @@ public final class AsyncToolTaskExecutor {
         return taskId;
     }
 
+    public boolean hasTask(String taskId) {
+        return tasks.containsKey(taskId);
+    }
+
     public ToolCallResult poll(String taskId) {
         var state = tasks.get(taskId);
         if (state == null) {
             return ToolCallResult.failed("Task not found: " + taskId);
-        }
-        var snapshot = state.completion.peek();
+        }        var snapshot = state.completion.peek();
         if (snapshot != null) return snapshot;
 
         var future = state.future;
