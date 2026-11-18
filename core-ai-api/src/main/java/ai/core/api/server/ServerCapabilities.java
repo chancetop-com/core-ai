@@ -16,6 +16,8 @@ public class ServerCapabilities {
     public Boolean prompts;
     @Property(name = "dashboard")
     public Boolean dashboard;
+    @Property(name = "plugins")
+    public Boolean plugins;
     @Property(name = "auth_required")
     public Boolean authRequired;
     @Property(name = "sandbox_terminal_enabled")

@@ -18,6 +18,7 @@ public class CapabilitiesWebServiceImpl implements CapabilitiesWebService {
         caps.traces = Boolean.TRUE;
         caps.prompts = Boolean.TRUE;
         caps.dashboard = Boolean.TRUE;
+        caps.plugins = Boolean.TRUE;
         caps.authRequired = authDisabled ? Boolean.FALSE : Boolean.TRUE;
         caps.sandboxTerminalEnabled = sandboxTerminalEnabled ? Boolean.TRUE : Boolean.FALSE;
         caps.sandboxTerminalGatewayUrl = sandboxTerminalGatewayUrl;

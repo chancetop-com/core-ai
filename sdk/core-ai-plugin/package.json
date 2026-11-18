@@ -1,0 +1,12 @@
+{
+  "name": "core-ai-plugin",
+  "version": "0.0.0",
+  "description": "Types, JSON schema and a local validator for core-ai desktop plugins",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "files": ["index.js", "index.d.ts", "schema", "README.md"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

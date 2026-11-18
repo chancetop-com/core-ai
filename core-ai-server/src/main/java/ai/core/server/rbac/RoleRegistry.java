@@ -53,6 +53,7 @@ public class RoleRegistry {
                     // adds audit + per-app whitelisting (api users). mcp.call stays admin-granted.
                     PermissionCodes.APITOOL_CALL,
                     PermissionCodes.SKILL_VIEW, PermissionCodes.SKILL_MANAGE,
+                    PermissionCodes.PLUGIN_VIEW,
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,
                     // projects are shared business containers: regular members can view and drive them
                     PermissionCodes.PROJECT_VIEW, PermissionCodes.PROJECT_MANAGE,

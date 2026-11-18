@@ -43,6 +43,10 @@ public final class PermissionCodes {
     public static final String APITOOL_CALL = "apitool.call";
     public static final String SKILL_VIEW = "skill.view";
     public static final String SKILL_MANAGE = "skill.manage";
+    // Desktop plugin registry: discovery is readable by signed-in users; publishing a package is
+    // admin-only until the enterprise allow-list / provenance story is in place.
+    public static final String PLUGIN_VIEW = "plugin.view";
+    public static final String PLUGIN_MANAGE = "plugin.manage";
     public static final String DATASET_VIEW = "dataset.view";
     public static final String DATASET_MANAGE = "dataset.manage";
     public static final String PROJECT_VIEW = "project.view";
@@ -80,6 +84,7 @@ public final class PermissionCodes {
             TOOL_VIEW, MCP_VIEW, MCP_MANAGE, MCP_CALL,
             APITOOL_VIEW, APITOOL_MANAGE, APITOOL_CALL,
             SKILL_VIEW, SKILL_MANAGE,
+            PLUGIN_VIEW, PLUGIN_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
             EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, AGENT_COMPARE, NOTIFICATION_VIEW,

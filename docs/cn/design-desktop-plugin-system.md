@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.4（信任边界与 per-call 撤销已实现；见 §14） |
+| 文档版本 | v0.5（新增 server 注册中心、Plugins 入口与 SDK；见 §14） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -273,7 +273,7 @@ Java Engine (one process per workspace)
 
 ### 4.6 最小管理 UX
 
-Settings → Plugins，避免再增加与 Skills/Hub 平级的多个安装入口：
+v0.5：一级导航 **Plugins** 承载本地包管理、Server registry 与 workspace trust 入口；Settings → Plugins 保留摘要和“Open Plugins page”跳转，避免用户只在设置里找功能。
 
 - 展示 source/scope/version/digest 摘要、可用构件、风险、授权与实际运行状态。
 - 支持目录/zip 导入、校验报告、安装、审阅授权、启停、升级比较、回滚、卸载；P1 不提供市场或 npm 安装。
@@ -281,6 +281,17 @@ Settings → Plugins，避免再增加与 Skills/Hub 平级的多个安装入口
 - 未同意、API 不兼容、依赖缺失、冲突、quarantined、等待安全点各有独立原因。
 - enable toggle 是请求，不得先显示已启用再后台忽略失败；撤销与普通 disable 使用明确不同文案。
 - 卸载默认保留配置/历史，删除私有数据是额外显式操作；不删除从该插件曾产出的用户交付物。
+
+### 4.7 Server 插件注册中心（v0.5 已实现）
+
+注册中心只做**发现 + 摘要固定**，不托管包字节：条目保存 manifest、`download_url`、`sha256`、size 与能力/构件摘要，包仍放在 GitHub Release/对象存储等 URL。
+
+- API：`GET /api/plugins`（query/offset/limit）、`GET /api/plugins/:id`、`POST /api/plugins`（管理）、`DELETE /api/plugins/:id`（管理）。
+- 权限：`plugin.view` 给默认 user；`plugin.manage` 仅 admin（发布可执行包在来源认证/签名落地前不放开）。
+- `POST` 请求只收 `manifest + download_url + sha256 + size + vendor/homepage`；id/name/version/required/optional/components 全部从 manifest 派生，避免 registry 与包不一致。
+- 校验：coreai schemaVersion=1、id 小写命名空间、能力白名单、sha256 64 hex、size ≤256MB、URL 必须 http(s)。
+- 存储：Mongo `plugins` collection 与 PG `app.plugins` 双实现，跟随 `sys.store.mode`；PG migration `V43__plugins.sql`。
+- Desktop：主进程用当前登录的 `auth.json` 调 registry；下载只发同源 Authorization，校验 sha256/size 后才交给 `PluginHost.installZip`；包仍 installed-disabled，需用户授权激活。
 
 
 ## 5. IPC、能力授权与可信根
@@ -553,6 +564,8 @@ P1 本地未签名包可在显式信任模式导入，标签必须诚实。check
 
 P1 文件包不需要 SDK；只提供 manifest schema、validator、pack 与结构化管理命令。P2 的专用 UI bridge 是薄类型封装，不提供 Node/fs/进程 API；P3 是否推出 SDK 取决于信任模式。
 
+v0.5 已在 `sdk/core-ai-plugin/` 提供**作者 SDK**（与 `sdk/core-ai-session` 同级）：manifest TypeScript 类型、`schema/plugin.schema.json`、`definePlugin` 与本地 `validateManifest`。它是编辑期辅助，不是运行时桥；desktop 仍是强制校验方。运行时 UI bridge/PluginHost SDK 仍属于后续阶段。
+
 拟议 `plugin validate|pack|inspect|dev` 命令输出与安装同意页使用同一个规范 descriptor，不维护另一份权限列表。`pack` 不执行用户 build 脚本；需要构建的包由开发者显式预构建，validator 检查最终快照。
 
 建议三个验收样例，P1/P2 随文档与测试一起落地：
@@ -703,6 +716,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.2 | 2026-11-17 | 按文档级AI Review补restricted bootstrap、持久epoch/锁/撤销、quiesce、独立WebContentsView、旧CLI限制；收窄P2a/P2b并补测试 | gemini-4-hydrogen第一轮Review；不代表用户批准 |
 | v0.3 | 2026-11-17 | 记录用户实施授权；状态改为 Approved / Implementing；§11 记录决策落地；§14 记录实现范围与偏差 | 用户 2026-11-17 授权实施（deepseek-v4-flash） |
 | v0.4 | 2026-11-17 | 补 workspace trust gate/restricted bootstrap、per-call skill 撤销、engine quiesce；更新 §11 D4/D5 与 §14 验证/缺口 | 用户要求优先补信任边界；AI 实现与本地验证 |
+| v0.5 | 2026-11-17 | 新增 server 插件注册中心（API/存储/权限/migration）、Desktop 一级 Plugins 入口与 registry 安装、`sdk/core-ai-plugin` 作者 SDK；更新 §4/§9/§14 | 用户要求补插件入口、server registry 与 SDK 放置 |
 
 ### 13.2 相关材料
 
@@ -718,7 +732,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 - 授权内容仅覆盖实现与本地验证；未授权发布、部署或修改其他会话范围内的功能。
 - AI 评审与实现报告不构成用户对未落地部分的批准。
 
-## 14. 实现状态（v0.4，2026-11-17）
+## 14. 实现状态（v0.5，2026-11-17）
 
 ### 14.1 本轮已落地
 
@@ -732,12 +746,15 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | Quiesce | `engine/quiesce` 暂停 intake + scheduler 领单并等待已接受 turn drain；超时恢复；`engine/resumeIntake`；desktop reload 先 quiesce，busy 则保持 pending | `core-ai-cli/.../appserver/EngineQuiesce.java`、`AppServerEngine`、`EngineScheduler`；`EngineSupervisor.ts`、`main.ts` |
 | Engine 接入 | 仅把 active + `engine.skills` granted 的 skills 目录通过 `CORE_AI_PLUGIN_SKILL_ROOTS` 注入；Java 再校验路径必须位于托管 store 内 | `PluginHost.ts`、`PluginSkillRoots.java`、`CliAgent.skillConfig` |
 | IPC | 独立 `plugins:*` / `workspace:*` handler，验证 main window 顶层 frame，返回 typed envelope；不向插件暴露 engine 全量 bridge | `main.ts`、`preload.ts` |
-| UI 扩展点 | Settings → Plugins、Settings → Workspace trust、受限 workspace banner；宿主声明式 Dock tab、Settings 字段、Composer 插入动作；插件不可注入脚本/DOM | `renderer/pluginView.ts`、`app.ts` |
+| UI 扩展点 | 一级导航 **Plugins**（本地包 + Server registry + trust 入口）、Settings → Plugins 摘要与跳转、受限 workspace banner；宿主声明式 Dock tab、Settings 字段、Composer 插入动作；插件不可注入脚本/DOM | `renderer/pluginView.ts`、`app.ts` |
+| Server registry | `GET/POST/DELETE /api/plugins`；manifest 派生 id/version/能力/构件；sha256/size/URL 校验；`plugin.view` 默认 user、`plugin.manage` admin；Mongo `plugins` + PG `app.plugins`（V43） | `core-ai-api/.../PluginRegistryWebService.java`、`core-ai-server/.../plugin/*`、`V43__plugins.sql`、`PermissionCodes` |
+| Registry client | 主进程用 active auth 调 registry；下载只对同源发 Authorization，边下边算 sha256，校验 size/digest 后才 `installZip`；临时文件清理 | `core-ai-desktop/src/main/plugins/registryClient.ts`、`main.ts`、`preload.ts` |
+| Author SDK | `sdk/core-ai-plugin`（与 `sdk/core-ai-session` 同级）：TS 类型、JSON Schema、`definePlugin`、本地 `validateManifest`；非运行时桥 | `sdk/core-ai-plugin/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
 | 示例 | `hello-plugin`：skill + dock + settings + composer | `core-ai-desktop/examples/plugins/hello-plugin/` |
 | 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1) + Electron CDP smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`core-ai-cli/src/test/.../plugin|workspace|agent`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
 
-验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；Electron smoke：Settings 中 `Hello Plugin` active、Dock `Hello`、composer `Insert greeting prompt`；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。
+验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
@@ -746,13 +763,14 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 3. **Quiesce 的 UI/channel 排队未实现。** engine 在 quiesce 期间对 `session/send`/`session/create` 返回 `ENGINE_QUIESCING`；desktop/channel 只在 turn 结束后重试 reload，没有把用户新输入排队并自动重发。scheduler 已暂停，已领取任务正常 drain。
 4. **scripted UI（`contributes.dock[].view`）未实现。** 只支持宿主渲染的声明式 dock/settings/composer；没有独立 WebContentsView、per-instance partition、artifact handle 协议（设计 §6.4）。
 5. **hooks/MCP/commands/agents/LSP adapter 未实现。** 包内这些构件在 descriptor 中标为 unsupported，并拒绝激活相应能力；CLI 既有插件目录行为未迁移到新 store。
-6. **签名/来源认证、企业策略、审计、GC、市场、npm/git 安装、旧 CLI grandfather 策略均未实现。** 本轮只有本地 folder/zip 与 user scope。
+6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
+8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
-2. 补 workspace scope 与 provider endpoint/TLS 独立确认。
-3. 再评估 scripted UI 的独立 WebContentsView；仍不建议开放任意 Node 插件宿主。
+2. 补 workspace scope、provider endpoint/TLS 独立确认，以及 registry 的签名/镜像/企业允许清单。
+3. 再评估 scripted UI 的独立 WebContentsView 与运行时 plugin SDK；仍不建议开放任意 Node 插件宿主。
 
 

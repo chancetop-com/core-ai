@@ -5,7 +5,7 @@ import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -52,7 +52,9 @@ import { EngineSupervisor } from './engine/EngineSupervisor';
 import { RpcCallError } from './engine/RpcClient';
 import { PluginHost } from './plugins/PluginHost';
 import { WorkspaceTrustStore } from './plugins/workspaceTrust';
+import { downloadRegistryPlugin, getRegistryPlugin, searchRegistryPlugins } from './plugins/registryClient';
 import type { PluginView } from '../shared/pluginManifest';
+import type { RegistryListResult } from '../shared/pluginRegistry';
 import { ScheduleWaker } from './schedule/ScheduleWaker';
 import { readEngineManifest, standaloneCliTargets, syncStandaloneClis } from './update/CliUpdate';
 import { installArgs, UpdateService } from './update/UpdateService';
@@ -1481,6 +1483,47 @@ function registerIpc(): void {
       return pluginFailure('invalid_request', 'invalid plugin setting value');
     }
     return pluginOperation(() => pluginHost!.setSetting(pluginId, key, value));
+  });
+  ipcMain.handle('plugins:registryList', async (event, query: string): Promise<RegistryListResult> => {
+    if (!isMainFrameSender(event)) return { ok: false, code: 'forbidden', message: 'registry access is only available from the app window' };
+    const entry = activeAuthEntry(loadAuthEntries());
+    if (!entry) return { ok: false, code: 'not_signed_in', message: 'sign in to use the server plugin registry' };
+    try {
+      const result = await searchRegistryPlugins(entry, typeof query === 'string' ? query : '');
+      return { ok: true, plugins: result.plugins, total: result.total };
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      return {
+        ok: false,
+        code: typeof code === 'string' ? code : 'registry_failed',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+  ipcMain.handle('plugins:registryInstall', async (event, pluginId: string) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin install is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
+    const entry = activeAuthEntry(loadAuthEntries());
+    if (!entry) return pluginFailure('not_signed_in', 'sign in to use the server plugin registry');
+    const downloadDir = path.join(app.getPath('temp'), 'core-ai-plugin-downloads');
+    let archive: string | null = null;
+    try {
+      const plugin = await getRegistryPlugin(entry, pluginId);
+      archive = await downloadRegistryPlugin(entry, plugin, downloadDir);
+      return await pluginOperation(() => pluginHost!.installZip(archive as string));
+    } catch (error) {
+      const code = (error as { code?: unknown }).code;
+      return pluginFailure(typeof code === 'string' ? code : 'registry_install_failed',
+        error instanceof Error ? error.message : String(error));
+    } finally {
+      if (archive) {
+        try {
+          rmSync(archive, { force: true });
+        } catch {
+          // best-effort cleanup
+        }
+      }
+    }
   });
 }
 

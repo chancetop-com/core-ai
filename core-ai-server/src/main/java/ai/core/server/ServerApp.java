@@ -52,6 +52,7 @@ import ai.core.server.domain.ProjectSubjectAttribution;
 import ai.core.server.domain.ProjectSubjectEvent;
 import ai.core.server.domain.ProjectTargetScan;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.PluginRegistryEntry;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.MediaJob;
 import ai.core.server.domain.SessionAttachmentRef;
@@ -68,6 +69,7 @@ import ai.core.server.hub.HubDatasetModule;
 import ai.core.server.mcphub.McpHubModule;
 import ai.core.server.sandboxhub.SandboxHubModule;
 import ai.core.server.skillhub.SkillHubModule;
+import ai.core.server.plugin.PluginRegistryModule;
 import ai.core.server.domain.User;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
@@ -241,6 +243,8 @@ public class ServerApp extends App {
         load(new QualityGateModule());
         // Skill Hub needs SkillService (catalog invalidator) — must follow SkillModule
         load(new SkillHubModule());
+        // Desktop plugin registry: metadata + digest pinning; no dependency on SkillModule.
+        load(new PluginRegistryModule());
         load(new GitHubModule());
         load(new AgentDefinitionModule());
         load(new DatasetModule());
@@ -408,6 +412,7 @@ public class ServerApp extends App {
         mongo.collection(GatewayProviderConfig.class);
         mongo.collection(MediaJob.class);
         mongo.collection(SkillDefinition.class);
+        mongo.collection(PluginRegistryEntry.class);
         mongo.collection(MarketplaceRepo.class);
         mongo.collection(SchemaVersion.class);
         mongo.collection(ai.core.server.runtime.RuntimeSample.class);
@@ -432,16 +437,3 @@ public class ServerApp extends App {
         mongo.view(ArtifactRef.class);
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -30,6 +30,7 @@ import {
 import { createRichCard, parseRichCard } from './richCard';
 import { composerActions, dockTabs, isPluginDockKey, normalizePlugins, pluginCapabilityLabel, pluginNeedsConsent, pluginSummary, settingsSections } from './pluginView';
 import type { PluginOperationResult, PluginView } from '../shared/pluginManifest';
+import type { RegistryListResult, RegistryPlugin } from '../shared/pluginRegistry';
 import type { WorkspaceTrustState } from '../shared/workspaceTrust';
 import {
   configureRemoteChat,
@@ -463,6 +464,8 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   pluginsRevoke(pluginId: string): Promise<PluginOperationResult>;
   pluginsRemove(pluginId: string): Promise<PluginOperationResult>;
   pluginsSetSetting(pluginId: string, key: string, value: string | number | boolean): Promise<PluginOperationResult>;
+  pluginsRegistryList(query: string): Promise<RegistryListResult>;
+  pluginsRegistryInstall(pluginId: string): Promise<PluginOperationResult>;
   onPluginsChanged(callback: () => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   info(): Promise<any>;
@@ -497,7 +500,7 @@ declare global {
   }
 }
 
-type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'schedules' | 'settings';
+type NavKey = 'sessions' | 'hub' | 'artifacts' | 'skills' | 'memory' | 'schedules' | 'plugins' | 'settings';
 
 interface SessionRow { sessionId: string; title?: string; updatedAt?: string; status?: string; state?: string; persistenceFailed?: boolean }
 interface UiTool {
@@ -533,6 +536,7 @@ const NAV: Array<{ key: NavKey; label: string; icon: keyof typeof ICONS }> = [
   { key: 'memory', label: 'Memory', icon: 'memory' },
   { key: 'schedules', label: 'Scheduled tasks', icon: 'refresh' },
   { key: 'hub', label: 'Hub', icon: 'hub' },
+  { key: 'plugins', label: 'Plugins', icon: 'skills' },
   { key: 'settings', label: 'Settings', icon: 'settings' },
 ];
 
@@ -579,6 +583,11 @@ const state: {
   notifyPending: boolean;
   plugins: PluginView[];
   workspaceTrust: WorkspaceTrustState | null;
+  registryPlugins: RegistryPlugin[];
+  registryTotal: number;
+  registryLoading: boolean;
+  registryError: string | null;
+  registryQuery: string;
 } = {
   info: null,
   approvalPolicy: 'ask',
@@ -620,6 +629,11 @@ const state: {
   notifyPending: false,
   plugins: [],
   workspaceTrust: null,
+  registryPlugins: [],
+  registryTotal: 0,
+  registryLoading: false,
+  registryError: null,
+  registryQuery: '',
 };
 
 let chatView: HTMLElement | null = null;
@@ -6069,6 +6083,7 @@ const PANEL_TITLES: Record<string, string> = {
   artifacts: 'Artifacts',
   skills: 'Skills',
   memory: 'Memory',
+  plugins: 'Plugins',
   settings: 'Settings',
 };
 
@@ -7520,8 +7535,33 @@ async function renderPluginsSection(): Promise<HTMLElement> {
   const active = state.plugins.filter((plugin) => plugin.status === 'active').length;
   const section = collapsibleSettingsSection('Plugins',
     state.plugins.length
-      ? `${active}/${state.plugins.length} active · local folder or .zip packages only`
-      : 'Install a local plugin folder or .zip. Packages start disabled and ask for capabilities before activation.');
+      ? `${active}/${state.plugins.length} active · open the Plugins page for the server registry`
+      : 'Install a local package or browse the server registry from the Plugins page.');
+  await renderPluginManagement(section.body);
+  const open = el('button', 'btn small', 'Open Plugins page') as HTMLButtonElement;
+  open.type = 'button';
+  open.onclick = () => {
+    state.nav = 'plugins';
+    renderSidebar();
+    void renderContent();
+  };
+  const actions = el('div', 'settings-actions');
+  actions.append(open);
+  section.body.append(actions);
+  return section.root;
+}
+
+async function renderPluginsPanel(): Promise<HTMLElement> {
+  const { root, body } = panel('Plugins',
+    'Local packages, server registry and workspace trust for this machine.');
+  await loadPlugins();
+  await renderPluginManagement(body);
+  body.append(await renderPluginRegistrySection());
+  return root;
+}
+
+/** Local package management shared by Settings → Plugins and the top-level Plugins page. */
+async function renderPluginManagement(body: HTMLElement): Promise<void> {
   const actions = el('div', 'settings-actions');
   const installFolder = el('button', 'btn small primary', 'Install folder…') as HTMLButtonElement;
   installFolder.type = 'button';
@@ -7552,19 +7592,116 @@ async function renderPluginsSection(): Promise<HTMLElement> {
     await renderContent();
   };
   actions.append(installFolder, installZip, refresh);
-  section.body.append(actions);
-  section.body.append(el('div', 'hint',
+  body.append(actions);
+  body.append(el('div', 'hint',
     'Only skills can be contributed to the local agent in this build. Hook, MCP, command and scripted UI components are reported as unsupported and are never executed.'));
 
   if (!state.plugins.length) {
-    section.body.append(el('div', 'hint', 'No plugins installed.'));
-    return section.root;
+    body.append(el('div', 'hint', 'No plugins installed.'));
+    return;
   }
 
   for (const plugin of state.plugins) {
-    section.body.append(pluginCard(plugin));
+    body.append(pluginCard(plugin));
   }
-  return section.root;
+}
+
+async function renderPluginRegistrySection(): Promise<HTMLElement> {
+  await loadRegistry(state.registryQuery);
+  const root = el('section', 'settings-section');
+  root.append(el('h2', undefined, 'Server registry'));
+  root.append(el('div', 'hint', 'Packages pinned by the signed-in server. The desktop verifies the digest before installing; packages still start disabled.'));
+  const search = el('div', 'settings-actions');
+  const query = el('input', 'settings-input') as HTMLInputElement;
+  query.type = 'search';
+  query.placeholder = 'Search plugins';
+  query.value = state.registryQuery;
+  query.onkeydown = (event) => {
+    if (event.key === 'Enter') void runRegistrySearch(query.value);
+  };
+  const searchButton = el('button', 'btn small primary', 'Search') as HTMLButtonElement;
+  searchButton.type = 'button';
+  searchButton.onclick = () => void runRegistrySearch(query.value);
+  const refresh = el('button', 'btn small', 'Refresh') as HTMLButtonElement;
+  refresh.type = 'button';
+  refresh.onclick = () => void runRegistrySearch(state.registryQuery);
+  search.append(query, searchButton, refresh);
+  root.append(search);
+
+  if (state.registryLoading) {
+    root.append(loadingLine('Loading the server registry…'));
+    return root;
+  }
+  if (state.registryError) {
+    root.append(el('div', 'hint plugin-unsupported', state.registryError));
+  }
+  if (!state.registryPlugins.length) {
+    if (!state.registryError) root.append(el('div', 'hint', 'No registry plugins found.'));
+    return root;
+  }
+  root.append(el('div', 'hint', `${state.registryPlugins.length} of ${state.registryTotal} registry plugins`));
+  for (const plugin of state.registryPlugins) {
+    root.append(registryPluginCard(plugin));
+  }
+  return root;
+}
+
+async function runRegistrySearch(query: string): Promise<void> {
+  state.registryQuery = query;
+  if (state.nav === 'plugins') await renderContent();
+}
+
+async function loadRegistry(query: string): Promise<void> {
+  state.registryLoading = true;
+  const result: RegistryListResult = await window.coreai.pluginsRegistryList(query).catch(() => ({
+    ok: false,
+    code: 'registry_failed',
+    message: 'registry is unavailable',
+  }));
+  state.registryLoading = false;
+  if (!result.ok) {
+    state.registryPlugins = [];
+    state.registryTotal = 0;
+    state.registryError = result.message ?? result.code;
+    return;
+  }
+  state.registryPlugins = result.plugins;
+  state.registryTotal = result.total;
+  state.registryError = null;
+}
+
+function registryPluginCard(plugin: RegistryPlugin): HTMLElement {
+  const card = el('div', 'plugin-card');
+  const head = el('div', 'plugin-card-head');
+  head.append(el('span', 'plugin-card-name', plugin.name));
+  head.append(el('span', 'plugin-card-version', `v${plugin.version}`));
+  if (plugin.vendor) head.append(el('span', 'plugin-card-status', plugin.vendor));
+  card.append(head);
+  card.append(el('div', 'plugin-card-id', `${plugin.id} · ${plugin.sha256.slice(0, 12)}`));
+  if (plugin.description) card.append(el('div', 'hint', plugin.description));
+  const caps = [...plugin.requiredCapabilities, ...plugin.optionalCapabilities];
+  if (caps.length) {
+    const row = el('div', 'plugin-capabilities');
+    for (const capability of caps) {
+      row.append(el('span', 'plugin-capability', pluginCapabilityLabel(capability)));
+    }
+    card.append(row);
+  }
+  const actions = el('div', 'settings-actions');
+  const install = el('button', 'btn small primary', 'Install from registry') as HTMLButtonElement;
+  install.type = 'button';
+  install.onclick = async () => {
+    install.disabled = true;
+    try {
+      const result = await window.coreai.pluginsRegistryInstall(plugin.id);
+      await afterPluginOperation(result, 'Plugin downloaded and installed — review its permissions');
+    } finally {
+      install.disabled = false;
+    }
+  };
+  actions.append(install);
+  card.append(actions);
+  return card;
 }
 
 function pluginCard(plugin: PluginView): HTMLElement {
@@ -7679,7 +7816,7 @@ async function afterPluginOperation(result: PluginOperationResult | null, messag
   }
   await loadPlugins();
   toast(message);
-  if (refreshContent && state.nav === 'settings') await renderContent();
+  if (refreshContent && (state.nav === 'settings' || state.nav === 'plugins')) await renderContent();
 }
 
 async function loadPlugins(): Promise<void> {
@@ -9466,6 +9603,11 @@ async function renderContent(): Promise<void> {
       if (token === contentRenderToken) mountContent(content, panel);
       return;
     }
+    if (state.nav === 'plugins') {
+      const panel = await renderPluginsPanel();
+      if (token === contentRenderToken) mountContent(content, panel);
+      return;
+    }
     // The other panels are engine-backed but not about one specific workspace (hub, skills,
     // memory, artifacts, scheduled tasks): stand up the default workspace on first use instead
     // of asking the user to pick a folder — connect() re-renders this same panel against it.
@@ -9492,6 +9634,8 @@ async function renderContent(): Promise<void> {
     pending = renderSkillsPanel();
   } else if (state.nav === 'memory') {
     pending = renderMemoryPanel();
+  } else if (state.nav === 'plugins') {
+    pending = renderPluginsPanel();
   } else {
     pending = renderSettingsPanel();
   }

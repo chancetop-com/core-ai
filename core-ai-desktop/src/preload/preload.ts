@@ -100,6 +100,8 @@ contextBridge.exposeInMainWorld('coreai', {
   pluginsRemove: (pluginId: string) => ipcRenderer.invoke('plugins:remove', pluginId),
   pluginsSetSetting: (pluginId: string, key: string, value: string | number | boolean) =>
     ipcRenderer.invoke('plugins:setSetting', pluginId, key, value),
+  pluginsRegistryList: (query: string) => ipcRenderer.invoke('plugins:registryList', query),
+  pluginsRegistryInstall: (pluginId: string) => ipcRenderer.invoke('plugins:registryInstall', pluginId),
   onPluginsChanged: (callback: () => void) => {
     const listener = () => callback();
     ipcRenderer.on('plugins:changed', listener);
