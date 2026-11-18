@@ -127,7 +127,7 @@ public class AgentSessionManager {
     private SessionSkillManager skillManager() {
         if (skillManager == null) {
             skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
-            skillManager.setCapabilityResolver(new SkillSdkCapabilityResolver(toolRegistryService, permissionService));
+            skillManager.setCapabilityResolver(new SkillSdkCapabilityResolver(toolRegistryService, permissionService, agentDefinitionStore));
         }
         return skillManager;
     }

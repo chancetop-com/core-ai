@@ -95,8 +95,18 @@ public final class SkillSdkCapabilityManifest {
             if (part.isBlank()) return null;
             parts.add(part.trim());
         }
-        var supported = SDK_KINDS.contains(kind) && !containsWildcard(parts);
+        var supported = SDK_KINDS.contains(kind) && !containsWildcard(parts) && exactArity(kind, parts);
         return new Entry(kind, List.copyOf(parts), raw, supported);
+    }
+
+    // V1 resolves exact references only; group selectors stay unsupported until expansion is implemented.
+    private static boolean exactArity(String kind, List<String> parts) {
+        return switch (kind) {
+            case KIND_MCP -> parts.size() == 2;
+            case KIND_API_TOOL -> parts.size() == 3;
+            case KIND_LLM_CALL -> parts.size() == 1;
+            default -> false;
+        };
     }
 
     private static boolean containsWildcard(List<String> parts) {

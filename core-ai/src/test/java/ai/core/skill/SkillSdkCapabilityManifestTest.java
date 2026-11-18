@@ -50,6 +50,16 @@ class SkillSdkCapabilityManifestTest {
     }
 
     @Test
+    void groupSelectorsAreUnsupportedUntilExpansionIsImplemented() {
+        var manifest = SkillSdkCapabilityManifest.parse(
+                List.of("mcp:analytics", "api-tool:crm", "api-tool:crm/leads"),
+                Map.of(SkillSdkCapabilityManifest.CONTRACT_VERSION_KEY, "1"));
+
+        assertEquals(List.of(), manifest.entries());
+        assertEquals(3, manifest.unsupported().size());
+    }
+
+    @Test
     void rejectsUnknownAndMalformedEntries() {
         var manifest = SkillSdkCapabilityManifest.parse(
                 List.of("unknown:value", "mcp:", "api-tool:crm//list"),
