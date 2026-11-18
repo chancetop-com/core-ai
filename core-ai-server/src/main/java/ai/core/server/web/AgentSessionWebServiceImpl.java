@@ -41,6 +41,7 @@ import ai.core.server.messaging.TurnStatusResolver;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.SessionState;
+import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.LoadedToolRefNames;
 import ai.core.server.tool.ToolRegistryService;
@@ -48,6 +49,7 @@ import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
+import core.framework.web.exception.ConflictException;
 import core.framework.log.ActionLogContext;
 import core.framework.web.Session;
 import core.framework.web.WebContext;
@@ -87,6 +89,8 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
     ToolRegistryService toolRegistryService;
     @Inject
     SkillService skillService;
+    @Inject
+    SkillSdkAssignmentPlanService sdkAssignmentPlanService;
     @Inject
     ChatMessageService chatMessageService;
     @Inject
@@ -338,6 +342,12 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         requireNotComparisonSession(sessionId);
 
         var cleanSkillIds = IdLists.clean(request.skillIds);
+        if (request.sdkPlanDigest != null && !request.sdkPlanDigest.isBlank()) {
+            var plan = sdkAssignmentPlanService.plan(cleanSkillIds);
+            if (!request.sdkPlanDigest.equals(plan.planDigest)) {
+                throw new ConflictException("skill capability plan changed; refresh and retry");
+            }
+        }
         if (isLocalOwner(sessionId)) {
             var names = sessionManager.loadSkills(sessionId, cleanSkillIds, userId);
             var loadedSkills = new ArrayList<IdName>(cleanSkillIds.size());
