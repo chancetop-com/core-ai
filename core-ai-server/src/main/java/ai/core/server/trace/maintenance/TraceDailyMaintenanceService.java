@@ -1,5 +1,6 @@
 package ai.core.server.trace.maintenance;
 
+import ai.core.server.analytics.AnalyticsMappingService;
 import ai.core.server.trace.AnalyticsStatsStore;
 import ai.core.server.trace.TraceDailyRollupRow;
 import ai.core.server.trace.TraceDailyStatsStore;
@@ -13,9 +14,7 @@ import org.slf4j.LoggerFactory;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * @author cyril
@@ -37,11 +36,9 @@ public class TraceDailyMaintenanceService {
     @Inject
     AnalyticsStatsStore analyticsStatsStore;
     @Inject
-    ai.core.server.gateway.GatewayModelStore gatewayModelStore;
-    @Inject
-    ai.core.server.gateway.GatewayProviderStore gatewayProviderStore;
-    @Inject
     TraceStore traceStore;
+    @Inject
+    AnalyticsMappingService mappingService;
 
     public int aggregateDailyStats(LocalDate date) {
         var dayStart = date.atStartOfDay(UTC);
@@ -56,37 +53,15 @@ public class TraceDailyMaintenanceService {
     // === Analytics daily stats ===
 
     private int aggregateAnalyticsDailyStats(ZonedDateTime dayStart, ZonedDateTime dayEnd, LocalDate date) {
-        var modelToProvider = loadModelToProviderMapping();
+        var modelToProvider = mappingService.loadModelToProviderMapping();
         if (modelToProvider.isEmpty()) {
             LOGGER.info("no gateway_model entries found, skipping analytics aggregation for {}", date);
             return 0;
         }
-        var providerIdToName = loadProviderIdToNameMapping();
+        var providerIdToName = mappingService.loadProviderIdToNameMapping();
 
         var rows = traceStore.analyticsRollup(dayStart, dayEnd, modelToProvider, providerIdToName);
         return upsertAnalyticsStats(rows, date);
-    }
-
-    private Map<String, String> loadProviderIdToNameMapping() {
-        var providers = gatewayProviderStore.listAll();
-        Map<String, String> mapping = new LinkedHashMap<>();
-        for (var provider : providers) {
-            if (provider.id != null && provider.name != null) {
-                mapping.put(provider.id, provider.name);
-            }
-        }
-        return mapping;
-    }
-
-    private Map<String, String> loadModelToProviderMapping() {
-        var models = gatewayModelStore.listAll();
-        Map<String, String> mapping = new LinkedHashMap<>();
-        for (var model : models) {
-            if (model.modelId != null && model.providerId != null) {
-                mapping.put(model.modelId, model.providerId);
-            }
-        }
-        return mapping;
     }
 
     private int upsertAnalyticsStats(List<TraceDailyRollupRow> rows, LocalDate date) {

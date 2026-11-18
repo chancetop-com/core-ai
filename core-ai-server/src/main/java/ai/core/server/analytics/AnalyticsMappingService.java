@@ -1,5 +1,6 @@
 package ai.core.server.analytics;
 
+import ai.core.server.domain.GatewayModelConfig;
 import core.framework.inject.Inject;
 import org.bson.Document;
 
@@ -43,15 +44,41 @@ public class AnalyticsMappingService {
     @Inject
     ai.core.server.user.UserStore userStore;
 
+    /**
+     * A model is callable both as its plain {@code modelId} and as {@code provider.modelPrefix + modelId};
+     * traces record the name the caller used, so both forms must resolve to the provider. An enabled
+     * registration wins over a disabled one when the same modelId is registered twice.
+     */
     public Map<String, String> loadModelToProviderMapping() {
+        var modelPrefixes = loadProviderModelPrefixes();
         var models = gatewayModelStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
+        Map<String, String> prefixedMapping = new LinkedHashMap<>();
+        var enabledModels = models.stream().filter(model -> !Boolean.FALSE.equals(model.enabled)).toList();
+        addModelMappings(mapping, prefixedMapping, enabledModels, modelPrefixes);
+        addModelMappings(mapping, prefixedMapping, models, modelPrefixes);
+        prefixedMapping.forEach(mapping::putIfAbsent);
+        return mapping;
+    }
+
+    private void addModelMappings(Map<String, String> mapping, Map<String, String> prefixedMapping,
+                                  List<GatewayModelConfig> models, Map<String, String> modelPrefixes) {
         for (var model : models) {
-            if (model.modelId != null && model.providerId != null) {
-                mapping.put(model.modelId, model.providerId);
+            if (model.modelId == null || model.providerId == null) continue;
+            mapping.putIfAbsent(model.modelId, model.providerId);
+            var prefix = modelPrefixes.get(model.providerId);
+            if (prefix != null) prefixedMapping.putIfAbsent(prefix + model.modelId, model.providerId);
+        }
+    }
+
+    private Map<String, String> loadProviderModelPrefixes() {
+        Map<String, String> prefixes = new LinkedHashMap<>();
+        for (var provider : gatewayProviderStore.listAll()) {
+            if (provider.id != null && provider.modelPrefix != null && !provider.modelPrefix.isBlank()) {
+                prefixes.put(provider.id, provider.modelPrefix);
             }
         }
-        return mapping;
+        return prefixes;
     }
 
     public Map<String, String> loadProviderIdToNameMapping() {
