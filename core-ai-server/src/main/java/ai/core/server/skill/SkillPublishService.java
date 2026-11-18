@@ -120,12 +120,12 @@ public class SkillPublishService {
     private void write(SkillDefinition entity, SkillDefinition existing, int expected) {
         if (existing == null) {
             if (!skillStore.insertIfAbsent(entity)) {
-                throw SkillQualityGateException.stale("同名 skill 已被其他请求创建，请刷新后重试。");
+                throw SkillQualityGateException.stale("A skill with this name was created by another request; refresh and retry.");
             }
             return;
         }
         if (!skillStore.replaceIfRevision(entity, expected)) {
-            throw SkillQualityGateException.stale("Skill 在检查后被其他请求修改，请刷新后重试。");
+            throw SkillQualityGateException.stale("The skill changed after the quality check; refresh and retry.");
         }
     }
 
@@ -156,3 +156,4 @@ public class SkillPublishService {
             .filter(value -> !value.isEmpty()).sorted().toList();
     }
 }
+

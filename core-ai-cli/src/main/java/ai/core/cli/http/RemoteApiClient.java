@@ -15,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -344,11 +345,50 @@ public class RemoteApiClient {
             @SuppressWarnings("unchecked")
             Map<String, Object> error = JsonUtil.fromJson(Map.class, body);
             String message = topLevelMessage(error);
+            String details = qualityDetails(error);
+            if (message != null && details != null) return message + "\n" + details;
             if (message != null) return message;
+            if (details != null) return details;
         } catch (RuntimeException ignored) {
             // failed to parse error body as JSON, fall through to generic message
         }
         return genericMessage(statusCode);
+    }
+
+    @SuppressWarnings("unchecked")
+    private String qualityDetails(Map<String, Object> error) {
+        var report = error.get("quality_report");
+        if (!(report instanceof Map<?, ?> reportMap)) return null;
+        var issues = reportMap.get("issues");
+        if (!(issues instanceof List<?> issueList) || issueList.isEmpty()) return null;
+        var lines = new StringBuilder(256);
+        for (var item : issueList) {
+            if (!(item instanceof Map<?, ?> issue)) continue;
+            lines.append("- [")
+                .append(string(issue.get("status")))
+                .append('/')
+                .append(string(issue.get("enforcement")))
+                .append("] ")
+                .append(string(issue.get("rule_id")))
+                .append(": ")
+                .append(string(issue.get("message")));
+            var fieldPath = string(issue.get("field_path"));
+            if (fieldPath != null && !fieldPath.isBlank()) lines.append(" (").append(fieldPath).append(')');
+            var suggestion = string(issue.get("suggestion"));
+            if (suggestion != null && !suggestion.isBlank()) {
+                lines.append("\n  Suggestion: ").append(suggestion);
+            }
+            var probability = issue.get("affirmative_probability");
+            if (probability instanceof Number number) {
+                lines.append("\n  Affirmative probability: ").append(number);
+            }
+            lines.append('\n');
+        }
+        return lines.toString().stripTrailing();
+    }
+
+    private String string(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     @SuppressWarnings("unchecked")

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sparkles, ChevronLeft, ChevronRight, Search, RefreshCw, FileUp, X, Package, Download, Loader2, Store, Trash2, Plus } from 'lucide-react';
-import { api } from '../../api/client';
+import { api, ApiRequestError } from '../../api/client';
 import type { SkillDefinition, MarketplaceRepoView } from '../../api/client';
+import type { QualityReport } from '../../api/quality';
+import QualityReportPanel from '../agents/QualityReportPanel';
 import { useListState } from '../../hooks/useListState';
 
 const DEFAULT_SEARCH_IN = 'name_description';
@@ -38,6 +40,7 @@ export default function SkillList() {
     const [sourceFilter, setSourceFilter] = useListState('skills.sourceFilter', '');
     const [ownerFilter, setOwnerFilter] = useListState('skills.ownerFilter', '');
     const [uploading, setUploading] = useState(false);
+    const [uploadReport, setUploadReport] = useState<QualityReport | null>(null);
     const uploadRef = useRef<HTMLInputElement>(null);
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const reqIdRef = useRef(0);
@@ -245,11 +248,16 @@ export default function SkillList() {
         }
 
         setUploading(true);
+        setUploadReport(null);
         try {
             const created = await api.skills.upload(skillFile, resourceFiles.length > 0 ? resourceFiles : undefined, skillDir);
             if (created?.id) navigate(`/skills/${created.id}/edit`);
         } catch (err) {
-            alert('Upload failed: ' + (err instanceof Error ? err.message : 'unknown error'));
+            if (err instanceof ApiRequestError && err.qualityReport) {
+                setUploadReport(err.qualityReport);
+            } else {
+                alert('Upload failed: ' + (err instanceof Error ? err.message : 'unknown error'));
+            }
         } finally {
             setUploading(false);
             e.target.value = '';
@@ -258,6 +266,9 @@ export default function SkillList() {
 
     return (
         <div className="p-6">
+            {uploadReport && (
+                <QualityReportPanel report={uploadReport} onClose={() => setUploadReport(null)} />
+            )}
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
                 <div>

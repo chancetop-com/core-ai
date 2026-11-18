@@ -15,6 +15,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -52,6 +53,12 @@ class SkillPublishServiceTest {
                 content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8)))));
 
         assertEquals(SkillQualityGateException.REJECTED, error.errorCode());
+        var extra = error.extraJson();
+        assertNotNull(extra);
+        assertTrue(extra.contains("\"quality_report\":"));
+        assertTrue(extra.contains("\"gate_result\":\"REJECTED\""));
+        assertTrue(extra.contains("\"rule_id\":\"SKILL.EVAL_DATASET\""));
+        assertTrue(extra.contains("\"message\":"));
         verify(store, never()).insertIfAbsent(any());
         verify(blobStore, never()).put(any(), any(), any());
     }

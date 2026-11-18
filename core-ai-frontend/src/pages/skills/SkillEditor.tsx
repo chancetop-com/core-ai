@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download } from 'lucide-react';
-import { api } from '../../api/client';
+import { api, ApiRequestError } from '../../api/client';
+import type { QualityReport } from '../../api/quality';
 import JSZip from 'jszip';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
+import QualityReportPanel from '../agents/QualityReportPanel';
 import { parseFrontmatter, buildSkillMdContent, type FrontmatterKey } from './skillFrontmatter';
 
 interface SkillFile {
@@ -59,6 +61,7 @@ export default function SkillEditor() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [saveReport, setSaveReport] = useState<QualityReport | null>(null);
 
   const [name, setName] = useState('');
   const [namespace, setNamespace] = useState('');
@@ -138,6 +141,7 @@ export default function SkillEditor() {
     if (!id) return;
     setSaving(true);
     setSaveError('');
+    setSaveReport(null);
     try {
       const fullContent = buildSkillMdContent(parsedRef.current?.keys ?? [], { name, description, allowedTools, version }, skillBody);
 
@@ -169,7 +173,11 @@ export default function SkillEditor() {
       }
       originalTextsRef.current = saved;
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Save failed');
+      if (e instanceof ApiRequestError && e.qualityReport) {
+        setSaveReport(e.qualityReport);
+      } else {
+        setSaveError(e instanceof Error ? e.message : 'Save failed');
+      }
     } finally {
       setSaving(false);
     }
@@ -314,6 +322,10 @@ export default function SkillEditor() {
           </button>
         </div>
       </div>
+
+      {saveReport && (
+        <QualityReportPanel report={saveReport} onClose={() => setSaveReport(null)} />
+      )}
 
       {saveError && (
         <div className="mb-3 p-3 rounded-lg text-sm" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--color-error)' }}>

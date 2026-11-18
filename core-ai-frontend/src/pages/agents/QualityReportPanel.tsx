@@ -17,24 +17,25 @@ function statusIcon(status: QualityIssue['status']) {
 }
 
 function statusLabel(status: string) {
-  if (status === 'FAIL') return '未通过';
-  if (status === 'ERROR') return '检查未完成';
-  if (status === 'INDETERMINATE') return '无法可靠判断';
-  if (status === 'SKIPPED') return '不适用';
-  return '通过';
+  if (status === 'FAIL') return 'Failed';
+  if (status === 'ERROR') return 'Check incomplete';
+  if (status === 'INDETERMINATE') return 'Indeterminate';
+  if (status === 'SKIPPED') return 'Not applicable';
+  return 'Passed';
 }
 
 function groupLabel(issue: QualityIssue) {
-  if (issue.rule_id.startsWith('CFG.')) return '配置';
-  if (issue.rule_id.startsWith('PROMPT.')) return '提示词';
-  if (issue.rule_id.startsWith('DESC.')) return '描述';
-  return '自定义规则';
+  if (issue.category) return issue.category;
+  if (issue.rule_id.startsWith('CFG.')) return 'CONFIG';
+  if (issue.rule_id.startsWith('PROMPT.')) return 'PROMPT';
+  if (issue.rule_id.startsWith('DESC.')) return 'DESCRIPTION';
+  return 'CUSTOM';
 }
 
 export default function QualityReportPanel({ report, onLocate, onClose }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const issues = report.issues || [];
-  const groups = ['配置', '提示词', '描述', '自定义规则'];
+  const groups = Array.from(new Set(issues.map(groupLabel)));
 
   return (
     <div className="rounded-xl border mb-4 overflow-hidden"
@@ -47,22 +48,23 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
             : <XCircle size={18} style={{ color: 'var(--color-error)' }} />}
           <div>
             <div className="text-sm font-medium">
-              {report.gate_result === 'PASSED' ? '质量检查通过' : report.gate_result === 'REJECTED' ? '质量检查未通过' : '检查未能完成'}
+              {report.gate_result === 'PASSED' ? 'Quality checks passed' : report.gate_result === 'REJECTED' ? 'Quality checks failed' : 'Checks could not complete'}
             </div>
             <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-              运行 {report.run_id} · 策略 {report.policy_revision ?? '-'} · 检查完成 {report.checks_complete ? '是' : '否'}
-              {!!report.warn_count && ` · ${report.warn_count} 条警告`}
+              {report.qualified_name ? `${report.qualified_name} · ` : ''}
+              Run {report.run_id} · policy {report.policy_revision ?? '-'} · checks complete {report.checks_complete ? 'yes' : 'no'}
+              {!!report.warn_count && ` · ${report.warn_count} warning(s)`}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
-          {onClose && <button onClick={onClose} className="px-2 py-1 rounded cursor-pointer" style={{ background: 'var(--color-bg-tertiary)' }}>关闭</button>}
+          {onClose && <button onClick={onClose} className="px-2 py-1 rounded cursor-pointer" style={{ background: 'var(--color-bg-tertiary)' }}>Close</button>}
         </div>
       </div>
 
       {issues.length === 0 ? (
         <div className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          没有需要修复的问题。
+          No issues to fix.
         </div>
       ) : (
         <div className="p-3 space-y-3">
@@ -76,7 +78,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
                   className="flex items-center gap-1 text-xs font-medium mb-2 cursor-pointer"
                   style={{ color: 'var(--color-text-secondary)' }}>
                   {isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
-                  {group}（{groupIssues.length}）
+                  {group} ({groupIssues.length})
                 </button>
                 {!isCollapsed && (
                   <div className="space-y-2">
@@ -102,13 +104,13 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
                             <div className="text-sm mt-1" style={{ color: 'var(--color-text-primary)' }}>{issue.message}</div>
                             {issue.evidence_text && (
                               <div className="text-xs mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }} title={issue.evidence_text}>
-                                证据（{issue.evidence_kind === 'SEMANTIC_ASSESSMENT' ? '模型判定' : '代码事实'}）：{issue.evidence_text}
+                                Evidence ({issue.evidence_kind === 'SEMANTIC_ASSESSMENT' ? 'model assessment' : 'code fact'}): {issue.evidence_text}
                               </div>
                             )}
-                            <div className="text-xs mt-1" style={{ color: 'var(--color-primary)' }}>建议：{issue.suggestion}</div>
+                            <div className="text-xs mt-1" style={{ color: 'var(--color-primary)' }}>Suggestion: {issue.suggestion}</div>
                             {issue.decision_type && (
                               <div className="text-[11px] mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
-                                {issue.question_id} · 肯定概率 {issue.affirmative_probability?.toFixed(2) ?? '-'}（阈值 {issue.affirmative_threshold ?? '-'} / {issue.negative_threshold ?? '-'}）
+                                {issue.question_id} · affirmative probability {issue.affirmative_probability?.toFixed(2) ?? '-'} (threshold {issue.affirmative_threshold ?? '-'} / {issue.negative_threshold ?? '-'})
                               </div>
                             )}
                             <div className="flex items-center gap-2 mt-2">
@@ -119,10 +121,10 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
                                 <button onClick={() => onLocate(issueTargetSection(issue.field_path)!)}
                                   className="text-xs px-2 py-0.5 rounded cursor-pointer"
                                   style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-primary)' }}>
-                                  定位
+                                  Locate
                                 </button>
                               )}
-                              {issue.retryable && <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>可重试</span>}
+                              {issue.retryable && <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>retryable</span>}
                               {issue.recommended_action && (
                                 <span className="text-[11px]" style={{ color: 'var(--color-text-tertiary)' }}>{issue.recommended_action}</span>
                               )}

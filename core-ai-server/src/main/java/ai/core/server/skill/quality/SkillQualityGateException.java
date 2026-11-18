@@ -1,13 +1,14 @@
 package ai.core.server.skill.quality;
 
 import ai.core.server.web.TypedWebError;
-import ai.core.utils.JsonUtil;
 import core.framework.api.http.HTTPStatus;
+import core.framework.json.JSON;
 import core.framework.log.ErrorCode;
 
 /**
- * Typed skill publish rejection. The error body keeps the existing {errorCode, message} envelope and adds
- * quality_report, so older clients still read a usable message.
+ * Typed skill publish rejection. The error body keeps the existing {errorCode, message} envelope and
+ * adds {@code quality_report} in the same snake-case shape as the agent report, so clients can show
+ * per-rule details instead of only the summary message.
  *
  * @author core-ai
  */
@@ -27,12 +28,12 @@ public final class SkillQualityGateException extends RuntimeException implements
                 && issue.enforcement == ai.core.server.quality.domain.QualityEnforcement.BLOCK)
             .count();
         return new SkillQualityGateException(REJECTED, HTTPStatus.UNPROCESSABLE_ENTITY,
-            "Skill 未发布：" + failed + " 项质量规则未通过。现有 skill 未改变。", report);
+            "Skill not published: " + failed + " quality rule(s) failed. The existing skill is unchanged.", report);
     }
 
     public static SkillQualityGateException unavailable(SkillQualityReport report) {
         return new SkillQualityGateException(UNAVAILABLE, HTTPStatus.SERVICE_UNAVAILABLE,
-            "Skill 未发布：必需的质量检查未能完成。", report);
+            "Skill not published: required quality checks could not complete.", report);
     }
 
     public static SkillQualityGateException stale(String message) {
@@ -41,17 +42,19 @@ public final class SkillQualityGateException extends RuntimeException implements
 
     public static SkillQualityGateException directoryRequired() {
         return new SkillQualityGateException(DIRECTORY_REQUIRED, HTTPStatus.BAD_REQUEST,
-            "上传缺少 skill_dir 字段；请升级 CLI 或客户端后重试。", null);
+            "Upload is missing the skill_dir field; upgrade the CLI or client and retry.", null);
     }
 
     public static SkillQualityGateException metadataMismatch(String field) {
         return new SkillQualityGateException(METADATA_MISMATCH, HTTPStatus.BAD_REQUEST,
-            "请求字段 " + field + " 与 SKILL.md 解析值不一致；请刷新编辑器后重试。", null);
+            "Request field " + field + " does not match the parsed SKILL.md value; refresh the editor and retry.",
+            null);
     }
 
     public static SkillQualityGateException nameImmutable() {
         return new SkillQualityGateException(NAME_IMMUTABLE, HTTPStatus.BAD_REQUEST,
-            "更新不允许改变 skill name/directoryName；改名请新建 skill 并下线旧 skill。", null);
+            "An update cannot change the skill name/directoryName; create a new skill and retire the old one.",
+            null);
     }
 
     private final String errorCode;
@@ -79,7 +82,7 @@ public final class SkillQualityGateException extends RuntimeException implements
     @Override
     public String extraJson() {
         if (report == null) return null;
-        return "\"quality_report\":" + JsonUtil.toJson(report);
+        return "\"quality_report\":" + JSON.toJSON(SkillQualityReportMapper.toView(report));
     }
 
     public SkillQualityReport report() {

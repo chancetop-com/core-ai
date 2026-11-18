@@ -1,3 +1,5 @@
+import type { QualityReport } from './quality';
+
 const BASE = '';
 
 export function getAuthHeaders(): Record<string, string> {
@@ -9,14 +11,31 @@ export function getAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-async function errorMessage(res: Response): Promise<string> {
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly errorCode?: string;
+  readonly qualityReport?: QualityReport;
+
+  constructor(message: string, status: number, errorCode?: string, qualityReport?: QualityReport) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.errorCode = errorCode;
+    this.qualityReport = qualityReport;
+  }
+}
+
+async function apiError(res: Response): Promise<ApiRequestError> {
   try {
     const body = await res.json();
-    if (body && typeof body.message === 'string' && body.message) return body.message;
+    const message = body && typeof body.message === 'string' && body.message
+      ? body.message
+      : `${res.status} ${res.statusText}`;
+    return new ApiRequestError(message, res.status, body?.errorCode, body?.quality_report);
   } catch {
     // response wasn't JSON (e.g. proxy/gateway error page) — fall through to the generic message
   }
-  return `${res.status} ${res.statusText}`;
+  return new ApiRequestError(`${res.status} ${res.statusText}`, res.status);
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -34,7 +53,7 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     }
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(await errorMessage(res));
+  if (!res.ok) throw await apiError(res);
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -174,7 +193,7 @@ async function requestWithAuth<T>(url: string, options?: RequestInit): Promise<T
     }
     throw new Error('Unauthorized');
   }
-  if (!res.ok) throw new Error(await errorMessage(res));
+  if (!res.ok) throw await apiError(res);
   const text = await res.text();
   return text ? JSON.parse(text) : (undefined as T);
 }
@@ -2459,7 +2478,7 @@ export const api = {
       const headers = getAuthHeaders();
       delete headers['Content-Type'];
       const res = await fetch(`${BASE}/api/projects/${id}/subjects/${encodeURIComponent(subjectId)}/reports`, { method: 'POST', headers, body: form });
-      if (!res.ok) throw new Error(await errorMessage(res));
+      if (!res.ok) throw await apiError(res);
       return res.json();
     },
     analyze: (id: string, subjectId?: string) =>
@@ -2576,7 +2595,7 @@ export const api = {
             const apiKey = localStorage.getItem('apiKey');
             if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
             const res = await fetch('/api/skills/upload', { method: 'POST', headers, body: formData });
-            if (!res.ok) throw new Error(await errorMessage(res));
+            if (!res.ok) throw await apiError(res);
             return res.json();
         },
         registerFromRepo: (repoUrl: string, branch?: string, skillPath?: string) =>
@@ -3330,3 +3349,4 @@ export interface OcgStatusResponse {
 export interface OcgLogsResponse {
   logs: string;
 }
+

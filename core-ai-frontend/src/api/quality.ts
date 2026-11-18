@@ -35,7 +35,10 @@ export interface QualityIssue {
 
 export interface QualityReport {
   run_id: string;
-  agent_id: string;
+  agent_id?: string;
+  skill_id?: string;
+  qualified_name?: string;
+  subject_type?: string;
   definition_revision?: number;
   execution_candidate_hash?: string;
   metadata_hash?: string;
