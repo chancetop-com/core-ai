@@ -9,6 +9,7 @@ import pluginHostModule from '../dist/test/pluginHost.js';
 const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV, PLUGIN_STATE_FILE_ENV, PLUGIN_HOME_ENV } = pluginHostModule;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.resolve(here, '..', 'examples', 'plugins', 'hello-plugin');
+const mediaSample = path.resolve(here, '..', 'examples', 'plugins', 'media-studio');
 
 function tempRoot() {
   return mkdtempSync(path.join(os.tmpdir(), 'coreai-plugin-host-'));
@@ -68,4 +69,27 @@ test('installing the sample twice keeps one install and the same digest', async 
   const second = await host.installFolder(sample);
   assert.equal(first.digest, second.digest);
   assert.equal((await host.list()).length, 1);
+});
+
+test('a page is resolvable only while its install is active and ui.pages is granted', async () => {
+  const host = new PluginHost({ root: tempRoot() });
+  await host.installFolder(mediaSample);
+  await host.setEnabled('core-ai.media-studio', true);
+  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.models.read', 'media.generate']);
+
+  const page = await host.resolvePage('core-ai.media-studio', 'studio');
+  assert.ok(page);
+  assert.equal(page.title, 'Media Studio');
+  assert.equal(page.view, 'pages/studio.html');
+  assert.equal(page.scope, 'workspace');
+  assert.equal(await fs.stat(path.join(page.dir, page.view)).then((stat) => stat.isFile()), true);
+
+  const contributions = await host.contributions();
+  assert.equal(contributions[0].contributions.pages.length, 1);
+
+  await host.revoke('core-ai.media-studio');
+  assert.equal(await host.resolvePage('core-ai.media-studio', 'studio'), null);
+
+  await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.models.read', 'media.generate']);
+  assert.ok(await host.resolvePage('core-ai.media-studio', 'studio'));
 });

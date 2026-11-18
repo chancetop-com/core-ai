@@ -11,6 +11,8 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { removeStaged, stageAttachments, stageBuffers, sweepStaging, type StagedAttachment, type StagedBufferInput } from './attachments/AttachmentStager';
 import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
+import { PluginPageHost, PluginPageError } from './plugins/PluginPageHost';
+import { registerPluginPageSchemes } from './plugins/PluginPageProtocol';
 import {
   type AuthServerEntry,
   type AuthStatus,
@@ -98,6 +100,7 @@ const clientVersion = __APP_VERSION__;
 let mainWindow: BrowserWindow | null = null;
 let supervisor: EngineSupervisor | null = null;
 let pluginHost: PluginHost | null = null;
+let pluginPageHost: PluginPageHost | null = null;
 let workspaceTrustStore: WorkspaceTrustStore | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
@@ -122,6 +125,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 registerArtifactScheme();
+registerPluginPageSchemes();
 const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
 const WINDOW_MIN = { width: 960, height: 600 };
@@ -776,6 +780,7 @@ function createWindow(): void {
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
+    pluginPageHost?.closeAll();
     browserManager?.attachWindow(null);
   });
 }
@@ -1525,6 +1530,43 @@ function registerIpc(): void {
       }
     }
   });
+  ipcMain.handle('pluginPage:open', async (event, request: unknown) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin pages are only available from the app window');
+    if (!pluginPageHost || !mainWindow) return pluginFailure('unavailable', 'plugin page host is not ready');
+    const input = request && typeof request === 'object' ? request as Record<string, unknown> : {};
+    if (typeof input.pluginId !== 'string' || typeof input.pageId !== 'string' || typeof input.workspace !== 'string') {
+      return pluginFailure('invalid_request', 'pluginId, pageId and workspace are required');
+    }
+    try {
+      const opened = await pluginPageHost.open({
+        window: mainWindow,
+        workspace: input.workspace,
+        pluginId: input.pluginId,
+        pageId: input.pageId,
+        bounds: pluginPageBounds(input.bounds),
+      });
+      return { ok: true, ...opened };
+    } catch (error) {
+      const code = error instanceof PluginPageError ? error.code : 'page_failed';
+      return pluginFailure(code, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  ipcMain.handle('pluginPage:setBounds', (event, token: string, bounds: unknown) => {
+    if (!isMainFrameSender(event) || typeof token !== 'string') return false;
+    return pluginPageHost?.setBoundsByToken(token, pluginPageBounds(bounds)) ?? false;
+  });
+
+  ipcMain.handle('pluginPage:close', (event, token: string) => {
+    if (!isMainFrameSender(event) || typeof token !== 'string') return false;
+    return pluginPageHost?.close(token) ?? false;
+  });
+}
+
+function pluginPageBounds(value: unknown): { x: number; y: number; width: number; height: number } {
+  const input = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const number = (key: string): number => typeof input[key] === 'number' && Number.isFinite(input[key]) ? input[key] as number : 0;
+  return { x: number('x'), y: number('y'), width: number('width'), height: number('height') };
 }
 
 type PluginOperationResult = { ok: true; plugin: PluginView | null } | { ok: false; code: string; message: string };
@@ -1619,6 +1661,7 @@ else {
       root: path.join(os.homedir(), '.core-ai', 'plugin-store'),
       log: (line) => console.log(`[plugins] ${line}`),
       onChanged: () => {
+        pluginPageHost?.closeAll();
         send('plugins:changed', {});
         void reloadEnginesAtSafePoint();
       },
@@ -1676,6 +1719,12 @@ else {
         console.error(`[engine ${workspace}] ${line}`);
         send('engine:log', { workspace, line });
       },
+    });
+    pluginPageHost = new PluginPageHost({
+      pluginHost: () => pluginHost,
+      supervisor: () => supervisor,
+      preloadPath: path.join(__dirname, 'pluginPagePreload.js'),
+      onLog: (line) => console.log(`[plugins] ${line}`),
     });
     completionNotifier = new CompletionNotifier({
       isEnabled: (workspace, sessionId) => settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true,

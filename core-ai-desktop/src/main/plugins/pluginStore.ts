@@ -90,6 +90,18 @@ export interface EngineSkillRoot {
   grantEpoch: number;
 }
 
+export interface ResolvedPluginPage {
+  pluginId: string;
+  pluginName: string;
+  pageId: string;
+  title: string;
+  view: string;
+  scope: 'workspace' | 'app';
+  dir: string;
+  digest: string;
+  granted: string[];
+}
+
 export interface ActivePluginContributions {
   pluginId: string;
   name: string;
@@ -377,14 +389,38 @@ export class PluginStore {
       const dock = install.granted.includes('ui.dock') ? resolved.descriptor.contributions.dock : [];
       const settings = install.granted.includes('ui.settings') ? resolved.descriptor.contributions.settings : [];
       const composer = install.granted.includes('ui.composer') ? resolved.descriptor.contributions.composer : [];
-      if (!dock.length && !settings.length && !composer.length) continue;
+      const pages = install.granted.includes('ui.pages') ? resolved.descriptor.contributions.pages : [];
+      if (!dock.length && !settings.length && !composer.length && !pages.length) continue;
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer },
+        contributions: { dock, settings, composer, pages },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** One scripted page, only while its install is active and the ui.pages grant is present. */
+  async resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {
+    const state = await this.readState();
+    const install = state.installs.find((candidate) => candidate.pluginId === pluginId && candidate.scope === USER_SCOPE);
+    if (!install) return null;
+    const resolved = await this.resolveInstall(state, install);
+    if (!resolved || this.statusOf(install, resolved) !== 'active') return null;
+    if (!install.granted.includes('ui.pages')) return null;
+    const page = resolved.descriptor.contributions.pages.find((candidate) => candidate.id === pageId);
+    if (!page) return null;
+    return {
+      pluginId,
+      pluginName: resolved.descriptor.name,
+      pageId: page.id,
+      title: page.title,
+      view: page.view,
+      scope: page.scope,
+      dir: resolved.dir,
+      digest: install.digest,
+      granted: [...install.granted],
+    };
   }
 
   private assertScope(scope: string): void {
@@ -598,7 +634,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [] },
       settings: { ...install.settings },
     };
   }

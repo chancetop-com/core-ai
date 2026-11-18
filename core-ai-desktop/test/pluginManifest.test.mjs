@@ -30,6 +30,44 @@ test('a coreai manifest resolves to a descriptor with contributions', () => {
   assert.equal(isDescriptorCompatible(parsed.descriptor), true);
 });
 
+test('a plugin page needs ui.pages and a package-relative view', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Media Studio',
+    version: '0.1.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.media-studio',
+      capabilities: { required: ['ui.pages'] },
+      contributes: { pages: [{ id: 'studio', title: 'Studio', view: 'pages/studio.html', scope: 'workspace' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.pages.length, 1);
+  assert.equal(parsed.descriptor.contributions.pages[0].view, 'pages/studio.html');
+  assert.equal(parsed.descriptor.contributions.pages[0].scope, 'workspace');
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'x',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'a.b', contributes: { pages: [{ id: 'p', title: 'P', view: 'p.html' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+  assert.ok(missingCapability.errors.some((error) => error.includes('requires capability ui.pages')));
+
+  const escapingView = parsePluginManifest(JSON.stringify({
+    name: 'x',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'a.b',
+      capabilities: { required: ['ui.pages'] },
+      contributes: { pages: [{ id: 'p', title: 'P', view: '../p.html' }] },
+    },
+  }));
+  assert.equal(escapingView.ok, true);
+  assert.equal(escapingView.descriptor.contributions.pages.length, 0);
+});
+
 test('missing name, schema or id is fatal', () => {
   assert.equal(parsePluginManifest('{}').ok, false);
   assert.equal(parsePluginManifest(JSON.stringify({ name: 'x', coreai: { schemaVersion: 2, id: 'a.b' } })).ok, false);

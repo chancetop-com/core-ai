@@ -1,4 +1,12 @@
-export type PluginCapability = 'ui.dock' | 'ui.settings' | 'ui.composer' | 'engine.skills';
+export type PluginCapability =
+  | 'ui.dock'
+  | 'ui.settings'
+  | 'ui.composer'
+  | 'ui.pages'
+  | 'engine.skills'
+  | 'media.assets.read'
+  | 'media.models.read'
+  | 'media.generate';
 export type PluginComponentKind = 'skills' | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';
 
 export interface PluginComponent {
@@ -42,6 +50,15 @@ export interface PluginComposerContribution {
   insertText: string;
 }
 
+export interface PluginPageContribution {
+  id: string;
+  title: string;
+  /** Package-relative HTML entry, hosted in an isolated page view. */
+  view: string;
+  icon?: string;
+  scope?: 'workspace' | 'app';
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -57,6 +74,7 @@ export interface PluginManifest {
       dock?: PluginDockContribution[];
       settings?: PluginSettingsContribution[];
       composer?: PluginComposerContribution[];
+      pages?: PluginPageContribution[];
     };
   };
 }

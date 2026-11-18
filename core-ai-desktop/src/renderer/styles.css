@@ -1772,6 +1772,14 @@ select.rich-card-input[multiple] { padding: 3px; }
 .plugin-dock-table th, .plugin-dock-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .plugin-dock-table th { color: var(--muted); font-weight: 500; }
 
+/* --- plugin pages (design-desktop-plugin-system §6.6) ----------------------------------------- */
+.plugin-page-panel { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.plugin-page-header { padding: 16px 22px 10px; border-bottom: 1px solid var(--border); }
+.plugin-page-header h2 { margin: 0 0 2px; font-size: 16px; }
+.plugin-page-header .hint { margin: 0; }
+.plugin-page-host { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.plugin-page-nav { opacity: 0.92; }
+
 /* --- workspace trust (design-desktop-plugin-system §7.1, §8.3) -------------------------------- */
 .workspace-trust-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 8px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--yellow, #e0b252) 45%, var(--border)); border-radius: 10px; background: color-mix(in srgb, var(--yellow, #e0b252) 10%, var(--bg-panel)); }
 .workspace-trust-banner[hidden] { display: none; }

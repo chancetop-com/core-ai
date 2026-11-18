@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.5（新增 server 注册中心、Plugins 入口与 SDK；见 §14） |
+| 文档版本 | v0.9（P2c 首期已实现，未发布；预留契约见 §6.7.3） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -35,6 +35,9 @@
 | R8 | 插件缺失、禁用或版本不兼容时历史仍可读，错误不拖垮应用 | 可靠性要求 |
 | R9 | 各阶段具有验证与退出条件，不以“写完代码”代替验收 | 工程要求 |
 | R10 | 先设计、按 gemini-4-hydrogen 做 AI 评审，等用户确认关键决策后再实施 | 用户已于 2026-11-17 确认实施（§13.3）；未落地项见 §14.2 |
+| R11 | 插件可提供独立页面，管理素材并直接调用生成，不经过 agent turn | 用户明确要求（媒体工作台场景） |
+| R12 | 预留覆盖非媒体场景的能力/事件/服务契约，能支撑 DSH 生态中的 memory、usage、notifications、sessions、providers、browser 等插件类型 | 用户要求调研 DSH 并预留扩展性 |
+| R13 | 扩展性不以复制宿主内任意 React/无沙箱插件为代价；高风险能力按信任等级逐步开放 | 安全与架构建议 |
 
 R3–R9 是本设计推导的要求，不冒充用户原始需求。范围、优先级和安全模式见 §11 待确认决策。
 
@@ -59,7 +62,7 @@ R3–R9 是本设计推导的要求，不冒充用户原始需求。范围、优
 | 类型 | 例子 | 所属执行层 | 推荐阶段 | 关键限制 |
 |---|---|---|---|---|
 | Agent 能力包 | skills、已接入的 MCP、hooks；commands/agents/LSP 按实际 adapter 支持 | Java Engine 与外部可执行体 | P1 | 包格式兼容不等于构件均可加载；hooks/stdio MCP 仍会执行宿主代码 |
-| UI 贡献 | Dock/Settings先行，导航/composer/结果/预览按需 | 宿主声明式渲染；完整脚本页面仅独立WebContentsView | P2a/P2b | 不注入主renderer JS/DOM，不获得完整window.coreai |
+| UI 贡献 | 插件页（媒体工作台）、Dock/Settings、composer、结果/预览按需 | 宿主 chrome + 独立脚本 view；声明式片段由宿主渲染 | P2a/P2b/P2c | 页面不获得完整window.coreai；RichCard只作输出/fallback |
 | 后台代码扩展 | 通道适配、持续监听、复杂自动化 | 独立 PluginHost；运行时信任模式另行确认 | P3，可选 | utilityProcess 只是故障隔离；任意 Node 不属于受限执行模式 |
 
 “内容声明式”与“包内存在 JSON”不是同一概念。skills 可以引导模型调用有副作用的工具；hooks/MCP/LSP 是代码启动器；每个构件必须按真实执行能力审查。
@@ -332,6 +335,11 @@ v0.5：一级导航 **Plugins** 承载本地包管理、Server registry 与 work
 | 能力 | 可开放范围 | 默认 / 阶段 | 强制边界适用层 |
 |---|---|---|---|
 | `ui.navigation/settings/dock` | 验证描述与受限 view | P2a 仅 dock/settings，navigation后置 | 宿主贡献与受限 WebContents |
+| `ui.pages` | 应用级/工作区级插件页 + 独立 view | P2c，页面是宿主导航一等项 | 宿主 chrome + 实例 WebContentsView |
+| `media.models.read` | 已配置图片/视频模型槽摘要，不含 key | P2c | Engine MediaService（模型目录） |
+| `media.assets.read/write` | 页面 scope 的素材 handle；导入/删除需确认 | P2c 不默认 | Engine/Artifact 服务 + 实例协议 |
+| `media.generate` | 直接生成图片/视频，返回 jobId；Engine 解析 provider | P2c 计费动作，受预算/确认 | Engine `MediaGenerationService` → 既有 `MediaProvider` |
+| `media.jobs.read` | job 列表/状态/取消/订阅 | P2c | 宿主 job 服务，跨页面存活 |
 | `session.stats.read` | 绑定会话统计 | P2a 可选只读 | Broker/受限 UI |
 | `session.history.read` | 绑定会话分页脱敏记录 | P2b 敏感单独授权 | Broker/受限 UI |
 | `workspace.files.read/write` | 指定 handle/realpath资源，排除核心secret/state | P2b 不默认 | 仅broker路径/真受限runtime，不限制任意本机代码 |
@@ -379,6 +387,7 @@ P2a 只开放只读 Dock 与声明式 Settings；以下列出目标槽位总览�
 
 | 首批槽位 | 描述内容 | 宿主规则 |
 |---|---|---|
+| Page | ID、title、icon、view、scope、页面能力 | 宿主导航一等项；页面 chrome/错误/授权由宿主绘制 |
 | Navigation | ID、title、内置 icon、view、scope、可见条件 | 核心项保留顺序；插件项分组，禁止冒充 Settings/审批 |
 | Settings | section、字段 schema 或受限 view | 核心配置与插件配置分开；sensitive 字段只由宿主采集 |
 | Dock | title、view、scope | 注册 ID 替换封闭 union；不直接访问 BrowserManager |
@@ -419,6 +428,194 @@ P2 spike 只评估 WebContentsView 的 bounds、焦点、隐藏截图、z-order 
 - 标准 RichCard 词表只增不乱扩；复杂完整页面使用受限 view，不把任意 HTML 混进 core card schema。
 - 终态与审批事件由核心处理，插件不得拦截、吞掉、修改工具审批结果。
 
+### 6.6 插件页面与直连动作面（v0.9 已实现首期，未发布）
+
+**RichCard 是 agent/skill 的输出词表，不是插件展示层。** RichCard 绑定“一条消息/一次工具结果”，适合 transcript 和只读历史；媒体工作台需要导航入口、长期状态、素材管理、任务队列和直接动作，不能靠往对话里塞卡片实现。二者关系是：页面负责工作流，RichCard 只作为页面的输出摘要或历史 fallback。
+
+#### 6.6.1 页面贡献
+
+```json
+{
+  "contributes": {
+    "pages": [{
+      "id": "studio",
+      "title": "Media Studio",
+      "icon": "image",
+      "view": "ui/studio.html",
+      "scope": "app",
+      "capabilities": ["media.assets.read", "media.assets.write", "media.generate", "media.jobs.read"]
+    }]
+  }
+}
+```
+
+- 宿主在左侧导航增加插件页；`scope=app` 不绑定会话/工作区，`scope=workspace` 只用当前 workspace 的素材。
+- 页面是**宿主 chrome + 插件 view**：导航、标题、错误、授权提示由宿主绘制；插件只拥有内容区。
+- 页面实例独立于对话回合；切换会话不销毁，关闭页面/停用插件才释放。生成任务由宿主 job 服务持有，页面关闭不取消任务。
+
+#### 6.6.2 直连动作面，不走 agent loop
+
+页面通过专用 `window.coreaiPlugin` bridge 调用宿主能力，**不调用 `use_skill`、不创建会话、不经过主 agent；也不新增第二套生成器**：
+
+| 能力 | 宿主实现 | 说明 |
+|---|---|---|
+| `media.assets.read` | `assets.list/get/preview` 返回 host-issued handle | 只读当前页面 scope 的素材；预览走实例协议，不给 workspace 宽 token |
+| `media.assets.write` | `assets.import/delete/tag` | 导入走宿主文件选择/staging；删除需确认；写入插件命名空间或 workspace media 目录 |
+| `media.models.read` | 返回已配置的图片/视频模型槽摘要 | 只给 model id/能力，不给 provider key/base URL |
+| `media.generate` | app-server `media/generate` → 抽取后的 `MediaGenerationService` → 既有 `MediaProvider` | 复用 `GenerateImageTool`/`GenerateVideoTool` 的 provider、reference、artifact 逻辑；宿主解析 credential |
+| `media.jobs.read` | `jobs.list/get/cancel/subscribe` | job 状态独立于 agent turn；进度/失败/重试通过事件推送 |
+
+- **现有工具已经有生成能力，缺的是非 agent 调用面。** `MediaGenerationService` 是从 `GenerateImageTool`/`GenerateVideoTool` 内部抽出的共享服务，工具本身改为调用它；不要在页面侧重写 provider、reference 解析或 artifact 落盘。
+- **为什么不直接调用工具**：tool 是模型面向的，依赖 `ExecutionContext`、session、tool approval 和 model-facing result；video 任务状态也按 session 保存。页面需要稳定的 job API、跨页面状态和无 agent 的素材结果，直接 `execute` 会绕过审批并复用错误的抽象。
+- 首期 `MediaGenerationService` 放在 Engine（provider、`MediaModelCatalog`、reference 解析、`LocalArtifactSink` 和现有 video polling 都在那里）；主进程只做 capability/credential 边界与转发，不解析模型协议。
+- app 级页面若不需要 workspace，可先用默认 workspace 的 Engine；后续接 server gateway 时仍在同一 `MediaService` 接口后替换实现，不新增第三种生成路径。
+- 生成结果写入 artifact/media 目录并登记 `pluginId/pageId` 归属；页面可以直接列出自己的输出，不必回到某个会话。
+- 页面 bridge 的方法、resource、参数摘要、次数/预算都由主进程校验；页面不能自报 pluginId/workspace，也不能申请其他页面的 handle。
+- 页面生命周期与能力 epoch 绑定；撤销 `media.generate` 后新任务立即拒绝，进行中的 job 由 Engine job 服务标记并 best-effort 取消。
+
+#### 6.6.3 隔离与 SDK
+
+- 页面 view 仍使用 §6.4 的独立 `WebContentsView` + 每实例 partition + 固定 preload；页面 JS 是任意代码，但不是可信代码：只能通过 bridge 的窄 API 行动，不能读 Node/fs/主 renderer/engine 全量 RPC。
+- 页面资产用实例协议提供，CSP 默认 `connect-src 'none'`；素材/生成结果预览用 host handle，不复用 `coreai-artifact://` 的 workspace token。
+- SDK 在 `sdk/core-ai-plugin` 增加 `ui` 子入口：`coreaiPlugin` bridge 类型、页面 manifest 类型、资产/job 数据结构；不强制 React，页面可用任意前端框架或原生 JS。
+- MCP Apps 可以作为**可选渲染/协议适配**（iframe + `ui/*` bridge），但页面生命周期、导航、素材/job 状态归本设计所有；本地插件不要求先有 MCP server，也不把页面绑定到某次 tool call。
+
+#### 6.6.4 典型媒体工作台流程
+
+1. 用户打开左侧 **Media Studio**（插件页），宿主创建独立 view 并检查 `ui.pages` + media grants。
+2. 页面 `assets.list` 展示历史素材；用户 `assets.import` 拖入参考图，宿主返回 handle。
+3. 页面选择模型（`models.list`）、填 prompt、选素材 handle，点“生成”；`media.generate` 返回 jobId，页面订阅进度。
+4. Engine 的 `MediaGenerationService` 调用既有 `MediaProvider`，复用参考图解析与 artifact sink；页面显示缩略图/播放器，可继续生成、取消、重试或删除自己的素材。
+5. 关闭页面后 job 继续；再打开页面通过 `jobs.list` 恢复状态。整个过程不创建会话、不触发 agent turn。
+6. 若插件被禁用/撤销，页面立即关闭，新 action 拒绝；历史输出仍可从 Artifacts 访问。
+
+#### 6.6.5 非目标
+
+- 不允许页面直接读任意工作区文件、Provider key、审批裁决或其他会话数据。
+
+#### 6.6.6 首期实现状态（v0.9，未发布）
+
+| 项目 | 状态 |
+|---|---|
+| `contributes.pages` + `ui.pages` + 页面导航 | 已实现；页面在左侧导航显示，打开时重新校验 active/grant |
+| 独立 `WebContentsView` + 每实例 partition + 固定 preload | 已实现；`sandbox`、`contextIsolation`、无 Node、无网络 |
+| `coreai-plugin-page://` / `coreai-plugin-asset://` | 已实现；asset 协议只在 `media.assets.read` 授权时安装，且只服务 `.core-ai/media/` |
+| `coreaiPlugin.context` / `assets.list` / `media.models` / `media.generate` / `media.jobs.get/list` | 已实现；每次 bridge 调用重新解析 grant，撤销/禁用后立即拒绝 |
+| 非 agent 生成面 | 实现为 `MediaGenerationApi`，直接复用既有 `MediaProvider`；未把 `GenerateImageTool`/`GenerateVideoTool` 的 reference/sink 编排抽成同一个类 |
+| 媒体工作台示例 | `examples/plugins/media-studio/`；只读素材 + 单模型图片/视频生成 |
+| `media.assets.write` / import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job | 未实现 |
+| app/workspace scope 行为差异 | 未实现；两种 scope 目前都绑定当前 workspace 的 media 目录 |
+- 不把 RichCard 扩展成页面协议，也不允许插件向 transcript 注入任意 HTML。
+- 首期不允许页面自带任意 Node 后端；需要自定义生成逻辑时走 P3 的受管插件后端/受限运行时。
+
+### 6.7 扩展能力地图（DSH 生态调研，v0.7 设计）
+
+调研对象：`dsh.pub`（14,856 installable）、top-dsh-plugins 热度榜、DSH slots 文档。dsh.pub 的分类量级说明 UI-only 只是少数：Interface & interaction 2,864、General 1,961、Models & prompts 1,044、Model tools 1,007、Code/dev 1,002、Usage/cost 928、Workflow 902、Runtime 872、Sessions 848、Vision/media 795、Memory 688、Data/storage 377、Browsing 304、External 224。
+
+热门插件不是“多几个按钮”，而是持续读写宿主数据、订阅事件或替换运行时 provider。我们要预留的是下面六类能力，而不是只加页面：
+
+| 能力面 | DSH 代表插件 | 建议预留的能力 ID | 风险/阶段 |
+|---|---|---|---|
+| 展示 | dsh-web-ui-all、DSH-better-sidebar、genui、dsh-full-view、dsh-skin | `ui.pages`、`ui.slots`、`ui.renderers`、`ui.theme` | 中；P2c/P2d |
+| 观察 | dsh-notification、dsh-usage-card、dsh-cost-meter、dsh-flowglass、dsh-context | `events.session`、`events.turn`、`events.tool`、`usage.read` | 中；只读事件，P2d |
+| 读数据 | hindsight/OpenViking、session insights、dsh-chat-import、DSH-better-sidebar、git graph | `sessions.read`、`workspace.read`、`memory.read`、`models.read`、`jobs.read`、`assets.read` | 低-中；P2d |
+| 写动作 | memory 类、dsh-turn-rewind、dsh-chat-import、dsh-notifier、dsh-automation、file edit | `memory.write`、`sessions.write`、`workspace.write`、`notify.send`、`schedules.write`、`artifacts.write` | 高；逐项授权/审批，P2d |
+| 运行时 | dsh-plugin-subscriptions、dsh-llm-autorouter、dsh-tool-drawer、dsh-lsp、dsh-browser、agent-teams、mirage | `tools.register`、`providers.register`、`prompt.sections`、`context.strategy`、`hooks.guard`、`browser.control`、`terminal.exec`、`sandbox.provider`、`agents.orchestrate` | 高；可信代码/真沙箱，P3 |
+| 平台 | dsh-market、dsh-plugin-deploy、dsh-settings-ui、user-management | `registry.*`、`plugin.storage`、`plugin.jobs`、`plugin.secrets` | 中；P2d |
+
+代表性插件映射（用来说明能力，不是要逐一实现）：
+
+- **memory（hindsight、OpenViking、mnemon）**：需要 memory 读写 + prompt 注入 + session/turn 事件；不是 UI 问题。
+- **UI 集合（dsh-web-ui-all、DSH-better-sidebar）**：需要 sidebar 行/底部 action、conversation view tab、right sidebar tab、message action、shell overlay 等 slot，以及主题 token。
+- **archify / genui / full-view**：需要 tool + 自定义 message/tool renderer，或在受限 view 中渲染 HTML/React。
+- **dsh-market / settings-ui**：需要 registry、安装/更新、插件配置 UI 和 slot 自定义。
+- **agent-teams / automation**：需要 session/subagent/job/schedule 与事件订阅，不只是“工具”。
+- **TongFlow / dsh-image-gen**：媒体页面 + asset/job/generation；即 §6.6 的场景。
+- **provider 类（subscriptions/autorouter）**：需要模型 provider 注册、路由、用量/限速；高风险。
+- **BrowserSkill / dsh-browser**：需要 browser session/tab 控制与页面上下文；高风险。
+- **cost/usage/notification**：需要 usage 事件、余额/成本读取、通知通道；多为只读 + 一个发送动作。
+
+#### 6.7.1 现在就要冻结的契约（不必现在实现）
+
+1. **稳定 slot ID 与 scope**：`ui.slots[]` 接受 `page`、`sidebar.*`、`composer.*`、`conversation.*`、`settings.*`、`rightSidebar.*`、`shell.overlay`；宿主只渲染已声明的 slot，未知 slot 报错而不是猜。
+2. **能力命名空间**：`ui.* / events.* / sessions.* / workspace.* / memory.* / usage.read / models.read / jobs.* / assets.* / notify.send / schedules.* / tools.register / providers.register / prompt.* / context.* / hooks.* / browser.* / terminal.* / sandbox.* / agents.*`；每个能力必须有明确 read/write 与 scope。
+3. **`provides` / `requires` 服务声明**：host 插件可提供 `memory.provider`、`notification.channel`、`model.provider`、`usage.reader`、`session.exporter` 等服务，其他插件通过 `requires` 引用；由宿主注入，不直接互相 require。
+4. **事件订阅 allowlist**：`session.*`、`turn.*`、`tool.*`、`message.*`、`usage.*`、`job.*`、`workspace.changed`；payload 结构化、去敏、带 scope；不暴露原始 DOM/内部对象。
+5. **插件存储/任务/秘密引用**：namespaced KV、job API、secret reference；插件不直接读核心 settings/auth 文件。
+6. **三类 UI 承载**：声明式 block（零脚本）、受限 view（页面/面板）、宿主 renderer（tool/message/artifact）；不允许第三方 React 直接进主 renderer。
+
+#### 6.7.2 信任分层与阶段
+
+- **Tier 0（只读）**：events 订阅、sessions/usage/workspace/memory/models/jobs/assets 读、声明式 UI。适合 usage card、context dashboard、notification、session insight。
+- **Tier 1（受控写）**：memory write、workspace write、session rename/import/export/handoff、notify.send、schedules.write；逐能力授权 + 当次确认/审计。
+- **Tier 2（运行时）**：tools/providers/prompt/context/hooks/browser/terminal/sandbox/agent orchestration；必须可信代码或真受限运行时，P3 单独验收。
+
+**不建议照抄 DSH 的“宿主内 React slot + 无沙箱”模型。** 我们保留同样的扩展点语义，但用独立 view + 窄 bridge + capability gate 承载；这样既能支持热门插件形态，又不把宿主权限直接交给第三方代码。
+
+#### 6.7.3 预留契约草案（v0.8，字段名冻结、运行时未实现）
+
+Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsupported_component`，不静默激活）：
+
+```json
+{
+  "coreai": {
+    "provides": [{ "id": "memory.provider", "version": "1.0" }],
+    "requires": ["memory.read", "events.session"],
+    "contributes": {
+      "pages": [{ "id": "studio", "title": "Studio", "view": "ui/studio.html", "scope": "app" }],
+      "slots": [{ "slot": "composer.dock", "id": "status", "view": "ui/dock.html", "order": 100 }],
+      "renderers": [{ "id": "tool-preview", "kind": "tool-result", "match": { "tool": "generate_image" }, "view": "ui/result.html" }]
+    },
+    "events": { "subscribe": ["session.turn.completed", "tool.finished", "usage.recorded"] }
+  }
+}
+```
+
+首批 slot ID（稳定、带 scope/kind；宿主只渲染已声明项）：
+
+| Slot | Kind / scope | 用途 |
+|---|---|---|
+| `page` | single / app/workspace | 独立插件页面 |
+| `sidebar.footer.action` | list / root | 侧栏底部动作 |
+| `sidebar.session.row` | keyed / session | 会话行徽标/操作 |
+| `composer.left` / `composer.right` | list / session | 输入框两侧按钮 |
+| `composer.dock` / `composer.overlay` | list / session | 输入框上方/浮层 |
+| `conversation.view` | list / session | 会话视图 tab |
+| `conversation.session.header.actions` | list / session | 会话标题右侧动作 |
+| `conversation.message.actions` | list / message | 单条消息动作 |
+| `conversation.turn.tail` | chain / turn | 回合尾部摘要/文件 |
+| `conversation.node` | keyed / session | 自定义聊天节点 |
+| `settings.section` / `settings.general.item` / `settings.plugins.tab` | list / root | 设置页/行/tab |
+| `rightSidebar.tab` | keyed / session | 右侧栏 tab |
+| `shell.overlay` | list / root | 全局弹层/Toast |
+
+事件 envelope 统一为：
+
+```json
+{
+  "type": "session.turn.completed",
+  "version": 1,
+  "occurredAt": "2026-11-17T00:00:00Z",
+  "scope": { "workspaceId": "...", "sessionId": "...", "pluginPageId": "..." },
+  "data": {},
+  "redacted": true
+}
+```
+
+- allowlist：`session.started|completed`、`turn.started|completed|failed`、`tool.started|finished|failed`、`message.appended`、`usage.recorded`、`job.updated`、`workspace.changed`；payload 结构化、去敏、带 scope。
+- 不提供原始 DOM、完整消息正文、Provider key、审批内部对象；需要正文时由宿主按 capability 返回脱敏分页 DTO。
+
+服务契约（宿主注入，插件不直接互相 import）：
+
+| 服务 | 方法（草案） | 风险 |
+|---|---|---|
+| `memory.provider` | `search(query, scope)` / `write(entry)` / `list(scope)` | 写 Tier 1 |
+| `notification.channel` | `send(target, text, meta)` | 发送 Tier 1，需确认/审计 |
+| `usage.reader` | `summary(range, scope)` | 只读 |
+| `session.exporter` | `export(sessionId, format)` | 只读/敏感 |
+| `model.provider` | `listModels` / `route(request)` | P3 Tier 2 |
+
+能力描述建议统一为 `{id, risk: read|write|execute, scope: app|workspace|session, approval: grant|per-action}`；`read` 授权后免逐次弹窗，`write/execute` 按风险走当次确认或预算。**v0.8 只冻结字段名、ID 与风险分类；P2c/P2d/P3 才分别实现运行时。**
 
 ## 7. Engine 接入与生命周期
 
@@ -605,6 +802,8 @@ P0–P3 是本文拟议实施阶段，不是已完成功能。每阶段先基线
 | P1：Agent 包纳管 | folder/zip事务与legacy adapter；state/grant/control.lock/持久epoch；restricted/trusted bootstrap；skills/hooks与已有MCP gate；首个独立Plugins panel；quiesce+安全点reload | metadata不持EngineLock/不启动代码；CLI/Desktop一致；跨进程撤销与pending激活竞态通过；未批准工作区配置不合入；后台turn不被误杀；构件支持矩阵公开 |
 | P2a：只读UI最小闭环 | Main/Renderer按域增量拆分；shared contracts；内置Dock/settings先使用贡献契约；独立WebContentsView bridge/partition；read-only usage-panel、声明式settings、历史fallback | 不改核心分支即可加样例Dock；只获session.stats；跨scope/secret/CDP/宽artifact拒绝；焦点/bounds回归；卸载后历史可读 |
 | P2b：按需求扩大贡献 | navigation/composer/tool-result/artifact viewer、history/files/network/model broker、SecretService；每项独立授权/预算/测试 | 每新增能力单独验收、SSRF与scope探针；不把全部6类槽位或模型/网络代理作为P2a前置 |
+| P2c：插件页面 + 直连动作面 | 页面贡献与导航、独立 WebContentsView、`coreaiPlugin` bridge、asset/job、**从媒体工具抽取 `MediaGenerationService` + app-server `media/*` RPC**、媒体工作台示例 | 页面不创建会话/不触发 agent；复用既有 `MediaProvider` 而非第二套生成器；素材 handle 隔离；生成凭据不下发；job 跨页面存活；撤销后新动作拒绝 |
+| P2d：宿主服务/事件插件 | 稳定 slot/能力 ID、事件 allowlist、插件 storage/job/secret reference、只读 sessions/usage/workspace/memory/models/assets、受控写（memory/notify/schedules）；可信 host 插件后端 | 能支撑 usage card、context dashboard、notification、session insight、memory 面板等热门形态；读默认、写逐项授权；不把宿主内任意 React 当扩展模型 |
 | P3：可选后台代码宿主 | 先明确可信 Node 或真受限模式；独立 Host、budget/backpressure/quarantine/退出；开发 SDK/testkit 与来源分发策略 | 不在 main/renderer 执行第三方 module；失败不拖核心；真实模式权限保证经安全探针验证；明示同 UID 代码限制；没有 OS 隔离验收不得宣传沙箱 |
 
 P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 不需要第三方 UI/Node Host；P2 可先做一个 read-only Dock，再扩大槽位；P3 可以长期不做。
@@ -619,6 +818,8 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | B4：UI 模块与贡献 registry | `renderer/app.ts`、`sessionSurfaces.ts`、独立 FeaturePanels | 一功能一批；结构重构与行为新增分开验证 |
 | B5：受限 UI bridge 与资源服务 | `preload/`、独立 plugin UI protocol/partition、DockCoordinator | 先恶意 fixture 验证，再开放声明式描述 |
 | B6：可选 PluginHost | main plugin host supervision、SDK/testkit | 独立安全模式 ADR；签名/市场不混入首个 Host 实现 |
+| B7：插件页面与媒体动作面 | `main/plugins/pageHost`、app-server `media/*` RPC、`MediaGenerationService` 抽取、renderer nav/page slot、`sdk/core-ai-plugin/ui` | 页面先于任意 Node 后端；先做只读素材 + 单模型生成，再扩 job/批量；工具与页面共用生成实现 |
+| B8：宿主服务/事件层 | shared capability registry、plugin host backend、event allowlist、plugin storage/job、read-only data adapters | 先只读与声明式 UI；写入和 runtime provider 分层；不把第三方 React 注入主 renderer |
 
 所有批次仅修改本次范围，保留并发工作区变更。版本 bump 与功能/修复一起处理；发布、提交、部署按后续明确授权与仓库流程执行。本次文档不触发这些动作。
 
@@ -666,6 +867,8 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | D8 | 来源与企业控制 | P1 folder/zip，禁隐式 scripts/npm；预留企业 source/capability/kill policy，市场后置 | 采纳 folder/zip；无 npm/git/市场；企业策略未做 |
 | D9 | Secret 兼容与插件模型调用 | P1 不接受插件 secret；后续宿主 opaque reference/模型槽；现有 auth/provider 迁移独立设计 | 采纳：无插件 secret、无 model.invoke |
 | D10 | 拆分与其他 desktop 提案协调 | 共用 SessionStore/backend scope 与 shared contracts，远端直聊不获得本机扩展权限 | 采用 `src/shared/pluginManifest.ts`；未与远端直聊 SessionStore 合并 |
+| D11 | 插件页面与直连动作面 | 宿主导航一等项 + 独立 view + `coreaiPlugin` bridge；页面直接调用 Engine 的 `MediaGenerationService`（复用既有工具/Provider），不经 agent；RichCard只作输出/fallback | **设计采纳，未实现**；见 §6.6 / §14.2-4；实现顺序 P2c |
+| D12 | 生态能力面优先级 | P2c 页面/媒体 → P2d 宿主服务/事件（只读优先）→ P3 运行时 provider/tools/hooks/browser/terminal；不复制 DSH 宿主内 React 模型 | **设计采纳，未实现**；见 §6.7；需要先冻结 slot/capability/event ID |
 
 ## 12. AI Review 记录
 
@@ -717,6 +920,10 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.3 | 2026-11-17 | 记录用户实施授权；状态改为 Approved / Implementing；§11 记录决策落地；§14 记录实现范围与偏差 | 用户 2026-11-17 授权实施（deepseek-v4-flash） |
 | v0.4 | 2026-11-17 | 补 workspace trust gate/restricted bootstrap、per-call skill 撤销、engine quiesce；更新 §11 D4/D5 与 §14 验证/缺口 | 用户要求优先补信任边界；AI 实现与本地验证 |
 | v0.5 | 2026-11-17 | 新增 server 插件注册中心（API/存储/权限/migration）、Desktop 一级 Plugins 入口与 registry 安装、`sdk/core-ai-plugin` 作者 SDK；更新 §4/§9/§14 | 用户要求补插件入口、server registry 与 SDK 放置 |
+| v0.6 | 2026-11-17 | 新增 §6.6 插件页面与直连动作面：页面贡献、`coreaiPlugin` bridge、asset/job、从既有媒体工具抽取 `MediaGenerationService`、媒体工作台流程；明确 RichCard 不是插件 UI 架构；新增 P2c/B7/D11 | 用户要求设计能支撑生图/生视频工作台，且不走 agent |
+| v0.7 | 2026-11-17 | 新增 §6.7 DSH 生态能力地图：六类能力面、代表性插件、预留能力 ID、Tier 0/1/2；新增 R11–R13、P2d/B8/D12 | 用户要求调研 DSH 热门插件并预留非媒体场景扩展性 |
+| v0.8 | 2026-11-17 | 冻结预留契约字段（provides/requires/pages/slots/renderers/events）、slot ID 表、事件 envelope、host service 草案与能力风险分类 | 继续把 §6.7 的能力地图落成可实现契约；运行时仍未实现 |
+| v0.9 | 2026-11-18 | P2c 首期实现：页面贡献/导航、实例 WebContentsView、page/asset 协议、`coreaiPlugin` bridge、`MediaGenerationApi` + `media/*` RPC、媒体工作台示例；补充 §6.6.6 与 §14 实现状态 | 继续实现插件页面与直连动作面；明确未做的 assets.write/reference/job 持久化 |
 
 ### 13.2 相关材料
 
@@ -750,27 +957,33 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | Server registry | `GET/POST/DELETE /api/plugins`；manifest 派生 id/version/能力/构件；sha256/size/URL 校验；`plugin.view` 默认 user、`plugin.manage` admin；Mongo `plugins` + PG `app.plugins`（V43） | `core-ai-api/.../PluginRegistryWebService.java`、`core-ai-server/.../plugin/*`、`V43__plugins.sql`、`PermissionCodes` |
 | Registry client | 主进程用 active auth 调 registry；下载只对同源发 Authorization，边下边算 sha256，校验 size/digest 后才 `installZip`；临时文件清理 | `core-ai-desktop/src/main/plugins/registryClient.ts`、`main.ts`、`preload.ts` |
 | Author SDK | `sdk/core-ai-plugin`（与 `sdk/core-ai-session` 同级）：TS 类型、JSON Schema、`definePlugin`、本地 `validateManifest`；非运行时桥 | `sdk/core-ai-plugin/` |
+| 插件页面（P2c 首期） | `contributes.pages`、`ui.pages`、左侧页面导航、实例 `WebContentsView`、`coreai-plugin-page://`/`coreai-plugin-asset://`、固定 preload bridge、每次调用重新校验 grant、插件变更关闭页面 | `pluginManifest.ts`、`PluginPageHost.ts`、`PluginPageProtocol.ts`、`pluginPagePaths.ts`、`pluginPagePreload.ts`、`app.ts`、`styles.css` |
+| 非 agent 媒体面 | app-server `media/models`、`media/generate`、`media/jobs/get|list`；`MediaGenerationApi` 复用既有 `MediaProvider`，图片写 `.core-ai/media/images`，视频写 `.core-ai/media/videos`；restricted workspace 拒绝生成 | `AppServerEngine.java`、`MediaGenerationApi.java` |
+| 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
 | 示例 | `hello-plugin`：skill + dock + settings + composer | `core-ai-desktop/examples/plugins/hello-plugin/` |
-| 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1) + Electron CDP smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`core-ai-cli/src/test/.../plugin|workspace|agent`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
+| 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1)、`MediaGenerationApiTest` (3) + Electron page smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`test/pluginPageHost.smoke.cjs`、`core-ai-cli/src/test/.../plugin|workspace|agent|appserver`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
+
+验证记录（2026-11-18，P2c 首期）：desktop `check`、`build`、`test`（257 tests：256 pass / 1 skip）、`pluginPageHost.smoke.cjs` 通过（页面 context、assets 协议、图片加载、media.generate、撤销后 `not_granted`）；SDK 7 例通过；`MediaGenerationApiTest` 3 例通过；`:core-ai-cli:checkstyleMain` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
 1. **共享 Java 无 UI 控制面 / app-server `plugins/*` RPC 未实现。** 桌面负责包安装与授权写入；engine 只读 `state.json`。外部 CLI 写入尚不存在，跨进程撤销通知/journal 恢复未落地（engine 通过每调用读 state 仍能感知外部写入，但没有 CLI 写路径）。
 2. **Workspace scope 与 provider endpoint allow-list 未实现。** 只有 user scope；信任记录是整个 workspace 的指纹，不区分“哪些 provider endpoint 可覆盖”的单独确认。
 3. **Quiesce 的 UI/channel 排队未实现。** engine 在 quiesce 期间对 `session/send`/`session/create` 返回 `ENGINE_QUIESCING`；desktop/channel 只在 turn 结束后重试 reload，没有把用户新输入排队并自动重发。scheduler 已暂停，已领取任务正常 drain。
-4. **scripted UI（`contributes.dock[].view`）未实现。** 只支持宿主渲染的声明式 dock/settings/composer；没有独立 WebContentsView、per-instance partition、artifact handle 协议（设计 §6.4）。
+4. **scripted UI 只实现了 P2c 首期。** `contributes.pages`、页面导航、实例 WebContentsView、`coreaiPlugin` bridge、`media/models|generate|jobs/get|list` 已落地；`media.assets.write`/import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job、app/workspace scope 行为差异仍未实现。`contributes.dock[].view` 仍标为 unsupported；RichCard 仍只属于 agent/skill 输出与历史 fallback。
 5. **hooks/MCP/commands/agents/LSP adapter 未实现。** 包内这些构件在 descriptor 中标为 unsupported，并拒绝激活相应能力；CLI 既有插件目录行为未迁移到新 store。
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
+9. **§6.7 的非媒体能力面只是设计预留，未实现。** 没有通用 `ui.slots`、event allowlist、plugin storage/job、sessions/workspace/memory/usage read adapters，也没有 host 插件服务层；这些需要 P2d 单独实现并验收。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
-2. 补 workspace scope、provider endpoint/TLS 独立确认，以及 registry 的签名/镜像/企业允许清单。
-3. 再评估 scripted UI 的独立 WebContentsView 与运行时 plugin SDK；仍不建议开放任意 Node 插件宿主。
+2. 补 P2c 剩余：`media.assets.write`/import/delete/preview、reference images、`jobs.cancel/subscribe`、跨 Engine 重启 job，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
+3. 实现 P2d：冻结 slot/capability/event ID，先做只读 sessions/usage/memory/assets + storage/job，再接受控写；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
 
 

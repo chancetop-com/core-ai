@@ -11,6 +11,7 @@ import {
   type PluginComposerContribution,
   type PluginDockBlock,
   type PluginDockContribution,
+  type PluginPageContribution,
   type PluginSettingsContribution,
   type PluginView,
 } from '../shared/pluginManifest';
@@ -165,14 +166,21 @@ function stringArray(value: unknown): string[] {
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {
-  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [] };
+  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [] };
   if (!value || typeof value !== 'object') return empty;
   const raw = value as Record<string, unknown>;
   return {
     dock: Array.isArray(raw.dock) ? raw.dock.filter(isDockContribution) : [],
     settings: Array.isArray(raw.settings) ? raw.settings.filter(isSettingsContribution) : [],
     composer: Array.isArray(raw.composer) ? raw.composer.filter(isComposerContribution) : [],
+    pages: Array.isArray(raw.pages) ? raw.pages.filter(isPageContribution) : [],
   };
+}
+
+function isPageContribution(value: unknown): value is PluginPageContribution {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return typeof entry.id === 'string' && typeof entry.title === 'string' && typeof entry.view === 'string';
 }
 
 function isDockContribution(value: unknown): value is PluginDockContribution {

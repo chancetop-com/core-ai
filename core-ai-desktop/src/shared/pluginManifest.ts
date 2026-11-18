@@ -15,7 +15,16 @@ export const SUPPORTED_COMPONENT_KINDS = ['skills'] as const;
 export type SupportedComponentKind = (typeof SUPPORTED_COMPONENT_KINDS)[number];
 export type PluginComponentKind = SupportedComponentKind | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';
 
-export const SUPPORTED_CAPABILITIES = ['ui.dock', 'ui.settings', 'ui.composer', 'engine.skills'] as const;
+export const SUPPORTED_CAPABILITIES = [
+  'ui.dock',
+  'ui.settings',
+  'ui.composer',
+  'ui.pages',
+  'engine.skills',
+  'media.assets.read',
+  'media.models.read',
+  'media.generate',
+] as const;
 export type PluginCapability = (typeof SUPPORTED_CAPABILITIES)[number];
 
 const MAX_CONTRIBUTIONS_PER_KIND = 20;
@@ -61,10 +70,20 @@ export interface PluginComposerContribution {
   insertText: string;
 }
 
+export interface PluginPageContribution {
+  id: string;
+  title: string;
+  /** Package-relative HTML entry. It runs in an isolated WebContentsView, never in the host renderer. */
+  view: string;
+  icon?: string;
+  scope: 'workspace' | 'app';
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
   composer: PluginComposerContribution[];
+  pages: PluginPageContribution[];
 }
 
 export interface PluginComponent {
@@ -310,6 +329,23 @@ function parseComposer(value: unknown): PluginComposerContribution[] {
   return contributions;
 }
 
+function parsePages(value: unknown): PluginPageContribution[] {
+  if (!Array.isArray(value)) return [];
+  const contributions: PluginPageContribution[] = [];
+  for (const raw of value.slice(0, MAX_CONTRIBUTIONS_PER_KIND)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const title = boundedText(entry.title, 120);
+    const view = safeRelativePath(entry.view);
+    if (!id || !title || !view) continue;
+    const icon = boundedText(entry.icon, 16) ?? undefined;
+    const scope = entry.scope === 'app' ? 'app' : 'workspace';
+    contributions.push({ id, title, view, ...(icon ? { icon } : {}), scope });
+  }
+  return contributions;
+}
+
 function stringList(value: unknown): string[] | null {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
@@ -360,7 +396,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
   let desktopApi = '*';
   let engineApi: string | undefined;
   const components: PluginComponent[] = [];
-  const contributions: PluginContributions = { dock: [], settings: [], composer: [] };
+  const contributions: PluginContributions = { dock: [], settings: [], composer: [], pages: [] };
   let required: string[] = [];
   let optional: string[] = [];
 
@@ -405,6 +441,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.dock = parseDock(contributes.dock, unsupported);
           contributions.settings = parseSettings(contributes.settings);
           contributions.composer = parseComposer(contributes.composer);
+          contributions.pages = parsePages(contributes.pages);
         }
       }
 
@@ -446,8 +483,8 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer'): string => `ui.${kind}`;
-  for (const kind of ['dock', 'settings', 'composer'] as const) {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages'): string => `ui.${kind}`;
+  for (const kind of ['dock', 'settings', 'composer', 'pages'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

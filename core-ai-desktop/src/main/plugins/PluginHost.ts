@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import type { PluginView } from '../../shared/pluginManifest';
-import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginStoreOptions } from './pluginStore';
+import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginStoreOptions, type ResolvedPluginPage } from './pluginStore';
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
 export const PLUGIN_STORE_ROOT_ENV = 'CORE_AI_PLUGIN_STORE_ROOT';
@@ -71,6 +71,10 @@ export class PluginHost {
 
   skillRoots(): Promise<EngineSkillRoot[]> {
     return this.store.engineSkillRoots();
+  }
+
+  resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {
+    return this.store.resolvePage(pluginId, pageId);
   }
 
   /** Engine environment for one workspace; omitted keys leave the engine unchanged. */

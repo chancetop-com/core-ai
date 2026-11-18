@@ -20,6 +20,7 @@ const shared = {
 const targets = [
   { entryPoints: ['src/main/main.ts'], outfile: 'dist/main.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/preload/preload.ts'], outfile: 'dist/preload.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
+  { entryPoints: ['src/preload/pluginPagePreload.ts'], outfile: 'dist/pluginPagePreload.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/engine/RpcClient.ts'], outfile: 'dist/test/rpcClient.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/engine/EngineSupervisor.ts'], outfile: 'dist/test/engineSupervisor.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/schedule/ScheduleWaker.ts'], outfile: 'dist/test/scheduleWaker.js', platform: 'node', target: 'node20', format: 'cjs' },
@@ -55,7 +56,9 @@ const targets = [
   { entryPoints: ['src/main/plugins/zip.ts'], outfile: 'dist/test/pluginZip.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/pluginStore.ts'], outfile: 'dist/test/pluginStore.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/PluginHost.ts'], outfile: 'dist/test/pluginHost.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/plugins/PluginPageHost.ts'], outfile: 'dist/test/pluginPageHost.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/plugins/workspaceTrust.ts'], outfile: 'dist/test/workspaceTrust.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/plugins/pluginPagePaths.ts'], outfile: 'dist/test/pluginPagePaths.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/pluginView.ts'], outfile: 'dist/test/pluginView.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/reducer.ts'], outfile: 'dist/test/transcript.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/classify.ts'], outfile: 'dist/test/transcriptClassify.js', platform: 'node', target: 'node20', format: 'cjs' },

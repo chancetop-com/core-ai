@@ -5,7 +5,17 @@
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
-  "files": ["index.js", "index.d.ts", "schema", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "default": "./index.js"
+    },
+    "./ui": {
+      "types": "./ui.d.ts"
+    }
+  },
+  "files": ["index.js", "index.d.ts", "ui.d.ts", "schema", "README.md"],
   "scripts": {
     "test": "node --test test/*.test.mjs"
   }

@@ -5,10 +5,9 @@ import ai.core.cli.upgrade.VersionUtil;
 import ai.core.tool.ToolCall;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -24,7 +23,6 @@ import java.util.function.Function;
  */
 public class AppServerEngine implements EngineApi {
     public static final String PROTOCOL_VERSION = "1.0";
-    private static final Logger LOGGER = LoggerFactory.getLogger(AppServerEngine.class);
     // Trace origins for clients that declare themselves in the initialize handshake; extend this table when a
     // new client ships. Clients that send no name (or an unknown one) trace as "cli".
     private static final Map<String, String> TRACE_CLIENT_TYPES = Map.of("core-ai-desktop", "desktop");
@@ -39,6 +37,7 @@ public class AppServerEngine implements EngineApi {
     private final EngineScheduler scheduler;
     private final SchedulesApi schedulesApi;
     private final MediaSettingsApi mediaSettings;
+    private final MediaGenerationApi mediaGeneration;
     private final ModelSettingsApi modelSettings;
     private final SpeechApi speechApi = new SpeechApi();
     private final HubBridge hubBridge = new HubBridge();
@@ -55,6 +54,8 @@ public class AppServerEngine implements EngineApi {
         this.mediaSettings = new MediaSettingsApi(bootstrap.props, bootstrap.workspace, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.mediaModelCatalog,
                 Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties"));
+        this.mediaGeneration = new MediaGenerationApi(bootstrap.workspace, bootstrap.imageMediaProvider,
+                bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel, mediaSettings);
         this.modelSettings = new ModelSettingsApi(bootstrap, registry);
         this.handlers = buildHandlers();
         this.supportedMethods = Set.copyOf(handlers.keySet());
@@ -96,6 +97,7 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("scheduled_tasks");
         capabilities.add("transcript");
         capabilities.add("speech");
+        capabilities.add("media_generation");
         node.put("workspace", bootstrap.workspace.toString());
         node.set("trustState", trustNode());
         if (bootstrap.workspaceTrusted) scheduler.start();
@@ -140,15 +142,13 @@ public class AppServerEngine implements EngineApi {
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> buildHandlers() {
-        return Map.ofEntries(
+        var handlers = new HashMap<String, Function<ObjectNode, JsonNode>>(Map.ofEntries(
                 Map.entry("session/list", registry::list), Map.entry("session/create", registry::create),
                 Map.entry("session/resume", registry::resume), Map.entry("session/history", registry::history),
                 Map.entry("session/records", registry::records), Map.entry("session/recordPayload", registry::recordPayload),
                 Map.entry("session/send", registry::send), Map.entry("session/save", registry::save),
-                Map.entry("session/close", registry::close),
-                Map.entry("session/cancel", registry::cancel),
-                Map.entry("session/approve", registry::approve),
-                Map.entry("session/compact", registry::compact),
+                Map.entry("session/close", registry::close), Map.entry("session/cancel", registry::cancel),
+                Map.entry("session/approve", registry::approve), Map.entry("session/compact", registry::compact),
                 Map.entry("session/undo", registry::undo),
                 Map.entry("session/delete", registry::delete), Map.entry("session/rename", registry::rename),
                 Map.entry("session/export", registry::export),
@@ -187,7 +187,26 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("helpers/list", ignored -> helperBridge.list()),
                 Map.entry("helpers/add", helperBridge::add),
                 Map.entry("helpers/update", helperBridge::update),
-                Map.entry("helpers/remove", helperBridge::remove));
+                Map.entry("helpers/remove", helperBridge::remove)));
+        handlers.putAll(mediaHandlers());
+        return Map.copyOf(handlers);
+    }
+
+    private Map<String, Function<ObjectNode, JsonNode>> mediaHandlers() {
+        return Map.of(
+                "media/models", ignored -> mediaGeneration.models(),
+                "media/generate", params -> {
+                    bootstrap.requireTrusted("generating media");
+                    return mediaGeneration.generate(params);
+                },
+                "media/jobs/get", params -> {
+                    bootstrap.requireTrusted("reading media jobs");
+                    return mediaGeneration.job(params);
+                },
+                "media/jobs/list", params -> {
+                    bootstrap.requireTrusted("reading media jobs");
+                    return mediaGeneration.jobs(params);
+                });
     }
 
     private ObjectNode skillsList(ObjectNode params) {

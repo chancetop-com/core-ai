@@ -33,12 +33,12 @@
           "properties": {
             "required": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "engine.skills"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.models.read", "media.generate"] },
               "uniqueItems": true
             },
             "optional": {
               "type": "array",
-              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "engine.skills"] },
+              "items": { "enum": ["ui.dock", "ui.settings", "ui.composer", "ui.pages", "engine.skills", "media.assets.read", "media.models.read", "media.generate"] },
               "uniqueItems": true
             }
           },
@@ -61,7 +61,21 @@
               }
             },
             "settings": { "type": "array" },
-            "composer": { "type": "array" }
+            "composer": { "type": "array" },
+            "pages": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "title", "view"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "view": { "type": "string" },
+                  "icon": { "type": "string", "maxLength": 16 },
+                  "scope": { "enum": ["workspace", "app"] }
+                }
+              }
+            }
           },
           "additionalProperties": false
         }

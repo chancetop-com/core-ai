@@ -13,7 +13,16 @@
 export const PLUGIN_SCHEMA_VERSION = 1;
 export const DESKTOP_API_VERSION = '1.0.0';
 
-export const CAPABILITIES = Object.freeze(['ui.dock', 'ui.settings', 'ui.composer', 'engine.skills']);
+export const CAPABILITIES = Object.freeze([
+  'ui.dock',
+  'ui.settings',
+  'ui.composer',
+  'ui.pages',
+  'engine.skills',
+  'media.assets.read',
+  'media.models.read',
+  'media.generate',
+]);
 export const COMPONENT_KINDS = Object.freeze(['skills', 'commands', 'hooks', 'agents', 'mcp', 'lsp']);
 
 const SAFE_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/;
@@ -83,7 +92,7 @@ export function validateManifest(input) {
   }
 
   const contributes = isObject(coreai.contributes) ? coreai.contributes : {};
-  for (const kind of ['dock', 'settings', 'composer']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
@@ -96,6 +105,16 @@ export function validateManifest(input) {
     if (kind === 'dock') {
       for (const item of contributes.dock) {
         if (isObject(item) && item.view !== undefined) warnings.push('scripted dock views are reported as unsupported by the current desktop');
+      }
+    }
+    if (kind === 'pages') {
+      for (const item of contributes.pages) {
+        if (!isObject(item)
+          || typeof item.id !== 'string' || !item.id
+          || typeof item.title !== 'string' || !item.title
+          || !safePath(item.view)) {
+          errors.push('each page needs id, title and a package-relative view path');
+        }
       }
     }
   }

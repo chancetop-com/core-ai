@@ -70,6 +70,30 @@ test('scripted dock views are a warning, not a hard failure', () => {
   assert.ok(result.warnings.some((warning) => warning.includes('scripted')));
 });
 
+test('pages need ui.pages, identity and a package-relative view', () => {
+  const page = {
+    ...base,
+    coreai: {
+      ...base.coreai,
+      capabilities: { required: ['engine.skills', 'ui.pages'] },
+      contributes: { pages: [{ id: 'studio', title: 'Studio', view: 'pages/studio.html' }] },
+    },
+  };
+  assert.equal(validateManifest(page).ok, true);
+  assert.equal(validateManifest({
+    ...page,
+    coreai: { ...page.coreai, capabilities: { required: ['engine.skills'] } },
+  }).ok, false);
+  assert.equal(validateManifest({
+    ...page,
+    coreai: { ...page.coreai, contributes: { pages: [{ id: 'studio', title: 'Studio', view: '../studio.html' }] } },
+  }).ok, false);
+  assert.equal(validateManifest({
+    ...page,
+    coreai: { ...page.coreai, contributes: { pages: [{ id: 'studio', view: 'studio.html' }] } },
+  }).ok, false);
+});
+
 test('garbage input fails without throwing', () => {
   assert.equal(validateManifest('{not json').ok, false);
   assert.equal(validateManifest(null).ok, false);

@@ -1,0 +1,24 @@
+{
+  "name": "Media Studio",
+  "version": "0.1.0",
+  "description": "A plugin page that lists generated media and starts image/video generation without a conversation.",
+  "coreai": {
+    "schemaVersion": 1,
+    "id": "core-ai.media-studio",
+    "desktopApi": "^1.0.0",
+    "capabilities": {
+      "required": ["ui.pages", "media.assets.read", "media.models.read", "media.generate"]
+    },
+    "contributes": {
+      "pages": [
+        {
+          "id": "studio",
+          "title": "Media Studio",
+          "view": "pages/studio.html",
+          "icon": "media",
+          "scope": "workspace"
+        }
+      ]
+    }
+  }
+}

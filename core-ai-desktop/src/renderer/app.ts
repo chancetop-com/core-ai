@@ -456,7 +456,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   updateInstall(): Promise<UpdateState | null>;
   onUpdateState(callback: (state: UpdateState) => void): () => void;
   pluginsList(): Promise<PluginView[]>;
-  pluginsContributions(): Promise<Array<{ pluginId: string; name: string; contributions: { dock: any[]; settings: any[]; composer: any[] } }>>;
+  pluginsContributions(): Promise<Array<{ pluginId: string; name: string; contributions: { dock: any[]; settings: any[]; composer: any[]; pages: any[] } }>>;
   pluginsInstallFolder(): Promise<PluginOperationResult | null>;
   pluginsInstallZip(): Promise<PluginOperationResult | null>;
   pluginsEnable(pluginId: string): Promise<PluginOperationResult>;
@@ -467,6 +467,10 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   pluginsSetSetting(pluginId: string, key: string, value: string | number | boolean): Promise<PluginOperationResult>;
   pluginsRegistryList(query: string): Promise<RegistryListResult>;
   pluginsRegistryInstall(pluginId: string): Promise<PluginOperationResult>;
+  pluginPageOpen(request: { pluginId: string; pageId: string; workspace: string; bounds: { x: number; y: number; width: number; height: number } }):
+    Promise<{ ok: true; token: string; title: string } | { ok: false; code: string; message: string }>;
+  pluginPageSetBounds(token: string, bounds: { x: number; y: number; width: number; height: number }): Promise<boolean>;
+  pluginPageClose(token: string): Promise<boolean>;
   onPluginsChanged(callback: () => void): () => void;
   onBrowserState(callback: (status: BrowserStatus) => void): () => void;
   info(): Promise<any>;
@@ -583,6 +587,7 @@ const state: {
   notifySessions: Record<string, boolean>;
   notifyPending: boolean;
   plugins: PluginView[];
+  pluginPage: { token: string; pluginId: string; pageId: string; title: string } | null;
   workspaceTrust: WorkspaceTrustState | null;
   registryPlugins: RegistryPlugin[];
   registryTotal: number;
@@ -629,6 +634,7 @@ const state: {
   notifySessions: {},
   notifyPending: false,
   plugins: [],
+  pluginPage: null,
   workspaceTrust: null,
   registryPlugins: [],
   registryTotal: 0,
@@ -1342,12 +1348,21 @@ function renderSidebar(): void {
       button.title = item.label;
       if (item.key === 'settings') settingsNavEl = button;
       button.onclick = () => {
+        dismissPluginPage();
         state.nav = item.key;
         renderSidebar();
         renderContent();
       };
       nav.append(button);
     }
+  }
+
+  for (const row of pluginPageRows()) {
+    const button = el('button', `nav-item plugin-page-nav${state.pluginPage?.pluginId === row.pluginId && state.pluginPage?.pageId === row.page.id ? ' active' : ''}`);
+    button.append(icon('artifacts'), el('span', 'nav-text', row.page.title));
+    button.title = `${row.pluginName}: ${row.page.title}`;
+    button.onclick = () => void openPluginPage(row.pluginId, row.page.id, row.page.title);
+    nav.append(button);
   }
 
   ensureSidebarToggle();
@@ -1701,6 +1716,7 @@ function buildSessionsNavRow(): HTMLElement {
   label.title = 'Sessions';
   label.append(icon('sessions'), el('span', 'nav-text', 'Sessions'));
   label.onclick = () => {
+    dismissPluginPage();
     state.nav = 'sessions';
     renderSidebar();
     renderContent();
@@ -7674,6 +7690,7 @@ async function loadPlugins(): Promise<void> {
     state.plugins = [];
   }
   renderPluginDock();
+  if (document.getElementById('nav')) renderSidebar();
 }
 
 function insertComposerText(text: string): void {
@@ -9385,6 +9402,120 @@ function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {
 // ---------- content router ----------
 
 let contentRenderToken = 0;
+let pluginPageObserver: ResizeObserver | null = null;
+let pluginPageBoundsFrame = 0;
+
+interface PluginPageRow {
+  pluginId: string;
+  pluginName: string;
+  page: { id: string; title: string; scope?: string };
+}
+
+/** Pages of active plugins that have the ui.pages grant; the main process re-checks the grant on open. */
+function pluginPageRows(): PluginPageRow[] {
+  const rows: PluginPageRow[] = [];
+  for (const plugin of state.plugins) {
+    if (plugin.status !== 'active' || !plugin.granted.includes('ui.pages')) continue;
+    for (const page of plugin.contributions?.pages ?? []) {
+      if (!page || typeof page.id !== 'string' || typeof page.title !== 'string') continue;
+      rows.push({ pluginId: plugin.id, pluginName: plugin.name, page });
+    }
+  }
+  return rows;
+}
+
+function disposePluginPageBounds(): void {
+  pluginPageObserver?.disconnect();
+  pluginPageObserver = null;
+  if (pluginPageBoundsFrame) cancelAnimationFrame(pluginPageBoundsFrame);
+  pluginPageBoundsFrame = 0;
+}
+
+function pluginPageBounds(host: HTMLElement): { x: number; y: number; width: number; height: number } {
+  const rect = host.getBoundingClientRect();
+  return {
+    x: Math.round(rect.left),
+    y: Math.round(rect.top),
+    width: Math.max(1, Math.round(rect.width)),
+    height: Math.max(1, Math.round(rect.height)),
+  };
+}
+
+function schedulePluginPageBounds(): void {
+  if (!state.pluginPage?.token) return;
+  if (pluginPageBoundsFrame) cancelAnimationFrame(pluginPageBoundsFrame);
+  pluginPageBoundsFrame = requestAnimationFrame(() => {
+    pluginPageBoundsFrame = 0;
+    const page = state.pluginPage;
+    const host = document.getElementById('plugin-page-host');
+    if (!page?.token || !host) return;
+    void window.coreai.pluginPageSetBounds(page.token, pluginPageBounds(host));
+  });
+}
+
+function observePluginPageBounds(host: HTMLElement): void {
+  disposePluginPageBounds();
+  pluginPageObserver = new ResizeObserver(() => schedulePluginPageBounds());
+  pluginPageObserver.observe(host);
+  schedulePluginPageBounds();
+}
+
+function dismissPluginPage(): void {
+  const page = state.pluginPage;
+  state.pluginPage = null;
+  disposePluginPageBounds();
+  if (page?.token) void window.coreai.pluginPageClose(page.token);
+}
+
+async function openPluginPage(pluginId: string, pageId: string, title: string): Promise<void> {
+  if (!state.workspace) {
+    toast('Choose a workspace before opening a plugin page');
+    return;
+  }
+  dismissPluginPage();
+  state.nav = 'plugins';
+  state.pluginPage = { token: '', pluginId, pageId, title };
+  renderSidebar();
+  await renderContent();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  const host = document.getElementById('plugin-page-host');
+  if (!host) {
+    dismissPluginPage();
+    return;
+  }
+  const result = await window.coreai.pluginPageOpen({
+    pluginId,
+    pageId,
+    workspace: state.workspace,
+    bounds: pluginPageBounds(host),
+  });
+  if (!result.ok) {
+    dismissPluginPage();
+    toast(`Plugin page failed: ${result.message}`);
+    await renderContent();
+    return;
+  }
+  if (state.pluginPage?.pluginId !== pluginId || state.pluginPage?.pageId !== pageId) {
+    void window.coreai.pluginPageClose(result.token);
+    return;
+  }
+  state.pluginPage.token = result.token;
+  observePluginPageBounds(host);
+}
+
+function renderPluginPagePanel(): HTMLElement {
+  const page = state.pluginPage as NonNullable<typeof state.pluginPage>;
+  const root = el('div', 'panel plugin-page-panel');
+  const header = el('div', 'plugin-page-header');
+  header.append(el('h2', undefined, page.title));
+  header.append(el('div', 'hint', 'Plugin page · isolated view'));
+  root.append(header);
+  const host = el('div', 'plugin-page-host');
+  host.id = 'plugin-page-host';
+  host.append(loadingLine('Loading plugin page…'));
+  root.append(host);
+  return root;
+}
 
 /**
  * Swaps the router's content, then re-syncs the browser view: the native view may only float
@@ -9395,6 +9526,7 @@ function mountContent(content: HTMLElement, node?: Node): void {
   if (node) content.replaceChildren(node);
   else content.replaceChildren();
   scheduleBrowserBounds();
+  if (state.pluginPage) schedulePluginPageBounds();
 }
 
 /**
@@ -9436,6 +9568,7 @@ async function renderContent(): Promise<void> {
   }
 
   if (!state.workspace) {
+    dismissPluginPage();
     if (state.nav === 'sessions') {
       if (!chatView) buildChatView();
       mountContent(content, chatView as HTMLElement);
@@ -9460,6 +9593,16 @@ async function renderContent(): Promise<void> {
     // memory, artifacts, scheduled tasks): stand up the default workspace on first use instead
     // of asking the user to pick a folder — connect() re-renders this same panel against it.
     await materializeDefaultWorkspace();
+    return;
+  }
+
+  if (state.pluginPage && state.nav !== 'plugins') {
+    dismissPluginPage();
+  }
+  if (state.pluginPage) {
+    mountContent(content, renderPluginPagePanel());
+    const host = document.getElementById('plugin-page-host');
+    if (host) observePluginPageBounds(host);
     return;
   }
 
@@ -9524,8 +9667,10 @@ async function bootstrap(): Promise<void> {
   await loadPlugins();
   window.coreai.onPluginsChanged(() => {
     void loadPlugins().then(() => {
+      // Grant changes close the native page view in main; the renderer must drop its stale page state.
+      if (state.pluginPage) dismissPluginPage();
       renderComposerControls();
-      if (state.nav === 'settings') void renderContent();
+      if (state.nav === 'settings' || state.nav === 'plugins') void renderContent();
     });
   });
   try {

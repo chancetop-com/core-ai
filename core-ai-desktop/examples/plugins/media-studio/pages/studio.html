@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Media Studio</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f7f8fa; --panel: #fff; --text: #1c2026; --muted: #68707d; --border: #dfe3e8; --accent: #4568dc; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #111419; --panel: #181c22; --text: #e8ebef; --muted: #9aa3af; --border: #2b313a; --accent: #7c9cff; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { display: grid; grid-template-columns: 360px 1fr; height: 100vh; }
+    aside { border-right: 1px solid var(--border); padding: 18px; overflow-y: auto; }
+    section { padding: 18px; overflow-y: auto; }
+    h1 { font-size: 16px; margin: 0 0 4px; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    label { display: block; color: var(--muted); font-size: 12px; margin: 12px 0 4px; }
+    textarea, select { width: 100%; font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+    textarea { min-height: 110px; resize: vertical; }
+    button { margin-top: 14px; width: 100%; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 9px 12px; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: default; }
+    .row { display: flex; gap: 8px; }
+    .row > * { flex: 1; }
+    .status { min-height: 18px; margin-top: 10px; color: var(--muted); font-size: 12px; white-space: pre-wrap; }
+    .status.error { color: #d84b4b; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+    .card { border: 1px solid var(--border); border-radius: 10px; background: var(--panel); overflow: hidden; }
+    .card img, .card video { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; background: #000; }
+    .meta { padding: 8px 10px; font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; }
+    .empty { color: var(--muted); font-size: 13px; }
+    .kind { display: inline-block; margin-left: 4px; padding: 0 6px; border: 1px solid var(--border); border-radius: 999px; font-size: 10px; }
+  </style>
+</head>
+<body>
+<main>
+  <aside>
+    <h1>Media Studio</h1>
+    <div class="sub" id="context">Loading plugin context…</div>
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt" placeholder="A quiet coastal town at blue hour, cinematic light"></textarea>
+    <label for="kind">Kind</label>
+    <select id="kind">
+      <option value="image">Image</option>
+      <option value="video">Video</option>
+    </select>
+    <div class="row">
+      <div>
+        <label for="model">Model</label>
+        <select id="model"></select>
+      </div>
+      <div>
+        <label for="size">Size</label>
+        <select id="size">
+          <option value="">default</option>
+          <option value="1024x1024">1024 × 1024</option>
+          <option value="1536x1024">1536 × 1024</option>
+          <option value="1024x1536">1024 × 1536</option>
+        </select>
+      </div>
+    </div>
+    <label for="seconds">Video seconds</label>
+    <select id="seconds">
+      <option value="">default</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="10">10</option>
+    </select>
+    <button id="generate">Generate</button>
+    <div class="status" id="status"></div>
+  </aside>
+  <section>
+    <div class="row" style="align-items:center; margin-bottom:12px">
+      <h1 style="margin:0">Library</h1>
+      <button id="refresh" style="width:auto; margin:0; padding:6px 10px; font-weight:500">Refresh</button>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="empty" class="empty">No generated media yet.</div>
+  </section>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const bridge = window.coreaiPlugin;
+  let models = { image: [], video: [] };
+  let context = null;
+  let polling = null;
+
+  function text(value) { return typeof value === 'string' ? value : ''; }
+
+  function showStatus(message, error) {
+    $('status').textContent = message || '';
+    $('status').className = `status${error ? ' error' : ''}`;
+  }
+
+  async function loadContext() {
+    context = await bridge.context();
+    $('context').textContent = `${context.pluginName} · ${context.workspace}`;
+  }
+
+  function fillModels() {
+    const kind = $('kind').value;
+    const select = $('model');
+    const list = models[kind] || [];
+    select.replaceChildren();
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = 'default';
+    select.append(auto);
+    for (const item of list) {
+      const option = document.createElement('option');
+      option.value = text(item.modelId);
+      option.textContent = text(item.displayName) || text(item.modelId);
+      select.append(option);
+    }
+    select.disabled = list.length === 0;
+    $('seconds').disabled = kind !== 'video';
+  }
+
+  async function loadModels() {
+    try {
+      const info = await bridge.media.models();
+      models = {
+        image: Array.isArray(info.imageModels) ? info.imageModels : [],
+        video: Array.isArray(info.videoModels) ? info.videoModels : [],
+      };
+      fillModels();
+    } catch (error) {
+      showStatus(`Models unavailable: ${error.message || error}`, true);
+    }
+  }
+
+  async function loadAssets() {
+    try {
+      const result = await bridge.assets.list();
+      renderAssets(Array.isArray(result.files) ? result.files : []);
+    } catch (error) {
+      showStatus(`Library unavailable: ${error.message || error}`, true);
+    }
+  }
+
+  function renderAssets(files) {
+    const grid = $('grid');
+    grid.replaceChildren();
+    $('empty').style.display = files.length ? 'none' : 'block';
+    for (const file of files) {
+      const card = document.createElement('div');
+      card.className = 'card';
+      if (file.kind === 'video') {
+        const video = document.createElement('video');
+        video.src = text(file.url);
+        video.controls = true;
+        video.preload = 'metadata';
+        card.append(video);
+      } else {
+        const image = document.createElement('img');
+        image.src = text(file.url);
+        image.alt = text(file.name);
+        image.loading = 'lazy';
+        card.append(image);
+      }
+      const meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.append(document.createTextNode(`${text(file.name)} `));
+      const kind = document.createElement('span');
+      kind.className = 'kind';
+      kind.textContent = text(file.kind);
+      meta.append(kind);
+      card.append(meta);
+      grid.append(card);
+    }
+  }
+
+  async function pollJob(id) {
+    if (polling) clearInterval(polling);
+    let stopped = false;
+    const tick = async () => {
+      try {
+        const result = await bridge.media.job(id);
+        const job = result.job || result;
+        showStatus(`Video ${job.status || 'pending'}${job.progress != null ? ` · ${job.progress}%` : ''}`);
+        if (job.status === 'completed') {
+          stopped = true;
+          clearInterval(polling); polling = null;
+          showStatus('Video ready.');
+          await loadAssets();
+        } else if (job.status === 'failed') {
+          stopped = true;
+          clearInterval(polling); polling = null;
+          showStatus(`Video failed: ${job.error || 'unknown error'}`, true);
+        }
+      } catch (error) {
+        stopped = true;
+        clearInterval(polling); polling = null;
+        showStatus(`Video status failed: ${error.message || error}`, true);
+      }
+    };
+    await tick();
+    if (!stopped) polling = setInterval(tick, 5000);
+  }
+
+  async function generate() {
+    const prompt = $('prompt').value.trim();
+    if (!prompt) { showStatus('Enter a prompt first.', true); return; }
+    const kind = $('kind').value;
+    const params = { kind, prompt };
+    if ($('model').value) params.model = $('model').value;
+    if ($('size').value) params.size = $('size').value;
+    if (kind === 'video' && $('seconds').value) params.seconds = Number($('seconds').value);
+    $('generate').disabled = true;
+    showStatus(kind === 'video' ? 'Submitting video…' : 'Generating image…');
+    try {
+      const result = await bridge.media.generate(params);
+      if (kind === 'video') {
+        const job = result.job || {};
+        showStatus(`Video submitted: ${job.id || '?'}`);
+        if (job.id) await pollJob(job.id);
+      } else {
+        showStatus(`Generated ${(result.files || []).length} image(s).`);
+        await loadAssets();
+      }
+    } catch (error) {
+      showStatus(error.message || String(error), true);
+    } finally {
+      $('generate').disabled = false;
+    }
+  }
+
+  $('kind').onchange = fillModels;
+  $('generate').onclick = generate;
+  $('refresh').onclick = loadAssets;
+  (async () => {
+    await loadContext();
+    await Promise.all([loadModels(), loadAssets()]);
+  })().catch((error) => showStatus(error.message || String(error), true));
+</script>
+</body>
+</html>

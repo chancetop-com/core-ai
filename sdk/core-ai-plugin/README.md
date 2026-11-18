@@ -65,7 +65,8 @@ if (!result.ok) console.error(result.errors);
 
 `validateManifest` accepts an object or a JSON string, returns every error/warning, and never
 executes package code. Warnings include scripted dock views (`contributes.dock[].view`), which the
-current desktop reports as unsupported in favour of host-rendered `blocks`.
+current desktop reports as unsupported in favour of host-rendered `blocks`. A `pages` contribution
+requires `id`, `title` and a package-relative `view`; the matching capability is `ui.pages`.
 
 ## Capabilities
 
@@ -75,6 +76,15 @@ current desktop reports as unsupported in favour of host-rendered `blocks`.
 | `ui.dock` | host-rendered read-only dock panel |
 | `ui.settings` | declarative settings fields stored in the plugin store |
 | `ui.composer` | insert-only composer action |
+| `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
+| `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
+| `media.models.read` | reads the configured image/video model catalog |
+| `media.generate` | starts image/video generation through the engine's media service |
+
+A page is declared as `contributes.pages` and must use a package-relative `view`. It runs without Node,
+without network access, and receives only the fixed `window.coreaiPlugin` bridge (`context`, `assets`,
+`media`); the desktop re-checks the plugin grant before every bridge call. TypeScript authors can import
+the bridge types from `core-ai-plugin/ui`.
 
 Packages install **disabled**. The user reviews capabilities, grants them, then enables the plugin.
 A digest change requires a new grant.
