@@ -29,7 +29,7 @@ class AnalyticsMappingServiceTest {
         return provider;
     }
 
-    private static GatewayModelConfig model(String modelId, String providerId, Boolean enabled) {
+    private static GatewayModelConfig model(String modelId, String providerId, boolean enabled) {
         var model = new GatewayModelConfig();
         model.id = modelId + "-" + providerId;
         model.modelId = modelId;
