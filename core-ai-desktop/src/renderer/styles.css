@@ -1435,6 +1435,12 @@ select.rich-card-input[multiple] { padding: 3px; }
 .attachment-chip .attachment-name { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .attachment-chip .attachment-size { font-size: 11px; color: var(--faint); white-space: nowrap; flex: 0 0 auto; }
 
+/* remote composer tray: uploading chips dim, failed chips keep their reason visible */
+.composer-attachments .attachment-chip.uploading,
+.composer-attachments .attachment-image-tile.uploading { opacity: 0.65; }
+.composer-attachments .attachment-chip.failed { border-color: var(--red); }
+.composer-attachments .attachment-chip.failed .attachment-size { color: var(--red); }
+
 /* attached images render as real preview tiles, not file names */
 .attachment-image-tile { position: relative; width: 56px; height: 56px; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; cursor: zoom-in; flex: 0 0 auto; background: var(--bg-input); }
 .attachment-image-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }

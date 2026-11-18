@@ -1,5 +1,6 @@
 package ai.core.api.server.conversation;
 
+import ai.core.api.server.blob.BlobUploadCredentialView;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
 import core.framework.api.web.service.PUT;
@@ -37,6 +38,16 @@ public interface ConversationWebService {
     @GET
     @Path("/api/conversations/v1/sessions/:sessionId/history")
     ConversationHistoryResponse history(@PathParam("sessionId") String sessionId, ConversationHistoryRequest request);
+
+    /**
+     * Pre-signed upload credential scoped to one conversation. It requires chat.use plus session access
+     * instead of the dashboard permission the generic blob credential needs, and the blob name is bound
+     * to the session so another conversation cannot reference the upload.
+     */
+    @GET
+    @Path("/api/conversations/v1/sessions/:sessionId/attachments/credential")
+    BlobUploadCredentialView attachmentCredential(@PathParam("sessionId") String sessionId,
+                                                  ConversationAttachmentCredentialRequest request);
 
     @POST
     @Path("/api/conversations/v1/sessions/:sessionId/messages")

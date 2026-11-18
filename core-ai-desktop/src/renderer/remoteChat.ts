@@ -36,6 +36,75 @@ interface RemoteSessionRow {
   lastMessageAt: string | null;
 }
 
+/** The attachment descriptor the server accepts on send; the same shape the web composer produces. */
+export interface RemoteAttachmentPayload {
+  url: string;
+  type: 'IMAGE' | 'VIDEO' | 'PDF' | 'FILE';
+  fileName: string;
+  contentType: string;
+  category: 'multimodal' | 'sandbox';
+  container: string;
+  blobName: string;
+}
+
+type AttachmentKind = 'image' | 'video' | 'pdf' | 'file';
+
+/** An uploaded-by-main file shown in the composer tray and on the optimistic user message. */
+interface PendingRemoteAttachment {
+  id: string;
+  name: string;
+  size: number;
+  kind: AttachmentKind;
+  preview: string | null;
+  status: 'uploading' | 'ready' | 'failed';
+  descriptor?: RemoteAttachmentPayload;
+}
+
+/** A user message the client added itself; history does not persist attachment metadata yet. */
+interface RemoteChatMessage extends RemoteMessage {
+  attachments?: PendingRemoteAttachment[];
+}
+
+const REMOTE_ICONS = {
+  paperclip: '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  file: '<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>',
+  image: '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/>',
+  x: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+} as const;
+
+function remoteIcon(name: keyof typeof REMOTE_ICONS): SVGElement {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.classList.add('ic');
+  svg.innerHTML = REMOTE_ICONS[name];
+  return svg;
+}
+
+function attachmentKindOf(contentType: string, fileName: string): AttachmentKind {
+  if (contentType.startsWith('image/')) return 'image';
+  if (contentType.startsWith('video/')) return 'video';
+  if (contentType === 'application/pdf' || /\.pdf$/i.test(fileName)) return 'pdf';
+  return 'file';
+}
+
+function baseNameOf(filePath: string): string {
+  const parts = filePath.split(/[\\/]/);
+  return parts[parts.length - 1] || filePath;
+}
+
+function fmtBytes(size: number): string {
+  if (!Number.isFinite(size) || size <= 0) return '';
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 interface LiveTool {
   name: string;
   status: string;
@@ -66,7 +135,9 @@ interface RemoteChatState {
   status: 'idle' | 'running' | 'error';
   connection: 'connecting' | 'connected' | 'reconnecting' | 'rejected' | 'closed';
   connectionMessage: string;
-  messages: RemoteMessage[];
+  attachmentUpload: boolean;
+  attachments: PendingRemoteAttachment[];
+  messages: RemoteChatMessage[];
   live: LiveTurn | null;
   loading: boolean;
   subscribing: boolean;
@@ -84,6 +155,8 @@ let transcriptEl: HTMLElement | null = null;
 let statusEl: HTMLElement | null = null;
 let composerEl: HTMLTextAreaElement | null = null;
 let sendButton: HTMLButtonElement | null = null;
+let attachButton: HTMLButtonElement | null = null;
+let attachTrayEl: HTMLElement | null = null;
 let bannerEl: HTMLElement | null = null;
 let loadToken = 0;
 let pickerEl: HTMLElement | null = null;
@@ -95,6 +168,20 @@ let sessionsLoading = false;
 let sessionsLoaded = false;
 let pickerAgents: RemoteAgent[] = [];
 let pickerAgentFilter = '';
+const capabilityCache = new Map<string, Record<string, unknown>>();
+
+async function attachmentUploadSupported(serverUrl: string): Promise<boolean> {
+  let capabilities = capabilityCache.get(serverUrl);
+  if (!capabilities) {
+    try {
+      capabilities = await window.coreai.remoteCapabilities(serverUrl);
+    } catch {
+      capabilities = {};
+    }
+    capabilityCache.set(serverUrl, capabilities);
+  }
+  return capabilities?.attachment_upload === true;
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -259,6 +346,8 @@ export function deactivateRemoteSession(): void {
   transcriptEl = null;
   composerEl = null;
   sendButton = null;
+  attachButton = null;
+  attachTrayEl = null;
   statusEl = null;
   bannerEl = null;
 }
@@ -279,6 +368,8 @@ export function openRemoteConversation(serverUrl: string, sessionId: string, age
     status: 'idle',
     connection: 'connecting',
     connectionMessage: '',
+    attachmentUpload: false,
+    attachments: [],
     messages: [],
     live: null,
     loading: true,
@@ -317,6 +408,7 @@ async function subscribeAndLoad(): Promise<void> {
     current.connectionMessage = cleanError(error);
   }
   await loadHistoryPage(current, null);
+  current.attachmentUpload = await attachmentUploadSupported(current.serverUrl);
   paintChat();
 }
 
@@ -327,6 +419,7 @@ async function loadHistoryPage(current: RemoteChatState, beforeSeq: number | nul
     if (token !== loadToken || active !== current) return false;
     const rows = normalizeRemoteMessages(history?.messages);
     if (beforeSeq == null) {
+      mergeLocalAttachments(rows, current.messages);
       current.messages = rows;
     } else {
       current.messages = mergeMessages(rows, current.messages);
@@ -346,6 +439,30 @@ async function loadHistoryPage(current: RemoteChatState, beforeSeq: number | nul
 function mergeMessages(older: RemoteMessage[], current: RemoteMessage[]): RemoteMessage[] {
   const seen = new Set(current.map((message) => `${message.role}\u0000${message.seq ?? ''}\u0000${message.content}`));
   return [...older.filter((message) => !seen.has(`${message.role}\u0000${message.seq ?? ''}\u0000${message.content}`)), ...current];
+}
+
+/**
+ * History carries no attachment metadata, so a reloaded snapshot would drop the chips the client
+ * showed for its own messages. Match user messages in order (the stored text is the sent text plus
+ * server-appended hints) and carry the local descriptors over.
+ */
+function mergeLocalAttachments(rows: RemoteMessage[], previous: RemoteChatMessage[]): void {
+  const sent = previous.filter((message) => message.role === 'user' && message.attachments?.length);
+  let cursor = 0;
+  for (const row of rows) {
+    if (row.role !== 'user' || cursor >= sent.length) continue;
+    const match = sent.findIndex((message, index) => index >= cursor && sameUserMessage(message.content, row.content));
+    if (match < 0) continue;
+    (row as RemoteChatMessage).attachments = sent[match].attachments;
+    cursor = match + 1;
+  }
+}
+
+function sameUserMessage(sent: string, stored: string): boolean {
+  const left = (sent ?? '').trim();
+  const right = (stored ?? '').trim();
+  if (!left || !right) return !left && !right;
+  return right.startsWith(left) || left.startsWith(right);
 }
 
 function cleanError(error: unknown): string {
@@ -435,6 +552,10 @@ export function mountRemoteContent(container: HTMLElement): void {
   const composer = el('div', 'composer remote-composer');
   const card = el('div', 'composer-card');
   const inputRow = el('div', 'composer-input-row');
+  attachButton = el('button', 'composer-attach-btn') as HTMLButtonElement;
+  attachButton.append(remoteIcon('paperclip'));
+  attachButton.title = 'Attach a file — it uploads to the server agent';
+  attachButton.onclick = () => void chooseRemoteAttachments();
   composerEl = el('textarea');
   composerEl.rows = 1;
   composerEl.placeholder = 'Message the server agent — Enter to send, Shift+Enter for a new line';
@@ -455,8 +576,10 @@ export function mountRemoteContent(container: HTMLElement): void {
   controls.append(sendButton);
   statusEl.append(el('span', 'remote-status'), controls);
   (statusEl.querySelector('.remote-status') as HTMLElement).dataset.role = 'status';
-  inputRow.append(composerEl);
-  card.append(inputRow, statusEl);
+  attachTrayEl = el('div', 'composer-attachments');
+  attachTrayEl.hidden = true;
+  inputRow.append(attachButton, composerEl);
+  card.append(inputRow, attachTrayEl, statusEl);
   composer.append(card);
 
   main.append(header, bannerEl, transcript, composer);
@@ -516,12 +639,18 @@ function messageEl(message: RemoteMessage): HTMLElement {
   const wrapper = el('div', `msg ${isUser ? 'user' : 'assistant'} remote-msg`);
   wrapper.append(el('div', 'role', isUser ? 'You' : (active?.agentName ?? 'Server agent')));
   const hasMeta = Boolean(message.thinking || message.tools?.length);
-  if (message.content || (!isUser && hasMeta)) {
+  const attachments = (message as RemoteChatMessage).attachments ?? [];
+  if (message.content || (isUser && attachments.length) || (!isUser && hasMeta)) {
     const bubble = el('div', 'bubble md');
     if (message.content) {
       const body = el('div', 'md-body');
       renderRemoteMarkdown(body, message.content);
       bubble.append(body);
+    }
+    if (isUser && attachments.length) {
+      const row = el('div', 'attachment-row');
+      for (const attachment of attachments) row.append(pendingAttachmentEl(attachment, false));
+      bubble.append(row);
     }
     wrapper.append(bubble);
     if (!isUser && hasMeta) {
@@ -705,6 +834,155 @@ function paintBanner(): void {
   }
 }
 
+const MAX_REMOTE_ATTACHMENTS = 10;
+
+/**
+ * Composer tray: files are uploaded by the main process to this conversation's storage prefix and
+ * only become sendable once every descriptor is ready. Removal before send just drops the chip.
+ */
+function paintComposerAttachments(): void {
+  if (attachButton) {
+    const supported = active?.attachmentUpload === true;
+    attachButton.hidden = !supported;
+    attachButton.disabled = !active || active.connection !== 'connected' || active.sending;
+  }
+  if (!attachTrayEl) return;
+  attachTrayEl.replaceChildren();
+  const attachments = active?.attachments ?? [];
+  attachTrayEl.hidden = attachments.length === 0;
+  for (const attachment of attachments) attachTrayEl.append(pendingAttachmentEl(attachment, true));
+}
+
+function pendingAttachmentEl(attachment: PendingRemoteAttachment, removable: boolean): HTMLElement {
+  if (attachment.kind === 'image' && attachment.preview) {
+    const tile = el('div', 'attachment-image-tile');
+    tile.title = `${attachment.name}${attachment.size ? ` · ${fmtBytes(attachment.size)}` : ''}`;
+    tile.classList.toggle('uploading', attachment.status === 'uploading');
+    const image = el('img', undefined) as HTMLImageElement;
+    image.src = attachment.preview;
+    image.alt = attachment.name;
+    image.onclick = () => openRemotePreview(attachment.preview as string, attachment.name, attachment.size);
+    tile.append(image);
+    if (removable) tile.append(removeAttachmentButton(attachment));
+    return tile;
+  }
+  const chip = el('div', 'attachment-chip');
+  chip.title = `${attachment.name}${attachment.size ? ` · ${fmtBytes(attachment.size)}` : ''}`;
+  chip.classList.toggle('uploading', attachment.status === 'uploading');
+  chip.classList.toggle('failed', attachment.status === 'failed');
+  chip.append(remoteIcon('file'));
+  chip.append(el('span', 'attachment-name', attachment.name));
+  chip.append(el('span', 'attachment-size',
+    attachment.status === 'uploading' ? 'Uploading…' : attachment.status === 'failed' ? 'Failed' : fmtBytes(attachment.size)));
+  if (removable) chip.append(removeAttachmentButton(attachment));
+  return chip;
+}
+
+function removeAttachmentButton(attachment: PendingRemoteAttachment): HTMLButtonElement {
+  const remove = el('button', 'attachment-remove') as HTMLButtonElement;
+  remove.type = 'button';
+  remove.append(remoteIcon('x'));
+  remove.title = 'Remove attachment';
+  remove.onclick = (event) => {
+    event.stopPropagation();
+    removeRemoteAttachment(attachment.id);
+  };
+  return remove;
+}
+
+function openRemotePreview(src: string, name: string, size: number): void {
+  const overlay = el('div', 'attachment-lightbox');
+  const inner = el('div', 'lightbox-inner');
+  const figure = el('figure', 'lightbox-figure');
+  const image = el('img', undefined) as HTMLImageElement;
+  image.src = src;
+  image.alt = name;
+  figure.append(image, el('figcaption', 'lightbox-caption', `${name}${size ? ` · ${fmtBytes(size)}` : ''}`));
+  inner.append(figure);
+  overlay.append(inner);
+  document.body.append(overlay);
+  const close = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (event: KeyboardEvent) => {
+    if (event.key === 'Escape') close();
+  };
+  document.addEventListener('keydown', onKey);
+  overlay.addEventListener('click', close);
+}
+
+async function chooseRemoteAttachments(): Promise<void> {
+  const current = active;
+  if (!current || !current.attachmentUpload) return;
+  if (current.connection !== 'connected') {
+    toast('The connection is not ready — reconnect before attaching files');
+    return;
+  }
+  let picked: { paths?: string[] } | null = null;
+  try {
+    picked = await window.coreai.pickAttachments();
+  } catch (error) {
+    toast(`Attach failed: ${cleanError(error)}`, 'error');
+    return;
+  }
+  const paths = (picked?.paths ?? []).filter((entry) => typeof entry === 'string' && entry.trim());
+  if (!paths.length || active !== current) return;
+  for (const filePath of paths) {
+    if (current.attachments.length >= MAX_REMOTE_ATTACHMENTS) {
+      toast(`At most ${MAX_REMOTE_ATTACHMENTS} attachments per message`);
+      break;
+    }
+    const name = baseNameOf(filePath);
+    const attachment: PendingRemoteAttachment = {
+      id: crypto.randomUUID(),
+      name,
+      size: 0,
+      kind: attachmentKindOf('', name),
+      preview: null,
+      status: 'uploading',
+    };
+    current.attachments.push(attachment);
+    paintComposerAttachments();
+    void uploadRemoteAttachment(current, attachment, filePath);
+  }
+  composerEl?.focus();
+}
+
+async function uploadRemoteAttachment(current: RemoteChatState, attachment: PendingRemoteAttachment, filePath: string): Promise<void> {
+  try {
+    const upload = await window.coreai.remoteUploadAttachment(current.serverUrl, current.sessionId, filePath);
+    if (active !== current || !current.attachments.includes(attachment)) return;
+    attachment.status = 'ready';
+    attachment.name = upload.fileName || attachment.name;
+    attachment.size = upload.size;
+    attachment.kind = attachmentKindOf(upload.contentType, attachment.name);
+    attachment.preview = upload.preview ?? null;
+    attachment.descriptor = {
+      url: upload.url,
+      type: upload.type,
+      fileName: upload.fileName,
+      contentType: upload.contentType,
+      category: upload.category,
+      container: upload.container,
+      blobName: upload.blobName,
+    };
+  } catch (error) {
+    if (active !== current || !current.attachments.includes(attachment)) return;
+    current.attachments = current.attachments.filter((entry) => entry !== attachment);
+    toast(`Upload failed for ${attachment.name}: ${cleanError(error)}`, 'error');
+    paintChat();
+    return;
+  }
+  paintChat();
+}
+
+function removeRemoteAttachment(id: string): void {
+  if (!active) return;
+  active.attachments = active.attachments.filter((entry) => entry.id !== id);
+  paintComposerAttachments();
+}
+
 function paintStatus(): void {
   if (!active) return;
   const status = statusEl?.querySelector('[data-role="status"]') as HTMLElement | null;
@@ -715,49 +993,61 @@ function paintStatus(): void {
     status.classList.toggle('running', active.status === 'running');
   }
   if (sendButton) {
+    const uploading = active.attachments.some((attachment) => attachment.status === 'uploading');
     sendButton.textContent = active.status === 'running' ? 'Stop' : 'Send';
-    sendButton.disabled = active.connection !== 'connected' || active.sending;
+    sendButton.disabled = active.status === 'running'
+      ? active.connection !== 'connected'
+      : active.connection !== 'connected' || active.sending || uploading;
   }
+  paintComposerAttachments();
 }
 
 async function sendRemoteMessage(): Promise<void> {
-  if (!active || !composerEl) return;
+  const current = active;
+  if (!current || !composerEl) return;
+  if (current.attachments.some((attachment) => attachment.status === 'uploading')) {
+    toast('Attachments are still uploading — wait for them to finish');
+    return;
+  }
   const text = composerEl.value.trim();
-  if (!text) return;
-  if (active.status === 'running') {
+  const ready = current.attachments.filter((attachment) => attachment.status === 'ready' && attachment.descriptor);
+  if (!text && ready.length === 0) return;
+  if (current.status === 'running') {
     toast('The server agent is still running; stop it before sending another message');
     return;
   }
-  if (active.connection !== 'connected') {
+  if (current.connection !== 'connected') {
     toast('The connection is not ready — reconnect before sending');
     return;
   }
-  active.sending = true;
-  active.sendError = null;
+  current.sending = true;
+  current.sendError = null;
   composerEl.value = '';
-  active.messages.push({ role: 'user', content: text, timestamp: new Date().toISOString() });
-  active.live = null;
-  active.status = 'running';
+  current.attachments = [];
+  current.messages.push({ role: 'user', content: text, timestamp: new Date().toISOString(), attachments: ready });
+  current.live = null;
+  current.status = 'running';
   paintChat();
   try {
-    await window.coreai.remoteSend(active.serverUrl, active.sessionId, text);
+    await window.coreai.remoteSend(current.serverUrl, current.sessionId, text,
+      ready.map((attachment) => attachment.descriptor as RemoteAttachmentPayload));
   } catch (error) {
     const message = cleanError(error);
     if (/SESSION_BUSY/i.test(message)) {
       toast('Another turn is already running on this session');
-      active.status = 'running';
+      current.status = 'running';
     } else if (/REQUEST_IN_PROGRESS/i.test(message)) {
-      active.sendError = 'The previous request is still being confirmed. Check the conversation before sending again.';
-      active.status = 'idle';
+      current.sendError = 'The previous request is still being confirmed. Check the conversation before sending again.';
+      current.status = 'idle';
     } else if (/timeout|ECONNRESET|socket hang up|network/i.test(message)) {
       // The command may or may not have reached the server; never auto-resend it.
-      active.sendError = `Send status unknown: ${message}. The server may still be running this message; check the conversation before retrying.`;
+      current.sendError = `Send status unknown: ${message}. The server may still be running this message; check the conversation before retrying.`;
     } else {
-      active.sendError = `Send failed: ${message}`;
-      active.status = 'idle';
+      current.sendError = `Send failed: ${message}`;
+      current.status = 'idle';
     }
   } finally {
-    if (active) active.sending = false;
+    if (active === current) current.sending = false;
     paintChat();
   }
 }
@@ -785,6 +1075,7 @@ async function refreshAfterTurn(live: LiveTurn | null = active?.live ?? null, at
       if (attempt < 12) setTimeout(() => void refreshAfterTurn(live, attempt + 1), 250);
       return;
     }
+    mergeLocalAttachments(rows, active.messages);
     active.messages = rows;
     mergeLiveMetadata(rows, live);
     active.historyHasMore = history?.hasMore === true;

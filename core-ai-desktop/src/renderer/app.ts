@@ -44,6 +44,7 @@ import {
   renderRemoteSidebar,
   resetRemoteChatCache,
   startRemoteConversation,
+  type RemoteAttachmentPayload,
 } from './remoteChat';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
@@ -481,7 +482,8 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   remoteCreate(serverUrl: string, agentId: string): Promise<{ sessionId: string; created: boolean; agentName: string | null; model: string | null }>;
   remoteSnapshot(serverUrl: string, sessionId: string): Promise<Record<string, unknown>>;
   remoteHistory(serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number): Promise<{ messages: Array<Record<string, unknown>>; hasMore: boolean; oldestSeq: number | null }>;
-  remoteSend(serverUrl: string, sessionId: string, message: string): Promise<{ duplicate: boolean }>;
+  remoteSend(serverUrl: string, sessionId: string, message: string, attachments?: RemoteAttachmentPayload[]): Promise<{ duplicate: boolean }>;
+  remoteUploadAttachment(serverUrl: string, sessionId: string, filePath: string): Promise<RemoteAttachmentPayload & { size: number; preview?: string | null }>;
   remoteCancel(serverUrl: string, sessionId: string): Promise<{ cancelled: boolean }>;
   remoteRename(serverUrl: string, sessionId: string, title: string): Promise<string>;
   remoteSubscribe(serverUrl: string, sessionId: string): Promise<boolean>;

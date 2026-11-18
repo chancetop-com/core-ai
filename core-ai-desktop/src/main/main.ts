@@ -34,7 +34,7 @@ import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
-import { RemoteConversationClient } from './remote/RemoteConversationClient';
+import { RemoteConversationClient, type RemoteAttachment } from './remote/RemoteConversationClient';
 import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifyHandshakeText, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { probeModels } from './providers/ProviderProbe';
 import {
@@ -871,6 +871,35 @@ function remoteConversationClient(): RemoteConversationClient {
   return remoteConversations;
 }
 
+const REMOTE_ATTACHMENT_TYPES = new Set(['IMAGE', 'VIDEO', 'PDF', 'FILE']);
+
+/** Rejects rows that could not have come from uploadAttachment; the renderer is not a data source here. */
+function normalizeRemoteAttachments(raw: unknown): RemoteAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  const attachments: RemoteAttachment[] = [];
+  for (const value of raw) {
+    if (!value || typeof value !== 'object') continue;
+    const row = value as Record<string, unknown>;
+    const type = String(row.type ?? '').toUpperCase();
+    const category = String(row.category ?? '');
+    const container = String(row.container ?? '');
+    const blobName = String(row.blobName ?? '');
+    if (!REMOTE_ATTACHMENT_TYPES.has(type)) continue;
+    if (category !== 'multimodal' && category !== 'sandbox') continue;
+    if (!container || !blobName) continue;
+    attachments.push({
+      url: String(row.url ?? ''),
+      type: type as RemoteAttachment['type'],
+      fileName: String(row.fileName ?? ''),
+      contentType: String(row.contentType ?? ''),
+      category,
+      container,
+      blobName,
+    });
+  }
+  return attachments;
+}
+
 function registerIpc(): void {
   ipcMain.handle('app:info', () => ({
     enginePath: resolveEnginePath(), engineExists: existsSync(resolveEnginePath()), desktopVersion: clientVersion,
@@ -1355,8 +1384,27 @@ function registerIpc(): void {
     remoteConversationClient().snapshot(String(serverUrl ?? ''), String(sessionId ?? '')));
   ipcMain.handle('remote:history', (_event, serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number) =>
     remoteConversationClient().history(String(serverUrl ?? ''), String(sessionId ?? ''), beforeSeq == null ? null : Number(beforeSeq), Number(limit) || 50));
-  ipcMain.handle('remote:send', (_event, serverUrl: string, sessionId: string, message: string) =>
-    remoteConversationClient().send(String(serverUrl ?? ''), String(sessionId ?? ''), String(message ?? '')));
+  ipcMain.handle('remote:send', (_event, serverUrl: string, sessionId: string, message: string, attachments?: unknown) =>
+    remoteConversationClient().send(String(serverUrl ?? ''), String(sessionId ?? ''), String(message ?? ''),
+      normalizeRemoteAttachments(attachments)));
+  // The renderer picks a local file; main streams it to the server's storage and returns the
+  // descriptor, so the renderer never handles storage credentials or raw bytes.
+  ipcMain.handle('remote:uploadAttachment', async (_event, serverUrl: string, sessionId: string, filePath: string) => {
+    const upload = await remoteConversationClient().uploadAttachment(
+      String(serverUrl ?? ''), String(sessionId ?? ''), String(filePath ?? ''));
+    if (upload.contentType.startsWith('image/') && filePath) {
+      try {
+        const image = await nativeImage.createThumbnailFromPath(String(filePath), { width: 1024, height: 1024 });
+        if (!image.isEmpty()) {
+          const jpeg = image.toJPEG(82);
+          upload.preview = jpeg.length ? `data:image/jpeg;base64,${jpeg.toString('base64')}` : image.toDataURL();
+        }
+      } catch {
+        // a missing preview never blocks the upload
+      }
+    }
+    return upload;
+  });
   ipcMain.handle('remote:cancel', (_event, serverUrl: string, sessionId: string) =>
     remoteConversationClient().cancel(String(serverUrl ?? ''), String(sessionId ?? '')));
   ipcMain.handle('remote:rename', (_event, serverUrl: string, sessionId: string, title: string) =>

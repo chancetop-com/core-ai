@@ -137,7 +137,9 @@ contextBridge.exposeInMainWorld('coreai', {
   remoteSnapshot: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:snapshot', serverUrl, sessionId),
   remoteHistory: (serverUrl: string, sessionId: string, beforeSeq?: number | null, limit?: number) =>
     ipcRenderer.invoke('remote:history', serverUrl, sessionId, beforeSeq, limit),
-  remoteSend: (serverUrl: string, sessionId: string, message: string) => ipcRenderer.invoke('remote:send', serverUrl, sessionId, message),
+  remoteSend: (serverUrl: string, sessionId: string, message: string, attachments?: unknown[]) => ipcRenderer.invoke('remote:send', serverUrl, sessionId, message, attachments),
+  remoteUploadAttachment: (serverUrl: string, sessionId: string, filePath: string) =>
+    ipcRenderer.invoke('remote:uploadAttachment', serverUrl, sessionId, filePath),
   remoteCancel: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:cancel', serverUrl, sessionId),
   remoteRename: (serverUrl: string, sessionId: string, title: string) => ipcRenderer.invoke('remote:rename', serverUrl, sessionId, title),
   remoteSubscribe: (serverUrl: string, sessionId: string) => ipcRenderer.invoke('remote:subscribe', serverUrl, sessionId),

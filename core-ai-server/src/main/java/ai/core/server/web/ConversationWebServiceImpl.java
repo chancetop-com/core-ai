@@ -1,7 +1,9 @@
 package ai.core.server.web;
 
+import ai.core.api.server.blob.BlobUploadCredentialView;
 import ai.core.api.server.conversation.ConversationAgentListRequest;
 import ai.core.api.server.conversation.ConversationAgentListResponse;
+import ai.core.api.server.conversation.ConversationAttachmentCredentialRequest;
 import ai.core.api.server.conversation.ConversationCancelRequest;
 import ai.core.api.server.conversation.ConversationCancelResponse;
 import ai.core.api.server.conversation.ConversationCapabilitiesResponse;
@@ -18,10 +20,14 @@ import ai.core.api.server.conversation.ConversationSessionListResponse;
 import ai.core.api.server.conversation.ConversationSessionSummary;
 import ai.core.api.server.conversation.ConversationSnapshotResponse;
 import ai.core.api.server.conversation.ConversationWebService;
+import ai.core.api.server.session.SendMessageRequest;
 import ai.core.server.agenthub.AgentHubService;
 import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.PersonalAssistantService;
 import ai.core.server.apiuser.PermissionService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.conversation.ConversationAttachmentUploads;
+import ai.core.server.conversation.ConversationAttachments;
 import ai.core.server.conversation.ConversationRequestKeys;
 import ai.core.server.conversation.ConversationRequestStore;
 import ai.core.server.domain.ChatSession;
@@ -115,6 +121,8 @@ public class ConversationWebServiceImpl implements ConversationWebService {
     UserStore userStore;
     @Inject
     SystemSettingsService systemSettingsService;
+    @Inject
+    ObjectStorageServiceResolver objectStorageResolver;
 
     @Override
     public ConversationCapabilitiesResponse capabilities() {
@@ -128,8 +136,9 @@ public class ConversationWebServiceImpl implements ConversationWebService {
         response.directConversation = desktopConversationEnabled();
         response.idempotentCommands = Boolean.TRUE;
         response.historyPaging = Boolean.TRUE;
-        // P0 deliberately exposes no upload/approval contract until the server owns those guarantees.
-        response.attachmentUpload = Boolean.FALSE;
+        // Attachments go through a session-scoped credential and are validated on send, so the desktop
+        // never needs the dashboard permission the generic blob upload credential requires.
+        response.attachmentUpload = objectStorageResolver.resolve() != null;
         response.toolApproval = Boolean.FALSE;
         response.eventStream = "sse:PUT /api/sessions/events";
         response.maxAgents = MAX_AGENT_LIMIT;
@@ -253,8 +262,19 @@ public class ConversationWebServiceImpl implements ConversationWebService {
         ActionLogContext.put("user_id", userId);
         ActionLogContext.put("session_id", sessionId);
 
+        var attachments = request.attachments;
+        var hasAttachments = attachments != null && !attachments.isEmpty();
+        if ((request.message == null || request.message.isBlank()) && !hasAttachments) {
+            throw new BadRequestException("message or attachments are required");
+        }
+        var attachmentError = ConversationAttachments.validate(attachments, sessionId,
+                objectStorageResolver.multimodalContainer(), objectStorageResolver.sandboxContainer());
+        if (attachmentError != null) throw new BadRequestException(attachmentError, "INVALID_ATTACHMENT");
+        ConversationAttachments.normalize(attachments);
+
         var key = ConversationRequestKeys.requestKey(userId, "send", sessionId, request.clientRequestId);
-        var payloadHash = ConversationRequestKeys.payloadHash(userId, "send", sessionId, request.message);
+        var payloadHash = ConversationRequestKeys.payloadHash(userId, "send", sessionId,
+                request.message + '\u0000' + ConversationAttachments.fingerprint(attachments));
         var existing = existingSend(key, payloadHash);
         if (existing != null) return existing;
 
@@ -270,7 +290,13 @@ public class ConversationWebServiceImpl implements ConversationWebService {
         }
 
         try {
-            commandPublisher.publish(SessionCommand.sendMessage(sessionId, userId, request.message, null));
+            var sendRequest = new SendMessageRequest();
+            sendRequest.message = request.message;
+            sendRequest.attachments = attachments;
+            var pendingFiles = AttachmentMessageHelper.collectPendingFiles(sessionId, sendRequest);
+            var multimodalAttachments = AttachmentMessageHelper.collectMultimodalAttachments(sendRequest);
+            var message = AttachmentMessageHelper.buildMessageWithAttachments(sendRequest);
+            commandPublisher.publish(SessionCommand.sendMessage(sessionId, userId, message, null, pendingFiles, multimodalAttachments));
             var response = new ConversationSendResponse();
             response.sessionId = sessionId;
             response.clientRequestId = request.clientRequestId;
@@ -282,6 +308,14 @@ public class ConversationWebServiceImpl implements ConversationWebService {
             requestStore.fail(key, claimToken, e.getMessage());
             throw e;
         }
+    }
+
+    @Override
+    public BlobUploadCredentialView attachmentCredential(String sessionId, ConversationAttachmentCredentialRequest request) {
+        var userId = userId();
+        sessionRegistry.requireAccessible(sessionId, userId);
+        return ConversationAttachmentUploads.credential(objectStorageResolver, sessionId,
+                request != null ? request.contentType : null, request != null ? request.category : null);
     }
 
     @Override

@@ -1,8 +1,10 @@
 // Direct remote-conversation transport. The renderer never sees an API key or a server URL it can
 // choose: every call is resolved to a stored login and validated here in the main process.
 import { randomUUID } from 'node:crypto';
+import { createReadStream, statSync, type Stats } from 'node:fs';
 import * as http from 'node:http';
 import * as https from 'node:https';
+import path from 'node:path';
 import { AuthEntry, loadAuthEntries } from '../auth/AuthStore';
 
 export interface RemoteServerView {
@@ -51,6 +53,23 @@ export interface RemoteHistory {
   oldestSeq: number | null;
 }
 
+/** What the session runtime accepts: the same descriptor the web composer sends. */
+export interface RemoteAttachment {
+  url: string;
+  type: 'IMAGE' | 'VIDEO' | 'PDF' | 'FILE';
+  fileName: string;
+  contentType: string;
+  category: 'multimodal' | 'sandbox';
+  container: string;
+  blobName: string;
+}
+
+export interface RemoteAttachmentUpload extends RemoteAttachment {
+  size: number;
+  /** Data-URL thumbnail for the composer and the optimistic message; images only. */
+  preview?: string | null;
+}
+
 export type RemotePush =
   | { type: 'event'; serverUrl: string; sessionId: string; event: Record<string, unknown> }
   | { type: 'state'; serverUrl: string; sessionId: string; phase: 'connected' | 'reconnecting' | 'rejected' | 'closed'; attempt?: number; status?: number; message?: string };
@@ -65,6 +84,39 @@ export class RemoteHttpError extends Error {
     this.status = status;
     this.code = code;
   }
+}
+
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+const MAX_VIDEO_ATTACHMENT_BYTES = 2_000 * 1024 * 1024;
+
+const ATTACHMENT_CONTENT_TYPES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', avi: 'video/x-msvideo',
+  pdf: 'application/pdf', doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  txt: 'text/plain', log: 'text/plain', md: 'text/markdown', markdown: 'text/markdown', csv: 'text/csv',
+  html: 'text/html', htm: 'text/html', css: 'text/css', js: 'text/javascript', mjs: 'text/javascript',
+  json: 'application/json', xml: 'text/xml', yaml: 'text/yaml', yml: 'text/yaml', toml: 'text/plain',
+  ts: 'text/plain', py: 'text/plain', java: 'text/plain', go: 'text/plain', sh: 'text/plain', ps1: 'text/plain', sql: 'text/plain',
+  zip: 'application/zip', tar: 'application/x-tar', gz: 'application/gzip',
+};
+
+export function attachmentContentType(fileName: string): string {
+  const extension = path.extname(String(fileName ?? '')).slice(1).toLowerCase();
+  return ATTACHMENT_CONTENT_TYPES[extension] ?? 'application/octet-stream';
+}
+
+function isMultimodalContent(contentType: string): boolean {
+  return contentType.startsWith('image/') || contentType.startsWith('video/') || contentType === 'application/pdf';
+}
+
+function attachmentType(contentType: string): RemoteAttachment['type'] {
+  if (contentType.startsWith('image/')) return 'IMAGE';
+  if (contentType.startsWith('video/')) return 'VIDEO';
+  if (contentType === 'application/pdf') return 'PDF';
+  return 'FILE';
 }
 
 export function normalizeServerUrl(value: string): string {
@@ -228,12 +280,112 @@ export class RemoteConversationClient {
     };
   }
 
-  async send(serverUrl: string, sessionId: string, message: string): Promise<{ duplicate: boolean }> {
-    if (!message.trim()) throw new Error('message is required');
+  async send(serverUrl: string, sessionId: string, message: string, attachments: RemoteAttachment[] = []): Promise<{ duplicate: boolean }> {
+    if (!message.trim() && attachments.length === 0) throw new Error('message or attachments are required');
     const body = await this.request(serverUrl, 'POST',
-      `/api/conversations/v1/sessions/${encodeURIComponent(this.session(sessionId))}/messages`,
-      { message, client_request_id: randomUUID() });
+      `/api/conversations/v1/sessions/${encodeURIComponent(this.session(sessionId))}/messages`, {
+        message,
+        client_request_id: randomUUID(),
+        ...(attachments.length ? {
+          attachments: attachments.map((attachment) => ({
+            url: attachment.url,
+            type: attachment.type,
+            file_name: attachment.fileName,
+            content_type: attachment.contentType,
+            category: attachment.category,
+            container: attachment.container,
+            blob_name: attachment.blobName,
+          })),
+        } : {}),
+      });
     return { duplicate: body.duplicate === true };
+  }
+
+  /**
+   * Uploads one user-picked file for this conversation: the server issues a session-scoped
+   * credential, main streams the bytes straight to object storage, and the returned descriptor is
+   * what the send request carries. No local staging and no workspace trust is involved.
+   */
+  async uploadAttachment(serverUrl: string, sessionId: string, filePath: string): Promise<RemoteAttachmentUpload> {
+    const id = this.session(sessionId);
+    const source = String(filePath ?? '').trim();
+    if (!source) throw new Error('attachment path is required');
+    let file: Stats;
+    try {
+      file = statSync(source);
+    } catch {
+      throw new Error(`file not found: ${path.basename(source)}`);
+    }
+    if (!file.isFile()) throw new Error('attachment must be a regular file');
+    const fileName = path.basename(source);
+    const contentType = attachmentContentType(fileName);
+    const limit = contentType.startsWith('video/') ? MAX_VIDEO_ATTACHMENT_BYTES : MAX_ATTACHMENT_BYTES;
+    if (file.size > limit) throw new Error(`${fileName} is larger than ${Math.round(limit / 1024 / 1024)}MB`);
+    const category = isMultimodalContent(contentType) ? 'multimodal' : 'sandbox';
+    const query = new URLSearchParams({ content_type: contentType, category });
+    const credential = await this.request(serverUrl, 'GET',
+      `/api/conversations/v1/sessions/${encodeURIComponent(id)}/attachments/credential?${query.toString()}`);
+    const uploadUrl = String(credential.upload_url ?? '');
+    const container = String(credential.container ?? '');
+    const blobName = String(credential.blob_name ?? '');
+    if (!uploadUrl || !container || !blobName) throw new Error('server returned an invalid upload credential');
+    await this.putFile(uploadUrl, source, file.size, contentType, this.entry(serverUrl).insecure !== true);
+    return {
+      url: String(credential.blob_url ?? ''),
+      type: attachmentType(contentType),
+      fileName,
+      contentType,
+      category,
+      container,
+      blobName,
+      size: file.size,
+    };
+  }
+
+  private putFile(uploadUrl: string, filePath: string, size: number, contentType: string, rejectUnauthorized: boolean): Promise<void> {
+    let target: URL;
+    try {
+      target = new URL(uploadUrl);
+    } catch {
+      return Promise.reject(new Error('server returned an invalid upload url'));
+    }
+    if (target.protocol !== 'http:' && target.protocol !== 'https:') {
+      return Promise.reject(new Error('upload url must use http or https'));
+    }
+    const transport = target.protocol === 'http:' ? http : https;
+    return new Promise((resolve, reject) => {
+      const request = transport.request({
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: target.port || (target.protocol === 'http:' ? 80 : 443),
+        path: `${target.pathname}${target.search}`,
+        method: 'PUT',
+        headers: {
+          'x-ms-blob-type': 'BlockBlob',
+          'x-ms-blob-content-type': contentType,
+          'Content-Type': contentType,
+          'Content-Length': size,
+        },
+        rejectUnauthorized,
+      }, (response) => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => {
+          const status = response.statusCode ?? 0;
+          if (status >= 200 && status < 300) {
+            resolve();
+            return;
+          }
+          const detail = Buffer.concat(chunks).toString('utf8').slice(0, 300);
+          reject(new RemoteHttpError(status, `upload failed with status ${status}${detail ? `: ${detail}` : ''}`));
+        });
+      });
+      request.setTimeout(this.timeoutMs * 4, () => request.destroy(new Error('upload timed out')));
+      request.on('error', reject);
+      const stream = createReadStream(filePath);
+      stream.on('error', (error: Error) => request.destroy(error));
+      stream.pipe(request);
+    });
   }
 
   async cancel(serverUrl: string, sessionId: string): Promise<{ cancelled: boolean }> {
