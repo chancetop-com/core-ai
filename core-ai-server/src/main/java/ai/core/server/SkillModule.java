@@ -7,6 +7,7 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillPublishService;
 import ai.core.server.skill.SkillRepoSyncJob;
+import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.skill.SkillUploadController;
@@ -27,6 +28,7 @@ public class SkillModule extends Module {
         bind(SkillBlobStore.class);
         bind(SkillPublishService.class);
         bind(SkillService.class);
+        bind(SkillSdkAssignmentPlanService.class);
         bind(ai.core.server.skill.SkillQualityFixtureBuilder.class);
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);

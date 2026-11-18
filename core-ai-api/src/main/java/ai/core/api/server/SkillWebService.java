@@ -10,6 +10,8 @@ import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
+import ai.core.api.server.skill.SkillSdkPlanRequest;
+import ai.core.api.server.skill.SkillSdkPlanResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
@@ -49,6 +51,10 @@ public interface SkillWebService {
     @GET
     @Path("/api/skills/:id/download")
     SkillDownloadResponse download(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/skills/sdk-plan")
+    SkillSdkPlanResponse sdkPlan(SkillSdkPlanRequest request);
 
     @POST
     @Path("/api/skills/marketplace")

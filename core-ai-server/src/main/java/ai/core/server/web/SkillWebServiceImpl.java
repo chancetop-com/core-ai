@@ -12,6 +12,8 @@ import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
 import ai.core.api.server.skill.SkillSdkCapabilityView;
+import ai.core.api.server.skill.SkillSdkPlanRequest;
+import ai.core.api.server.skill.SkillSdkPlanResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
@@ -19,6 +21,7 @@ import ai.core.server.domain.SkillResource;
 import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillResourceUpdate;
+import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
@@ -47,7 +50,16 @@ public class SkillWebServiceImpl implements SkillWebService {
     MarketplaceService marketplaceService;
 
     @Inject
+    SkillSdkAssignmentPlanService sdkAssignmentPlanService;
+
+    @Inject
     WebContext webContext;
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public SkillSdkPlanResponse sdkPlan(SkillSdkPlanRequest request) {
+        return sdkAssignmentPlanService.plan(request == null ? List.of() : request.skillIds);
+    }
 
     @Override
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
