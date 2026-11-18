@@ -27,6 +27,7 @@ export const SUPPORTED_CAPABILITIES = [
   'prompt.sections',
   'browser.control',
   'tools.register',
+  'terminal.exec',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -144,6 +145,15 @@ export interface PluginToolContribution {
   limit: number;
 }
 
+export type PluginTerminalOperation = 'git.status' | 'git.log' | 'git.diff' | 'node.version';
+
+export interface PluginTerminalContribution {
+  id: string;
+  name: string;
+  description: string;
+  operation: PluginTerminalOperation;
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -153,6 +163,7 @@ export interface PluginContributions {
   renderers: PluginRendererContribution[];
   promptSections: PluginPromptSectionContribution[];
   tools: PluginToolContribution[];
+  terminal: PluginTerminalContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -517,8 +528,28 @@ function parseTools(value: unknown): PluginToolContribution[] {
   return tools;
 }
 
-function stringList(value: unknown): string[] | null {
-  if (value === undefined) return [];
+function parseTerminal(value: unknown): PluginTerminalContribution[] {
+  if (!Array.isArray(value)) return [];
+  const commands: PluginTerminalContribution[] = [];
+  const names = new Set<string>();
+  for (const raw of value.slice(0, 10)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const name = typeof entry.name === 'string' && /^[a-z][a-z0-9_-]{1,63}$/.test(entry.name) ? entry.name : null;
+    const description = boundedText(entry.description, 1000);
+    const operation = entry.operation === 'git.status' || entry.operation === 'git.log'
+      || entry.operation === 'git.diff' || entry.operation === 'node.version'
+      ? entry.operation
+      : null;
+    if (!id || !name || !description || !operation || names.has(name)) continue;
+    names.add(name);
+    commands.push({ id, name, description, operation });
+  }
+  return commands;
+}
+
+function stringList(value: unknown): string[] | null {  if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
   for (const item of value) {
@@ -601,6 +632,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     renderers: [],
     promptSections: [],
     tools: [],
+    terminal: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -653,6 +685,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.renderers = parseRenderers(contributes.renderers, unsupported);
           contributions.promptSections = parsePromptSections(contributes.promptSections);
           contributions.tools = parseTools(contributes.tools);
+          contributions.terminal = parseTerminal(contributes.terminal);
         }
       }
 
@@ -701,14 +734,15 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
     if (kind === 'promptSections') return 'prompt.sections';
     if (kind === 'tools') return 'tools.register';
+    if (kind === 'terminal') return 'terminal.exec';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

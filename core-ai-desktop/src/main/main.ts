@@ -12,6 +12,7 @@ import { pathToFileURL } from 'node:url';
 import { removeStaged, stageAttachments, stageBuffers, sweepStaging, type StagedAttachment, type StagedBufferInput } from './attachments/AttachmentStager';
 import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
 import { PluginPageHost, PluginPageError } from './plugins/PluginPageHost';
+import { runPluginTerminal } from './plugins/pluginTerminal';
 import { registerPluginPageSchemes } from './plugins/PluginPageProtocol';
 import {
   type AuthServerEntry,
@@ -1809,6 +1810,18 @@ else {
         },
         activate: (targetId) => {
           browserManager?.activateTarget(targetId);
+        },
+      },
+      terminal: {
+        commands: async (pluginId) => pluginHost?.terminalCommands(pluginId) ?? [],
+        run: async (pluginId, commandId, workspace) => {
+          const commands = await pluginHost?.terminalCommands(pluginId) ?? [];
+          const command = commands.find((item) => item.commandId === commandId);
+          if (!command) throw new Error(`terminal command is not granted: ${commandId}`);
+          console.log(`[plugins] terminal ${pluginId}/${commandId}: ${command.operation}`);
+          const result = await runPluginTerminal(command, { workspace });
+          console.log(`[plugins] terminal ${pluginId}/${commandId} exit=${result.exitCode ?? result.signal ?? '?'} ${result.durationMs}ms`);
+          return result;
         },
       },
     });

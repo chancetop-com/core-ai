@@ -7,7 +7,7 @@ import { BrowserWindow, WebContentsView, ipcMain, nativeTheme, session, type Ipc
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import type { ResolvedPluginPage } from './pluginStore';
+import type { PluginTerminalCommandDescriptor, ResolvedPluginPage } from './pluginStore';
 import type { PluginHost } from './PluginHost';
 import type { EngineSupervisor } from '../engine/EngineSupervisor';
 import { assetUrl, pageUrl } from './pluginPagePaths.js';
@@ -39,6 +39,10 @@ export interface PluginPageHostOptions {
     activate: (targetId: string) => void;
     tabs: () => unknown[];
   };
+  terminal?: {
+    commands: (pluginId: string) => Promise<PluginTerminalCommandDescriptor[]>;
+    run: (pluginId: string, commandId: string, workspace: string) => Promise<unknown>;
+  };
 }
 
 export interface OpenPluginPageOptions {
@@ -64,6 +68,7 @@ interface PageInstance {
   closed: boolean;
   events: Set<string>;
   notifyTimes: number[];
+  terminalTimes: number[];
 }
 
 export class PluginPageError extends Error {
@@ -152,6 +157,7 @@ export class PluginPageHost {
       closed: false,
       events: new Set(),
       notifyTimes: [],
+      terminalTimes: [],
     };
     this.instances.set(token, instance);
     this.wireWebContents(instance);
@@ -358,6 +364,12 @@ export class PluginPageHost {
         this.requireCapability(instance, 'browser.control');
         await this.browser().close(targetId(args.targetId));
         return { ok: true };
+      case 'terminal.commands':
+        this.requireCapability(instance, 'terminal.exec');
+        return { commands: await this.terminalCommands(instance) };
+      case 'terminal.run':
+        this.requireCapability(instance, 'terminal.exec');
+        return this.runTerminal(instance, args.commandId);
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -436,6 +448,40 @@ export class PluginPageHost {
     const browser = this.options.browser;
     if (!browser) throw new PluginPageError('unavailable', 'the managed browser is not available');
     return browser;
+  }
+
+  private async terminalCommands(instance: PageInstance): Promise<Array<Pick<PluginTerminalCommandDescriptor, 'commandId' | 'name' | 'description'>>> {
+    const terminal = this.options.terminal;
+    if (!terminal) throw new PluginPageError('unavailable', 'terminal.exec is not available');
+    const commands = await terminal.commands(instance.pluginId);
+    return commands.map((command) => ({
+      commandId: command.commandId,
+      name: command.name,
+      description: command.description,
+    }));
+  }
+
+  private async runTerminal(instance: PageInstance, commandId: unknown): Promise<unknown> {
+    if (typeof commandId !== 'string' || !commandId) {
+      throw new PluginPageError('invalid_request', 'commandId is required');
+    }
+    const terminal = this.options.terminal;
+    if (!terminal) throw new PluginPageError('unavailable', 'terminal.exec is not available');
+    const commands = await terminal.commands(instance.pluginId);
+    if (!commands.some((command) => command.commandId === commandId)) {
+      throw new PluginPageError('not_found', `terminal command is not granted: ${commandId}`);
+    }
+    const trust = await this.requireSupervisor().ensureTrustState(instance.workspace);
+    if (trust?.state !== 'trusted') {
+      throw new PluginPageError('TRUST_REQUIRED', 'this workspace is restricted; trust it before running plugin commands');
+    }
+    const now = Date.now();
+    instance.terminalTimes = instance.terminalTimes.filter((time) => now - time < 60_000);
+    if (instance.terminalTimes.length >= 6) {
+      throw new PluginPageError('rate_limited', 'terminal rate limit reached (6/minute)');
+    }
+    instance.terminalTimes.push(now);
+    return terminal.run(instance.pluginId, commandId, instance.workspace);
   }
 
   private async readArtifact(instance: PageInstance): Promise<Record<string, unknown>> {

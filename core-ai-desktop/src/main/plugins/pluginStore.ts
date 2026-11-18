@@ -107,6 +107,15 @@ export interface PluginToolDescriptor {
   limit: number;
 }
 
+export interface PluginTerminalCommandDescriptor {
+  pluginId: string;
+  pluginName: string;
+  commandId: string;
+  name: string;
+  description: string;
+  operation: 'git.status' | 'git.log' | 'git.diff' | 'node.version';
+}
+
 export interface ResolvedPluginPage {
   pluginId: string;
   pluginName: string;
@@ -461,7 +470,7 @@ export class PluginStore {
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [] },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [] },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -505,6 +514,29 @@ export class PluginStore {
       }
     }
     return tools;
+  }
+
+  /** Fixed-argv commands of active installs that granted terminal.exec. */
+  async terminalCommands(pluginId?: string): Promise<PluginTerminalCommandDescriptor[]> {
+    const state = await this.readState();
+    const commands: PluginTerminalCommandDescriptor[] = [];
+    for (const install of state.installs) {
+      if (pluginId && install.pluginId !== pluginId) continue;
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('terminal.exec')) continue;
+      for (const command of resolved.descriptor.contributions.terminal) {
+        commands.push({
+          pluginId: install.pluginId,
+          pluginName: resolved.descriptor.name,
+          commandId: command.id,
+          name: command.name,
+          description: command.description,
+          operation: command.operation,
+        });
+      }
+    }
+    return commands;
   }
 
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
@@ -752,7 +784,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [] },
       settings: { ...install.settings },
     };
   }

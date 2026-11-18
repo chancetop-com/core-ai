@@ -37,13 +37,14 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control'],
+      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec'],
   };
   let granted = [...page.granted];
   const calls = [];
   const storage = new Map();
   let notifications = 0;
   const browserCalls = [];
+  const terminalCalls = [];
   const supervisor = {
     ensureTrustState: async () => ({ state: 'trusted' }),
     call: async (_workspace, method) => {
@@ -122,6 +123,13 @@ async function main() {
       close: async (id) => { browserCalls.push(['close', id]); },
       activate: (id) => { browserCalls.push(['activate', id]); },
     },
+    terminal: {
+      commands: async () => [{ commandId: 'version', name: 'version', description: 'Show version' }],
+      run: async (pluginId, commandId, workspace) => {
+        terminalCalls.push([pluginId, commandId, workspace]);
+        return { commandId, exitCode: 0, signal: null, stdout: 'ok\n', stderr: '', truncated: false, durationMs: 1 };
+      },
+    },
   });
   const { token } = await host.open({
     window, workspace, pluginId: 'test.page', pageId: 'main',
@@ -191,6 +199,11 @@ async function main() {
   await view.webContents.executeJavaScript('window.coreaiPlugin.browser.activate("tab-1")');
   await view.webContents.executeJavaScript('window.coreaiPlugin.browser.close("tab-1")');
   assert.deepEqual(browserCalls.map((call) => call[0]), ['open', 'navigate', 'activate', 'close']);
+  const terminalCommands = await view.webContents.executeJavaScript('window.coreaiPlugin.terminal.commands()');
+  assert.equal(terminalCommands.commands[0].commandId, 'version');
+  const terminalResult = await view.webContents.executeJavaScript('window.coreaiPlugin.terminal.run("version")');
+  assert.equal(terminalResult.stdout, 'ok\n');
+  assert.deepEqual(terminalCalls[0], ['test.page', 'version', workspace]);
   const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);

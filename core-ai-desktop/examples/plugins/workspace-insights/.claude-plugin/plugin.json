@@ -7,7 +7,7 @@
     "id": "core-ai.workspace-insights",
     "desktopApi": "^1.0.0",
     "capabilities": {
-      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
+      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "terminal.exec", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
     },
     "contributes": {
       "pages": [
@@ -67,6 +67,14 @@
           "description": "List memory files in the current workspace.",
           "operation": "memory.list",
           "limit": 30
+        }
+      ],
+      "terminal": [
+        {
+          "id": "git-status",
+          "name": "git-status",
+          "description": "Show the workspace git status.",
+          "operation": "git.status"
         }
       ]
     }

@@ -59,6 +59,7 @@ const targets = [
   { entryPoints: ['src/main/plugins/PluginPageHost.ts'], outfile: 'dist/test/pluginPageHost.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/plugins/workspaceTrust.ts'], outfile: 'dist/test/workspaceTrust.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/pluginPagePaths.ts'], outfile: 'dist/test/pluginPagePaths.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/plugins/pluginTerminal.ts'], outfile: 'dist/test/pluginTerminal.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/pluginView.ts'], outfile: 'dist/test/pluginView.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/reducer.ts'], outfile: 'dist/test/transcript.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/classify.ts'], outfile: 'dist/test/transcriptClassify.js', platform: 'node', target: 'node20', format: 'cjs' },

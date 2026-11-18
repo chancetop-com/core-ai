@@ -120,6 +120,40 @@ test('prompt sections need prompt.sections and content', () => {
   assert.equal(missingCapability.ok, false);
 });
 
+test('terminal commands need terminal.exec and an allowlisted operation', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Terminal',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.terminal',
+      capabilities: { required: ['terminal.exec'] },
+      contributes: { terminal: [{ id: 'status', name: 'git-status', description: 'Git status', operation: 'git.status' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.terminal[0].operation, 'git.status');
+
+  const shell = parsePluginManifest(JSON.stringify({
+    name: 'Terminal',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.terminal',
+      capabilities: { required: ['terminal.exec'] },
+      contributes: { terminal: [{ id: 'shell', name: 'shell', description: 'Shell', operation: 'shell.exec' }] },
+    },
+  }));
+  assert.equal(shell.descriptor.contributions.terminal.length, 0);
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Terminal',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.terminal', contributes: { terminal: [{ id: 'status', name: 'git-status', description: 'x', operation: 'git.status' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',
@@ -190,7 +224,7 @@ test('missing name, schema or id is fatal', () => {
 test('unsupported required capabilities and component paths are rejected', () => {
   const unknownCapability = parsePluginManifest(JSON.stringify({
     name: 'x',
-    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['terminal.exec'] } },
+    coreai: { schemaVersion: 1, id: 'a.b', capabilities: { required: ['sandbox.provider'] } },
   }));
   assert.equal(unknownCapability.ok, false);
   assert.ok(unknownCapability.errors.some((error) => error.includes('unsupported required capability')));

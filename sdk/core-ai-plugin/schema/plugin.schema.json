@@ -151,6 +151,19 @@
                   "limit": { "type": "integer", "minimum": 1, "maximum": 200 }
                 }
               }
+            },
+            "terminal": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "operation"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "operation": { "enum": ["git.status", "git.log", "git.diff", "node.version"] }
+                }
+              }
             }
           },
           "additionalProperties": false

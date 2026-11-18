@@ -103,6 +103,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `artifacts.read` | reads a text artifact opened through an artifact renderer |
 | `prompt.sections` | injects static prompt sections into the agent system prompt |
 | `tools.register` | registers read-only host tools (`artifacts.list`, `memory.list`) |
+| `terminal.exec` | runs one allowlisted host operation (`git.status`, `git.log`, `git.diff`, `node.version`) in the workspace; no shell or page arguments |
 | `browser.control` | opens, navigates, activates and closes tabs in the managed browser |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |

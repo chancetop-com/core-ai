@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import type { PluginView } from '../../shared/pluginManifest';
-import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginPromptSection, type PluginStoreOptions, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
+import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginPromptSection, type PluginStoreOptions, type PluginTerminalCommandDescriptor, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
 export const PLUGIN_PROMPT_SECTIONS_ENV = 'CORE_AI_PLUGIN_PROMPT_SECTIONS';
@@ -97,6 +97,10 @@ export class PluginHost {
 
   toolDescriptors(): Promise<PluginToolDescriptor[]> {
     return this.store.tools();
+  }
+
+  terminalCommands(pluginId?: string): Promise<PluginTerminalCommandDescriptor[]> {
+    return this.store.terminalCommands(pluginId);
   }
 
   resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {

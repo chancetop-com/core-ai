@@ -117,6 +117,15 @@ export interface PluginToolContribution {
   limit?: number;
 }
 
+export type PluginTerminalOperation = 'git.status' | 'git.log' | 'git.diff' | 'node.version';
+
+export interface PluginTerminalContribution {
+  id: string;
+  name: string;
+  description: string;
+  operation: PluginTerminalOperation;
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -142,6 +151,7 @@ export interface PluginManifest {
       renderers?: PluginRendererContribution[];
       promptSections?: PluginPromptSectionContribution[];
       tools?: PluginToolContribution[];
+      terminal?: PluginTerminalContribution[];
     };
   };
 }
