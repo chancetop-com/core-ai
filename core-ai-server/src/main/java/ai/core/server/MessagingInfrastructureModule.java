@@ -11,6 +11,7 @@ import ai.core.server.messaging.HttpRpcTransport;
 import ai.core.server.messaging.JedisConfig;
 import ai.core.server.messaging.LeaseCleanupJob;
 import ai.core.server.messaging.PgOwnershipStore;
+import ai.core.server.messaging.PgPodCommandBackendRow;
 import ai.core.server.messaging.PgTurnStateStore;
 import ai.core.server.messaging.PodRegistry;
 import ai.core.server.messaging.RedisRpcTransport;
@@ -67,6 +68,7 @@ class MessagingInfrastructureModule extends Module {
 
         var ownershipRegistry = ownershipRegistry(jedisPool, leaseBackend);
         var podRegistry = podRegistry(leaseBackend, rpcMode, commandBackend, ownershipRegistry);
+        if (podRegistry != null) db().view(PgPodCommandBackendRow.class);
         if ((sseDeliveryMode == SseDeliveryMode.DIRECTED || commandBackend == CommandBackend.POSTGRES) && podRegistry == null) {
             throw new IllegalArgumentException("directed SSE or PostgreSQL command queue requires sys.rpc.transport=http or sys.lease.backend=postgres");
         }

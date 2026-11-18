@@ -17,6 +17,7 @@ import ai.core.server.messaging.InternalRpcController;
 import ai.core.server.messaging.CommandRpcDependencies;
 import ai.core.server.messaging.PgCommandConsumer;
 import ai.core.server.messaging.PgCommandQueue;
+import ai.core.server.messaging.PgCommandRow;
 import ai.core.server.messaging.PodRegistry;
 import ai.core.server.messaging.RpcClient;
 import ai.core.server.messaging.RpcMode;
@@ -93,6 +94,7 @@ class MessagingRuntimeModule extends Module {
         var commandPublisher = bind(new CommandPublisher(jedisPool, ownershipRegistry, sandboxService, commandHandler,
                 claimLocally, new CommandPublisher.QueueDependencies(commandBackend, pgQueue, bean(PodRegistry.class))));
         if (pgQueue != null) {
+            db().view(PgCommandRow.class);
             var pgConsumer = new PgCommandConsumer(pgQueue, commandHandler, ownershipRegistry);
             onStartup(pgConsumer::start);
             onShutdown(pgConsumer::stop);
