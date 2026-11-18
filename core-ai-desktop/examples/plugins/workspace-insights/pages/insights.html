@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workspace Insights</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f7f8fa; --panel: #fff; --text: #1c2026; --muted: #68707d; --border: #dfe3e8; --accent: #4568dc; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #111419; --panel: #181c22; --text: #e8ebef; --muted: #9aa3af; --border: #2b313a; --accent: #7c9cff; } }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { padding: 22px; display: grid; gap: 16px; max-width: 1100px; }
+    header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0; font-size: 18px; }
+    h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+    .sub { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
+    .metric { font-size: 24px; font-weight: 650; margin-top: 4px; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .grow { flex: 1; min-width: 0; }
+    button { font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 8px; padding: 7px 12px; cursor: pointer; }
+    button.ghost { color: var(--muted); background: transparent; border: 1px solid var(--border); font-weight: 500; }
+    ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    li { display: flex; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12.5px; }
+    li:last-child { border-bottom: 0; }
+    .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .muted { color: var(--muted); }
+    .pill { border: 1px solid var(--border); border-radius: 999px; padding: 0 6px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+    .status { min-height: 18px; color: var(--muted); font-size: 12px; }
+    .status.error { color: #d84b4b; }
+    .events { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 11.5px; }
+    .empty { color: var(--muted); font-size: 12.5px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Workspace Insights</h1>
+      <div class="sub" id="context">Loading plugin context…</div>
+    </div>
+    <button id="refresh" class="ghost" type="button">Refresh</button>
+  </header>
+
+  <div class="grid">
+    <div class="card"><h2>Sessions</h2><div class="metric" id="session-count">–</div></div>
+    <div class="card"><h2>Artifacts</h2><div class="metric" id="artifact-count">–</div></div>
+    <div class="card"><h2>Memory files</h2><div class="metric" id="memory-count">–</div></div>
+  </div>
+
+  <div class="card">
+    <h2>Recent sessions</h2>
+    <ul id="sessions"></ul>
+    <div id="sessions-empty" class="empty">No sessions yet.</div>
+  </div>
+
+  <div class="card">
+    <h2>Memory files</h2>
+    <ul id="memory"></ul>
+    <div id="memory-empty" class="empty">No memory files.</div>
+  </div>
+
+  <div class="card">
+    <h2>Plugin storage</h2>
+    <div class="row">
+      <span class="grow">Page-owned counter: <strong id="counter">0</strong></span>
+      <button id="increment" type="button">Increment</button>
+      <button id="reset" class="ghost" type="button">Reset</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+
+  <div class="card">
+    <h2>Live events</h2>
+    <ul id="events" class="events"></ul>
+    <div id="events-empty" class="empty">Waiting for session events…</div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const bridge = window.coreaiPlugin;
+  let counter = 0;
+
+  function showStatus(message, error) {
+    $('status').textContent = message || '';
+    $('status').className = `status${error ? ' error' : ''}`;
+  }
+
+  function text(value) { return typeof value === 'string' ? value : ''; }
+
+  async function loadContext() {
+    const context = await bridge.context();
+    $('context').textContent = `${context.pluginName} · ${context.workspace}`;
+  }
+
+  async function loadSummary() {
+    const summary = await bridge.workspace.summary();
+    $('session-count').textContent = summary.sessionCount;
+    $('artifact-count').textContent = summary.artifactCount ?? 'n/a';
+    $('memory-count').textContent = summary.memoryFileCount ?? 'n/a';
+  }
+
+  async function loadSessions() {
+    const result = await bridge.sessions.list({ limit: 50 });
+    const rows = Array.isArray(result.sessions) ? result.sessions : [];
+    $('sessions').replaceChildren();
+    $('sessions-empty').style.display = rows.length ? 'none' : 'block';
+    for (const session of rows.slice(0, 12)) {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'name grow';
+      name.textContent = text(session.title) || text(session.sessionId);
+      const status = document.createElement('span');
+      status.className = 'pill';
+      status.textContent = text(session.status) || 'idle';
+      item.append(name, status);
+      $('sessions').append(item);
+    }
+  }
+
+  async function loadMemory() {
+    const result = await bridge.memory.list({ limit: 50 });
+    const rows = Array.isArray(result.files) ? result.files : [];
+    $('memory').replaceChildren();
+    $('memory-empty').style.display = rows.length ? 'none' : 'block';
+    for (const file of rows.slice(0, 12)) {
+      const item = document.createElement('li');
+      const name = document.createElement('span');
+      name.className = 'name grow';
+      name.textContent = text(file.path);
+      const size = document.createElement('span');
+      size.className = 'muted';
+      size.textContent = `${Math.max(1, Math.round(Number(file.size || 0) / 1024))} KB`;
+      item.append(name, size);
+      $('memory').append(item);
+    }
+  }
+
+  async function loadStorage() {
+    const raw = await bridge.storage.get('counter');
+    const parsed = raw.value ? JSON.parse(raw.value) : null;
+    counter = Number(parsed?.value || 0);
+    $('counter').textContent = String(counter);
+  }
+
+  async function saveCounter() {
+    await bridge.storage.set('counter', JSON.stringify({ value: counter }));
+    $('counter').textContent = String(counter);
+  }
+
+  function appendEvent(event) {
+    $('events-empty').style.display = 'none';
+    const item = document.createElement('li');
+    const type = document.createElement('span');
+    type.className = 'pill';
+    type.textContent = text(event.type);
+    const detail = document.createElement('span');
+    detail.className = 'grow';
+    detail.textContent = `${text(event.scope?.sessionId).slice(0, 8)} · ${text(event.data?.status) || text(event.data?.tool) || text(event.data?.turnId) || ''}`;
+    item.append(type, detail);
+    $('events').prepend(item);
+    while ($('events').children.length > 30) $('events').lastElementChild.remove();
+  }
+
+  async function refresh() {
+    showStatus('Loading…');
+    try {
+      await Promise.all([loadSummary(), loadSessions(), loadMemory(), loadStorage()]);
+      showStatus('');
+    } catch (error) {
+      showStatus(error.message || String(error), true);
+    }
+  }
+
+  $('refresh').onclick = refresh;
+  $('increment').onclick = async () => {
+    counter += 1;
+    await saveCounter();
+  };
+  $('reset').onclick = async () => {
+    counter = 0;
+    await saveCounter();
+  };
+
+  (async () => {
+    await loadContext();
+    await bridge.events.subscribe(['session.status', 'turn.completed', 'tool.started', 'tool.finished', 'turn.failed']);
+    bridge.events.on(appendEvent);
+    await refresh();
+  })().catch((error) => showStatus(error.message || String(error), true));
+</script>
+</body>
+</html>

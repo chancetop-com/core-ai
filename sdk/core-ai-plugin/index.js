@@ -23,6 +23,11 @@ export const CAPABILITIES = Object.freeze([
   'media.assets.write',
   'media.models.read',
   'media.generate',
+  'sessions.read',
+  'memory.read',
+  'workspace.read',
+  'plugin.storage',
+  'events.read',
 ]);
 export const COMPONENT_KINDS = Object.freeze(['skills', 'commands', 'hooks', 'agents', 'mcp', 'lsp']);
 

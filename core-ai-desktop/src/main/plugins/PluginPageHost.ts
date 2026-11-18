@@ -50,6 +50,7 @@ interface PageInstance {
   ses: Session;
   view: WebContentsView;
   closed: boolean;
+  events: Set<string>;
 }
 
 export class PluginPageError extends Error {
@@ -71,6 +72,19 @@ const IMAGE_IMPORT_EXTENSIONS: Record<string, string> = {
   '.webp': 'webp',
   '.gif': 'gif',
 };
+const PLUGIN_EVENTS: Record<string, string> = {
+  status_change: 'session.status',
+  turn_complete: 'turn.completed',
+  tool_start: 'tool.started',
+  tool_result: 'tool.finished',
+  error: 'turn.failed',
+  plan_update: 'plan.updated',
+  task_status: 'task.updated',
+  batch_tool_start: 'tool.batch_started',
+  agent_wait: 'agent.wait',
+  custom: 'custom',
+};
+const PLUGIN_EVENT_TYPES = new Set(Object.values(PLUGIN_EVENTS));
 
 export class PluginPageHost {
   private readonly instances = new Map<string, PageInstance>();
@@ -121,6 +135,7 @@ export class PluginPageHost {
       ses,
       view,
       closed: false,
+      events: new Set(),
     };
     this.instances.set(token, instance);
     this.wireWebContents(instance);
@@ -187,6 +202,9 @@ export class PluginPageHost {
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     contents.on('will-navigate', (event) => event.preventDefault());
     contents.on('will-redirect', (event) => event.preventDefault());
+    contents.on('did-fail-load', (_event, code, description, url) => {
+      this.options.onLog?.(`plugin page failed to load (${code} ${description}): ${url}`);
+    });
     contents.on('will-attach-webview', (event) => event.preventDefault());
     contents.on('render-process-gone', (_event, details) => {
       this.options.onLog?.(`plugin page renderer gone (${details.reason}); closing`);
@@ -229,6 +247,35 @@ export class PluginPageHost {
       case 'media.jobs.list':
         this.requireCapability(instance, 'media.generate');
         return this.trustedEngine(instance, 'media/jobs/list', { _owner: pageOwner(instance) });
+      case 'sessions.list':
+        this.requireCapability(instance, 'sessions.read');
+        return this.engine(instance, 'session/list', { limit: 50, cursor: typeof args.cursor === 'number' ? args.cursor : 0 });
+      case 'memory.list':
+        this.requireCapability(instance, 'memory.read');
+        return this.engine(instance, 'memory/list', { limit: 200, cursor: typeof args.cursor === 'number' ? args.cursor : 0 });
+      case 'memory.read':
+        this.requireCapability(instance, 'memory.read');
+        if (typeof args.path !== 'string') throw new PluginPageError('invalid_request', 'path is required');
+        return this.engine(instance, 'memory/read', { path: args.path });
+      case 'workspace.summary':
+        this.requireCapability(instance, 'workspace.read');
+        return this.workspaceSummary(instance);
+      case 'storage.get':
+        this.requireCapability(instance, 'plugin.storage');
+        return { value: await this.storage().storageGet(instance.pluginId, storageKey(args.key)) };
+      case 'storage.keys':
+        this.requireCapability(instance, 'plugin.storage');
+        return { keys: await this.storage().storageKeys(instance.pluginId) };
+      case 'storage.set':
+        this.requireCapability(instance, 'plugin.storage');
+        await this.storage().storageSet(instance.pluginId, storageKey(args.key), storageValue(args.value));
+        return { ok: true };
+      case 'storage.delete':
+        this.requireCapability(instance, 'plugin.storage');
+        return { deleted: await this.storage().storageDelete(instance.pluginId, storageKey(args.key)) };
+      case 'events.subscribe':
+        this.requireCapability(instance, 'events.read');
+        return this.subscribeEvents(instance, args.types);
       default:
         throw new PluginPageError('unknown_method', `unknown page method: ${method}`);
     }
@@ -251,7 +298,8 @@ export class PluginPageHost {
     }
   }
 
-  private async listAssets(instance: PageInstance): Promise<{ files: unknown[] }> {    const result = await this.engine(instance, 'artifacts/list', { limit: 200 }) as {
+  private async listAssets(instance: PageInstance): Promise<{ files: unknown[] }> {
+    const result = await this.engine(instance, 'artifacts/list', { limit: 200 }) as {
       files?: Array<Record<string, unknown>>;
     };
     const files = Array.isArray(result?.files) ? result.files : [];
@@ -297,6 +345,70 @@ export class PluginPageHost {
         url: assetUrl(relative),
       },
     };
+  }
+
+  private async workspaceSummary(instance: PageInstance): Promise<Record<string, unknown>> {
+    const sessions = instance.page.granted.includes('sessions.read')
+      ? await this.engine(instance, 'session/list', { limit: 500, cursor: 0 }) as { sessions?: unknown[] }
+      : null;
+    const artifacts = instance.page.granted.includes('media.assets.read')
+      ? await this.engine(instance, 'artifacts/list', { limit: 500, cursor: 0 }) as { files?: unknown[] }
+      : null;
+    const memory = instance.page.granted.includes('memory.read')
+      ? await this.engine(instance, 'memory/list', { limit: 500, cursor: 0 }) as { files?: unknown[] }
+      : null;
+    return {
+      path: instance.workspace,
+      sessionCount: sessions && Array.isArray(sessions.sessions) ? sessions.sessions.length : null,
+      artifactCount: artifacts && Array.isArray(artifacts.files) ? artifacts.files.length : null,
+      memoryFileCount: memory && Array.isArray(memory.files) ? memory.files.length : null,
+    };
+  }
+
+  private storage(): PluginHost {
+    const host = this.options.pluginHost();
+    if (!host) throw new PluginPageError('unavailable', 'plugin host is not ready');
+    return host;
+  }
+
+  private subscribeEvents(instance: PageInstance, value: unknown): { types: string[] } {
+    if (value !== undefined && !Array.isArray(value)) throw new PluginPageError('invalid_request', 'types must be an array');
+    const types = Array.isArray(value)
+      ? [...new Set(value.filter((item): item is string => typeof item === 'string'))]
+      : [];
+    if (types.length > 10) throw new PluginPageError('invalid_request', 'at most 10 event types');
+    for (const type of types) {
+      if (!PLUGIN_EVENT_TYPES.has(type)) throw new PluginPageError('invalid_request', `unsupported event type: ${type}`);
+    }
+    instance.events = new Set(types);
+    return { types: [...instance.events] };
+  }
+
+  /** Main forwards engine notifications here; only allowlisted, redacted fields reach a subscribed page. */
+  onEngineEvent(workspace: string, method: string, params: Record<string, unknown>): void {
+    if (method !== 'session/event') return;
+    const sessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
+    const raw = params.event;
+    if (!sessionId || !raw || typeof raw !== 'object') return;
+    const event = raw as Record<string, unknown>;
+    const type = typeof event.type === 'string' ? event.type : '';
+    const publicType = PLUGIN_EVENTS[type];
+    if (!publicType) return;
+    const envelope = {
+      type: publicType,
+      version: 1,
+      occurredAt: new Date().toISOString(),
+      scope: { workspace, sessionId },
+      data: eventData(type, event),
+    };
+    for (const instance of this.instances.values()) {
+      if (instance.closed || instance.workspace !== workspace || !instance.events.has(publicType)) continue;
+      try {
+        instance.view.webContents.send('pluginPage:event', envelope);
+      } catch {
+        // page is closing; the close path will remove it
+      }
+    }
   }
 
   private async trustedEngine(instance: PageInstance, method: string, params: Record<string, unknown>): Promise<unknown> {
@@ -345,6 +457,84 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function pageOwner(instance: PageInstance): string {
   return `${instance.pluginId}/${instance.pageId}`;
+}
+
+function storageKey(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) {
+    throw new PluginPageError('invalid_request', 'invalid storage key');
+  }
+  return value;
+}
+
+function storageValue(value: unknown): string {
+  if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > 64 * 1024) {
+    throw new PluginPageError('invalid_request', 'storage value must be a string up to 64 KiB');
+  }
+  return value;
+}
+
+function textField(event: Record<string, unknown>, ...names: string[]): string | null {
+  for (const name of names) {
+    const value = event[name];
+    if (typeof value === 'string' && value) return value;
+  }
+  return null;
+}
+
+function numberField(event: Record<string, unknown>, ...names: string[]): number | null {
+  for (const name of names) {
+    const value = event[name];
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+function eventData(type: string, event: Record<string, unknown>): Record<string, unknown> {
+  switch (type) {
+    case 'status_change':
+      return { status: textField(event, 'status') };
+    case 'turn_complete':
+      return {
+        turnId: textField(event, 'turn_id', 'turnId'),
+        cancelled: event.cancelled === true,
+        durationMs: numberField(event, 'duration_ms', 'durationMs'),
+        inputTokens: numberField(event, 'input_tokens', 'inputTokens'),
+        outputTokens: numberField(event, 'output_tokens', 'outputTokens'),
+        cachedTokens: numberField(event, 'cached_tokens', 'cachedTokens'),
+        costUsd: numberField(event, 'cost_usd', 'costUsd'),
+        maxTurnsReached: event.max_turns_reached === true,
+        budgetExhausted: event.budget_exhausted === true,
+      };
+    case 'tool_start':
+      return {
+        tool: textField(event, 'toolName', 'tool', 'name'),
+        callId: textField(event, 'callId', 'call_id'),
+        taskId: textField(event, 'taskId', 'task_id'),
+        runInBackground: event.run_in_background === true,
+      };
+    case 'tool_result':
+      return {
+        tool: textField(event, 'toolName', 'tool', 'name'),
+        callId: textField(event, 'callId', 'call_id'),
+        status: textField(event, 'status'),
+        durationMs: numberField(event, 'durationMs', 'duration_ms'),
+        taskId: textField(event, 'taskId', 'task_id'),
+      };
+    case 'error':
+      return { message: (textField(event, 'message', 'error') ?? 'turn failed').slice(0, 500) };
+    case 'plan_update':
+      return { status: textField(event, 'status') };
+    case 'task_status':
+      return { taskId: textField(event, 'taskId', 'task_id'), status: textField(event, 'status') };
+    case 'batch_tool_start':
+      return { count: numberField(event, 'count') ?? (Array.isArray(event.tools) ? event.tools.length : 0) };
+    case 'agent_wait':
+      return { reason: textField(event, 'reason') };
+    case 'custom':
+      return { name: textField(event, 'name') };
+    default:
+      return {};
+  }
 }
 
 function messageOf(error: unknown): string {

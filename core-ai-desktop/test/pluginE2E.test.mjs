@@ -10,6 +10,7 @@ const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV, PLUGIN_STATE_
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.resolve(here, '..', 'examples', 'plugins', 'hello-plugin');
 const mediaSample = path.resolve(here, '..', 'examples', 'plugins', 'media-studio');
+const insightsSample = path.resolve(here, '..', 'examples', 'plugins', 'workspace-insights');
 
 function tempRoot() {
   return mkdtempSync(path.join(os.tmpdir(), 'coreai-plugin-host-'));
@@ -92,4 +93,16 @@ test('a page is resolvable only while its install is active and ui.pages is gran
 
   await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate']);
   assert.ok(await host.resolvePage('core-ai.media-studio', 'studio'));
+});
+
+test('a read-only insights page resolves with the general host capabilities', async () => {
+  const host = new PluginHost({ root: tempRoot() });
+  await host.installFolder(insightsSample);
+  await host.setEnabled('core-ai.workspace-insights', true);
+  const granted = ['ui.pages', 'sessions.read', 'memory.read', 'workspace.read', 'plugin.storage', 'events.read'];
+  await host.grant('core-ai.workspace-insights', granted);
+  const page = await host.resolvePage('core-ai.workspace-insights', 'insights');
+  assert.ok(page);
+  assert.equal(page.view, 'pages/insights.html');
+  assert.deepEqual(page.granted.sort(), [...granted].sort());
 });

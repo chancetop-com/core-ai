@@ -1,0 +1,23 @@
+{
+  "name": "Workspace Insights",
+  "version": "0.1.0",
+  "description": "A read-only plugin page for workspace, session, memory and live event data.",
+  "coreai": {
+    "schemaVersion": 1,
+    "id": "core-ai.workspace-insights",
+    "desktopApi": "^1.0.0",
+    "capabilities": {
+      "required": ["ui.pages", "sessions.read", "memory.read", "workspace.read", "plugin.storage", "events.read"]
+    },
+    "contributes": {
+      "pages": [
+        {
+          "id": "insights",
+          "title": "Workspace Insights",
+          "view": "pages/insights.html",
+          "scope": "workspace"
+        }
+      ]
+    }
+  }
+}

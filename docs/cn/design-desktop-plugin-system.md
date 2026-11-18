@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.10（P2c 首期 + 素材导入/图片参考图；未发布） |
+| 文档版本 | v0.11（P2d 首期：只读 host services + storage + events） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -618,6 +618,16 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 
 能力描述建议统一为 `{id, risk: read|write|execute, scope: app|workspace|session, approval: grant|per-action}`；`read` 授权后免逐次弹窗，`write/execute` 按风险走当次确认或预算。**v0.8 只冻结字段名、ID 与风险分类；P2c/P2d/P3 才分别实现运行时。**
 
+#### 6.7.4 P2d 首期实现状态（v0.11，未实现 usage/写动作）
+
+| 项目 | 状态 |
+|---|---|
+| `sessions.read` / `memory.read` / `workspace.read` | 页面 bridge 只读：`sessions.list`、`memory.list/read`、`workspace.summary`；summary 只在对应能力已授权时返回计数 |
+| `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
+| `events.read` | `events.subscribe([...])` + `events.on(...)`；宿主按 allowlist 转发 `session.status`、`turn.completed`、`tool.started/finished`、`turn.failed`、`plan.updated`、`task.updated`、`tool.batch_started`、`agent.wait`、`custom`；只给脱敏字段，不给 text/tool args/tool result |
+| 示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed |
+| 仍未实现 | `usage.read`（需要 engine 聚合 token/cost）、`sessions.write`、`memory.write`、`notification.send`、`schedules.*`、`usage.recorded` 事件、通用 slots/renderers、`provides/requires` 服务注册 |
+
 ## 7. Engine 接入与生命周期
 
 ### 7.1 两阶段 bootstrap 与插件 adapter
@@ -926,6 +936,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.8 | 2026-11-17 | 冻结预留契约字段（provides/requires/pages/slots/renderers/events）、slot ID 表、事件 envelope、host service 草案与能力风险分类 | 继续把 §6.7 的能力地图落成可实现契约；运行时仍未实现 |
 | v0.9 | 2026-11-18 | P2c 首期实现：页面贡献/导航、实例 WebContentsView、page/asset 协议、`coreaiPlugin` bridge、`MediaGenerationApi` + `media/*` RPC、媒体工作台示例；补充 §6.6.6 与 §14 实现状态 | 继续实现插件页面与直连动作面；明确未做的 assets.write/reference/job 持久化 |
 | v0.10 | 2026-11-18 | 增加 `media.assets.write`/`assets.import` 和图片参考图解析（`.core-ai/media/imports` 路径）；媒体工作台支持导入参考图 | 继续让页面支持真实素材工作流 |
+| v0.11 | 2026-11-18 | P2d 首期：`sessions.read`/`memory.read`/`workspace.read`/`plugin.storage`/`events.read`；只读 bridge、storage、事件 allowlist、workspace-insights 示例 | 先建立通用宿主服务与事件面，再补 usage/写动作 |
 
 ### 13.2 相关材料
 
@@ -962,14 +973,17 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | 插件页面（P2c 首期） | `contributes.pages`、`ui.pages`、左侧页面导航、实例 `WebContentsView`、`coreai-plugin-page://`/`coreai-plugin-asset://`、固定 preload bridge、每次调用重新校验 grant、插件变更关闭页面 | `pluginManifest.ts`、`PluginPageHost.ts`、`PluginPageProtocol.ts`、`pluginPagePaths.ts`、`pluginPagePreload.ts`、`app.ts`、`styles.css` |
 | 非 agent 媒体面 | app-server `media/models`、`media/generate`、`media/jobs/get|list`；`MediaGenerationApi` 复用既有 `MediaProvider`，图片写 `.core-ai/media/images`，视频写 `.core-ai/media/videos`；restricted workspace 拒绝生成 | `AppServerEngine.java`、`MediaGenerationApi.java` |
 | 素材导入/参考图 | `assets.import`（capability `media.assets.write`）写 `.core-ai/media/imports`；`inputImages`/`inputReferences` 只解析 `.core-ai/media/` 下的路径为 data URL，支持图片参考 | `PluginPageHost.ts`、`pluginPagePreload.ts`、`MediaGenerationApi.java` |
+| P2d 只读宿主服务 | `sessions.read`/`memory.read`/`workspace.read` 页面 bridge：`sessions.list`、`memory.list/read`、`workspace.summary`（按能力返回计数） | `PluginPageHost.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
+| P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、导入参考图、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
+| 只读洞察示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed | `examples/plugins/workspace-insights/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
 | 示例 | `hello-plugin`：skill + dock + settings + composer | `core-ai-desktop/examples/plugins/hello-plugin/` |
 | 测试 | 插件/信任 node:test（含 workspace trust store、env shape）+ Java `PluginSkillRootsTest` (6)、`PluginGrantGateTest` (5)、`WorkspaceTrustTest` (5)、`CliAgentSkillConfigTest` (2)、`SkillToolGuardTest` (1)、`MediaGenerationApiTest` (5) + Electron page smoke + engine trust E2E | `test/plugin*.test.mjs`、`test/workspaceTrust.test.mjs`、`test/pluginPageHost.smoke.cjs`、`core-ai-cli/src/test/.../plugin|workspace|agent|appserver`、`SkillToolGuardTest.java`、`.core-ai/tasks/desktop-plugin-trust-e2e.mjs` |
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
-验证记录（2026-11-18，P2c 首期）：desktop `check`、`build`、`test`（257 tests：256 pass / 1 skip）、`pluginPageHost.smoke.cjs` 通过（页面 context、assets 协议、图片加载、`assets.import`、`media.generate`、撤销后 `not_granted`）；SDK 7 例通过；`MediaGenerationApiTest` 5 例通过（图片/视频/参考图/job owner）；`:core-ai-cli:checkstyleMain` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
+验证记录（2026-11-18，P2d 首期）：desktop `check`、`build`、`test`（260 tests：259 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions、memory、workspace summary、storage、脱敏事件）；SDK 7 例通过；`:core-ai-cli:checkstyleMain/checkstyleTest` 通过。**PMD 仍有其他会话的既有告警（`ModelSettingsApi`、`LlmProviderStore`、`PluginGrantGate`），本特性新增文件只修掉了自身告警。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
@@ -981,12 +995,12 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
-9. **§6.7 的非媒体能力面只是设计预留，未实现。** 没有通用 `ui.slots`、event allowlist、plugin storage/job、sessions/workspace/memory/usage read adapters，也没有 host 插件服务层；这些需要 P2d 单独实现并验收。
+9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace、`plugin.storage` 和 events allowlist；仍没有 `usage.read`、写动作（memory/notify/schedules/sessions）、通用 `ui.slots`/`ui.renderers`、`provides/requires` 服务注册或 host 插件后端。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
 2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
-3. 实现 P2d：冻结 slot/capability/event ID，先做只读 sessions/usage/memory/assets + storage/job，再接受控写；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
+3. 补 P2d 剩余：`usage.read`（engine 聚合 token/cost）、受控写（memory/notify/schedules/sessions）、通用 slots/renderers、`provides/requires` 服务注册；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
 
 

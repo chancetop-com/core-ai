@@ -33,6 +33,9 @@ const STATE_SCHEMA_VERSION = 1;
 const MAX_PACKAGE_FILES = 500;
 const MAX_PACKAGE_BYTES = 32 * 1024 * 1024;
 const MAX_PACKAGE_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_STORAGE_KEYS = 200;
+const MAX_STORAGE_VALUE_BYTES = 64 * 1024;
+const STORAGE_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const LOCK_TIMEOUT_MS = 15_000;
 const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 25;
@@ -64,6 +67,7 @@ interface StoredInstall {
   enabled: boolean;
   granted: string[];
   settings: Record<string, string | number | boolean>;
+  storage: Record<string, string>;
   installedAt: string;
   updatedAt: string;
 }
@@ -120,6 +124,12 @@ function emptyState(): PluginState {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function assertStorageKey(key: unknown): asserts key is string {
+  if (typeof key !== 'string' || !STORAGE_KEY.test(key)) {
+    throw new PluginError('invalid_storage', 'storage key must match [A-Za-z0-9][A-Za-z0-9._-]{0,127}');
+  }
 }
 
 function nowIso(): string {
@@ -358,6 +368,47 @@ export class PluginStore {
     });
   }
 
+  async storageGet(pluginId: string, key: string, scope = USER_SCOPE): Promise<string | null> {
+    this.assertScope(scope);
+    assertStorageKey(key);
+    const state = await this.readState();
+    return this.requireInstall(state, pluginId, scope).storage[key] ?? null;
+  }
+
+  async storageKeys(pluginId: string, scope = USER_SCOPE): Promise<string[]> {
+    this.assertScope(scope);
+    const state = await this.readState();
+    return Object.keys(this.requireInstall(state, pluginId, scope).storage).sort();
+  }
+
+  async storageSet(pluginId: string, key: string, value: string, scope = USER_SCOPE): Promise<void> {
+    this.assertScope(scope);
+    assertStorageKey(key);
+    if (typeof value !== 'string' || Buffer.byteLength(value, 'utf8') > MAX_STORAGE_VALUE_BYTES) {
+      throw new PluginError('invalid_storage', `${key} exceeds the storage value limit`);
+    }
+    await this.mutate(async (state) => {
+      const install = this.requireInstall(state, pluginId, scope);
+      if (!(key in install.storage) && Object.keys(install.storage).length >= MAX_STORAGE_KEYS) {
+        throw new PluginError('storage_full', `${pluginId} has too many storage keys`);
+      }
+      install.storage[key] = value;
+      install.updatedAt = nowIso();
+    });
+  }
+
+  async storageDelete(pluginId: string, key: string, scope = USER_SCOPE): Promise<boolean> {
+    this.assertScope(scope);
+    assertStorageKey(key);
+    return this.mutate(async (state) => {
+      const install = this.requireInstall(state, pluginId, scope);
+      if (!(key in install.storage)) return false;
+      delete install.storage[key];
+      install.updatedAt = nowIso();
+      return true;
+    });
+  }
+
   /** Skills directories an engine may load: active installs with the engine.skills grant only. */
   async engineSkillRoots(): Promise<EngineSkillRoot[]> {
     const state = await this.readState();
@@ -470,6 +521,14 @@ export class PluginStore {
               if (typeof setting === 'string' || typeof setting === 'number' || typeof setting === 'boolean') settings[key] = setting;
             }
           }
+          const storage: Record<string, string> = {};
+          if (isRecord(value.storage)) {
+            for (const [key, item] of Object.entries(value.storage)) {
+              if (STORAGE_KEY.test(key) && typeof item === 'string' && Buffer.byteLength(item, 'utf8') <= MAX_STORAGE_VALUE_BYTES) {
+                storage[key] = item;
+              }
+            }
+          }
           installs.push({
             scope: value.scope,
             pluginId: value.pluginId,
@@ -477,6 +536,7 @@ export class PluginStore {
             enabled: value.enabled === true,
             granted,
             settings,
+            storage,
             installedAt: typeof value.installedAt === 'string' ? value.installedAt : nowIso(),
             updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : nowIso(),
           });
@@ -713,6 +773,7 @@ export class PluginStore {
           enabled: false,
           granted: [],
           settings: {},
+          storage: {},
           installedAt: nowIso(),
           updatedAt: nowIso(),
         };

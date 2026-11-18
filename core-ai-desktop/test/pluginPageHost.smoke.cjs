@@ -34,10 +34,12 @@ async function main() {
   const page = {
     pluginId: 'test.page', pluginName: 'Test Page', pageId: 'main', title: 'Test Page',
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
-    granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate'],
+    granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
+      'sessions.read', 'memory.read', 'workspace.read', 'plugin.storage', 'events.read'],
   };
   let granted = [...page.granted];
   const calls = [];
+  const storage = new Map();
   const supervisor = {
     ensureTrustState: async () => ({ state: 'trusted' }),
     call: async (_workspace, method) => {
@@ -45,13 +47,29 @@ async function main() {
       if (method === 'artifacts/list') {
         return { files: [{ name: 'one.png', path: '.core-ai/media/images/one.png', kind: 'image', size: 3 }] };
       }
+      if (method === 'session/list') {
+        return { sessions: [{ sessionId: 's-1', title: 'One', state: 'ok', status: 'idle', updatedAt: '2026-11-18T00:00:00Z' }] };
+      }
+      if (method === 'memory/list') {
+        return { files: [{ path: 'knowledge/a.md', size: 10, modifiedAt: '2026-11-18T00:00:00Z' }] };
+      }
+      if (method === 'memory/read') {
+        return { path: 'knowledge/a.md', content: '# A' };
+      }
       return { kind: 'image', files: [] };
     },
   };
   const host = new PluginPageHost({
-    pluginHost: () => ({ resolvePage: async () => ({ ...page, granted }) }),
+    pluginHost: () => ({
+      resolvePage: async () => ({ ...page, granted }),
+      storageGet: async (_pluginId, key) => storage.get(key) ?? null,
+      storageSet: async (_pluginId, key, value) => { storage.set(key, value); },
+      storageDelete: async (_pluginId, key) => storage.delete(key),
+      storageKeys: async () => [...storage.keys()],
+    }),
     supervisor: () => supervisor,
     preloadPath: path.join(__dirname, '..', 'dist', 'pluginPagePreload.js'),
+    onLog: (line) => console.log('[page]', line),
   });
   const { token } = await host.open({
     window, workspace, pluginId: 'test.page', pageId: 'main',
@@ -86,6 +104,34 @@ async function main() {
   assert.equal(imported.file.kind, 'image');
   await view.webContents.executeJavaScript('window.coreaiPlugin.media.generate({ kind: "image", prompt: "x" })');
   assert.deepEqual(calls, ['artifacts/list', 'media/generate']);
+
+  const sessions = await view.webContents.executeJavaScript('window.coreaiPlugin.sessions.list({ limit: 10 })');
+  assert.equal(sessions.sessions[0].sessionId, 's-1');
+  const memory = await view.webContents.executeJavaScript('window.coreaiPlugin.memory.list()');
+  assert.equal(memory.files[0].path, 'knowledge/a.md');
+  const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
+  assert.equal(summary.sessionCount, 1);
+  assert.equal(summary.artifactCount, 1);
+  assert.equal(summary.memoryFileCount, 1);
+  await view.webContents.executeJavaScript('window.coreaiPlugin.storage.set("counter", "1")');
+  const stored = await view.webContents.executeJavaScript('window.coreaiPlugin.storage.get("counter")');
+  assert.equal(stored.value, '1');
+  assert.deepEqual(await view.webContents.executeJavaScript('window.coreaiPlugin.storage.keys()'), { keys: ['counter'] });
+  assert.deepEqual(await view.webContents.executeJavaScript('window.coreaiPlugin.storage.delete("counter")'), { deleted: true });
+
+  await view.webContents.executeJavaScript(`window.__events = [];
+    window.coreaiPlugin.events.on((event) => window.__events.push(event));
+    window.coreaiPlugin.events.subscribe(['turn.completed', 'tool.finished'])`);
+  host.onEngineEvent(workspace, 'session/event', {
+    sessionId: 's-1',
+    event: { type: 'turn_complete', turn_id: 't-1', cancelled: false, input_tokens: 10, output_tokens: 5, output: 'secret' },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const received = await view.webContents.executeJavaScript('window.__events');
+  assert.equal(received.length, 1);
+  assert.equal(received[0].type, 'turn.completed');
+  assert.equal(received[0].data.inputTokens, 10);
+  assert.equal(received[0].data.output, undefined);
 
   granted = granted.filter((capability) => capability !== 'media.assets.write');
   await assert.rejects(

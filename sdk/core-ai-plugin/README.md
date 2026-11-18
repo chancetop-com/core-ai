@@ -68,6 +68,21 @@ executes package code. Warnings include scripted dock views (`contributes.dock[]
 current desktop reports as unsupported in favour of host-rendered `blocks`. A `pages` contribution
 requires `id`, `title` and a package-relative `view`; the matching capability is `ui.pages`.
 
+## Host services
+
+A plugin page gets only `window.coreaiPlugin`. Besides `context`, `assets` and `media`, the current
+page bridge exposes:
+
+- `sessions.list({ limit?, cursor? })` with `sessions.read`
+- `memory.list({ limit?, cursor? })` and `memory.read(path)` with `memory.read`
+- `workspace.summary()` with `workspace.read` (counts are `null` for capabilities not granted)
+- `storage.get/set/delete/keys` with `plugin.storage` (string values, 64 KiB per value)
+- `events.subscribe(types)` and `events.on(callback)` with `events.read`
+
+Events are allowlisted and redacted: `session.status`, `turn.completed`, `tool.started`,
+`tool.finished`, `turn.failed`, `plan.updated`, `task.updated`, `tool.batch_started`, `agent.wait`
+and `custom`. They never carry message text, tool arguments or tool results.
+
 ## Capabilities
 
 | Capability | What it enables |
@@ -79,6 +94,11 @@ requires `id`, `title` and a package-relative `view`; the matching capability is
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |
 | `media.assets.write` | imports a reference image into the workspace media directory |
+| `sessions.read` | lists session metadata for the current workspace |
+| `memory.read` | lists and reads memory files in the workspace |
+| `workspace.read` | reads a small workspace summary |
+| `plugin.storage` | namespaced string storage persisted with the plugin install |
+| `events.read` | subscribes to an allowlist of redacted session events |
 | `media.models.read` | reads the configured image/video model catalog |
 | `media.generate` | starts image/video generation through the engine's media service |
 

@@ -7,7 +7,12 @@ export type PluginCapability =
   | 'media.assets.read'
   | 'media.assets.write'
   | 'media.models.read'
-  | 'media.generate';
+  | 'media.generate'
+  | 'sessions.read'
+  | 'memory.read'
+  | 'workspace.read'
+  | 'plugin.storage'
+  | 'events.read';
 export type PluginComponentKind = 'skills' | 'commands' | 'hooks' | 'agents' | 'mcp' | 'lsp';
 
 export interface PluginComponent {

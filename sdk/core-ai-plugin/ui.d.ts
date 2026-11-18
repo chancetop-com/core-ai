@@ -87,6 +87,35 @@ export interface PluginGenerateResult {
   notes?: string[];
 }
 
+export interface PluginSession {
+  sessionId: string;
+  title: string;
+  state: string;
+  status: 'running' | 'idle' | string;
+  updatedAt: string;
+}
+
+export interface PluginMemoryFile {
+  path: string;
+  size: number;
+  modifiedAt: string;
+}
+
+export interface PluginWorkspaceSummary {
+  path: string;
+  sessionCount: number | null;
+  artifactCount: number | null;
+  memoryFileCount: number | null;
+}
+
+export interface PluginEvent {
+  type: string;
+  version: number;
+  occurredAt: string;
+  scope: { workspace: string; sessionId: string };
+  data: Record<string, unknown>;
+}
+
 export interface CoreAiPluginBridge {
   context(): Promise<PluginPageContext>;
   assets: {
@@ -98,6 +127,26 @@ export interface CoreAiPluginBridge {
     generate(params: PluginGenerateParams): Promise<PluginGenerateResult>;
     job(id: string): Promise<PluginMediaJob | { job: PluginMediaJob }>;
     jobs(): Promise<{ jobs: PluginMediaJob[] }>;
+  };
+  sessions: {
+    list(params?: { limit?: number; cursor?: number }): Promise<{ sessions: PluginSession[]; nextCursor?: string }>;
+  };
+  memory: {
+    list(params?: { limit?: number; cursor?: number }): Promise<{ files: PluginMemoryFile[]; nextCursor?: string }>;
+    read(path: string): Promise<{ path: string; content: string }>;
+  };
+  workspace: {
+    summary(): Promise<PluginWorkspaceSummary>;
+  };
+  storage: {
+    get(key: string): Promise<{ value: string | null }>;
+    set(key: string, value: string): Promise<{ ok: true }>;
+    delete(key: string): Promise<{ deleted: boolean }>;
+    keys(): Promise<{ keys: string[] }>;
+  };
+  events: {
+    subscribe(types: string[]): Promise<{ types: string[] }>;
+    on(callback: (event: PluginEvent) => void): void;
   };
 }
 

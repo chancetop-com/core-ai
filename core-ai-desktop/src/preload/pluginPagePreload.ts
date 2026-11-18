@@ -22,4 +22,26 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
     job: (id: string) => call('media.jobs.get', { id }),
     jobs: () => call('media.jobs.list'),
   },
+  sessions: {
+    list: (params: Record<string, unknown> = {}) => call('sessions.list', params),
+  },
+  memory: {
+    list: (params: Record<string, unknown> = {}) => call('memory.list', params),
+    read: (path: string) => call('memory.read', { path }),
+  },
+  workspace: {
+    summary: () => call('workspace.summary'),
+  },
+  storage: {
+    get: (key: string) => call('storage.get', { key }),
+    set: (key: string, value: string) => call('storage.set', { key, value }),
+    delete: (key: string) => call('storage.delete', { key }),
+    keys: () => call('storage.keys'),
+  },
+  events: {
+    subscribe: (types: string[]) => call('events.subscribe', { types }),
+    on: (callback: (event: unknown) => void) => {
+      ipcRenderer.on('pluginPage:event', (_event, payload) => callback(payload));
+    },
+  },
 });

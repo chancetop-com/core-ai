@@ -65,6 +65,22 @@ export class PluginHost {
     return this.store.setSetting(pluginId, key, value);
   }
 
+  storageGet(pluginId: string, key: string): Promise<string | null> {
+    return this.store.storageGet(pluginId, key);
+  }
+
+  storageKeys(pluginId: string): Promise<string[]> {
+    return this.store.storageKeys(pluginId);
+  }
+
+  storageSet(pluginId: string, key: string, value: string): Promise<void> {
+    return this.store.storageSet(pluginId, key, value);
+  }
+
+  storageDelete(pluginId: string, key: string): Promise<boolean> {
+    return this.store.storageDelete(pluginId, key);
+  }
+
   contributions(): Promise<ActivePluginContributions[]> {
     return this.store.activeContributions();
   }

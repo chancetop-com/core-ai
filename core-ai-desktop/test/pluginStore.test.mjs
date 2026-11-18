@@ -164,8 +164,26 @@ test('settings persist and are type checked', async () => {
   await assert.rejects(() => store.setSetting('example.hello-plugin', 'missing', 'x'), (error) => error.code === 'unknown_setting');
 });
 
-test('zip installs use the same transaction and reject unsafe archives', async () => {
+test('plugin storage round-trips, survives reopen and validates keys', async () => {
   const root = tempRoot();
+  const store = new PluginStore({ root });
+  await store.installFolder(await writeFolder(root));
+
+  await store.storageSet('example.hello-plugin', 'counter', '{"value":1}');
+  assert.equal(await store.storageGet('example.hello-plugin', 'counter'), '{"value":1}');
+  assert.deepEqual(await store.storageKeys('example.hello-plugin'), ['counter']);
+
+  const reopened = new PluginStore({ root });
+  assert.equal(await reopened.storageGet('example.hello-plugin', 'counter'), '{"value":1}');
+  assert.equal(await reopened.storageDelete('example.hello-plugin', 'counter'), true);
+  assert.equal(await reopened.storageDelete('example.hello-plugin', 'counter'), false);
+  assert.equal(await reopened.storageGet('example.hello-plugin', 'counter'), null);
+
+  await assert.rejects(() => reopened.storageSet('example.hello-plugin', 'bad key', 'x'), (error) => error.code === 'invalid_storage');
+  await assert.rejects(() => reopened.storageSet('example.hello-plugin', 'big', 'x'.repeat(64 * 1024 + 1)), (error) => error.code === 'invalid_storage');
+});
+
+test('zip installs use the same transaction and reject unsafe archives', async () => {  const root = tempRoot();
   const store = new PluginStore({ root });
   const archive = path.join(root, 'plugin.zip');
   const manifest = JSON.stringify(PLUGIN_MANIFEST, null, 2);

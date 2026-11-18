@@ -1711,6 +1711,7 @@ else {
       },
       onEvent: (workspace, method, params) => {
         trackProviderTurnStatus(workspace, method, params);
+        pluginPageHost?.onEngineEvent(workspace, method, params);
         channelBridge?.onEngineEvent(workspace, method, params);
         completionNotifier?.onEngineEvent(workspace, method, params);
         send('engine:event', { workspace, method, params });
