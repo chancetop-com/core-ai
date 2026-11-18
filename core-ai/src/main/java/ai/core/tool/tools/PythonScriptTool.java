@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -55,6 +56,10 @@ public class PythonScriptTool extends ToolCall {
     }
 
     public static String exec(String code, Path scriptPath, long timeout) {
+        return exec(code, scriptPath, timeout, Map.of());
+    }
+
+    public static String exec(String code, Path scriptPath, long timeout, Map<String, String> environment) {
         Path tmp = null;
         boolean shouldDeleteTmp = false;
 
@@ -66,7 +71,7 @@ public class PythonScriptTool extends ToolCall {
             tmp = scriptInfo.tempFile;
             shouldDeleteTmp = scriptInfo.shouldDeleteTemp;
 
-            return runPythonProcess(scriptInfo.executeScript, timeout);
+            return runPythonProcess(scriptInfo.executeScript, timeout, environment);
         } catch (Exception e) {
             var error = "Python script execution failed: " + e.getClass().getSimpleName() + " - " + e.getMessage();
             LOGGER.error(error, e);
@@ -98,7 +103,7 @@ public class PythonScriptTool extends ToolCall {
         }
     }
 
-    private static String runPythonProcess(Path executeScript, long timeout) throws IOException {
+    private static String runPythonProcess(Path executeScript, long timeout, Map<String, String> environment) throws IOException {
         var parent = executeScript.getParent();
         var dir = parent != null
                 ? parent.toAbsolutePath().toString()
@@ -107,6 +112,9 @@ public class PythonScriptTool extends ToolCall {
         var command = new ArrayList<>(Arrays.asList("python", executeScript.toAbsolutePath().toString()));
         var pb = new ProcessBuilder(command);
         pb.environment().put("PYTHONIOENCODING", "utf-8");
+        if (environment != null && !environment.isEmpty()) {
+            pb.environment().putAll(environment);
+        }
         pb.directory(new File(dir));
         pb.redirectErrorStream(true);
 
@@ -187,15 +195,15 @@ public class PythonScriptTool extends ToolCall {
 
     @Override
     public ToolCallResult execute(String text, ExecutionContext context) {
-        return doExecute(text);
+        return doExecute(text, context.getProcessEnvironment());
     }
 
     @Override
     public ToolCallResult execute(String text) {
-        return doExecute(text);
+        return doExecute(text, Map.of());
     }
 
-    private ToolCallResult doExecute(String text) {
+    private ToolCallResult doExecute(String text, Map<String, String> environment) {
         long startTime = System.currentTimeMillis();
         try {
             var argsMap = parseArguments(text);
@@ -211,10 +219,10 @@ public class PythonScriptTool extends ToolCall {
             Path scriptPath = scriptPathStr != null ? Path.of(scriptPathStr) : null;
 
             if (asyncMode) {
-                return executeAsync(code, scriptPath, startTime);
+                return executeAsync(code, scriptPath, startTime, environment);
             }
 
-            var result = exec(code, scriptPath, DEFAULT_TIMEOUT_SECONDS);
+            var result = exec(code, scriptPath, DEFAULT_TIMEOUT_SECONDS, environment);
             return ToolCallResult.completed(result)
                     .withDuration(System.currentTimeMillis() - startTime)
                     .withStats("codeLength", code != null ? code.length() : 0)
@@ -226,9 +234,9 @@ public class PythonScriptTool extends ToolCall {
         }
     }
 
-    private ToolCallResult executeAsync(String code, Path scriptPath, long startTime) {
+    private ToolCallResult executeAsync(String code, Path scriptPath, long startTime, Map<String, String> environment) {
         var asyncExecutor = AsyncToolTaskExecutor.getInstance();
-        var taskId = asyncExecutor.submit("py", TOOL_NAME, () -> exec(code, scriptPath, ASYNC_TIMEOUT_SECONDS));
+        var taskId = asyncExecutor.submit("py", TOOL_NAME, () -> exec(code, scriptPath, ASYNC_TIMEOUT_SECONDS, environment));
 
         var message = scriptPath != null
                 ? "Executing script: " + scriptPath

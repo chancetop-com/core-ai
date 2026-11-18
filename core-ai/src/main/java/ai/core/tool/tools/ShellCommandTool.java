@@ -24,6 +24,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -183,6 +184,11 @@ public class ShellCommandTool extends ToolCall {
     }
 
     public static String exec(List<String> commands, String workdir, long timeout, Consumer<String> chunkCallback) {
+        return exec(commands, workdir, timeout, chunkCallback, Map.of());
+    }
+
+    public static String exec(List<String> commands, String workdir, long timeout, Consumer<String> chunkCallback,
+                              Map<String, String> environment) {
         var dir = workdir;
         if (Strings.isBlank(dir)) dir = core.framework.util.Files.tempDir().toAbsolutePath().toString();
 
@@ -192,7 +198,7 @@ public class ShellCommandTool extends ToolCall {
 
         LOGGER.debug("Executing shell command in directory {}: {}", dir, String.join(" ", commands));
         try {
-            var process = startProcess(commands, workDir);
+            var process = startProcess(commands, workDir, environment);
             notifyStart(chunkCallback, timeout);
             return drainOutput(process, timeout, chunkCallback);
         } catch (Exception e) {
@@ -208,10 +214,13 @@ public class ShellCommandTool extends ToolCall {
         }
     }
 
-    private static Process startProcess(List<String> commands, File workDir) throws IOException {
+    private static Process startProcess(List<String> commands, File workDir, Map<String, String> environment) throws IOException {
         var pb = new ProcessBuilder(commands);
         pb.directory(workDir);
         pb.redirectErrorStream(true);
+        if (environment != null && !environment.isEmpty()) {
+            pb.environment().putAll(environment);
+        }
         var process = pb.start();
         process.getOutputStream().close();
         return process;
@@ -348,19 +357,20 @@ public class ShellCommandTool extends ToolCall {
             var shellPrefix = ShellUtil.getPreferredShellCommandPrefix(SystemUtil.detectPlatform()).trim();
             var prefixParts = shellPrefix.split(" ");
             var taskManager = context.getTaskManager();
+            var processEnvironment = context.getProcessEnvironment();
             var commands = new ArrayList<>(Arrays.asList(prefixParts));
             commands.add(ShellUtil.wrapCommand(prefixParts[0], command));
             if (runInBackground && taskManager != null) {
                 var taskId = UUID.randomUUID().toString().replace("-", "");
                 var description = getStringValue(argsMap, "description");
                 var notify = !Boolean.FALSE.equals(argsMap.get("notify"));
-                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null), context.getCancellationToken(), null, notify);
+                var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null, processEnvironment), context.getCancellationToken(), null, notify);
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
                 return withTimeoutNotice(ToolCallResult.asyncLaunched(taskId,
                                 buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
                         .withDuration(System.currentTimeMillis() - startTime), requestedTimeout, timeMilliseconds);
             } else {
-                return withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk))
+                return withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk, processEnvironment))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null),
                         requestedTimeout, timeMilliseconds);

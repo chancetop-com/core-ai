@@ -75,6 +75,7 @@ public final class ExecutionContext {
     private SubagentModelResolver subagentModelResolver;
     private ToolRegistry toolRegistry;
     private volatile List<SkillCapability> skillCapabilities = List.of();
+    private volatile Map<String, String> processEnvironment = Map.of();
     private AgentProfileRegistry agentProfileRegistry;
     private RunBudget runBudget;
     private volatile SubagentThreadRegistry subagentThreads;
@@ -364,6 +365,15 @@ public final class ExecutionContext {
 
     public void setSkillCapabilities(List<SkillCapability> skillCapabilities) {
         this.skillCapabilities = skillCapabilities == null ? List.of() : List.copyOf(skillCapabilities);
+    }
+
+    /** Environment entries injected into shell / Python processes spawned for this execution context. */
+    public Map<String, String> getProcessEnvironment() {
+        return processEnvironment;
+    }
+
+    public void setProcessEnvironment(Map<String, String> processEnvironment) {
+        this.processEnvironment = processEnvironment == null ? Map.of() : Map.copyOf(processEnvironment);
     }
 
     public void setToolRegistry(ToolRegistry toolRegistry) {
