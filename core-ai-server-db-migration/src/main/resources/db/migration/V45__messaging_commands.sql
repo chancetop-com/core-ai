@@ -1,6 +1,6 @@
-ALTER TABLE messaging.pods ADD COLUMN command_backend TEXT NOT NULL DEFAULT 'redis';
+ALTER TABLE messaging.pods ADD COLUMN IF NOT EXISTS command_backend TEXT NOT NULL DEFAULT 'redis';
 
-CREATE TABLE messaging.commands (
+CREATE TABLE IF NOT EXISTS messaging.commands (
     id           BIGSERIAL PRIMARY KEY,
     type         TEXT NOT NULL,
     session_id   TEXT NOT NULL,
@@ -17,5 +17,5 @@ CREATE TABLE messaging.commands (
     last_error   TEXT
 );
 
-CREATE INDEX commands_pending_idx
+CREATE INDEX IF NOT EXISTS commands_pending_idx
     ON messaging.commands (status, available_at, target_pod, id);

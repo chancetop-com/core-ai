@@ -186,3 +186,15 @@ FOR UPDATE SKIP LOCKED;
 3. `PgCommandConsumer` + stale/cleanup job；`MessagingRuntimeModule` 双消费。
 4. 单测 + dev E2E；通过后 UAT。
 5. 清理版本（后续）：去掉 Redis 命令 publisher/consumer，再进入 Redis 下线。
+
+## 10. 实施记录
+
+- 2026-11-18：`V45__messaging_commands.sql`、`CommandBackend`、`PgCommandQueue`、`PgCommandConsumer`、`PgCommandCleanupJob`、`PodRegistry.command_backend` 已实现。
+- 镜像：`chancetop/core-ai-server:2.0.285`；dev/UAT `SYS_COMMAND_BACKEND=postgres`，prod 未动。
+- 修复：
+  - core-ng 不接受 lambda job，改为 `PgCommandCleanupJob`；
+  - 查询行类型必须 `db().view(PgCommandRow.class)` / `PgPodCommandBackendRow.class`；
+  - V45 需先于应用启动执行（启动 hook 早于 Flyway 任务）；V45 改为 `IF NOT EXISTS` 以支持手工修复环境。
+- dev E2E：新→新 PG、新→旧 Redis、旧→新 Redis、回滚 redis。
+- UAT：`V43–V45` 手工执行（V42 既有表 owner 为 `postgres`，Flyway 无法前进）；2.0.285 + command postgres 通过跨 Pod E2E，回滚 redis 通过后恢复 postgres。
+- 仍未清理：Redis command publisher/consumer、SSE 双写、RPC Redis 回退、`StartupDependencyCheck`/`JedisConfig`；这些要等全部环境稳定后再做。
