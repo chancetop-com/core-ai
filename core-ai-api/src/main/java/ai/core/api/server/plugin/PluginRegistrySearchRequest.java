@@ -1,17 +1,17 @@
 package ai.core.api.server.plugin;
 
-import core.framework.api.json.Property;
+import core.framework.api.web.service.QueryParam;
 
 /**
  * @author stephen
  */
 public class PluginRegistrySearchRequest {
-    @Property(name = "query")
+    @QueryParam(name = "query")
     public String query;
 
-    @Property(name = "offset")
+    @QueryParam(name = "offset")
     public Integer offset;
 
-    @Property(name = "limit")
+    @QueryParam(name = "limit")
     public Integer limit;
 }
