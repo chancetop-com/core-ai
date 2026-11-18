@@ -2,6 +2,7 @@ package ai.core.cli.utils;
 
 import ai.core.agent.Agent;
 import ai.core.cli.log.SubAgentLogLifecycle;
+import ai.core.cli.plugin.PluginGuards;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.ToolCall;
 
@@ -23,7 +24,7 @@ public final class AgentFork {
 
     public static Agent forkConfigOnly(Agent source, ForkConfig config) {
         var tools = config.toolCalls != null ? config.toolCalls : source.getToolCalls();
-        return Agent.builder()
+        var builder = Agent.builder()
                 .llmProvider(source.getLLMProvider())
                 .model(source.getModel())
                 .systemPrompt(source.getSystemPrompt())
@@ -33,8 +34,10 @@ public final class AgentFork {
                 .temperature(config.temperature)
                 .compression(config.compression)
                 .persistenceProvider(config.persistenceProvider)
-                .addAgentLifecycle(new SubAgentLogLifecycle(config.name))
-                .build();
+                .addAgentLifecycle(new SubAgentLogLifecycle(config.name));
+        var guards = PluginGuards.fromEnvironment();
+        if (guards != null) builder.addAgentLifecycle(guards);
+        return builder.build();
     }
 
     private AgentFork() {

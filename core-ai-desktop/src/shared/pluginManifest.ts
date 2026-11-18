@@ -28,6 +28,7 @@ export const SUPPORTED_CAPABILITIES = [
   'browser.control',
   'tools.register',
   'terminal.exec',
+  'hooks.guard',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -154,6 +155,14 @@ export interface PluginTerminalContribution {
   operation: PluginTerminalOperation;
 }
 
+export interface PluginGuardContribution {
+  id: string;
+  name: string;
+  description: string;
+  toolNames: string[];
+  action: 'deny';
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -164,6 +173,7 @@ export interface PluginContributions {
   promptSections: PluginPromptSectionContribution[];
   tools: PluginToolContribution[];
   terminal: PluginTerminalContribution[];
+  guards: PluginGuardContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -549,6 +559,26 @@ function parseTerminal(value: unknown): PluginTerminalContribution[] {
   return commands;
 }
 
+function parseGuards(value: unknown): PluginGuardContribution[] {
+  if (!Array.isArray(value)) return [];
+  const guards: PluginGuardContribution[] = [];
+  const names = new Set<string>();
+  for (const raw of value.slice(0, 20)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const name = typeof entry.name === 'string' && /^[a-z][a-z0-9_-]{1,63}$/.test(entry.name) ? entry.name : null;
+    const description = boundedText(entry.description, 1000);
+    const toolNames = Array.isArray(entry.toolNames)
+      ? [...new Set(entry.toolNames.filter((item): item is string => typeof item === 'string' && /^[a-z][a-z0-9_.-]{0,127}$/.test(item)))].slice(0, 20)
+      : [];
+    if (!id || !name || !description || entry.action !== 'deny' || !toolNames.length || names.has(name)) continue;
+    names.add(name);
+    guards.push({ id, name, description, toolNames, action: 'deny' });
+  }
+  return guards;
+}
+
 function stringList(value: unknown): string[] | null {  if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
@@ -633,6 +663,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     promptSections: [],
     tools: [],
     terminal: [],
+    guards: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -686,6 +717,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.promptSections = parsePromptSections(contributes.promptSections);
           contributions.tools = parseTools(contributes.tools);
           contributions.terminal = parseTerminal(contributes.terminal);
+          contributions.guards = parseGuards(contributes.guards);
         }
       }
 
@@ -734,15 +766,16 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal' | 'guards'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
     if (kind === 'promptSections') return 'prompt.sections';
     if (kind === 'tools') return 'tools.register';
     if (kind === 'terminal') return 'terminal.exec';
+    if (kind === 'guards') return 'hooks.guard';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

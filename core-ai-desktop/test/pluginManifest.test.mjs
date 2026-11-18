@@ -154,6 +154,40 @@ test('terminal commands need terminal.exec and an allowlisted operation', () => 
   assert.equal(missingCapability.ok, false);
 });
 
+test('tool guards need hooks.guard and exact tool names', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Guards',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.guards',
+      capabilities: { required: ['hooks.guard'] },
+      contributes: { guards: [{ id: 'no-shell', name: 'no-shell', description: 'Deny shell', toolNames: ['shell', 'bash'], action: 'deny' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.deepEqual(parsed.descriptor.contributions.guards[0].toolNames, ['shell', 'bash']);
+
+  const unsupportedAction = parsePluginManifest(JSON.stringify({
+    name: 'Guards',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.guards',
+      capabilities: { required: ['hooks.guard'] },
+      contributes: { guards: [{ id: 'ask', name: 'ask', description: 'Ask', toolNames: ['shell'], action: 'ask' }] },
+    },
+  }));
+  assert.equal(unsupportedAction.descriptor.contributions.guards.length, 0);
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Guards',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.guards', contributes: { guards: [{ id: 'no-shell', name: 'no-shell', description: 'x', toolNames: ['shell'], action: 'deny' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',

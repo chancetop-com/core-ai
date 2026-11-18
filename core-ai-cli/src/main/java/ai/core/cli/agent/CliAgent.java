@@ -25,6 +25,7 @@ import ai.core.cli.plugin.PluginGrantGate;
 import ai.core.cli.plugin.PluginManager;
 import ai.core.cli.plugin.PluginPromptSections;
 import ai.core.cli.plugin.PluginSkillRoots;
+import ai.core.cli.plugin.PluginGuards;
 import ai.core.cli.plugin.PluginTools;
 import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
@@ -91,6 +92,8 @@ public class CliAgent {
                 .temperature(0.8);
         configureSystemPrompt(builder, config, hookOutput);
         configureLifecycles(builder, config, hookLifecycle);
+        var pluginGuards = PluginGuards.fromEnvironment();
+        if (pluginGuards != null) builder.addAgentLifecycle(pluginGuards);
         builder.compression(config.compressionConfig);
         if (config.persistenceProvider != null) builder.persistenceProvider(config.persistenceProvider);
         if (config.modelOverride != null) builder.model(config.modelOverride);

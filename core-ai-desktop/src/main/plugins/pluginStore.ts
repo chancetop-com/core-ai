@@ -116,6 +116,12 @@ export interface PluginTerminalCommandDescriptor {
   operation: 'git.status' | 'git.log' | 'git.diff' | 'node.version';
 }
 
+export interface PluginGuardDescriptor {
+  name: string;
+  description: string;
+  toolNames: string[];
+}
+
 export interface ResolvedPluginPage {
   pluginId: string;
   pluginName: string;
@@ -470,7 +476,7 @@ export class PluginStore {
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [] },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [], guards: [] },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -537,6 +543,25 @@ export class PluginStore {
       }
     }
     return commands;
+  }
+
+  /** Tool guards of active installs that granted hooks.guard. */
+  async guards(): Promise<PluginGuardDescriptor[]> {
+    const state = await this.readState();
+    const guards: PluginGuardDescriptor[] = [];
+    for (const install of state.installs) {
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('hooks.guard')) continue;
+      for (const guard of resolved.descriptor.contributions.guards) {
+        guards.push({
+          name: `${install.pluginId}:${guard.name}`,
+          description: `${resolved.descriptor.name}: ${guard.description}`,
+          toolNames: [...guard.toolNames],
+        });
+      }
+    }
+    return guards;
   }
 
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
@@ -784,7 +809,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [] },
       settings: { ...install.settings },
     };
   }

@@ -126,6 +126,14 @@ export interface PluginTerminalContribution {
   operation: PluginTerminalOperation;
 }
 
+export interface PluginGuardContribution {
+  id: string;
+  name: string;
+  description: string;
+  toolNames: string[];
+  action: 'deny';
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -152,6 +160,7 @@ export interface PluginManifest {
       promptSections?: PluginPromptSectionContribution[];
       tools?: PluginToolContribution[];
       terminal?: PluginTerminalContribution[];
+      guards?: PluginGuardContribution[];
     };
   };
 }

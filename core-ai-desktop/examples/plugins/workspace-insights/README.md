@@ -9,6 +9,7 @@ A read-only P2d page that demonstrates the general host services:
 - `ui.renderers` + `artifacts.read` for a text artifact opened from the Artifacts panel
 - `tools.register` read-only tools (`list_artifacts`, `list_memory`)
 - `terminal.exec` fixed operation `git.status` (no shell, no page arguments)
+- `hooks.guard` denies direct `shell`/`bash` tool calls in this workspace
 - `memory.list()` for memory files
 - `memory.write()` for plugin notes under `knowledge/`
 - `plugin.storage` for a page-owned counter

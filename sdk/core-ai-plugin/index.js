@@ -125,13 +125,13 @@ export function validateManifest(input) {
       errors.push('coreai.requires must be an array of service ids');
     }
   }
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : kind === 'tools' ? 'tools.register' : kind === 'terminal' ? 'terminal.exec' : `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : kind === 'tools' ? 'tools.register' : kind === 'terminal' ? 'terminal.exec' : kind === 'guards' ? 'hooks.guard' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -215,6 +215,20 @@ export function validateManifest(input) {
           || typeof item.description !== 'string'
           || !['git.status', 'git.log', 'git.diff', 'node.version'].includes(item.operation)) {
           errors.push('each terminal command needs id, name, description and an allowlisted operation');
+        }
+      }
+    }
+    if (kind === 'guards') {
+      for (const item of contributes.guards) {
+        if (!isObject(item)
+          || typeof item.id !== 'string'
+          || typeof item.name !== 'string'
+          || typeof item.description !== 'string'
+          || item.action !== 'deny'
+          || !Array.isArray(item.toolNames)
+          || item.toolNames.length === 0
+          || item.toolNames.some((tool) => typeof tool !== 'string' || !tool)) {
+          errors.push('each guard needs id, name, description, action=deny and toolNames');
         }
       }
     }

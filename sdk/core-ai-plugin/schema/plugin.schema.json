@@ -164,6 +164,20 @@
                   "operation": { "enum": ["git.status", "git.log", "git.diff", "node.version"] }
                 }
               }
+            },
+            "guards": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "toolNames", "action"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "toolNames": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+                  "action": { "enum": ["deny"] }
+                }
+              }
             }
           },
           "additionalProperties": false

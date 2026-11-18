@@ -7,11 +7,12 @@
  */
 import path from 'node:path';
 import type { PluginView } from '../../shared/pluginManifest';
-import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginPromptSection, type PluginStoreOptions, type PluginTerminalCommandDescriptor, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
+import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginGuardDescriptor, type PluginPromptSection, type PluginStoreOptions, type PluginTerminalCommandDescriptor, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
 export const PLUGIN_PROMPT_SECTIONS_ENV = 'CORE_AI_PLUGIN_PROMPT_SECTIONS';
 export const PLUGIN_TOOLS_ENV = 'CORE_AI_PLUGIN_TOOLS';
+export const PLUGIN_GUARDS_ENV = 'CORE_AI_PLUGIN_GUARDS';
 export const PLUGIN_STORE_ROOT_ENV = 'CORE_AI_PLUGIN_STORE_ROOT';
 export const PLUGIN_STATE_FILE_ENV = 'CORE_AI_PLUGIN_STATE_FILE';
 export const PLUGIN_HOME_ENV = 'CORE_AI_PLUGIN_HOME';
@@ -103,6 +104,10 @@ export class PluginHost {
     return this.store.terminalCommands(pluginId);
   }
 
+  guardDescriptors(): Promise<PluginGuardDescriptor[]> {
+    return this.store.guards();
+  }
+
   resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {
     return this.store.resolvePage(pluginId, pageId);
   }
@@ -112,6 +117,7 @@ export class PluginHost {
     const roots = await this.skillRoots();
     const promptSections = await this.promptSections();
     const tools = await this.toolDescriptors();
+    const guards = await this.guardDescriptors();
     const env: Record<string, string> = {
       [PLUGIN_STORE_ROOT_ENV]: path.join(this.rootDir, 'packages'),
       [PLUGIN_STATE_FILE_ENV]: path.join(this.rootDir, 'state.json'),
@@ -120,6 +126,7 @@ export class PluginHost {
     if (roots.length) env[PLUGIN_SKILL_ROOTS_ENV] = JSON.stringify(roots);
     if (promptSections.length) env[PLUGIN_PROMPT_SECTIONS_ENV] = JSON.stringify(promptSections);
     if (tools.length) env[PLUGIN_TOOLS_ENV] = JSON.stringify(tools);
+    if (guards.length) env[PLUGIN_GUARDS_ENV] = JSON.stringify(guards);
     return env;
   }
 

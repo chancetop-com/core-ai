@@ -63,17 +63,20 @@ public final class PluginTools {
         return List.copyOf(tools);
     }
 
+    private PluginTools() {
+    }
+
     private static final class HostReadTool extends ToolCall {
+        static HostReadTool create(String name, String description, String operation, int limit) {
+            return new Builder(name, description, operation, limit).build();
+        }
+
         private final String operation;
         private final int limit;
 
         private HostReadTool(String operation, int limit) {
             this.operation = operation;
             this.limit = limit;
-        }
-
-        static HostReadTool create(String name, String description, String operation, int limit) {
-            return new Builder(name, description, operation, limit).build();
         }
 
         @Override
@@ -127,8 +130,5 @@ public final class PluginTools {
                 return tool;
             }
         }
-    }
-
-    private PluginTools() {
     }
 }
