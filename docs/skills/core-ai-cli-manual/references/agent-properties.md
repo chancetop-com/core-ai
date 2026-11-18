@@ -35,6 +35,7 @@ Workspace values override global values. If a property is set in both files, the
 | Property | Type | Default | Description |
 |----------|------|---------|-------------|
 | `agent.tools.disabled` | CSV | — | Tools hidden from the agent, e.g. `web_search,web_fetch` |
+| `agent.sdk.broker.enabled` | boolean | `false` | Desktop app-server: start the loopback SDK broker and inject `CORE_AI_HUB` into shell/Python processes; currently exposes the session's local tools, skill capability filtering is still being wired |
 
 Disabled tools are filtered out when the registry materializes: they are neither advertised
 to the model nor dispatchable, and sub-agents inherit the same restriction. Builtin tool-set ids

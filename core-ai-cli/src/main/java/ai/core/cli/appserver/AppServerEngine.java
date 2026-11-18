@@ -5,7 +5,10 @@ import ai.core.cli.upgrade.VersionUtil;
 import ai.core.tool.ToolCall;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -23,6 +26,7 @@ import java.util.function.Function;
  */
 public class AppServerEngine implements EngineApi {
     public static final String PROTOCOL_VERSION = "1.0";
+    private static final Logger LOGGER = LoggerFactory.getLogger(AppServerEngine.class);
     // Trace origins for clients that declare themselves in the initialize handshake; extend this table when a
     // new client ships. Clients that send no name (or an unknown one) trace as "cli".
     private static final Map<String, String> TRACE_CLIENT_TYPES = Map.of("core-ai-desktop", "desktop");
@@ -35,6 +39,7 @@ public class AppServerEngine implements EngineApi {
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
     private final EngineScheduler scheduler;
+    private final LocalSdkBroker sdkBroker;
     private final SchedulesApi schedulesApi;
     private final MediaSettingsApi mediaSettings;
     private final MediaGenerationApi mediaGeneration;
@@ -49,6 +54,7 @@ public class AppServerEngine implements EngineApi {
     public AppServerEngine(Path workspace, Path configFile) {
         this.bootstrap = new EngineBootstrap(workspace, configFile);
         this.registry = new EngineSessionRegistry(bootstrap, () -> sink);
+        this.sdkBroker = startSdkBroker(registry);
         this.scheduler = new EngineScheduler(bootstrap, registry, () -> sink);
         this.registry.setScheduler(scheduler);
         this.schedulesApi = new SchedulesApi(bootstrap, registry, scheduler);
@@ -141,7 +147,20 @@ public class AppServerEngine implements EngineApi {
 
     @Override
     public void shutdown() {
+        if (sdkBroker != null) sdkBroker.close();
         AppServerShutdown.close(scheduler, registry, bootstrap);
+    }
+
+    private static LocalSdkBroker startSdkBroker(EngineSessionRegistry registry) {
+        try {
+            var broker = new LocalSdkBroker(registry::find);
+            registry.setSdkBroker(broker);
+            LOGGER.info("local SDK broker started on a loopback port");
+            return broker;
+        } catch (IOException e) {
+            LOGGER.warn("failed to start the local SDK broker; scripts fall back to the user-level CLI", e);
+            return null;
+        }
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> buildHandlers() {

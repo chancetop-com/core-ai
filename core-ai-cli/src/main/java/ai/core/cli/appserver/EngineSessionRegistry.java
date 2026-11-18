@@ -63,6 +63,7 @@ public class EngineSessionRegistry {
     final EngineQuiesce intake = new EngineQuiesce();
     private volatile WorkspaceAutoPermissionStore workspaceAutoStore;
     private volatile EngineScheduler scheduler;
+    private volatile LocalSdkBroker sdkBroker;
 
     public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier) {
         this.bootstrap = bootstrap;
@@ -90,6 +91,10 @@ public class EngineSessionRegistry {
 
     void setScheduler(EngineScheduler scheduler) {
         this.scheduler = scheduler;
+    }
+
+    void setSdkBroker(LocalSdkBroker sdkBroker) {
+        this.sdkBroker = sdkBroker;
     }
 
     long activeSessions() {
@@ -393,6 +398,15 @@ public class EngineSessionRegistry {
         inProcess.onEvent(new EventBridge(sessionId, notification));
         inProcess.onEvent(recorder);
         DesktopSessionTools.install(bootstrap.workspace, agent, this);
+        var localSdkBrokerEnabled = Boolean.parseBoolean(
+                bootstrap.props.property("agent.sdk.broker.enabled").orElse("false"));
+        if (sdkBroker != null && (localSdkBrokerEnabled
+                || !agent.getExecutionContext().getSkillCapabilities().isEmpty())) {
+            var brokerUrl = sdkBroker.bind(sessionId);
+            agent.getExecutionContext().setProcessEnvironment(Map.of(
+                    "CORE_AI_HUB", brokerUrl,
+                    "CORE_AI_SESSION_ID", sessionId));
+        }
         return new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
     }
 
