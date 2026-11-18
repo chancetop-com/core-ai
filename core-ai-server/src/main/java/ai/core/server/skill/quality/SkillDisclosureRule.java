@@ -14,8 +14,8 @@ import java.util.ArrayList;
  */
 public final class SkillDisclosureRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.PROGRESSIVE_DISCLOSURE", 1, "渐进式披露",
-        "workflow/decision/output/error/QA 必须存在，或通过可达的 packaged reference 提供。", "CONTENT",
+        "SKILL.PROGRESSIVE_DISCLOSURE", 1, "Progressive disclosure",
+        "workflow/decision/output/error/QA must be present, either in SKILL.md or in a reachable packaged reference.", "CONTENT",
         QualityEnforcement.BLOCK);
     private final SkillDisclosureResolver resolver = new SkillDisclosureResolver();
 

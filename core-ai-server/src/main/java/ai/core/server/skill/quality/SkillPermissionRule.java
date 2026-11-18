@@ -14,8 +14,8 @@ import java.util.List;
  */
 public final class SkillPermissionRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.PERMISSION_DECLARATION", 1, "能力声明覆盖",
-        "SKILL.md 或脚本中的 core_ai_session 调用必须在 allowed-tools 中声明。", "PERMISSION",
+        "SKILL.PERMISSION_DECLARATION", 1, "Capability declaration coverage",
+        "core_ai_session calls in SKILL.md or scripts must be declared in allowed-tools.", "PERMISSION",
         QualityEnforcement.BLOCK);
     private final SkillPermissionAnalyzer analyzer = new SkillPermissionAnalyzer();
 

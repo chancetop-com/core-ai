@@ -13,8 +13,8 @@ import java.util.List;
  */
 public final class SkillPermissionUnusedRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.PERMISSION_UNUSED", 1, "未使用的能力声明",
-        "声明了但未检测到使用的能力应提示收窄。", "PERMISSION",
+        "SKILL.PERMISSION_UNUSED", 1, "Unused capability declarations",
+        "Declared capabilities with no detected usage should be narrowed.", "PERMISSION",
         QualityEnforcement.WARN);
     private final SkillPermissionAnalyzer analyzer = new SkillPermissionAnalyzer();
 

@@ -12,8 +12,8 @@ import ai.core.skill.SkillMetadata;
  */
 public final class SkillNameIdentityRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.NAME_IDENTITY", 1, "名称与目录一致",
-        "SKILL.md 的 name 必须符合命名规范，并与上传目录名一致。", "IDENTITY",
+        "SKILL.NAME_IDENTITY", 1, "Name matches directory",
+        "The SKILL.md name must follow the naming rules and match the uploaded directory name.", "IDENTITY",
         QualityEnforcement.BLOCK);
 
     @Override

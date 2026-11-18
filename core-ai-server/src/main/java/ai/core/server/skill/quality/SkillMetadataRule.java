@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
  */
 public final class SkillMetadataRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.METADATA_REQUIRED", 1, "必要元数据",
-        "metadata 必须包含 version、author、tags，且 version 可比较。", "METADATA",
+        "SKILL.METADATA_REQUIRED", 1, "Required metadata",
+        "metadata must contain version, author and tags, and version must be comparable.", "METADATA",
         QualityEnforcement.BLOCK);
     private static final Pattern VERSION = Pattern.compile("^\\d+(\\.\\d+){1,2}([-+][0-9A-Za-z.-]+)?$");
     private static final Pattern CONTROL = Pattern.compile(".*[\\p{Cntrl}].*", Pattern.DOTALL);

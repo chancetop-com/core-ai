@@ -11,8 +11,8 @@ import ai.core.server.quality.domain.QualityIssueStatus;
  */
 public final class SkillVersionWarningRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.VERSION_BUMP_REPO", 1, "Repo 内容版本提示",
-        "repo/marketplace 内容变化时 version 未递增只提示，不阻断。", "METADATA",
+        "SKILL.VERSION_BUMP_REPO", 1, "Repo content version hint",
+        "A repo/marketplace content change without a version bump is reported but does not block.", "METADATA",
         QualityEnforcement.WARN);
 
     @Override

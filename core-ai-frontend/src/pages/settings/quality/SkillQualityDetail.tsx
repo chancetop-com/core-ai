@@ -55,7 +55,7 @@ export default function SkillQualityDetail() {
               <div>
                 <div className="font-medium text-sm">Enabled</div>
                 <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-                  规则由代码定义并始终启用；此开关不可在运行时修改。
+                  Code-defined rules are always enabled; this switch cannot be changed at runtime.
                 </div>
               </div>
               <ToggleSwitch checked disabled label="Enabled (code-defined)" />
@@ -83,7 +83,7 @@ export default function SkillQualityDetail() {
               </div>
             </dl>
             <div className="mt-4 pt-3 border-t text-xs" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-              修改规则、阈值或 enforcement 需要发版，没有运行时编辑入口。
+              Changing a rule, threshold or enforcement requires a release; there is no runtime editor.
             </div>
           </div>
         </>

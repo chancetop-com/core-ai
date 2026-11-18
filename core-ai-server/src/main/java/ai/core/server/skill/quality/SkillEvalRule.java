@@ -14,8 +14,8 @@ import java.util.ArrayList;
  */
 public final class SkillEvalRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.EVAL_DATASET", 1, "Eval 数据集",
-        "必须发布 eval/eval.json，覆盖 7 个维度并包含可观察断言。", "EVAL",
+        "SKILL.EVAL_DATASET", 1, "Eval dataset",
+        "eval/eval.json must be published, cover all 7 dimensions and contain observable assertions.", "EVAL",
         QualityEnforcement.BLOCK);
     private final SkillEvalDatasetValidator validator = new SkillEvalDatasetValidator();
 

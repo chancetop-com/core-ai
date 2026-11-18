@@ -13,8 +13,8 @@ import java.util.regex.Pattern;
  */
 public final class SkillDescriptionRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.DESCRIPTION_TRIGGER_SCOPE", 1, "Description 触发与范围",
-        "description 必须包含 Use when 触发条件和 scope 边界。", "DISCOVERY",
+        "SKILL.DESCRIPTION_TRIGGER_SCOPE", 1, "Description trigger and scope",
+        "description must contain the Use when trigger and the scope boundary.", "DISCOVERY",
         QualityEnforcement.BLOCK);
     private static final Pattern USE_WHEN = Pattern.compile("(?i)\\buse\\s+when\\b");
     private static final Pattern SCOPE = Pattern.compile(

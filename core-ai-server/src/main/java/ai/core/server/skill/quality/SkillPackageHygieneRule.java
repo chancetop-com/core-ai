@@ -15,8 +15,8 @@ import java.util.Locale;
  */
 public final class SkillPackageHygieneRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.PACKAGE_HYGIENE", 1, "包卫生",
-        "skill 包路径必须安全，文件数量与大小必须在上限内。", "PACKAGE",
+        "SKILL.PACKAGE_HYGIENE", 1, "Package hygiene",
+        "Package paths must be safe, and file count and size must stay within limits.", "PACKAGE",
         QualityEnforcement.BLOCK);
     private static final int MAX_FILES = 500;
     private static final long MAX_PACKAGE_BYTES = 64L * 1024 * 1024;

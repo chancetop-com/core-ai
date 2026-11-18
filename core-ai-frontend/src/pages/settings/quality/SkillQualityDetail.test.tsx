@@ -8,10 +8,10 @@ import SkillQualityDetail from './SkillQualityDetail';
 const RULE: SkillQualityRule = {
   key: 'SKILL.NAME_IDENTITY',
   revision: 1,
-  name: '名称与目录一致',
+  name: 'Name matches directory',
   category: 'IDENTITY',
   enforcement: 'BLOCK',
-  requirement: 'SKILL.md 的 name 必须符合命名规范，并与上传目录名一致。',
+  requirement: 'The SKILL.md name must follow the naming rules and match the uploaded directory name.',
 };
 
 function renderDetail() {
@@ -34,11 +34,11 @@ describe('Skill quality detail', () => {
   it('shows the code-defined rule with a locked enabled switch', async () => {
     renderDetail();
 
-    expect(await screen.findByText('名称与目录一致')).toBeTruthy();
+    expect(await screen.findByText('Name matches directory')).toBeTruthy();
     expect(screen.getByText('SKILL.NAME_IDENTITY')).toBeTruthy();
     expect(screen.getByText('Code-defined')).toBeTruthy();
     expect(screen.getByText(RULE.requirement!)).toBeTruthy();
-    expect(screen.getByText(/不可在运行时修改/)).toBeTruthy();
+    expect(screen.getByText(/cannot be changed at runtime/)).toBeTruthy();
     const toggle = screen.getByRole<HTMLButtonElement>('switch', { name: /enabled/i });
     expect(toggle.disabled).toBe(true);
     expect(toggle.getAttribute('aria-checked')).toBe('true');

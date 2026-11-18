@@ -11,8 +11,8 @@ import ai.core.server.quality.domain.QualityIssueStatus;
  */
 public final class SkillUnreferencedReferenceRule implements SkillQualityRule {
     private static final SkillRuleMeta META = new SkillRuleMeta(
-        "SKILL.UNREFERENCED_REFERENCE", 1, "未引用 reference",
-        "未被 SKILL.md 可达链接引用的 Markdown 文件应提示。", "CONTENT",
+        "SKILL.UNREFERENCED_REFERENCE", 1, "Unreferenced reference",
+        "Markdown files not reachable from SKILL.md links should be reported.", "CONTENT",
         QualityEnforcement.WARN);
 
     @Override

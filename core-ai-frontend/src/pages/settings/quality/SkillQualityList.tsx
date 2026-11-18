@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ChevronRight, Info, Lock, RefreshCw } from 'lucide-react';
+import { ChevronRight, Lock, RefreshCw } from 'lucide-react';
 import { skillQualityApi, type SkillQualityRule } from '../../../api/quality';
 import Pagination from '../../../components/Pagination';
 import { useListState } from '../../../hooks/useListState';
@@ -46,14 +46,6 @@ export default function SkillQualityList() {
 
   return (
     <div>
-      <div className="rounded-lg px-3 py-2 mb-4 text-sm flex items-start gap-2" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
-        <Info size={14} className="mt-0.5 shrink-0" />
-        <div>
-          <div style={{ color: 'var(--color-text-primary)' }}>规则由代码定义，修改需发版。</div>
-          <div>规则、阈值和 enforcement 都随代码发布，不能在此新增或编辑。</div>
-        </div>
-      </div>
-
       {error && (
         <div className="rounded-lg px-3 py-2 mb-4 text-sm" style={{ background: 'rgba(220,38,38,0.12)', color: 'var(--color-error)' }}>
           {error}

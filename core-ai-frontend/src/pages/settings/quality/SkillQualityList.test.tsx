@@ -25,10 +25,10 @@ describe('Skill quality list', () => {
       rules: [{
         key: 'SKILL.NAME_IDENTITY',
         revision: 1,
-        name: '名称与目录一致',
+        name: 'Name matches directory',
         category: 'IDENTITY',
         enforcement: 'BLOCK',
-        requirement: 'SKILL.md 的 name 必须符合命名规范，并与上传目录名一致。',
+        requirement: 'The SKILL.md name must follow the naming rules and match the uploaded directory name.',
       }],
     });
   });
