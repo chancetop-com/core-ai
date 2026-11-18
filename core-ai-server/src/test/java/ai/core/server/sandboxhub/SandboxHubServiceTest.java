@@ -3,9 +3,11 @@ package ai.core.server.sandboxhub;
 import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.mcphub.HubCallRequest;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.session.InProcessAgentSession;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolExposure;
@@ -19,6 +21,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -185,6 +188,20 @@ class SandboxHubServiceTest {
         assertEquals("gbp-content-agent", snapshot.agentName);
         assertEquals("completed", service.call(session(), "menu_hub_search", request("{}")).status);
         verifyNoInteractions(sessionManager);
+    }
+
+    @Test
+    void skillContributedCallIsProjectedToTheSession() {
+        var tool = hubTool("search");
+        bindSession(tool);
+        agent.getExecutionContext().setSkillCapabilities(List.of(new SkillCapability(
+                "skill-1", "Admin/analytics", "mcp", "mcp:menu-hub:search", "menu-hub/search", "menu-hub", tool)));
+        when(agent.executeToolOutsideTurn(any(), any(), any())).thenReturn(ToolCallResult.completed("menu found"));
+
+        var response = service.call(session(), "menu_hub_search", request("{}"));
+
+        assertEquals("completed", response.status);
+        verify(sessionManager.getSession(SESSION_ID)).dispatchEvent(any(CustomEvent.class));
     }
 
     @Test

@@ -6,13 +6,17 @@ import ai.core.api.server.mcphub.HubCallRequest;
 import ai.core.api.server.sandboxhub.SandboxHubCallResponse;
 import ai.core.api.server.sandboxhub.SandboxHubContentPart;
 import ai.core.api.server.sandboxhub.SandboxHubLlmUsage;
+import ai.core.api.server.session.CustomEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Usage;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.session.InProcessAgentSession;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
@@ -144,7 +148,18 @@ public class SandboxHubService {
     }
 
     public SandboxHubCallResponse call(SandboxHubSession session, String name, HubCallRequest request) {
-        var agent = agentFor(session);
+        var runAgent = runAgents.agent(session.sessionId());
+        InProcessAgentSession agentSession = null;
+        Agent agent;
+        if (runAgent != null) {
+            agent = runAgent;
+        } else {
+            agentSession = sessionManager.getSession(session.sessionId());
+            if (agentSession == null) {
+                throw new NotFoundException("session is not available on this server: " + session.sessionId());
+            }
+            agent = agentSession.agent();
+        }
         var context = agent.getExecutionContext();
         var entry = find(SandboxHubCatalog.of(context), name);
         var arguments = request != null && hasText(request.arguments) ? request.arguments : EMPTY_ARGUMENTS;
@@ -154,7 +169,8 @@ public class SandboxHubService {
                 session.sessionId(), entry.name(), arguments, session.sandboxId(), entry.kind(), session.sessionId()));
 
         trimTasks();
-        var future = CompletableFuture.supplyAsync(() -> execute(agent, entry, arguments, context, callId),
+        var eventSession = agentSession;
+        var future = CompletableFuture.supplyAsync(() -> execute(session, eventSession, agent, entry, arguments, context, callId),
                 AsyncToolTaskExecutor.getInstance().getExecutor());
         tasks.put(callId, new InFlight(future, System.currentTimeMillis() + TASK_RETENTION_MILLIS));
         try {
@@ -204,8 +220,8 @@ public class SandboxHubService {
         }
     }
 
-    private SandboxHubCallResponse execute(Agent agent, SandboxHubCatalog.Entry entry, String arguments,
-                                           ExecutionContext context, String callId) {
+    private SandboxHubCallResponse execute(SandboxHubSession session, InProcessAgentSession agentSession, Agent agent,
+                                           SandboxHubCatalog.Entry entry, String arguments, ExecutionContext context, String callId) {
         var startedAt = System.currentTimeMillis();
         ToolCallResult result;
         try {
@@ -215,11 +231,64 @@ public class SandboxHubService {
             LOGGER.warn("sandbox hub call failed, tool={}, call={}", entry.name(), callId, e);
             var durationMs = System.currentTimeMillis() - startedAt;
             auditService.finish(callId, durationMs, null, false, null, e.getMessage());
-            return failure(callId, e.getMessage(), durationMs);
+            var response = failure(callId, e.getMessage(), durationMs);
+            emitCall(session, agentSession, agent, entry, response);
+            return response;
         }
         var response = response(result, callId, System.currentTimeMillis() - startedAt);
         auditService.finish(callId, response.durationMs, response.text, !Boolean.TRUE.equals(response.isError), null, response.errorMessage);
+        if (!STATUS_PENDING.equals(response.status)) {
+            emitCall(session, agentSession, agent, entry, response);
+        }
         return response;
+    }
+
+    /**
+     * Projects a completed script call into the session UI. Custom cards are the existing renderable
+     * surface on Web and Desktop; the call is attributed by capability contribution, not by process.
+     */
+    private void emitCall(SandboxHubSession session, InProcessAgentSession agentSession, Agent agent,
+                          SandboxHubCatalog.Entry entry, SandboxHubCallResponse response) {
+        try {
+            if (agentSession == null) return;
+            var contributors = contributors(agent.getExecutionContext(), entry);
+            // Ordinary agent tools that a script happens to call are not part of the skill SDK surface.
+            if (contributors.isEmpty()) return;
+            var items = new java.util.ArrayList<java.util.Map<String, String>>();
+            items.add(java.util.Map.of("label", "Capability", "value", entry.kind() + ": " + entry.path()));
+            items.add(java.util.Map.of("label", "Status", "value", Boolean.TRUE.equals(response.isError) ? "failed" : "completed"));
+            if (!contributors.isEmpty()) {
+                items.add(java.util.Map.of("label", "Skill", "value", String.join(", ", contributors)));
+            }
+            items.add(java.util.Map.of("label", "Duration", "value", response.durationMs + " ms"));
+            if (response.errorMessage != null && !response.errorMessage.isBlank()) {
+                items.add(java.util.Map.of("label", "Error", "value", response.errorMessage));
+            }
+            var card = JsonUtil.toJson(java.util.Map.of(
+                    "schema_version", 1,
+                    "title", "Skill SDK · " + entry.path(),
+                    "blocks", java.util.List.of(java.util.Map.of("type", "key_values", "items", items))));
+            var data = JsonUtil.toJson(java.util.Map.of(
+                    "call_id", response.callId,
+                    "capability", entry.refId(),
+                    "kind", entry.kind(),
+                    "status", response.status,
+                    "contributors", contributors,
+                    "duration_ms", response.durationMs));
+            agentSession.dispatchEvent(CustomEvent.of(session.sessionId(), "skill_sdk_call", data, card, response.callId));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to emit skill sdk call event, session={}, call={}", session.sessionId(), response.callId, e);
+        }
+    }
+
+    private List<String> contributors(ExecutionContext context, SandboxHubCatalog.Entry entry) {
+        var result = new java.util.ArrayList<String>();
+        for (SkillCapability capability : context.getSkillCapabilities()) {
+            if (capability == null) continue;
+            if (!entry.refId().equals(capability.refId())) continue;
+            if (!result.contains(capability.qualifiedName())) result.add(capability.qualifiedName());
+        }
+        return result;
     }
 
     private SandboxHubCallResponse response(ToolCallResult result, String callId, long durationMs) {
