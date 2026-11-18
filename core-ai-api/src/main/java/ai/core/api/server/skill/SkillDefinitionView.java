@@ -37,6 +37,12 @@ public class SkillDefinitionView {
     @Property(name = "allowed_tools")
     public List<String> allowedTools;
 
+    @Property(name = "sdk_capabilities")
+    public List<SkillSdkCapabilityView> sdkCapabilities;
+
+    @Property(name = "sdk_capabilities_version")
+    public String sdkCapabilitiesVersion;
+
     @Property(name = "metadata")
     public Map<String, String> metadata;
 
