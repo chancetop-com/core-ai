@@ -125,6 +125,18 @@
                   "extensions": { "type": "array", "items": { "type": "string" } }
                 }
               }
+            },
+            "promptSections": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "title", "content"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "content": { "type": "string" }
+                }
+              }
             }
           },
           "additionalProperties": false

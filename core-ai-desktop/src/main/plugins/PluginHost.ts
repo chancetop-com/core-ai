@@ -7,9 +7,10 @@
  */
 import path from 'node:path';
 import type { PluginView } from '../../shared/pluginManifest';
-import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginStoreOptions, type ResolvedPluginPage } from './pluginStore';
+import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginPromptSection, type PluginStoreOptions, type ResolvedPluginPage } from './pluginStore';
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
+export const PLUGIN_PROMPT_SECTIONS_ENV = 'CORE_AI_PLUGIN_PROMPT_SECTIONS';
 export const PLUGIN_STORE_ROOT_ENV = 'CORE_AI_PLUGIN_STORE_ROOT';
 export const PLUGIN_STATE_FILE_ENV = 'CORE_AI_PLUGIN_STATE_FILE';
 export const PLUGIN_HOME_ENV = 'CORE_AI_PLUGIN_HOME';
@@ -89,6 +90,10 @@ export class PluginHost {
     return this.store.engineSkillRoots();
   }
 
+  promptSections(): Promise<PluginPromptSection[]> {
+    return this.store.promptSections();
+  }
+
   resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {
     return this.store.resolvePage(pluginId, pageId);
   }
@@ -96,12 +101,14 @@ export class PluginHost {
   /** Engine environment for one workspace; omitted keys leave the engine unchanged. */
   async engineEnv(): Promise<Record<string, string>> {
     const roots = await this.skillRoots();
+    const promptSections = await this.promptSections();
     const env: Record<string, string> = {
       [PLUGIN_STORE_ROOT_ENV]: path.join(this.rootDir, 'packages'),
       [PLUGIN_STATE_FILE_ENV]: path.join(this.rootDir, 'state.json'),
       [PLUGIN_HOME_ENV]: this.rootDir,
     };
     if (roots.length) env[PLUGIN_SKILL_ROOTS_ENV] = JSON.stringify(roots);
+    if (promptSections.length) env[PLUGIN_PROMPT_SECTIONS_ENV] = JSON.stringify(promptSections);
     return env;
   }
 

@@ -24,6 +24,7 @@ export const SUPPORTED_CAPABILITIES = [
   'ui.renderers',
   'artifacts.read',
   'engine.skills',
+  'prompt.sections',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -125,6 +126,12 @@ export interface PluginRendererContribution {
   extensions: string[];
 }
 
+export interface PluginPromptSectionContribution {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -132,6 +139,7 @@ export interface PluginContributions {
   pages: PluginPageContribution[];
   slots: PluginSlotContribution[];
   renderers: PluginRendererContribution[];
+  promptSections: PluginPromptSectionContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -436,7 +444,6 @@ function parseSlotAction(value: unknown): PluginSlotAction | null {
   }
   return null;
 }
-
 function parseRenderers(value: unknown, unsupported: string[]): PluginRendererContribution[] {
   if (!Array.isArray(value)) return [];
   const renderers: PluginRendererContribution[] = [];
@@ -459,6 +466,21 @@ function parseRenderers(value: unknown, unsupported: string[]): PluginRendererCo
     if (extensions.length) renderers.push({ id, kind: 'artifact', title, pageId, extensions });
   }
   return renderers;
+}
+
+function parsePromptSections(value: unknown): PluginPromptSectionContribution[] {
+  if (!Array.isArray(value)) return [];
+  const sections: PluginPromptSectionContribution[] = [];
+  for (const raw of value.slice(0, 10)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const title = boundedText(entry.title, 120);
+    const content = boundedText(entry.content, 8000);
+    if (!id || !title || !content) continue;
+    sections.push({ id, title, content });
+  }
+  return sections;
 }
 
 function stringList(value: unknown): string[] | null {
@@ -543,6 +565,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     pages: [],
     slots: [],
     renderers: [],
+    promptSections: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -593,6 +616,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.pages = parsePages(contributes.pages);
           contributions.slots = parseSlots(contributes.slots, unsupported);
           contributions.renderers = parseRenderers(contributes.renderers, unsupported);
+          contributions.promptSections = parsePromptSections(contributes.promptSections);
         }
       }
 
@@ -641,12 +665,13 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
+    if (kind === 'promptSections') return 'prompt.sections';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {

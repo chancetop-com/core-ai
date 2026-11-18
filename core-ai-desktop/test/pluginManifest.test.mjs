@@ -98,6 +98,28 @@ test('artifact renderers need ui.renderers and extensions', () => {
   assert.equal(missingCapability.ok, false);
 });
 
+test('prompt sections need prompt.sections and content', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Prompt',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.prompt',
+      capabilities: { required: ['prompt.sections'] },
+      contributes: { promptSections: [{ id: 'style', title: 'Style', content: 'Answer concisely.' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.promptSections[0].content, 'Answer concisely.');
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Prompt',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.prompt', contributes: { promptSections: [{ id: 'style', title: 'Style', content: 'x' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',

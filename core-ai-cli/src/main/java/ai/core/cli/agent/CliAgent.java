@@ -23,6 +23,7 @@ import ai.core.cli.memory.MemoryTriggerService;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.plugin.PluginGrantGate;
 import ai.core.cli.plugin.PluginManager;
+import ai.core.cli.plugin.PluginPromptSections;
 import ai.core.cli.plugin.PluginSkillRoots;
 import ai.core.cli.speech.SpeechClient;
 import ai.core.cli.a2a.A2ARemoteAgentConfig;
@@ -363,6 +364,7 @@ public class CliAgent {
         }
         sections.add(new CliAgentGitStatusPrompt(config.workspace));
         sections.add(new CliAgentInstructionsPrompt(config.workspace));
+        sections.addAll(PluginPromptSections.fromEnvironment());
         if (config.memoryEnabled) {
             var content = new MdMemoryProvider(config.workspace).load();
             sections.add(new MemorySystemPrompt(content));

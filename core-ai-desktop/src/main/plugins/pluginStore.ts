@@ -94,6 +94,12 @@ export interface EngineSkillRoot {
   grantEpoch: number;
 }
 
+export interface PluginPromptSection {
+  name: string;
+  title: string;
+  content: string;
+}
+
 export interface ResolvedPluginPage {
   pluginId: string;
   pluginName: string;
@@ -443,14 +449,34 @@ export class PluginStore {
       const pages = install.granted.includes('ui.pages') ? resolved.descriptor.contributions.pages : [];
       const slots = install.granted.includes('ui.slots') ? resolved.descriptor.contributions.slots : [];
       const renderers = install.granted.includes('ui.renderers') ? resolved.descriptor.contributions.renderers : [];
+      const promptSections: typeof resolved.descriptor.contributions.promptSections = [];
       if (!dock.length && !settings.length && !composer.length && !pages.length && !slots.length && !renderers.length) continue;
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** Prompt sections of active installs that granted prompt.sections. */
+  async promptSections(): Promise<PluginPromptSection[]> {
+    const state = await this.readState();
+    const sections: PluginPromptSection[] = [];
+    for (const install of state.installs) {
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('prompt.sections')) continue;
+      for (const section of resolved.descriptor.contributions.promptSections) {
+        sections.push({
+          name: `${install.pluginId}:${section.id}`,
+          title: section.title,
+          content: section.content,
+        });
+      }
+    }
+    return sections;
   }
 
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
@@ -698,7 +724,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [] },
       settings: { ...install.settings },
     };
   }

@@ -123,13 +123,13 @@ export function validateManifest(input) {
       errors.push('coreai.requires must be an array of service ids');
     }
   }
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers']) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections']) {
     if (contributes[kind] === undefined) continue;
     if (!Array.isArray(contributes[kind])) {
       errors.push(`coreai.contributes.${kind} must be an array`);
       continue;
     }
-    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : `ui.${kind}`;
+    const capability = kind === 'slots' ? 'ui.slots' : kind === 'renderers' ? 'ui.renderers' : kind === 'promptSections' ? 'prompt.sections' : `ui.${kind}`;
     if (!required.includes(capability) && !optional.includes(capability)) {
       errors.push(`contribution ${kind} requires capability ${capability}`);
     }
@@ -181,6 +181,16 @@ export function validateManifest(input) {
           || typeof item.pageId !== 'string'
           || !Array.isArray(item.extensions)) {
           errors.push('each renderer needs kind=artifact, id, title, pageId and extensions');
+        }
+      }
+    }
+    if (kind === 'promptSections') {
+      for (const item of contributes.promptSections) {
+        if (!isObject(item)
+          || typeof item.id !== 'string'
+          || typeof item.title !== 'string'
+          || typeof item.content !== 'string') {
+          errors.push('each prompt section needs id, title and content');
         }
       }
     }

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pluginHostModule from '../dist/test/pluginHost.js';
 
-const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV, PLUGIN_STATE_FILE_ENV, PLUGIN_HOME_ENV } = pluginHostModule;
+const { PluginHost, PLUGIN_SKILL_ROOTS_ENV, PLUGIN_STORE_ROOT_ENV, PLUGIN_STATE_FILE_ENV, PLUGIN_HOME_ENV, PLUGIN_PROMPT_SECTIONS_ENV } = pluginHostModule;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.resolve(here, '..', 'examples', 'plugins', 'hello-plugin');
 const mediaSample = path.resolve(here, '..', 'examples', 'plugins', 'media-studio');
@@ -93,6 +93,30 @@ test('a page is resolvable only while its install is active and ui.pages is gran
 
   await host.grant('core-ai.media-studio', ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate']);
   assert.ok(await host.resolvePage('core-ai.media-studio', 'studio'));
+});
+
+test('prompt-section plugins reach the engine environment only after the grant', async () => {
+  const host = new PluginHost({ root: tempRoot() });
+  const source = path.join(host.rootDir, 'prompt-source');
+  await fs.mkdir(path.join(source, '.claude-plugin'), { recursive: true });
+  await fs.writeFile(path.join(source, '.claude-plugin', 'plugin.json'), JSON.stringify({
+    name: 'Prompt Plugin',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.prompt-plugin',
+      capabilities: { required: ['prompt.sections'] },
+      contributes: { promptSections: [{ id: 'style', title: 'Style', content: 'Answer concisely.' }] },
+    },
+  }));
+  await host.installFolder(source);
+  await host.setEnabled('example.prompt-plugin', true);
+  assert.equal((await host.engineEnv())[PLUGIN_PROMPT_SECTIONS_ENV], undefined);
+
+  await host.grant('example.prompt-plugin', ['prompt.sections']);
+  const sections = JSON.parse((await host.engineEnv())[PLUGIN_PROMPT_SECTIONS_ENV]);
+  assert.equal(sections[0].name, 'example.prompt-plugin:style');
+  assert.equal(sections[0].content, 'Answer concisely.');
 });
 
 test('a read-only insights page resolves with the general host capabilities', async () => {

@@ -99,6 +99,12 @@ export interface PluginRendererContribution {
   extensions: string[];
 }
 
+export interface PluginPromptSectionContribution {
+  id: string;
+  title: string;
+  content: string;
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -122,6 +128,7 @@ export interface PluginManifest {
       pages?: PluginPageContribution[];
       slots?: PluginSlotContribution[];
       renderers?: PluginRendererContribution[];
+      promptSections?: PluginPromptSectionContribution[];
     };
   };
 }
