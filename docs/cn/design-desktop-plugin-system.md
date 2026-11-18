@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.15（P2d：只读服务 + storage + events + usage + notification + 四个 action-only slots） |
+| 文档版本 | v0.16（P2d：只读服务 + storage + events + usage + notification + 四个 action-only slots；turn tail 覆盖历史） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -944,6 +944,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.13 | 2026-11-18 | P2d notification：`notification.send` + `notify.send`，接现有 OCG 目标，5/min/页、2000 字符；workspace-insights 加测试按钮 | 打通通知类插件，仍不开放 memory/schedules/sessions 写 |
 | v0.14 | 2026-11-18 | P2d slots 首期：`ui.slots` + `contributes.slots`，支持 `sidebar.footer.action` / `composer.dock` 的 `openPage` / `insertText` action；workspace-insights 示例加两处入口 | 让插件回到主工作流，先不开放脚本 slot/renderer |
 | v0.15 | 2026-11-18 | slots 扩展：`conversation.turn.tail` 与 `conversation.message.actions`，复用同一 action 模型；示例加 turn 尾部与消息动作 | 覆盖会话内高频入口，仍不做脚本 slot |
+| v0.16 | 2026-11-18 | turn-tail slot 同时渲染在实时 turn 与历史 transcript；复用 `turnTailActions` | 补齐历史回放一致性 |
 
 ### 13.2 相关材料
 
@@ -983,7 +984,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | P2d 只读宿主服务 | `sessions.read`/`memory.read`/`workspace.read`/`usage.read` 页面 bridge：`sessions.list`、`memory.list/read`、`workspace.summary`（按能力返回计数）、`usage.summary`（transcript 聚合） | `PluginPageHost.ts`、`pluginPagePreload.ts`、`pluginManifest.ts`、`UsageApi.java`、`TranscriptReader.java` |
 | P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | P2d notification | `notification.send` + `notify.send`；接现有 OCG 目标，5 次/分钟/页、2000 字符上限；无目标明确报错 | `PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
-| P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
+| P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码；turn tail 在实时 turn 和历史 transcript 都渲染 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
 | 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、导入参考图、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
 | 只读洞察示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed | `examples/plugins/workspace-insights/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |

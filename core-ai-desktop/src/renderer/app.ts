@@ -4505,6 +4505,18 @@ function attachPluginMessageActions(wrapper: HTMLElement): void {
   }
 }
 
+function turnTailActions(): HTMLElement | null {
+  const tail = el('div', 'turn-tail');
+  for (const action of slotActions(state.plugins, 'conversation.turn.tail')) {
+    const button = el('button', 'msg-action turn-tail-action', action.title) as HTMLButtonElement;
+    button.type = 'button';
+    button.title = `${action.title} — ${action.pluginId}`;
+    button.onclick = () => runPluginSlot(action);
+    tail.append(button);
+  }
+  return tail.children.length ? tail : null;
+}
+
 // ---------- record-backed transcript (reload) ----------
 
 async function loadTranscript(view: SessionView, sessionId: string, beforeSeq?: number): Promise<boolean> {
@@ -4652,6 +4664,8 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   for (const notice of notices) renderTranscriptNotice(view, notice);
   const summary = summaryText(turn.summary);
   if (summary.length) view.transcript.append(el('div', 'turn-summary', summary.join(' · ')));
+  const turnTail = turnTailActions();
+  if (turnTail) view.transcript.append(turnTail);
   if (turn.partial !== 'none') {
     view.transcript.append(el('div', 'notice', 'Part of this turn was not loaded yet.'));
   }
@@ -5782,15 +5796,8 @@ function applySessionEvent(view: SessionView, event: any): void {
         (keptWrapper ?? view.transcript).append(summary);
         scrollTranscript(view);
       }
-      const turnTail = el('div', 'turn-tail');
-      for (const action of slotActions(state.plugins, 'conversation.turn.tail')) {
-        const button = el('button', 'msg-action turn-tail-action', action.title) as HTMLButtonElement;
-        button.type = 'button';
-        button.title = `${action.title} — ${action.pluginId}`;
-        button.onclick = () => runPluginSlot(action);
-        turnTail.append(button);
-      }
-      if (turnTail.children.length) (keptWrapper ?? view.transcript).append(turnTail);
+      const turnTail = turnTailActions();
+      if (turnTail) (keptWrapper ?? view.transcript).append(turnTail);
       void refreshSessionList();
       void loadSummaries();
       // Artifact events are live-only; a turn can register files whose event never reached this
