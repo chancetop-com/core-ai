@@ -66,6 +66,8 @@ interface StoredInstall {
   digest: string;
   enabled: boolean;
   granted: string[];
+  authorizedProvides: string[];
+  authorizedRequires: string[];
   settings: Record<string, string | number | boolean>;
   storage: Record<string, string>;
   installedAt: string;
@@ -129,6 +131,20 @@ export interface PluginSandboxProviderDescriptor {
   name: string;
   description: string;
   isolation: 'process' | 'container' | 'os';
+}
+
+export interface PluginAgentActionDescriptor {
+  pluginId: string;
+  pluginName: string;
+  actionId: string;
+  name: string;
+  description: string;
+  kind: 'start' | 'wait' | 'cancel' | 'list';
+}
+
+export interface PluginServiceAuthorization {
+  provides?: string[];
+  requires?: string[];
 }
 
 export interface ResolvedPluginPage {
@@ -364,8 +380,34 @@ export class PluginStore {
     return this.mutate(async (state) => {
       const install = this.requireInstall(state, pluginId, scope);
       install.granted = [];
+      install.authorizedProvides = [];
+      install.authorizedRequires = [];
       install.updatedAt = nowIso();
       state.grantEpoch += 1;
+      return this.viewOf(state, install);
+    });
+  }
+
+  /** Explicit per-service consent. This only records metadata; there is no cross-plugin call runtime. */
+  async authorizeServices(pluginId: string, input: PluginServiceAuthorization, scope = USER_SCOPE): Promise<PluginView> {
+    this.assertScope(scope);
+    return this.mutate(async (state) => {
+      const install = this.requireInstall(state, pluginId, scope);
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved) throw new PluginError('package_missing', `package for ${pluginId} is missing`);
+      const provides = uniqueStrings(input.provides);
+      const requires = uniqueStrings(input.requires);
+      const declaredProvides = new Set(resolved.descriptor.provides.map((service) => service.id));
+      const declaredRequires = new Set(resolved.descriptor.requires);
+      for (const service of provides) {
+        if (!declaredProvides.has(service)) throw new PluginError('service_not_declared', `${pluginId} does not provide service ${service}`);
+      }
+      for (const service of requires) {
+        if (!declaredRequires.has(service)) throw new PluginError('service_not_declared', `${pluginId} does not require service ${service}`);
+      }
+      install.authorizedProvides = provides;
+      install.authorizedRequires = requires;
+      install.updatedAt = nowIso();
       return this.viewOf(state, install);
     });
   }
@@ -485,7 +527,7 @@ export class PluginStore {
       result.push({
         pluginId: install.pluginId,
         name: resolved.descriptor.name,
-        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [], guards: [], sandboxProviders: [] },
+        contributions: { dock, settings, composer, pages, slots, renderers, promptSections, tools: [], terminal: [], guards: [], sandboxProviders: [], agentActions: [] },
       });
     }
     return result.sort((a, b) => a.name.localeCompare(b.name));
@@ -596,6 +638,29 @@ export class PluginStore {
     return providers;
   }
 
+  /** Reserved agent actions of active installs that granted agents.orchestrate; never executed. */
+  async agentActions(pluginId?: string): Promise<PluginAgentActionDescriptor[]> {
+    const state = await this.readState();
+    const actions: PluginAgentActionDescriptor[] = [];
+    for (const install of state.installs) {
+      if (pluginId && install.pluginId !== pluginId) continue;
+      const resolved = await this.resolveInstall(state, install);
+      if (!resolved || this.statusOf(install, resolved) !== 'active') continue;
+      if (!install.granted.includes('agents.orchestrate')) continue;
+      for (const action of resolved.descriptor.contributions.agentActions) {
+        actions.push({
+          pluginId: install.pluginId,
+          pluginName: resolved.descriptor.name,
+          actionId: action.id,
+          name: action.name,
+          description: action.description,
+          kind: action.kind,
+        });
+      }
+    }
+    return actions;
+  }
+
   /** One scripted page, only while its install is active and the ui.pages grant is present. */
   async resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {
     const state = await this.readState();
@@ -680,6 +745,8 @@ export class PluginStore {
             digest: value.digest,
             enabled: value.enabled === true,
             granted,
+            authorizedProvides: stringArray(value.authorizedProvides),
+            authorizedRequires: stringArray(value.authorizedRequires),
             settings,
             storage,
             installedAt: typeof value.installedAt === 'string' ? value.installedAt : nowIso(),
@@ -832,6 +899,8 @@ export class PluginStore {
       scope: install.scope,
       enabled: install.enabled,
       granted: [...install.granted],
+      authorizedProvides: [...install.authorizedProvides],
+      authorizedRequires: [...install.authorizedRequires],
       requiredCapabilities: descriptor?.capabilities.required ?? [],
       optionalCapabilities: descriptor?.capabilities.optional ?? [],
       provides: descriptor?.provides ?? [],
@@ -841,7 +910,7 @@ export class PluginStore {
       source: stored?.source ?? null,
       components: resolved?.components ?? [],
       unsupported: descriptor?.unsupported ?? [],
-      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [] },
+      contributions: descriptor?.contributions ?? { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [], agentActions: [] },
       settings: { ...install.settings },
     };
   }
@@ -910,6 +979,8 @@ export class PluginStore {
           // A different digest is different content: the old grant does not carry over.
           install.digest = digest;
           install.granted = [];
+          install.authorizedProvides = [];
+          install.authorizedRequires = [];
         }
         install.updatedAt = nowIso();
       } else {
@@ -919,6 +990,8 @@ export class PluginStore {
           digest,
           enabled: false,
           granted: [],
+          authorizedProvides: [],
+          authorizedRequires: [],
           settings: {},
           storage: {},
           installedAt: nowIso(),
@@ -929,4 +1002,13 @@ export class PluginStore {
       return this.viewOf(state, install);
     });
   }
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function uniqueStrings(value: string[] | undefined): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0 && item.length <= 200))].slice(0, 50);
 }

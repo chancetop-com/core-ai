@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.26（P2d 完成 + P3：prompt/browser/tools/terminal/guards + sandbox 描述符） |
+| 文档版本 | v0.28（P2d 完成 + P3：prompt/browser/tools/terminal/guards + sandbox/agents 保留面 + 服务双重授权） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -625,7 +625,7 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `sessions.read` / `memory.read` / `workspace.read` | 页面 bridge 只读：`sessions.list`、`memory.list/read`、`workspace.summary`；summary 只在对应能力已授权时返回计数 |
 | `memory.write` | `memory.write(path, content, mode)` 仅允许 `knowledge/` 下的 Markdown；≤256 KiB，append/overwrite，realpath 防逃逸 |
 | `sessions.write` / `schedules.*` | `sessions.rename`（仅当前 workspace 已存在 session）；`schedules.list/get/update/delete/trigger` 仅限 scheduler 归属于当前 workspace 的任务；写/触发要求 workspace trusted |
-| `provides` / `requires` | manifest 声明服务 ID；页面 `services.list()` 返回 host service IDs、active 插件的 provides/requires 与自身声明；仅元数据，不执行跨插件调用 |
+| `provides` / `requires` | manifest 声明服务 ID；页面 `services.list()` 返回 host service IDs、active 插件的 provides/requires、自身服务授权与每个 `requires` 的 `available/authorized`；调用方与提供方各自显式授权后才标记 `authorized=true`，但仍不执行跨插件调用 |
 | `ui.renderers` / `artifacts.read` | `contributes.renderers` 的 artifact renderer 在 Artifacts 面板增加入口；打开插件页时传 `artifactPath`，页面可用 `artifacts.read()` 读取 ≤2 MiB 文本；不支持二进制/scripted inline renderer |
 | `prompt.sections`（P3 首期） | `contributes.promptSections` 的静态文本经 `CORE_AI_PLUGIN_PROMPT_SECTIONS` 注入 engine system prompt；restricted workspace 跳过；不执行插件代码 |
 | `browser.control`（P3 首期） | 页面 bridge `browser.status/tabs/open/navigate/activate/close`；只操作托管的内置浏览器，URL 仅 http(s)，不暴露 CDP；首次 open 可启动浏览器 |
@@ -633,13 +633,26 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `terminal.exec`（P3 首期） | 页面 bridge `terminal.commands/run`；只允许 manifest 选择主机预定义操作 `git.status`/`git.log`/`git.diff`/`node.version`，argv 由宿主固定，可执行文件按系统 PATH 解析为绝对路径且拒绝 workspace 内文件；无 shell/页面参数、脱敏环境；需 grant + trusted workspace，6 次/分钟 |
 | `hooks.guard`（P3 首期） | `contributes.guards` 只支持 `action=deny` + 精确 toolNames；desktop 经 `CORE_AI_PLUGIN_GUARDS` 传给 engine，Java 解析后装到主 agent 与 subagent 的 lifecycle；不执行插件代码；restricted 跳过 |
 | `sandbox.provider`（P3 首期，仅描述符） | `contributes.sandboxProviders` 只登记 `process/container/os` 隔离诉求；页面 `sandbox.providers()` 返回 `execution: reserved`，`sandbox.status()` 明确 `disabled`；**没有执行入口**，不加载插件代码；restricted 也只做发现 |
+| `agents.orchestrate`（P3 首期，仅保留面） | `contributes.agentActions` 只登记 `start/wait/cancel/list` 意图；页面 `agents.actions()` 返回 `execution: reserved`，`agents.status()` 固定 `disabled`；**没有 run 入口**；开放条件见 §14.2 |
 | `usage.read` | `usage.summary(range)` 从持久化 transcript 聚合已完成、未被 rewind 的 turn 的 input/output/cached tokens 与 cost；默认 all，也支持 7d/30d |
 | `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
 | `events.read` | `events.subscribe([...])` + `events.on(...)`；宿主按 allowlist 转发 `session.status`、`turn.completed`、`tool.started/finished`、`turn.failed`、`plan.updated`、`task.updated`、`tool.batch_started`、`agent.wait`、`custom`；只给脱敏字段，不给 text/tool args/tool result |
 | `notification.send` | `notify.send(text)` 走已配置的 OCG 通知目标；1–2000 字符、每页面 5 次/分钟；未配置目标返回错误 |
 | `ui.slots`（首期） | 声明式 action-only slot：`sidebar.footer.action`、`composer.dock`、`conversation.turn.tail`、`conversation.message.actions`；action 仅支持 `openPage` / `insertText`，不执行插件脚本 |
 | 示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed |
-| 仍未实现 | scripted/renderer slots（message renderer、scripted inline artifact viewer 等）；`provides/requires` 只有发现元数据；P3 的 providers/sandbox/agents 运行时、通用终端与可编程 hooks |
+| 仍未实现 | scripted/renderer slots（message renderer、scripted inline artifact viewer 等）；`provides/requires` 的跨插件调用运行时；P3 的 providers 运行时、可执行 sandbox/agents、可编程 hooks、凭据边界与审计 |
+
+#### 6.7.5 跨插件服务双重授权（v0.28 最小闭环）
+
+当前只实现**发现 + 显式授权元数据**，没有任何跨插件调用入口：
+
+- 提供方插件在 `coreai.provides` 声明服务 ID/版本；调用方在 `coreai.requires` 声明依赖。
+- 安装状态分别保存 `authorizedProvides` 与 `authorizedRequires`；只有用户在插件卡片点击 “Authorize services…” 并确认后才会写入。
+- `services.list()` 对每个 `requires` 返回 `{ id, available, authorized, providers, host }`：
+  - `available` 表示存在 active 提供方（或该 ID 是 host service）；
+  - `authorized` 必须是**调用方已授权该 ID + 提供方已授权该 ID**（host service 视为提供方已授权）。
+- 撤销全部权限、插件禁用、包 digest 变化都会清空/失效服务授权；旧状态文件缺字段按空数组处理，默认关闭。
+- 没有 `services.call`、没有页面到页面的函数调用、没有插件代码执行。即使 `authorized=true`，本版本也只能读元数据；真正的调用协议必须在下一步单独设计并再次验收。
 
 ## 7. Engine 接入与生命周期
 
@@ -965,6 +978,8 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.24 | 2026-11-18 | P3 terminal.exec：只允许预定义主机操作（git.status/log/diff、node.version），无 shell/页面参数；grant + trusted + 限流 | 不做通用终端，避免变相执行插件代码 |
 | v0.25 | 2026-11-18 | P3 hooks.guard：数据化 tool deny guard，主 agent + subagent lifecycle 都生效；示例加 no-shell | guard 先做 deny，不做脚本/审批回调 |
 | v0.26 | 2026-11-18 | P3 sandbox.provider：只登记隔离描述符；页面可发现但 `execution=reserved`，无执行入口 | 不假装有沙箱后端，执行留待真实隔离实现 |
+| v0.27 | 2026-11-18 | P3 agents.orchestrate：只登记动作意图；`agents.status=disabled`，无 run 入口；开放条件写入 §14.2 | token/逐次审批/预算/审计/隔离缺一不可 |
+| v0.28 | 2026-11-18 | 跨插件服务双重授权：调用方 `authorizedRequires` + 提供方 `authorizedProvides`；`services.list` 返回 `available/authorized`，仍不执行调用 | 先冻结授权语义，调用协议留待下一阶段 |
 
 ### 13.2 相关材料
 
@@ -1012,6 +1027,8 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | P3 allowlisted terminal | `terminal.exec` + 预定义操作；页面只传 commandId，宿主映射固定 argv，无 shell、脱敏环境、trusted workspace、限流 | `pluginManifest.ts`、`PluginPageHost.ts`、`pluginTerminal.ts`、`main.ts` |
 | P3 tool guards | `hooks.guard` + `contributes.guards`；只支持 deny 精确 toolNames；env 描述符 + `PluginGuards.java` 主/subagent lifecycle；不执行插件代码 | `pluginManifest.ts`、`PluginHost.ts`、`CliAgent.java`、`AgentFork.java`、`PluginGuards.java` |
 | P3 sandbox descriptors | `sandbox.provider` + `contributes.sandboxProviders`；只做描述符与状态，`execution=reserved`；无执行入口 | `pluginManifest.ts`、`PluginStore.ts`、`PluginPageHost.ts`、`pluginPagePreload.ts` |
+| P3 agent action descriptors | `agents.orchestrate` + `contributes.agentActions`；只做动作发现与 `disabled` 状态；无 run 入口 | `pluginManifest.ts`、`PluginStore.ts`、`PluginPageHost.ts`、`pluginPagePreload.ts` |
+| P3 service dual authorization | `provides`/`requires` + `authorizedProvides`/`authorizedRequires`；桌面插件卡片显式授权；`services.list` 只返回发现与授权标记 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`app.ts` |
 | P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | P2d notification | `notification.send` + `notify.send`；接现有 OCG 目标，5 次/分钟/页、2000 字符上限；无目标明确报错 | `PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
 | P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码；turn tail 在实时 turn 和历史 transcript 都渲染 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
@@ -1023,7 +1040,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 
 验证记录（2026-11-17）：`npm --prefix core-ai-desktop run check`、`build`、`test`（246 pass / 1 skip）；`:core-ai:test --tests SkillToolGuardTest`、`:core-ai-cli:test`（plugin/workspace/agent 子集）与 `checkstyleMain/checkstyleTest` 通过；`:core-ai-server:test --tests PluginRegistryServiceTest`（4 例）通过；SDK `node --test sdk/core-ai-plugin/test/manifest.test.mjs`（6 例）通过；Electron smoke：Plugins 一级入口存在、本地 `Hello Plugin` active、Dock `Hello`、composer action、未登录 registry 显示 sign-in 提示；engine trust E2E：restricted 不启动 workspace MCP、`session/send` 返回 `TRUST_REQUIRED`、写入匹配 record 并重启后 trusted 且 MCP 启动、quiesce/resumeIntake 成功。**全局 server checkstyle 当前被另一会话未提交的 `SystemSettingsService` 改动拖红；本特性新增/修改文件未出现在 checkstyle 报告中。**
 
-验证记录（2026-11-18，P2d 完成 + P3 prompt/browser/tools/terminal/guards/sandbox）：desktop `check`、`build`、`test`（273 tests：272 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、artifact、browser、terminal、sandbox、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`PluginGuardsTest`、`PluginToolsTest`、`PluginPromptSectionsTest`、`LocalMemoryTest`、`UsageApiTest` 通过。**`:core-ai-cli:checkstyleMain` 当前被其他会话的 `AppServerEngine`/`EngineSessionRegistry`/`LocalSdkBroker` 改动拖红；本特性新增 Java 文件未出现在报告中。**
+验证记录（2026-11-18，P2d 完成 + P3 prompt/browser/tools/terminal/guards/sandbox/agents/services）：desktop `check`、`build`、`test`（274 tests：273 pass / 1 skip）；`pluginPageHost.smoke.cjs` 通过（context、assets、media、sessions/rename、schedules、memory、artifact、browser、terminal、sandbox、agents、services 双重授权、summary、usage、storage、脱敏事件、notify + 限流）；SDK 7 例通过；`PluginGuardsTest`、`PluginToolsTest`、`PluginPromptSectionsTest`、`LocalMemoryTest`、`UsageApiTest` 通过。**`:core-ai-cli:checkstyleMain` 当前被其他会话的 `AppServerEngine`/`EngineSessionRegistry`/`LocalSdkBroker` 改动拖红；本特性新增 Java 文件未出现在报告中。**
 
 ### 14.2 明确未落地的设计项（不得当作已实现）
 
@@ -1035,13 +1052,14 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
-9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`、action-only 的 sidebar/composer/turn-tail/message-actions slots、`memory.write`、`sessions.rename`、workspace-scoped `schedules.*`、`provides`/`requires` 发现元数据，以及 artifact renderer（打开插件页并读取文本 artifact）；仍没有 scripted inline renderer、message renderer 或跨插件服务调用运行时。
-10. **P3 已开始 prompt/browser/tools/terminal/guards 与 sandbox 描述符。** `prompt.sections` 可注入静态 system prompt；`browser.control` 可操作托管浏览器；`tools.register` 只注册 `artifacts.list`/`memory.list` 主机工具；`terminal.exec` 只运行预定义只读操作；`hooks.guard` 只做精确 tool deny；`sandbox.provider` 只有描述符和 `reserved` 状态，不能执行。providers/agents 运行时、可编程 hooks、跨插件服务调用运行时、凭据边界与审计仍未实现。
+9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`、action-only 的 sidebar/composer/turn-tail/message-actions slots、`memory.write`、`sessions.rename`、workspace-scoped `schedules.*`、`provides`/`requires` 发现元数据与双重授权标记，以及 artifact renderer（打开插件页并读取文本 artifact）；仍没有 scripted inline renderer、message renderer 或跨插件服务调用运行时。
+10. **P3 已完成 prompt/browser/tools/terminal/guards 与 sandbox/agents 保留面，冻结了服务双重授权。** `prompt.sections` 可注入静态 system prompt；`browser.control` 可操作托管浏览器；`tools.register` 只注册 `artifacts.list`/`memory.list` 主机工具；`terminal.exec` 只运行预定义只读操作；`hooks.guard` 只做精确 tool deny；`sandbox.provider` 只有描述符和 `reserved` 状态；`agents.orchestrate` 只有动作发现和 `disabled` 状态；`services.list` 只返回服务发现与双重授权标记。providers 运行时、可执行 sandbox/agents、可编程 hooks、跨插件调用协议、凭据边界与审计仍未实现。
+11. **`agents.orchestrate` 的开放条件（缺一不可）：** 每插件写权限 token（不共享全局会话凭据）；每次 run 的逐次用户审批（含 prompt/session/agent/budget 摘要）；硬预算（turn 数、token、时长、并发）；审计记录（谁、何时、对哪个 session、参数摘要、结果状态）；跨 session 隔离（只能操作本 workspace 且被授权的 session，禁止读取其他会话 transcript）；可信 workspace；撤销立即拒绝下一次调用；失败/超时必须可取消并回收子进程。任何一项未实现时，`agents.status` 必须保持 `disabled`，不得提供 run/steer/cancel 入口。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
 2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
-3. 继续 P3：agents 运行时与跨插件服务调用，按信任等级分批；同时补 scripted inline renderer、message renderer。
+3. 继续 P3：providers 运行时、可执行 sandbox/agents、可编程 hooks 与跨插件调用协议，按信任等级分批；同时补 scripted inline renderer、message renderer。
 
 

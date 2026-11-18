@@ -222,6 +222,40 @@ test('sandbox providers are descriptor-only and need sandbox.provider', () => {
   assert.equal(missingCapability.ok, false);
 });
 
+test('agent actions are reserved and need agents.orchestrate', () => {
+  const parsed = parsePluginManifest(JSON.stringify({
+    name: 'Agents',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.agents',
+      capabilities: { required: ['agents.orchestrate'] },
+      contributes: { agentActions: [{ id: 'list', name: 'list-agents', description: 'List agents', kind: 'list' }] },
+    },
+  }));
+  assert.equal(parsed.ok, true, parsed.errors.join('; '));
+  assert.equal(parsed.descriptor.contributions.agentActions[0].kind, 'list');
+
+  const unsupportedKind = parsePluginManifest(JSON.stringify({
+    name: 'Agents',
+    version: '1.0.0',
+    coreai: {
+      schemaVersion: 1,
+      id: 'example.agents',
+      capabilities: { required: ['agents.orchestrate'] },
+      contributes: { agentActions: [{ id: 'run', name: 'run-agent', description: 'Run', kind: 'run' }] },
+    },
+  }));
+  assert.equal(unsupportedKind.descriptor.contributions.agentActions.length, 0);
+
+  const missingCapability = parsePluginManifest(JSON.stringify({
+    name: 'Agents',
+    version: '1.0.0',
+    coreai: { schemaVersion: 1, id: 'example.agents', contributes: { agentActions: [{ id: 'list', name: 'list-agents', description: 'x', kind: 'list' }] } },
+  }));
+  assert.equal(missingCapability.ok, false);
+});
+
 test('provides and requires parse service metadata', () => {
   const parsed = parsePluginManifest(JSON.stringify({
     name: 'Services',

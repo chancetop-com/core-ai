@@ -191,6 +191,19 @@
                   "isolation": { "enum": ["process", "container", "os"] }
                 }
               }
+            },
+            "agentActions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "name", "description", "kind"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "description": { "type": "string" },
+                  "kind": { "enum": ["start", "wait", "cancel", "list"] }
+                }
+              }
             }
           },
           "additionalProperties": false

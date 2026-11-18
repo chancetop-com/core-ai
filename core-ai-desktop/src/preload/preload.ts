@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld('coreai', {
   pluginsEnable: (pluginId: string) => ipcRenderer.invoke('plugins:enable', pluginId),
   pluginsDisable: (pluginId: string) => ipcRenderer.invoke('plugins:disable', pluginId),
   pluginsGrant: (pluginId: string, capabilities: string[]) => ipcRenderer.invoke('plugins:grant', pluginId, capabilities),
+  pluginsAuthorizeServices: (pluginId: string, input: { provides?: string[]; requires?: string[] }) =>
+    ipcRenderer.invoke('plugins:authorizeServices', pluginId, input),
   pluginsRevoke: (pluginId: string) => ipcRenderer.invoke('plugins:revoke', pluginId),
   pluginsRemove: (pluginId: string) => ipcRenderer.invoke('plugins:remove', pluginId),
   pluginsSetSetting: (pluginId: string, key: string, value: string | number | boolean) =>

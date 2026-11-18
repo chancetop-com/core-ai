@@ -199,6 +199,8 @@ export function normalizePlugins(value: unknown): PluginView[] {
       scope: typeof entry.scope === 'string' ? entry.scope : 'user',
       enabled: entry.enabled === true,
       granted: stringArray(entry.granted),
+      authorizedProvides: stringArray(entry.authorizedProvides),
+      authorizedRequires: stringArray(entry.authorizedRequires),
       requiredCapabilities: stringArray(entry.requiredCapabilities),
       optionalCapabilities: stringArray(entry.optionalCapabilities),
       provides: normalizeProvides(entry.provides),
@@ -233,7 +235,7 @@ function normalizeProvides(value: unknown): PluginView['provides'] {
 }
 
 function normalizeContributions(value: unknown): PluginView['contributions'] {
-  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [] };
+  const empty: PluginView['contributions'] = { dock: [], settings: [], composer: [], pages: [], slots: [], renderers: [], promptSections: [], tools: [], terminal: [], guards: [], sandboxProviders: [], agentActions: [] };
   if (!value || typeof value !== 'object') return empty;
   const raw = value as Record<string, unknown>;
   return {
@@ -248,6 +250,7 @@ function normalizeContributions(value: unknown): PluginView['contributions'] {
     terminal: [],
     guards: [],
     sandboxProviders: [],
+    agentActions: [],
   };
 }
 

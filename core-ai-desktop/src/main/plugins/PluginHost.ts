@@ -7,7 +7,7 @@
  */
 import path from 'node:path';
 import type { PluginView } from '../../shared/pluginManifest';
-import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginGuardDescriptor, type PluginPromptSection, type PluginSandboxProviderDescriptor, type PluginStoreOptions, type PluginTerminalCommandDescriptor, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
+import { PluginStore, type ActivePluginContributions, type EngineSkillRoot, type PluginAgentActionDescriptor, type PluginGuardDescriptor, type PluginPromptSection, type PluginSandboxProviderDescriptor, type PluginStoreOptions, type PluginTerminalCommandDescriptor, type PluginToolDescriptor, type ResolvedPluginPage } from './pluginStore';
 
 export const PLUGIN_SKILL_ROOTS_ENV = 'CORE_AI_PLUGIN_SKILL_ROOTS';
 export const PLUGIN_PROMPT_SECTIONS_ENV = 'CORE_AI_PLUGIN_PROMPT_SECTIONS';
@@ -52,6 +52,10 @@ export class PluginHost {
 
   async grant(pluginId: string, capabilities: string[]): Promise<PluginView> {
     return this.changed(() => this.store.grant(pluginId, capabilities));
+  }
+
+  authorizeServices(pluginId: string, input: { provides?: string[]; requires?: string[] }): Promise<PluginView> {
+    return this.store.authorizeServices(pluginId, input);
   }
 
   async revoke(pluginId: string): Promise<PluginView> {
@@ -110,6 +114,10 @@ export class PluginHost {
 
   sandboxProviders(pluginId?: string): Promise<PluginSandboxProviderDescriptor[]> {
     return this.store.sandboxProviders(pluginId);
+  }
+
+  agentActions(pluginId?: string): Promise<PluginAgentActionDescriptor[]> {
+    return this.store.agentActions(pluginId);
   }
 
   resolvePage(pluginId: string, pageId: string): Promise<ResolvedPluginPage | null> {

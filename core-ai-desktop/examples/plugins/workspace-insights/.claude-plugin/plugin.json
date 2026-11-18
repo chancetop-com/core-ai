@@ -5,9 +5,11 @@
   "coreai": {
     "schemaVersion": 1,
     "id": "core-ai.workspace-insights",
+    "provides": [{ "id": "workspace.summary", "version": "1.0" }],
+    "requires": ["memory.read"],
     "desktopApi": "^1.0.0",
     "capabilities": {
-      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "terminal.exec", "hooks.guard", "sandbox.provider", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
+      "required": ["ui.pages", "ui.slots", "ui.renderers", "artifacts.read", "tools.register", "terminal.exec", "hooks.guard", "sandbox.provider", "agents.orchestrate", "sessions.read", "memory.read", "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read", "notification.send"]
     },
     "contributes": {
       "pages": [
@@ -92,6 +94,14 @@
           "name": "reserved-process",
           "description": "Reserved descriptor for a future process-isolated sandbox.",
           "isolation": "process"
+        }
+      ],
+      "agentActions": [
+        {
+          "id": "list-agents",
+          "name": "list-agents",
+          "description": "Reserved action to list agents; execution is disabled.",
+          "kind": "list"
         }
       ]
     }

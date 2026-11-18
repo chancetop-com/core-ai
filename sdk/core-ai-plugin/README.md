@@ -106,6 +106,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `terminal.exec` | runs one allowlisted host operation (`git.status`, `git.log`, `git.diff`, `node.version`) in the workspace; no shell or page arguments |
 | `hooks.guard` | denies exact tool names in the engine (`contributes.guards`, action `deny`) |
 | `sandbox.provider` | descriptor-only sandbox provider declarations; no execution runtime in this build |
+| `agents.orchestrate` | descriptor-only agent action declarations; no run runtime in this build |
 | `browser.control` | opens, navigates, activates and closes tabs in the managed browser |
 | `ui.pages` | a package-local HTML page in an isolated `WebContentsView` |
 | `media.assets.read` | lists generated images/videos and serves their local URLs to a page |

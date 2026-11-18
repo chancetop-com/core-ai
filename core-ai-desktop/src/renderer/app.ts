@@ -463,6 +463,7 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   pluginsEnable(pluginId: string): Promise<PluginOperationResult>;
   pluginsDisable(pluginId: string): Promise<PluginOperationResult>;
   pluginsGrant(pluginId: string, capabilities: string[]): Promise<PluginOperationResult>;
+  pluginsAuthorizeServices(pluginId: string, input: { provides?: string[]; requires?: string[] }): Promise<PluginOperationResult>;
   pluginsRevoke(pluginId: string): Promise<PluginOperationResult>;
   pluginsRemove(pluginId: string): Promise<PluginOperationResult>;
   pluginsSetSetting(pluginId: string, key: string, value: string | number | boolean): Promise<PluginOperationResult>;
@@ -7660,6 +7661,23 @@ function pluginCard(plugin: PluginView): HTMLElement {
     card.append(caps);
   }
 
+  if (plugin.provides.length || plugin.requires.length) {
+    const services = el('div', 'plugin-capabilities');
+    for (const service of plugin.provides) {
+      const authorized = plugin.authorizedProvides.includes(service.id);
+      const chip = el('span', `plugin-capability${authorized ? ' granted' : ''}`, `${authorized ? '✓' : '○'} provide: ${service.id}`);
+      chip.title = service.id;
+      services.append(chip);
+    }
+    for (const service of plugin.requires) {
+      const authorized = plugin.authorizedRequires.includes(service);
+      const chip = el('span', `plugin-capability${authorized ? ' granted' : ''}`, `${authorized ? '✓' : '○'} require: ${service}`);
+      chip.title = service;
+      services.append(chip);
+    }
+    card.append(services);
+  }
+
   const contributions = [
     plugin.contributions.dock.length ? `dock: ${plugin.contributions.dock.map((item) => item.title).join(', ')}` : '',
     plugin.contributions.settings.length ? `settings: ${plugin.contributions.settings.map((item) => item.title).join(', ')}` : '',
@@ -7699,6 +7717,21 @@ function pluginCard(plugin: PluginView): HTMLElement {
       await afterPluginOperation(await window.coreai.pluginsRevoke(plugin.id), 'Permissions revoked');
     };
     buttons.append(revoke);
+  }
+  if (plugin.provides.length || plugin.requires.length) {
+    const authorize = el('button', 'btn small', 'Authorize services…') as HTMLButtonElement;
+    authorize.onclick = async () => {
+      const lines = [
+        ...plugin.provides.map((service) => `[provide] ${service.id}`),
+        ...plugin.requires.map((service) => `[require] ${service}`),
+      ];
+      if (!window.confirm(`Authorize cross-plugin services for ${plugin.name}?\n\n${lines.join('\n')}\n\nThis only records consent; this build has no cross-plugin call runtime.`)) return;
+      await afterPluginOperation(await window.coreai.pluginsAuthorizeServices(plugin.id, {
+        provides: plugin.provides.map((service) => service.id),
+        requires: plugin.requires,
+      }), 'Service authorization updated');
+    };
+    buttons.append(authorize);
   }
   const remove = el('button', 'btn small danger', 'Remove') as HTMLButtonElement;
   remove.onclick = async () => {

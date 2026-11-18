@@ -37,7 +37,7 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec', 'sandbox.provider'],
+      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec', 'sandbox.provider', 'agents.orchestrate'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -95,7 +95,16 @@ async function main() {
         id: 'test.page',
         status: 'active',
         provides: [{ id: 'demo.provider', version: '1' }],
-        requires: ['memory.read'],
+        requires: ['memory.read', 'demo.service', 'demo.locked'],
+        authorizedProvides: ['demo.provider'],
+        authorizedRequires: ['memory.read', 'demo.service', 'demo.locked'],
+      }, {
+        id: 'other.page',
+        status: 'active',
+        provides: [{ id: 'demo.service', version: '1' }, { id: 'demo.locked', version: '1' }],
+        requires: [],
+        authorizedProvides: ['demo.service'],
+        authorizedRequires: [],
       }],
       storageGet: async (_pluginId, key) => storage.get(key) ?? null,
       storageSet: async (_pluginId, key, value) => { storage.set(key, value); },
@@ -104,6 +113,10 @@ async function main() {
       sandboxProviders: async () => [{
         pluginId: 'test.page', pluginName: 'Test Page', providerId: 'reserved', name: 'reserved',
         description: 'Reserved sandbox', isolation: 'process',
+      }],
+      agentActions: async () => [{
+        pluginId: 'test.page', pluginName: 'Test Page', actionId: 'list', name: 'list-agents',
+        description: 'Reserved action', kind: 'list',
       }],
     }),
     supervisor: () => supervisor,
@@ -196,6 +209,11 @@ async function main() {
   assert.equal(services.plugins[0].provides[0].id, 'demo.provider');
   assert.equal(services.own.requires[0], 'memory.read');
   assert.ok(services.host.includes('memory.write'));
+  assert.equal(services.required[0].authorized, true);
+  assert.equal(services.required[1].authorized, true);
+  assert.equal(services.required[1].available, true);
+  assert.equal(services.required[2].authorized, false);
+  assert.equal(services.provided[0].authorized, true);
   const browserStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.browser.status()');
   assert.equal(browserStatus.running, true);
   await view.webContents.executeJavaScript('window.coreaiPlugin.browser.open("https://example.com")');
@@ -212,6 +230,10 @@ async function main() {
   assert.equal(sandboxProviders.providers[0].execution, 'reserved');
   const sandboxStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.sandbox.status()');
   assert.equal(sandboxStatus.execution, 'disabled');
+  const agentActions = await view.webContents.executeJavaScript('window.coreaiPlugin.agents.actions()');
+  assert.equal(agentActions.actions[0].execution, 'reserved');
+  const agentStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.agents.status()');
+  assert.equal(agentStatus.execution, 'disabled');
   const summary = await view.webContents.executeJavaScript('window.coreaiPlugin.workspace.summary()');
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);

@@ -71,6 +71,10 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
     providers: () => call('sandbox.providers'),
     status: () => call('sandbox.status'),
   },
+  agents: {
+    actions: () => call('agents.actions'),
+    status: () => call('agents.status'),
+  },
   artifacts: {
     read: () => call('artifacts.read'),
   },

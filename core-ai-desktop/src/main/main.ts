@@ -1528,6 +1528,16 @@ function registerIpc(): void {
     if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');
     return pluginOperation(() => pluginHost!.revoke(pluginId));
   });
+  ipcMain.handle('plugins:authorizeServices', async (event, pluginId: string, input: unknown) => {
+    if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
+    if (!pluginHost || !validPluginId(pluginId) || !input || typeof input !== 'object') {
+      return pluginFailure('invalid_request', 'invalid service authorization request');
+    }
+    const record = input as Record<string, unknown>;
+    const provides = Array.isArray(record.provides) ? record.provides.filter((item): item is string => typeof item === 'string') : [];
+    const requires = Array.isArray(record.requires) ? record.requires.filter((item): item is string => typeof item === 'string') : [];
+    return pluginOperation(() => pluginHost!.authorizeServices(pluginId, { provides, requires }));
+  });
   ipcMain.handle('plugins:remove', async (event, pluginId: string) => {
     if (!isMainFrameSender(event)) return pluginFailure('forbidden', 'plugin management is only available from the app window');
     if (!pluginHost || !validPluginId(pluginId)) return pluginFailure('invalid_id', 'invalid plugin id');

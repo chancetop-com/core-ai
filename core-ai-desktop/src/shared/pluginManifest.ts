@@ -30,6 +30,7 @@ export const SUPPORTED_CAPABILITIES = [
   'terminal.exec',
   'hooks.guard',
   'sandbox.provider',
+  'agents.orchestrate',
   'media.assets.read',
   'media.assets.write',
   'media.models.read',
@@ -171,6 +172,13 @@ export interface PluginSandboxProviderContribution {
   isolation: 'process' | 'container' | 'os';
 }
 
+export interface PluginAgentActionContribution {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'start' | 'wait' | 'cancel' | 'list';
+}
+
 export interface PluginContributions {
   dock: PluginDockContribution[];
   settings: PluginSettingsContribution[];
@@ -183,6 +191,7 @@ export interface PluginContributions {
   terminal: PluginTerminalContribution[];
   guards: PluginGuardContribution[];
   sandboxProviders: PluginSandboxProviderContribution[];
+  agentActions: PluginAgentActionContribution[];
 }
 
 export interface PluginServiceDeclaration {
@@ -608,6 +617,26 @@ function parseSandboxProviders(value: unknown): PluginSandboxProviderContributio
   return providers;
 }
 
+function parseAgentActions(value: unknown): PluginAgentActionContribution[] {
+  if (!Array.isArray(value)) return [];
+  const actions: PluginAgentActionContribution[] = [];
+  const names = new Set<string>();
+  for (const raw of value.slice(0, 10)) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = raw as Record<string, unknown>;
+    const id = contributionId(entry.id);
+    const name = typeof entry.name === 'string' && /^[a-z][a-z0-9_-]{1,63}$/.test(entry.name) ? entry.name : null;
+    const description = boundedText(entry.description, 1000);
+    const kind = entry.kind === 'start' || entry.kind === 'wait' || entry.kind === 'cancel' || entry.kind === 'list'
+      ? entry.kind
+      : null;
+    if (!id || !name || !description || !kind || names.has(name)) continue;
+    names.add(name);
+    actions.push({ id, name, description, kind });
+  }
+  return actions;
+}
+
 function stringList(value: unknown): string[] | null {  if (value === undefined) return [];
   if (!Array.isArray(value)) return null;
   const result: string[] = [];
@@ -694,6 +723,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     terminal: [],
     guards: [],
     sandboxProviders: [],
+    agentActions: [],
   };
   let required: string[] = [];
   let optional: string[] = [];
@@ -749,6 +779,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
           contributions.terminal = parseTerminal(contributes.terminal);
           contributions.guards = parseGuards(contributes.guards);
           contributions.sandboxProviders = parseSandboxProviders(contributes.sandboxProviders);
+          contributions.agentActions = parseAgentActions(contributes.agentActions);
         }
       }
 
@@ -797,7 +828,7 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     }
   }
 
-  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal' | 'guards' | 'sandboxProviders'): string => {
+  const capabilityForContribution = (kind: 'dock' | 'settings' | 'composer' | 'pages' | 'slots' | 'renderers' | 'promptSections' | 'tools' | 'terminal' | 'guards' | 'sandboxProviders' | 'agentActions'): string => {
     if (kind === 'slots') return 'ui.slots';
     if (kind === 'renderers') return 'ui.renderers';
     if (kind === 'promptSections') return 'prompt.sections';
@@ -805,9 +836,10 @@ export function parsePluginManifest(json: string, options: ManifestParseOptions 
     if (kind === 'terminal') return 'terminal.exec';
     if (kind === 'guards') return 'hooks.guard';
     if (kind === 'sandboxProviders') return 'sandbox.provider';
+    if (kind === 'agentActions') return 'agents.orchestrate';
     return `ui.${kind}`;
   };
-  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards', 'sandboxProviders'] as const) {
+  for (const kind of ['dock', 'settings', 'composer', 'pages', 'slots', 'renderers', 'promptSections', 'tools', 'terminal', 'guards', 'sandboxProviders', 'agentActions'] as const) {
     if (!contributions[kind].length) continue;
     const capability = capabilityForContribution(kind);
     if (!required.includes(capability) && !optional.includes(capability)) {
@@ -863,6 +895,8 @@ export interface PluginView {
   scope: string;
   enabled: boolean;
   granted: string[];
+  authorizedProvides: string[];
+  authorizedRequires: string[];
   requiredCapabilities: string[];
   optionalCapabilities: string[];
   provides: PluginServiceDeclaration[];

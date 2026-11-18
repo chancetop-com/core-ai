@@ -379,6 +379,15 @@ export class PluginPageHost {
           execution: 'disabled',
           reason: 'sandbox execution is not implemented in this build; providers are descriptors only',
         };
+      case 'agents.actions':
+        this.requireCapability(instance, 'agents.orchestrate');
+        return { actions: await this.agentActions(instance) };
+      case 'agents.status':
+        this.requireCapability(instance, 'agents.orchestrate');
+        return {
+          execution: 'disabled',
+          reason: 'agent orchestration is disabled: per-action approval, budget, audit and session isolation are not implemented',
+        };
       case 'notify.send':
         this.requireCapability(instance, 'notification.send');
         return this.sendNotification(instance, args.text);
@@ -483,6 +492,19 @@ export class PluginPageHost {
     }));
   }
 
+  private async agentActions(instance: PageInstance): Promise<Array<Record<string, unknown>>> {
+    const host = this.options.pluginHost();
+    if (!host) throw new PluginPageError('unavailable', 'plugin host is not ready');
+    const actions = await host.agentActions(instance.pluginId);
+    return actions.map((action) => ({
+      actionId: action.actionId,
+      name: action.name,
+      description: action.description,
+      kind: action.kind,
+      execution: 'reserved',
+    }));
+  }
+
   private async runTerminal(instance: PageInstance, commandId: unknown): Promise<unknown> {
     if (typeof commandId !== 'string' || !commandId) {
       throw new PluginPageError('invalid_request', 'commandId is required');
@@ -537,20 +559,46 @@ export class PluginPageHost {
     const plugins = host ? await host.list() : [];
     const active = plugins.filter((plugin) => plugin.status === 'active');
     const own = active.find((plugin) => plugin.id === instance.pluginId);
+    const hostServices = [
+      'memory.read', 'memory.write', 'media.generate', 'sessions.read', 'sessions.write',
+      'schedules.read', 'schedules.write', 'plugin.storage', 'events.read', 'notification.send', 'usage.read',
+    ];
+    const ownProvides = own?.provides ?? [];
+    const ownRequires = own?.requires ?? [];
+    const authorizedProvides = own?.authorizedProvides ?? [];
+    const authorizedRequires = own?.authorizedRequires ?? [];
+    const required = ownRequires.map((id) => {
+      const providers = active.filter((plugin) => plugin.provides.some((service) => service.id === id));
+      const hostProvided = hostServices.includes(id);
+      const providerAuthorized = hostProvided || providers.some((plugin) => plugin.authorizedProvides.includes(id));
+      return {
+        id,
+        available: hostProvided || providers.length > 0,
+        authorized: authorizedRequires.includes(id) && providerAuthorized,
+        providers: providers.map((plugin) => plugin.id),
+        host: hostProvided,
+      };
+    });
+    const provided = ownProvides.map((service) => ({
+      id: service.id,
+      version: service.version ?? null,
+      authorized: authorizedProvides.includes(service.id),
+    }));
     return {
-      host: [
-        'memory.read', 'memory.write', 'media.generate', 'sessions.read', 'sessions.write',
-        'schedules.read', 'schedules.write', 'plugin.storage', 'events.read', 'notification.send', 'usage.read',
-      ],
+      host: hostServices,
       plugins: active.map((plugin) => ({
         pluginId: plugin.id,
         provides: plugin.provides,
         requires: plugin.requires,
       })),
       own: {
-        provides: own?.provides ?? [],
-        requires: own?.requires ?? [],
+        provides: ownProvides,
+        requires: ownRequires,
+        authorizedProvides,
+        authorizedRequires,
       },
+      required,
+      provided,
     };
   }
 

@@ -141,6 +141,13 @@ export interface PluginSandboxProviderContribution {
   isolation: 'process' | 'container' | 'os';
 }
 
+export interface PluginAgentActionContribution {
+  id: string;
+  name: string;
+  description: string;
+  kind: 'start' | 'wait' | 'cancel' | 'list';
+}
+
 export interface PluginManifest {
   name: string;
   version: string;
@@ -169,6 +176,7 @@ export interface PluginManifest {
       terminal?: PluginTerminalContribution[];
       guards?: PluginGuardContribution[];
       sandboxProviders?: PluginSandboxProviderContribution[];
+      agentActions?: PluginAgentActionContribution[];
     };
   };
 }
