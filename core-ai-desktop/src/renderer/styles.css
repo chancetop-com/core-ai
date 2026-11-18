@@ -1698,6 +1698,9 @@ select.rich-card-input[multiple] { padding: 3px; }
 .remote-more:hover { color: var(--text); }
 .remote-thinking, .remote-tools { margin: 4px 0 8px; border: 1px solid var(--border); border-radius: 7px; padding: 6px 9px; color: var(--faint); font-size: 12px; background: var(--bg-elev); }
 .remote-thinking summary, .remote-tools summary { cursor: pointer; }
+.remote-msg .remote-thinking > summary, .remote-msg .remote-tools > summary { display: none; }
+.remote-msg .remote-thinking:not([open]), .remote-msg .remote-tools:not([open]) { display: none; }
+
 .remote-thinking .md-body { margin-top: 8px; max-height: 280px; overflow-y: auto; }
 .remote-tool-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 0; }
 .remote-tool-name { font-family: var(--mono); font-size: 11.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1811,3 +1814,16 @@ select.rich-card-input[multiple] { padding: 3px; }
 .remote-home-action:hover { filter: brightness(1.08); }
 .remote-picker-empty-title { padding: 18px 10px 4px; color: var(--text); font-size: 13px; }
 .remote-picker-empty-body { padding: 0 10px 10px; color: var(--faint); font-size: 11.5px; line-height: 1.5; }
+
+.remote-tool-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 5px; }
+.remote-tool-chip { border: 1px dashed var(--border); border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; padding: 3px 9px; cursor: pointer; }
+.remote-tool-chip:hover { color: var(--text); }
+.remote-tool-chip.active { border-style: solid; border-color: var(--border-strong); color: var(--text); }
+.remote-tool-chip.web { color: var(--accent); }
+.remote-tool-card { padding: 6px 0; border-top: 1px solid var(--border); }
+
+.remote-tool-card:first-of-type { border-top: 0; padding-top: 0; }
+.remote-tool-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.remote-tool-detail { margin-top: 4px; }
+.remote-tool-detail summary { cursor: pointer; color: var(--faint); font-size: 11px; }
+.remote-tool-payload { margin: 4px 0 0; padding: 6px 8px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 6px; max-height: 220px; overflow: auto; font-family: var(--mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; color: var(--text); }

@@ -3,6 +3,7 @@
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
+import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -36,10 +37,13 @@ interface RemoteSessionRow {
 
 interface RemoteToolRecord {
   callId?: string;
+  call_id?: string;
   name?: string;
   arguments?: string;
   result?: string;
   status?: string;
+  toolType?: string | null;
+  tool_type?: string | null;
 }
 
 interface RemoteEventRecord {
@@ -62,8 +66,12 @@ interface RemoteMessage {
 interface LiveTool {
   name: string;
   status: string;
+  arguments?: string;
+  result?: string;
+  toolType?: string | null;
   node: HTMLElement;
   statusNode: HTMLElement;
+  resultNode: HTMLElement | null;
 }
 
 interface LiveTurn {
@@ -75,6 +83,8 @@ interface LiveTurn {
   thinkingNode: HTMLElement | null;
   thinkingBody: HTMLElement | null;
   toolList: HTMLElement | null;
+  planNode: HTMLElement | null;
+  chipsRow: HTMLElement | null;
   renderedText: string;
 }
 
@@ -159,6 +169,97 @@ function serverHost(serverUrl: string): string {
   } catch {
     return serverUrl;
   }
+}
+
+const TOOL_KIND_LABEL: Record<ToolUseKind, string> = {
+  skill: 'Skill',
+  subagent: 'Subagent',
+  mcp: 'MCP',
+  api: 'API tool',
+  agent: 'Agent',
+  web: 'Web',
+};
+
+function payloadText(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') {
+    const text = value.trim();
+    if (!text) return '';
+    try {
+      return JSON.stringify(JSON.parse(text), null, 2);
+    } catch {
+      return text;
+    }
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function truncatePayload(text: string, max = 8000): string {
+  return text.length > max ? `${text.slice(0, max)}\n… (truncated)` : text;
+}
+
+function toolKindCounts(tools: RemoteToolRecord[]): Array<[ToolUseKind, number]> {
+  const counts = new Map<ToolUseKind, number>();
+  for (const tool of tools) {
+    const kind = toolUseKind(tool.name ?? '', tool.toolType ?? tool.tool_type ?? null);
+    if (!kind) continue;
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
+  }
+  return [...counts];
+}
+
+function toolCardEl(tool: {
+  name: string;
+  toolType?: string | null;
+  arguments?: unknown;
+  result?: string | null;
+  status?: string | null;
+}): { node: HTMLElement; statusNode: HTMLElement; resultNode: HTMLElement | null } {
+  const card = el('div', 'remote-tool-card');
+  const head = el('div', 'remote-tool-head');
+  const name = tool.name || 'tool';
+  const kind = toolUseKind(name, tool.toolType ?? null);
+  head.append(el('span', 'remote-tool-name', kind ? toolUseLabel(kind, name, tool.arguments ?? tool.name) : name));
+  const status = String(tool.status ?? 'running').toLowerCase();
+  const statusNode = el('span', `remote-tool-status ${status === 'error' || status === 'failed' ? 'error' : status === 'running' ? 'running' : 'ok'}`, status);
+  head.append(statusNode);
+  card.append(head);
+
+  const args = payloadText(tool.arguments);
+  if (args) {
+    const details = el('details', 'remote-tool-detail');
+    details.append(el('summary', undefined, 'Arguments'));
+    details.append(el('pre', 'remote-tool-payload', truncatePayload(args)));
+    card.append(details);
+  }
+  let resultNode: HTMLElement | null = null;
+  const result = payloadText(tool.result);
+  if (result) {
+    const details = el('details', 'remote-tool-detail');
+    details.append(el('summary', undefined, 'Result'));
+    resultNode = el('pre', 'remote-tool-payload', truncatePayload(result));
+    details.append(resultNode);
+    card.append(details);
+  }
+  return { node: card, statusNode, resultNode };
+}
+
+function setToolResult(tool: LiveTool, result: unknown): void {
+  const text = payloadText(result);
+  if (!text) return;
+  if (!tool.resultNode) {
+    const details = el('details', 'remote-tool-detail');
+    details.append(el('summary', undefined, 'Result'));
+    tool.resultNode = el('pre', 'remote-tool-payload', truncatePayload(text));
+    details.append(tool.resultNode);
+    tool.node.append(details);
+    return;
+  }
+  tool.resultNode.textContent = truncatePayload(text);
 }
 
 function activeServers(): RemoteServer[] {
@@ -488,27 +589,43 @@ function messageEl(message: RemoteMessage): HTMLElement {
   const isUser = message.role === 'user';
   const wrapper = el('div', `msg ${isUser ? 'user' : 'assistant'} remote-msg`);
   wrapper.append(el('div', 'role', isUser ? 'You' : (active?.agentName ?? 'Server agent')));
+  let thinkingDetails: HTMLDetailsElement | null = null;
   if (message.thinking) {
-    const details = el('details', 'remote-thinking');
-    details.append(el('summary', undefined, 'Thought'));
+    thinkingDetails = el('details', 'remote-thinking') as HTMLDetailsElement;
+    thinkingDetails.append(el('summary', undefined, 'Thinking'));
     const body = el('div', 'md-body');
     renderRemoteMarkdown(body, message.thinking);
-    details.append(body);
-    wrapper.append(details);
+    thinkingDetails.append(body);
   }
+  let toolsDetails: HTMLDetailsElement | null = null;
   if (message.tools?.length) {
-    const details = el('details', 'remote-tools');
-    details.append(el('summary', undefined, `Tool calls · ${message.tools.length}`));
+    toolsDetails = el('details', 'remote-tools') as HTMLDetailsElement;
+    toolsDetails.append(el('summary', undefined, `Tool use · ${message.tools.length}`));
     for (const tool of message.tools) {
-      const row = el('div', 'remote-tool-row');
-      row.append(el('span', 'remote-tool-name', tool.name ?? 'tool'));
-      row.append(el('span', `remote-tool-status ${tool.status === 'error' || tool.status === 'failed' ? 'error' : 'ok'}`, tool.status ?? 'done'));
-      details.append(row);
+      toolsDetails.append(toolCardEl({
+        name: tool.name ?? 'tool',
+        toolType: tool.toolType ?? tool.tool_type ?? null,
+        arguments: tool.arguments,
+        result: tool.result,
+        status: tool.status,
+      }).node);
     }
-    wrapper.append(details);
   }
+  const chips = el('div', 'remote-tool-chips');
+  if (thinkingDetails) chips.append(toggleChip('Thinking', thinkingDetails));
+  if (toolsDetails && message.tools) {
+    chips.append(toggleChip(`Tool use (${message.tools.length})`, toolsDetails));
+    for (const [kind, count] of toolKindCounts(message.tools)) {
+      chips.append(toggleChip(`${TOOL_KIND_LABEL[kind]} (${count})`, toolsDetails, kind));
+    }
+  }
+  if (chips.childElementCount) wrapper.append(chips);
+  if (thinkingDetails) wrapper.append(thinkingDetails);
+  if (toolsDetails) wrapper.append(toolsDetails);
   for (const event of message.events ?? []) {
-    if (event.card) wrapper.append(readOnlyCardEl(event.card));
+    const plan = planFromEvent(event);
+    if (plan) wrapper.append(remotePlanEl(plan));
+    else if (event.card) wrapper.append(readOnlyCardEl(event.card));
     else if (event.name) wrapper.append(el('div', 'remote-event', event.name));
   }
   if (message.content) {
@@ -521,9 +638,45 @@ function messageEl(message: RemoteMessage): HTMLElement {
   return wrapper;
 }
 
+function toggleChip(label: string, details: HTMLDetailsElement, kind?: ToolUseKind): HTMLButtonElement {
+  const chip = el('button', 'remote-tool-chip', label) as HTMLButtonElement;
+  if (kind) chip.classList.add(kind);
+  chip.addEventListener('click', () => {
+    details.open = !details.open;
+    chip.classList.toggle('active', details.open);
+  });
+  details.addEventListener('toggle', () => chip.classList.toggle('active', details.open));
+  return chip;
+}
+
+function planFromEvent(event: RemoteEventRecord): Array<Record<string, unknown>> | null {
+  const name = String(event.name ?? '');
+  if (!name.includes('plan') && !name.includes('todo')) return null;
+  try {
+    const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+    const todos = (parsed as { todos?: unknown } | null)?.todos;
+    return Array.isArray(todos) ? todos as Array<Record<string, unknown>> : null;
+  } catch {
+    return null;
+  }
+}
+
+function remotePlanEl(items: Array<Record<string, unknown>>): HTMLElement {
+  const box = el('div', 'remote-plan');
+  for (const item of items) {
+    const row = el('div', `remote-plan-item ${String(item.status ?? 'pending').toLowerCase()}`);
+    row.textContent = String(item.content ?? '');
+    box.append(row);
+  }
+  return box;
+}
+
 function liveEl(live: LiveTurn): HTMLElement {
   const wrapper = el('div', 'msg assistant remote-msg remote-live');
   wrapper.append(el('div', 'role', active?.agentName ?? 'Server agent'));
+  const chips = el('div', 'remote-tool-chips');
+  live.chipsRow = chips;
+  wrapper.append(chips);
   if (live.thinkingNode) wrapper.append(live.thinkingNode);
   if (live.toolList) wrapper.append(live.toolList);
   const bubble = el('div', 'bubble md');
@@ -532,8 +685,23 @@ function liveEl(live: LiveTurn): HTMLElement {
   live.body = body;
   bubble.append(body);
   wrapper.append(bubble);
+  renderLiveChips(live);
   renderLive(live);
   return wrapper;
+}
+
+function renderLiveChips(live: LiveTurn): void {
+  const chips = live.chipsRow;
+  if (!chips) return;
+  chips.replaceChildren();
+  if (live.thinkingNode) chips.append(toggleChip('Thinking', live.thinkingNode as HTMLDetailsElement));
+  if (live.toolList && live.tools.size) {
+    const tools = [...live.tools.values()].map((tool) => ({ name: tool.name, toolType: tool.toolType ?? null }));
+    chips.append(toggleChip(`Tool use (${tools.length})`, live.toolList as HTMLDetailsElement));
+    for (const [kind, count] of toolKindCounts(tools)) {
+      chips.append(toggleChip(`${TOOL_KIND_LABEL[kind]} (${count})`, live.toolList as HTMLDetailsElement, kind));
+    }
+  }
 }
 
 function renderLive(live: LiveTurn): void {
@@ -559,6 +727,8 @@ function ensureLive(): LiveTurn {
       thinkingNode: null,
       thinkingBody: null,
       toolList: null,
+      planNode: null,
+      chipsRow: null,
       renderedText: '',
     };
     if (active.status !== 'running') active.status = 'running';
@@ -727,24 +897,58 @@ async function stopRemoteTurn(): Promise<void> {
   }
 }
 
-async function refreshAfterTurn(): Promise<void> {
+async function refreshAfterTurn(live: LiveTurn | null = active?.live ?? null, attempt = 0): Promise<void> {
   if (!active) return;
   const token = loadToken;
   try {
     const history = await window.coreai.remoteHistory(active.serverUrl, active.sessionId, null, 50);
-    if (token !== loadToken || !active) return;
-    active.messages = (history?.messages ?? []) as unknown as RemoteMessage[];
+    if (token !== loadToken || !active || active.live !== live) return;
+    const rows = (history?.messages ?? []) as unknown as RemoteMessage[];
+    if (live && !historyHasAnswer(rows)) {
+      // Persistence can land a few hundred milliseconds after turn_complete. Dropping the live
+      // projection first would erase thinking/tool cards when the history snapshot wins the race.
+      if (attempt < 12) setTimeout(() => void refreshAfterTurn(live, attempt + 1), 250);
+      return;
+    }
+    active.messages = rows;
+    mergeLiveMetadata(rows, live);
     active.historyHasMore = history?.hasMore === true;
     active.oldestSeq = typeof history?.oldestSeq === 'number' ? history.oldestSeq : null;
-    if (active.live) {
-      active.live.bubble?.remove();
-      active.live = null;
-    }
+    if (live) live.bubble?.remove();
+    active.live = null;
     paintChat();
     sessionsLoaded = false;
     host?.requestRenderSidebar();
   } catch {
     // The terminal event already updated the UI; a failed history refresh is retried on reconnect.
+  }
+}
+
+function historyHasAnswer(messages: RemoteMessage[]): boolean {
+  const lastUser = messages.map((message) => message.role).lastIndexOf('user');
+  return messages.some((message, index) => index > lastUser && message.role !== 'user');
+}
+
+function mergeLiveMetadata(messages: RemoteMessage[], live: LiveTurn | null): void {
+  if (!live) return;
+  const lastUser = messages.map((message) => message.role).lastIndexOf('user');
+  let answer: RemoteMessage | null = null;
+  for (let index = messages.length - 1; index > lastUser; index -= 1) {
+    if (messages[index].role !== 'user') {
+      answer = messages[index];
+      break;
+    }
+  }
+  if (!answer) return;
+  if (!answer.thinking && live.reasoning) answer.thinking = live.reasoning;
+  if (!answer.tools?.length && live.tools.size) {
+    answer.tools = [...live.tools.values()].map((tool) => ({
+      name: tool.name,
+      arguments: tool.arguments,
+      result: tool.result,
+      status: tool.status,
+      tool_type: tool.toolType ?? null,
+    }));
   }
 }
 
@@ -806,8 +1010,9 @@ function handleRemoteEvent(event: Record<string, unknown>): void {
       const live = ensureLive();
       live.reasoning += String(event.content ?? '');
       const node = liveThinking(live);
+      renderLiveChips(live);
       if (live.thinkingBody) {
-        live.thinkingBody.textContent = live.reasoning;
+        renderRemoteMarkdown(live.thinkingBody, live.reasoning);
       }
       if (!node.isConnected) paintChat();
       break;
@@ -816,13 +1021,18 @@ function handleRemoteEvent(event: Record<string, unknown>): void {
       const live = ensureLive();
       const callId = String(event.call_id ?? event.callId ?? '');
       if (callId && !live.tools.has(callId)) {
-        const row = el('div', 'remote-tool-row');
         const name = String(event.tool_name ?? event.toolName ?? 'tool');
-        row.append(el('span', 'remote-tool-name', name));
-        const status = el('span', 'remote-tool-status running', 'running');
-        row.append(status);
-        liveToolList(live).append(row);
-        live.tools.set(callId, { name, status: 'running', node: row, statusNode: status });
+        const rawArgs = event.tool_args ?? event.arguments;
+        const args = typeof rawArgs === 'string' ? rawArgs : rawArgs == null ? undefined : JSON.stringify(rawArgs);
+        const card = toolCardEl({
+          name,
+          toolType: event.tool_type == null ? null : String(event.tool_type),
+          arguments: args,
+          status: 'running',
+        });
+        liveToolList(live).append(card.node);
+        live.tools.set(callId, { name, status: 'running', arguments: args, toolType: event.tool_type == null ? null : String(event.tool_type), node: card.node, statusNode: card.statusNode, resultNode: card.resultNode });
+        renderLiveChips(live);
         if (!liveToolList(live).isConnected) paintChat();
       }
       break;
@@ -834,17 +1044,20 @@ function handleRemoteEvent(event: Record<string, unknown>): void {
       if (tool) {
         const ok = String(event.status ?? 'done').toLowerCase();
         tool.status = ok;
+        tool.result = event.result == null ? undefined : String(event.result);
+        if (event.tool_type != null) tool.toolType = String(event.tool_type);
         tool.statusNode.textContent = ok;
         tool.statusNode.className = `remote-tool-status ${ok === 'error' || ok === 'failed' ? 'error' : 'ok'}`;
+        setToolResult(tool, event.result);
+        renderLiveChips(live);
       }
       break;
     }
     case 'turn_complete': {
       active.status = 'idle';
-      active.live = null;
       paintStatus();
       updateHeader();
-      void refreshAfterTurn();
+      void refreshAfterTurn(active.live);
       break;
     }
     case 'error': {
@@ -865,15 +1078,16 @@ function handleRemoteEvent(event: Record<string, unknown>): void {
     case 'plan_update': {
       const items = Array.isArray(event.todos) ? (event.todos as Array<Record<string, unknown>>) : [];
       const live = ensureLive();
-      const box = el('div', 'remote-plan');
+      if (!live.planNode) {
+        live.planNode = el('div', 'remote-plan');
+        liveToolList(live).append(live.planNode);
+      }
+      live.planNode.replaceChildren();
       for (const item of items) {
         const row = el('div', `remote-plan-item ${String(item.status ?? 'pending').toLowerCase()}`);
         row.textContent = String(item.content ?? '');
-        box.append(row);
+        live.planNode.append(row);
       }
-      const previous = live.toolList?.querySelector('.remote-plan');
-      previous?.remove();
-      liveToolList(live).append(box);
       if (!liveToolList(live).isConnected) paintChat();
       break;
     }
