@@ -14,7 +14,7 @@
     h1 { margin: 0; font-size: 18px; }
     h2 { margin: 0 0 10px; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
     .sub { color: var(--muted); font-size: 12px; }
-    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
     .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; min-width: 0; }
     .metric { font-size: 24px; font-weight: 650; margin-top: 4px; }
     .row { display: flex; gap: 8px; align-items: center; }
@@ -47,6 +47,7 @@
     <div class="card"><h2>Sessions</h2><div class="metric" id="session-count">–</div></div>
     <div class="card"><h2>Artifacts</h2><div class="metric" id="artifact-count">–</div></div>
     <div class="card"><h2>Memory files</h2><div class="metric" id="memory-count">–</div></div>
+    <div class="card"><h2>Usage</h2><div class="metric" id="usage-tokens">–</div><div class="sub" id="usage-cost"></div></div>
   </div>
 
   <div class="card">
@@ -101,8 +102,21 @@
     $('memory-count').textContent = summary.memoryFileCount ?? 'n/a';
   }
 
-  async function loadSessions() {
-    const result = await bridge.sessions.list({ limit: 50 });
+  function compactTokens(value) {
+    const number = Number(value || 0);
+    if (number >= 1_000_000) return `${(number / 1_000_000).toFixed(1)}M`;
+    if (number >= 1_000) return `${(number / 1_000).toFixed(1)}k`;
+    return String(number);
+  }
+
+  async function loadUsage() {
+    const usage = await bridge.usage.summary('all');
+    const totals = usage.totals || {};
+    $('usage-tokens').textContent = compactTokens(Number(totals.inputTokens || 0) + Number(totals.outputTokens || 0));
+    $('usage-cost').textContent = `$${Number(totals.costUsd || 0).toFixed(4)} · ${totals.sessions || 0} sessions`;
+  }
+
+  async function loadSessions() {    const result = await bridge.sessions.list({ limit: 50 });
     const rows = Array.isArray(result.sessions) ? result.sessions : [];
     $('sessions').replaceChildren();
     $('sessions-empty').style.display = rows.length ? 'none' : 'block';
@@ -166,7 +180,7 @@
   async function refresh() {
     showStatus('Loading…');
     try {
-      await Promise.all([loadSummary(), loadSessions(), loadMemory(), loadStorage()]);
+      await Promise.all([loadSummary(), loadUsage(), loadSessions(), loadMemory(), loadStorage()]);
       showStatus('');
     } catch (error) {
       showStatus(error.message || String(error), true);

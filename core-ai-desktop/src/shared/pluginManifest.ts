@@ -28,6 +28,7 @@ export const SUPPORTED_CAPABILITIES = [
   'sessions.read',
   'memory.read',
   'workspace.read',
+  'usage.read',
   'plugin.storage',
   'events.read',
 ] as const;

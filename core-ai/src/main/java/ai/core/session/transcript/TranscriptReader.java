@@ -27,6 +27,11 @@ public final class TranscriptReader {
     public record Payload(String text, String path, long size) {
     }
 
+    /** Token/cost totals over completed, non-rewound turns. */
+    public record Usage(long inputTokens, long outputTokens, long cachedTokens, double costUsd,
+                        int turns, int completedTurns) {
+    }
+
     private final TranscriptStore store;
 
     public TranscriptReader(TranscriptStore store) {
@@ -54,6 +59,33 @@ public final class TranscriptReader {
 
     public long maxSeq() {
         return store.maxSeq();
+    }
+
+    public Usage usage() {
+        var groups = eligible(turns());
+        long input = 0;
+        long output = 0;
+        long cached = 0;
+        double cost = 0;
+        int completed = 0;
+        for (var group : groups) {
+            for (var record : group) {
+                if (!TranscriptKinds.TURN_COMPLETE.equals(record.kind)) continue;
+                input += number(record, "input_tokens");
+                output += number(record, "output_tokens");
+                cached += number(record, "cached_tokens");
+                var turnCost = record.decimal("cost_usd");
+                if (turnCost != null) cost += turnCost;
+                completed++;
+                break;
+            }
+        }
+        return new Usage(input, output, cached, cost, groups.size(), completed);
+    }
+
+    private static long number(TranscriptRecord record, String name) {
+        var value = record.number(name);
+        return value == null ? 0 : value;
     }
 
     public Payload payload(long seq, String field, Integer index) {

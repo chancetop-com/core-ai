@@ -108,6 +108,22 @@ export interface PluginWorkspaceSummary {
   memoryFileCount: number | null;
 }
 
+export interface PluginUsageTotals {
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+  turns: number;
+  completedTurns: number;
+}
+
+export interface PluginUsageSummary {
+  range: 'all' | '7d' | '30d';
+  totals: PluginUsageTotals;
+  sessions: Array<PluginUsageTotals & { sessionId: string; updatedAt: string }>;
+}
+
 export interface PluginEvent {
   type: string;
   version: number;
@@ -137,6 +153,9 @@ export interface CoreAiPluginBridge {
   };
   workspace: {
     summary(): Promise<PluginWorkspaceSummary>;
+  };
+  usage: {
+    summary(range?: 'all' | '7d' | '30d'): Promise<PluginUsageSummary>;
   };
   storage: {
     get(key: string): Promise<{ value: string | null }>;

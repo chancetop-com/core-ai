@@ -38,6 +38,7 @@ public class AppServerEngine implements EngineApi {
     private final SchedulesApi schedulesApi;
     private final MediaSettingsApi mediaSettings;
     private final MediaGenerationApi mediaGeneration;
+    private final UsageApi usageApi;
     private final ModelSettingsApi modelSettings;
     private final SpeechApi speechApi = new SpeechApi();
     private final HubBridge hubBridge = new HubBridge();
@@ -56,6 +57,7 @@ public class AppServerEngine implements EngineApi {
                 Path.of(System.getProperty("user.home"), ".core-ai", "agent.properties"));
         this.mediaGeneration = new MediaGenerationApi(bootstrap.workspace, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.defaultImageModel, bootstrap.defaultVideoModel, mediaSettings);
+        this.usageApi = new UsageApi(bootstrap.sessionsDir, bootstrap.sessionPersistence);
         this.modelSettings = new ModelSettingsApi(bootstrap, registry);
         this.handlers = buildHandlers();
         this.supportedMethods = Set.copyOf(handlers.keySet());
@@ -98,6 +100,7 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("transcript");
         capabilities.add("speech");
         capabilities.add("media_generation");
+        capabilities.add("usage_summary");
         node.put("workspace", bootstrap.workspace.toString());
         node.set("trustState", trustNode());
         if (bootstrap.workspaceTrusted) scheduler.start();
@@ -188,11 +191,11 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("helpers/add", helperBridge::add),
                 Map.entry("helpers/update", helperBridge::update),
                 Map.entry("helpers/remove", helperBridge::remove)));
-        handlers.putAll(mediaHandlers());
+        handlers.putAll(extraHandlers());
         return Map.copyOf(handlers);
     }
 
-    private Map<String, Function<ObjectNode, JsonNode>> mediaHandlers() {
+    private Map<String, Function<ObjectNode, JsonNode>> extraHandlers() {
         return Map.of(
                 "media/models", ignored -> mediaGeneration.models(),
                 "media/generate", params -> {
@@ -206,7 +209,8 @@ public class AppServerEngine implements EngineApi {
                 "media/jobs/list", params -> {
                     bootstrap.requireTrusted("reading media jobs");
                     return mediaGeneration.jobs(params);
-                });
+                },
+                "usage/summary", usageApi::summary);
     }
 
     private ObjectNode skillsList(ObjectNode params) {

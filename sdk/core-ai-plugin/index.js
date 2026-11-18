@@ -26,6 +26,7 @@ export const CAPABILITIES = Object.freeze([
   'sessions.read',
   'memory.read',
   'workspace.read',
+  'usage.read',
   'plugin.storage',
   'events.read',
 ]);

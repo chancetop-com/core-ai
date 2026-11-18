@@ -32,6 +32,9 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   workspace: {
     summary: () => call('workspace.summary'),
   },
+  usage: {
+    summary: (range = 'all') => call('usage.summary', { range }),
+  },
   storage: {
     get: (key: string) => call('storage.get', { key }),
     set: (key: string, value: string) => call('storage.set', { key, value }),

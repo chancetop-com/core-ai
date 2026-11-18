@@ -35,7 +35,7 @@ async function main() {
     pluginId: 'test.page', pluginName: 'Test Page', pageId: 'main', title: 'Test Page',
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
-      'sessions.read', 'memory.read', 'workspace.read', 'plugin.storage', 'events.read'],
+      'sessions.read', 'memory.read', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -55,6 +55,9 @@ async function main() {
       }
       if (method === 'memory/read') {
         return { path: 'knowledge/a.md', content: '# A' };
+      }
+      if (method === 'usage/summary') {
+        return { range: 'all', totals: { sessions: 1, inputTokens: 10, outputTokens: 5, cachedTokens: 0, costUsd: 0.01, turns: 1, completedTurns: 1 }, sessions: [] };
       }
       return { kind: 'image', files: [] };
     },
@@ -113,6 +116,8 @@ async function main() {
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);
   assert.equal(summary.memoryFileCount, 1);
+  const usage = await view.webContents.executeJavaScript('window.coreaiPlugin.usage.summary("all")');
+  assert.equal(usage.totals.inputTokens, 10);
   await view.webContents.executeJavaScript('window.coreaiPlugin.storage.set("counter", "1")');
   const stored = await view.webContents.executeJavaScript('window.coreaiPlugin.storage.get("counter")');
   assert.equal(stored.value, '1');

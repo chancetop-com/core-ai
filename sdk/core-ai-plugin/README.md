@@ -76,6 +76,7 @@ page bridge exposes:
 - `sessions.list({ limit?, cursor? })` with `sessions.read`
 - `memory.list({ limit?, cursor? })` and `memory.read(path)` with `memory.read`
 - `workspace.summary()` with `workspace.read` (counts are `null` for capabilities not granted)
+- `usage.summary(range)` with `usage.read` (`all`, `7d`, `30d`; token/cost totals from transcripts)
 - `storage.get/set/delete/keys` with `plugin.storage` (string values, 64 KiB per value)
 - `events.subscribe(types)` and `events.on(callback)` with `events.read`
 
@@ -97,6 +98,7 @@ and `custom`. They never carry message text, tool arguments or tool results.
 | `sessions.read` | lists session metadata for the current workspace |
 | `memory.read` | lists and reads memory files in the workspace |
 | `workspace.read` | reads a small workspace summary |
+| `usage.read` | reads workspace token/cost totals from persisted transcripts |
 | `plugin.storage` | namespaced string storage persisted with the plugin install |
 | `events.read` | subscribes to an allowlist of redacted session events |
 | `media.models.read` | reads the configured image/video model catalog |

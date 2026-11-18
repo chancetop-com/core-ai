@@ -260,6 +260,9 @@ export class PluginPageHost {
       case 'workspace.summary':
         this.requireCapability(instance, 'workspace.read');
         return this.workspaceSummary(instance);
+      case 'usage.summary':
+        this.requireCapability(instance, 'usage.read');
+        return this.engine(instance, 'usage/summary', { range: typeof args.range === 'string' ? args.range : 'all' });
       case 'storage.get':
         this.requireCapability(instance, 'plugin.storage');
         return { value: await this.storage().storageGet(instance.pluginId, storageKey(args.key)) };
