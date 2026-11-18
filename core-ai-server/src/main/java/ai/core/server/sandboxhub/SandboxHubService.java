@@ -178,6 +178,7 @@ public class SandboxHubService {
         try {
             return future.get(timeoutSeconds, TimeUnit.SECONDS);
         } catch (TimeoutException e) {
+            emitCall(session, eventSession, agent, entry, callId, STATUS_PENDING, null, null);
             return pending(callId);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -234,23 +235,23 @@ public class SandboxHubService {
             var durationMs = System.currentTimeMillis() - startedAt;
             auditService.finish(callId, durationMs, null, false, null, e.getMessage());
             var response = failure(callId, e.getMessage(), durationMs);
-            emitCall(session, agentSession, agent, entry, response);
+            emitCall(session, agentSession, agent, entry, callId, response.status, response.durationMs, response.errorMessage);
             return response;
         }
         var response = response(result, callId, System.currentTimeMillis() - startedAt);
         auditService.finish(callId, response.durationMs, response.text, !Boolean.TRUE.equals(response.isError), null, response.errorMessage);
         if (!STATUS_PENDING.equals(response.status)) {
-            emitCall(session, agentSession, agent, entry, response);
+            emitCall(session, agentSession, agent, entry, callId, response.status, response.durationMs, response.errorMessage);
         }
         return response;
     }
 
     /**
-     * Projects a completed script call into the session UI. Custom cards are the existing renderable
+     * Projects a script call into the session UI. Custom cards are the existing renderable
      * surface on Web and Desktop; the call is attributed by capability contribution, not by process.
      */
     private void emitCall(SandboxHubSession session, InProcessAgentSession agentSession, Agent agent,
-                          SandboxHubCatalog.Entry entry, SandboxHubCallResponse response) {
+                          SandboxHubCatalog.Entry entry, String callId, String status, Long durationMs, String error) {
         try {
             if (agentSession == null) return;
             var contributors = contributors(agent.getExecutionContext(), entry);
@@ -258,28 +259,28 @@ public class SandboxHubService {
             if (contributors.isEmpty()) return;
             var items = new ArrayList<Map<String, String>>();
             items.add(Map.of("label", "Capability", "value", entry.kind() + ": " + entry.path()));
-            items.add(Map.of("label", "Status", "value", Boolean.TRUE.equals(response.isError) ? "failed" : "completed"));
-            if (!contributors.isEmpty()) {
-                items.add(Map.of("label", "Skill", "value", String.join(", ", contributors)));
+            items.add(Map.of("label", "Status", "value", status));
+            items.add(Map.of("label", "Skill", "value", String.join(", ", contributors)));
+            if (durationMs != null) {
+                items.add(Map.of("label", "Duration", "value", durationMs + " ms"));
             }
-            items.add(Map.of("label", "Duration", "value", response.durationMs + " ms"));
-            if (response.errorMessage != null && !response.errorMessage.isBlank()) {
-                items.add(Map.of("label", "Error", "value", response.errorMessage));
+            if (error != null && !error.isBlank()) {
+                items.add(Map.of("label", "Error", "value", error));
             }
             var card = JsonUtil.toJson(Map.of(
                     "schema_version", 1,
                     "title", "Skill SDK · " + entry.path(),
                     "blocks", List.of(Map.of("type", "key_values", "items", items))));
             var data = JsonUtil.toJson(Map.of(
-                    "call_id", response.callId,
+                    "call_id", callId,
                     "capability", entry.refId(),
                     "kind", entry.kind(),
-                    "status", response.status,
+                    "status", status,
                     "contributors", contributors,
-                    "duration_ms", response.durationMs));
-            agentSession.dispatchEvent(CustomEvent.of(session.sessionId(), "skill_sdk_call", data, card, response.callId));
+                    "duration_ms", durationMs == null ? 0L : durationMs));
+            agentSession.dispatchEvent(CustomEvent.of(session.sessionId(), "skill_sdk_call", data, card, callId));
         } catch (RuntimeException e) {
-            LOGGER.warn("failed to emit skill sdk call event, session={}, call={}", session.sessionId(), response.callId, e);
+            LOGGER.warn("failed to emit skill sdk call event, session={}, call={}", session.sessionId(), callId, e);
         }
     }
 
