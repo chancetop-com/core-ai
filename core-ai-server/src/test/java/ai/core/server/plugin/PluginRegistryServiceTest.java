@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -14,6 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PluginRegistryServiceTest {
 
+    @SuppressFBWarnings("VA_FORMAT_STRING_USES_NEWLINE")
     private static String manifest(String id, String version, String required) {
         return """
                 {
