@@ -5,6 +5,7 @@ import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ToolExposure;
@@ -127,7 +128,7 @@ public final class LocalSdkBroker implements AutoCloseable {
                 write(exchange, 404, error("tool not found: " + name));
                 return;
             }
-            write(exchange, 200, detail(tool));
+            write(exchange, 200, detail(session, tool));
             return;
         }
         if ("POST".equals(method) && route.startsWith("/tools/") && route.endsWith("/call")) {
@@ -159,7 +160,7 @@ public final class LocalSdkBroker implements AutoCloseable {
         node.put("sandbox_state", "local");
         var tools = node.putArray("tools");
         for (var tool : visibleTools(session)) {
-            tools.add(detail(tool));
+            tools.add(detail(session, tool));
         }
         node.putArray("groups");
         node.putArray("datasets");
@@ -171,34 +172,55 @@ public final class LocalSdkBroker implements AutoCloseable {
         var tools = node.putArray("tools");
         var filter = query == null ? "" : URLDecoder.decode(query, StandardCharsets.UTF_8);
         for (var tool : visibleTools(session)) {
-            if (!filter.isBlank() && !matches(tool, filter)) continue;
-            tools.add(summary(tool));
+            if (!filter.isBlank() && !matches(session, tool, filter)) continue;
+            tools.add(summary(session, tool));
         }
         return node;
     }
 
-    private boolean matches(ToolCall tool, String query) {
-        var text = (tool.getName() + " " + (tool.getDescription() == null ? "" : tool.getDescription())).toLowerCase(Locale.ROOT);
+    private boolean matches(EngineSession session, ToolCall tool, String query) {
+        var capability = capability(session, tool);
+        var text = (tool.getName() + " " + (capability == null ? "" : capability.path()) + " "
+                + (tool.getDescription() == null ? "" : tool.getDescription())).toLowerCase(Locale.ROOT);
         return text.contains(query.toLowerCase(Locale.ROOT));
     }
 
-    private ObjectNode detail(ToolCall tool) {
-        var node = summary(tool);
+    private ObjectNode detail(EngineSession session, ToolCall tool) {
+        var node = summary(session, tool);
         node.put("input_schema", JsonUtil.toJson(tool.toJsonSchema()));
         node.put("timeout_seconds", 120);
         return node;
     }
 
-    private ObjectNode summary(ToolCall tool) {
+    private ObjectNode summary(EngineSession session, ToolCall tool) {
+        var capability = capability(session, tool);
+        var path = capability == null ? tool.getName() : capability.path();
         var node = JsonUtil.OBJECT_MAPPER.createObjectNode();
-        node.put("name", tool.getName());
-        node.put("kind", kind(tool));
-        node.put("group", tool.getNamespace());
-        node.put("path", tool.getName());
-        node.put("ref_id", tool.getName());
+        node.put("name", scriptName(path));
+        node.put("kind", capability == null ? kind(tool) : capability.kind());
+        node.put("group", capability == null ? nullToEmpty(tool.getNamespace()) : nullToEmpty(capability.group()));
+        node.put("path", path);
+        node.put("ref_id", capability == null ? tool.getName() : capability.refId());
         node.put("description", tool.getDescription());
         node.put("exposure", tool.getExposure().name().toLowerCase(Locale.ROOT));
         return node;
+    }
+
+    private SkillCapability capability(EngineSession session, ToolCall tool) {
+        for (var capability : session.agent().getExecutionContext().getSkillCapabilities()) {
+            if (capability != null && capability.tool() != null && capability.tool().getName().equals(tool.getName())) {
+                return capability;
+            }
+        }
+        return null;
+    }
+
+    private String scriptName(String path) {
+        return path == null ? "" : path.replaceAll("[^A-Za-z0-9]", "_");
+    }
+
+    private String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private String kind(ToolCall tool) {
@@ -235,6 +257,12 @@ public final class LocalSdkBroker implements AutoCloseable {
     private ToolCall find(EngineSession session, String name) {
         for (var tool : visibleTools(session)) {
             if (tool.getName().equals(name)) return tool;
+            var capability = capability(session, tool);
+            if (capability != null && (capability.path().equals(name)
+                    || capability.refId().equals(name)
+                    || scriptName(capability.path()).equals(name))) {
+                return tool;
+            }
         }
         return null;
     }

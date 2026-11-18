@@ -82,8 +82,8 @@ class LocalSdkBrokerTest {
         var other = tool();
         other.setName("other");
         var context = ExecutionContext.builder().build();
-        context.setSkillCapabilities(List.of(new SkillCapability("skill-1", "Admin/skill", "builtin",
-                "search", "search", null, search)));
+        context.setSkillCapabilities(List.of(new SkillCapability("skill-1", "Admin/skill", "mcp",
+                "mcp:analytics:run_query", "analytics/run_query", "analytics", search)));
         context.activateSkillCapabilityScope();
         var agent = mock(Agent.class);
         when(agent.getName()).thenReturn("local-agent");
@@ -98,7 +98,8 @@ class LocalSdkBrokerTest {
             var catalog = HttpClient.newHttpClient().send(
                     HttpRequest.newBuilder(URI.create(base + "/catalog")).build(), HttpResponse.BodyHandlers.ofString());
 
-            assertTrue(catalog.body().contains("search"));
+            assertTrue(catalog.body().contains("analytics_run_query"));
+            assertTrue(catalog.body().contains("analytics/run_query"));
             assertTrue(!catalog.body().contains("other"));
         }
     }
