@@ -7379,6 +7379,21 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   backgroundLabel.append(backgroundToggle, document.createTextNode('Run in background to execute scheduled tasks'));
   body.append(backgroundLabel);
 
+  body.append(el('h2', undefined, 'Skill SDK'));
+  body.append(el('div', 'hint', 'Let skill scripts call the tools declared by the skill through a session-scoped loopback broker. '
+    + 'Only declared tools are exposed after a skill is loaded; the engine restarts to apply this change.'));
+  const brokerLabel = el('label', 'schedule-filter');
+  const brokerToggle = el('input') as HTMLInputElement;
+  brokerToggle.type = 'checkbox';
+  brokerToggle.checked = currentSettings?.sdkBrokerEnabled === true;
+  brokerToggle.onchange = async () => {
+    const saved = await window.coreai.setSettings({ sdkBrokerEnabled: brokerToggle.checked });
+    brokerToggle.checked = saved?.sdkBrokerEnabled === true;
+    toast(brokerToggle.checked ? 'Skill SDK broker enabled — restarting the engine' : 'Skill SDK broker disabled — restarting the engine');
+  };
+  brokerLabel.append(brokerToggle, document.createTextNode('Enable skill SDK capabilities for local sessions (experimental)'));
+  body.append(brokerLabel);
+
   const permissions = state.workspace ? await call('permissions/get', {}) : null;
   if (permissions) {
     const section = collapsibleSettingsSection('Permission rules',

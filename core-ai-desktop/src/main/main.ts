@@ -87,6 +87,8 @@ interface DesktopSettings {
   /** Per-session notification switches, key = "<workspace>::<sessionId>". */
   notifySessions?: Record<string, boolean>;
   backgroundScheduling?: boolean;
+  /** Expose the session's local tools to skill scripts through the engine's loopback SDK broker. */
+  sdkBrokerEnabled?: boolean;
   /** Start the installed app when the user signs in (default on). The window still closes to tray. */
   launchAtLogin?: boolean;
   /** Bundled engine version whose standalone CLI copies this install has already refreshed. */
@@ -911,6 +913,7 @@ function registerIpc(): void {
   ipcMain.handle('settings:get', () => settings);
   ipcMain.handle('settings:set', async (_event, patch: DesktopSettings) => {
     const previousPolicy = settings.approvalPolicy ?? 'ask';
+    const previousSdkBroker = settings.sdkBrokerEnabled === true;
     settings = { ...settings, ...patch };
     if (patch.notifyTarget !== undefined) settings.notifyTarget = normalizeNotifyTarget(patch.notifyTarget);
     if (patch.notifySessions !== undefined) settings.notifySessions = normalizeNotifySessions(patch.notifySessions);
@@ -931,7 +934,10 @@ function registerIpc(): void {
     }
     if (skillsChanged) await supervisor?.shutdownAll();
     const nextPolicy = settings.approvalPolicy ?? 'ask';
-    if (settings.lastWorkspace && nextPolicy !== previousPolicy) await supervisor?.restart(settings.lastWorkspace);
+    if (settings.lastWorkspace && (nextPolicy !== previousPolicy
+        || (settings.sdkBrokerEnabled === true) !== previousSdkBroker)) {
+      await supervisor?.restart(settings.lastWorkspace);
+    }
     return settings;
   });
   ipcMain.handle('workspace:choose', async () => {
@@ -1748,6 +1754,7 @@ else {
           ...(await pluginHost?.engineEnv() ?? {}),
           CORE_AI_CLI_BIN: enginePath,
           CORE_AI_BROWSER_TOOL: resolveExecutable('browser-use') ? 'ready' : 'missing',
+          CORE_AI_SDK_BROKER: settings.sdkBrokerEnabled === true ? 'true' : 'false',
         };
         env = withExecutableOnPath(env, path.dirname(enginePath));
         // browser-use/ocg may live in ~/.local/bin or the npm global bin, which the app process
@@ -1779,6 +1786,30 @@ else {
         const target = settings.notifyTarget;
         if (!target) return { ok: false, error: 'Notification target is not configured' };
         return sendOcgNotification(target, text);
+      },
+      browser: {
+        status: () => browserManager?.status() ?? { running: false, tabs: [], activeId: null },
+        tabs: () => browserManager?.listTargets() ?? [],
+        open: async (url) => {
+          if (!browserManager) throw new Error('the managed browser is not ready');
+          if (!browserManager.running) {
+            await browserManager.start();
+            const status = browserManager.navigate(url);
+            return { targetId: status.activeId, url: status.url, title: status.title };
+          }
+          return browserManager.createTarget(url, false);
+        },
+        navigate: (url) => {
+          if (!browserManager) throw new Error('the managed browser is not ready');
+          return browserManager.navigate(url);
+        },
+        close: async (targetId) => {
+          if (!browserManager) throw new Error('the managed browser is not ready');
+          await browserManager.closeTarget(targetId);
+        },
+        activate: (targetId) => {
+          browserManager?.activateTarget(targetId);
+        },
       },
     });
     completionNotifier = new CompletionNotifier({

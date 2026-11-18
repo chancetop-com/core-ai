@@ -399,7 +399,8 @@ public class EngineSessionRegistry {
         inProcess.onEvent(recorder);
         DesktopSessionTools.install(bootstrap.workspace, agent, this);
         var localSdkBrokerEnabled = Boolean.parseBoolean(
-                bootstrap.props.property("agent.sdk.broker.enabled").orElse("false"));
+                bootstrap.props.property("agent.sdk.broker.enabled")
+                        .orElse(System.getenv().getOrDefault("CORE_AI_SDK_BROKER", "false")));
         if (sdkBroker != null && (localSdkBrokerEnabled
                 || !agent.getExecutionContext().getSkillCapabilities().isEmpty())) {
             var brokerUrl = sdkBroker.bind(sessionId);
