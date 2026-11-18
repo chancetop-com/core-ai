@@ -33,8 +33,8 @@ public final class SkillDisclosureRule implements SkillQualityRule {
             if (status == QualityIssueStatus.INDETERMINATE) continue;
             status = QualityIssueStatus.FAIL;
             issues.add(issue(status, "/SKILL.md", "REFERENCE_NOT_PACKAGED",
-                "链接目标未随本次上传发布：" + broken,
-                "把该文件加入 skill 目录后重新发布，或移除该链接。"));
+                "Link target is not packaged with this upload: " + broken,
+                "Add the file to the skill directory and publish again, or remove the link."));
         }
         for (var requirement : SkillDisclosureRequirements.ALL) {
             if (resolution.sections().containsKey(requirement.key())) continue;
@@ -42,20 +42,20 @@ public final class SkillDisclosureRule implements SkillQualityRule {
                 if (status != QualityIssueStatus.FAIL) status = QualityIssueStatus.INDETERMINATE;
                 issues.add(issue(QualityIssueStatus.INDETERMINATE, "/SKILL.md", "SECTION_TOO_LARGE",
                     resolution.tooLarge().get(requirement.key()),
-                    "添加对应子标题，或把 reference 拆分到 8000 字符以内。"));
+                    "Add the matching heading, or split the reference into sections under 8000 characters."));
                 continue;
             }
             if (resolution.remoteRequirements().contains(requirement.key())) {
                 status = QualityIssueStatus.FAIL;
                 issues.add(issue(status, "/SKILL.md", "REMOTE_SECTION_NOT_ALLOWED",
-                    requirement.label() + " 只指向外部 URL，发布时无法保证 Agent 可访问。",
-                    "把内容放入 packaged reference，并从 SKILL.md 链接它。"));
+                    requirement.label() + " points only to an external URL; the gate cannot guarantee access.",
+                    "Put the content in a packaged reference and link it from SKILL.md."));
                 continue;
             }
             if (status != QualityIssueStatus.INDETERMINATE) status = QualityIssueStatus.FAIL;
             issues.add(issue(QualityIssueStatus.FAIL, "/SKILL.md", "MISSING_SECTION",
-                "未找到 " + requirement.label() + " section，且没有可达的 packaged reference 提供它。",
-                "添加 “## " + requirement.label() + "” section，或链接一个包含该 section 的 reference。"));
+                "No " + requirement.label() + " section was found, and no reachable packaged reference provides it.",
+                "Add a \"## " + requirement.label() + "\" section, or link a reference that contains it."));
         }
         return new SkillRuleResult(status, issues);
     }

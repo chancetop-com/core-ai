@@ -28,8 +28,8 @@ public final class SkillUnreferencedReferenceRule implements SkillQualityRule {
             if (!path.endsWith(".md") || resolution.reachableFiles().contains(path)) continue;
             issues.add(SkillQualityIssues.issue(META, QualityIssueStatus.PASS, "/" + path,
                 "UNREFERENCED_REFERENCE",
-                path + " 没有被 SKILL.md 的可达链接引用，不能作为任一要求的内容来源。",
-                "如果需要它满足某个要求，请从 SKILL.md 链接它；否则确认它是模板/说明文件。"));
+                path + " is not reachable from any SKILL.md link, so it cannot satisfy a requirement.",
+                "Link it from SKILL.md if it is needed, otherwise confirm it is only a template or note."));
         }
         return new SkillRuleResult(QualityIssueStatus.PASS, issues);
     }

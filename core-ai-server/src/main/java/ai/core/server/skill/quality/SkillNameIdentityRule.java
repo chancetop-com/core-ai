@@ -26,14 +26,14 @@ public final class SkillNameIdentityRule implements SkillQualityRule {
         if (!SkillMetadata.isValidName(candidate.name)) {
             return SkillRuleResult.fail(SkillQualityIssues.issue(META, QualityIssueStatus.FAIL, "/name",
                 "INVALID_SKILL_NAME",
-                "Skill name 不符合命名规范：必须以小写字母或数字开头，只含小写字母、数字和连字符。",
-                "把 frontmatter name 改为如 my-skill-name 的形式。"));
+                "The skill name is invalid: it must start with a lowercase letter or digit and contain only lowercase letters, digits and hyphens.",
+                "Use a frontmatter name such as my-skill-name."));
         }
         if (candidate.directoryName == null || !candidate.name.equals(candidate.directoryName)) {
             return SkillRuleResult.fail(SkillQualityIssues.issue(META, QualityIssueStatus.FAIL, "/name",
                 "SKILL_DIRECTORY_MISMATCH",
-                "Skill name \"" + candidate.name + "\" 与目录名 \"" + candidate.directoryName + "\" 不一致。",
-                "把 skill 目录重命名为 \"" + candidate.name + "\"，或修改 frontmatter name。"));
+                "Skill name \"" + candidate.name + "\" does not match directory \"" + candidate.directoryName + "\".",
+                "Rename the skill directory to \"" + candidate.name + "\" or change the frontmatter name."));
         }
         return SkillRuleResult.pass();
     }

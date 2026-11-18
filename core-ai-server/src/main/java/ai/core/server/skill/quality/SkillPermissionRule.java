@@ -29,8 +29,8 @@ public final class SkillPermissionRule implements SkillQualityRule {
         var declaration = SkillPermissionDeclaration.parse(candidate.allowedTools);
         if (!declaration.invalid().isEmpty()) {
             return SkillRuleResult.fail(issue(QualityIssueStatus.FAIL, "/allowed-tools", "UNKNOWN_PERMISSION_NAMESPACE",
-                "存在无法解析的能力声明：" + String.join(", ", declaration.invalid()),
-                "使用 tool:/mcp:/api-tool:/subagent:/llm-call:/dataset:/media:/decision 语法。"));
+                "Unparseable capability declarations: " + String.join(", ", declaration.invalid()),
+                "Use tool:/mcp:/api-tool:/subagent:/llm-call:/dataset:/media:/decision syntax."));
         }
         var usage = analyzer.analyze(candidate);
         var issues = new ArrayList<ai.core.server.quality.domain.StoredQualityIssue>();
@@ -54,7 +54,7 @@ public final class SkillPermissionRule implements SkillQualityRule {
         if (SkillCapabilityCatalog.isKnownTool(name) || SkillCapabilityCatalog.isKnownGroup(name)) return current;
         if (current == QualityIssueStatus.FAIL) return current;
         issues.add(issue(QualityIssueStatus.FAIL, "/allowed-tools", "UNKNOWN_BUILTIN_TOOL",
-            "未注册的 builtin 能力：" + name, "改用实际存在的 tool 或 group，或检查拼写。"));
+            "Unregistered builtin capability: " + name, "Use an existing tool or group, or check the spelling."));
         return QualityIssueStatus.FAIL;
     }
 
@@ -67,16 +67,16 @@ public final class SkillPermissionRule implements SkillQualityRule {
             if (current == QualityIssueStatus.PASS) {
                 issues.add(issue(QualityIssueStatus.INDETERMINATE, "/" + usage.file(),
                     "DYNAMIC_USAGE",
-                    "无法静态确定 " + usage.file() + ":" + usage.line() + " 调用的能力名称。",
-                    "改用字面量名称，或为该 namespace 声明 * 宽权限。"));
+                    "Cannot statically determine the capability called at " + usage.file() + ":" + usage.line() + ".",
+                    "Use a literal name, or declare * for that namespace."));
             }
             return QualityIssueStatus.INDETERMINATE;
         }
         if (declaration.covers(usage)) return current;
         if (current == QualityIssueStatus.FAIL) return current;
         issues.add(issue(QualityIssueStatus.FAIL, "/" + usage.file(), "PERMISSION_NOT_DECLARED",
-            "检测到未声明的能力调用：" + describe(usage) + "（" + usage.file() + ":" + usage.line() + "）。",
-            "在 allowed-tools 中声明 " + suggestedDeclaration(usage) + "。"));
+            "Undeclared capability call detected: " + describe(usage) + " (" + usage.file() + ":" + usage.line() + ").",
+            "Declare " + suggestedDeclaration(usage) + " in allowed-tools."));
         return QualityIssueStatus.FAIL;
     }
 

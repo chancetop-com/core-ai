@@ -30,16 +30,16 @@ public final class SkillDescriptionRule implements SkillQualityRule {
     public SkillRuleResult evaluate(SkillPublishCandidate candidate) {
         var description = candidate.description == null ? "" : candidate.description.trim();
         if (description.isEmpty() || description.length() > 4096) {
-            return fail("DESCRIPTION_LENGTH", "description 为空或超过 4096 字符。",
-                "写一句说明做什么、何时使用、不覆盖什么。");
+            return fail("DESCRIPTION_LENGTH", "description is empty or longer than 4096 characters.",
+                "Write one sentence covering what it does, when to use it, and what it does not cover.");
         }
         if (!USE_WHEN.matcher(description).find()) {
-            return fail("MISSING_USE_WHEN", "description 缺少 Use when 触发条件。",
-                "加入 “Use when the user asks to …”，点名具体请求或输入类型。");
+            return fail("MISSING_USE_WHEN", "description has no Use when trigger.",
+                "Add \"Use when the user asks to ...\" and name the concrete request or input type.");
         }
         if (!SCOPE.matcher(description).find()) {
-            return fail("MISSING_SCOPE", "description 没有说明 scope 边界。",
-                "加入 “Scope: …; not for …”，说明不处理的任务或输入。");
+            return fail("MISSING_SCOPE", "description does not state the scope boundary.",
+                "Add \"Scope: ...; not for ...\" naming the tasks or inputs it does not handle.");
         }
         return SkillRuleResult.pass();
     }

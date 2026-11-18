@@ -32,8 +32,8 @@ public final class SkillPermissionUnusedRule implements SkillQualityRule {
             if (!used(entry, usages)) {
                 issues.add(SkillQualityIssues.issue(META, QualityIssueStatus.PASS, "/allowed-tools",
                     "UNUSED_PERMISSION",
-                    "声明了但未检测到使用：" + render(entry),
-                    "如果动态代码不需要它，移除该声明以缩小能力范围。"));
+                    "Declared but no usage detected: " + render(entry),
+                    "Remove the declaration if dynamic code does not need it, to narrow the capability scope."));
             }
         }
         return new SkillRuleResult(QualityIssueStatus.PASS, issues);

@@ -39,7 +39,7 @@ public final class SkillEvalDatasetValidator {
         var bytes = candidate.resource(DATASET_PATH);
         if (bytes == null) {
             fatal.add(new Problem("EVAL_DATASET_NOT_PACKAGED", "/eval/eval.json",
-                "缺少 eval/eval.json，或它没有随包发布。", "创建 eval/eval.json 并把它加入 skill 目录。"));
+                "eval/eval.json is missing or was not packaged.", "Create eval/eval.json and add it to the skill directory."));
             return new Validation(fatal, warnings, Map.of(), 0, null);
         }
         JsonNode root;
@@ -47,7 +47,7 @@ public final class SkillEvalDatasetValidator {
             root = JsonUtil.OBJECT_MAPPER.readTree(new String(bytes, StandardCharsets.UTF_8));
         } catch (Exception e) {
             fatal.add(new Problem("EVAL_SCHEMA_INVALID", "/eval/eval.json",
-                "eval.json 不是合法 JSON：" + e.getMessage(), "修正 JSON 语法。"));
+                "eval.json is not valid JSON: " + e.getMessage(), "Fix the JSON syntax."));
             return new Validation(fatal, warnings, Map.of(), 0, digest(bytes));
         }
         validateHeader(root, candidate, fatal);
@@ -59,12 +59,12 @@ public final class SkillEvalDatasetValidator {
     private void validateHeader(JsonNode root, SkillPublishCandidate candidate, List<Problem> fatal) {
         if (!root.isObject() || root.path("schema_version").asInt(-1) != 1) {
             fatal.add(problem("EVAL_SCHEMA_INVALID", "/eval/eval.json/schema_version",
-                "schema_version 必须为整数 1。", "设置 schema_version: 1。"));
+                "schema_version must be integer 1.", "Set schema_version: 1."));
         }
         var skill = root.path("skill").asText(null);
         if (skill == null || !skill.equals(candidate.name)) {
             fatal.add(problem("EVAL_SKILL_MISMATCH", "/eval/eval.json/skill",
-                "eval.json 的 skill 与 frontmatter name 不一致。", "把 skill 设为 \"" + candidate.name + "\"。"));
+                "eval.json skill does not match the frontmatter name.", "Set skill to \"" + candidate.name + "\"。"));
         }
     }
 
@@ -73,7 +73,7 @@ public final class SkillEvalDatasetValidator {
         var cases = root.path("cases");
         if (!cases.isArray() || cases.isEmpty() || cases.size() > 200) {
             fatal.add(problem("EVAL_CASES_INVALID", "/eval/eval.json/cases",
-                "cases 必须是 1–200 个对象的数组。", "补充测试用例。"));
+                "cases must be an array of 1-200 objects.", "Add test cases."));
             return Map.of();
         }
         var counts = new LinkedHashMap<String, Integer>();
@@ -85,7 +85,7 @@ public final class SkillEvalDatasetValidator {
         }
         if (cases.size() < 10) {
             warnings.add(problem("EVAL_DATASET_SMALL", "/eval/eval.json/cases",
-                "数据集只有 " + cases.size() + " 个用例，建议 10–20 个。", "补充更多正例、边界与失败用例。"));
+                "The dataset has only " + cases.size() + " case(s); 10-20 are recommended.", "Add more positive, boundary and failure cases."));
         }
         validateFixtures(fixtures, candidate, fatal);
         return counts;
@@ -95,18 +95,18 @@ public final class SkillEvalDatasetValidator {
                               List<String> fixtures, CaseContext context) {
         var path = "/eval/eval.json/cases/" + index;
         if (!node.isObject()) {
-            context.fatal().add(problem("EVAL_CASE_INVALID", path, "case 必须是对象。", "修正该 case。"));
+            context.fatal().add(problem("EVAL_CASE_INVALID", path, "case must be an object.", "Fix this case."));
             return;
         }
         var id = node.path("id").asText("");
         if (!CASE_ID.matcher(id).matches() || !ids.add(id)) {
             context.fatal().add(problem("EVAL_CASE_ID_INVALID", path + "/id",
-                "case id 必须唯一且匹配 ^[a-z0-9][a-z0-9-]{1,63}$。", "使用如 trigger-001 的 id。"));
+                "case id must be unique and match ^[a-z0-9][a-z0-9-]{1,63}$.", "Use an id such as trigger-001."));
         }
         var dimension = node.path("dimension").asText("");
         if (!DIMENSIONS.contains(dimension)) {
             context.fatal().add(problem("EVAL_DIMENSION_UNKNOWN", path + "/dimension",
-                "未知测试维度：" + dimension, "使用 7 个 canonical 维度之一。"));
+                "Unknown test dimension: " + dimension, "Use one of the 7 canonical dimensions."));
             return;
         }
         counts.merge(dimension, 1, Integer::sum);
@@ -115,7 +115,7 @@ public final class SkillEvalDatasetValidator {
         validateAssertions(node.path("assertions"), path + "/assertions", context.fatal());
         if ("trigger_accuracy".equals(dimension) && node.path("expected").path("triggered").asBoolean(true)) {
             context.warnings().add(problem("EVAL_NO_NEGATIVE_TRIGGER", path + "/expected",
-                "trigger_accuracy 还没有 negative control（triggered=false）。", "至少加入一个不应触发该 skill 的请求。"));
+                "trigger_accuracy has no negative control (triggered=false).", "Add at least one request that should not trigger the skill."));
         }
     }
 
@@ -123,7 +123,7 @@ public final class SkillEvalDatasetValidator {
         var request = input.path("user_request").asText("");
         if (request.isBlank() || PLACEHOLDER.matcher(request.trim()).matches()) {
             fatal.add(problem("EVAL_CASE_PLACEHOLDER", path + "/user_request",
-                "user_request 为空或是占位符。", "写一条真实用户会说的话。"));
+                "user_request is empty or a placeholder.", "Write what a real user would say."));
         }
         var fixturesNode = input.path("fixtures");
         if (fixturesNode.isArray()) {
@@ -133,14 +133,14 @@ public final class SkillEvalDatasetValidator {
 
     private void validateExpected(String dimension, JsonNode expected, String path, List<Problem> fatal) {
         if (!expected.isObject() || expected.isEmpty()) {
-            fatal.add(problem("EVAL_EXPECTED_INVALID", path, "expected 不能为空对象。", "填写该维度的期望结果。"));
+            fatal.add(problem("EVAL_EXPECTED_INVALID", path, "expected must not be empty.", "Fill in the expected result for this dimension."));
             return;
         }
         var missing = missingExpectedKeys(dimension, expected);
         if (!missing.isEmpty()) {
             fatal.add(problem("EVAL_EXPECTED_INVALID", path,
-                "expected 缺少该维度的必需 key：" + String.join(", ", missing),
-                "按 eval 维度表补充 expected。"));
+                "expected is missing required keys for this dimension: " + String.join(", ", missing),
+                "Add expected values per the eval dimension table."));
         }
     }
 
@@ -186,14 +186,14 @@ public final class SkillEvalDatasetValidator {
 
     private void validateAssertions(JsonNode assertions, String path, List<Problem> fatal) {
         if (!assertions.isArray() || assertions.isEmpty() || assertions.size() > 20) {
-            fatal.add(problem("EVAL_ASSERTIONS_INVALID", path, "assertions 必须是 1–20 个断言。", "补充结构化断言。"));
+            fatal.add(problem("EVAL_ASSERTIONS_INVALID", path, "assertions must contain 1-20 assertions.", "Add structured assertions."));
             return;
         }
         for (var assertion : assertions) {
             var kind = assertion.path("kind").asText("");
             if (!ASSERTIONS.contains(kind)) {
-                fatal.add(problem("EVAL_ASSERTION_UNKNOWN", path, "未知断言类型：" + kind,
-                    "使用 eval 断言 allowlist 中的 kind。"));
+                fatal.add(problem("EVAL_ASSERTION_UNKNOWN", path, "Unknown assertion kind: " + kind,
+                    "Use a kind from the eval assertion allowlist."));
             }
         }
     }
@@ -204,24 +204,24 @@ public final class SkillEvalDatasetValidator {
             var path = SkillDisclosureResolver.resolvePath(fixture);
             if (path == null || !path.startsWith("eval/fixtures/")) {
                 fatal.add(problem("EVAL_FIXTURE_PATH_INVALID", "/eval/fixtures/" + fixture,
-                    "fixture 路径必须位于 eval/fixtures/ 下：" + fixture, "把文件放到 eval/fixtures/。"));
+                    "fixture path must be under eval/fixtures/: " + fixture, "Put the file under eval/fixtures/."));
                 continue;
             }
             var bytes = candidate.resource(path);
             if (bytes == null) {
                 fatal.add(problem("EVAL_FIXTURE_MISSING", "/eval/fixtures/" + fixture,
-                    "fixture 未随包发布：" + fixture, "把文件加入 eval/fixtures/。"));
+                    "fixture is not packaged: " + fixture, "Add the file under eval/fixtures/."));
                 continue;
             }
             if (bytes.length > MAX_FIXTURE_BYTES) {
                 fatal.add(problem("EVAL_FIXTURE_TOO_LARGE", "/" + path,
-                    "fixture 超过 10MB：" + fixture, "压缩或拆分 fixture。"));
+                    "fixture exceeds 10MB: " + fixture, "Compress or split the fixture."));
             }
             total += bytes.length;
         }
         if (total > MAX_FIXTURES_BYTES) {
             fatal.add(problem("EVAL_FIXTURES_TOO_LARGE", "/eval/fixtures",
-                "fixtures 总大小超过 20MB。", "缩减 fixture。"));
+                "fixtures total more than 20MB.", "Reduce the fixtures."));
         }
     }
 
@@ -229,14 +229,14 @@ public final class SkillEvalDatasetValidator {
         for (var dimension : DIMENSIONS) {
             if (!counts.containsKey(dimension)) {
                 fatal.add(problem("EVAL_DIMENSION_MISSING", "/eval/eval.json/cases",
-                    "7 个维度缺少：" + dimension, "至少为该维度添加 1 个用例。"));
+                    "Missing dimension: " + dimension, "Add at least one case for this dimension."));
             }
         }
         for (var dimension : List.of("trigger_accuracy", "scope_accuracy", "robustness")) {
             var count = counts.getOrDefault(dimension, 0);
             if (count > 0 && count < 2) {
                 warnings.add(problem("EVAL_DIMENSION_THIN", "/eval/eval.json/cases",
-                    dimension + " 只有 " + count + " 个用例，建议至少 2 个。", "补充边界与失败用例。"));
+                    dimension + " has only " + count + " case(s); at least 2 are recommended.", "Add boundary and failure cases."));
             }
         }
     }
@@ -259,3 +259,5 @@ public final class SkillEvalDatasetValidator {
     private record CaseContext(List<Problem> fatal, List<Problem> warnings) {
     }
 }
+
+

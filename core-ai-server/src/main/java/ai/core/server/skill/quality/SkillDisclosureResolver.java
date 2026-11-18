@@ -142,7 +142,7 @@ public final class SkillDisclosureResolver {
         if (heading != null) return new Resolved(document.section(heading), path + "#" + heading.text, null);
         if (document.body.length() > SECTION_LIMIT) {
             return new Resolved(null, path,
-                path + " 没有匹配的 section，正文 " + document.body.length() + " 字符超过 8000 字符上限；请添加对应子标题或拆分文件。");
+                path + " has no matching section and the body is " + document.body.length() + " characters, over the 8000-character limit; add the matching heading or split the file.");
         }
         return new Resolved(document.body, path, null);
     }
@@ -196,3 +196,4 @@ public final class SkillDisclosureResolver {
     private record Node(String path, int depth) {
     }
 }
+

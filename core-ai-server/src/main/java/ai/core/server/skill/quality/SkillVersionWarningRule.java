@@ -27,7 +27,7 @@ public final class SkillVersionWarningRule implements SkillQualityRule {
         if (SkillVersions.compare(candidate.version, candidate.previousVersion) > 0) return SkillRuleResult.pass();
         return SkillRuleResult.warn(SkillQualityIssues.issue(META, QualityIssueStatus.PASS, "/metadata/version",
             "VERSION_NOT_BUMPED_REPO",
-            "repo 内容已变化，但 metadata.version 未递增；本次仍按 commit 同步。",
-            "建议在下次提交中提升 metadata.version。"));
+            "Repo content changed but metadata.version did not increase; the commit is still synced.",
+            "Raise metadata.version in the next commit."));
     }
 }
