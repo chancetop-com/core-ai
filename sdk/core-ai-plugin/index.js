@@ -132,7 +132,10 @@ export function validateManifest(input) {
           errors.push('each slot needs slot and action');
           continue;
         }
-        if (item.slot !== 'sidebar.footer.action' && item.slot !== 'composer.dock') {
+        if (item.slot !== 'sidebar.footer.action'
+          && item.slot !== 'composer.dock'
+          && item.slot !== 'conversation.turn.tail'
+          && item.slot !== 'conversation.message.actions') {
           errors.push(`unsupported slot: ${item.slot}`);
         }
         const action = item.action;

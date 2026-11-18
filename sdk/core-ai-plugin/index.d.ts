@@ -68,7 +68,11 @@ export interface PluginPageContribution {
   scope?: 'workspace' | 'app';
 }
 
-export type PluginSlotId = 'sidebar.footer.action' | 'composer.dock';
+export type PluginSlotId =
+  | 'sidebar.footer.action'
+  | 'composer.dock'
+  | 'conversation.turn.tail'
+  | 'conversation.message.actions';
 
 export type PluginSlotAction =
   | { kind: 'openPage'; pageId: string }

@@ -30,6 +30,18 @@
           "slot": "composer.dock",
           "title": "Review workspace",
           "action": { "kind": "insertText", "text": "Review this workspace's recent sessions and usage." }
+        },
+        {
+          "id": "turn-insights",
+          "slot": "conversation.turn.tail",
+          "title": "Insights",
+          "action": { "kind": "openPage", "pageId": "insights" }
+        },
+        {
+          "id": "message-insights",
+          "slot": "conversation.message.actions",
+          "title": "Review in Insights",
+          "action": { "kind": "insertText", "text": "Review this message in Workspace Insights." }
         }
       ]
     }

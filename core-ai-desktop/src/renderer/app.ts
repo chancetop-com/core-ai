@@ -4489,6 +4489,20 @@ function attachMessageCopy(wrapper: HTMLElement, getText: () => string): void {
   };
   actions.append(button);
   wrapper.append(actions);
+  attachPluginMessageActions(wrapper);
+}
+
+/** Host-rendered message actions; the plugin contributes labels/actions, never DOM or scripts. */
+function attachPluginMessageActions(wrapper: HTMLElement): void {
+  const actions = wrapper.querySelector('.msg-actions') as HTMLElement | null;
+  if (!actions) return;
+  for (const action of slotActions(state.plugins, 'conversation.message.actions')) {
+    const button = el('button', 'msg-action', action.title) as HTMLButtonElement;
+    button.type = 'button';
+    button.title = `${action.title} — ${action.pluginId}`;
+    button.onclick = () => runPluginSlot(action);
+    actions.append(button);
+  }
 }
 
 // ---------- record-backed transcript (reload) ----------
@@ -5768,6 +5782,15 @@ function applySessionEvent(view: SessionView, event: any): void {
         (keptWrapper ?? view.transcript).append(summary);
         scrollTranscript(view);
       }
+      const turnTail = el('div', 'turn-tail');
+      for (const action of slotActions(state.plugins, 'conversation.turn.tail')) {
+        const button = el('button', 'msg-action turn-tail-action', action.title) as HTMLButtonElement;
+        button.type = 'button';
+        button.title = `${action.title} — ${action.pluginId}`;
+        button.onclick = () => runPluginSlot(action);
+        turnTail.append(button);
+      }
+      if (turnTail.children.length) (keptWrapper ?? view.transcript).append(turnTail);
       void refreshSessionList();
       void loadSummaries();
       // Artifact events are live-only; a turn can register files whose event never reached this

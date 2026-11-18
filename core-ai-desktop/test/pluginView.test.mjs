@@ -24,7 +24,10 @@ function plugin(overrides = {}) {
       dock: [{ id: 'panel', title: 'Panel', blocks: [{ type: 'text', text: 'hello' }] }],
       settings: [{ id: 'general', title: 'General', fields: [{ key: 'name', label: 'Name', type: 'text' }] }],
       composer: [{ id: 'insert', title: 'Insert', insertText: 'hello' }],
-      slots: [{ id: 'open', slot: 'sidebar.footer.action', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }],
+      slots: [
+        { id: 'open', slot: 'sidebar.footer.action', title: 'Open', action: { kind: 'openPage', pageId: 'main' } },
+        { id: 'tail', slot: 'conversation.turn.tail', title: 'Tail', action: { kind: 'openPage', pageId: 'main' } },
+      ],
     },
     settings: {},
     ...overrides,
@@ -39,6 +42,7 @@ test('dock tabs and composer actions require an active plugin with the matching 
   assert.equal(composerActions([plugin()]).length, 1);
   assert.equal(composerActions([plugin({ granted: ['ui.dock'] })]).length, 0);
   assert.equal(slotActions([plugin()], 'sidebar.footer.action').length, 1);
+  assert.equal(slotActions([plugin()], 'conversation.turn.tail').length, 1);
   assert.equal(slotActions([plugin()], 'composer.dock').length, 0);
   assert.equal(slotActions([plugin({ granted: ['ui.dock'] })], 'sidebar.footer.action').length, 0);
   assert.equal(isPluginDockKey('plugin:example.demo:panel'), true);

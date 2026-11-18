@@ -5,7 +5,7 @@ A read-only P2d page that demonstrates the general host services:
 - `workspace.summary()` for workspace-level counts
 - `usage.summary()` for token/cost totals
 - `sessions.list()` for session metadata
-- `ui.slots` actions in the sidebar footer and composer dock
+- `ui.slots` actions in the sidebar footer, composer dock, turn tail and message actions
 - `memory.list()` for memory files
 - `plugin.storage` for a page-owned counter
 - `events.subscribe()` + `events.on()` for redacted live events

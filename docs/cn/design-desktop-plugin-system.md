@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Approved / Implementing（用户 2026-11-17 授权实施；本轮落地 P1 包管理与 P2a 声明式 UI 子集，见 §14） |
-| 文档版本 | v0.14（P2d：只读服务 + storage + events + usage + notification + 首期 slots） |
+| 文档版本 | v0.15（P2d：只读服务 + storage + events + usage + notification + 四个 action-only slots） |
 | 日期 | 2026-11-17 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户；用户已授权本轮实施，§14 记录实际落地与未完成项 |
@@ -627,9 +627,9 @@ Manifest 预留字段（validator 可识别，未实现的贡献返回 `unsuppor
 | `plugin.storage` | 页面对 `storage.get/set/delete/keys`；值必须是字符串（≤64 KiB），每插件最多 200 个 key，随 install 状态持久化；不是 secret store |
 | `events.read` | `events.subscribe([...])` + `events.on(...)`；宿主按 allowlist 转发 `session.status`、`turn.completed`、`tool.started/finished`、`turn.failed`、`plan.updated`、`task.updated`、`tool.batch_started`、`agent.wait`、`custom`；只给脱敏字段，不给 text/tool args/tool result |
 | `notification.send` | `notify.send(text)` 走已配置的 OCG 通知目标；1–2000 字符、每页面 5 次/分钟；未配置目标返回错误 |
-| `ui.slots`（首期） | 声明式 action-only slot：`sidebar.footer.action`（侧栏底部按钮）和 `composer.dock`（输入框上方按钮）；action 仅支持 `openPage` / `insertText`，不执行插件脚本 |
+| `ui.slots`（首期） | 声明式 action-only slot：`sidebar.footer.action`、`composer.dock`、`conversation.turn.tail`、`conversation.message.actions`；action 仅支持 `openPage` / `insertText`，不执行插件脚本 |
 | 示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed |
-| 仍未实现 | `sessions.write`、`memory.write`、`schedules.*`、scripted/renderer slots（conversation.turn.tail、message.actions 等）、`provides/requires` 服务注册 |
+| 仍未实现 | `sessions.write`、`memory.write`、`schedules.*`、scripted/renderer slots（message renderer、artifact viewer 等）、`provides/requires` 服务注册 |
 
 ## 7. Engine 接入与生命周期
 
@@ -943,6 +943,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | v0.12 | 2026-11-18 | P2d usage：`usage.read` + engine `usage/summary` + transcript 聚合，workspace-insights 显示 tokens/cost | 补齐 usage/cost 场景；写动作与 slots 仍待做 |
 | v0.13 | 2026-11-18 | P2d notification：`notification.send` + `notify.send`，接现有 OCG 目标，5/min/页、2000 字符；workspace-insights 加测试按钮 | 打通通知类插件，仍不开放 memory/schedules/sessions 写 |
 | v0.14 | 2026-11-18 | P2d slots 首期：`ui.slots` + `contributes.slots`，支持 `sidebar.footer.action` / `composer.dock` 的 `openPage` / `insertText` action；workspace-insights 示例加两处入口 | 让插件回到主工作流，先不开放脚本 slot/renderer |
+| v0.15 | 2026-11-18 | slots 扩展：`conversation.turn.tail` 与 `conversation.message.actions`，复用同一 action 模型；示例加 turn 尾部与消息动作 | 覆盖会话内高频入口，仍不做脚本 slot |
 
 ### 13.2 相关材料
 
@@ -982,7 +983,7 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 | P2d 只读宿主服务 | `sessions.read`/`memory.read`/`workspace.read`/`usage.read` 页面 bridge：`sessions.list`、`memory.list/read`、`workspace.summary`（按能力返回计数）、`usage.summary`（transcript 聚合） | `PluginPageHost.ts`、`pluginPagePreload.ts`、`pluginManifest.ts`、`UsageApi.java`、`TranscriptReader.java` |
 | P2d storage/events | `plugin.storage` 命名空间字符串存储（≤64 KiB/值、200 key）；`events.read` 允许列表事件转发，只给脱敏字段 | `pluginStore.ts`、`PluginHost.ts`、`PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts` |
 | P2d notification | `notification.send` + `notify.send`；接现有 OCG 目标，5 次/分钟/页、2000 字符上限；无目标明确报错 | `PluginPageHost.ts`、`main.ts`、`pluginPagePreload.ts`、`pluginManifest.ts` |
-| P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
+| P2d slots 首期 | `ui.slots` + `contributes.slots`；`sidebar.footer.action` / `composer.dock` / `conversation.turn.tail` / `conversation.message.actions` 的 `openPage` / `insertText` action；宿主渲染、不执行插件代码 | `pluginManifest.ts`、`pluginView.ts`、`app.ts`、`styles.css` |
 | 媒体工作台示例 | `examples/plugins/media-studio/`：页面列素材、导入参考图、模型选择、图片/视频生成、视频 job 轮询 | `examples/plugins/media-studio/` |
 | 只读洞察示例 | `examples/plugins/workspace-insights/`：workspace/session/memory 摘要、storage 计数器、live event feed | `examples/plugins/workspace-insights/` |
 | 生命周期 | 变更后安全点 reload + quiesce；busy 保持 pending，turn 结束重试 | `main.ts`、`EngineSupervisor` |
@@ -1003,12 +1004,12 @@ P0 是上线前加固与设计 spike，不要求先把所有功能拆完。P1 �
 6. **签名/来源认证、企业策略、审计、GC、marketplace UI、git/npm 发布、旧 CLI grandfather 策略均未实现。** Server registry 已能发现并固定 digest，但 `download_url` 由发布者提供，registry 不托管/不扫描包，也没有镜像或签名；publish 目前只有管理 API，没有前端发布页。
 7. **可信代码权限边界仍是合作协议。** per-call gate 保护 engine 正常 skill 读取路径；同 UID 任意代码、已加载 skill 的文本内容、hook/MCP 内部副作用不受 broker 约束，风险披露与真沙箱仍是后续工作。
 8. **SDK 只是作者辅助。** `sdk/core-ai-plugin` 不包含运行时 UI bridge、PluginHost 协议或发布工具；desktop 的强制校验仍是唯一权威。
-9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`，以及 action-only 的 `sidebar.footer.action` / `composer.dock` slots；仍没有写动作（memory/schedules/sessions）、scripted/renderer slots（turn tail、message actions 等）、`provides/requires` 服务注册或 host 插件后端。
+9. **§6.7 的非媒体能力面只实现了 P2d 首期。** 已有只读 sessions/memory/workspace/usage、`plugin.storage`、events allowlist、`notification.send`，以及 action-only 的 sidebar/composer/turn-tail/message-actions slots；仍没有写动作（memory/schedules/sessions）、scripted/renderer slots（message renderer、artifact viewer 等）、`provides/requires` 服务注册或 host 插件后端。
 
 ### 14.3 下一步建议顺序
 
 1. 补共享 state/控制面（CLI `plugin` 命令与 app-server facade）和 quiesce 期间的 desktop/channel 输入排队。
 2. 补 P2c 剩余：`media.assets.delete`/rename、`jobs.cancel/subscribe`、跨 Engine 重启 job、mask、reference video/audio，以及把 `MediaGenerationApi` 与 `GenerateImageTool`/`GenerateVideoTool` 的公共编排真正抽成一层（目前共享 `MediaProvider`，但 reference/sink 编排仍在工具侧）。
-3. 补 P2d 剩余：受控写（memory/schedules/sessions）、scripted/renderer slots（`conversation.turn.tail`、`message.actions` 等）、`provides/requires` 服务注册；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
+3. 补 P2d 剩余：受控写（memory/schedules/sessions）、scripted/renderer slots（message renderer、artifact viewer 等）、`provides/requires` 服务注册；最后再接 provider/tools/hooks/browser/terminal（P3）与 workspace scope、provider endpoint/TLS 确认、registry 签名/镜像/企业允许清单。
 
 

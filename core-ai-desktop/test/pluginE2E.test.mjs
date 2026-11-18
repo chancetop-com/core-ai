@@ -106,5 +106,5 @@ test('a read-only insights page resolves with the general host capabilities', as
   assert.equal(page.view, 'pages/insights.html');
   assert.deepEqual(page.granted.sort(), [...granted].sort());
   const contributions = await host.contributions();
-  assert.equal(contributions[0].contributions.slots.length, 2);
+  assert.equal(contributions[0].contributions.slots.length, 4);
 });

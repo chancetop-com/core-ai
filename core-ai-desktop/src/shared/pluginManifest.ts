@@ -42,7 +42,12 @@ const MAX_SETTINGS_FIELDS = 30;
 const MAX_DOCK_ITEMS = 40;
 const MAX_TEXT = 4000;
 const MAX_ID = 64;
-const SUPPORTED_SLOTS: PluginSlotId[] = ['sidebar.footer.action', 'composer.dock'];
+const SUPPORTED_SLOTS: PluginSlotId[] = [
+  'sidebar.footer.action',
+  'composer.dock',
+  'conversation.turn.tail',
+  'conversation.message.actions',
+];
 
 export interface PluginDockBlock {
   type: 'text' | 'key_values' | 'table' | 'divider';
@@ -89,7 +94,11 @@ export interface PluginPageContribution {
   scope: 'workspace' | 'app';
 }
 
-export type PluginSlotId = 'sidebar.footer.action' | 'composer.dock';
+export type PluginSlotId =
+  | 'sidebar.footer.action'
+  | 'composer.dock'
+  | 'conversation.turn.tail'
+  | 'conversation.message.actions';
 
 export type PluginSlotAction =
   | { kind: 'openPage'; pageId: string }

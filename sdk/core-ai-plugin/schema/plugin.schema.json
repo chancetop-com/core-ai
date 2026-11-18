@@ -83,7 +83,7 @@
                 "required": ["id", "slot", "title", "action"],
                 "properties": {
                   "id": { "type": "string" },
-                  "slot": { "enum": ["sidebar.footer.action", "composer.dock"] },
+                  "slot": { "enum": ["sidebar.footer.action", "composer.dock", "conversation.turn.tail", "conversation.message.actions"] },
                   "title": { "type": "string" },
                   "action": {
                     "type": "object",

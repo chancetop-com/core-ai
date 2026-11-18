@@ -68,7 +68,7 @@ test('slot actions need ui.slots and a supported action', () => {
       schemaVersion: 1,
       id: 'example.slots',
       capabilities: { required: ['ui.slots'] },
-      contributes: { slots: [{ id: 'open', slot: 'conversation.turn.tail', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }] },
+      contributes: { slots: [{ id: 'open', slot: 'conversation.session.header.actions', title: 'Open', action: { kind: 'openPage', pageId: 'main' } }] },
     },
   }));
   assert.equal(unsupported.ok, true);

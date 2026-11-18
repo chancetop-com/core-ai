@@ -210,7 +210,10 @@ function isSlotContribution(value: unknown): value is PluginSlotContribution {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Record<string, unknown>;
   if (typeof entry.id !== 'string' || typeof entry.title !== 'string' || typeof entry.slot !== 'string') return false;
-  if (entry.slot !== 'sidebar.footer.action' && entry.slot !== 'composer.dock') return false;
+  if (entry.slot !== 'sidebar.footer.action'
+    && entry.slot !== 'composer.dock'
+    && entry.slot !== 'conversation.turn.tail'
+    && entry.slot !== 'conversation.message.actions') return false;
   const action = entry.action;
   if (!action || typeof action !== 'object') return false;
   const kind = (action as Record<string, unknown>).kind;
