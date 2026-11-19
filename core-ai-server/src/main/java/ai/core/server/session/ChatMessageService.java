@@ -360,7 +360,7 @@ public class ChatMessageService {
         ChatMessage.CompressionRecord compression;
 
         boolean isEmpty() {
-            return thinking == null && thinkingBlocks.isEmpty() && sandbox == null && compression == null && tools.isEmpty() && events.isEmpty();
+            return thinking == null && sandbox == null && compression == null && tools.isEmpty() && events.isEmpty() && thinkingBlocks.isEmpty();
         }
     }
 
