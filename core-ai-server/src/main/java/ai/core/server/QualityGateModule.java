@@ -11,6 +11,7 @@ import ai.core.server.quality.PublishCandidateBuilder;
 import ai.core.server.quality.PublishQualityGate;
 import ai.core.server.quality.PublishQualityGateService;
 import ai.core.server.quality.QualityDecisionGateway;
+import ai.core.server.quality.QualityExemptionAdminService;
 import ai.core.server.quality.QualityPolicyService;
 import ai.core.server.quality.QualityPublicationService;
 import ai.core.server.quality.QualityReferenceResolver;
@@ -21,6 +22,7 @@ import ai.core.server.quality.ResourceBindingRule;
 import ai.core.server.quality.ResourceCountLimitRule;
 import ai.core.server.quality.TimeContextRule;
 import ai.core.server.web.AgentQualityAdminWebServiceImpl;
+import ai.core.server.web.QualityExemptionAdminWebServiceImpl;
 import core.framework.module.Module;
 
 /**
@@ -61,6 +63,9 @@ public class QualityGateModule extends Module {
         bind(AgentQualityAdminService.class);
         api().service(ai.core.api.server.AgentQualityAdminWebService.class,
             bind(AgentQualityAdminWebServiceImpl.class));
+        bind(QualityExemptionAdminService.class);
+        api().service(ai.core.api.server.QualityExemptionAdminWebService.class,
+            bind(QualityExemptionAdminWebServiceImpl.class));
 
         onStartup(policyService::seed);
     }

@@ -2,19 +2,21 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../api/auth';
 import AgentQualityList from './quality/AgentQualityList';
 import SkillQualityList from './quality/SkillQualityList';
+import QualityExemptionsPage from './quality/QualityExemptionsPage';
 
-type QualityTab = 'agent' | 'skill';
+type QualityTab = 'agent' | 'skill' | 'exemptions';
 
 export default function Quality() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const isAdmin = user?.role === 'admin';
-  const tab: QualityTab = params.get('tab') === 'skill' && isAdmin ? 'skill' : 'agent';
+  const requested = params.get('tab');
+  const tab: QualityTab = !isAdmin ? 'agent' : requested === 'skill' ? 'skill' : requested === 'exemptions' ? 'exemptions' : 'agent';
 
   const selectTab = (next: QualityTab) => {
     const nextParams = new URLSearchParams(params);
-    if (next === 'skill') nextParams.set('tab', 'skill');
-    else nextParams.delete('tab');
+    if (next === 'agent') nextParams.delete('tab');
+    else nextParams.set('tab', next);
     setParams(nextParams, { replace: true });
   };
 
@@ -31,14 +33,17 @@ export default function Quality() {
           <div className="flex items-center gap-2">
             <SegmentedButton active={tab === 'agent'} onClick={() => selectTab('agent')}>Agent Quality</SegmentedButton>
             {isAdmin && (
-              <SegmentedButton active={tab === 'skill'} onClick={() => selectTab('skill')}>Skill Quality</SegmentedButton>
+              <>
+                <SegmentedButton active={tab === 'skill'} onClick={() => selectTab('skill')}>Skill Quality</SegmentedButton>
+                <SegmentedButton active={tab === 'exemptions'} onClick={() => selectTab('exemptions')}>Exemptions</SegmentedButton>
+              </>
             )}
           </div>
         </div>
       </div>
 
       <div className="p-6">
-        {tab === 'agent' ? <AgentQualityList /> : <SkillQualityList />}
+        {tab === 'agent' ? <AgentQualityList /> : tab === 'skill' ? <SkillQualityList /> : <QualityExemptionsPage />}
       </div>
     </div>
   );

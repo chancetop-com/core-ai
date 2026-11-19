@@ -1,0 +1,20 @@
+package ai.core.api.server.quality;
+
+import core.framework.api.json.Property;
+
+/**
+ * @author core-ai
+ */
+public class RemoveQualityExemptionRequest {
+    /** {@code AGENT} or {@code SKILL}. */
+    @Property(name = "type")
+    public String type;
+
+    /** The stored entry value returned by the list endpoint. */
+    @Property(name = "value")
+    public String value;
+
+    /** Optimistic guard: must match the active policy generation of the selected subject type. */
+    @Property(name = "expected_generation")
+    public Integer expectedGeneration;
+}

@@ -195,6 +195,38 @@ export interface QualityPolicy {
   exemptions?: string[];
 }
 
+export type QualityExemptionType = 'AGENT' | 'SKILL';
+
+export interface QualityExemptionEntry {
+  /** The raw entry stored in the policy revision; removals address the entry by this value. */
+  value: string;
+  subject_id?: string;
+  name?: string;
+  detail?: string;
+  resolved?: boolean;
+  /** Built-in agents and personal assistant copies skip the gate without an entry. */
+  automatic?: boolean;
+}
+
+export interface QualityExemptionGroup {
+  policy_revision: number;
+  generation: number;
+  entries: QualityExemptionEntry[];
+}
+
+export interface QualityExemptionList {
+  agent: QualityExemptionGroup;
+  skill: QualityExemptionGroup;
+}
+
+export interface QualityExemptionSubject {
+  id: string;
+  name: string;
+  detail?: string;
+  already_exempt?: boolean;
+  automatic?: boolean;
+}
+
 export interface RuleTestResponse {
   rule_id: string;
   rule_revision: number;
@@ -283,6 +315,33 @@ export const qualityApi = {
 };
 
 export const skillQualityApi = qualityAdminApi('skill');
+
+export const qualityExemptionsApi = {
+  list: () => request<QualityExemptionList>('/api/admin/quality-exemptions'),
+  subjects: (type: QualityExemptionType, query: string) => {
+    const params = new URLSearchParams({ type });
+    if (query.trim()) params.set('query', query.trim());
+    return request<{ subjects: QualityExemptionSubject[] }>(`/api/admin/quality-exemptions/subjects?${params}`);
+  },
+  add: (type: QualityExemptionType, subjectId: string, expectedGeneration?: number) =>
+    request<QualityExemptionList>('/api/admin/quality-exemptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        type,
+        subject_id: subjectId,
+        expected_generation: expectedGeneration,
+      }),
+    }),
+  remove: (type: QualityExemptionType, value: string, expectedGeneration?: number) =>
+    request<QualityExemptionList>('/api/admin/quality-exemptions/remove', {
+      method: 'POST',
+      body: JSON.stringify({
+        type,
+        value,
+        expected_generation: expectedGeneration,
+      }),
+    }),
+};
 
 
 

@@ -7,6 +7,7 @@ import Quality from './Quality';
 
 vi.mock('./quality/AgentQualityList', () => ({ default: () => <div>agent rules</div> }));
 vi.mock('./quality/SkillQualityList', () => ({ default: () => <div>skill rules</div> }));
+vi.mock('./quality/QualityExemptionsPage', () => ({ default: () => <div>exemption list</div> }));
 
 function renderQuality(user: AuthUser, entry = '/settings/quality') {
   render(
@@ -21,7 +22,7 @@ function renderQuality(user: AuthUser, entry = '/settings/quality') {
 }
 
 describe('Quality page tabs', () => {
-  it('switches between agent and skill rules for an admin', async () => {
+  it('switches between agent, skill rules and exemptions for an admin', async () => {
     renderQuality({ apiKey: 'k', userId: 'admin-1', name: 'Admin', role: 'admin', permissions: ['*'] });
 
     expect(screen.getByText('agent rules')).toBeTruthy();
@@ -29,15 +30,21 @@ describe('Quality page tabs', () => {
 
     expect(screen.getByText('skill rules')).toBeTruthy();
     expect(screen.queryByText('agent rules')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: /exemptions/i }));
+
+    expect(screen.getByText('exemption list')).toBeTruthy();
+    expect(screen.queryByText('skill rules')).toBeNull();
   });
 
-  it('hides the skill tab from a non-admin and falls back to agent rules', () => {
+  it('hides the skill and exemptions tabs from a non-admin and falls back to agent rules', () => {
     renderQuality(
       { apiKey: 'k', userId: 'qa-1', name: 'QA', role: 'user', permissions: ['agent.quality.manage'] },
       '/settings/quality?tab=skill',
     );
 
     expect(screen.queryByRole('button', { name: /skill quality/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /exemptions/i })).toBeNull();
     expect(screen.getByText('agent rules')).toBeTruthy();
   });
 });

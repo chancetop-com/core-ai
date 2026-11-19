@@ -5,7 +5,6 @@ import { qualityApi, type QualityPolicy, type QualityRule } from '../../../api/q
 import Pagination from '../../../components/Pagination';
 import { useListState } from '../../../hooks/useListState';
 import EnforcementBadge from './EnforcementBadge';
-import QualityExemptions from './QualityExemptions';
 
 export default function AgentQualityList() {
   const [rules, setRules] = useState<QualityRule[]>([]);
@@ -67,8 +66,6 @@ export default function AgentQualityList() {
           </button>
         </div>
       </div>
-
-      <QualityExemptions api={qualityApi} policy={policy} kind="agent" onSaved={load} />
 
       <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">
