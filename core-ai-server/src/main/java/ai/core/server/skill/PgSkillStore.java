@@ -25,8 +25,9 @@ import java.util.function.Consumer;
 public class PgSkillStore implements SkillStore {
     private static final String TABLE = "app.skills";
     private static final String SELECT = "SELECT data::text AS data FROM " + TABLE;
-    // jsonb minus content/resources keeps the row payload small; without it every listing detoasts skill bodies
-    private static final String SELECT_SUMMARY = "SELECT (data - 'content' - 'resources')::text AS data FROM " + TABLE;
+    // jsonb minus content/resources keeps the row payload small; without it every listing detoasts skill bodies.
+    // the keys are bound as parameters: the framework rejects quoted literals in SQL
+    private static final String SELECT_SUMMARY = "SELECT (data - ? - ?)::text AS data FROM " + TABLE;
 
     private static SkillDefinition toSkill(PgDocumentRow row) {
         return JsonUtil.fromJson(SkillDefinition.class, row.data);
@@ -66,20 +67,23 @@ public class PgSkillStore implements SkillStore {
 
     @Override
     public List<SkillDefinition> list(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
-        return selectPage(SELECT, namespace, sourceType, offset, limit);
+        return selectPage(SELECT, List.of(), namespace, sourceType, offset, limit);
     }
 
     @Override
     public List<SkillDefinition> listSummaries(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
-        return selectPage(SELECT_SUMMARY, namespace, sourceType, offset, limit);
+        return selectPage(SELECT_SUMMARY, List.of("content", "resources"), namespace, sourceType, offset, limit);
     }
 
     @Override
     public Map<String, String> findNames(Collection<String> ids) {
         if (ids.isEmpty()) return Map.of();
         var placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
-        var rows = database.select("SELECT id, data ->> 'name' AS name FROM " + TABLE
-            + " WHERE id IN (" + placeholders + ")", PgSkillNameRow.class, ids.toArray());
+        var params = new ArrayList<Object>();
+        params.add("name");
+        params.addAll(ids);
+        var rows = database.select("SELECT id, data ->> ? AS name FROM " + TABLE
+            + " WHERE id IN (" + placeholders + ")", PgSkillNameRow.class, params.toArray());
         var names = new HashMap<String, String>();
         for (var row : rows) {
             names.put(row.id, row.name);
@@ -87,9 +91,9 @@ public class PgSkillStore implements SkillStore {
         return names;
     }
 
-    private List<SkillDefinition> selectPage(String select, String namespace, SkillSourceType sourceType,
-                                             Integer offset, Integer limit) {
-        var params = new ArrayList<Object>();
+    private List<SkillDefinition> selectPage(String select, List<Object> leadingParams, String namespace,
+                                             SkillSourceType sourceType, Integer offset, Integer limit) {
+        var params = new ArrayList<Object>(leadingParams);
         var sql = new StringBuilder(select.length() + 160).append(select).append(where(namespace, sourceType, params))
             .append(" ORDER BY updated_at DESC, id DESC");
         if (offset != null || limit != null) {
