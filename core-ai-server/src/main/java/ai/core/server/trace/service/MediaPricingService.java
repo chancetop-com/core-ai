@@ -30,7 +30,7 @@ public class MediaPricingService {
         if (usage != null && usage.upstreamCostUsd() != null) {
             return new MediaPrice(usage.upstreamCostUsd(), "upstream", null, null, null);
         }
-        if (usage != null && usage.creditsConsumed() != null && creditUsdRate != null) {
+        if (usage != null && creditUsdRate != null && usage.creditsConsumed() != null) {
             return new MediaPrice(usage.creditsConsumed() * creditUsdRate, "upstream", null,
                     usage.creditsConsumed(), "credit");
         }

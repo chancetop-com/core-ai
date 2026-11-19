@@ -23,6 +23,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Whitelist administration for the agent and skill publish quality gates. Entries stay inside the
@@ -230,7 +231,7 @@ public class QualityExemptionAdminService {
         return subjects.size() > SUBJECT_LIMIT ? List.copyOf(subjects.subList(0, SUBJECT_LIMIT)) : subjects;
     }
 
-    private void addAgentSubject(List<QualityExemptionSubjectView> subjects, HashSet<String> seen,
+    private void addAgentSubject(List<QualityExemptionSubjectView> subjects, Set<String> seen,
                                  AgentDefinition agent, List<String> exemptions) {
         if (!seen.add(agent.id)) return;
         var view = new QualityExemptionSubjectView();
