@@ -6,6 +6,8 @@ import ai.core.server.dataset.DatasetRecordService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
 import ai.core.server.dataset.tool.DatasetToolProvider;
+import ai.core.server.report.application.ReportService;
+import ai.core.server.report.tool.ReportToolProvider;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.DatasetPermission;
 import ai.core.api.server.session.SessionConfig;
@@ -27,6 +29,13 @@ import java.util.Map;
  * @author Lim Chen
  */
 public class SessionDatasetHelper {
+    private static volatile ReportService reportService;
+
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("EI_EXPOSE_STATIC_REP2")
+    public static void setReportService(ReportService service) {
+        reportService = service;
+    }
+
     private final DatasetService datasetService;
     private final DatasetRecordService datasetRecordService;
 
@@ -65,6 +74,7 @@ public class SessionDatasetHelper {
         if (datasetConfig == null || datasetConfig.isEmpty()) return;
         var accessRegistry = DatasetAccessRegistry.from(datasetConfig, datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, agentId, sessionId));
+        registerReportProvider(registry, accessRegistry);
     }
 
     public String appendDatasetInstructions(String systemPrompt, List<AgentDatasetConfig> datasetConfig) {
@@ -116,7 +126,15 @@ public class SessionDatasetHelper {
         dp.permission = DatasetPermission.FULL;
         var accessRegistry = DatasetAccessRegistry.from(List.of(dp), datasetService);
         registry.registerProvider(new DatasetToolProvider(datasetService, datasetRecordService, accessRegistry, "default", sessionId));
+        registerReportProvider(registry, accessRegistry);
         return registry;
+    }
+
+    private void registerReportProvider(ToolRegistry registry, DatasetAccessRegistry accessRegistry) {
+        var service = reportService;
+        if (service != null && !accessRegistry.isEmpty()) {
+            registry.registerProvider(new ReportToolProvider(datasetService, service, accessRegistry));
+        }
     }
 
     private ToolProvider builtinAllProvider(ai.core.schedule.ScheduledTaskStore scheduledTaskStore) {

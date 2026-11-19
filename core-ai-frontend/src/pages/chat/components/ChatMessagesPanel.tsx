@@ -1,13 +1,14 @@
 import { memo, useMemo, useState } from 'react';
 import type { ComponentProps, CSSProperties, HTMLAttributes, ReactNode, RefObject } from 'react';
+import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
-import { AlertCircle, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, User } from 'lucide-react';
+import { AlertCircle, BarChart3, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
-import type { CardSegment, ChatMessage, CompressionSegment, MessageSegment, PlanTodo, QuickRepliesSegment, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
+import type { CardSegment, ChatMessage, CompressionSegment, MessageSegment, PlanTodo, QuickRepliesSegment, ReportLinkSegment, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
 import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
@@ -171,6 +172,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
   const cardSegs = msg.segments?.filter((s): s is CardSegment => s.type === 'card') ?? [];
+  const reportSegs = msg.segments?.filter((s): s is ReportLinkSegment => s.type === 'report') ?? [];
   const quickReplySegs = msg.segments?.filter((s): s is QuickRepliesSegment => s.type === 'quick_replies') ?? [];
   const textSeg = msg.segments?.find(s => s.type === 'text');
   const generatedVideo = !readOnly && textSeg && msg.role === 'agent' ? extractGeneratedVideo(textSeg.content) : null;
@@ -213,6 +215,23 @@ export const ChatMessageRow = memo(function ChatMessageRow({
         {((toolsSeg && toolsSeg.tools.length > 0) || compressionSeg) && (
           <div className="mb-3">
             <ToolsBlock tools={toolsSeg?.tools ?? []} compression={compressionSeg} />
+          </div>
+        )}
+        {!readOnly && reportSegs.length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            {reportSegs.map(seg => (
+              <Link key={seg.reportId} to={`/reports/${seg.reportId}`}
+                className="rounded-xl border px-4 py-3 flex items-center gap-3 no-underline hover:bg-[var(--color-bg-secondary)]"
+                style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
+                <BarChart3 size={16} style={{ color: '#6366f1' }} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{seg.title}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
+                    {seg.updated ? 'Updated' : 'Created'} · revision {seg.revision ?? 1} · open in Reports
+                  </div>
+                </div>
+              </Link>
+            ))}
           </div>
         )}
         {!readOnly && cardSegs.length > 0 && (

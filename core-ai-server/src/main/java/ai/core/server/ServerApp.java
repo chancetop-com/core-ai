@@ -228,8 +228,7 @@ public class ServerApp extends App {
         load(new SandboxModule());
         // after SandboxModule: SandboxFfmpegRunner injects SandboxService and bind() resolves eagerly
         load(new RenderModule());
-        // after GatewayModule (MediaProvider/MediaJobService/GatewayRoutingEngine), ObjectStorageModule
-        // (FileService) and SettingsModule (SystemSettingsService)
+        // after GatewayModule, ObjectStorageModule (FileService) and SettingsModule (SystemSettingsService)
         load(new ImageEditModule());
         load(new AuthModule());
         load(new UserModule());
@@ -250,11 +249,10 @@ public class ServerApp extends App {
         load(new PluginRegistryModule());
         load(new GitHubModule());
         load(new AgentDefinitionModule());
-        load(new DatasetModule());
+        loadDatasetModules();
         load(new ToolRegistryModule());
         wireQualityGate();
-        // MCP Hub needs ToolRegistryService (registry) — must follow ToolRegistryModule; its own
-        // schedule job keeps the hub catalog warm for later consumers (SessionModule etc.).
+        // MCP Hub needs ToolRegistryService; its schedule job keeps the hub catalog warm for SessionModule etc.
         load(new McpHubModule());
         load(new WebFoundationModule());
         // API-Tool Hub needs ToolRegistryService + HubCallAuditService (HubCallAuditModule); loads after
@@ -297,9 +295,13 @@ public class ServerApp extends App {
         load(new SessionSchedulerModule());
         load(new ChannelModule());
         load(new WorkflowModule());
-        // ProjectModule loads last: the analysis pipeline injects AgentRunner (AgentRunnerModule)
-        // and ToolRegistryService (ToolRegistryModule); core-ng bind() resolves dependencies eagerly.
+        // ProjectModule loads last: it injects AgentRunner and ToolRegistryService; bind() resolves eagerly.
         load(new ProjectModule());
+    }
+
+    private void loadDatasetModules() {
+        load(new DatasetModule());
+        load(new ReportModule());
     }
 
     private void loadTransportModules() {

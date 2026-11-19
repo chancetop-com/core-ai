@@ -54,6 +54,8 @@ public class PlatformApiModule extends Module {
         // the feature is on when the service would actually reject every request.
         impl.sandboxTerminalEnabled = terminalEnabledProperty && ticketSecretConfigured && !gatewayUrl.isBlank();
         impl.sandboxTerminalGatewayUrl = gatewayUrl;
+        impl.datasetReports = Boolean.parseBoolean(property("sys.report.enabled").orElse("false"))
+                && "postgresql".equals(property("sys.dataset.store").orElse("mongo"));
         api().service(CapabilitiesWebService.class, impl);
     }
 }

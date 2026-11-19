@@ -2838,6 +2838,50 @@ export const api = {
         return request<ForYouTokenUsage>(`/api/for-you/token-usage?${params.toString()}`);
       },
   },
+  reports: {
+    list: (offset = 0, limit = 20) =>
+      request<ListReportsResponse>(`/api/reports?offset=${offset}&limit=${limit}`),
+    get: (id: string) =>
+      request<ReportView>(`/api/reports/${encodeURIComponent(id)}`),
+    data: (id: string, params?: {
+      range_kind?: string; days?: number; from?: string; to?: string;
+      page_size?: number; offset?: number; refresh?: boolean;
+    }) => {
+      const qs = new URLSearchParams();
+      if (params?.range_kind) qs.set('range_kind', params.range_kind);
+      if (params?.days !== undefined) qs.set('days', String(params.days));
+      if (params?.from) qs.set('from', params.from);
+      if (params?.to) qs.set('to', params.to);
+      if (params?.page_size !== undefined) qs.set('page_size', String(params.page_size));
+      if (params?.offset !== undefined) qs.set('offset', String(params.offset));
+      if (params?.refresh) qs.set('refresh', 'true');
+      const suffix = qs.toString() ? `?${qs}` : '';
+      return request<ReportDataView>(`/api/reports/${encodeURIComponent(id)}/data${suffix}`);
+    },
+    delete: (id: string, expectedRevision: number, expectedLayoutRevision?: number) => {
+      const qs = new URLSearchParams({ expected_revision: String(expectedRevision) });
+      if (expectedLayoutRevision !== undefined) qs.set('expected_layout_revision', String(expectedLayoutRevision));
+      return request<{ deleted: boolean }>(`/api/reports/${encodeURIComponent(id)}?${qs}`, { method: 'DELETE' });
+    },
+    pins: {
+      layout: () =>
+        request<ReportPinsView>('/api/for-you/report-pins'),
+      pin: (data: { report_id: string; width?: string; expected_layout_revision: number }) =>
+        request<ReportPinView>('/api/for-you/report-pins', { method: 'POST', body: JSON.stringify(data) }),
+      unpin: (pinId: string, expectedLayoutRevision: number) =>
+        request<{ deleted: boolean }>(`/api/for-you/report-pins/${encodeURIComponent(pinId)}?expected_layout_revision=${expectedLayoutRevision}`, { method: 'DELETE' }),
+      reorder: (expectedLayoutRevision: number, items: { pin_id: string; width?: string }[]) =>
+        request<ReportPinsView>('/api/for-you/report-pins/layout', {
+          method: 'PUT',
+          body: JSON.stringify({ expected_layout_revision: expectedLayoutRevision, items }),
+        }),
+      data: (data: {
+        pin_ids: string[]; range_kind?: string; days?: number; from?: string; to?: string;
+        page_size?: number; offset?: number; refresh?: boolean;
+      }) =>
+        request<ReportPinsDataResponse>('/api/for-you/report-pins/data', { method: 'POST', body: JSON.stringify(data) }),
+    },
+  },
   adminAnalytics: {
     global: (params: AnalyticsParams) => {
       const qs = buildAnalyticsParams(params);
@@ -3129,6 +3173,83 @@ export interface DailyTokenUsage {
   total_tokens: number;
   cached_tokens: number;
   cost_usd: number;
+}
+
+// --- Report types ---
+
+export interface ReportView {
+  id: string;
+  title: string;
+  description?: string | null;
+  revision: number;
+  spec_version: number;
+  engine_version: number;
+  dataset_id: string;
+  dataset_name?: string | null;
+  display_type?: string | null;
+  spec_json?: string | null;
+  pin_id?: string | null;
+  pin_width?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ListReportsResponse {
+  reports: ReportView[];
+  total: number;
+}
+
+export interface ReportColumnView {
+  name: string;
+  type: string;
+}
+
+export interface ReportDataView {
+  report_id?: string | null;
+  report_revision?: number | null;
+  spec_version?: number | null;
+  status: string;
+  from_inclusive?: string | null;
+  to_exclusive?: string | null;
+  timezone?: string | null;
+  columns_json: string;
+  rows_json: string;
+  matched_record_count?: number | null;
+  invalid_value_count?: number | null;
+  source_time?: string | null;
+  source_updated_at?: string | null;
+  evaluated_at?: string | null;
+  freshness_status?: string | null;
+  has_more?: boolean | null;
+}
+
+export interface ReportPinView {
+  id: string;
+  report_id: string;
+  position: number;
+  width: string;
+  title?: string | null;
+  display_type?: string | null;
+  dataset_id?: string | null;
+  report_revision?: number | null;
+  updated_at?: string | null;
+}
+
+export interface ReportPinsView {
+  layout_revision: number;
+  pins: ReportPinView[];
+}
+
+export interface ReportPinDataView {
+  pin_id?: string | null;
+  report_id?: string | null;
+  data?: ReportDataView | null;
+  error_code?: string | null;
+  error_message?: string | null;
+}
+
+export interface ReportPinsDataResponse {
+  items: ReportPinDataView[];
 }
 
 // --- Admin Analytics types ---

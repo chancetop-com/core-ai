@@ -26,6 +26,8 @@ import {
 import { api } from '../../api/client';
 import type { ForYouDashboard, ForYouFile, ForYouReport, ForYouTodo, ForYouTokenUsage } from '../../api/client';
 import { useAuth } from '../../api/auth';
+import { useCapabilities } from '../../api/capabilities';
+import PinnedReportsSection from '../reports/PinnedReportsSection';
 import type { ArtifactSpec } from '../chat/components/artifactTypes';
 
 type RangeMode = 'yesterday' | '7d' | '30d' | 'custom';
@@ -34,6 +36,7 @@ const ArtifactDrawer = lazy(() => import('../chat/components/ArtifactDrawer'));
 
 export default function ForYou() {
   const { user } = useAuth();
+  const caps = useCapabilities();
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<ForYouDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -174,6 +177,8 @@ export default function ForYou() {
           Your work, files, and tasks — all in one place
         </p>
       </div>
+
+      {caps.datasetReports && <PinnedReportsSection />}
 
       {/* ── Token Usage (always on top) ── */}
       {!loading && (
