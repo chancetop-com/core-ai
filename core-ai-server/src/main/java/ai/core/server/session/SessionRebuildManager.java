@@ -41,6 +41,7 @@ import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
 import ai.core.tool.registry.ToolRegistry;
+import ai.core.tool.registry.ToolRegistryFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -336,8 +337,9 @@ public class SessionRebuildManager {
                 params.agentName, params.allowSandboxReattach, agentId);
         // a rebuilt chat session must not hold the request while a cold sandbox-hosted MCP downloads its
         // package; the provider retries each materialize until the server is registered
-        var toolRegistry = toolRegistryService.resolveToToolRegistryForChatSession(
-                params.toolRefs, params.sessionId, params.userId);
+        var toolRegistry = params.toolRefs != null && !params.toolRefs.isEmpty()
+                ? toolRegistryService.resolveToToolRegistryForChatSession(params.toolRefs, params.sessionId, params.userId)
+                : ToolRegistryFactory.createEmpty();
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, params.datasetConfig,
                 hasText(agentId) ? agentId : "default", params.sessionId);
         var memoryInject = attachMemory(toolRegistry, sandbox.context, agentId);
