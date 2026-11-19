@@ -127,15 +127,9 @@ public class AgentDefinitionService {
 
     public ListAgentsResponse list(String userId, ListAgentsRequest request) {
         var effectiveRequest = request != null ? request : new ListAgentsRequest();
-        String view = AgentQueryHelper.trimToNull(effectiveRequest.view);
-        // legacy callers pass summary=true for the same id/name payload
-        boolean summary = "summary".equals(view) || (view == null && Boolean.TRUE.equals(effectiveRequest.summary));
-        boolean picker = "picker".equals(view);
-        boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
-        int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
-        int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
-        Integer skip = paginated ? (pageNum - 1) * pageSize : null;
-        Integer limit = paginated ? pageSize : null;
+        boolean summary = AgentListHelper.isSummaryView(effectiveRequest);
+        boolean picker = AgentListHelper.isPickerView(effectiveRequest);
+        var page = AgentListHelper.pagePlan(effectiveRequest);
 
         var listHelper = new AgentListHelper(agentDefinitionStore, userStore);
         String keyword = AgentQueryHelper.trimToNull(effectiveRequest.query);
@@ -151,9 +145,9 @@ public class AgentDefinitionService {
             paged = listHelper.searchAgents(query, keyword, sortField,
                 assistant != null ? assistant.id : PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
             total = paged.size();
-            if (skip != null) {
-                int from = Math.min(skip, paged.size());
-                paged = paged.subList(from, Math.min(from + limit, paged.size()));
+            if (page.skip() != null) {
+                int from = Math.min(page.skip(), paged.size());
+                paged = paged.subList(from, Math.min(from + page.limit(), paged.size()));
             }
         } else {
             var query = query(userId, effectiveRequest);
@@ -163,8 +157,8 @@ public class AgentDefinitionService {
                 ? null
                 : forkPersonalAssistant(listHelper, userId, effectiveRequest);
             paged = assistant != null
-                ? listHelper.listWithAssistantFirst(query, skip, limit, assistant)
-                : listHelper.findAgents(query, skip, limit);
+                ? listHelper.listWithAssistantFirst(query, page.skip(), page.limit(), assistant)
+                : listHelper.findAgents(query, page.skip(), page.limit());
             total = agentDefinitionStore.count(query(userId, effectiveRequest));
         }
 
@@ -181,8 +175,8 @@ public class AgentDefinitionService {
         }
         listHelper.markFavorites(response, userId);
         response.total = total;
-        response.page = paginated ? pageNum : null;
-        response.limit = paginated ? pageSize : null;
+        response.page = page.limit() == null ? null : page.number();
+        response.limit = page.limit();
         return response;
     }
 
@@ -192,7 +186,7 @@ public class AgentDefinitionService {
         var query = new AgentDefinitionQuery();
         query.scope = AgentDefinitionQuery.Scope.VISIBLE;
         query.userId = userId;
-        query.type = blankToNull(request.type);
+        query.type = AgentQueryHelper.trimToNull(request.type);
         query.limit = 1;
         var requestedIds = splitIds(request.ids);
         if (!requestedIds.isEmpty() && !requestedIds.contains(PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID)) {
@@ -217,18 +211,12 @@ public class AgentDefinitionService {
         }
         query.userId = userId;
         query.excludeIds = new ArrayList<>(PersonalAssistantService.forkableTemplateIds());
-        query.type = blankToNull(request.type);
+        query.type = AgentQueryHelper.trimToNull(request.type);
         var ids = splitIds(request.ids);
         if (!ids.isEmpty()) query.ids = ids;
         query.sortField = AgentQueryHelper.sortField(request.sort);
-        query.summaryOnly = lightweightView(request);
+        query.summaryOnly = AgentListHelper.isSummaryView(request) || AgentListHelper.isPickerView(request);
         return query;
-    }
-
-    private static boolean lightweightView(ListAgentsRequest request) {
-        String view = blankToNull(request.view);
-        return "summary".equals(view) || "picker".equals(view)
-            || (view == null && Boolean.TRUE.equals(request.summary));
     }
 
     private AgentDefinitionQuery directQuery(String userId, String name) {
@@ -237,10 +225,6 @@ public class AgentDefinitionService {
         query.userId = userId;
         query.name = name;
         return query;
-    }
-
-    private static String blankToNull(String value) {
-        return value == null || value.isBlank() ? null : value;
     }
 
     private List<String> splitIds(String ids) {
@@ -453,9 +437,3 @@ public class AgentDefinitionService {
         return userStore.get(userId).map(u -> "admin".equals(u.role)).orElse(Boolean.FALSE);
     }
 }
-
-
-
-
-
-

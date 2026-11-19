@@ -31,6 +31,18 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
         return JsonUtil.fromJson(AgentDefinition.class, row.data);
     }
 
+    private static AgentDefinition toSummary(PgAgentSummaryRow row) {
+        var definition = new AgentDefinition();
+        definition.id = row.id;
+        definition.name = row.name;
+        definition.type = row.type != null ? DefinitionType.valueOf(row.type) : null;
+        definition.status = row.status != null ? AgentStatus.valueOf(row.status) : null;
+        definition.description = row.description;
+        definition.publishedName = row.publishedName;
+        definition.publishedDescription = row.publishedDescription;
+        return definition;
+    }
+
     @Inject
     public Database database;
 
@@ -65,18 +77,6 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
                 .stream().map(PgAgentDefinitionStore::toSummary).toList()
             : database.select(sql.toString(), PgAgentDefinitionRow.class, params.toArray())
                 .stream().map(PgAgentDefinitionStore::toDefinition).toList();
-    }
-
-    private static AgentDefinition toSummary(PgAgentSummaryRow row) {
-        var definition = new AgentDefinition();
-        definition.id = row.id;
-        definition.name = row.name;
-        definition.type = row.type != null ? DefinitionType.valueOf(row.type) : null;
-        definition.status = row.status != null ? AgentStatus.valueOf(row.status) : null;
-        definition.description = row.description;
-        definition.publishedName = row.publishedName;
-        definition.publishedDescription = row.publishedDescription;
-        return definition;
     }
 
     @Override

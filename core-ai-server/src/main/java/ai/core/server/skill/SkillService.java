@@ -143,29 +143,25 @@ public class SkillService {
     }
 
     public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn, Integer offset, Integer limit) {
-        return list(filter, userId, query, searchIn, offset, limit, true);
+        return list(filter, userId, new ListOptions(query, searchIn, offset, limit, true));
     }
 
-    /**
-     * @param includeContent false only when the caller maps catalog metadata (the list view): skill bodies are then
-     *                       never selected, so the returned entities carry no {@code content}/{@code resources}
-     */
-    public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn,
-                                      Integer offset, Integer limit, boolean includeContent) {
+    public List<SkillDefinition> list(SkillFilter filter, String userId, ListOptions options) {
         String namespace = filter == null ? null : filter.namespace();
         var sourceType = sourceType(filter);
-        if (SkillQueryHelper.notInMemoryFilters(userId, query)) {
-            return includeContent
-                ? skillStore.list(namespace, sourceType, offset, limit)
-                : skillStore.listSummaries(namespace, sourceType, offset, limit);
+        if (SkillQueryHelper.notInMemoryFilters(userId, options.query())) {
+            return options.includeContent()
+                ? skillStore.list(namespace, sourceType, options.offset(), options.limit())
+                : skillStore.listSummaries(namespace, sourceType, options.offset(), options.limit());
         }
 
-        var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
-        var candidates = candidates(namespace, sourceType, includeContent);
+        var searchScope = SkillQueryHelper.normalizedSearchIn(options.searchIn());
+        var candidates = candidates(namespace, sourceType, options.includeContent());
         var filtered = candidates.stream()
-            .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
+            .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId)
+                && SkillQueryHelper.matchesQuery(skill, options.query(), searchScope))
             .toList();
-        return SkillQueryHelper.page(filtered, offset, limit);
+        return SkillQueryHelper.page(filtered, options.offset(), options.limit());
     }
 
     public long count(SkillFilter filter, String userId, String query, String searchIn) {
@@ -420,5 +416,12 @@ public class SkillService {
             .metadata(def.metadata != null ? def.metadata : Collections.emptyMap())
             .resources(resourcePaths)
             .build();
+    }
+
+    /**
+     * @param includeContent false only when the caller maps catalog metadata (the list view): skill bodies are then
+     *                       never selected, so the returned entities carry no {@code content}/{@code resources}
+     */
+    public record ListOptions(String query, String searchIn, Integer offset, Integer limit, boolean includeContent) {
     }
 }

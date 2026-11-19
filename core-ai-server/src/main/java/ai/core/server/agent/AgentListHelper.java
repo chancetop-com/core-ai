@@ -1,6 +1,7 @@
 package ai.core.server.agent;
 
 import ai.core.api.server.agent.AgentDefinitionView;
+import ai.core.api.server.agent.ListAgentsRequest;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.DefinitionType;
@@ -46,6 +47,22 @@ final class AgentListHelper {
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.status = entity.status != null ? entity.status.name() : null;
         return view;
+    }
+
+    static boolean isSummaryView(ListAgentsRequest request) {
+        String view = AgentQueryHelper.trimToNull(request.view);
+        return "summary".equals(view) || view == null && Boolean.TRUE.equals(request.summary);
+    }
+
+    static boolean isPickerView(ListAgentsRequest request) {
+        return "picker".equals(AgentQueryHelper.trimToNull(request.view));
+    }
+
+    static PagePlan pagePlan(ListAgentsRequest request) {
+        boolean paginated = request.page != null || request.limit != null;
+        int number = request.page != null && request.page > 0 ? request.page : 1;
+        int size = request.limit != null && request.limit > 0 ? Math.min(request.limit, 200) : 20;
+        return new PagePlan(number, size, paginated ? (number - 1) * size : null, paginated ? size : null);
     }
 
     static Set<String> favoriteAgentIds(UserStore userStore, String userId) {
@@ -228,4 +245,7 @@ final class AgentListHelper {
         return map;
     }
 
+
+    record PagePlan(int number, int size, Integer skip, Integer limit) {
+    }
 }
