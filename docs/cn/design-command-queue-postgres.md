@@ -197,4 +197,6 @@ FOR UPDATE SKIP LOCKED;
   - V45 需先于应用启动执行（启动 hook 早于 Flyway 任务）；V45 改为 `IF NOT EXISTS` 以支持手工修复环境。
 - dev E2E：新→新 PG、新→旧 Redis、旧→新 Redis、回滚 redis。
 - UAT：`V43–V45` 手工执行（V42 既有表 owner 为 `postgres`，Flyway 无法前进）；2.0.285 + command postgres 通过跨 Pod E2E，回滚 redis 通过后恢复 postgres。
+- UAT Flyway V42 所有权已修复：`app.conversation_requests` 及索引 owner 改为 `core_ai`，UAT history 已到 V45。
+- prod：2.0.285（index digest `sha256:264a28757c9c7fdb0a12e5e9bb20b38c6decd6cb8e32a11d6cd21a1f0bd7265c`），V41→V45，备份 `core-ai-pre-pg-cutover-20261119` completed；state/lease/command 均 postgres，SSE directed；新→新、新→旧、旧→新、owner 重启、PG 写失败回退、回滚 Redis 均通过。
 - 仍未清理：Redis command publisher/consumer、SSE 双写、RPC Redis 回退、`StartupDependencyCheck`/`JedisConfig`；这些要等全部环境稳定后再做。
