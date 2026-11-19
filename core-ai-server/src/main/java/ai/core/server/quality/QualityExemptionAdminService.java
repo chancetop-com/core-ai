@@ -221,7 +221,8 @@ public class QualityExemptionAdminService {
         request.scope = AgentDefinitionQuery.Scope.ALL;
         request.nameKeyPrefix = AgentNameKey.normalize(query);
         request.forkedFromIsNull = Boolean.TRUE;
-        request.summaryOnly = true;
+        // summary projections drop system_default/forked_from, so the automatic badge would never show
+        request.excludeSystemPrompt = true;
         request.sortField = "name_key";
         request.ascending = true;
         request.limit = SUBJECT_LIMIT;

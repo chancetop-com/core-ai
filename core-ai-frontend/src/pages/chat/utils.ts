@@ -216,6 +216,19 @@ export function customEventSegments(event: { name: string; data?: string; card?:
     const question = payload && typeof payload.question === 'string' && payload.question ? payload.question : undefined;
     return [{ type: 'quick_replies', question, options }];
   }
+  if (event.name === 'report_created' || event.name === 'report_updated') {
+    const payload = parseJsonObject(event.data);
+    const reportId = payload && typeof payload.report_id === 'string' ? payload.report_id : undefined;
+    if (!reportId) return [];
+    const data = payload ?? {};
+    return [{
+      type: 'report',
+      reportId,
+      title: typeof data.title === 'string' ? data.title : 'Report',
+      revision: typeof data.revision === 'number' ? data.revision : undefined,
+      updated: event.name === 'report_updated',
+    }];
+  }
   if (event.card) {
     const card = parseJsonObject(event.card);
     if (card && Array.isArray(card.blocks) && card.blocks.length > 0) {

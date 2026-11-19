@@ -9,6 +9,7 @@ import ai.core.api.server.ServerCapabilities;
 public class CapabilitiesWebServiceImpl implements CapabilitiesWebService {
     public boolean authDisabled;
     public boolean sandboxTerminalEnabled;
+    public boolean datasetReports;
     public String sandboxTerminalGatewayUrl = "";
 
     @Override
@@ -19,6 +20,7 @@ public class CapabilitiesWebServiceImpl implements CapabilitiesWebService {
         caps.prompts = Boolean.TRUE;
         caps.dashboard = Boolean.TRUE;
         caps.plugins = Boolean.TRUE;
+        caps.datasetReports = datasetReports ? Boolean.TRUE : Boolean.FALSE;
         caps.authRequired = authDisabled ? Boolean.FALSE : Boolean.TRUE;
         caps.sandboxTerminalEnabled = sandboxTerminalEnabled ? Boolean.TRUE : Boolean.FALSE;
         caps.sandboxTerminalGatewayUrl = sandboxTerminalGatewayUrl;

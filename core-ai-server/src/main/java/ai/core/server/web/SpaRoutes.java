@@ -14,7 +14,7 @@ public final class SpaRoutes {
         "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
         "/system-prompts", "/dashboard", "/traces", "/generations", "/observability", "/calls", "/skills",
         "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools", "/mcp",
-        "/triggers", "/datasets", "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore", "/report-issue",
+        "/triggers", "/datasets", "/reports", "/reports/:id", "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore", "/report-issue",
         "/projects", "/notifications",
         "/experiments", "/experiments/playground", "/experiments/replay", "/experiments/replay/:id",
         "/experiments/memory", "/experiments/memory/runs/:id", "/experiments/memory/configs/:id",

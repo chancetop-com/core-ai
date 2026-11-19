@@ -116,6 +116,15 @@ export interface QuickRepliesSegment {
   options: QuickReplyOption[];
 }
 
+/** A report_created/report_updated event: a link to the report management page. */
+export interface ReportLinkSegment {
+  type: 'report';
+  reportId: string;
+  title: string;
+  revision?: number;
+  updated?: boolean;
+}
+
 /** A custom event that carried the optional platform renderable card. */
 export interface CardSegment {
   type: 'card';
@@ -123,7 +132,7 @@ export interface CardSegment {
   card: RichCard;
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment | QuickRepliesSegment | CardSegment;
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment | QuickRepliesSegment | CardSegment | ReportLinkSegment;
 
 export interface ChatAttachment {
   url: string;

@@ -154,6 +154,20 @@ class QualityExemptionAdminServiceTest {
     }
 
     @Test
+    void subjectsMarkBuiltInAgentsAsAutomatic() {
+        when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of()));
+        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of()));
+        var builtIn = agent("default-assistant", "Assistant");
+        builtIn.systemDefault = Boolean.TRUE;
+        when(agentDefinitionStore.find(any())).thenReturn(List.of(builtIn));
+
+        var subjects = service.subjects(subjectRequest("AGENT"), "admin-1").subjects;
+
+        assertThat(subjects).hasSize(1);
+        assertThat(subjects.get(0).automatic).isTrue();
+    }
+
+    @Test
     void rejectsAnUnknownExemptionType() {
         var request = subjectRequest("TEAM");
 

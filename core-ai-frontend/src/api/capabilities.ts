@@ -5,6 +5,7 @@ export interface Capabilities {
   traces: boolean;
   prompts: boolean;
   dashboard: boolean;
+  datasetReports: boolean;
   systemPrompts: boolean;
   authRequired: boolean;
   sandboxTerminal: boolean;
@@ -16,6 +17,7 @@ export const defaultCapabilities: Capabilities = {
   traces: true,
   prompts: true,
   dashboard: true,
+  datasetReports: false,
   systemPrompts: true,
   authRequired: true,
   sandboxTerminal: false,
@@ -39,6 +41,7 @@ export async function fetchCapabilities(): Promise<Capabilities> {
       traces: caps.traces ?? true,
       prompts: caps.prompts ?? true,
       dashboard: caps.dashboard ?? true,
+      datasetReports: caps.dataset_reports ?? false,
       systemPrompts: caps.systemPrompts ?? caps.prompts ?? false,
       authRequired: caps.auth_required ?? true,
       sandboxTerminal: caps.sandbox_terminal_enabled ?? false,
