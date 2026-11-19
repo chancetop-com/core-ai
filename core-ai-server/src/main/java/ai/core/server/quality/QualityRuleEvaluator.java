@@ -30,9 +30,5 @@ public interface QualityRuleEvaluator {
                         List<RuleParameterSpec> parameters,
                         List<String> inputOptions, boolean supportsDecision,
                         List<QuestionSpec> questions) {
-        public RuleTemplate(String evaluatorKey, String name, String kind, String category, String description,
-                            List<RuleParameterSpec> parameters, List<String> inputOptions, boolean supportsDecision) {
-            this(evaluatorKey, name, kind, category, description, parameters, inputOptions, supportsDecision, List.of());
-        }
     }
 }

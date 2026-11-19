@@ -78,6 +78,6 @@ public class McpServerAvailableRule implements QualityRuleEvaluator {
     public RuleTemplate template() {
         return new RuleTemplate(KEY, "MCP server 有效性", "CODE", "CONFIG",
             "MCP server 引用必须存在、启用、类型正确且配置可解析；不探测连接状态。",
-            List.of(), List.of(), false);
+            List.of(), List.of(), false, List.of());
     }
 }

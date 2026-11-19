@@ -49,7 +49,7 @@ public class McpToolAvailableRule implements QualityRuleEvaluator {
     public RuleTemplate template() {
         return new RuleTemplate(KEY, "MCP tool 存在性", "CODE", "CONFIG",
             "固定 MCP tool 的存在性需要可信 tool 列表缓存；未缓存时返回未验证，不伪装通过。",
-            List.of(), List.of(), false);
+            List.of(), List.of(), false, List.of());
     }
 }
 

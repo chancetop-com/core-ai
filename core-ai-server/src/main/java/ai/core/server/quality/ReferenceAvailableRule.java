@@ -98,6 +98,6 @@ public class ReferenceAvailableRule implements QualityRuleEvaluator {
     public RuleTemplate template() {
         return new RuleTemplate(KEY, "引用资源有效性", "CODE", "CONFIG",
             "所有配置引用必须存在、可用且类型正确；MCP server 由独立规则检查。",
-            List.of(), List.of(), false);
+            List.of(), List.of(), false, List.of());
     }
 }

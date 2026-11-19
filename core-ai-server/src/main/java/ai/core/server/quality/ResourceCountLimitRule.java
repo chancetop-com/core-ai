@@ -169,6 +169,6 @@ public class ResourceCountLimitRule implements QualityRuleEvaluator {
             "按类别限制 Agent 的直接引用数量；零允许，超过上限即失败。",
             CATEGORIES.stream().map(category -> new RuleParameterSpec(category, "INTEGER", false,
                 "该类别允许的最大直接引用数量；留空表示不限制。", null, List.of())).toList(),
-            List.of(), false);
+            List.of(), false, List.of());
     }
 }

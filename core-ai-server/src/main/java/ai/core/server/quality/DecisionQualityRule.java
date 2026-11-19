@@ -182,7 +182,7 @@ public class DecisionQualityRule implements QualityRuleEvaluator {
                     "choice 规则中视为通过的标签，逗号分隔。", null, List.of()),
                 new RuleParameterSpec("minScore", "DECIMAL", false,
                     "score 规则的最低通过分数。", "0.5", List.of())),
-            QualityRuleRegistry.inputOptions(), true);
+            QualityRuleRegistry.inputOptions(), true, List.of());
     }
 
     private record Outcome(boolean pass, boolean uncertain, Double probability, String mapping) {

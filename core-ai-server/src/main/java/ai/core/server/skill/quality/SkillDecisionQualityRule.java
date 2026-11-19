@@ -37,7 +37,7 @@ public class SkillDecisionQualityRule implements SkillQualityRuleEvaluator {
                     "Choice labels treated as passing, comma separated.", null, List.of()),
                 new QualityRuleEvaluator.RuleParameterSpec("minScore", "DECIMAL", false,
                     "Minimum passing score for score rules.", "0.5", List.of())),
-            SkillQualityRuleRegistry.inputOptions(), true);
+            SkillQualityRuleRegistry.inputOptions(), true, List.of());
     }
 
     @Override
