@@ -17,6 +17,11 @@ public class MediaPricingService {
     ai.core.server.gateway.GatewayModelStore gatewayModelStore;
 
     public MediaPrice resolveImage(String requestedModel, String resolvedModel, Usage usage, int imageCount) {
+        return resolveImage(requestedModel, resolvedModel, usage, imageCount, null);
+    }
+
+    public MediaPrice resolveImage(String requestedModel, String resolvedModel, Usage usage, int imageCount,
+                                   Double creditUsdRate) {
         var gatewayModel = gatewayModel(requestedModel);
         if (gatewayModel != null && gatewayModel.imagePricePerImage != null && imageCount > 0) {
             return new MediaPrice(gatewayModel.imagePricePerImage * imageCount, "gateway_model", gatewayModel.modelId,
@@ -24,6 +29,10 @@ public class MediaPricingService {
         }
         if (usage != null && usage.upstreamCostUsd() != null) {
             return new MediaPrice(usage.upstreamCostUsd(), "upstream", null, null, null);
+        }
+        if (usage != null && usage.creditsConsumed() != null && creditUsdRate != null) {
+            return new MediaPrice(usage.creditsConsumed() * creditUsdRate, "upstream", null,
+                    usage.creditsConsumed(), "credit");
         }
         return catalogImagePrice(resolvedModel, usage, imageCount, requestedModel);
     }

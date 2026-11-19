@@ -284,7 +284,7 @@ public class LiteLLMMediaProvider implements MediaProvider {
     private Usage usage(Map<String, Object> responseMap, HTTPResponse response) {
         var cost = responseCost(response);
         if (!(responseMap.get("usage") instanceof Map<?, ?> map)) {
-            return cost == null ? null : new Usage(null, null, null, null, null, null, null, cost, null);
+            return cost == null ? null : new Usage(null, null, null, null, null, null, null, cost, null, null);
         }
         var usageMap = (Map<String, Object>) map;
         var details = usageMap.get("input_tokens_details") instanceof Map<?, ?> detailMap
@@ -299,7 +299,8 @@ public class LiteLLMMediaProvider implements MediaProvider {
                 intValue(details, "text_tokens"),
                 intValue(details, "image_tokens"),
                 upstreamCost != null ? upstreamCost : cost,
-                intValue(usageMap, "output_video_tokens"));
+                intValue(usageMap, "output_video_tokens"),
+                doubleValue(usageMap, "credits_consumed"));
     }
 
     private Double responseCost(HTTPResponse response) {

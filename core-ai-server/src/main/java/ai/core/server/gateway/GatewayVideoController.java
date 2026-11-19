@@ -187,6 +187,7 @@ public class GatewayVideoController {
         body.put("input_image_tokens", value.inputImageTokens());
         body.put("upstream_cost_usd", value.upstreamCostUsd());
         body.put("output_video_tokens", value.outputVideoTokens());
+        body.put("credits_consumed", value.creditsConsumed());
         return body;
     }
 

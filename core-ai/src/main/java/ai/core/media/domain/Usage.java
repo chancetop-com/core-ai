@@ -6,8 +6,8 @@ package ai.core.media.domain;
 public record Usage(Integer totalTokens, Integer imageCount, Integer videoSeconds,
                     Integer inputTokens, Integer outputTokens,
                     Integer inputTextTokens, Integer inputImageTokens,
-                    Double upstreamCostUsd, Integer outputVideoTokens) {
+                    Double upstreamCostUsd, Integer outputVideoTokens, Double creditsConsumed) {
     public Usage(Integer totalTokens, Integer imageCount, Integer videoSeconds) {
-        this(totalTokens, imageCount, videoSeconds, null, null, null, null, null, null);
+        this(totalTokens, imageCount, videoSeconds, null, null, null, null, null, null, null);
     }
 }

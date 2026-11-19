@@ -3,6 +3,7 @@ package ai.core.server.gateway;
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
 import ai.core.media.domain.ImageGenerationResponse;
+import ai.core.media.domain.Usage;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.GatewayProviderConfig;
@@ -115,6 +116,22 @@ class MediaJobServiceTest {
         assertNotNull(job.completedAt);
         assertNull(job.fileId);
         verify(collection).insert(job);
+    }
+
+    @Test
+    void createImageJobKeepsUpstreamCredits() {
+        var price = new MediaPricingService.MediaPrice(0.075, "upstream", null, 6.0, "credit");
+        var response = new ImageGenerationResponse(List.of(),
+                new Usage(null, 1, null, null, null, null, null, null, null, 6.0));
+
+        var job = service.createImageJob(new MediaJobOwner("user-1", null, null), route(),
+                new MediaJobService.ImageJobSubmission(imageRequest("seedream-5-pro-image-to-image", "a cafe"),
+                        price, response, null));
+
+        assertEquals(6.0, job.creditsConsumed);
+        assertEquals(6.0, job.mediaUnits);
+        assertEquals("credit", job.mediaUnitType);
+        assertEquals("upstream", job.costSource);
     }
 
     @Test

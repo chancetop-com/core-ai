@@ -375,7 +375,7 @@ public class VertexGeminiOmniMediaProvider implements MediaProvider {
         var outputVideoTokens = modalityTokens(usage, "output_tokens_by_modality", "video");
         if (totalTokens == null && inputTokens == null && outputTokens == null && outputVideoTokens == null) return null;
         return new Usage(totalTokens, null, null, inputTokens, outputTokens,
-                inputTextTokens, inputImageTokens, null, outputVideoTokens);
+                inputTextTokens, inputImageTokens, null, outputVideoTokens, null);
     }
 
     @SuppressWarnings("unchecked")

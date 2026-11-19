@@ -111,6 +111,7 @@ public class MediaJobService {
         job.pricingModelId = price.pricingModelId();
         var response = submission.response();
         if (response != null) {
+            if (response.usage() != null) job.creditsConsumed = response.usage().creditsConsumed();
             job.upstreamInteractionId = response.interactionId();
             var image = response.data() == null || response.data().isEmpty() ? null : response.data().getFirst();
             if (image != null && hasText(image.url())) job.upstreamAssetUrl = image.url();

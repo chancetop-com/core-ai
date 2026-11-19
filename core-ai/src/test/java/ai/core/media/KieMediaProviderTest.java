@@ -647,6 +647,26 @@ class KieMediaProviderTest {
     }
 
     @Test
+    void generateImageMapsCreditsConsumed() {
+        imageTask();
+        creditsConsumed.set(6.0);
+
+        var response = provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null));
+
+        assertEquals(6.0, response.usage().creditsConsumed());
+        assertEquals(1, response.usage().imageCount());
+    }
+
+    @Test
+    void generateImageLeavesCreditsConsumedNullWhenAbsent() {
+        imageTask();
+
+        var response = provider.generateImage(imageRequest("seedream/5-pro-text-to-image", "a cafe", null, null, null));
+
+        assertNull(response.usage().creditsConsumed());
+    }
+
+    @Test
     void generateImagePollsUntilTaskCompletes() {
         resultPath.set("/image.png");
         taskState.set("generating");

@@ -63,6 +63,11 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
     }
 
     ImageGenerationResponse generateImage(ImageGenerationRequest request, MediaJobOwner owner) {
+        return generateImageWithJob(request, owner).response();
+    }
+
+    /** Same generation, plus the settled job so the API can report what it actually cost. */
+    SettledImageGeneration generateImageWithJob(ImageGenerationRequest request, MediaJobOwner owner) {
         var endpoint = request.inputImages() != null && !request.inputImages().isEmpty() || request.mask() != null
                 ? GatewayEndpointType.IMAGE_EDIT : GatewayEndpointType.IMAGE_GENERATION;
         var resolved = route(request.model(), endpoint);
@@ -83,7 +88,8 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
 
         var response = upstream.generateImage(rewrite(request, resolved.upstreamModel(), compiled, mask, interactionId));
         var job = recordImageCost(request, resolved, response, owner);
-        return response.with(job == null ? null : GatewayMediaHandle.encodeImage(job.id), compiled.notes());
+        return new SettledImageGeneration(
+                response.with(job == null ? null : GatewayMediaHandle.encodeImage(job.id), compiled.notes()), job);
     }
 
     private MediaReference mask(ImageGenerationRequest request, GatewayRoute route, MediaJobOwner owner) {
@@ -95,7 +101,7 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
     private MediaJob recordImageCost(ImageGenerationRequest request, GatewayRoute resolved, ImageGenerationResponse response, MediaJobOwner owner) {
         try {
             var price = costSettler.settleImage(request.model(), resolved.upstreamModel(), response.usage(),
-                    response.data() == null ? 0 : response.data().size());
+                    response.data() == null ? 0 : response.data().size(), resolved.provider().creditUsdRate);
             // the caller's own references, not the resolver's output: what was asked for is what explains the result
             var inputs = inputRecorder.capture(owner, request.inputImages(), request.mask(), null);
             return mediaJobService.createImageJob(owner, resolved, new MediaJobService.ImageJobSubmission(request, price, response, inputs));
@@ -216,6 +222,9 @@ public class GatewayMediaProvider implements MediaProvider, ManagedReferenceProv
         var apiKey = secretProtector.unprotect(provider.apiKeyEncrypted != null ? provider.apiKeyEncrypted : provider.apiKey);
         var googleCredentials = secretProtector.unprotect(provider.googleCredentialsEncrypted);
         return adapterFactory.create(provider, apiKey == null ? "" : apiKey, googleCredentials);
+    }
+
+    record SettledImageGeneration(ImageGenerationResponse response, MediaJob job) {
     }
 
 }

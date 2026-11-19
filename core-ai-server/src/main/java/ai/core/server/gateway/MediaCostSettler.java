@@ -29,8 +29,9 @@ public class MediaCostSettler {
         return pricingService.resolveVideo(request);
     }
 
-    public MediaPricingService.MediaPrice settleImage(String requestedModel, String resolvedModel, Usage usage, int imageCount) {
-        return pricingService.resolveImage(requestedModel, resolvedModel, usage, imageCount);
+    public MediaPricingService.MediaPrice settleImage(String requestedModel, String resolvedModel, Usage usage, int imageCount,
+                                                       Double creditUsdRate) {
+        return pricingService.resolveImage(requestedModel, resolvedModel, usage, imageCount, creditUsdRate);
     }
 
     private Double creditUsdRate(String providerId) {

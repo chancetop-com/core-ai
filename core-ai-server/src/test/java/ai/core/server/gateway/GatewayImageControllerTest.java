@@ -2,6 +2,8 @@ package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationResponse;
+import ai.core.media.domain.Usage;
+import ai.core.server.domain.MediaJob;
 import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.web.MultipartFile;
@@ -62,17 +64,17 @@ class GatewayImageControllerTest {
         var controller = new GatewayImageController();
         controller.gatewayMediaProvider = provider;
         var owner = new MediaJobOwner("user-1", null, null);
-        when(provider.generateImage(any(), eq(owner)))
-                .thenReturn(new ImageGenerationResponse(
-                        List.of(new ImageData("aW1hZ2U=", null, "revised")), null, null,
-                        "gateway-media-v1.img.am9iLTE", List.of()));
+        when(provider.generateImageWithJob(any(), eq(owner)))
+                .thenReturn(new GatewayMediaProvider.SettledImageGeneration(
+                        new ImageGenerationResponse(List.of(new ImageData("aW1hZ2U=", null, "revised")), null, null,
+                                "gateway-media-v1.img.am9iLTE", List.of()), null));
 
         controller.generate("""
                 {"model":"gpt-image-2.5-flare","prompt":"a purple cat"}
                 """.getBytes(StandardCharsets.UTF_8), owner, false);
 
         var request = ArgumentCaptor.forClass(ai.core.media.domain.ImageGenerationRequest.class);
-        verify(provider).generateImage(request.capture(), eq(owner));
+        verify(provider).generateImageWithJob(request.capture(), eq(owner));
         assertThat(request.getValue().model()).isEqualTo("gpt-image-2.5-flare");
     }
 
@@ -131,16 +133,36 @@ class GatewayImageControllerTest {
                 {"model":"gpt-image-2","prompt":"a cafe"}
                 """.getBytes(StandardCharsets.UTF_8)));
         when(audit.begin(any(), any(), any(), any(), any(), any())).thenReturn("audit-1");
-        when(provider.generateImage(any(), any()))
-                .thenReturn(new ImageGenerationResponse(List.of(new ImageData("aW1n", null, null)), null));
+        when(provider.generateImageWithJob(any(), any()))
+                .thenReturn(new GatewayMediaProvider.SettledImageGeneration(
+                        new ImageGenerationResponse(List.of(new ImageData("aW1n", null, null)), null), null));
 
         controller.generate(request);
 
-        verify(provider).generateImage(any(), eq(new MediaJobOwner("user-1", "session-7", null)));
+        verify(provider).generateImageWithJob(any(), eq(new MediaJobOwner("user-1", "session-7", null)));
         verify(audit).begin(eq(HubCallAuditService.KIND_MEDIA), eq("generate_image"), eq("image"),
                 eq("gpt-image-2"), any(), eq(new MediaJobOwner("user-1", "session-7", null)));
         var result = ArgumentCaptor.forClass(GatewayCallAuditService.Result.class);
         verify(audit).finish(eq("audit-1"), any(), result.capture());
         assertThat(result.getValue().success()).isTrue();
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void reportsSettledCostAndUpstreamCredits() {
+        var job = new MediaJob();
+        job.costUsd = 0.12;
+        job.costSource = "upstream";
+        var usage = new Usage(null, 1, null, null, null, null, null, null, null, 7.5);
+        var settled = new GatewayMediaProvider.SettledImageGeneration(
+                new ImageGenerationResponse(List.of(new ImageData("aW1n", null, null)), usage, null,
+                        "gateway-media-v1.img.am9iLTE", List.of()), job);
+
+        var body = new GatewayImageController().responseBody(settled);
+
+        assertThat(body.get("cost_usd")).isEqualTo(0.12);
+        assertThat(body.get("cost_source")).isEqualTo("upstream");
+        assertThat(body.get("media_id")).isEqualTo("gateway-media-v1.img.am9iLTE");
+        assertThat(((Map<String, Object>) body.get("usage")).get("credits_consumed")).isEqualTo(7.5);
     }
 }

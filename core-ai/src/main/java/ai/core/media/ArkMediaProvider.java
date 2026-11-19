@@ -265,7 +265,7 @@ public class ArkMediaProvider implements MediaProvider {
         var outputTokens = intValue(usage, "completion_tokens");
         var inputTokens = intValue(usage, "prompt_tokens");
         if (totalTokens == null && outputTokens == null && inputTokens == null) return null;
-        return new Usage(totalTokens, null, null, inputTokens, outputTokens, null, null, null, outputTokens);
+        return new Usage(totalTokens, null, null, inputTokens, outputTokens, null, null, null, outputTokens, null);
     }
 
     /**

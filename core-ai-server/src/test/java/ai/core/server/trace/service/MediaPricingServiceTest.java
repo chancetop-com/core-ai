@@ -52,7 +52,7 @@ class MediaPricingServiceTest {
     void resolveImagePrefersGatewayModelPrice() {
         when(models.find(any(Bson.class))).thenReturn(List.of(gatewayModel("gpt-image-2", 0.1, null)));
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 2, null, 150, 200, 100, 50, null, null), 2);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 2, null, 150, 200, 100, 50, null, null, null), 2);
 
         assertEquals(0.2, price.costUsd());
         assertEquals("gateway_model", price.source());
@@ -65,7 +65,7 @@ class MediaPricingServiceTest {
     void resolveImagePrefersUpstreamCostOverCatalog() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, 0.42, null), 1);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, 0.42, null, null), 1);
 
         assertEquals(0.42, price.costUsd());
         assertEquals("upstream", price.source());
@@ -73,10 +73,45 @@ class MediaPricingServiceTest {
     }
 
     @Test
+    void resolveImageConvertsCreditsWithConfiguredRate() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+
+        var price = service.resolveImage("seedream-5-pro-image-to-image", "seedream/5-pro-image-to-image",
+                new Usage(null, 1, null, null, null, null, null, null, null, 6.0), 1, 0.0125);
+
+        assertEquals(0.075, price.costUsd(), 1e-12);
+        assertEquals("upstream", price.source());
+        assertEquals(6.0, price.units());
+        assertEquals("credit", price.unitType());
+    }
+
+    @Test
+    void resolveImagePrefersUpstreamCostOverCredits() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+
+        var price = service.resolveImage("seedream-5-pro-image-to-image", "seedream/5-pro-image-to-image",
+                new Usage(null, 1, null, null, null, null, null, 0.42, null, 6.0), 1, 0.0125);
+
+        assertEquals(0.42, price.costUsd());
+        assertEquals("upstream", price.source());
+    }
+
+    @Test
+    void resolveImageReturnsUnavailableWithoutCreditsRate() {
+        when(models.find(any(Bson.class))).thenReturn(List.of());
+
+        var price = service.resolveImage("no-such-image-model", "no-such-image-model",
+                new Usage(null, 1, null, null, null, null, null, null, null, 6.0), 1, null);
+
+        assertNull(price.costUsd());
+        assertEquals("unavailable", price.source());
+    }
+
+    @Test
     void resolveImageFallsBackToCatalogTokenPricing() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
 
-        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, null, null), 1);
+        var price = service.resolveImage("gpt-image-2", "gpt-image-2", new Usage(350, 1, null, 150, 200, 100, 50, null, null, null), 1);
 
         assertEquals(100 * 5e-6 + 50 * 8e-6 + 200 * 3e-5, price.costUsd(), 1e-12);
         assertEquals("model_catalog", price.source());
@@ -92,7 +127,7 @@ class MediaPricingServiceTest {
         // UAT routes gpt-image-2.5-flare/sunburst by deployment name and carries no gateway price, so the catalog
         // entry is the only price source - without it the job settles as unavailable, i.e. no usage and no cost
         var price = service.resolveImage("gpt-image-2.5-flare", "gpt-image-2.5-flare",
-                new Usage(3_150, 1, null, 50, 3_100, 50, null, null, null), 1);
+                new Usage(3_150, 1, null, 50, 3_100, 50, null, null, null, null), 1);
 
         assertEquals(50 * 5e-6 + 3_100 * 3e-5, price.costUsd(), 1e-12);
         assertEquals("model_catalog", price.source());
@@ -171,7 +206,7 @@ class MediaPricingServiceTest {
     @Test
     void resolveVideoPricesGeminiOmniFromVideoOutputTokens() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
-        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832);
+        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832, null);
 
         var price = service.resolveVideo(new MediaPricingService.VideoPricingRequest(
                 "gemini-omni-flash-preview", "gemini-omni-flash-preview", null, null, null, null, usage));
@@ -185,7 +220,7 @@ class MediaPricingServiceTest {
     @Test
     void resolveVideoPrefersUpstreamCostOverVideoTokens() {
         when(models.find(any(Bson.class))).thenReturn(List.of());
-        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832);
+        var usage = new Usage(33_832, null, null, 5_000, 28_832, null, null, null, 28_832, null);
 
         var price = service.resolveVideo(new MediaPricingService.VideoPricingRequest(
                 "gemini-omni-flash-preview", "gemini-omni-flash-preview", 10, null, null, 1.01, usage));

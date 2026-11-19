@@ -2,7 +2,6 @@ package ai.core.server.gateway;
 
 import ai.core.media.domain.ImageData;
 import ai.core.media.domain.ImageGenerationRequest;
-import ai.core.media.domain.ImageGenerationResponse;
 import ai.core.media.domain.MediaReference;
 import ai.core.media.domain.Usage;
 import ai.core.media.reference.MediaReferenceParser;
@@ -41,7 +40,7 @@ public class GatewayImageController {
     }
 
     Response generate(byte[] body, MediaJobOwner owner, boolean edit) {
-        return json(gatewayMediaProvider.generateImage(imageRequest(body, edit), owner));
+        return json(gatewayMediaProvider.generateImageWithJob(imageRequest(body, edit), owner));
     }
 
     public Response edit(Request request) {
@@ -54,11 +53,12 @@ public class GatewayImageController {
                 "image", imageRequest.model(), gatewayCallAudit.imageArguments(imageRequest, edit), owner);
         var watch = new StopWatch();
         try {
-            var response = gatewayMediaProvider.generateImage(imageRequest, owner);
+            var settled = gatewayMediaProvider.generateImageWithJob(imageRequest, owner);
+            var response = settled.response();
             gatewayCallAudit.finish(auditId, watch, GatewayCallAuditService.Result.completed(
                     gatewayCallAudit.imageOutputBytes(response), response.mediaId(),
                     gatewayCallAudit.inputTokens(response.usage()), gatewayCallAudit.outputTokens(response.usage())));
-            return json(response);
+            return json(settled);
         } catch (RuntimeException e) {
             gatewayCallAudit.finish(auditId, watch,
                     GatewayCallAuditService.Result.failure(gatewayCallAudit.failureStatus(e), e.getMessage()));
@@ -185,15 +185,24 @@ public class GatewayImageController {
         }
     }
 
-    private Response json(ImageGenerationResponse value) {
+    Map<String, Object> responseBody(GatewayMediaProvider.SettledImageGeneration value) {
+        var response = value.response();
         var body = new LinkedHashMap<String, Object>();
-        body.put("data", images(value.data()));
-        body.put("usage", usage(value.usage()));
-        body.put("interaction_id", value.interactionId());
-        body.put("media_id", value.mediaId());
-        if (!value.notes().isEmpty()) body.put("notes", value.notes());
+        body.put("data", images(response.data()));
+        body.put("usage", usage(response.usage()));
+        body.put("interaction_id", response.interactionId());
+        body.put("media_id", response.mediaId());
+        var job = value.job();
+        body.put("cost_usd", job == null ? null : job.costUsd);
+        body.put("cost_source", job == null ? null : job.costSource);
+        body.put("pricing_model_id", job == null ? null : job.pricingModelId);
+        if (!response.notes().isEmpty()) body.put("notes", response.notes());
+        return body;
+    }
+
+    private Response json(GatewayMediaProvider.SettledImageGeneration value) {
         try {
-            return Response.bytes(GatewayJson.MAPPER.writeValueAsBytes(body)).contentType(ContentType.APPLICATION_JSON);
+            return Response.bytes(GatewayJson.MAPPER.writeValueAsBytes(responseBody(value))).contentType(ContentType.APPLICATION_JSON);
         } catch (JsonProcessingException e) {
             throw new RuntimeException("failed to serialize gateway image response", e);
         }
@@ -222,6 +231,7 @@ public class GatewayImageController {
         body.put("input_text_tokens", value.inputTextTokens());
         body.put("input_image_tokens", value.inputImageTokens());
         body.put("upstream_cost_usd", value.upstreamCostUsd());
+        body.put("credits_consumed", value.creditsConsumed());
         return body;
     }
 

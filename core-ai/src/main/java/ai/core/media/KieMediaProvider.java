@@ -117,11 +117,12 @@ public class KieMediaProvider implements MediaProvider {
         var task = client.createTask(body, request.model(), MediaModelParameterHints.imageHint(request.model()), "image generation");
         var taskId = KieTaskClient.stringValue(task, "taskId");
         if (taskId == null || taskId.isBlank()) throw new IllegalStateException("KIE image task response is missing taskId");
-        var images = awaitImages(taskId, request.model());
-        return new ImageGenerationResponse(images, new Usage(null, images.size(), null));
+        var result = awaitImages(taskId, request.model());
+        return new ImageGenerationResponse(result.images(),
+                new Usage(null, result.images().size(), null, null, null, null, null, null, null, result.creditsConsumed()));
     }
 
-    private List<ImageData> awaitImages(String taskId, String model) {
+    private ImageTask awaitImages(String taskId, String model) {
         var deadline = System.nanoTime() + imagePollTimeout.toNanos();
         var failures = 0;
         while (true) {
@@ -140,8 +141,8 @@ public class KieMediaProvider implements MediaProvider {
                 if (failures > MAX_IMAGE_POLL_FAILURES) throw e;
             }
             if (task != null) {
-                var images = terminalImages(task, taskId, model);
-                if (images != null) return images;
+                var result = terminalImages(task, taskId, model);
+                if (result != null) return result;
             }
             if (System.nanoTime() >= deadline) {
                 // the task id is logged so an abandoned task can be reconciled upstream: it may still complete (and be
@@ -154,8 +155,12 @@ public class KieMediaProvider implements MediaProvider {
         }
     }
 
-    /** Images once the task succeeded, null while it is still running; throws when it ended in failure. */
-    private List<ImageData> terminalImages(Map<String, Object> task, String taskId, String model) {
+    /**
+     * Images and metering once the task succeeded, null while it is still running; throws when it ended in failure.
+     * KIE reports the credits the task actually charged on the same record, which is the only cost source for
+     * image models that carry no catalog price.
+     */
+    private ImageTask terminalImages(Map<String, Object> task, String taskId, String model) {
         var state = normalizeStatus(KieTaskClient.stringValue(task, "state"));
         if ("failed".equals(state)) {
             var failMsg = KieTaskClient.stringValue(task, "failMsg");
@@ -166,7 +171,7 @@ public class KieMediaProvider implements MediaProvider {
         if (!"completed".equals(state)) return null;
         var urls = client.resultUrls(task);
         if (urls.isEmpty()) throw new IllegalStateException("completed KIE image task did not include result URLs");
-        return downloadImages(urls);
+        return new ImageTask(downloadImages(urls), KieTaskClient.doubleValue(task, "creditsConsumed"));
     }
 
     // KIE result URLs expire; download eagerly so callers that persist artifacts or inline the image
@@ -322,6 +327,9 @@ public class KieMediaProvider implements MediaProvider {
     }
 
     private enum DurationType { INT, STRING }
+
+    private record ImageTask(List<ImageData> images, Double creditsConsumed) {
+    }
 
     /**
      * @param resolutions short-side tiers this family accepts, largest-wins against the requested size.

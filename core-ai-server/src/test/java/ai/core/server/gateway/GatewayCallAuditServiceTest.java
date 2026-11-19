@@ -98,7 +98,7 @@ class GatewayCallAuditServiceTest {
     void finishesWithDurationOutputArtifactAndTokenUsage() {
         var response = new ImageGenerationResponse(
                 List.of(new ImageData("aW1hZ2U=", null, null)),
-                new Usage(10, 1, null, 11, 12, null, null, null, null),
+                new Usage(10, 1, null, 11, 12, null, null, null, null, null),
                 null, "media-1", List.of());
 
         service.finish("audit-1", new StopWatch(), GatewayCallAuditService.Result.completed(
