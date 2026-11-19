@@ -1,0 +1,24 @@
+{
+  "name": "My Home",
+  "version": "0.1.0",
+  "description": "A home page that shows your dataset reports and todos, with a daily summary of yesterday's sessions.",
+  "coreai": {
+    "schemaVersion": 1,
+    "id": "core-ai.home",
+    "desktopApi": "^1.0.0",
+    "capabilities": {
+      "required": ["ui.pages", "reports.read", "todos.read", "todos.write", "plugin.storage"]
+    },
+    "contributes": {
+      "pages": [
+        {
+          "id": "home",
+          "title": "My Home",
+          "view": "pages/home.html",
+          "icon": "home",
+          "scope": "workspace"
+        }
+      ]
+    }
+  }
+}

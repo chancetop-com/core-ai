@@ -2,6 +2,8 @@ package ai.core.api.server.foryou;
 
 import core.framework.api.json.Property;
 
+import java.util.List;
+
 /**
  * @author stephen
  */
@@ -26,6 +28,21 @@ public class ForYouTodoView {
 
     @Property(name = "due_date")
     public String dueDate;
+
+    @Property(name = "source")
+    public String source;
+
+    @Property(name = "origin_date")
+    public String originDate;
+
+    @Property(name = "origin_session_ids")
+    public List<String> originSessionIds;
+
+    @Property(name = "dedupe_key")
+    public String dedupeKey;
+
+    @Property(name = "generated_by")
+    public String generatedBy;
 
     @Property(name = "created_at")
     public String createdAt;

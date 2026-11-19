@@ -2,8 +2,10 @@ package ai.core.server.web.foryou;
 
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
+import ai.core.server.domain.HomeTodoDigestRun;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
+import ai.core.server.home.HomeTodoDigestStore;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.trace.TraceDailyStatsStore;
 import ai.core.server.trace.TraceQuery;
@@ -27,6 +29,9 @@ public class ForYouService {
 
     @Inject
     UserTodoStore todoStore;
+
+    @Inject
+    HomeTodoDigestStore digestStore;
 
     @Inject
     ai.core.server.file.FileRecordStore fileRecordStore;
@@ -117,6 +122,7 @@ public class ForYouService {
         todo.completed = Boolean.FALSE;
         todo.priority = priority;
         todo.dueDate = dueDate;
+        todo.source = "MANUAL";
         todo.createdAt = ZonedDateTime.now();
         todo.updatedAt = todo.createdAt;
         todoStore.insert(todo);
@@ -141,6 +147,11 @@ public class ForYouService {
         if (todo == null || !userId.equals(todo.userId)) return false;
         todoStore.delete(id);
         return true;
+    }
+
+    /** The daily digest run for this user/date, null when it never ran. */
+    public HomeTodoDigestRun todoDigest(String userId, String date) {
+        return digestStore.get(userId + ":" + date).orElse(null);
     }
 
     // --- Files ---

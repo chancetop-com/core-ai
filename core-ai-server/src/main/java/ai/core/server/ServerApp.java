@@ -367,6 +367,7 @@ public class ServerApp extends App {
 
         mongo.collection(UserReport.class);
         mongo.collection(UserTodo.class);
+        mongo.collection(ai.core.server.domain.HomeTodoDigestRun.class);
 
         registerWorkflowCollections(mongo);
 

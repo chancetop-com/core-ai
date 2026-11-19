@@ -10,6 +10,7 @@ import path from 'node:path';
 import type { PluginTerminalCommandDescriptor, ResolvedPluginPage } from './pluginStore';
 import type { PluginHost } from './PluginHost';
 import type { EngineSupervisor } from '../engine/EngineSupervisor';
+import type { HomeDataClient } from '../home/HomeDataClient';
 import { assetUrl, pageUrl } from './pluginPagePaths.js';
 import { contentTypeFor, isArtifactPathAllowed, resolveInsideWorkspace } from '../artifacts/artifactPath';
 import {
@@ -31,6 +32,8 @@ export interface PluginPageHostOptions {
   preloadPath: string;
   onLog?: (line: string) => void;
   notify?: (text: string) => Promise<{ ok: boolean; error?: string }>;
+  /** Server-side home data; the page gets typed read/write calls, never the credential or a URL. */
+  home?: () => HomeDataClient | null;
   browser?: {
     status: () => unknown;
     open: (url: string) => Promise<unknown>;
@@ -69,6 +72,7 @@ interface PageInstance {
   events: Set<string>;
   notifyTimes: number[];
   terminalTimes: number[];
+  homeWriteTimes: number[];
 }
 
 export class PluginPageError extends Error {
@@ -158,6 +162,7 @@ export class PluginPageHost {
       events: new Set(),
       notifyTimes: [],
       terminalTimes: [],
+      homeWriteTimes: [],
     };
     this.instances.set(token, instance);
     this.wireWebContents(instance);
@@ -320,6 +325,53 @@ export class PluginPageHost {
       case 'workspace.summary':
         this.requireCapability(instance, 'workspace.read');
         return this.workspaceSummary(instance);
+      case 'home.status':
+        return this.homeCall(() => this.homeStatus());
+      case 'home.reports':
+        this.requireCapability(instance, 'reports.read');
+        return this.homeCall(() => this.homeClient().reports(
+          typeof args.offset === 'number' ? args.offset : 0,
+          typeof args.limit === 'number' ? args.limit : 20,
+        ));
+      case 'home.report':
+        this.requireCapability(instance, 'reports.read');
+        return this.homeCall(() => this.homeClient().report(homeId(args.id)));
+      case 'home.reportData':
+        this.requireCapability(instance, 'reports.read');
+        return this.homeCall(() => this.homeClient().reportData(homeId(args.id), {
+          rangeKind: typeof args.rangeKind === 'string' ? args.rangeKind : undefined,
+          days: typeof args.days === 'number' ? args.days : undefined,
+          pageSize: typeof args.pageSize === 'number' ? args.pageSize : undefined,
+          offset: typeof args.offset === 'number' ? args.offset : undefined,
+        }));
+      case 'home.todos':
+        this.requireCapability(instance, 'todos.read');
+        return this.homeCall(() => this.homeClient().todos());
+      case 'home.todo.create':
+        this.requireCapability(instance, 'todos.write');
+        this.homeWrite(instance);
+        return this.homeCall(() => this.homeClient().createTodo({
+          title: homeText(args.title, 200),
+          description: typeof args.description === 'string' ? args.description : undefined,
+          priority: typeof args.priority === 'string' ? args.priority : undefined,
+        }));
+      case 'home.todo.update':
+        this.requireCapability(instance, 'todos.write');
+        this.homeWrite(instance);
+        return this.homeCall(() => this.homeClient().updateTodo(homeId(args.id), {
+          title: typeof args.title === 'string' ? args.title : undefined,
+          description: typeof args.description === 'string' ? args.description : undefined,
+          completed: typeof args.completed === 'boolean' ? args.completed : undefined,
+          priority: typeof args.priority === 'string' ? args.priority : undefined,
+          dueDate: typeof args.dueDate === 'string' ? args.dueDate : undefined,
+        }));
+      case 'home.todo.delete':
+        this.requireCapability(instance, 'todos.write');
+        this.homeWrite(instance);
+        return this.homeCall(() => this.homeClient().deleteTodo(homeId(args.id)));
+      case 'home.todoDigest':
+        this.requireCapability(instance, 'todos.read');
+        return this.homeCall(() => this.homeClient().todoDigest(typeof args.date === 'string' ? args.date : undefined));
       case 'usage.summary':
         this.requireCapability(instance, 'usage.read');
         return this.engine(instance, 'usage/summary', { range: typeof args.range === 'string' ? args.range : 'all' });
@@ -641,6 +693,51 @@ export class PluginPageHost {
     };
   }
 
+  private homeClient(): HomeDataClient {
+    const client = this.options.home?.();
+    if (!client) throw new PluginPageError('unavailable', 'home data access is not available');
+    return client;
+  }
+
+  private homeStatus(): Record<string, unknown> {
+    const status = this.homeClient().status();
+    return {
+      signedIn: status.signedIn,
+      serverHost: status.serverHost,
+      userName: status.userName,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Returns a stable envelope instead of rejecting: a page must be able to tell "no permission"
+   * from "offline" without parsing Electron's wrapped error text.
+   */
+  private async homeCall(action: () => Promise<unknown> | unknown): Promise<Record<string, unknown>> {
+    try {
+      return { ok: true, value: await action() };
+    } catch (error) {
+      if (error instanceof PluginPageError) {
+        return { ok: false, error: { code: error.code, message: error.message } };
+      }
+      const code = (error as { code?: unknown }).code;
+      const message = error instanceof Error ? error.message : 'home data request failed';
+      return {
+        ok: false,
+        error: { code: typeof code === 'string' ? code : 'server_error', message: message.slice(0, 300) },
+      };
+    }
+  }
+
+  private homeWrite(instance: PageInstance): void {
+    const now = Date.now();
+    instance.homeWriteTimes = instance.homeWriteTimes.filter((time) => now - time < 60_000);
+    if (instance.homeWriteTimes.length >= 30) {
+      throw new PluginPageError('rate_limited', 'todo write rate limit reached (30/minute)');
+    }
+    instance.homeWriteTimes.push(now);
+  }
+
   private storage(): PluginHost {
     const host = this.options.pluginHost();
     if (!host) throw new PluginPageError('unavailable', 'plugin host is not ready');
@@ -768,6 +865,20 @@ function targetId(value: unknown): string {
 function storageKey(value: unknown): string {
   if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value)) {
     throw new PluginPageError('invalid_request', 'invalid storage key');
+  }
+  return value;
+}
+
+function homeId(value: unknown): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,199}$/.test(value)) {
+    throw new PluginPageError('invalid_request', 'invalid id');
+  }
+  return value;
+}
+
+function homeText(value: unknown, max: number): string {
+  if (typeof value !== 'string' || !value.trim() || value.length > max) {
+    throw new PluginPageError('invalid_request', `text must be 1-${max} characters`);
   }
   return value;
 }

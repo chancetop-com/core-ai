@@ -44,6 +44,7 @@ const targets = [
   { entryPoints: ['src/main/artifacts/artifactPath.ts'], outfile: 'dist/test/artifactPath.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/auth/AuthStore.ts'], outfile: 'dist/test/authStore.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/remote/RemoteConversationClient.ts'], outfile: 'dist/test/remoteConversation.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/home/HomeDataClient.ts'], outfile: 'dist/test/homeData.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/update/UpdateService.ts'], outfile: 'dist/test/updateService.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/update/CliUpdate.ts'], outfile: 'dist/test/cliUpdate.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/composerKeyboard.ts'], outfile: 'dist/test/composerKeyboard.js', platform: 'node', target: 'node20', format: 'cjs' },

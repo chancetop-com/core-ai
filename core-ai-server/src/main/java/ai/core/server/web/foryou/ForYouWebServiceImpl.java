@@ -6,6 +6,8 @@ import ai.core.api.server.foryou.ForYouDashboardView;
 import ai.core.api.server.foryou.ForYouFileView;
 import ai.core.api.server.foryou.ForYouReportRequest;
 import ai.core.api.server.foryou.ForYouReportView;
+import ai.core.api.server.foryou.ForYouTodoDigestRequest;
+import ai.core.api.server.foryou.ForYouTodoDigestView;
 import ai.core.api.server.foryou.ForYouTodoRequest;
 import ai.core.api.server.foryou.ForYouTodoView;
 import ai.core.api.server.foryou.ForYouTokenUsageRequest;
@@ -19,6 +21,7 @@ import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.FileRecord;
 import ai.core.server.domain.UserReport;
 import ai.core.server.domain.UserTodo;
+import ai.core.server.home.HomeTodoDigestService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
@@ -31,6 +34,7 @@ import core.framework.web.exception.BadRequestException;
 import core.framework.web.exception.NotFoundException;
 import core.framework.web.exception.UnauthorizedException;
 
+import java.time.LocalDate;
 import java.time.ZonedDateTime;
 
 /**
@@ -121,6 +125,31 @@ public class ForYouWebServiceImpl implements ForYouWebService {
     }
 
     @Override
+    public ForYouTodoDigestView todoDigest(ForYouTodoDigestRequest request) {
+        var date = request != null && request.date != null && !request.date.isBlank()
+                ? LocalDate.parse(request.date)
+                : LocalDate.now(HomeTodoDigestService.ZONE);
+        var run = forYouService.todoDigest(userId(), date.toString());
+        var view = new ForYouTodoDigestView();
+        view.date = date.toString();
+        if (run == null) {
+            view.status = "NOT_RUN";
+            return view;
+        }
+        view.status = run.status;
+        view.model = run.model;
+        view.promptVersion = run.promptVersion;
+        view.sessionCount = run.sessionCount;
+        view.messageCount = run.messageCount;
+        view.todoCount = run.todoCount;
+        view.skippedCount = run.skippedCount;
+        view.error = run.error;
+        view.startedAt = formatTime(run.startedAt);
+        view.completedAt = formatTime(run.completedAt);
+        return view;
+    }
+
+    @Override
     public ListForYouFilesResponse listFiles() {
         var files = forYouService.listFiles(userId());
         var response = new ListForYouFilesResponse();
@@ -170,6 +199,11 @@ public class ForYouWebServiceImpl implements ForYouWebService {
         view.completed = t.completed;
         view.priority = t.priority;
         view.dueDate = formatTime(t.dueDate);
+        view.source = t.source == null ? "MANUAL" : t.source;
+        view.originDate = t.originDate;
+        view.originSessionIds = t.originSessionIds;
+        view.dedupeKey = t.dedupeKey;
+        view.generatedBy = t.generatedBy;
         view.createdAt = formatTime(t.createdAt);
         view.updatedAt = formatTime(t.updatedAt);
         return view;

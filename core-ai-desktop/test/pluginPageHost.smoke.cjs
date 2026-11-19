@@ -37,7 +37,8 @@ async function main() {
     view: 'index.html', scope: 'workspace', dir: packageDir, digest: 'digest',
     granted: ['ui.pages', 'media.assets.read', 'media.assets.write', 'media.models.read', 'media.generate',
       'sessions.read', 'sessions.write', 'memory.read', 'memory.write', 'workspace.read', 'usage.read', 'plugin.storage', 'events.read', 'notification.send',
-      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec', 'sandbox.provider', 'agents.orchestrate'],
+      'schedules.read', 'schedules.write', 'artifacts.read', 'browser.control', 'terminal.exec', 'sandbox.provider', 'agents.orchestrate',
+      'reports.read', 'todos.read', 'todos.write'],
   };
   let granted = [...page.granted];
   const calls = [];
@@ -45,6 +46,45 @@ async function main() {
   let notifications = 0;
   const browserCalls = [];
   const terminalCalls = [];
+  const homeCalls = [];
+  const fakeHome = {
+    status: () => ({ signedIn: true, serverHost: 'dev.example.com', userName: 'Stephen' }),
+    reports: async () => {
+      homeCalls.push('reports');
+      return { reports: [{ id: 'r-1', title: 'Weekly revenue', displayType: 'METRIC', datasetName: 'Orders' }], total: 1, fetchedAt: '2026-11-19T00:00:00Z' };
+    },
+    report: async (id) => {
+      homeCalls.push(`report:${id}`);
+      return { id, title: 'Weekly revenue', displayType: 'METRIC', datasetName: 'Orders', revision: 2 };
+    },
+    reportData: async (id, options) => {
+      homeCalls.push(`data:${id}:${JSON.stringify(options)}`);
+      return {
+        reportId: id, status: 'READY', columns: [{ name: 'Revenue', type: 'NUMBER' }], rows: [['1200']],
+        matchedRecordCount: 1, hasMore: false,
+      };
+    },
+    todos: async () => {
+      homeCalls.push('todos');
+      return { todos: [{ id: 't-1', title: 'Manual', completed: false, source: 'MANUAL', originSessionIds: [] }], fetchedAt: '2026-11-19T00:00:00Z' };
+    },
+    createTodo: async (input) => {
+      homeCalls.push(`create:${input.title}`);
+      return { id: 't-2', title: input.title, completed: false, source: 'MANUAL', originSessionIds: [] };
+    },
+    updateTodo: async (id, patch) => {
+      homeCalls.push(`update:${id}:${patch.completed}`);
+      return { id, title: 'Manual', completed: patch.completed === true, source: 'MANUAL', originSessionIds: [] };
+    },
+    deleteTodo: async (id) => {
+      homeCalls.push(`delete:${id}`);
+      return { deleted: true };
+    },
+    todoDigest: async (date) => {
+      homeCalls.push(`digest:${date ?? '-'}`);
+      return { date: date ?? '2026-11-19', status: 'COMPLETED', todoCount: 2, skippedCount: 1 };
+    },
+  };
   const supervisor = {
     ensureTrustState: async () => ({ state: 'trusted' }),
     call: async (_workspace, method) => {
@@ -122,6 +162,7 @@ async function main() {
     supervisor: () => supervisor,
     preloadPath: path.join(__dirname, '..', 'dist', 'pluginPagePreload.js'),
     onLog: (line) => console.log('[page]', line),
+    home: () => fakeHome,
     notify: async () => {
       notifications += 1;
       return { ok: true };
@@ -238,6 +279,35 @@ async function main() {
   assert.equal(summary.sessionCount, 1);
   assert.equal(summary.artifactCount, 1);
   assert.equal(summary.memoryFileCount, 1);
+  const homeStatus = await view.webContents.executeJavaScript('window.coreaiPlugin.home.status()');
+  assert.equal(homeStatus.ok, true);
+  assert.equal(homeStatus.value.serverHost, 'dev.example.com');
+  assert.equal(JSON.stringify(homeStatus).includes('apiKey'), false);
+  const homeReports = await view.webContents.executeJavaScript('window.coreaiPlugin.home.reports({ limit: 5 })');
+  assert.equal(homeReports.value.reports[0].id, 'r-1');
+  const homeReport = await view.webContents.executeJavaScript('window.coreaiPlugin.home.report("r-1")');
+  assert.equal(homeReport.value.displayType, 'METRIC');
+  const homeData = await view.webContents.executeJavaScript('window.coreaiPlugin.home.reportData("r-1", { rangeKind: "ROLLING_DAYS", days: 7 })');
+  assert.equal(homeData.value.rows[0][0], '1200');
+  const homeTodos = await view.webContents.executeJavaScript('window.coreaiPlugin.home.todos()');
+  assert.equal(homeTodos.value.todos[0].source, 'MANUAL');
+  const createdTodo = await view.webContents.executeJavaScript('window.coreaiPlugin.home.createTodo({ title: "Ship release" })');
+  assert.equal(createdTodo.value.id, 't-2');
+  const updatedTodo = await view.webContents.executeJavaScript('window.coreaiPlugin.home.updateTodo("t-2", { completed: true })');
+  assert.equal(updatedTodo.value.completed, true);
+  assert.deepEqual(await view.webContents.executeJavaScript('window.coreaiPlugin.home.deleteTodo("t-2")'), { ok: true, value: { deleted: true } });
+  const digest = await view.webContents.executeJavaScript('window.coreaiPlugin.home.todoDigest("2026-11-18")');
+  assert.equal(digest.value.status, 'COMPLETED');
+  assert.deepEqual(homeCalls, [
+    'reports',
+    'report:r-1',
+    'data:r-1:{"rangeKind":"ROLLING_DAYS","days":7}',
+    'todos',
+    'create:Ship release',
+    'update:t-2:true',
+    'delete:t-2',
+    'digest:2026-11-18',
+  ]);
   const usage = await view.webContents.executeJavaScript('window.coreaiPlugin.usage.summary("all")');
   assert.equal(usage.totals.inputTokens, 10);
   const sent = await view.webContents.executeJavaScript('window.coreaiPlugin.notify.send("hello")');

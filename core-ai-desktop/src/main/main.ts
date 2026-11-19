@@ -36,6 +36,7 @@ import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
 import { CuaManager } from './computer/CuaManager';
 import { RemoteConversationClient, type RemoteAttachment } from './remote/RemoteConversationClient';
+import { HomeDataClient } from './home/HomeDataClient';
 import { CompletionNotifier, normalizeNotifySessions, normalizeNotifyTarget, notifyHandshakeText, notifySessionKey, type NotifyTarget } from './notifications/CompletionNotifier';
 import { probeModels } from './providers/ProviderProbe';
 import {
@@ -115,6 +116,7 @@ let scheduleWaker: ScheduleWaker | null = null;
 let channelBridge: ChannelBridge | null = null;
 let completionNotifier: CompletionNotifier | null = null;
 let remoteConversations: RemoteConversationClient | null = null;
+let homeData: HomeDataClient | null = null;
 let ocgAdmin: OcgHttpPort | null = null;
 let channelKeepAwakeId: number | null = null;
 let tray: Tray | null = null;
@@ -881,6 +883,12 @@ function remoteConversationClient(): RemoteConversationClient {
     });
   }
   return remoteConversations;
+}
+
+/** Home data always reads the stored login at call time, so a fresh sign-in needs no restart. */
+function homeDataClient(): HomeDataClient {
+  if (!homeData) homeData = new HomeDataClient({ loadEntries: () => loadAuthEntries() });
+  return homeData;
 }
 
 const REMOTE_ATTACHMENT_TYPES = new Set(['IMAGE', 'VIDEO', 'PDF', 'FILE']);
@@ -1816,6 +1824,7 @@ else {
       supervisor: () => supervisor,
       preloadPath: path.join(__dirname, 'pluginPagePreload.js'),
       onLog: (line) => console.log(`[plugins] ${line}`),
+      home: () => homeDataClient(),
       notify: async (text) => {
         const target = settings.notifyTarget;
         if (!target) return { ok: false, error: 'Notification target is not configured' };

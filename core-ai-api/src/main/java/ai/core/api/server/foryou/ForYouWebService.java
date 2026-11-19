@@ -48,6 +48,10 @@ public interface ForYouWebService {
     DeleteForYouItemResponse deleteTodo(@PathParam("id") String id);
 
     @GET
+    @Path("/api/for-you/todos/digest")
+    ForYouTodoDigestView todoDigest(ForYouTodoDigestRequest request);
+
+    @GET
     @Path("/api/for-you/files")
     ListForYouFilesResponse listFiles();
 

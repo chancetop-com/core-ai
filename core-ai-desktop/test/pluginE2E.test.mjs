@@ -11,6 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const sample = path.resolve(here, '..', 'examples', 'plugins', 'hello-plugin');
 const mediaSample = path.resolve(here, '..', 'examples', 'plugins', 'media-studio');
 const insightsSample = path.resolve(here, '..', 'examples', 'plugins', 'workspace-insights');
+const homeSample = path.resolve(here, '..', 'examples', 'plugins', 'home');
 
 function tempRoot() {
   return mkdtempSync(path.join(os.tmpdir(), 'coreai-plugin-host-'));
@@ -117,6 +118,34 @@ test('prompt-section plugins reach the engine environment only after the grant',
   const sections = JSON.parse((await host.engineEnv())[PLUGIN_PROMPT_SECTIONS_ENV]);
   assert.equal(sections[0].name, 'example.prompt-plugin:style');
   assert.equal(sections[0].content, 'Answer concisely.');
+});
+
+test('the home plugin installs, needs its data grants and resolves its page', async () => {
+  const host = new PluginHost({ root: tempRoot() });
+  const installed = await host.installFolder(homeSample);
+  assert.equal(installed.id, 'core-ai.home');
+  assert.deepEqual(
+    [...installed.requiredCapabilities].sort(),
+    ['plugin.storage', 'reports.read', 'todos.read', 'todos.write', 'ui.pages'].sort(),
+  );
+
+  await host.setEnabled('core-ai.home', true);
+  assert.equal((await host.resolvePage('core-ai.home', 'home')), null);
+
+  await host.grant('core-ai.home', ['ui.pages', 'plugin.storage']);
+  assert.equal((await host.resolvePage('core-ai.home', 'home')), null);
+
+  const active = await host.grant('core-ai.home', ['ui.pages', 'reports.read', 'todos.read', 'todos.write', 'plugin.storage']);
+  assert.equal(active.status, 'active');
+  const page = await host.resolvePage('core-ai.home', 'home');
+  assert.ok(page);
+  assert.equal(page.title, 'My Home');
+  assert.equal(page.view, 'pages/home.html');
+  assert.equal(await fs.stat(path.join(page.dir, page.view)).then((stat) => stat.isFile()), true);
+  assert.equal(await fs.stat(path.join(page.dir, 'pages/home.js')).then((stat) => stat.isFile()), true);
+
+  await host.revoke('core-ai.home');
+  assert.equal(await host.resolvePage('core-ai.home', 'home'), null);
 });
 
 test('a read-only insights page resolves with the general host capabilities', async () => {

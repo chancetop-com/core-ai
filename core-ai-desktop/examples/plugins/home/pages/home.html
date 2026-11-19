@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>My Home</title>
+  <link rel="stylesheet" href="home.css" />
+</head>
+<body>
+  <div class="page" id="page">
+    <header class="topbar">
+      <div class="identity">
+        <div class="avatar" id="avatar">·</div>
+        <div class="identity-text">
+          <h1 id="greeting">My Home</h1>
+          <div class="sub" id="subtitle">Connecting…</div>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="ghost" id="refresh" type="button" title="Refresh">Refresh</button>
+      </div>
+    </header>
+
+    <div class="banner" id="banner" hidden></div>
+
+    <main class="grid">
+      <section class="card reports">
+        <div class="card-head">
+          <h2>Reports</h2>
+          <span class="count" id="report-count"></span>
+        </div>
+        <div class="card-body">
+          <div class="list" id="report-list"></div>
+          <div class="state" id="report-state"></div>
+        </div>
+      </section>
+
+      <section class="card detail">
+        <div class="card-head">
+          <h2 id="detail-title">Report preview</h2>
+          <div class="ranges" id="detail-ranges" hidden>
+            <button type="button" data-range="7">7d</button>
+            <button type="button" data-range="30">30d</button>
+            <button type="button" data-range="0" class="on">Default</button>
+          </div>
+        </div>
+        <div class="card-body" id="detail-body">
+          <div class="state">Select a report to preview.</div>
+        </div>
+      </section>
+
+      <section class="card todos">
+        <div class="card-head">
+          <h2>Todos</h2>
+          <span class="count" id="todo-count"></span>
+        </div>
+        <div class="card-body">
+          <form class="add" id="todo-form">
+            <input id="todo-title" type="text" maxlength="200" placeholder="Add a todo…" autocomplete="off" />
+            <button type="submit" id="todo-submit">Add</button>
+          </form>
+          <div class="state" id="todo-state"></div>
+          <div class="todo-group" id="todo-active"></div>
+          <details class="done-group" id="todo-done-group">
+            <summary>Completed <span id="todo-done-count">0</span></summary>
+            <div class="todo-group" id="todo-done"></div>
+          </details>
+          <div class="digest" id="digest"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="home.js"></script>
+</body>
+</html>

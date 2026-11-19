@@ -42,6 +42,17 @@ contextBridge.exposeInMainWorld('coreaiPlugin', {
   workspace: {
     summary: () => call('workspace.summary'),
   },
+  home: {
+    status: () => call('home.status'),
+    reports: (params: Record<string, unknown> = {}) => call('home.reports', params),
+    report: (id: string) => call('home.report', { id }),
+    reportData: (id: string, params: Record<string, unknown> = {}) => call('home.reportData', { id, ...params }),
+    todos: () => call('home.todos'),
+    createTodo: (params: Record<string, unknown>) => call('home.todo.create', params),
+    updateTodo: (id: string, params: Record<string, unknown>) => call('home.todo.update', { id, ...params }),
+    deleteTodo: (id: string) => call('home.todo.delete', { id }),
+    todoDigest: (date?: string) => call('home.todoDigest', date ? { date } : {}),
+  },
   usage: {
     summary: (range = 'all') => call('usage.summary', { range }),
   },
