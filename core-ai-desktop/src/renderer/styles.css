@@ -859,6 +859,7 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
   display: flex;
   flex-direction: column;
   max-height: min(32vh, 320px);
+  overflow: hidden;
 }
 .assist-panel[hidden] { display: none; }
 /* Every panel shares one scroll budget, so an expanded Thinking or Tool use panel can never
@@ -873,7 +874,6 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
   white-space: pre-wrap;
   font-size: 12.5px;
   color: var(--muted);
-  overflow: visible;
 }
 .reasoning-block + .reasoning-block {
   margin-top: 6px;
