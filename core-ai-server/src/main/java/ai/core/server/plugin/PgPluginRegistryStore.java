@@ -67,11 +67,13 @@ public class PgPluginRegistryStore implements PluginRegistryStore {
     private String where(String queryText, List<Object> params) {
         if (queryText == null || queryText.isBlank()) return "";
         var like = "%" + queryText.trim() + "%";
+        params.add("name");
+        params.add("description");
+        params.add("vendor");
         params.add(like);
         params.add(like);
         params.add(like);
         params.add(like);
-        return " WHERE data ->> 'name' ILIKE ? OR data ->> 'description' ILIKE ?"
-            + " OR data ->> 'vendor' ILIKE ? OR id ILIKE ?";
+        return " WHERE data ->> ? ILIKE ? OR data ->> ? ILIKE ? OR data ->> ? ILIKE ? OR id ILIKE ?";
     }
 }
