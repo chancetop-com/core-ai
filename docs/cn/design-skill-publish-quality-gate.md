@@ -1149,7 +1149,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 - 启动 seed / migration 如果直接写 skill：必须在 §14.5 登记；走代码检查 + CI fixture，不调用模型，不向用户开放 bypass；写 `trustedSeed=true` 审计标记。
 - repo sync / marketplace 内容不是 trusted seed；必须逐 skill 检查。策展/白名单不能成为用户绕过门禁的入口。
 - 管理员紧急处理：只能回滚 policy 或临时 suspend DECISION 规则（有 actor/原因/范围/到期时间）；不能替作者跳过确定性规则。
-- **管理员豁免白名单（2026-11-19 实现）：** 为“已知违规但不能改（外部 skill）或不愿改”的 subject 提供受控豁免。白名单随 active skill policy revision 固化，保存时必须填写 `change_reason`，只有 human platform admin 可修改；入口在 Settings → Quality → Skill Quality 的 Exemptions 卡片。条目匹配 `namespace/name` 或 skill name（精确匹配，不支持通配符）。命中后该 skill 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`，不再阻塞 upload/editor/repo sync/marketplace install。它不是作者可用的 bypass：普通作者没有写白名单的权限。
+- **管理员豁免白名单（2026-11-19 实现）：** 为“已知违规但不能改（外部 skill）或不愿改”的 subject 提供受控豁免。白名单随 active skill policy revision 固化，保存时由服务端生成 `change_reason`，只有 human platform admin 可修改；入口是 Settings → Quality → **Exemptions** 列表页，同一页面统一展示 agent 与 skill 两个 policy 的条目，新增时先选类型（Agent/Skill）再从可搜索的 subject 选择器中选择。Agent 条目按 agent id 落库，skill 条目按 `namespace/name` 落库（精确匹配，不支持通配符）；subject 已删除时条目仍会显示且可移除。命中后该 subject 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`，不再阻塞 upload/editor/repo sync/marketplace install。它不是作者可用的 bypass：普通作者没有写白名单的权限。
 
 ### 8.7 版本与内容变化
 
@@ -1509,6 +1509,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 | v0.3 | 2026-11-16 | core-ai | 按 AI 评审修订：SKILL 独立 decision budget 与 4 个 call group、skill_dir 必填、SkillCapabilityCatalog 与 SDK 形状补全、渐进式披露摘要+链接穿透、PG/Mongo CAS 与 revision 回填、update content/name/path 语义、repo/marketplace 响应、eval 占位符精确匹配、文档状态同步 | 处理 R-AI-SQ-01..09；不改变用户原始需求 | 待 Review |
 | v0.4 | 2026-11-16 | core-ai | 第二轮评审修订：更正预算基线为 8 calls/120 questions/48k 字符并区分字符与 token、新增 SKILL budget profile 与 batch coordinator（首版串行）、门禁前纯内存资源物化与 blob 写入时序、CAS 失败 orphan/GC 契约、SDK 属性链/别名与 s.tool 语义、静态 descriptor catalog、heading 规范化与确定性穿透、SQ9 WARN 归属、createMarketplaceRepo 载体与 RPC header 契约、Q9 实施风险建议 | 处理 R-AI-SQ-10..14；不改变用户原始需求；不构成用户批准 | 待 Review |
 | v0.5（实施记录） | 2026-11-19 | core-ai | 新增管理员豁免白名单：随 skill policy revision 固化的 `exemptions` 列表、Skill Quality 页面编辑、命中后 gate 短路、report/receipt 记录 `exempted` + `exemption_reason` | 用户要求豁免已知违规但不能修改的外部 skill | 用户请求（2026-11-19） |
+| v0.6（实施记录） | 2026-11-19 | core-ai | 白名单从文本框改为独立列表页：Agent/Skill 条目统一展示、类型感知的 subject 选择器、`/api/admin/quality-exemptions` 列表/搜索/新增/移除 API；存储仍为 policy revision 内的 `exemptions`，每次变更激活新 revision | 用户反馈文本框式白名单不可用（“太反人类”） | 用户请求（2026-11-19） |
 
 ### 14.4 设计自查记录
 
