@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ReportDataView, ReportView } from '../../api/client';
+import { usePermission } from '../../api/permissions';
 import ReportRenderer from './ReportRenderer';
 
 const RANGES = [
@@ -14,6 +15,7 @@ const RANGES = [
 export default function ReportDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const canManage = usePermission('report.manage');
   const [report, setReport] = useState<ReportView | null>(null);
   const [data, setData] = useState<ReportDataView | null>(null);
   const [days, setDays] = useState(30);
@@ -92,7 +94,7 @@ export default function ReportDetail() {
     try {
       const layout = await api.reports.pins.layout();
       await api.reports.delete(report.id, report.revision, report.pin_id ? layout.layout_revision : undefined);
-      navigate('/reports');
+      navigate('/datasets/reports');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete report');
     }
@@ -100,7 +102,7 @@ export default function ReportDetail() {
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      <button onClick={() => navigate('/reports')}
+      <button onClick={() => navigate('/datasets/reports')}
         className="inline-flex items-center gap-1.5 text-sm mb-4 cursor-pointer"
         style={{ color: 'var(--color-text-secondary)' }}>
         <ArrowLeft size={15} /> All reports
@@ -130,7 +132,7 @@ export default function ReportDetail() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {report.pin_id ? (
+              {canManage && (report.pin_id ? (
                 <button onClick={unpin}
                   className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm cursor-pointer"
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
@@ -142,17 +144,19 @@ export default function ReportDetail() {
                   style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
                   <Pin size={14} /> Pin to home
                 </button>
-              )}
+              ))}
               <button onClick={() => navigate('/chat')}
                 className="px-3 py-2 rounded-lg text-sm cursor-pointer"
                 style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
                 Modify in chat
               </button>
-              <button onClick={remove}
-                className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
-                style={{ color: '#dc2626', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                <Trash2 size={15} />
-              </button>
+              {canManage && (
+                <button onClick={remove}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
+                  style={{ color: '#dc2626', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
           </div>
 

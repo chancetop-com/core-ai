@@ -74,7 +74,7 @@ export default function PinnedReportsSection() {
     return (
       <section className="mb-6">
         <h2 className="text-base font-semibold mb-3">My reports</h2>
-        <button onClick={() => navigate('/reports')}
+        <button onClick={() => navigate('/datasets/reports')}
           className="w-full rounded-xl border p-4 text-left cursor-pointer hover:bg-[var(--color-bg-secondary)]"
           style={{ borderColor: 'var(--color-border)' }}>
           <div className="text-sm font-medium">No pinned reports</div>
@@ -105,7 +105,7 @@ export default function PinnedReportsSection() {
               className={`rounded-xl border p-4 ${pin.width === 'FULL' ? 'md:col-span-2' : ''}`}
               style={{ borderColor: 'var(--color-border)' }}>
               <div className="flex items-start justify-between gap-3 mb-2">
-                <button onClick={() => navigate(`/reports/${pin.report_id}`)}
+                <button onClick={() => navigate(`/datasets/reports/${pin.report_id}`)}
                   className="min-w-0 text-left cursor-pointer">
                   <div className="text-sm font-medium truncate">{pin.title || 'Untitled report'}</div>
                   <div className="text-[11px] mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>

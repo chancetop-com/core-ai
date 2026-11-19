@@ -220,7 +220,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
         {!readOnly && reportSegs.length > 0 && (
           <div className="mb-3 flex flex-col gap-2">
             {reportSegs.map(seg => (
-              <Link key={seg.reportId} to={`/reports/${seg.reportId}`}
+              <Link key={seg.reportId} to={`/datasets/reports/${seg.reportId}`}
                 className="rounded-xl border px-4 py-3 flex items-center gap-3 no-underline hover:bg-[var(--color-bg-secondary)]"
                 style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}>
                 <BarChart3 size={16} style={{ color: '#6366f1' }} />

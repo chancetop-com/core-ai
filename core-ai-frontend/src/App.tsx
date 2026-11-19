@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -85,6 +85,11 @@ function PageFallback() {
       Loading...
     </div>
   );
+}
+
+function LegacyReportDetailRedirect() {
+  const { id } = useParams<{ id: string }>();
+  return <Navigate to={id ? `/datasets/reports/${encodeURIComponent(id)}` : '/datasets/reports'} replace />;
 }
 
 export default function App() {
@@ -245,10 +250,12 @@ function AuthenticatedApp() {
                     <Route path="/skills/marketplace/:repoId" element={<RequirePermission permission="skill.view"><MarketplaceRepoDetail /></RequirePermission>} />
                     <Route path="/skills/:id/edit" element={<RequirePermission permission="skill.view"><SkillEditor /></RequirePermission>} />
                     <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
+                    {caps.datasetReports && <Route path="/datasets/reports" element={<RequirePermission permission="report.view"><ReportList /></RequirePermission>} />}
+                    {caps.datasetReports && <Route path="/datasets/reports/:id" element={<RequirePermission permission="report.view"><ReportDetail /></RequirePermission>} />}
                     <Route path="/datasets/:id" element={<RequirePermission permission="dataset.view"><DatasetEditor /></RequirePermission>} />
                     <Route path="/datasets/:id/records" element={<RequirePermission permission="dataset.view"><DatasetRecords /></RequirePermission>} />
-                    {caps.datasetReports && <Route path="/reports" element={<RequirePermission permission="report.view"><ReportList /></RequirePermission>} />}
-                    {caps.datasetReports && <Route path="/reports/:id" element={<RequirePermission permission="report.view"><ReportDetail /></RequirePermission>} />}
+                    {caps.datasetReports && <Route path="/reports" element={<Navigate to="/datasets/reports" replace />} />}
+                    {caps.datasetReports && <Route path="/reports/:id" element={<LegacyReportDetailRedirect />} />}
                     <Route path="/projects" element={<RequirePermission permission="project.view"><ProjectList /></RequirePermission>} />
                     <Route path="/projects/:id/subjects/:subjectId" element={<RequirePermission permission="project.view"><SubjectDetail /></RequirePermission>} />
                     <Route path="/projects/:id/playbook" element={<RequirePermission permission="project.view"><PlaybookPage /></RequirePermission>} />

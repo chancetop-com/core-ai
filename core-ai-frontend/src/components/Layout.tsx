@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, BarChart3, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -43,6 +43,7 @@ export default function Layout() {
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
       '/datasets': 'Datasets',
+      '/datasets/reports': 'Reports',
       '/projects': 'Projects',
       '/settings': 'Settings',
       '/notifications': 'Notifications',
@@ -63,6 +64,7 @@ export default function Layout() {
       || (path.startsWith('/runs/') ? 'Run Detail' : null)
       || (path.startsWith('/system-prompts/') ? 'System Prompt' : null)
       || (path.startsWith('/api-tools/') ? 'API Tool Detail' : null)
+      || (path.startsWith('/datasets/reports/') ? 'Report Detail' : null)
       || (path.startsWith('/datasets/') ? 'Dataset Detail' : null)
       || (path.startsWith('/projects/') && path.endsWith('/playbook') ? 'Playbook' : null)
       || (path.startsWith('/projects/') && path.includes('/subjects/') ? 'Subject Detail' : null)
@@ -82,6 +84,7 @@ export default function Layout() {
     if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
+    if (to === '/datasets/reports') return pathname === '/datasets/reports' || pathname.startsWith('/datasets/reports/');
     if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
     if (to === '/projects') return pathname === '/projects' || pathname.startsWith('/projects/');
     if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
@@ -119,7 +122,9 @@ export default function Layout() {
       { to: '/api-tools', icon: Key, label: 'API Tools', show: true, permission: 'apitool.view' },
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
-    { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view' },
+    { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view', children: [
+      { to: '/datasets/reports', icon: BarChart3, label: 'Reports', show: caps.datasetReports, permission: 'report.view' },
+    ]},
       { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
         { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
         { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
@@ -159,9 +164,10 @@ export default function Layout() {
         {/* Navigation */}
         <nav className="flex-1 p-2 flex flex-col gap-1 overflow-y-auto">
           {navItems.map(({ to, icon: Icon, label, children }) => {
-            const hasChildren = children && children.length > 0;
-            const anyChildActive = hasChildren && children.some(c => isRouteActive(c.to, location.pathname));
-            const selfActive = !hasChildren && isRouteActive(to, location.pathname);
+            const visibleChildren = (children ?? []).filter(c => c.show && (!c.permission || hasPermission(user?.permissions, c.permission)));
+            const hasChildren = visibleChildren.length > 0;
+            const anyChildActive = hasChildren && visibleChildren.some(c => isRouteActive(c.to, location.pathname));
+            const selfActive = isRouteActive(to, location.pathname);
             const active = selfActive || anyChildActive;
             // Auto-expand when landing directly on a child route (e.g. /experiments/replay); once the
             // user manually toggles a group, expandedNav takes over.
@@ -201,7 +207,7 @@ export default function Layout() {
                 </div>
                 {!collapsed && hasChildren && isExpanded && (
                   <div className="ml-6 mt-1 flex flex-col gap-0.5">
-                    {children.filter(c => c.show && (!c.permission || hasPermission(user?.permissions, c.permission))).map(child => {
+                    {visibleChildren.map(child => {
                       const ChildIcon = child.icon;
                       const childActive = isRouteActive(child.to, location.pathname);
                       return (
