@@ -16,7 +16,6 @@ import ai.core.server.session.AwtImageShrinker;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.session.NotificationSettingsService;
 import ai.core.server.session.PgSessionActivityStore;
-import ai.core.server.session.RedisSessionActivityStore;
 import ai.core.server.session.SessionActivityRegistry;
 import ai.core.server.session.SessionActivityStore;
 import ai.core.server.session.SessionAgentHelper;
@@ -35,11 +34,9 @@ import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.InternalSessionEventChannelListener;
 import ai.core.server.web.sse.InternalSsePreflight;
 import ai.core.server.web.sse.SseAuthInterceptor;
-import ai.core.server.state.StateBackend;
 import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
-import redis.clients.jedis.JedisPool;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -86,8 +83,7 @@ public class SessionModule extends Module {
         bind(ChatMessageService.class);
         bind(SessionSearchService.class);
         bind(SessionReadService.class);
-        activityRegistry = bind(SessionActivityRegistry.of(activityStore()));
-        // the notice log is bound in ChannelInfrastructureModule; the block it feeds belongs to this runtime
+        activityRegistry = bind(SessionActivityRegistry.of(activityStore()));        // the notice log is bound in ChannelInfrastructureModule; the block it feeds belongs to this runtime
         bind(SessionNoticePrompt.class);
         bind(SessionCompletionNotifier.class);
         bind(NotificationSettingsService.class);
@@ -98,10 +94,7 @@ public class SessionModule extends Module {
     }
 
     private SessionActivityStore activityStore() {
-        var backend = StateBackend.of(property("sys.state.backend").orElse("redis"),
-                property("sys.store.mode").orElse("mongo"));
-        if (backend == StateBackend.POSTGRES) return bind(new PgSessionActivityStore());
-        return new RedisSessionActivityStore(bean(JedisPool.class));
+        return bind(new PgSessionActivityStore());
     }
 
     private void registerSandboxTerminal() {
@@ -122,16 +115,13 @@ public class SessionModule extends Module {
                 bean(ai.core.server.web.session.SessionIdentity.class),
                 bean(ai.core.server.apiuser.PermissionService.class),
                 bean(SubUserDelegationResolver.class)));
-        if (ai.core.server.messaging.SseDeliveryMode.of(property("sys.sse.delivery").orElse("redis"))
-                == ai.core.server.messaging.SseDeliveryMode.DIRECTED) {
-            registry.preflight(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH,
-                    new InternalSsePreflight(bean(ai.core.server.messaging.PodRegistry.class),
-                            bean(ai.core.server.messaging.SessionOwnershipRegistry.class),
-                            property("sys.internal.token").orElse(""),
-                            property("sys.internal.token.previous").orElse("")));
-            registry.register(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH, SseBaseEvent.class,
-                    bind(InternalSessionEventChannelListener.class), false);
-        }
+        registry.preflight(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH,
+                new InternalSsePreflight(bean(ai.core.server.messaging.PodRegistry.class),
+                        bean(ai.core.server.messaging.SessionOwnershipRegistry.class),
+                        property("sys.internal.token").orElse(""),
+                        property("sys.internal.token.previous").orElse("")));
+        registry.register(HTTPMethod.GET, SseAuthInterceptor.INTERNAL_EVENTS_PATH, SseBaseEvent.class,
+                bind(InternalSessionEventChannelListener.class), false);
         registry.register(HTTPMethod.PUT, "/api/sessions/events", SseBaseEvent.class, bind(AgentSessionChannelListener.class), false);
         var cliProxyListener = bind(CliProxyChannelListener.class);
         registry.register(HTTPMethod.POST, CliProxyChannelListener.PATH, Object.class, cliProxyListener, false);

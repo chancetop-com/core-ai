@@ -20,7 +20,6 @@ import ai.core.api.server.session.sse.SseToolStartEvent;
 import ai.core.api.server.session.sse.SseTurnCompleteEvent;
 import ai.core.server.messaging.PodRegistry;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.messaging.SseDeliveryMode;
 import core.framework.web.sse.Channel;
 
 import java.time.ZonedDateTime;
@@ -127,16 +126,15 @@ public class SessionChannelService {
     volatile long maxBufferBytes = DEFAULT_MAX_BUFFER_BYTES;
 
     SessionChannelService() {
-        this(SseDeliveryMode.REDIS, null, null, null, "", null);
+        this(null, null, null, "", null);
     }
 
-    public SessionChannelService(SseDeliveryMode mode, SessionEventHubRegistry hubRegistry,
+    public SessionChannelService(SessionEventHubRegistry hubRegistry,
                                  SessionOwnershipRegistry ownershipRegistry, PodRegistry podRegistry,
                                  String internalToken, ChannelService channelService) {
         this.channelService = channelService;
-        this.directed = mode == SseDeliveryMode.DIRECTED
-                ? new DirectedSessionDelivery(hubRegistry, ownershipRegistry, podRegistry, internalToken, channelService)
-                : null;
+        this.directed = hubRegistry == null ? null
+                : new DirectedSessionDelivery(hubRegistry, ownershipRegistry, podRegistry, internalToken, channelService);
     }
 
     public void start() {

@@ -2,7 +2,6 @@ package ai.core.server.a2a;
 
 import ai.core.a2a.A2ATaskState;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 
@@ -22,10 +21,6 @@ public class A2ATaskRegistry {
     protected A2ATaskRegistry() {
         this.store = null;
         this.ownershipRegistry = null;
-    }
-
-    public A2ATaskRegistry(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry) {
-        this(new RedisA2ATaskSnapshotStore(jedisPool), ownershipRegistry);
     }
 
     public A2ATaskRegistry(A2ATaskSnapshotStore store, SessionOwnershipRegistry ownershipRegistry) {

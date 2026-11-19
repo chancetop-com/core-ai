@@ -97,7 +97,6 @@ import core.framework.mongo.module.MongoConfig;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 
@@ -176,7 +175,7 @@ public class ServerApp extends App {
 
     private void verifyStartupDependencies() {
         startStartupWatchdog();
-        new StartupDependencyCheck(bean(JedisPool.class), bean(Mongo.class)).verify();
+        new StartupDependencyCheck(bean(Mongo.class)).verify();
     }
 
     /**

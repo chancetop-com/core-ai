@@ -5,12 +5,11 @@ import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.agent.AgentDraftGenerator;
 import ai.core.server.sandboxhub.SandboxHubService;
 import ai.core.server.tool.ToolRegistryService;
-import redis.clients.jedis.JedisPool;
 
 /**
  * @author stephen
  */
 public record CommandRpcDependencies(AgentDraftGenerator agentDraftGenerator, AgentDefinitionService agentDefinitionService,
-                                     ServerA2AService serverA2AService, JedisPool jedisPool,
+                                     ServerA2AService serverA2AService,
                                      ToolRegistryService toolRegistryService, SandboxHubService sandboxHubService) {
 }

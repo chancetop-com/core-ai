@@ -7,8 +7,6 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.sandboxhub.SessionTokenService;
 import org.junit.jupiter.api.Test;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Optional;
@@ -36,7 +34,7 @@ class SandboxServiceHubBindingTest {
 
     @Test
     void hubBindingThatWasNeverWiredRejectsEveryToken() {
-        var service = new SandboxService(mock(JedisPool.class), null, null, null);
+        var service = new SandboxService();
 
         assertFalse(service.isBound(SESSION_ID, "sb-1"));
     }
@@ -56,7 +54,7 @@ class SandboxServiceHubBindingTest {
 
     @Test
     void localSandboxIsTheTruthForItsOwnSession() {
-        var service = enabledService(mock(JedisPool.class));
+        var service = enabledService();
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
         service.createSessionSandbox(config, SESSION_ID, "u1", "menu-agent", event -> {
@@ -119,7 +117,7 @@ class SandboxServiceHubBindingTest {
     void renewingWithoutTheHubConfiguredTouchesNoRuntime() {
         var sandbox = readySandbox("sb-1");
         var service = new SandboxService(providerAcquiring(sandbox), new SandboxConfig(), "http://core-ai-server:8080",
-                new SandboxServiceDependencies(null, null, null, null, null), mock(ScheduledExecutorService.class));
+                new SandboxServiceDependencies(null, null, null, null), mock(ScheduledExecutorService.class));
         service.createSessionSandbox(enabledConfig(), SESSION_ID, "u1", "menu-agent", event -> {
         });
         service.ensureSandboxReady(SESSION_ID);
@@ -152,7 +150,7 @@ class SandboxServiceHubBindingTest {
     private SandboxService hubEnabledService(SandboxProvider provider) {
         var tokens = new SessionTokenService();
         tokens.secret = "session-token-secret-0123456789abcdef".getBytes(StandardCharsets.UTF_8);
-        var dependencies = new SandboxServiceDependencies(null, null, null, null, null);
+        var dependencies = new SandboxServiceDependencies(null, null, null, null);
         var service = new SandboxService(provider, new SandboxConfig(), "http://core-ai-server:8080",
                 dependencies, mock(ScheduledExecutorService.class));
         service.sessionTokens(tokens);
@@ -160,18 +158,17 @@ class SandboxServiceHubBindingTest {
     }
 
     private SandboxService redisBackedService(String storedSandboxId) {
-        var jedis = mock(Jedis.class);
-        when(jedis.get("sandbox:" + SESSION_ID)).thenReturn(storedSandboxId);
-        var jedisPool = mock(JedisPool.class);
-        when(jedisPool.getResource()).thenReturn(jedis);
-
-        var service = new SandboxService(jedisPool, null, null, null);
+        var store = mock(SandboxBindingStore.class);
+        when(store.getBinding(SESSION_ID)).thenReturn(storedSandboxId);
+        var dependencies = new SandboxServiceDependencies(null, null, null, null, store);
+        var service = new SandboxService(mock(SandboxProvider.class), new SandboxConfig(), "http://core-ai-server:8080",
+                dependencies, mock(ScheduledExecutorService.class));
         service.sessionTokens(mock(SessionTokenService.class));
         return service;
     }
 
-    private SandboxService enabledService(JedisPool jedisPool) {
-        var dependencies = new SandboxServiceDependencies(jedisPool, null, null, null, null);
+    private SandboxService enabledService() {
+        var dependencies = new SandboxServiceDependencies(null, null, null, null);
         return new SandboxService(mock(SandboxProvider.class), new SandboxConfig(), "http://core-ai-server:8080",
                 dependencies, mock(ScheduledExecutorService.class));
     }

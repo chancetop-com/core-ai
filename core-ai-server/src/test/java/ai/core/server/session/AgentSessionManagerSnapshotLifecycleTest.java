@@ -38,7 +38,7 @@ class AgentSessionManagerSnapshotLifecycleTest {
         var delegate = readySandbox();
         when(provider.acquire(any(), any(), any())).thenReturn(delegate);
         var sandboxService = new SandboxService(provider, enabledConfig(), null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null));
+                new SandboxServiceDependencies(snapshotService, null, null, null));
         var manager = manager(sandboxService);
         try {
             var sandbox = (LazySandbox) sandboxService.createSessionSandbox(
@@ -69,7 +69,7 @@ class AgentSessionManagerSnapshotLifecycleTest {
         when(provider.attach(eq("sandbox-1"), any(), eq("session-1"), eq("user-1")))
                 .thenReturn(java.util.Optional.of(delegate));
         var sandboxService = new SandboxService(provider, enabledConfig(), null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null));
+                new SandboxServiceDependencies(snapshotService, null, null, null));
         var manager = manager(sandboxService);
         try {
             var sandbox = (LazySandbox) sandboxService.reattachOrCreateSandbox(

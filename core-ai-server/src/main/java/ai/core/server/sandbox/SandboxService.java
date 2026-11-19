@@ -16,8 +16,6 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import redis.clients.jedis.JedisPool;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -71,15 +69,15 @@ public class SandboxService {
     private volatile SandboxHubBinding hubBinding;
 
     public SandboxService() {
-        this((JedisPool) null, null, null, null, null, null);
+        this((SandboxSnapshotService) null, null, null, null, null);
     }
 
-    public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
+    public SandboxService(SandboxSnapshotService snapshotService,
                           ObjectStorageServiceResolver storageResolver, FileService fileService) {
-        this(jedisPool, snapshotService, storageResolver, fileService, null, null);
+        this(snapshotService, storageResolver, fileService, null, null);
     }
 
-    public SandboxService(JedisPool jedisPool, SandboxSnapshotService snapshotService,
+    public SandboxService(SandboxSnapshotService snapshotService,
                           ObjectStorageServiceResolver storageResolver, FileService fileService,
                           SessionAttachmentRefRepository attachmentRepository, SandboxBindingStore bindingStore) {
         this.sandboxManager = null;
@@ -93,15 +91,15 @@ public class SandboxService {
         this.fileService = fileService;
         this.attachmentRepository = attachmentRepository;
         this.snapshotService = snapshotService;
-        this.bindingStore = bindingStore != null ? bindingStore : new SandboxRedisStore(jedisPool);
+        this.bindingStore = bindingStore;
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
-        this(provider, defaultConfig, null, new SandboxServiceDependencies(null, null, null, null, null));
+        this(provider, defaultConfig, null, new SandboxServiceDependencies(null, null, null, null));
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
-        this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null, null));
+        this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null));
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, SandboxServiceDependencies dependencies) {
@@ -124,7 +122,7 @@ public class SandboxService {
         this.fileService = dependencies.fileService();
         this.attachmentRepository = dependencies.attachmentRepository();
         this.snapshotService = dependencies.snapshotService();
-        this.bindingStore = dependencies.bindingStore() != null ? dependencies.bindingStore() : new SandboxRedisStore(dependencies.jedisPool());
+        this.bindingStore = dependencies.bindingStore();
         this.cleanupScheduler = cleanupScheduler;
         cleanupScheduler.scheduleAtFixedRate(
                 new SandboxCleanupJob(sandboxManager, provider,

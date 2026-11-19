@@ -21,30 +21,15 @@ public class LeaseCleanupJob implements Job {
     @Inject
     Database database;
 
-    private final boolean cleanLeases;
-
-    /**
-     * @param cleanLeases true only when the lease backend is PostgreSQL; RPC-only HTTP mode needs
-     *                    the pod registry but the lease tables may not be migrated yet.
-     */
-    public LeaseCleanupJob(boolean cleanLeases) {
-        this.cleanLeases = cleanLeases;
-    }
-
     @Override
     public void execute(JobContext context) {
-        var ownership = 0;
-        var turns = 0;
-        var counts = 0;
-        if (cleanLeases) {
-            ownership = database.execute("DELETE FROM messaging.session_ownership o "
-                + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = o.owner_pod "
-                + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
-            turns = database.execute("DELETE FROM messaging.turn_states t "
-                + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = t.owner_pod "
-                + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
-            counts = database.execute("DELETE FROM messaging.user_session_counts WHERE expires_at < now()");
-        }
+        var ownership = database.execute("DELETE FROM messaging.session_ownership o "
+            + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = o.owner_pod "
+            + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
+        var turns = database.execute("DELETE FROM messaging.turn_states t "
+            + "WHERE NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = t.owner_pod "
+            + "AND p.heartbeat_at > now() - make_interval(secs => ?))", PgOwnershipStore.LIVENESS_SECONDS);
+        var counts = database.execute("DELETE FROM messaging.user_session_counts WHERE expires_at < now()");
         var pods = database.execute("DELETE FROM messaging.pods WHERE heartbeat_at < now() - make_interval(secs => ?)",
             DEAD_POD_RETENTION_SECONDS);
         if (ownership > 0 || turns > 0 || counts > 0 || pods > 0) {

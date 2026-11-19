@@ -2,7 +2,7 @@ package ai.core.server.messaging;
 
 /**
  * Thrown when an HTTP RPC definitely did not reach the target (no routable address, connection
- * refused, or endpoint missing), so the caller may safely fall back to the Redis transport.
+ * refused, or endpoint missing).
  *
  * @author stephen
  */

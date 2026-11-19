@@ -4,7 +4,6 @@ import ai.core.server.runtime.CapacityExceededException;
 import ai.core.server.runtime.RuntimeLimits;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.util.function.Supplier;
 
@@ -21,10 +20,6 @@ public class UserSessionBudget {
     private final SessionBudgetStore store;
     // assigned by RuntimeGovernanceModule: read live from system settings
     public Supplier<RuntimeLimits> limitsSupplier;
-
-    public UserSessionBudget(JedisPool jedisPool) {
-        this(new RedisSessionBudgetStore(jedisPool));
-    }
 
     public UserSessionBudget(SessionBudgetStore store) {
         this.store = store;

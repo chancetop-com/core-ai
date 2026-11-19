@@ -4,7 +4,6 @@ import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.api.server.session.sse.SseTextChunkEvent;
 import ai.core.server.messaging.OwnershipStore;
 import ai.core.server.messaging.SessionOwnershipRegistry;
-import ai.core.server.messaging.SseDeliveryMode;
 import core.framework.web.sse.Channel;
 import org.junit.jupiter.api.Test;
 
@@ -26,7 +25,7 @@ class SessionChannelServiceDirectedTest {
         var hubRegistry = new SessionEventHubRegistry();
         var channelService = mock(ChannelService.class);
         when(channelService.send(any(), any(), any())).thenReturn(Boolean.TRUE);
-        var service = new SessionChannelService(SseDeliveryMode.DIRECTED, hubRegistry, ownership, null, "", channelService);
+        var service = new SessionChannelService(hubRegistry, ownership, null, "", channelService);
         var channel = (Channel<SseBaseEvent>) mock(Channel.class);
 
         service.connect(channel, "s-1");

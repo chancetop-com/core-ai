@@ -26,6 +26,7 @@ import core.framework.web.exception.ForbiddenException;
  */
 public class SseAuthInterceptor implements SseChannelInterceptor {
     public static final String INTERNAL_EVENTS_PATH = "/_internal/sessions/events";
+    private static final String INTERNAL_A2A_EVENTS_PATH = "/_internal/a2a/events";
     private final RequestAuthenticator requestAuthenticator;
     private final SessionIdentity sessionIdentity;
     private final PermissionService permissionService;
@@ -41,9 +42,9 @@ public class SseAuthInterceptor implements SseChannelInterceptor {
 
     @Override
     public void onConnect(Request request, WebContext webContext) {
-        // The internal route has already passed the pre-200 host/token/owner check; user auth and
+        // The internal routes have already passed the pre-200 host/token check; user auth and
         // RBAC must not run for pod-to-pod traffic.
-        if (INTERNAL_EVENTS_PATH.equals(request.path())) return;
+        if (INTERNAL_EVENTS_PATH.equals(request.path()) || INTERNAL_A2A_EVENTS_PATH.equals(request.path())) return;
 
         var identity = sessionIdentity.getUserIdentityOrNull();
         if (identity != null) {

@@ -121,7 +121,9 @@ final class A2ARemoteTaskGateway {
                              Consumer<StreamResponse> streamSender, Runnable closeStream) {
         A2AEventRelay.Subscription subscription = null;
         if (service.eventRelay != null) {
-            subscription = service.eventRelay.subscribe(snapshot.taskId, streamSender, closeStream);
+            var owner = snapshot.ownerPod != null ? snapshot.ownerPod
+                    : service.ownershipRegistry != null ? service.ownershipRegistry.getOwner(snapshot.contextId) : null;
+            subscription = service.eventRelay.subscribeRemote(owner, snapshot.taskId, streamSender, closeStream);
         }
         try {
             var task = call(snapshot, command, DELEGATE_TIMEOUT);

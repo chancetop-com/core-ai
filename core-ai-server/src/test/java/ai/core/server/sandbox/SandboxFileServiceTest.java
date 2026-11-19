@@ -334,7 +334,7 @@ class SandboxFileServiceTest {
         var config = new SandboxConfig();
         config.enabled = Boolean.TRUE;
         service = new SandboxService(provider, config, null,
-                new SandboxServiceDependencies(null, snapshotService, resolver, null, repository));
+                new SandboxServiceDependencies(snapshotService, resolver, null, repository));
         service.createSessionSandbox(config, "session-1", "user-1", null);
         return new Fixture(provider, sandbox, storage, repository, uploads);
     }

@@ -7,8 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * PostgreSQL-backed asynchronous command queue. It is enabled only by
- * {@code sys.command.backend=postgres}; Redis remains the mixed-version path.
+ * PostgreSQL-backed asynchronous command queue shared by all pods.
  *
  * @author stephen
  */

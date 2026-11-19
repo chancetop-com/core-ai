@@ -2,7 +2,7 @@ package ai.core.server.session;
 
 /**
  * Cross-pod session activity timestamps, written when a request touches a session and read by the
- * owner pod's idle cleanup. Backed by either Redis or PostgreSQL depending on {@code sys.state.backend}.
+ * owner pod's idle cleanup. Backed by PostgreSQL so every pod sees the same timestamp.
  *
  * @author stephen
  */

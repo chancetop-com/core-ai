@@ -128,7 +128,7 @@ class SandboxServiceQuotaEvictionTest {
         var scheduler = mock(ScheduledExecutorService.class);
         when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
         var service = new SandboxService(provider, config(), null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null), scheduler);
+                new SandboxServiceDependencies(snapshotService, null, null, null), scheduler);
         service.evictionMinIdleSeconds = 0;
         service.sandboxManager().limitsSupplier = () -> limits;
         return service;

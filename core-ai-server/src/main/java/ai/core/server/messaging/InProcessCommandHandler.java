@@ -20,7 +20,6 @@ import ai.core.server.util.IdLists;
 import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +30,6 @@ import java.util.Map;
  */
 public class InProcessCommandHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger(InProcessCommandHandler.class);
-    private static final String RPC_CHANNEL_PREFIX = "coreai:rpc:";
 
     private final AgentSessionManager sessionManager;
     private final ChatMessageService chatMessageService;
@@ -39,7 +37,6 @@ public class InProcessCommandHandler {
     private final AgentDraftGenerator agentDraftGenerator;
     private final AgentDefinitionService agentDefinitionService;
     private final ServerA2AService serverA2AService;
-    private final JedisPool jedisPool;
     private final SandboxService sandboxService;
     private final EventPublisher eventPublisher;
     private final ToolRegistryService toolRegistryService;
@@ -55,7 +52,6 @@ public class InProcessCommandHandler {
         this.agentDraftGenerator = rpcDependencies.agentDraftGenerator();
         this.agentDefinitionService = rpcDependencies.agentDefinitionService();
         this.serverA2AService = rpcDependencies.serverA2AService();
-        this.jedisPool = rpcDependencies.jedisPool();
         this.sandboxService = sessionDependencies.sandboxService();
         this.eventPublisher = sessionDependencies.eventPublisher();
         this.sessionNoticePrompt = sessionDependencies.sessionNoticePrompt();
@@ -372,13 +368,7 @@ public class InProcessCommandHandler {
             responder.response = response;
             return;
         }
-        publishResponse(requestId, response);
-    }
-
-    private void publishResponse(String requestId, String json) {
-        try (var jedis = jedisPool.getResource()) {
-            jedis.publish(RPC_CHANNEL_PREFIX + requestId, json);
-        }
+        LOGGER.warn("dropping RPC response without a caller, requestId={}", requestId);
     }
 
     private static final class RpcResponder {

@@ -3,12 +3,16 @@ package ai.core.server;
 import ai.core.a2a.A2AHttpPaths;
 import ai.core.api.a2a.StreamResponse;
 import ai.core.server.a2a.A2AAgentCardController;
+import ai.core.server.a2a.A2AEventChannelListener;
+import ai.core.server.a2a.A2AEventRelay;
 import ai.core.server.a2a.A2AMessageAttachments;
 import ai.core.server.a2a.A2AMessageController;
 import ai.core.server.a2a.A2AStreamChannelListener;
 import ai.core.server.a2a.A2ATaskController;
+import ai.core.server.a2a.InternalA2APreflight;
 import ai.core.server.a2a.ServerA2ACallerService;
 import ai.core.server.a2a.ServerA2AService;
+import ai.core.server.messaging.PodRegistry;
 import ai.core.server.sse.SseEndpointRegistry;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -35,5 +39,10 @@ public class A2AModule extends Module {
 
         var registry = bean(SseEndpointRegistry.class);
         registry.register(HTTPMethod.POST, "/api/a2a" + A2AHttpPaths.MESSAGE_STREAM, StreamResponse.class, bind(A2AStreamChannelListener.class), false);
+        registry.preflight(HTTPMethod.GET, InternalA2APreflight.PATH,
+                new InternalA2APreflight(bean(PodRegistry.class), property("sys.internal.token").orElse(""),
+                        property("sys.internal.token.previous").orElse("")));
+        registry.register(HTTPMethod.GET, InternalA2APreflight.PATH, StreamResponse.class,
+                new A2AEventChannelListener(bean(A2AEventRelay.class)), false);
     }
 }

@@ -23,7 +23,7 @@ public class StateSchemaCheck {
         try {
             database.selectOne("SELECT 1 AS ok FROM " + table + " WHERE false", PgStateCheckRow.class);
         } catch (RuntimeException e) {
-            throw new IllegalStateException("sys.state.backend=postgres requires Flyway V39, table is missing or unreadable: " + table, e);
+            throw new IllegalStateException("Flyway V39 is required, table is missing or unreadable: " + table, e);
         }
     }
 }

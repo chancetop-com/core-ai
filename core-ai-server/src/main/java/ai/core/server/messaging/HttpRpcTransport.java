@@ -20,8 +20,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 /**
  * Sends RPC directly to the owner pod. Addresses come from the pod registry and must be IPv4
- * literals: anything else is treated as "not delivered" so the caller can fall back to Redis
- * without waiting for Kubernetes DNS.
+ * literals: anything else is treated as "not delivered" without waiting for Kubernetes DNS.
  *
  * @author stephen
  */
@@ -39,7 +38,7 @@ public class HttpRpcTransport implements RpcTransport {
     @SuppressFBWarnings("WEM_OBSCURING_EXCEPTION")
     public HttpRpcTransport(PodAddressResolver addressResolver, String token) {
         if (token == null || token.isBlank()) {
-            throw new IllegalArgumentException("sys.internal.token is required when sys.rpc.transport=http");
+            throw new IllegalArgumentException("sys.internal.token is required");
         }
         this.addressResolver = addressResolver;
         this.token = token;

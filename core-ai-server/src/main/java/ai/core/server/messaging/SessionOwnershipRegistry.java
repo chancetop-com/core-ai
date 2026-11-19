@@ -2,7 +2,6 @@ package ai.core.server.messaging;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -18,11 +17,6 @@ public class SessionOwnershipRegistry {
 
     private final OwnershipStore store;
     private final String hostname;
-
-    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
-    public SessionOwnershipRegistry(JedisPool jedisPool) {
-        this(new RedisOwnershipStore(jedisPool));
-    }
 
     @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public SessionOwnershipRegistry(OwnershipStore store) {

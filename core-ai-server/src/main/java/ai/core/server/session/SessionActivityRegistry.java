@@ -1,7 +1,5 @@
 package ai.core.server.session;
 
-import redis.clients.jedis.JedisPool;
-
 /**
  * Durable cross-pod session activity timestamps.
  * Terminal requests may land on a non-owner pod whose in-memory activity map
@@ -17,11 +15,7 @@ public class SessionActivityRegistry {
 
     private final SessionActivityStore store;
 
-    public SessionActivityRegistry(JedisPool jedisPool) {
-        this(new RedisSessionActivityStore(jedisPool));
-    }
-
-    private SessionActivityRegistry(SessionActivityStore store) {
+    public SessionActivityRegistry(SessionActivityStore store) {
         this.store = store;
     }
 

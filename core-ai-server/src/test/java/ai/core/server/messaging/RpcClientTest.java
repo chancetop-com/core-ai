@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -19,54 +18,39 @@ import static org.mockito.Mockito.when;
  */
 class RpcClientTest {
     private final SessionOwnershipRegistry ownership = mock(SessionOwnershipRegistry.class);
-    private final RedisRpcTransport redis = mock(RedisRpcTransport.class);
     private final String ok = RpcClient.okResponse("\"ok\"");
 
     @Test
-    void httpSuccessDoesNotTouchRedis() {
+    void resolvesTheOwnerAndCallsThePodDirectly() {
         when(ownership.getOwner("s1")).thenReturn("pod-1");
-        RpcTransport http = (target, command, timeout) -> ok;
-        var client = new RpcClient(ownership, redis, http);
+        RpcTransport http = mock(RpcTransport.class);
+        when(http.call(eq("pod-1"), any(), any())).thenReturn(ok);
+        var client = new RpcClient(ownership, http);
 
         assertEquals("ok", client.call(command(), String.class, Duration.ofSeconds(1)));
-        verify(redis, never()).call(any(), any(), any());
+        verify(http).call(eq("pod-1"), any(), any());
     }
 
     @Test
-    void undeliveredHttpFallsBackToRedis() {
-        when(ownership.getOwner("s1")).thenReturn("pod-1");
+    void httpFailureIsNotRetriedOnAnotherTransport() {
         RpcTransport http = (target, command, timeout) -> {
             throw new RpcNotDeliveredException("no address");
         };
-        when(redis.call(eq("pod-1"), any(), any())).thenReturn(ok);
-        var client = new RpcClient(ownership, redis, http);
+        var client = new RpcClient(ownership, http);
 
-        assertEquals("ok", client.call(command(), String.class, Duration.ofSeconds(1)));
-        verify(redis).call(eq("pod-1"), any(), any());
+        assertThrows(RpcNotDeliveredException.class,
+                () -> client.callToPod("pod-1", command(), String.class, Duration.ofSeconds(1)));
     }
 
     @Test
-    void httpBusinessErrorDoesNotFallBack() {
-        RpcTransport http = (target, command, timeout) -> {
-            throw new RuntimeException("RPC HTTP error, status=401");
-        };
-        var client = new RpcClient(ownership, redis, http);
-
-        assertThrows(RuntimeException.class,
-            () -> client.callToPod("pod-1", command(), String.class, Duration.ofSeconds(1)));
-        verify(redis, never()).call(any(), any(), any());
-    }
-
-    @Test
-    void noOwnerUsesRedisUnownedStream() {
+    void noOwnerIsAnError() {
         when(ownership.getOwner("s1")).thenReturn(null);
-        when(redis.call(isNull(), any(), any())).thenReturn(ok);
-        var client = new RpcClient(ownership, redis, (target, command, timeout) -> {
-            throw new AssertionError("http must not be used without an owner");
-        });
+        RpcTransport http = mock(RpcTransport.class);
+        var client = new RpcClient(ownership, http);
 
-        assertEquals("ok", client.call(command(), String.class, Duration.ofSeconds(1)));
-        verify(redis).call(isNull(), any(), any());
+        assertThrows(RpcNotDeliveredException.class,
+                () -> client.call(command(), String.class, Duration.ofSeconds(1)));
+        verify(http, never()).call(any(), any(), any());
     }
 
     private SessionCommand command() {

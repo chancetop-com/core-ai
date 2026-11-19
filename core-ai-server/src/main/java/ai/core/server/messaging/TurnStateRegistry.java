@@ -6,7 +6,6 @@ import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 import java.util.List;
@@ -35,10 +34,6 @@ public class TurnStateRegistry {
     private final Map<String, TurnEntry> runningTurns = new ConcurrentHashMap<>();
     private volatile boolean heartbeatActive = true;
     private Thread heartbeatThread;
-
-    public TurnStateRegistry(JedisPool jedisPool) {
-        this(new RedisTurnStateStore(jedisPool), null);
-    }
 
     public TurnStateRegistry(TurnStateStore store, String podId) {
         this.store = store;

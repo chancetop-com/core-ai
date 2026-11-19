@@ -4,7 +4,6 @@ import core.framework.mongo.Mongo;
 import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
@@ -14,10 +13,9 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 
 /**
- * The server cannot serve a single request without redis (command bus, session ownership) and mongo,
- * so a startup that cannot reach them must fail instead of leaving a half initialized instance behind.
- * Each probe runs on its own virtual thread with a hard timeout, the jedis and mongo clients may block
- * far longer than their configured socket timeout while resolving or selecting a server.
+ * MongoDB still backs the remaining legacy collections, so a startup that cannot reach it must
+ * fail instead of leaving a half initialized instance behind. The probe runs on its own virtual
+ * thread with a hard timeout because the client may block far longer than its socket timeout.
  *
  * @author stephen
  */
@@ -25,16 +23,13 @@ public final class StartupDependencyCheck {
     private static final Logger LOGGER = LoggerFactory.getLogger(StartupDependencyCheck.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
-    private final JedisPool jedisPool;
     private final Mongo mongo;
 
-    public StartupDependencyCheck(JedisPool jedisPool, Mongo mongo) {
-        this.jedisPool = jedisPool;
+    public StartupDependencyCheck(Mongo mongo) {
         this.mongo = mongo;
     }
 
     public void verify() {
-        verify("redis", this::pingRedis);
         verify("mongo", this::pingMongo);
     }
 
@@ -59,12 +54,6 @@ public final class StartupDependencyCheck {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new Error("startup dependency check interrupted, name=" + name, e);
-        }
-    }
-
-    private boolean pingRedis() {
-        try (var jedis = jedisPool.getResource()) {
-            return "PONG".equals(jedis.ping());
         }
     }
 

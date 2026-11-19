@@ -1,9 +1,6 @@
 package ai.core.server.messaging;
 
 import ai.core.utils.JsonUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.time.Duration;
 import java.util.Map;
@@ -13,7 +10,6 @@ import java.util.UUID;
  * @author stephen
  */
 public class RpcClient {
-    private static final Logger LOGGER = LoggerFactory.getLogger(RpcClient.class);
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
 
     /**
@@ -39,29 +35,23 @@ public class RpcClient {
     }
 
     private final SessionOwnershipRegistry ownershipRegistry;
-    private final RedisRpcTransport redisTransport;
     private final RpcTransport httpTransport;
 
-    public RpcClient(JedisPool jedisPool, SessionOwnershipRegistry ownershipRegistry) {
-        this(ownershipRegistry, new RedisRpcTransport(jedisPool), null);
+    public RpcClient(RpcTransport httpTransport) {
+        this(null, httpTransport);
     }
 
-    public RpcClient(SessionOwnershipRegistry ownershipRegistry, RedisRpcTransport redisTransport, RpcTransport httpTransport) {
+    public RpcClient(SessionOwnershipRegistry ownershipRegistry, RpcTransport httpTransport) {
         this.ownershipRegistry = ownershipRegistry;
-        this.redisTransport = redisTransport;
         this.httpTransport = httpTransport;
     }
 
-    /**
-     * Publish a command to the owner's per-Pod stream and block waiting for the response.
-     *
-     * @param command      the command to publish (must have a non-null requestId)
-     * @param responseType the expected response class
-     * @param timeout      max wait duration
-     * @return deserialized response
-     */
     public <T> T call(SessionCommand command, Class<T> responseType, Duration timeout) {
-        return dispatch(ownershipRegistry.getOwner(command.sessionId()), command, responseType, timeout);
+        var owner = ownershipRegistry == null ? null : ownershipRegistry.getOwner(command.sessionId());
+        if (owner == null || owner.isBlank()) {
+            throw new RpcNotDeliveredException("no session owner, sessionId=" + command.sessionId());
+        }
+        return dispatch(owner, command, responseType, timeout);
     }
 
     /**
@@ -83,26 +73,8 @@ public class RpcClient {
     }
 
     private <T> T dispatch(String targetPod, SessionCommand command, Class<T> responseType, Duration timeout) {
-        String json;
-        if (httpTransport != null && targetPod != null) {
-            try {
-                json = httpTransport.call(targetPod, command, timeout);
-            } catch (RpcNotDeliveredException e) {
-                LOGGER.info("rpc http not delivered, falling back to redis, targetPod={}, type={}, sessionId={}, reason={}",
-                    targetPod, command.type(), command.sessionId(), e.getMessage());
-                json = redisTransport.call(targetPod, command, timeout);
-            }
-        } else {
-            json = redisTransport.call(targetPod, command, timeout);
-        }
+        var json = httpTransport.call(targetPod, command, timeout);
         return parseResponse(json, responseType);
-    }
-
-    /**
-     * Dispatch a response received from Redis Pub/Sub to the matching pending call.
-     */
-    public void onResponse(String requestId, String json) {
-        redisTransport.onResponse(requestId, json);
     }
 
     /**

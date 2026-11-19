@@ -9,8 +9,6 @@ import ai.core.server.domain.AgentSandboxConfig;
 import ai.core.server.sandbox.snapshot.SandboxSnapshotService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -29,6 +27,8 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -111,7 +111,7 @@ class SandboxServiceLifecycleTest {
         var config = enabledConfig();
         config.timeoutSeconds = 30;
         var service = new SandboxService(provider, config, null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null), scheduler);
+                new SandboxServiceDependencies(snapshotService, null, null, null), scheduler);
 
         var sandbox = (LazySandbox) service.createSessionSandbox(config, "session-1", "user-1", null);
         sandbox.uploadFile("/tmp/changed.txt", "changed".getBytes(StandardCharsets.UTF_8));
@@ -126,31 +126,27 @@ class SandboxServiceLifecycleTest {
 
     @Test
     void invalidatingSandboxBindingMakesLegacyMappingUnavailableToNextRebuild() {
-        var jedisPool = mock(JedisPool.class);
-        var jedis = mock(Jedis.class);
         var binding = new AtomicReference<>("legacy-sandbox");
-        when(jedisPool.getResource()).thenReturn(jedis);
-        when(jedis.get("sandbox:legacy-session")).thenAnswer(invocation -> binding.get());
-        when(jedis.del("sandbox:legacy-session")).thenAnswer(invocation -> {
+        var store = mock(SandboxBindingStore.class);
+        when(store.getBinding("legacy-session")).thenAnswer(invocation -> binding.get());
+        doAnswer(invocation -> {
             binding.set(null);
-            return 1L;
-        });
-        var service = new SandboxService(jedisPool, null, null, null);
+            return null;
+        }).when(store).deleteBindingStrict("legacy-session");
+        var service = new SandboxService((SandboxSnapshotService) null, null, null, null, store);
 
         assertEquals("legacy-sandbox", service.getSandboxId("legacy-session"));
         service.invalidateSandboxBinding("legacy-session");
 
         assertNull(service.getSandboxId("legacy-session"));
-        verify(jedis).del("sandbox:legacy-session");
+        verify(store).deleteBindingStrict("legacy-session");
     }
 
     @Test
-    void invalidatingSandboxBindingPropagatesRedisDeletionFailure() {
-        var jedisPool = mock(JedisPool.class);
-        var jedis = mock(Jedis.class);
-        when(jedisPool.getResource()).thenReturn(jedis);
-        when(jedis.del("sandbox:legacy-session")).thenThrow(new IllegalStateException("redis down"));
-        var service = new SandboxService(jedisPool, null, null, null);
+    void invalidatingSandboxBindingPropagatesStoreDeletionFailure() {
+        var store = mock(SandboxBindingStore.class);
+        doThrow(new IllegalStateException("store down")).when(store).deleteBindingStrict("legacy-session");
+        var service = new SandboxService((SandboxSnapshotService) null, null, null, null, store);
 
         assertThrows(IllegalStateException.class,
                 () -> service.invalidateSandboxBinding("legacy-session"));
@@ -167,7 +163,7 @@ class SandboxServiceLifecycleTest {
         var scheduler = mock(ScheduledExecutorService.class);
         when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
         var service = new SandboxService(provider, enabledConfig(), null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null), scheduler);
+                new SandboxServiceDependencies(snapshotService, null, null, null), scheduler);
 
         var result = (LazySandbox) service.reattachOrCreateSandbox(
                 "sandbox-1", enabledConfig(), "session-1", "user-1", null);
@@ -190,7 +186,7 @@ class SandboxServiceLifecycleTest {
         var scheduler = mock(ScheduledExecutorService.class);
         when(scheduler.scheduleAtFixedRate(any(), anyLong(), anyLong(), any())).thenReturn(null);
         var service = new SandboxService(provider, enabledConfig(), null,
-                new SandboxServiceDependencies(null, snapshotService, null, null, null), scheduler);
+                new SandboxServiceDependencies(snapshotService, null, null, null), scheduler);
 
         var result = (LazySandbox) service.reattachOrCreateSandbox(
                 "sandbox-1", enabledConfig(), "session-1", "user-1", null);
@@ -248,6 +244,6 @@ class SandboxServiceLifecycleTest {
     }
 
     private SandboxServiceDependencies nullDependencies() {
-        return new SandboxServiceDependencies(null, null, null, null, null);
+        return new SandboxServiceDependencies(null, null, null, null);
     }
 }

@@ -3,10 +3,8 @@ package ai.core.server.messaging;
 import ai.core.api.server.session.sse.SseBaseEvent;
 import ai.core.server.web.sse.SessionEventHubRegistry;
 import ai.core.utils.JsonUtil;
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import redis.clients.jedis.JedisPool;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -20,26 +18,17 @@ import java.time.Duration;
  */
 public class EventPublisher {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventPublisher.class);
-    private static final String CHANNEL_PREFIX = "coreai:sse:";
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
             .build();
 
-    private final JedisPool jedisPool;
-    private final SseDeliveryMode mode;
     private final SessionEventHubRegistry hubRegistry;
     private final SessionOwnershipRegistry ownershipRegistry;
     private final PodRegistry podRegistry;
     private final String token;
 
-    public EventPublisher(JedisPool jedisPool) {
-        this(jedisPool, SseDeliveryMode.REDIS, null, null, null, "");
-    }
-
-    public EventPublisher(JedisPool jedisPool, SseDeliveryMode mode, SessionEventHubRegistry hubRegistry,
-                          SessionOwnershipRegistry ownershipRegistry, PodRegistry podRegistry, String token) {
-        this.jedisPool = jedisPool;
-        this.mode = mode;
+    public EventPublisher(SessionEventHubRegistry hubRegistry, SessionOwnershipRegistry ownershipRegistry,
+                          PodRegistry podRegistry, String token) {
         this.hubRegistry = hubRegistry;
         this.ownershipRegistry = ownershipRegistry;
         this.podRegistry = podRegistry;
@@ -49,35 +38,18 @@ public class EventPublisher {
     public void publish(String sessionId, SseBaseEvent event) {
         SseEventHelper.initEvent(event, sessionId);
 
-        if (mode == SseDeliveryMode.DIRECTED) {
-            var hub = hubRegistry.get(sessionId);
-            if (hub == null && ownershipRegistry != null && ownershipRegistry.isOwner(sessionId)) {
-                hub = hubRegistry.getOrCreate(sessionId);
-            }
-            if (hub != null) {
-                hub.publish(event);
-            } else {
-                forwardToOwner(sessionId, event);
-            }
+        var hub = hubRegistry.get(sessionId);
+        if (hub == null && ownershipRegistry.isOwner(sessionId)) {
+            hub = hubRegistry.getOrCreate(sessionId);
         }
-
-        publishRedis(sessionId, event);
-    }
-
-    private void publishRedis(String sessionId, SseBaseEvent event) {
-        var className = event.getClass().getSimpleName();
-        var json = JSON.toJSON(event);
-        var message = className + "\n" + json;
-        try (var jedis = jedisPool.getResource()) {
-            jedis.publish(CHANNEL_PREFIX + sessionId, message);
-        } catch (RuntimeException e) {
-            // The local hub already has the event; a Redis hiccup must not fail the turn.
-            LOGGER.warn("failed to publish session event to redis, sessionId={}", sessionId, e);
+        if (hub != null) {
+            hub.publish(event);
+        } else {
+            forwardToOwner(sessionId, event);
         }
     }
 
     private void forwardToOwner(String sessionId, SseBaseEvent event) {
-        if (ownershipRegistry == null || podRegistry == null || token == null || token.isBlank()) return;
         var owner = ownershipRegistry.getOwner(sessionId);
         if (owner == null || owner.isBlank()) return;
         var address = podRegistry.address(owner);
