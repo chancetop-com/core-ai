@@ -18,8 +18,6 @@ public class ServerCapabilities {
     public Boolean dashboard;
     @Property(name = "plugins")
     public Boolean plugins;
-    @Property(name = "dataset_reports")
-    public Boolean datasetReports;
     @Property(name = "auth_required")
     public Boolean authRequired;
     @Property(name = "sandbox_terminal_enabled")

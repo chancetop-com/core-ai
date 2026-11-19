@@ -55,7 +55,6 @@ public class RoleRegistry {
                     PermissionCodes.SKILL_VIEW, PermissionCodes.SKILL_MANAGE,
                     PermissionCodes.PLUGIN_VIEW,
                     PermissionCodes.DATASET_VIEW, PermissionCodes.DATASET_MANAGE,
-                    PermissionCodes.REPORT_VIEW, PermissionCodes.REPORT_MANAGE,
                     // projects are shared business containers: regular members can view and drive them
                     PermissionCodes.PROJECT_VIEW, PermissionCodes.PROJECT_MANAGE,
                     PermissionCodes.EXPERIMENT_VIEW, PermissionCodes.EXPERIMENT_REPLAY, PermissionCodes.NOTIFICATION_VIEW,

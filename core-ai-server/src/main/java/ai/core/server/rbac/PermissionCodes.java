@@ -49,8 +49,6 @@ public final class PermissionCodes {
     public static final String PLUGIN_MANAGE = "plugin.manage";
     public static final String DATASET_VIEW = "dataset.view";
     public static final String DATASET_MANAGE = "dataset.manage";
-    public static final String REPORT_VIEW = "report.view";
-    public static final String REPORT_MANAGE = "report.manage";
     public static final String PROJECT_VIEW = "project.view";
     public static final String PROJECT_MANAGE = "project.manage";
     public static final String EXPERIMENT_VIEW = "experiment.view";
@@ -88,7 +86,6 @@ public final class PermissionCodes {
             SKILL_VIEW, SKILL_MANAGE,
             PLUGIN_VIEW, PLUGIN_MANAGE,
             DATASET_VIEW, DATASET_MANAGE,
-            REPORT_VIEW, REPORT_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
             EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, AGENT_COMPARE, NOTIFICATION_VIEW,
             GATEWAY_VIEW, GATEWAY_MANAGE, SYSTEM_MANAGE, SANDBOX_SNAPSHOT_MANAGE, COSTALERT_MANAGE,
