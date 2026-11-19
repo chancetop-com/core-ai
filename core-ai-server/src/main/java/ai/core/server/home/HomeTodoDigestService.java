@@ -17,6 +17,7 @@ import ai.core.server.web.foryou.UserTodoStore;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.log.ActionLogContext;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -170,6 +171,7 @@ public class HomeTodoDigestService {
     }
 
     // package-private for tests: the run loop only adds the time guard and per-user fan-out
+    @SuppressFBWarnings("VA_FORMAT_STRING_USES_NEWLINE")
     void processUser(String userId, List<ChatSession> sessions, DigestBatch batch) {
         var runDate = batch.runDate();
         var model = batch.model();
