@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
-import { addAssistantChips, addTranscriptToggle, createAssistToggle, fillPlanBlock, liveToolEntryView, planBlockEl, planState, prettyJson, reasoningBlockView, recordToolUse as recordToolUseChip, transcriptPre, type AssistToggle, type ToolUseChip } from './chat/transcriptView';
+import { addAssistantChips, addTranscriptToggle, createAssistToggle, fillPlanBlock, formatSpan, liveToolEntryView, planBlockEl, planState, prettyJson, reasoningBlockView, recordToolUse as recordToolUseChip, transcriptPre, type AssistToggle, type ToolUseChip } from './chat/transcriptView';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import {
@@ -517,6 +517,7 @@ interface UiTool {
   callId: string;
   name: string;
   status: string;
+  durationMs?: number;
   node?: HTMLElement;
   statusNode?: HTMLElement;
   resultNode?: HTMLElement;
@@ -959,8 +960,7 @@ function startReasoningTick(current: StreamingState): void {
   current.reasoningTick = setInterval(() => {
     if (current.reasoningLiveStart == null || !current.activeReasoning) return;
     current.reasoningToggle?.chip.classList.add('busy');
-    const seconds = Math.max(1, Math.round((Date.now() - current.reasoningLiveStart) / 1000));
-    current.reasoningToggle?.setLabel(`Thinking · ${seconds}s`);
+    current.reasoningToggle?.setLabel(`Thinking · ${formatSpan(Date.now() - current.reasoningLiveStart)}`);
   }, 1000);
 }
 
@@ -989,7 +989,7 @@ function sealActiveReasoning(current: StreamingState, durationMs = 0): void {
 function updateReasoningLabel(current: StreamingState): void {
   const blocks = current.reasoningBlocks.length;
   if (!blocks) return;
-  const total = current.reasoningTotalMs > 0 ? ` · ${formatSeconds(current.reasoningTotalMs)}` : '';
+  const total = current.reasoningTotalMs > 0 ? ` · ${formatSpan(current.reasoningTotalMs)}` : '';
   current.reasoningToggle?.setLabel(blocks > 1 ? `Thought · ${blocks} blocks${total}` : `Thought${total}`);
 }
 
@@ -4636,6 +4636,7 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   }
   const text = textItems(turn);
   const reasoning = reasoningItems(turn);
+  const reasoningMs = turn.items.reduce((sum, item) => item.kind === 'reasoning' ? sum + (item.durationMs ?? 0) : sum, 0);
   const toolItems = turn.items.filter((item): item is ToolItem => item.kind === 'tool');
   const taskItems = turn.items.filter((item): item is TaskItem => item.kind === 'task');
   const compressions = turn.items.filter((item): item is CompressionItem => item.kind === 'compression');
@@ -4649,6 +4650,7 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
     if (bubble) {
       addAssistantChips(bubble, {
         reasoning,
+        reasoningDurationMs: reasoningMs,
         tools: toolItems,
         onLoadFull: view.backend === 'local'
           ? (row, seq, field, className) => addTranscriptFullButton(view, row, seq, field, className)
@@ -4784,6 +4786,7 @@ function remoteHistoryModel(messages: RemoteHistoryMessage[]): TranscriptModel {
         approval: null,
         arguments: tool.arguments,
         result: tool.result,
+        durationMs: tool.durationMs,
         toolType: tool.toolType ?? null,
       });
     });
@@ -5285,16 +5288,20 @@ function ensureToolPanel(current: StreamingState): HTMLElement {
   return current.toolsPanel;
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${Math.round(ms)}ms`;
-  return ms >= 10_000 ? `${Math.round(ms / 1000)}s` : `${(ms / 1000).toFixed(1)}s`;
-}
-
 /** Follow the newest row only while the reader is already at the bottom of the panel. */
 function followPanelScroll(panel: HTMLElement | null): void {
   if (!panel) return;
   if (panel.scrollHeight - panel.scrollTop - panel.clientHeight >= 24) return;
   panel.scrollTop = panel.scrollHeight;
+}
+
+/** "Tool use (n) · 12m" — the chip doubles as the turn's tool-time total. */
+function updateToolsLabel(view: SessionView): void {
+  const current = view.streaming;
+  if (!current?.toolsToggle) return;
+  const count = current.toolsPanel?.childElementCount ?? 0;
+  const total = [...view.toolMap.values()].reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
+  current.toolsToggle.setLabel(`Tool use (${count})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
 }
 
 function appendToolStart(view: SessionView, event: any): void {
@@ -5309,7 +5316,7 @@ function appendToolStart(view: SessionView, event: any): void {
   panel.append(entry.node);
   refreshToolsBusy(entry.node);
   followPanelScroll(panel);
-  current.toolsToggle?.setLabel(`Tool use (${panel.childElementCount})`);
+  updateToolsLabel(view);
   const useKind = toolUseKind(tool.name, event.toolType);
   if (useKind) recordToolUse(current, useKind, toolUseLabel(useKind, tool.name, event.arguments));
   view.toolMap.set(tool.callId, tool);
@@ -5409,7 +5416,7 @@ function memoryRunMeta(run: MemoryRun): string {
   if (run.running) {
     parts.push('running…');
   } else if (run.durationMs != null) {
-    parts.push(formatDuration(run.durationMs));
+    parts.push(formatSpan(run.durationMs));
   }
   if (!run.running && run.cursor != null) parts.push(`cursor ${run.cursor}`);
   return `Memory extraction · ${parts.join(' · ')}`;
@@ -5683,8 +5690,9 @@ function updateToolResult(view: SessionView, event: any): void {
   const tool = view.toolMap.get(event.callId);
   if (!tool) return;
   tool.status = event.status ?? 'done';
-  if (tool.durationNode && typeof event.durationMs === 'number') {
-    tool.durationNode.textContent = formatDuration(event.durationMs);
+  if (typeof event.durationMs === 'number') {
+    tool.durationMs = event.durationMs;
+    if (tool.durationNode) tool.durationNode.textContent = formatSpan(event.durationMs);
   }
   if (tool.statusNode) {
     tool.statusNode.textContent = tool.status;
@@ -5696,6 +5704,7 @@ function updateToolResult(view: SessionView, event: any): void {
     tool.resultNode.style.display = 'block';
   }
   followPanelScroll(tool.node?.closest('.assist-panel-body') as HTMLElement | null);
+  updateToolsLabel(view);
   const artifact = view.backend === 'local' ? artifactByCallId.get(event.callId) : undefined;
   if (artifact) appendToolThumbnail(tool, artifact);
   if (view.pendingApproval?.callId === event.callId) removeApprovalBar(view);
@@ -5804,9 +5813,11 @@ function handleStatusEvent(event: any): void {
 
 /** Mirrors the CLI turn summary format: <60s "42s", then "1m 05s". */
 function formatElapsed(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
+  const seconds = Math.max(0, Math.round(ms / 1000));
   if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 /** Mirrors the CLI cost format: trailing zeros trimmed ($0.003, $1.25). */

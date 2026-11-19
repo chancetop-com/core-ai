@@ -31,6 +31,7 @@ export interface RemoteTool {
   result?: string;
   status?: string;
   toolType?: string | null;
+  durationMs?: number;
 }
 
 export interface RemoteThinkingBlock {
@@ -165,6 +166,7 @@ function normalizeTools(raw: unknown): RemoteTool[] {
       result: text(tool.result),
       status: text(tool.status),
       toolType: text(tool.toolType ?? tool.tool_type) ?? null,
+      durationMs: milliseconds(tool.duration_ms ?? tool.durationMs),
     };
   });
 }

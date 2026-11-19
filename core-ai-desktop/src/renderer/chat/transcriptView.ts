@@ -106,6 +106,18 @@ export function transcriptPre(text: string, className: string): HTMLElement {
   return pre;
 }
 
+/** Compact, human-readable span so a 30-minute turn does not read as "1800s". */
+export function formatSpan(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '';
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${seconds % 60}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
+}
+
 export function prettyJson(raw: unknown): string {
   if (typeof raw !== 'string') return JSON.stringify(raw, null, 2);
   try {
@@ -201,6 +213,7 @@ export function toolRecordView(tool: ToolItem,
   const row = createEl('div', 'record-tool');
   const head = createEl('div', 'record-tool-head');
   head.append(createEl('span', 'record-tool-name', tool.name));
+  if (tool.durationMs) head.append(createEl('span', 'record-tool-duration', formatSpan(tool.durationMs)));
   const status = tool.status === 'ok' ? 'success' : tool.status;
   const statusNode = createEl('span', `record-tool-status ${status}`, tool.status);
   head.append(statusNode);
@@ -228,7 +241,8 @@ export function addTranscriptTools(chips: HTMLElement, panels: HTMLElement, tool
                                    onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void): void {
   const body = createEl('div');
   for (const tool of tools) body.append(toolRecordEl(tool, onLoadFull));
-  addTranscriptToggle(chips, panels, `Tool use (${tools.length})`, body);
+  const total = tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
+  addTranscriptToggle(chips, panels, `Tool use (${tools.length})${total > 0 ? ` · ${formatSpan(total)}` : ''}`, body);
 }
 
 export function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, kind: ToolUseKind,
@@ -288,6 +302,8 @@ export function recordToolUse(chips: HTMLElement, panels: HTMLElement, state: To
 
 export interface AssistantChipContent {
   reasoning?: string[];
+  /** Sum of the reasoning sections, so the chip can show time spent thinking. */
+  reasoningDurationMs?: number;
   tools?: ToolItem[];
   extra?: (chips: HTMLElement, panels: HTMLElement) => void;
   onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void;
@@ -301,7 +317,8 @@ export function addAssistantChips(bubble: HTMLElement, content: AssistantChipCon
   if (content.reasoning?.length) {
     const body = createEl('div');
     for (const entry of content.reasoning) body.append(transcriptPre(entry, 'record-reasoning'));
-    addTranscriptToggle(chips, panels, 'Thinking', body);
+    const total = content.reasoningDurationMs ?? 0;
+    addTranscriptToggle(chips, panels, `Thinking${total > 0 ? ` · ${formatSpan(total)}` : ''}`, body);
   }
   if (content.tools?.length) {
     addTranscriptTools(chips, panels, content.tools, content.onLoadFull);

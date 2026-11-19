@@ -997,6 +997,7 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .record-tool:first-child { border-top: none; }
 .record-tool-head { display: flex; align-items: baseline; gap: 8px; }
 .record-tool-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+.record-tool-duration { font-size: 11px; color: var(--faint); }
 .record-tool-status { font-size: 11.5px; color: var(--muted); margin-left: auto; }
 .record-tool-status.success { color: var(--green); }
 .record-tool-status.failure, .record-tool-status.error { color: var(--red); }
