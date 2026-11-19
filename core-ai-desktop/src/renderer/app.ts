@@ -9433,10 +9433,11 @@ let updatePromptClose: (() => void) | null = null;
 function renderAboutSection(): HTMLElement {
   const section = el('div');
   section.append(el('h2', undefined, 'About'));
-  section.append(el('div', 'hint', 'Version and updates. The release feed is checked on startup — a newer release shows an '
-    + '"Update" badge on the Settings row in the sidebar. Upgrading downloads the installer (sha512-verified) first and asks '
-    + 'before installing, so running sessions are never interrupted without your consent. A separately installed '
-    + 'core-ai-cli is refreshed to the bundled engine version on the first start after an update.'));
+  section.append(el('div', 'hint', 'Version and updates. The release feed is checked on startup and every few hours '
+    + 'while the app runs. With “Download updates automatically” ticked, a newer release is fetched in the background '
+    + '(sha512-verified) and you are asked before it installs — installing closes the app and restarts it, so running '
+    + 'agent sessions stop. A separately installed core-ai-cli is refreshed to the bundled engine version on the first '
+    + 'start after an update.'));
   const grid = el('dl', 'settings-grid');
   const info = state.info;
   grid.append(el('dt', undefined, 'Version'));
@@ -9444,6 +9445,32 @@ function renderAboutSection(): HTMLElement {
   grid.append(el('dt', undefined, 'Engine'));
   grid.append(el('dd', undefined, info?.engineVersion ? `core-ai-cli v${info.engineVersion}` : 'not bundled (development build)'));
   section.append(grid);
+
+  const autoLabel = el('label', 'schedule-filter');
+  const autoToggle = el('input') as HTMLInputElement;
+  autoToggle.type = 'checkbox';
+  autoToggle.disabled = true;
+  autoToggle.onchange = async () => {
+    autoToggle.disabled = true;
+    try {
+      const saved = await window.coreai.setSettings({ autoUpdate: autoToggle.checked });
+      autoToggle.checked = saved?.autoUpdate !== false;
+      toast(autoToggle.checked
+        ? 'Updates download automatically — installing still asks first'
+        : 'Automatic update download off');
+    } finally {
+      autoToggle.disabled = false;
+    }
+  };
+  autoLabel.append(autoToggle, document.createTextNode('Download updates automatically, ask before installing'));
+  section.append(autoLabel);
+  void window.coreai.getSettings().then((settings) => {
+    autoToggle.checked = settings?.autoUpdate !== false;
+  }).catch(() => {
+    autoToggle.checked = true;
+  }).finally(() => {
+    autoToggle.disabled = false;
+  });
 
   const status = el('div', 'notice');
   const bar = el('div', 'update-bar');
@@ -9595,7 +9622,8 @@ function paintUpdateBadge(): void {
   const button = settingsNavEl;
   if (!button || !button.isConnected) return;
   const current = state.update;
-  const pending = Boolean(current && current.latestVersion && (current.phase === 'available' || current.phase === 'downloaded'));
+  const pending = Boolean(current && current.latestVersion
+    && (current.phase === 'available' || current.phase === 'downloading' || current.phase === 'downloaded'));
   if (!pending) {
     settingsBadgeEl?.remove();
     settingsBadgeEl = null;
@@ -9607,10 +9635,12 @@ function paintUpdateBadge(): void {
     button.append(settingsBadgeEl);
   }
   const downloaded = current?.phase === 'downloaded';
-  settingsBadgeEl.textContent = downloaded ? 'Install' : 'Update';
+  settingsBadgeEl.textContent = downloaded ? 'Install' : current?.phase === 'downloading' ? 'Downloading' : 'Update';
   button.title = downloaded
     ? `Settings — update v${current?.latestVersion} downloaded, ready to install`
-    : `Settings — update v${current?.latestVersion} available`;
+    : current?.phase === 'downloading'
+      ? `Settings — downloading update v${current?.latestVersion}`
+      : `Settings — update v${current?.latestVersion} available`;
 }
 
 function paintUpdate(nodes: AboutUpdateNodes, current: UpdateState): void {

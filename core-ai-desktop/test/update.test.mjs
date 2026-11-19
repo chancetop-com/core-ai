@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import updateModule from '../dist/test/updateService.js';
 
-const { UpdateService, compareVersions, pickLatestDesktopRelease, parseLatestYml, installArgs, installModeFor } = updateModule;
+const { UpdateService, compareVersions, pickLatestDesktopRelease, parseLatestYml, installArgs, installModeFor,
+  versionedDownloadName, versionFromDownloadName } = updateModule;
 
 const INSTALLER_BYTES = Buffer.alloc(64 * 1024, 7);
 const INSTALLER_SHA = createHash('sha512').update(INSTALLER_BYTES).digest('base64');
@@ -131,6 +132,15 @@ test('installModeFor maps platform and packaging to the upgrade flow', () => {
   assert.equal(installModeFor('win32', true, false), 'manual');
 });
 
+test('cached installers carry their release version in the name', () => {
+  assert.equal(versionedDownloadName('core-ai-desktop-win-x64.exe', '0.1.3'), 'core-ai-desktop-win-x64-0.1.3.exe');
+  assert.equal(versionedDownloadName('core-ai-desktop-mac-arm64.dmg', '0.2.10'), 'core-ai-desktop-mac-arm64-0.2.10.dmg');
+  assert.equal(versionFromDownloadName('core-ai-desktop-win-x64-0.1.3.exe'), '0.1.3');
+  assert.equal(versionFromDownloadName('core-ai-desktop-win-x64-0.1.3.exe.part'), null);
+  assert.equal(versionFromDownloadName('core-ai-desktop-win-x64.exe'), null);
+  assert.equal(versionFromDownloadName('notes.txt'), null);
+});
+
 test('check reports an available update and its installer', async () => {
   const { service } = makeService();
   const state = await service.check();
@@ -177,11 +187,36 @@ test('download verifies the installer and stops before installing', async () => 
   const state = await service.download();
   assert.equal(state.phase, 'downloaded');
   assert.equal(installed.length, 0);
-  const target = path.join(dir, 'core-ai-desktop-win-x64.exe');
+  const target = path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe');
   assert.deepEqual(readFileSync(target), INSTALLER_BYTES);
   const progress = states.filter((entry) => entry.phase === 'downloading');
   assert.ok(progress.length > 0);
   assert.equal(progress[progress.length - 1].transferred, INSTALLER_BYTES.length);
+});
+
+test('auto-download fetches the release as soon as the check finds it', async () => {
+  const { service, installed, dir } = makeService({ autoDownload: true });
+  await service.check();
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
+  assert.equal(installed.length, 0);
+  assert.ok(existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+});
+
+test('without auto-download a check leaves the installer unfetched', async () => {
+  const { service, states, dir } = makeService();
+  await service.check();
+  assert.equal(service.snapshot().phase, 'available');
+  assert.ok(!states.some((entry) => entry.phase === 'downloading'));
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+});
+
+test('enabling auto-download while an update is listed starts the download', async () => {
+  const { service } = makeService();
+  await service.check();
+  service.setAutoDownload(true);
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
 });
 
 test('install hands the downloaded installer over', async () => {
@@ -191,7 +226,7 @@ test('install hands the downloaded installer over', async () => {
   const state = await service.install();
   assert.equal(state.phase, 'installing');
   assert.equal(installed.length, 1);
-  assert.equal(installed[0], path.join(dir, 'core-ai-desktop-win-x64.exe'));
+  assert.equal(installed[0], path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'));
 });
 
 test('install does nothing before the download completes', async () => {
@@ -209,14 +244,14 @@ test('download creates the download directory on first use', async () => {
   const state = await service.download();
   assert.equal(state.phase, 'downloaded');
   assert.equal(installed.length, 0);
-  assert.ok(existsSync(path.join(nested, 'core-ai-desktop-win-x64.exe')));
+  assert.ok(existsSync(path.join(nested, 'core-ai-desktop-win-x64-0.1.3.exe')));
 });
 
 test('download reuses an already verified download', async () => {
   const { service, installed, dir } = makeService({
     fetchImpl: stubFetch({ releases: [releaseFixture('0.1.3')], blockDownloads: true }),
   });
-  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64.exe'), INSTALLER_BYTES);
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), INSTALLER_BYTES);
   await service.check();
   const state = await service.download();
   assert.equal(state.phase, 'downloaded');
@@ -237,7 +272,7 @@ test('install re-verifies the installer and refuses a file changed after downloa
   const { service, installed, dir } = makeService();
   await service.check();
   await service.download();
-  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64.exe'), Buffer.alloc(INSTALLER_BYTES.length, 9));
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), Buffer.alloc(INSTALLER_BYTES.length, 9));
   const state = await service.install();
   assert.equal(state.phase, 'error');
   assert.match(state.error, /changed on disk/);
@@ -254,8 +289,8 @@ test('a checksum mismatch discards the download and never installs', async () =>
   assert.equal(state.phase, 'error');
   assert.match(state.error, /checksum mismatch/);
   assert.equal(installed.length, 0);
-  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64.exe')));
-  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64.exe.part')));
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe.part')));
 });
 
 test('macOS downloads the dmg and opens it instead of installing', async () => {
@@ -266,4 +301,47 @@ test('macOS downloads the dmg and opens it instead of installing', async () => {
   const state = await service.download();
   assert.equal(state.phase, 'ready');
   assert.equal(opened.length, 1);
+});
+
+test('a check keeps only the pending release installer', async () => {
+  const { service, dir } = makeService();
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.2.exe'), 'older release');
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), INSTALLER_BYTES);
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe.part'), 'half a download');
+  await service.check();
+  assert.ok(existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.2.exe')));
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe.part')));
+});
+
+test('a check on the newest version clears the installed release installer', async () => {
+  const { service, dir } = makeService({ currentVersion: '0.1.3' });
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), INSTALLER_BYTES);
+  const state = await service.check();
+  assert.equal(state.phase, 'up-to-date');
+  assert.ok(!existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+  assert.ok(!existsSync(dir));
+});
+
+test('cleanupAbandoned removes partials and pre-versioning installers only', () => {
+  const { service, dir } = makeService();
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64.exe'), 'left by an older app version');
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.4.exe.part'), 'interrupted download');
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), INSTALLER_BYTES);
+  const removed = service.cleanupAbandoned();
+  assert.equal(removed.length, 2);
+  assert.ok(existsSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe')));
+});
+
+test('a pending installer survives a restart and is reused without a second download', async () => {
+  const dir = tempDir();
+  writeFileSync(path.join(dir, 'core-ai-desktop-win-x64-0.1.3.exe'), INSTALLER_BYTES);
+  const { service } = makeService({
+    downloadDir: dir,
+    fetchImpl: stubFetch({ releases: [releaseFixture('0.1.3')], blockDownloads: true }),
+  });
+  const checked = await service.check();
+  assert.equal(checked.phase, 'available');
+  const state = await service.download();
+  assert.equal(state.phase, 'downloaded');
 });

@@ -1756,7 +1756,8 @@ else {
     });
     // A crash mid-download or an older app version leaves non-installable files behind; the check
     // below then prunes every cached installer of another release.
-    updateService.cleanupAbandoned();
+    const abandoned = updateService.cleanupAbandoned();
+    if (abandoned.length) console.log(`[update] removed ${abandoned.length} abandoned download(s)`);
     // Startup update check (design §4.7): a newer release badges the Settings row in the sidebar
     // without the user opening About, and auto-download starts fetching it in the background.
     // Delayed so window paint and engine start-up go first, and skipped when the About panel

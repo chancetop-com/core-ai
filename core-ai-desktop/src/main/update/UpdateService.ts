@@ -6,8 +6,13 @@
 // filters the release list down to the `desktop-v*` stream itself; the install step then speaks
 // electron-updater's exact NSIS contract (`--updated /S --force-run`): silent install, forced
 // relaunch of the new version.
+//
+// With auto-download on, a check that finds a newer release starts the download itself; the user
+// is only asked whether to install now. Downloads are cached under a versioned name in the temp
+// download directory, so a pending installer survives a restart while installers of any other
+// release — including the one that just installed this version — are pruned.
 import { createHash } from 'node:crypto';
-import { createReadStream, createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync } from 'node:fs';
+import { createReadStream, createWriteStream, existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -111,6 +116,23 @@ export function parseLatestYml(text: string): { sha512: string; size: number } |
   return { sha512: sha[1], size: size ? Number(size[1]) : 0 };
 }
 
+/**
+ * The cached file name of an installer: the release asset name with the version inserted before
+ * the extension (`core-ai-desktop-win-x64-0.1.3.exe`). The version has to be readable from the
+ * name — it is what lets a later launch tell a still-pending installer from an already installed
+ * one, and prune the rest of the temp directory.
+ */
+export function versionedDownloadName(assetName: string, version: string): string {
+  const extension = path.extname(assetName);
+  return `${assetName.slice(0, assetName.length - extension.length)}-${version}${extension}`;
+}
+
+/** The release version encoded in a cached installer name; null for partials and legacy files. */
+export function versionFromDownloadName(name: string): string | null {
+  const match = /-(\d+(?:\.\d+)+)\.[^.]+$/.exec(name);
+  return match ? match[1] : null;
+}
+
 /** The exact arguments electron-updater passes to an NSIS update (NsisUpdater.doInstall). */
 export function installArgs(): string[] {
   return ['--updated', '/S', '--force-run'];
@@ -132,6 +154,8 @@ export interface UpdateServiceOptions {
   arch?: string;
   fetchImpl?: typeof fetch;
   onState?: (state: UpdateState) => void;
+  /** Download a release as soon as a check finds it; installing still waits for the user. */
+  autoDownload?: boolean;
   /** Windows: run the verified installer (main shuts down engines, spawns it and exits). */
   install?: (installerPath: string) => Promise<void>;
   /** macOS: open the downloaded dmg (mounts it; the user finishes the drag). */
@@ -157,6 +181,7 @@ async function fileSha512(file: string): Promise<string> {
 export class UpdateService {
   private readonly options: UpdateServiceOptions;
   private state: UpdateState;
+  private autoDownload: boolean;
   private release: DesktopRelease | null = null;
   private checkInFlight: Promise<UpdateState> | null = null;
   private downloadInFlight: Promise<UpdateState> | null = null;
@@ -166,6 +191,7 @@ export class UpdateService {
 
   constructor(options: UpdateServiceOptions) {
     this.options = options;
+    this.autoDownload = options.autoDownload === true;
     this.state = {
       phase: 'idle',
       currentVersion: options.currentVersion,
@@ -198,6 +224,57 @@ export class UpdateService {
       this.downloadInFlight = null;
     });
     return this.downloadInFlight;
+  }
+
+  /**
+   * Turns background downloading on or off. Enabling it while a release is already listed starts
+   * that download immediately, so the Settings checkbox takes effect without another check.
+   */
+  setAutoDownload(enabled: boolean): void {
+    this.autoDownload = enabled;
+    if (enabled && this.state.phase === 'available') void this.download();
+  }
+
+  /**
+   * Deletes cached installers that can never be installed on this machine: every file whose name
+   * does not carry `keepVersion`, which includes half-written `.part` files and downloads left by
+   * older app versions. `null` empties the cache — the running version is the latest one.
+   */
+  cleanupDownloads(keepVersion: string | null = null): string[] {
+    return this.removeDownloadFiles((name) => Boolean(keepVersion) && versionFromDownloadName(name) === keepVersion);
+  }
+
+  /** Removes leftovers that are not installers of any release (`*.part`, pre-versioning names). */
+  cleanupAbandoned(): string[] {
+    return this.removeDownloadFiles((name) => versionFromDownloadName(name) !== null);
+  }
+
+  private removeDownloadFiles(keep: (name: string) => boolean): string[] {
+    const dir = this.options.downloadDir;
+    let names: string[];
+    try {
+      names = readdirSync(dir);
+    } catch {
+      return [];
+    }
+    const removed: string[] = [];
+    for (const name of names) {
+      if (keep(name)) continue;
+      const file = path.join(dir, name);
+      try {
+        if (!statSync(file).isFile()) continue;
+        rmSync(file, { force: true });
+        removed.push(file);
+      } catch {
+        // Another process holds the file; the next check or launch retries.
+      }
+    }
+    try {
+      if (readdirSync(dir).length === 0) rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // A non-empty or in-use directory is left alone.
+    }
+    return removed;
   }
 
   /** Runs the already downloaded installer; the app hands over and exits. */
@@ -242,7 +319,8 @@ export class UpdateService {
 
   private async runCheck(): Promise<UpdateState> {
     const wasDownloaded = this.state.phase === 'downloaded';
-    this.setState({ phase: 'checking', error: null });
+    const downloading = this.state.phase === 'downloading';
+    this.setState({ phase: downloading ? 'downloading' : 'checking', error: null });
     try {
       const release = pickLatestDesktopRelease(await this.fetchReleases());
       this.release = release;
@@ -252,23 +330,27 @@ export class UpdateService {
       }
       const asset = pickReleaseAsset(release, this.platform(), this.arch());
       const hasUpdate = compareVersions(release.version, this.state.currentVersion) > 0;
-      if (!hasUpdate) this.downloaded = null;
       // A re-check must not hide an installer the user already downloaded: the update is still
       // pending, so keep the ready-to-install state for the same release.
       const keepDownloaded = hasUpdate && wasDownloaded && this.downloaded?.version === release.version;
+      if (!keepDownloaded) this.downloaded = null;
       this.setState({
-        phase: !hasUpdate ? 'up-to-date' : keepDownloaded ? 'downloaded' : 'available',
+        phase: downloading ? 'downloading' : !hasUpdate ? 'up-to-date' : keepDownloaded ? 'downloaded' : 'available',
         latestVersion: release.version,
         releaseUrl: release.url,
         assetName: asset?.name ?? null,
         installMode: installModeFor(this.platform(), this.options.isPackaged, Boolean(asset)),
       });
+      // Only the pending release's installer is worth keeping: a cached artifact of another
+      // version can never be installed, and once this version is latest the cache is empty.
+      if (!downloading) this.cleanupDownloads(hasUpdate ? release.version : null);
+      if (this.state.phase === 'available' && this.autoDownload) void this.download();
     } catch (error) {
-      // A failed re-check keeps the downloaded installer usable.
-      if (wasDownloaded) {
-        this.setState({ phase: 'downloaded', error: null });
-      } else {
-        this.setState({ phase: 'error', error: `Update check failed: ${errorMessage(error)}` });
+      // A failed re-check keeps the downloaded installer usable, and never interrupts a download —
+      // the downloader owns the state and reports its own outcome.
+      if (!downloading) {
+        if (wasDownloaded) this.setState({ phase: 'downloaded', error: null });
+        else this.setState({ phase: 'error', error: `Update check failed: ${errorMessage(error)}` });
       }
     }
     return this.snapshot();
@@ -294,7 +376,7 @@ export class UpdateService {
     if (this.state.phase === 'downloaded' && this.downloaded?.version === release.version) return this.snapshot();
     try {
       this.setState({ phase: 'downloading', transferred: 0, total: asset.size, error: null });
-      const target = path.join(this.options.downloadDir, asset.name);
+      const target = path.join(this.options.downloadDir, versionedDownloadName(asset.name, release.version));
       const checksum = await this.downloadAndVerify(release, asset, target);
       if (this.state.installMode === 'install') {
         this.downloaded = {
