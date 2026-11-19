@@ -16,6 +16,8 @@ export interface RemoteEvent {
   result?: string;
   reasoning?: string;
   durationMs?: number;
+  /** The server marks the last reasoning chunk instead of sending a typed complete event. */
+  final?: boolean;
   todos?: unknown[];
   card?: string;
   data?: string;
@@ -31,6 +33,11 @@ export interface RemoteTool {
   toolType?: string | null;
 }
 
+export interface RemoteThinkingBlock {
+  text: string;
+  durationMs?: number;
+}
+
 export interface RemoteEventRecord {
   name?: string;
   data?: string;
@@ -42,6 +49,7 @@ export interface RemoteMessage {
   role: 'user' | 'assistant';
   content: string;
   thinking?: string | null;
+  thinkingBlocks?: RemoteThinkingBlock[];
   tools?: RemoteTool[];
   events?: RemoteEventRecord[];
   seq?: number | null;
@@ -50,6 +58,10 @@ export interface RemoteMessage {
 
 function text(value: unknown): string | undefined {
   return value == null ? undefined : String(value);
+}
+
+function milliseconds(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
 }
 
 function argumentText(value: unknown): string | undefined {
@@ -75,10 +87,14 @@ export function normalizeRemoteEvent(raw: unknown): RemoteEvent | null {
       break;
     case 'reasoning_chunk':
       base.chunk = text(event.chunk ?? event.content) ?? '';
+      base.reasoning = text(event.reasoning);
+      base.final = event.is_final_chunk === true || event.isFinalChunk === true;
+      base.durationMs = milliseconds(event.duration_ms ?? event.durationMs);
       break;
     case 'reasoning_complete':
       base.reasoning = text(event.reasoning);
-      base.durationMs = typeof event.durationMs === 'number' ? event.durationMs : undefined;
+      base.final = true;
+      base.durationMs = milliseconds(event.duration_ms ?? event.durationMs);
       break;
     case 'tool_start':
       base.callId = text(event.callId ?? event.call_id);
@@ -93,6 +109,7 @@ export function normalizeRemoteEvent(raw: unknown): RemoteEvent | null {
       base.result = text(event.result);
       base.status = text(event.status);
       base.toolType = text(event.toolType ?? event.tool_type) ?? null;
+      base.durationMs = milliseconds(event.duration_ms ?? event.durationMs);
       break;
     case 'plan_update':
       base.todos = Array.isArray(event.todos) ? event.todos : [];
@@ -116,12 +133,25 @@ export function normalizeRemoteMessages(raw: unknown): RemoteMessage[] {
       role,
       content: text(message.content) ?? '',
       thinking: typeof message.thinking === 'string' ? message.thinking : null,
+      thinkingBlocks: normalizeThinkingBlocks(message.thinking_blocks ?? message.thinkingBlocks),
       tools: normalizeTools(message.tools),
       events: normalizeEvents(message.events),
       seq: typeof message.seq === 'number' ? message.seq : null,
       timestamp: text(message.timestamp) ?? null,
     };
   });
+}
+
+function normalizeThinkingBlocks(raw: unknown): RemoteThinkingBlock[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  const blocks = raw
+    .map((value) => value !== null && typeof value === 'object' ? value as Record<string, unknown> : {})
+    .map((block) => ({
+      text: typeof block.text === 'string' ? block.text : '',
+      durationMs: milliseconds(block.duration_ms ?? block.durationMs),
+    }))
+    .filter((block) => block.text.trim().length > 0);
+  return blocks.length ? blocks : undefined;
 }
 
 function normalizeTools(raw: unknown): RemoteTool[] {

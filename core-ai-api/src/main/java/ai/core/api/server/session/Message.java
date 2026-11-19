@@ -19,6 +19,9 @@ public class Message {
     @Property(name = "thinking")
     public String thinking;
 
+    @Property(name = "thinking_blocks")
+    public List<ThinkingBlock> thinkingBlocks;
+
     @Property(name = "tools")
     public List<ToolCallRecord> tools;
 
@@ -43,6 +46,14 @@ public class Message {
     @Property(name = "metadata")
     public Map<String, String> metadata;
 
+    public static class ThinkingBlock {
+        @Property(name = "text")
+        public String text;
+
+        @Property(name = "duration_ms")
+        public Long durationMs;
+    }
+
     public static class ToolCallRecord {
         @Property(name = "call_id")
         public String callId;
@@ -58,6 +69,12 @@ public class Message {
 
         @Property(name = "status")
         public String status;
+
+        @Property(name = "tool_type")
+        public String toolType;
+
+        @Property(name = "duration_ms")
+        public Long durationMs;
     }
 
     public static class SandboxRecord {

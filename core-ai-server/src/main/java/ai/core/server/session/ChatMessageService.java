@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 /**
  * Persist chat messages and session metadata so the user can reopen past conversations.
@@ -248,6 +249,7 @@ public class ChatMessageService {
             msg.role = "agent";
             msg.content = output;
             msg.thinking = buf != null ? buf.thinking : null;
+            msg.thinkingBlocks = buf != null && !buf.thinkingBlocks.isEmpty() ? List.copyOf(buf.thinkingBlocks) : null;
             msg.tools = buf != null && !buf.tools.isEmpty() ? List.copyOf(buf.tools.values()) : null;
             msg.events = buf != null && !buf.events.isEmpty() ? List.copyOf(buf.events) : null;
             msg.sandbox = buf != null ? buf.sandbox : null;
@@ -270,7 +272,15 @@ public class ChatMessageService {
 
         @Override
         public void onReasoningComplete(ReasoningCompleteEvent event) {
-            buffer(sessionId).thinking = event.reasoning;
+            var buf = buffer(sessionId);
+            var record = new ChatMessage.ThinkingRecord();
+            record.text = event.reasoning;
+            record.durationMs = event.durationMs;
+            buf.thinkingBlocks.add(record);
+            buf.thinking = buf.thinkingBlocks.stream()
+                    .map(block -> block.text)
+                    .filter(text -> text != null && !text.isBlank())
+                    .collect(Collectors.joining("\n\n"));
         }
 
         @Override
@@ -279,6 +289,7 @@ public class ChatMessageService {
             tc.callId = event.callId;
             tc.name = event.toolName;
             tc.arguments = event.arguments;
+            tc.toolType = event.toolType;
         }
 
         @Override
@@ -286,8 +297,10 @@ public class ChatMessageService {
             var tc = buffer(sessionId).tools.computeIfAbsent(event.callId, k -> new ChatMessage.ToolCallRecord());
             tc.callId = event.callId;
             if (tc.name == null) tc.name = event.toolName;
+            if (tc.toolType == null) tc.toolType = event.toolType;
             tc.result = event.result;
             tc.status = event.status;
+            tc.durationMs = event.durationMs;
         }
 
         @Override
@@ -340,13 +353,14 @@ public class ChatMessageService {
 
     private static final class TurnBuffer {
         String thinking;
+        final List<ChatMessage.ThinkingRecord> thinkingBlocks = new ArrayList<>();
         final Map<String, ChatMessage.ToolCallRecord> tools = new LinkedHashMap<>();
         final List<ChatMessage.EventRecord> events = new CopyOnWriteArrayList<>();
         ChatMessage.SandboxRecord sandbox;
         ChatMessage.CompressionRecord compression;
 
         boolean isEmpty() {
-            return thinking == null && sandbox == null && compression == null && tools.isEmpty() && events.isEmpty();
+            return thinking == null && thinkingBlocks.isEmpty() && sandbox == null && compression == null && tools.isEmpty() && events.isEmpty();
         }
     }
 

@@ -24,6 +24,9 @@ public class SseToolStartEvent extends SseBaseEvent {
     @Property(name = "tool_notes")
     public String toolNotes;
 
+    @Property(name = "tool_type")
+    public String toolType;
+
     @Property(name = "task_id")
     public String taskId;
 

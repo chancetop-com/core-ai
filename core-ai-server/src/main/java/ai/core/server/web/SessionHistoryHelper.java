@@ -29,6 +29,9 @@ public final class SessionHistoryHelper {
             msg.role = record.role;
             msg.content = record.content;
             msg.thinking = record.thinking;
+            if (record.thinkingBlocks != null) {
+                msg.thinkingBlocks = toThinkingBlocks(record.thinkingBlocks);
+            }
             msg.seq = record.seq;
             msg.traceId = record.traceId;
             msg.timestamp = record.createdAt != null ? record.createdAt.toInstant() : null;
@@ -63,6 +66,16 @@ public final class SessionHistoryHelper {
         }).toList();
     }
 
+    private static List<Message.ThinkingBlock> toThinkingBlocks(
+            List<ai.core.server.domain.ChatMessage.ThinkingRecord> records) {
+        return records.stream().map(record -> {
+            var block = new Message.ThinkingBlock();
+            block.text = record.text;
+            block.durationMs = record.durationMs;
+            return block;
+        }).toList();
+    }
+
     private static List<Message.ToolCallRecord> toToolRecords(
             List<ai.core.server.domain.ChatMessage.ToolCallRecord> records) {
         return records.stream().map(record -> {
@@ -72,6 +85,8 @@ public final class SessionHistoryHelper {
             tool.arguments = record.arguments;
             tool.result = record.result;
             tool.status = record.status;
+            tool.toolType = record.toolType;
+            tool.durationMs = record.durationMs;
             return tool;
         }).toList();
     }

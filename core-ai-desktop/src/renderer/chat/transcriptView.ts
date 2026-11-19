@@ -28,6 +28,9 @@ export const TOOL_USE_CHIPS: Record<ToolUseKind, ToolUseChipMeta> = {
   web: { label: 'Web', chipClass: 'web-chip' },
 };
 
+/** Chip order in the row: the origins the local engine produces, most specific first. */
+export const TOOL_USE_ORDER: ToolUseKind[] = ['skill', 'subagent', 'mcp', 'api', 'agent', 'web'];
+
 export function createEl<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
                                                                text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -50,12 +53,28 @@ export function createAssistToggle(label: string): AssistToggle {
     chip.textContent = `${open ? '▾' : '▸'} ${base}`;
     chip.classList.toggle('active', open);
   };
+  const close = () => {
+    if (!open) return;
+    open = false;
+    render();
+  };
   const setOpen = (next: boolean) => {
     const wasOpen = open;
     open = next;
     render();
-    if (!wasOpen && open) openListener?.();
+    if (!wasOpen && open) {
+      // Accordion inside one message: a long Thinking panel must not push the reply (or the
+      // question above it) out of view while Tool use is being inspected, and vice versa.
+      const siblings = group.parentElement?.children;
+      if (siblings) {
+        for (const sibling of siblings) {
+          if (sibling !== group) sibling.dispatchEvent(new Event('assist:close'));
+        }
+      }
+      openListener?.();
+    }
   };
+  group.addEventListener('assist:close', close);
   chip.onclick = () => {
     touched = true;
     setOpen(!open);
@@ -85,6 +104,81 @@ export function transcriptPre(text: string, className: string): HTMLElement {
   const pre = createEl('pre', className);
   pre.textContent = text;
   return pre;
+}
+
+export function prettyJson(raw: unknown): string {
+  if (typeof raw !== 'string') return JSON.stringify(raw, null, 2);
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+}
+
+/** Collapsed-line summary so the user can tell what a tool call did without expanding it. */
+export function toolSummary(argumentsText: unknown): string {
+  try {
+    const parsed = typeof argumentsText === 'string' ? JSON.parse(argumentsText) : argumentsText;
+    if (parsed && typeof parsed === 'object') {
+      const args = parsed as Record<string, unknown>;
+      if (typeof args.description === 'string' && args.description.trim()) return args.description.trim().slice(0, 120);
+      for (const [key, value] of Object.entries(args)) {
+        if (typeof value === 'string' && value.trim()) return `${key}: ${value.trim().slice(0, 100)}`;
+        if (typeof value === 'number' || typeof value === 'boolean') return `${key}: ${String(value)}`;
+      }
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
+export interface LiveToolEntryView {
+  node: HTMLElement;
+  statusNode: HTMLElement;
+  resultNode: HTMLElement;
+  durationNode: HTMLElement;
+}
+
+/**
+ * The collapsed one-line tool row a running turn shows inside its "Tool use" panel. Static history
+ * uses the denser record-tool markup instead; this is the live shape both backends share.
+ */
+export function liveToolEntryView(name: string, argumentsText: string | undefined): LiveToolEntryView {
+  const entry = createEl('div', 'tool-entry');
+  const head = createEl('button', 'tool-entry-head') as HTMLButtonElement;
+  const chevron = createEl('span', 'tool-chevron', '▸');
+  head.append(chevron, createEl('span', 'tool-name', name), createEl('span', 'tool-desc', toolSummary(argumentsText)));
+  const durationNode = createEl('span', 'tool-duration');
+  const statusNode = createEl('span', 'tool-status running', 'running');
+  head.append(durationNode, statusNode);
+  const body = createEl('div', 'tool-entry-body');
+  body.hidden = true;
+  body.append(createEl('pre', undefined, prettyJson(argumentsText)));
+  const resultNode = createEl('pre');
+  resultNode.style.display = 'none';
+  body.append(resultNode);
+  head.onclick = () => {
+    body.hidden = !body.hidden;
+    chevron.textContent = body.hidden ? '▸' : '▾';
+  };
+  entry.append(head, body);
+  return { node: entry, statusNode, resultNode, durationNode };
+}
+
+export interface ReasoningBlockView {
+  section: HTMLElement;
+  head: HTMLElement;
+  body: HTMLElement;
+}
+
+/** One numbered section inside the turn's Thinking panel; both backends use the same markup. */
+export function reasoningBlockView(index: number): ReasoningBlockView {
+  const section = createEl('div', 'reasoning-block');
+  const head = createEl('div', 'reasoning-block-head', `#${index}`);
+  const body = createEl('div', 'reasoning-text');
+  section.append(head, body);
+  return { section, head, body };
 }
 
 export function addTranscriptToggle(chips: HTMLElement, panels: HTMLElement, label: string,
@@ -156,6 +250,42 @@ export function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, ki
   panels.append(toggle.panel);
 }
 
+export interface ToolUseChip {
+  toggle: AssistToggle;
+  panel: HTMLElement;
+  rows: Map<string, { node: HTMLElement; count: number }>;
+}
+
+export type ToolUseChips = Map<ToolUseKind, ToolUseChip>;
+
+/**
+ * One chip per tool origin next to thinking / tool use; expanding lists everything called in that
+ * turn. Shared by the local live turn and the remote live turn so the two chip rows cannot drift.
+ */
+export function recordToolUse(chips: HTMLElement, panels: HTMLElement, state: ToolUseChips,
+                              kind: ToolUseKind, text: string): void {
+  let chip = state.get(kind);
+  if (!chip) {
+    const meta = TOOL_USE_CHIPS[kind];
+    const toggle = createAssistToggle(meta.label);
+    toggle.chip.classList.add(meta.chipClass);
+    chip = { toggle, panel: toggle.body, rows: new Map() };
+    state.set(kind, chip);
+    chips.append(toggle.chip);
+    panels.append(toggle.panel);
+  }
+  const existing = chip.rows.get(text);
+  if (existing) {
+    existing.count += 1;
+    existing.node.textContent = `${text} · ×${existing.count}`;
+  } else {
+    const node = createEl('div', 'tool-use-row', text);
+    chip.panel.append(node);
+    chip.rows.set(text, { node, count: 1 });
+  }
+  chip.toggle.setLabel(`${TOOL_USE_CHIPS[kind].label} (${chip.rows.size})`);
+}
+
 export interface AssistantChipContent {
   reasoning?: string[];
   tools?: ToolItem[];
@@ -175,8 +305,12 @@ export function addAssistantChips(bubble: HTMLElement, content: AssistantChipCon
   }
   if (content.tools?.length) {
     addTranscriptTools(chips, panels, content.tools, content.onLoadFull);
-    const webTools = content.tools.filter((tool) => tool.useKind === 'web');
-    if (webTools.length) addTranscriptToolUse(chips, panels, 'web', webTools);
+    // Every origin the local live turn would have chipped gets a chip here too, so reopening a
+    // session does not silently drop Skill use / MCP / API rows that were visible while running.
+    for (const kind of TOOL_USE_ORDER) {
+      const tools = content.tools.filter((tool) => tool.useKind === kind);
+      if (tools.length) addTranscriptToolUse(chips, panels, kind, tools);
+    }
   }
   content.extra?.(chips, panels);
 }

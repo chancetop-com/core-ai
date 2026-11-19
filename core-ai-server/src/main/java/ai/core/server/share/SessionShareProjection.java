@@ -41,6 +41,14 @@ public class SessionShareProjection {
         view.role = record.role;
         view.content = text(record.content, share);
         view.thinking = text(record.thinking, share);
+        if (record.thinkingBlocks != null) {
+            view.thinkingBlocks = record.thinkingBlocks.stream().map(block -> {
+                var result = new Message.ThinkingBlock();
+                result.text = text(block.text, share);
+                result.durationMs = block.durationMs;
+                return result;
+            }).toList();
+        }
         view.seq = record.seq;
         view.traceId = record.traceId != null && share.traceIds != null && share.traceIds.contains(record.traceId) ? record.traceId : null;
         view.timestamp = record.createdAt == null ? null : record.createdAt.toInstant();
@@ -52,6 +60,8 @@ public class SessionShareProjection {
                 result.arguments = text(tool.arguments, share);
                 result.result = text(tool.result, share);
                 result.status = text(tool.status, share);
+                result.toolType = tool.toolType;
+                result.durationMs = tool.durationMs;
                 return result;
             }).toList();
         }

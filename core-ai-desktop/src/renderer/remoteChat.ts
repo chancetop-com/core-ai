@@ -1,18 +1,24 @@
 // Remote direct-conversation view: the desktop's first-class window onto a server-side root agent.
 // It owns no agent loop and no local workspace; messages and events are routed by the main process.
-import DOMPurify from 'dompurify';
-import hljs from 'highlight.js/lib/common';
-import { marked } from 'marked';
-import { addAssistantChips, planBlockEl, fillPlanBlock, toolItemOf, toolRecordView } from './chat/transcriptView';
-import { normalizeRemoteEvent, normalizeRemoteMessages, type RemoteEventRecord, type RemoteMessage } from './remoteProtocol';
+// The transcript itself is the local chat view, hosted through RemoteChatHost.createTranscript.
+import { normalizeRemoteEvent, normalizeRemoteMessages, type RemoteEvent, type RemoteMessage } from './remoteProtocol';
 
-marked.setOptions({ gfm: true, breaks: true });
+export interface RemoteTranscriptHandle {
+  root: HTMLElement;
+  renderHistory(messages: RemoteMessage[], before?: HTMLElement | null): void;
+  applyEvent(event: RemoteEvent): void;
+  beginTurn(): void;
+  scrollToBottom(force?: boolean): void;
+  dispose(): void;
+}
 
 export interface RemoteChatHost {
   requestRenderContent(): void;
   requestRenderSidebar(): void;
   selectSessionsTab(tab: 'local' | 'server'): void;
   toast(text: string, kind?: string): void;
+  /** The local chat transcript, hosted for a server conversation; the remote view owns no renderer. */
+  createTranscript(sessionId: string, agentName: string): RemoteTranscriptHandle;
 }
 
 interface RemoteServer {
@@ -105,28 +111,6 @@ function fmtBytes(size: number): string {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
-interface LiveTool {
-  name: string;
-  status: string;
-  arguments?: string;
-  result?: string;
-  toolType?: string | null;
-  node: HTMLElement;
-  statusNode: HTMLElement;
-  resultNode: HTMLElement | null;
-}
-
-interface LiveTurn {
-  text: string;
-  reasoning: string;
-  reasoningNode: HTMLElement | null;
-  tools: Map<string, LiveTool>;
-  bubble: HTMLElement | null;
-  body: HTMLElement | null;
-  planNode: HTMLElement | null;
-  renderedText: string;
-}
-
 interface RemoteChatState {
   serverUrl: string;
   sessionId: string;
@@ -138,7 +122,9 @@ interface RemoteChatState {
   attachmentUpload: boolean;
   attachments: PendingRemoteAttachment[];
   messages: RemoteChatMessage[];
-  live: LiveTurn | null;
+  /** The shared local transcript renderer; this view only feeds it server events. */
+  transcript: RemoteTranscriptHandle | null;
+  turnActive: boolean;
   loading: boolean;
   subscribing: boolean;
   sending: boolean;
@@ -151,7 +137,6 @@ let host: RemoteChatHost | null = null;
 let active: RemoteChatState | null = null;
 let mounted: HTMLElement | null = null;
 let mountedKey = '';
-let transcriptEl: HTMLElement | null = null;
 let statusEl: HTMLElement | null = null;
 let composerEl: HTMLTextAreaElement | null = null;
 let sendButton: HTMLButtonElement | null = null;
@@ -194,26 +179,6 @@ function toast(text: string, kind = ''): void {
   host?.toast(text, kind);
 }
 
-function sanitizeRemoteMarkdown(text: string): string {
-  const html = marked.parse(text, { async: false }) as string;
-  return DOMPurify.sanitize(html, {
-    FORBID_TAGS: ['img', 'video', 'audio', 'iframe', 'form', 'input', 'button'],
-    FORBID_ATTR: ['style', 'srcset', 'formaction'],
-  });
-}
-
-function renderRemoteMarkdown(body: HTMLElement, text: string): void {
-  body.innerHTML = sanitizeRemoteMarkdown(text);
-  for (const block of body.querySelectorAll('pre code')) {
-    const match = /language-([\w-]+)/.exec((block as HTMLElement).className);
-    if (match && hljs.getLanguage(match[1])) hljs.highlightElement(block as HTMLElement);
-  }
-  for (const anchor of body.querySelectorAll('a')) {
-    const href = (anchor as HTMLAnchorElement).href;
-    if (!/^https?:/i.test(href)) anchor.removeAttribute('href');
-  }
-}
-
 function formatTime(value: string | null | undefined): string {
   if (!value) return '';
   const date = new Date(value);
@@ -226,53 +191,6 @@ function serverHost(serverUrl: string): string {
   } catch {
     return serverUrl;
   }
-}
-
-function payloadText(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string') {
-    const text = value.trim();
-    if (!text) return '';
-    try {
-      return JSON.stringify(JSON.parse(text), null, 2);
-    } catch {
-      return text;
-    }
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function truncatePayload(text: string, max = 8000): string {
-  return text.length > max ? `${text.slice(0, max)}\n… (truncated)` : text;
-}
-
-function createLiveTool(callId: string, name: string, args: string | undefined, toolType: string | null): LiveTool {
-  const view = toolRecordView(toolItemOf({ callId, name, arguments: args, status: 'running', toolType }, 0));
-  return {
-    name,
-    status: 'running',
-    arguments: args,
-    toolType,
-    node: view.node,
-    statusNode: view.statusNode,
-    resultNode: view.resultNode,
-  };
-}
-
-function setLiveToolResult(tool: LiveTool, result: unknown): void {
-  const text = payloadText(result);
-  if (!text) return;
-  const value = truncatePayload(text);
-  if (!tool.resultNode) {
-    tool.resultNode = el('pre', 'record-tool-result', value);
-    tool.node.append(tool.resultNode);
-    return;
-  }
-  tool.resultNode.textContent = value;
 }
 
 function activeServers(): RemoteServer[] {
@@ -339,11 +257,11 @@ export function remoteSessionActive(): boolean {
 export function deactivateRemoteSession(): void {
   if (active) {
     void window.coreai.remoteUnsubscribe(active.serverUrl, active.sessionId).catch(() => undefined);
+    active.transcript?.dispose();
   }
   active = null;
   mounted = null;
   mountedKey = '';
-  transcriptEl = null;
   composerEl = null;
   sendButton = null;
   attachButton = null;
@@ -371,7 +289,8 @@ export function openRemoteConversation(serverUrl: string, sessionId: string, age
     attachmentUpload: false,
     attachments: [],
     messages: [],
-    live: null,
+    transcript: null,
+    turnActive: false,
     loading: true,
     subscribing: false,
     sending: false,
@@ -470,20 +389,42 @@ function cleanError(error: unknown): string {
   return message.replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, '');
 }
 
+function loadEarlierButton(current: RemoteChatState): HTMLElement {
+  const more = el('button', 'remote-more', 'Load earlier messages');
+  more.onclick = async () => {
+    more.disabled = true;
+    const ok = await loadHistoryPage(current, current.oldestSeq);
+    if (ok && active === current) renderRemoteMessages(current, 'preserve');
+  };
+  return more;
+}
+
+/** Renders one conversation into the shared transcript, keeping the paging affordance on top. */
+function renderRemoteMessages(current: RemoteChatState, behavior: 'bottom' | 'preserve' = 'bottom'): void {
+  if (!current.transcript) return;
+  const scroller = current.transcript.root.querySelector('.transcript') as HTMLElement | null;
+  const previousHeight = scroller?.scrollHeight ?? 0;
+  const previousTop = scroller?.scrollTop ?? 0;
+  current.transcript.renderHistory(current.messages, current.historyHasMore ? loadEarlierButton(current) : null);
+  if (behavior === 'preserve' && scroller) {
+    scroller.scrollTop = previousTop + (scroller.scrollHeight - previousHeight);
+    return;
+  }
+  current.transcript.scrollToBottom(true);
+}
+
 function paintChat(): void {
   if (!active) return;
   if (!mounted || mountedKey !== chatKey()) {
     host?.requestRenderContent();
     return;
   }
-  if (!transcriptEl) return;
-  renderTranscript(transcriptEl, active);
+  // While a turn streams, the transcript owns its own DOM; re-rendering history here would erase
+  // the live bubble. History is repainted once the turn settles.
+  if (!active.turnActive) renderRemoteMessages(active, 'preserve');
   updateHeader();
   paintBanner();
   paintStatus();
-  if (active.status === 'running' && !active.loading) {
-    transcriptEl.scrollTop = transcriptEl.scrollHeight;
-  }
 }
 
 function chatKey(): string {
@@ -513,7 +454,6 @@ export function mountRemoteContent(container: HTMLElement): void {
   }
   if (mounted && chatKey() === mountedKey) {
     container.replaceChildren(mounted);
-    paintTranscriptOnly();
     return;
   }
   const root = el('div', 'chat remote-chat');
@@ -539,15 +479,10 @@ export function mountRemoteContent(container: HTMLElement): void {
 
   bannerEl = el('div', 'remote-banner');
   bannerEl.hidden = true;
-  const transcript = el('div', 'transcript remote-transcript');
-  transcriptEl = transcript;
-  transcript.addEventListener('click', (event) => {
-    const anchor = (event.target as HTMLElement).closest('a') as HTMLAnchorElement | null;
-    if (anchor && /^https?:/i.test(anchor.href)) {
-      event.preventDefault();
-      void window.coreai.openExternal(anchor.href);
-    }
-  });
+  // Same transcript component as a local session: streaming, reasoning sections, tool rows,
+  // per-origin chips and history all come from the shared view.
+  if (!active.transcript) active.transcript = host?.createTranscript(active.sessionId, active.agentName) ?? null;
+  if (active.transcript) renderRemoteMessages(active, 'preserve');
 
   const composer = el('div', 'composer remote-composer');
   const card = el('div', 'composer-card');
@@ -582,218 +517,16 @@ export function mountRemoteContent(container: HTMLElement): void {
   card.append(inputRow, attachTrayEl, statusEl);
   composer.append(card);
 
-  main.append(header, bannerEl, transcript, composer);
+  main.append(header, bannerEl);
+  if (active.transcript) main.append(active.transcript.root);
+  main.append(composer);
   root.append(main);
   mounted = root;
   mountedKey = chatKey();
   container.replaceChildren(root);
-  paintTranscriptOnly();
   updateHeader();
   paintBanner();
   paintStatus();
-}
-
-function paintTranscriptOnly(): void {
-  if (!transcriptEl || !active) return;
-  renderTranscript(transcriptEl, active);
-  transcriptEl.scrollTop = transcriptEl.scrollHeight;
-}
-
-function renderTranscript(target: HTMLElement, current: RemoteChatState): void {
-  target.replaceChildren();
-  if (current.loading && current.messages.length === 0) {
-    const loading = el('div', 'remote-empty');
-    loading.append(el('div', 'remote-empty-title', 'Loading conversation…'));
-    loading.append(el('div', 'remote-empty-body', 'The history comes from the server; no local workspace is involved.'));
-    target.append(loading);
-    return;
-  }
-  if (current.messages.length === 0 && !current.live) {
-    const empty = el('div', 'remote-empty');
-    empty.append(el('div', 'remote-empty-title', `Chat with ${current.agentName}`));
-    empty.append(el('div', 'remote-empty-body', `Running on ${serverHost(current.serverUrl)} · the agent cannot access this computer's files or browser.`));
-    target.append(empty);
-  }
-  if (current.historyHasMore) {
-    const more = el('button', 'remote-more', 'Load earlier messages');
-    more.onclick = async () => {
-      if (!active || active.oldestSeq == null) return;
-      more.disabled = true;
-      await loadHistoryPage(active, active.oldestSeq);
-      paintChat();
-    };
-    target.append(more);
-  }
-  for (const message of current.messages) {
-    target.append(messageEl(message));
-  }
-  if (current.live) target.append(liveEl(current.live));
-  if (current.sendError) {
-    const error = el('div', 'remote-error', current.sendError);
-    target.append(error);
-  }
-}
-
-function messageEl(message: RemoteMessage): HTMLElement {
-  const isUser = message.role === 'user';
-  const wrapper = el('div', `msg ${isUser ? 'user' : 'assistant'} remote-msg`);
-  wrapper.append(el('div', 'role', isUser ? 'You' : (active?.agentName ?? 'Server agent')));
-  const hasMeta = Boolean(message.thinking || message.tools?.length);
-  const attachments = (message as RemoteChatMessage).attachments ?? [];
-  if (message.content || (isUser && attachments.length) || (!isUser && hasMeta)) {
-    const bubble = el('div', 'bubble md');
-    if (message.content) {
-      const body = el('div', 'md-body');
-      renderRemoteMarkdown(body, message.content);
-      bubble.append(body);
-    }
-    if (isUser && attachments.length) {
-      const row = el('div', 'attachment-row');
-      for (const attachment of attachments) row.append(pendingAttachmentEl(attachment, false));
-      bubble.append(row);
-    }
-    wrapper.append(bubble);
-    if (!isUser && hasMeta) {
-      const tools = (message.tools ?? []).map((tool, index) => toolItemOf({
-        callId: tool.callId,
-        name: tool.name,
-        arguments: tool.arguments,
-        result: tool.result,
-        status: tool.status,
-        toolType: tool.toolType,
-      }, message.seq ?? index));
-      addAssistantChips(bubble, {
-        reasoning: message.thinking ? [message.thinking] : [],
-        tools,
-      });
-    }
-  }
-  for (const event of message.events ?? []) {
-    const plan = planFromEvent(event);
-    if (plan) wrapper.append(planBlockEl(plan));
-    else if (event.card) wrapper.append(readOnlyCardEl(event.card));
-    else if (event.name) wrapper.append(el('div', 'remote-event', event.name));
-  }
-  return wrapper;
-}
-
-function planFromEvent(event: RemoteEventRecord): Array<Record<string, unknown>> | null {
-  const name = String(event.name ?? '');
-  if (!name.includes('plan') && !name.includes('todo')) return null;
-  try {
-    const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-    const todos = (parsed as { todos?: unknown } | null)?.todos;
-    return Array.isArray(todos) ? todos as Array<Record<string, unknown>> : null;
-  } catch {
-    return null;
-  }
-}
-
-function liveEl(live: LiveTurn): HTMLElement {
-  const wrapper = el('div', 'msg assistant remote-msg remote-live');
-  wrapper.append(el('div', 'role', active?.agentName ?? 'Server agent'));
-  const bubble = el('div', 'bubble md');
-  const body = el('div', 'md-body');
-  live.bubble = bubble;
-  live.body = body;
-  bubble.append(body);
-  wrapper.append(bubble);
-  const tools = [...live.tools.entries()].map(([callId, tool]) => toolItemOf({
-    callId,
-    name: tool.name,
-    arguments: tool.arguments,
-    result: tool.result,
-    status: tool.status,
-    toolType: tool.toolType,
-  }, 0));
-  addAssistantChips(bubble, {
-    reasoning: live.reasoning ? [live.reasoning] : [],
-    tools,
-  });
-  live.reasoningNode = bubble.querySelector('.record-reasoning') as HTMLElement | null;
-  if (live.planNode) wrapper.append(live.planNode);
-  live.renderedText = '';
-  renderLive(live);
-  return wrapper;
-}
-
-function repaintLive(): void {
-  if (!active?.live || !transcriptEl) {
-    paintChat();
-    return;
-  }
-  const previous = transcriptEl.querySelector('.remote-live');
-  const fresh = liveEl(active.live);
-  if (previous) previous.replaceWith(fresh);
-  else paintChat();
-}
-
-function renderLive(live: LiveTurn): void {
-  if (!live.body) {
-    paintChat();
-    return;
-  }
-  if (live.text !== live.renderedText) {
-    renderRemoteMarkdown(live.body, live.text || '…');
-    live.renderedText = live.text;
-  }
-}
-
-function ensureLive(): LiveTurn {
-  if (!active) throw new Error('no active conversation');
-  if (!active.live) {
-    active.live = {
-      text: '',
-      reasoning: '',
-      reasoningNode: null,
-      tools: new Map(),
-      bubble: null,
-      body: null,
-      planNode: null,
-      renderedText: '',
-    };
-    if (active.status !== 'running') active.status = 'running';
-  }
-  return active.live;
-}
-
-function readOnlyCardEl(raw: string): HTMLElement {
-  const box = el('div', 'remote-card');
-  try {
-    const card = JSON.parse(raw) as { blocks?: Array<Record<string, unknown>> };
-    for (const block of card.blocks ?? []) {
-      const type = String(block.type ?? '');
-      if (type === 'text' && typeof block.text === 'string') {
-        const body = el('div', 'md-body');
-        renderRemoteMarkdown(body, block.text);
-        box.append(body);
-      } else if (type === 'divider') {
-        box.append(el('hr'));
-      } else if (type === 'key_values' && Array.isArray(block.items)) {
-        for (const item of block.items as Array<Record<string, unknown>>) {
-          const row = el('div', 'remote-kv');
-          row.append(el('span', 'remote-kv-key', String(item.key ?? '')));
-          row.append(el('span', 'remote-kv-value', String(item.value ?? '')));
-          box.append(row);
-        }
-      } else if (type === 'table' && Array.isArray(block.rows)) {
-        const table = el('table', 'remote-table');
-        const head = el('tr');
-        for (const column of (block.columns as unknown[]) ?? []) head.append(el('th', undefined, String(column)));
-        table.append(head);
-        for (const row of block.rows as unknown[][]) {
-          const tr = el('tr');
-          for (const cell of row ?? []) tr.append(el('td', undefined, String(cell)));
-          table.append(tr);
-        }
-        box.append(table);
-      }
-    }
-    if (!box.childElementCount) box.append(el('div', 'remote-card-note', 'Rich card available in the web console'));
-  } catch {
-    box.append(el('div', 'remote-card-note', 'Rich card available in the web console'));
-  }
-  return box;
 }
 
 function updateHeader(): void {
@@ -1025,8 +758,10 @@ async function sendRemoteMessage(): Promise<void> {
   composerEl.value = '';
   current.attachments = [];
   current.messages.push({ role: 'user', content: text, timestamp: new Date().toISOString(), attachments: ready });
-  current.live = null;
+  current.turnActive = true;
   current.status = 'running';
+  renderRemoteMessages(current);
+  current.transcript?.beginTurn();
   paintChat();
   try {
     await window.coreai.remoteSend(current.serverUrl, current.sessionId, text,
@@ -1039,12 +774,18 @@ async function sendRemoteMessage(): Promise<void> {
     } else if (/REQUEST_IN_PROGRESS/i.test(message)) {
       current.sendError = 'The previous request is still being confirmed. Check the conversation before sending again.';
       current.status = 'idle';
+      current.turnActive = false;
+      current.messages.pop();
+      renderRemoteMessages(current);
     } else if (/timeout|ECONNRESET|socket hang up|network/i.test(message)) {
       // The command may or may not have reached the server; never auto-resend it.
       current.sendError = `Send status unknown: ${message}. The server may still be running this message; check the conversation before retrying.`;
     } else {
       current.sendError = `Send failed: ${message}`;
       current.status = 'idle';
+      current.turnActive = false;
+      current.messages.pop();
+      renderRemoteMessages(current);
     }
   } finally {
     if (active === current) current.sending = false;
@@ -1062,26 +803,26 @@ async function stopRemoteTurn(): Promise<void> {
   }
 }
 
-async function refreshAfterTurn(live: LiveTurn | null = active?.live ?? null, attempt = 0): Promise<void> {
-  if (!active) return;
+async function refreshAfterTurn(attempt = 0): Promise<void> {
+  const current = active;
+  if (!current) return;
   const token = loadToken;
   try {
-    const history = await window.coreai.remoteHistory(active.serverUrl, active.sessionId, null, 50);
-    if (token !== loadToken || !active || active.live !== live) return;
+    const history = await window.coreai.remoteHistory(current.serverUrl, current.sessionId, null, 50);
+    if (token !== loadToken || active !== current) return;
     const rows = normalizeRemoteMessages(history?.messages);
-    if (live && !historyHasAnswer(rows)) {
+    if (current.turnActive && !historyHasAnswer(rows)) {
       // Persistence can land a few hundred milliseconds after turn_complete. Dropping the live
       // projection first would erase thinking/tool cards when the history snapshot wins the race.
-      if (attempt < 12) setTimeout(() => void refreshAfterTurn(live, attempt + 1), 250);
+      if (attempt < 12) setTimeout(() => void refreshAfterTurn(attempt + 1), 250);
       return;
     }
-    mergeLocalAttachments(rows, active.messages);
-    active.messages = rows;
-    mergeLiveMetadata(rows, live);
-    active.historyHasMore = history?.hasMore === true;
-    active.oldestSeq = typeof history?.oldestSeq === 'number' ? history.oldestSeq : null;
-    if (live) live.bubble?.remove();
-    active.live = null;
+    mergeLocalAttachments(rows, current.messages);
+    current.messages = rows;
+    current.turnActive = false;
+    current.historyHasMore = history?.hasMore === true;
+    current.oldestSeq = typeof history?.oldestSeq === 'number' ? history.oldestSeq : null;
+    renderRemoteMessages(current);
     paintChat();
     sessionsLoaded = false;
     host?.requestRenderSidebar();
@@ -1093,30 +834,6 @@ async function refreshAfterTurn(live: LiveTurn | null = active?.live ?? null, at
 function historyHasAnswer(messages: RemoteMessage[]): boolean {
   const lastUser = messages.map((message) => message.role).lastIndexOf('user');
   return messages.some((message, index) => index > lastUser && message.role !== 'user');
-}
-
-function mergeLiveMetadata(messages: RemoteMessage[], live: LiveTurn | null): void {
-  if (!live) return;
-  const lastUser = messages.map((message) => message.role).lastIndexOf('user');
-  let answer: RemoteMessage | null = null;
-  for (let index = messages.length - 1; index > lastUser; index -= 1) {
-    if (messages[index].role !== 'user') {
-      answer = messages[index];
-      break;
-    }
-  }
-  if (!answer) return;
-  if (!answer.thinking && live.reasoning) answer.thinking = live.reasoning;
-  if (!answer.tools?.length && live.tools.size) {
-    answer.tools = [...live.tools.entries()].map(([callId, tool]) => ({
-      callId,
-      name: tool.name,
-      arguments: tool.arguments,
-      result: tool.result,
-      status: tool.status,
-      toolType: tool.toolType ?? null,
-    }));
-  }
 }
 
 export function handleRemotePush(payload: unknown): void {
@@ -1131,7 +848,8 @@ export function handleRemotePush(payload: unknown): void {
       active.connectionMessage = '';
       if (!wasConnected) {
         // Re-attaching: the server replays the current turn, so replace the local projection.
-        if (active.live) active.live = null;
+        active.turnActive = false;
+        renderRemoteMessages(active, 'preserve');
         void subscribeAndLoad();
       }
       paintBanner();
@@ -1156,88 +874,39 @@ export function handleRemotePush(payload: unknown): void {
 }
 
 function handleRemoteEvent(raw: Record<string, unknown>): void {
-  if (!active) return;
+  if (!active || !active.transcript) return;
   const event = normalizeRemoteEvent(raw);
   if (!event) return;
   switch (event.type) {
     case 'status_change': {
       const status = String(event.status ?? '').toLowerCase();
-      if (status === 'running') active.status = 'running';
-      else if (status === 'idle' || status === 'error') active.status = status === 'error' ? 'error' : 'idle';
+      if (status === 'running') {
+        active.status = 'running';
+        active.turnActive = true;
+        active.transcript.beginTurn();
+      } else if (status === 'idle' || status === 'error') {
+        active.status = status === 'error' ? 'error' : 'idle';
+      }
       paintStatus();
       updateHeader();
       break;
     }
-    case 'text_chunk': {
-      const live = ensureLive();
-      live.text += event.chunk ?? '';
-      if (!live.body || !live.bubble?.isConnected) repaintLive();
-      else renderLive(live);
-      break;
-    }
-    case 'reasoning_chunk': {
-      const live = ensureLive();
-      live.reasoning += event.chunk ?? '';
-      if (!live.reasoningNode || !live.reasoningNode.isConnected) repaintLive();
-      else live.reasoningNode.textContent = live.reasoning;
-      break;
-    }
-    case 'tool_start': {
-      const live = ensureLive();
-      const callId = event.callId ?? '';
-      if (callId && !live.tools.has(callId)) {
-        live.tools.set(callId, createLiveTool(callId, event.toolName ?? 'tool', event.arguments, event.toolType ?? null));
-        repaintLive();
-      }
-      break;
-    }
-    case 'tool_result': {
-      const live = ensureLive();
-      const callId = event.callId ?? '';
-      const tool = live.tools.get(callId);
-      if (tool) {
-        const ok = String(event.status ?? 'done').toLowerCase();
-        tool.status = ok;
-        tool.result = event.result == null ? undefined : String(event.result);
-        if (event.toolType != null) tool.toolType = event.toolType;
-        tool.statusNode.textContent = ok;
-        tool.statusNode.className = `record-tool-status ${ok === 'error' || ok === 'failed' ? 'error' : ok === 'running' ? 'running' : 'success'}`;
-        setLiveToolResult(tool, event.result);
-        repaintLive();
-      }
-      break;
-    }
-    case 'turn_complete': {
+    case 'turn_complete':
+      active.transcript.applyEvent(event);
       active.status = 'idle';
       paintStatus();
       updateHeader();
-      void refreshAfterTurn(active.live);
+      void refreshAfterTurn();
       break;
-    }
-    case 'error': {
+    case 'error':
+      active.transcript.applyEvent(event);
       active.status = 'error';
       active.sendError = String(event.message ?? 'The server agent reported an error');
-      active.live = null;
       paintStatus();
       paintChat();
       break;
-    }
-    case 'custom': {
-      if (event.card) {
-        active.messages.push({ role: 'assistant', content: '', events: [{ card: event.card }] });
-        paintChat();
-      }
-      break;
-    }
-    case 'plan_update': {
-      const items = Array.isArray(event.todos) ? event.todos : [];
-      const live = ensureLive();
-      if (!live.planNode) live.planNode = planBlockEl(items);
-      else fillPlanBlock(live.planNode, items);
-      if (!live.planNode.isConnected) repaintLive();
-      break;
-    }
     default:
+      active.transcript.applyEvent(event);
       break;
   }
 }

@@ -365,6 +365,8 @@ public final class SessionEventHub {
         merged.content = (lastReasoning.content == null ? "" : lastReasoning.content)
                 + (incomingReasoning.content == null ? "" : incomingReasoning.content);
         merged.isFinalChunk = incomingReasoning.isFinalChunk;
+        merged.reasoning = incomingReasoning.reasoning;
+        merged.durationMs = incomingReasoning.durationMs;
         merged.sessionId = incomingReasoning.sessionId;
         merged.timestamp = incomingReasoning.timestamp;
         merged.type = incomingReasoning.type;

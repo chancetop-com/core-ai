@@ -23,4 +23,7 @@ public class SseTurnCompleteEvent extends SseBaseEvent {
 
     @Property(name = "cost_usd")
     public Double costUsd;
+
+    @Property(name = "duration_ms")
+    public Long durationMs;
 }

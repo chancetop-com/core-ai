@@ -16,4 +16,11 @@ public class SseReasoningChunkEvent extends SseBaseEvent {
     @NotNull
     @Property(name = "is_final_chunk")
     public Boolean isFinalChunk;
+
+    /** Full section text on the final chunk; lets non-streaming providers fill what never streamed. */
+    @Property(name = "reasoning")
+    public String reasoning;
+
+    @Property(name = "duration_ms")
+    public Long durationMs;
 }

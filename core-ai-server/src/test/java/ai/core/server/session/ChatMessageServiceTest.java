@@ -2,7 +2,9 @@ package ai.core.server.session;
 
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
+import ai.core.api.server.session.ReasoningCompleteEvent;
 import ai.core.api.server.session.SandboxEvent;
+import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.server.domain.ChatMessage;
@@ -140,6 +142,38 @@ class ChatMessageServiceTest {
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
         verify(collection(service)).insert(captor.capture());
         assertNull(captor.getValue().compression);
+    }
+
+    @Test
+    void reasoningSectionsAndToolOriginSurviveHistoryReload() {
+        var service = service();
+        when(collection(service).find(any(Query.class))).thenReturn(List.of());
+        var listener = service.listener("s-1");
+
+        listener.onReasoningComplete(ReasoningCompleteEvent.of("s-1", "first"));
+        var second = ReasoningCompleteEvent.of("s-1", "second");
+        second.durationMs = 800L;
+        listener.onReasoningComplete(second);
+
+        var start = ToolStartEvent.of("s-1", "call-1", "mcp_query", "{\"q\":\"x\"}");
+        start.toolType = "mcp";
+        listener.onToolStart(start);
+        var result = ToolResultEvent.of("s-1", "call-1", "mcp_query", "success", "ok");
+        result.toolType = "mcp";
+        result.durationMs = 30L;
+        listener.onToolResult(result);
+        listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
+
+        var captor = ArgumentCaptor.forClass(ChatMessage.class);
+        verify(collection(service)).insert(captor.capture());
+        var message = captor.getValue();
+        assertEquals("first\n\nsecond", message.thinking);
+        assertNotNull(message.thinkingBlocks);
+        assertEquals(2, message.thinkingBlocks.size());
+        assertEquals("first", message.thinkingBlocks.getFirst().text);
+        assertEquals(800L, message.thinkingBlocks.get(1).durationMs);
+        assertEquals("mcp", message.tools.getFirst().toolType);
+        assertEquals(30L, message.tools.getFirst().durationMs);
     }
 
     @Test

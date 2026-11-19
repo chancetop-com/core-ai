@@ -17,6 +17,8 @@ export interface RecordAttachment {
   size?: number;
   blob_ref?: string;
   url?: string;
+  /** Remote user messages carry the client-side preview; history itself does not persist it. */
+  preview?: string | null;
 }
 
 export interface TurnInput {

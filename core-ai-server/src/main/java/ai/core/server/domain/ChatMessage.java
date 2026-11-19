@@ -31,6 +31,10 @@ public class ChatMessage {
     @Field(name = "thinking")
     public String thinking;
 
+    /** One entry per model round; `thinking` keeps the joined text for older clients. */
+    @Field(name = "thinking_blocks")
+    public List<ThinkingRecord> thinkingBlocks;
+
     @Field(name = "tools")
     public List<ToolCallRecord> tools;
 
@@ -50,6 +54,14 @@ public class ChatMessage {
     @Field(name = "created_at")
     public ZonedDateTime createdAt;
 
+    public static class ThinkingRecord {
+        @Field(name = "text")
+        public String text;
+
+        @Field(name = "duration_ms")
+        public Long durationMs;
+    }
+
     public static class ToolCallRecord {
         @Field(name = "call_id")
         public String callId;
@@ -65,6 +77,12 @@ public class ChatMessage {
 
         @Field(name = "status")
         public String status;
+
+        @Field(name = "tool_type")
+        public String toolType;
+
+        @Field(name = "duration_ms")
+        public Long durationMs;
     }
 
     public static class SandboxRecord {

@@ -851,18 +851,29 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .assist-chip.tasks-chip.busy::before { border-color: var(--amber); border-top-color: transparent; }
 
-.assist-panel { border: 1px dashed var(--border); border-radius: 7px; padding: 6px 10px; margin: 4px 0 6px; }
+.assist-panel {
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  padding: 6px 10px;
+  margin: 4px 0 6px;
+  display: flex;
+  flex-direction: column;
+  max-height: min(32vh, 320px);
+}
 .assist-panel[hidden] { display: none; }
+/* Every panel shares one scroll budget, so an expanded Thinking or Tool use panel can never
+   push the question (or the reply below it) off the screen. */
+.assist-panel-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
 .assist-panel .reasoning {
   white-space: pre-wrap;
   font-size: 12.5px;
   color: var(--muted);
-  /* A long thought scrolls in place: the panel grows with the window, but leaves the transcript
-     around it readable. A fixed 220px meant scrolling through every longer thought. */
-  max-height: min(60vh, 640px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  overflow: visible;
 }
 .reasoning-block + .reasoning-block {
   margin-top: 6px;

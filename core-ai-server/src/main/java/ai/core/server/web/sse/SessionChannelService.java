@@ -318,6 +318,8 @@ public class SessionChannelService {
         if (last instanceof SseReasoningChunkEvent lastReasoning && incoming instanceof SseReasoningChunkEvent incomingReasoning) {
             lastReasoning.content += incomingReasoning.content;
             lastReasoning.isFinalChunk = incomingReasoning.isFinalChunk;
+            lastReasoning.reasoning = incomingReasoning.reasoning;
+            lastReasoning.durationMs = incomingReasoning.durationMs;
             lastReasoning.timestamp = incomingReasoning.timestamp;
             return true;
         }

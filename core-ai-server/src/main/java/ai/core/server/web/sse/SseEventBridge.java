@@ -70,6 +70,8 @@ public class SseEventBridge implements AgentEventListener {
         var sse = new SseReasoningChunkEvent();
         sse.content = "";
         sse.isFinalChunk = Boolean.TRUE;
+        sse.reasoning = event.reasoning;
+        sse.durationMs = event.durationMs;
         eventPublisher.publish(sessionId, sse);
     }
 
@@ -80,6 +82,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.callId = event.callId;
         sse.toolName = event.toolName;
         sse.toolNotes = event.diff;
+        sse.toolType = event.toolType;
         sse.taskId = event.taskId;
         sse.runInBackground = event.runInBackground;
         if (event.arguments != null) {
@@ -98,6 +101,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.status = event.status;
         sse.result = event.result;
         sse.toolType = event.toolType;
+        sse.durationMs = event.durationMs;
         eventPublisher.publish(sessionId, sse);
     }
 
@@ -120,6 +124,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.inputTokens = event.inputTokens;
         sse.outputTokens = event.outputTokens;
         sse.costUsd = event.costUsd;
+        sse.durationMs = event.durationMs;
         eventPublisher.publish(sessionId, sse);
     }
 

@@ -8,7 +8,7 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import { marked } from 'marked';
 import { mergeArtifactEntries, unscannedArtifactPaths } from './artifactList';
-import { addAssistantChips, addTranscriptToggle, createAssistToggle, fillPlanBlock, planBlockEl, planState, TOOL_USE_CHIPS, transcriptPre, type AssistToggle } from './chat/transcriptView';
+import { addAssistantChips, addTranscriptToggle, createAssistToggle, fillPlanBlock, liveToolEntryView, planBlockEl, planState, prettyJson, reasoningBlockView, recordToolUse as recordToolUseChip, transcriptPre, type AssistToggle, type ToolUseChip } from './chat/transcriptView';
 import { handleComposerKeyDown } from './composerKeyboard';
 import { decodePathRef, workspaceRelativePath } from './localPaths';
 import {
@@ -45,10 +45,12 @@ import {
   resetRemoteChatCache,
   startRemoteConversation,
   type RemoteAttachmentPayload,
+  type RemoteTranscriptHandle,
 } from './remoteChat';
+import type { RemoteMessage, RemoteEventRecord } from './remoteProtocol';
 import { SessionSurfaces, type SessionSurface, type DockKind, type ArtifactScope } from './sessionSurfaces';
 import { toolUseKind, toolUseLabel, type ToolUseKind } from './transcript/classify';
-import type { TranscriptPage, TranscriptRecord } from './transcript/records';
+import type { TranscriptPage, TranscriptRecord, RecordAttachment } from './transcript/records';
 import {
   emptyModel,
   reduce,
@@ -735,12 +737,6 @@ interface MemoryUi {
 /** Memory chips live per message: extraction completes long after the turn that triggered it ended. */
 const memoryUi = new WeakMap<HTMLElement, MemoryUi>();
 
-interface ToolUseChip {
-  toggle: AssistToggle;
-  panel: HTMLElement;
-  rows: Map<string, { node: HTMLElement; count: number }>;
-}
-
 interface StreamingState {
   view: SessionView;
   text: string;
@@ -790,6 +786,9 @@ interface ReasoningBlock {
  */
 interface SessionView {
   sessionId: string | null;
+  /** Remote views run the same transcript, but must never trigger local browser/approval/artifact side effects. */
+  backend: 'local' | 'remote';
+  agentLabel: string | null;
   root: HTMLElement;
   transcript: HTMLElement;
   stick: boolean;
@@ -839,12 +838,14 @@ function activeSessionView(): SessionView | null {
   return findSessionView(state.sessionId);
 }
 
-function createSessionView(sessionId: string | null): SessionView {
+function createSessionView(sessionId: string | null, backend: 'local' | 'remote' = 'local', agentLabel: string | null = null): SessionView {
   const root = el('div', 'session-view');
   const transcript = el('div', 'transcript');
   root.append(transcript);
   const view: SessionView = {
     sessionId,
+    backend,
+    agentLabel,
     root,
     transcript,
     stick: true,
@@ -884,7 +885,9 @@ function createSessionView(sessionId: string | null): SessionView {
     observer.observe(transcript);
     viewResizeObservers.set(view, observer);
   }
-  views.set(viewKey(sessionId), view);
+  // Remote views are hosted by remoteChat, not by the local session router; keeping them out of
+  // this map prevents idle-view sweeping from disposing a conversation that is still on screen.
+  if (backend === 'local') views.set(viewKey(sessionId), view);
   return view;
 }
 
@@ -1012,8 +1015,10 @@ function ensureReasoningPanel(current: StreamingState): HTMLElement {
   const { chips, panels } = ensureAssistBlock(current);
   const toggle = createAssistToggle('Thinking…');
   toggle.chip.classList.add('reasoning-chip');
-  const scroller = el('div', 'reasoning');
-  toggle.body.append(scroller);
+  // The panel body is the scroll container: one scroll budget for every expanded panel, and the
+  // collapse footer stays visible outside it.
+  const scroller = toggle.body;
+  scroller.classList.add('reasoning');
   const statusChip = chips.querySelector('.turn-status');
   if (statusChip) statusChip.after(toggle.chip);
   else chips.prepend(toggle.chip);
@@ -1031,12 +1036,9 @@ function ensureReasoningPanel(current: StreamingState): HTMLElement {
 
 function beginReasoningBlock(current: StreamingState): ReasoningBlock {
   const scroller = ensureReasoningPanel(current);
-  const section = el('div', 'reasoning-block');
-  const head = el('div', 'reasoning-block-head', `#${current.reasoningBlocks.length + 1}`);
-  const body = el('div', 'reasoning-text');
-  section.append(head, body);
-  scroller.append(section);
-  const block: ReasoningBlock = { text: '', rendered: '', renderQueued: false, renderTimer: null, body, scroller, head };
+  const view = reasoningBlockView(current.reasoningBlocks.length + 1);
+  scroller.append(view.section);
+  const block: ReasoningBlock = { text: '', rendered: '', renderQueued: false, renderTimer: null, body: view.body, scroller, head: view.head };
   current.reasoningBlocks.push(block);
   return block;
 }
@@ -1254,15 +1256,6 @@ function fmtTime(iso?: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString();
-}
-
-function prettyJson(raw: unknown): string {
-  if (typeof raw !== 'string') return JSON.stringify(raw, null, 2);
-  try {
-    return JSON.stringify(JSON.parse(raw), null, 2);
-  } catch {
-    return raw;
-  }
 }
 
 function displayPath(path: string): string {
@@ -4657,7 +4650,9 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
       addAssistantChips(bubble, {
         reasoning,
         tools: toolItems,
-        onLoadFull: (row, seq, field, className) => addTranscriptFullButton(view, row, seq, field, className),
+        onLoadFull: view.backend === 'local'
+          ? (row, seq, field, className) => addTranscriptFullButton(view, row, seq, field, className)
+          : undefined,
         extra: (chips, panels) => {
           if (compressions.length) addTranscriptCompressions(chips, panels, compressions);
           if (turn.memoryRuns.length) addTranscriptMemory(chips, panels, turn);
@@ -4671,11 +4666,165 @@ function renderTranscriptTurn(view: SessionView, turn: Turn): void {
   for (const notice of notices) renderTranscriptNotice(view, notice);
   const summary = summaryText(turn.summary);
   if (summary.length) view.transcript.append(el('div', 'turn-summary', summary.join(' · ')));
-  const turnTail = turnTailActions();
+  const turnTail = view.backend === 'local' ? turnTailActions() : null;
   if (turnTail) view.transcript.append(turnTail);
   if (turn.partial !== 'none') {
     view.transcript.append(el('div', 'notice', 'Part of this turn was not loaded yet.'));
   }
+}
+
+interface RemoteHistoryAttachment {
+  name: string;
+  size: number;
+  preview: string | null;
+  descriptor?: { url: string; contentType: string };
+}
+
+type RemoteHistoryMessage = RemoteMessage & { attachments?: RemoteHistoryAttachment[] };
+
+function remoteAttachmentRecords(message: RemoteHistoryMessage): RecordAttachment[] {
+  return (message.attachments ?? []).map((attachment) => ({
+    filename: attachment.name,
+    mediaType: attachment.descriptor?.contentType ?? '',
+    size: attachment.size,
+    url: attachment.preview ?? attachment.descriptor?.url,
+    preview: attachment.preview,
+  }));
+}
+
+function remotePlanOf(events: RemoteEventRecord[]): unknown[] | null {
+  for (const event of events) {
+    const name = String(event.name ?? '');
+    if (!name.includes('plan') && !name.includes('todo')) continue;
+    try {
+      const parsed = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      const todos = (parsed as { todos?: unknown } | null)?.todos;
+      if (Array.isArray(todos)) return todos;
+    } catch {
+      // A malformed event must not hide the rest of the history.
+    }
+  }
+  return null;
+}
+
+/**
+ * Server history is one aggregate row per agent message, not local transcript records. Fold it into
+ * the same Turn/Item model the local renderer consumes, so both backends use one transcript view.
+ */
+function remoteHistoryModel(messages: RemoteHistoryMessage[]): TranscriptModel {
+  const turns: Turn[] = [];
+  let current: Turn | null = null;
+  let seq = 0;
+  for (const message of messages) {
+    seq = typeof message.seq === 'number' ? message.seq : seq + 1;
+    const ts = message.timestamp ? Date.parse(message.timestamp) || undefined : undefined;
+    if (message.role === 'user') {
+      current = {
+        turnId: `remote-${seq}`,
+        sortSeq: seq,
+        origin: 'projection',
+        kind: 'user',
+        items: [{
+          seq,
+          key: `${seq}:0`,
+          kind: 'input',
+          text: message.content,
+          attachments: remoteAttachmentRecords(message),
+          steering: false,
+          ts,
+        }],
+        plan: null,
+        summary: null,
+        open: false,
+        partial: 'none',
+        memoryRuns: [],
+        startedAt: ts,
+      };
+      turns.push(current);
+      continue;
+    }
+    if (!current) {
+      current = {
+        turnId: `remote-${seq}`,
+        sortSeq: seq,
+        origin: 'projection',
+        kind: 'user',
+        items: [],
+        plan: null,
+        summary: null,
+        open: false,
+        partial: 'none',
+        memoryRuns: [],
+        startedAt: ts,
+      };
+      turns.push(current);
+    }
+    const blocks = message.thinkingBlocks?.length
+      ? message.thinkingBlocks
+      : message.thinking ? [{ text: message.thinking }] : [];
+    blocks.forEach((block, index) => {
+      current!.items.push({
+        seq,
+        key: `${seq}:r${index}`,
+        kind: 'reasoning',
+        text: block.text,
+        durationMs: block.durationMs,
+      });
+    });
+    (message.tools ?? []).forEach((tool, index) => {
+      const name = tool.name ?? 'tool';
+      current!.items.push({
+        seq,
+        key: `${seq}:t${index}`,
+        kind: 'tool',
+        callId: tool.callId ?? '',
+        name,
+        useKind: toolUseKind(name, tool.toolType),
+        status: tool.status ?? 'done',
+        approval: null,
+        arguments: tool.arguments,
+        result: tool.result,
+        toolType: tool.toolType ?? null,
+      });
+    });
+    if (message.content) {
+      current.items.push({ seq, key: `${seq}:text`, kind: 'text', text: message.content });
+    }
+    const events = message.events ?? [];
+    const plan = remotePlanOf(events);
+    if (plan) current.plan = plan;
+    events.forEach((event, index) => {
+      const name = String(event.name ?? '');
+      if (name.includes('plan') || name.includes('todo')) return;
+      current!.items.push({
+        seq,
+        key: `${seq}:e${index}`,
+        kind: 'custom',
+        name: name || 'custom',
+        data: event.data,
+        card: event.card,
+        callId: event.callId ?? null,
+      });
+    });
+  }
+  return { turns, taskIndex: {}, pendingTaskStatus: {}, orphans: [] };
+}
+
+function renderRemoteHistory(view: SessionView, messages: RemoteMessage[], before?: HTMLElement | null): void {
+  resetStreaming(view);
+  view.toolMap.clear();
+  view.taskMap.clear();
+  view.pendingTaskStatus.clear();
+  view.pendingMemoryRun = null;
+  view.planBlock = null;
+  view.cards = [];
+  removeApprovalBar(view);
+  view.transcript.replaceChildren();
+  if (before) view.transcript.append(before);
+  for (const turn of remoteHistoryModel(messages as RemoteHistoryMessage[]).turns) {
+    renderTranscriptTurn(view, turn);
+  }
+  refreshUserMessageCollapses(view);
 }
 
 function addTranscriptCompressions(chips: HTMLElement, panels: HTMLElement, compressions: CompressionItem[]): void {
@@ -4768,6 +4917,7 @@ function transcriptAttachments(input: InputItem): PendingAttachment[] {
       name: attachment.filename ?? 'attachment',
       kind,
       size: attachment.size ?? 0,
+      preview: attachment.preview ?? undefined,
     };
   });
 }
@@ -4864,8 +5014,8 @@ function messageTime(ts: number | undefined): HTMLElement | null {
   return stamp;
 }
 
-function messageRoleLine(role: 'user' | 'assistant', ts?: number): HTMLElement {
-  const line = el('div', 'role', role);
+function messageRoleLine(role: 'user' | 'assistant', ts?: number, label?: string | null): HTMLElement {
+  const line = el('div', 'role', label ?? role);
   const stamp = messageTime(ts);
   if (stamp) line.append(stamp);
   return line;
@@ -4888,7 +5038,7 @@ function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: s
     }
   }
   const wrapper = el('div', `msg ${role}`);
-  wrapper.append(messageRoleLine(role, ts));
+  wrapper.append(messageRoleLine(role, ts, role === 'assistant' ? view.agentLabel : null));
   const bubble = el('div', 'bubble');
   let measure: (() => void) | null = null;
   if (role === 'assistant') {
@@ -4924,7 +5074,9 @@ function addMessageBubble(view: SessionView, role: 'user' | 'assistant', text: s
 function scrollTranscript(view: SessionView, force = false): void {
   if (force) view.stick = true;
   if (!view.stick) return;
-  if (view !== mountedView || !view.transcript.isConnected) return;
+  // A view that is not in the document has no layout to scroll; remote conversations are mounted
+  // through their own screen rather than showSessionView, so connectedness is the real check.
+  if (!view.root.isConnected) return;
   view.transcript.scrollTop = view.transcript.scrollHeight;
 }
 
@@ -5007,7 +5159,7 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
 function ensureStreaming(view: SessionView): StreamingState {
   if (!view.streaming) {
     const wrapper = el('div', 'msg assistant');
-    wrapper.append(messageRoleLine('assistant', view.turnClock?.startedAt ?? Date.now()));
+    wrapper.append(messageRoleLine('assistant', view.turnClock?.startedAt ?? Date.now(), view.agentLabel));
     const bubble = el('div', 'bubble md');
     const body = el('div', 'md-body');
     bubble.append(body);
@@ -5138,49 +5290,25 @@ function formatDuration(ms: number): string {
   return ms >= 10_000 ? `${Math.round(ms / 1000)}s` : `${(ms / 1000).toFixed(1)}s`;
 }
 
-/** Collapsed-line summary so the user can tell what a tool call did without expanding it. */
-function toolSummary(argumentsText: unknown): string {
-  try {
-    const parsed = typeof argumentsText === 'string' ? JSON.parse(argumentsText) : argumentsText;
-    if (parsed && typeof parsed === 'object') {
-      const args = parsed as Record<string, unknown>;
-      if (typeof args.description === 'string' && args.description.trim()) return args.description.trim().slice(0, 120);
-      for (const [key, value] of Object.entries(args)) {
-        if (typeof value === 'string' && value.trim()) return `${key}: ${value.trim().slice(0, 100)}`;
-        if (typeof value === 'number' || typeof value === 'boolean') return `${key}: ${String(value)}`;
-      }
-    }
-  } catch {
-    return '';
-  }
-  return '';
+/** Follow the newest row only while the reader is already at the bottom of the panel. */
+function followPanelScroll(panel: HTMLElement | null): void {
+  if (!panel) return;
+  if (panel.scrollHeight - panel.scrollTop - panel.clientHeight >= 24) return;
+  panel.scrollTop = panel.scrollHeight;
 }
 
 function appendToolStart(view: SessionView, event: any): void {
   const current = ensureStreaming(view);
   const panel = ensureToolPanel(current);
   const tool: UiTool = { callId: event.callId, name: event.toolName ?? 'tool', status: 'running' };
-  const entry = el('div', 'tool-entry');
-  const head = el('button', 'tool-entry-head') as HTMLButtonElement;
-  const chevron = el('span', 'tool-chevron', '▸');
-  head.append(chevron, el('span', 'tool-name', tool.name), el('span', 'tool-desc', toolSummary(event.arguments)));
-  tool.durationNode = el('span', 'tool-duration');
-  tool.statusNode = el('span', 'tool-status running', 'running');
-  head.append(tool.durationNode, tool.statusNode);
-  const body = el('div', 'tool-entry-body');
-  body.hidden = true;
-  body.append(el('pre', undefined, prettyJson(event.arguments)));
-  tool.resultNode = el('pre');
-  tool.resultNode.style.display = 'none';
-  body.append(tool.resultNode);
-  head.onclick = () => {
-    body.hidden = !body.hidden;
-    chevron.textContent = body.hidden ? '▸' : '▾';
-  };
-  entry.append(head, body);
-  tool.node = entry;
-  panel.append(entry);
-  refreshToolsBusy(entry);
+  const entry = liveToolEntryView(tool.name, event.arguments);
+  tool.node = entry.node;
+  tool.statusNode = entry.statusNode;
+  tool.resultNode = entry.resultNode;
+  tool.durationNode = entry.durationNode;
+  panel.append(entry.node);
+  refreshToolsBusy(entry.node);
+  followPanelScroll(panel);
   current.toolsToggle?.setLabel(`Tool use (${panel.childElementCount})`);
   const useKind = toolUseKind(tool.name, event.toolType);
   if (useKind) recordToolUse(current, useKind, toolUseLabel(useKind, tool.name, event.arguments));
@@ -5190,28 +5318,9 @@ function appendToolStart(view: SessionView, event: any): void {
 
 /** One chip per tool origin next to thinking / tool use; expanding lists everything called this turn. */
 function recordToolUse(current: StreamingState, kind: ToolUseKind, text: string): void {
+  const { chips, panels } = ensureAssistBlock(current);
   if (!current.toolUses) current.toolUses = new Map();
-  let chip = current.toolUses.get(kind);
-  if (!chip) {
-    const meta = TOOL_USE_CHIPS[kind];
-    const { chips, panels } = ensureAssistBlock(current);
-    const toggle = createAssistToggle(meta.label);
-    toggle.chip.classList.add(meta.chipClass);
-    chip = { toggle, panel: toggle.body, rows: new Map() };
-    current.toolUses.set(kind, chip);
-    chips.append(toggle.chip);
-    panels.append(toggle.panel);
-  }
-  const existing = chip.rows.get(text);
-  if (existing) {
-    existing.count += 1;
-    existing.node.textContent = `${text} · ×${existing.count}`;
-  } else {
-    const node = el('div', 'tool-use-row', text);
-    chip.panel.append(node);
-    chip.rows.set(text, { node, count: 1 });
-  }
-  chip.toggle.setLabel(`${TOOL_USE_CHIPS[kind].label} (${chip.rows.size})`);
+  recordToolUseChip(chips, panels, current.toolUses, kind, text);
 }
 
 interface CompressionFacts {
@@ -5564,10 +5673,12 @@ function downgradeDuplicateTaskNotes(view: SessionView, taskId: string): void {
 }
 
 function updateToolResult(view: SessionView, event: any): void {
-  if (event.status === 'async_launched' && typeof event.result === 'string') {
-    recognizeAsyncLaunch(view, event.result);
-  } else if (event.toolName === 'scheduled_task' && typeof event.result === 'string' && event.result.startsWith('Scheduled task created')) {
-    recognizeScheduledCreation(view, event.result);
+  if (view.backend === 'local') {
+    if (event.status === 'async_launched' && typeof event.result === 'string') {
+      recognizeAsyncLaunch(view, event.result);
+    } else if (event.toolName === 'scheduled_task' && typeof event.result === 'string' && event.result.startsWith('Scheduled task created')) {
+      recognizeScheduledCreation(view, event.result);
+    }
   }
   const tool = view.toolMap.get(event.callId);
   if (!tool) return;
@@ -5584,7 +5695,8 @@ function updateToolResult(view: SessionView, event: any): void {
     tool.resultNode.textContent = prettyJson(event.result);
     tool.resultNode.style.display = 'block';
   }
-  const artifact = artifactByCallId.get(event.callId);
+  followPanelScroll(tool.node?.closest('.assist-panel-body') as HTMLElement | null);
+  const artifact = view.backend === 'local' ? artifactByCallId.get(event.callId) : undefined;
   if (artifact) appendToolThumbnail(tool, artifact);
   if (view.pendingApproval?.callId === event.callId) removeApprovalBar(view);
   scrollTranscript(view);
@@ -5740,7 +5852,17 @@ function applySessionEvent(view: SessionView, event: any): void {
         startReasoningTick(current);
       }
       block.text += event.chunk ?? '';
+      // The server may close a section with a flag on the same chunk stream; use its full text
+      // only when a non-streaming provider never sent the body.
+      const complete = typeof event.reasoning === 'string' ? event.reasoning : '';
+      if (complete && block.text.length < complete.length && complete.startsWith(block.text)) {
+        block.text = complete;
+      }
       queueReasoningRender(block);
+      if (event.final === true) {
+        stopReasoningTick(current);
+        sealActiveReasoning(current, typeof event.durationMs === 'number' ? event.durationMs : 0);
+      }
       scrollTranscript(view);
       break;
     }
@@ -5762,20 +5884,22 @@ function applySessionEvent(view: SessionView, event: any): void {
     }
     case 'tool_start':
       if (view.pendingApproval) removeApprovalBar(view);
-      trackBrowserUse(view, event);
-      maybeAutoStartBrowser(view, event);
+      if (view.backend === 'local') {
+        trackBrowserUse(view, event);
+        maybeAutoStartBrowser(view, event);
+      }
       appendToolStart(view, event);
       break;
     case 'tool_result':
-      trackBrowserUse(view, event);
+      if (view.backend === 'local') trackBrowserUse(view, event);
       updateToolResult(view, event);
       break;
     case 'tool_approval_request':
-      showApprovalBar(view, event);
+      if (view.backend === 'local') showApprovalBar(view, event);
       break;
     case 'turn_complete': {
       const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
-      clearBrowserUse(view);
+      if (view.backend === 'local') clearBrowserUse(view);
       resolveStaleToolStatuses(assistantWrapper);
       const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
       finishTurnStatus(view, event);
@@ -5803,15 +5927,17 @@ function applySessionEvent(view: SessionView, event: any): void {
         (keptWrapper ?? view.transcript).append(summary);
         scrollTranscript(view);
       }
-      const turnTail = turnTailActions();
-      if (turnTail) (keptWrapper ?? view.transcript).append(turnTail);
-      void refreshSessionList();
-      void loadSummaries();
-      // Artifact events are live-only; a turn can register files whose event never reached this
-      // window (subagent run, rejected emission). Re-read the scan at the end of the visible turn
-      // so the pane cannot stay one submission behind; an unchanged list does not re-render.
-      if (view === mountedView && surface.dock === 'artifacts') void refreshArtifactBaseline();
-      maybeApplyPendingEngineRestart(view);
+      if (view.backend === 'local') {
+        const turnTail = turnTailActions();
+        if (turnTail) (keptWrapper ?? view.transcript).append(turnTail);
+        void refreshSessionList();
+        void loadSummaries();
+        // Artifact events are live-only; a turn can register files whose event never reached this
+        // window (subagent run, rejected emission). Re-read the scan at the end of the visible turn
+        // so the pane cannot stay one submission behind; an unchanged list does not re-render.
+        if (view === mountedView && surface.dock === 'artifacts') void refreshArtifactBaseline();
+        maybeApplyPendingEngineRestart(view);
+      }
       break;
     }
     case 'compression':
@@ -5839,7 +5965,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       // A failed turn ends with an error event instead of a turn_complete: end its UI state here,
       // or the turn chip keeps spinning and its tools stay "running" for a turn that never resumes.
       const assistantWrapper = view.streaming?.bubble.parentElement ?? null;
-      clearBrowserUse(view);
+      if (view.backend === 'local') clearBrowserUse(view);
       resolveStaleToolStatuses(assistantWrapper);
       const hasContent = hasAssistantContent(assistantWrapper, view.streaming);
       failTurnStatus(view);
@@ -5847,9 +5973,11 @@ function applySessionEvent(view: SessionView, event: any): void {
       removeApprovalBar(view);
       if (assistantWrapper && !hasContent) assistantWrapper.remove();
       appendNotice(`✗ ${event.message ?? 'error'}`, 'error', view.transcript);
-      void refreshSessionList();
-      void loadSummaries();
-      maybeApplyPendingEngineRestart(view);
+      if (view.backend === 'local') {
+        void refreshSessionList();
+        void loadSummaries();
+        maybeApplyPendingEngineRestart(view);
+      }
       break;
     }
     default:
@@ -5869,6 +5997,23 @@ function maybeApplyPendingEngineRestart(view: SessionView): void {
 }
 
 function handleCustomEvent(view: SessionView, event: any): void {
+  if (view.backend === 'remote') {
+    // Remote custom events are server-rendered cards; actions still travel as the next message,
+    // which the remote composer owns, so the transcript side stays read-only.
+    const card = parseRichCard(event.card);
+    if (!card) return;
+    const handle = createRichCard(card, {
+      openLink: (url) => void window.coreai.openExternal(url),
+      resolveImage: (url) => resolveCardImageUrl(url),
+      send: () => undefined,
+    }, true);
+    if (!handle) return;
+    handle.setBusy(true);
+    view.cards.push(handle);
+    view.transcript.append(handle.root);
+    scrollTranscript(view);
+    return;
+  }
   if (event.name === 'persistence') {
     handlePersistenceEvent(view, event);
     return;
@@ -9763,6 +9908,24 @@ async function bootstrap(): Promise<void> {
       renderSidebar();
     },
     toast: (text, kind) => toast(text, kind),
+    createTranscript: (sessionId, agentName) => {
+      // The remote conversation is a normal transcript view (same streaming, chips, reasoning,
+      // tools and history renderer); only its event source and composer differ.
+      const view = createSessionView(`remote:${sessionId}`, 'remote', agentName);
+      view.transcript.classList.add('remote-transcript');
+      return {
+        root: view.root,
+        renderHistory: (messages, before) => renderRemoteHistory(view, messages, before),
+        applyEvent: (event) => applySessionEvent(view, event),
+        beginTurn: () => {
+          if (view.streaming) return;
+          view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
+          ensureStreaming(view);
+        },
+        scrollToBottom: (force = false) => scrollTranscript(view, force),
+        dispose: () => disposeSessionView(view),
+      };
+    },
   });
   window.coreai.onRemotePush(handleRemotePush);
   // The startup update check can settle while this bootstrap is still loading panels: subscribe
