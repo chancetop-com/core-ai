@@ -58,12 +58,14 @@ public class PostgresModule extends Module {
         db().view(PgProjectCountRow.class);
         db().view(PgSubjectFileStatsRow.class);
         db().view(PgSkillCountRow.class);
+        db().view(ai.core.server.skill.PgSkillNameRow.class);
         db().view(PgUserRow.class);
         db().view(PgUserIdRow.class);
     }
 
     private void registerAgentViews() {
         db().view(ai.core.server.agent.PgAgentDefinitionRow.class);
+        db().view(ai.core.server.agent.PgAgentSummaryRow.class);
         db().view(ai.core.server.agent.PgAgentCountRow.class);
         db().view(ai.core.server.agent.PgAgentMigrationLockRow.class);
         db().view(ai.core.server.agent.PgAgentMigrationMarkerRow.class);
