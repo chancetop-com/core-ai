@@ -457,16 +457,29 @@ examples/plugins/home/
 | 日期 | 模型 | 范围 | 结论 |
 |---|---|---|---|
 | 2026-11-19 | deepseek-v4-flash（当前会话模型） | 设计自审 | 见下 |
+| 2026-11-19 | deepseek-v4-flash（当前会话模型） | 实现后复盘（dev E2E） | 见 13.2 |
 
-自审要点：
+### 13.1 设计自审
 
 1. `dailyAt` + 全局时区的冲突已核实（`SchedulerConfig.timeZone()` 必须在任何 trigger 之前），方案改为 fixedRate 守卫，避免影响既有 job。
 2. 插件页面无法联网已由 CSP 源码确认；因此“页面直连 `/api/reports`”不可行，main 代理是必要条件而非偏好。
 3. 幂等不是只靠去重键：`COMPLETED` 运行记录阻止同日重跑，`insertIfAbsent` 阻止并发重复写入，两者缺一不可。
 4. 风险：dev 环境当前报表数量为 0，真实报表展示需要一条已生成的 dataset report；E2E 中若无法造数，将以“空态 + fixture 渲染”覆盖，并在报告中标注。
 
+### 13.2 dev E2E 复盘（2026-11-19，2.0.310）
+
+- 环境：`FBRDevAKSCluster` / namespace `dev-ai`，镜像 `chancetop/core-ai-server:2.0.310`（CI `Build Server` success，2/2 Ready）。
+- 数据通路：`HomeDataClient` 对 dev 实测 status / reports / todo 增改查删 / digest 全部通过；`source=MANUAL` 正确。
+- 报表：dev 当前 `reports.total=0`（该账号无 dataset report），列表/空态/无权限分支只能验证空态；完整渲染由 `homePage.smoke` 的 fixture 覆盖。
+- 定时任务：真实数据首次运行（4 个会话、8 条消息）`COMPLETED`、生成 0 条（无可执行事项），审计字段完整。
+- 定点造数后（fixture 会话 + 2 条消息）运行生成 2 条 AUTO todo，`dedupe_key=auto:2026-11-19:<session>:1|2`。
+- **发现并修复**：按标题哈希去重时，重试中模型改述标题会生成近似重复（实测 2 → 3 条）。改为“会话 + 槽位”键后重跑 `created=0, skipped=2`，总数保持 2。
+- 清理：fixture 会话/消息、AUTO todo 与运行记录已删除，dev 恢复原始数据。
+- 既有阻塞（非本功能）：`SpaRoutesTest` 因报表页移到 `/datasets/reports` 而失败，已用单独提交修复以恢复发布门禁。
+
 ## 14. 修改记录
 
 | 版本 | 日期 | 变更 |
 |---|---|---|
 | v1.0 | 2026-11-19 | 初稿：插件包、bridge、Todo 模型、每日任务与测试计划 |
+| v1.1 | 2026-11-19 | 调度改为 00:10；去重键改为会话+槽位；补充 dev E2E 结论与实现状态 |
