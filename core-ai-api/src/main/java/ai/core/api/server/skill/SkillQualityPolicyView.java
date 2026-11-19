@@ -35,4 +35,8 @@ public class SkillQualityPolicyView {
 
     @Property(name = "bindings")
     public List<SkillQualityPolicyBindingView> bindings;
+
+    /** Skill names or namespace/name pairs that skip the gate. */
+    @Property(name = "exemptions")
+    public List<String> exemptions;
 }

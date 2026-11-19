@@ -103,7 +103,14 @@ export default function AgentQualityHistory() {
                 <td className="px-3 py-3 text-xs">{run.mode || '-'}</td>
                 <td className="px-3 py-3 text-xs">{run.policy_revision ?? '-'}</td>
                 <td className="px-3 py-3 text-xs">{run.definition_revision ?? '-'}</td>
-                <td className="px-3 py-3 text-xs"><span className="px-1.5 py-0.5 rounded" style={gateStyle(run.gate_result)}>{run.gate_result || '-'}</span></td>
+                <td className="px-3 py-3 text-xs">
+                  <span className="px-1.5 py-0.5 rounded" style={gateStyle(run.gate_result)}>{run.gate_result || '-'}</span>
+                  {run.exempted && (
+                    <span className="ml-1 px-1.5 py-0.5 rounded" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                      exempt
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-3 text-xs">{run.run_status || '-'}</td>
                 <td className="px-3 py-3 text-xs">{run.warn_count ?? 0}</td>
                 <td className="px-3 py-3 text-xs">{run.block_fail_count ?? 0}</td>

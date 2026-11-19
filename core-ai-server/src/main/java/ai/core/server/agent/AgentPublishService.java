@@ -66,6 +66,8 @@ public class AgentPublishService {
         receipt.executionCandidateHash = candidate.executionCandidateHash();
         receipt.metadataHash = candidate.metadataHash();
         receipt.gateResult = result.run().gateResult == null ? null : result.run().gateResult.name();
+        receipt.exempted = result.run().exempted;
+        receipt.exemptionReason = result.run().exemptionReason;
         receipt.ruleResultDigest = result.run().ruleResultDigest;
         receipt.routeFingerprint = result.run().routeFingerprint;
         receipt.warnCount = result.warnCount();

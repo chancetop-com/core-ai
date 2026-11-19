@@ -29,6 +29,12 @@ public class AgentQualityReceipt {
     @Field(name = "gate_result")
     public String gateResult;
 
+    @Field(name = "exempted")
+    public Boolean exempted;
+
+    @Field(name = "exemption_reason")
+    public String exemptionReason;
+
     @Field(name = "rule_result_digest")
     public String ruleResultDigest;
 

@@ -159,6 +159,8 @@ final class AgentViewHelper {
         view.executionCandidateHash = receipt.executionCandidateHash;
         view.metadataHash = receipt.metadataHash;
         view.gateResult = receipt.gateResult;
+        view.exempted = receipt.exempted;
+        view.exemptionReason = receipt.exemptionReason;
         view.ruleResultDigest = receipt.ruleResultDigest;
         view.routeFingerprint = receipt.routeFingerprint;
         view.warnCount = receipt.warnCount;

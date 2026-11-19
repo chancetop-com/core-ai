@@ -30,6 +30,8 @@ public final class QualityReportMapper {
         view.routeFingerprint = run.routeFingerprint;
         view.gateResult = run.gateResult == null ? QualityGateResult.UNAVAILABLE.name() : run.gateResult.name();
         view.checksComplete = run.checksComplete;
+        view.exempted = run.exempted;
+        view.exemptionReason = run.exemptionReason;
         view.runStatus = run.runStatus == null ? null : run.runStatus.name();
         view.mode = run.mode == null ? null : run.mode.name();
         view.startedAt = run.createdAt;
@@ -66,6 +68,8 @@ public final class QualityReportMapper {
         view.policyRevision = run.policyRevision;
         view.definitionRevision = run.definitionRevision;
         view.checksComplete = run.checksComplete;
+        view.exempted = run.exempted;
+        view.exemptionReason = run.exemptionReason;
         view.createdAt = run.createdAt;
         view.finishedAt = run.finishedAt;
         var counts = counts(run.issues);

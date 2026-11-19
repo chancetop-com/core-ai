@@ -1,6 +1,7 @@
 package ai.core.server.skill.quality;
 
 import ai.core.server.quality.QualityBudget;
+import ai.core.server.quality.QualityExemptions;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityRuleBinding;
 import ai.core.server.quality.domain.QualityRuleKind;
@@ -112,6 +113,7 @@ public class SkillQualityPolicyService {
         policy.revision = 1;
         policy.scope = SCOPE_SKILL_SERVER;
         policy.bindings = bindings;
+        policy.exemptions = List.of();
         policy.changeReason = "initial built-in skill policy";
         policy.activatedBy = "system";
         policy.activatedAt = now;
@@ -160,13 +162,14 @@ public class SkillQualityPolicyService {
         if (command.expectedGeneration() != null && !command.expectedGeneration().equals(head.generation)) {
             throw new ConflictException("skill quality policy was changed by another administrator; refresh and retry");
         }
-        var base = command.rollbackRevision() != null
-            ? bindingsOf(command.rollbackRevision())
-            : bindingsOf(head.activeRevision);
-        var bindings = new ArrayList<>(base);
+        var basePolicy = policyOf(command.rollbackRevision() != null ? command.rollbackRevision() : head.activeRevision);
+        var bindings = copyBindings(basePolicy);
+        var exemptions = command.exemptions() == null
+            ? QualityExemptions.copyOf(basePolicy.exemptions)
+            : QualityExemptions.normalize(command.exemptions());
         applyCommand(bindings, command);
         validateBudget(bindings);
-        return activatePolicy(head, bindings, command.changeReason(), userId);
+        return activatePolicy(head, bindings, exemptions, command.changeReason(), userId);
     }
 
     private void applyCommand(List<QualityRuleBinding> bindings, ActivateCommand command) {
@@ -194,13 +197,14 @@ public class SkillQualityPolicyService {
     }
 
     private SkillQualityPolicyRevision activatePolicy(SkillQualityPolicyHead head, List<QualityRuleBinding> bindings,
-                                                      String changeReason, String userId) {
+                                                      List<String> exemptions, String changeReason, String userId) {
         int nextRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(0) + 1;
         var policy = new SkillQualityPolicyRevision();
         policy.id = "skill-policy:" + nextRevision;
         policy.revision = nextRevision;
         policy.scope = SCOPE_SKILL_SERVER;
         policy.bindings = bindings;
+        policy.exemptions = exemptions;
         policy.changeReason = changeReason;
         policy.activatedBy = userId;
         policy.activatedAt = ZonedDateTime.now();
@@ -228,9 +232,11 @@ public class SkillQualityPolicyService {
 
     public void retireRule(String ruleId, String userId) {
         var head = requireHead();
-        var bindings = bindingsOf(head.activeRevision);
+        var active = policyOf(head.activeRevision);
+        var bindings = copyBindings(active);
         if (bindings.removeIf(binding -> ruleId.equals(binding.ruleId))) {
-            activatePolicy(head, bindings, "retire skill rule " + ruleId, userId);
+            activatePolicy(head, bindings, QualityExemptions.copyOf(active.exemptions),
+                "retire skill rule " + ruleId, userId);
         }
         var rule = requireRule(ruleId);
         rule.lifecycle = QualityRuleLifecycle.RETIRED;
@@ -240,9 +246,12 @@ public class SkillQualityPolicyService {
         store.replaceRule(rule);
     }
 
-    private List<QualityRuleBinding> bindingsOf(int revision) {
-        var policy = store.getPolicy(revision)
+    private SkillQualityPolicyRevision policyOf(int revision) {
+        return store.getPolicy(revision)
             .orElseThrow(() -> new BadRequestException("unknown skill quality policy revision: " + revision));
+    }
+
+    private List<QualityRuleBinding> copyBindings(SkillQualityPolicyRevision policy) {
         var bindings = new ArrayList<QualityRuleBinding>();
         if (policy.bindings == null) return bindings;
         for (var binding : policy.bindings) {
@@ -339,10 +348,15 @@ public class SkillQualityPolicyService {
         public int generation() {
             return head.generation;
         }
+
+        public List<String> exemptions() {
+            return policy.exemptions == null ? List.of() : List.copyOf(policy.exemptions);
+        }
     }
 
     public record ActivateCommand(Integer rollbackRevision, String ruleId, Integer ruleRevision,
                                   QualityEnforcement enforcement, Integer expectedGeneration,
-                                  String changeReason, List<String> suspend, List<String> resume) {
+                                  String changeReason, List<String> suspend, List<String> resume,
+                                  List<String> exemptions) {
     }
 }

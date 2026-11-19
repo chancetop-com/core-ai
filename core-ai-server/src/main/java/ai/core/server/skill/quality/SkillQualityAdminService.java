@@ -227,7 +227,7 @@ public class SkillQualityAdminService {
         }
         var command = new SkillQualityPolicyService.ActivateCommand(request.policyRevision,
             request.ruleId, request.ruleRevision, enforcement, request.expectedGeneration,
-            request.changeReason, request.suspend, request.resume);
+            request.changeReason, request.suspend, request.resume, request.exemptions);
         var policy = policyService.createPolicy(command, userId);
         var head = policyService.requireHead();
         return SkillQualityAdminMapper.toPolicyView(policy, head.generation, true);

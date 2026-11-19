@@ -35,4 +35,8 @@ public class AgentQualityPolicyView {
 
     @Property(name = "bindings")
     public List<AgentQualityPolicyBindingView> bindings;
+
+    /** Agent ids that skip the gate; built-in agents are exempt without being listed. */
+    @Property(name = "exemptions")
+    public List<String> exemptions;
 }

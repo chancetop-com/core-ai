@@ -36,6 +36,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const issues = report.issues || [];
   const groups = Array.from(new Set(issues.map(groupLabel)));
+  const exempted = report.exempted === true;
 
   return (
     <div className="rounded-xl border mb-4 overflow-hidden"
@@ -48,12 +49,13 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
             : <XCircle size={18} style={{ color: 'var(--color-error)' }} />}
           <div>
             <div className="text-sm font-medium">
-              {report.gate_result === 'PASSED' ? 'Quality checks passed' : report.gate_result === 'REJECTED' ? 'Quality checks failed' : 'Checks could not complete'}
+              {exempted ? 'Quality gate exempted' : report.gate_result === 'PASSED' ? 'Quality checks passed' : report.gate_result === 'REJECTED' ? 'Quality checks failed' : 'Checks could not complete'}
             </div>
             <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {report.qualified_name ? `${report.qualified_name} · ` : ''}
               Run {report.run_id} · policy {report.policy_revision ?? '-'} · checks complete {report.checks_complete ? 'yes' : 'no'}
               {!!report.warn_count && ` · ${report.warn_count} warning(s)`}
+              {exempted && report.exemption_reason ? ` · ${report.exemption_reason}` : ''}
             </div>
           </div>
         </div>
@@ -64,7 +66,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
 
       {issues.length === 0 ? (
         <div className="px-4 py-3 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          No issues to fix.
+          {exempted ? 'This subject skips rule evaluation, so there are no issues to fix.' : 'No issues to fix.'}
         </div>
       ) : (
         <div className="p-3 space-y-3">

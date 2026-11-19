@@ -82,6 +82,7 @@ public final class SkillQualityAdminMapper {
             }
         }
         view.bindings = bindings;
+        view.exemptions = policy.exemptions == null ? List.of() : policy.exemptions;
         return view;
     }
 

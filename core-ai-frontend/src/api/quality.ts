@@ -46,6 +46,8 @@ export interface QualityReport {
   route_fingerprint?: string;
   gate_result: 'PASSED' | 'REJECTED' | 'UNAVAILABLE';
   checks_complete?: boolean;
+  exempted?: boolean;
+  exemption_reason?: string;
   run_status?: string;
   mode?: string;
   warn_count?: number;
@@ -182,6 +184,7 @@ export interface QualityPolicy {
   activated_by?: string;
   activated_at?: string;
   bindings?: PolicyBinding[];
+  exemptions?: string[];
 }
 
 export interface RuleTestResponse {
@@ -203,6 +206,8 @@ export interface AgentQualityRun {
   policy_revision?: number;
   definition_revision?: number;
   checks_complete?: boolean;
+  exempted?: boolean;
+  exemption_reason?: string;
   warn_count?: number;
   block_fail_count?: number;
   incomplete_count?: number;

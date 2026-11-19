@@ -114,6 +114,7 @@ public class QualityPolicyService {
         policy.revision = 1;
         policy.scope = SCOPE_SERVER;
         policy.bindings = bindings;
+        policy.exemptions = List.of();
         policy.changeReason = "initial built-in policy";
         policy.activatedBy = "system";
         policy.activatedAt = now;
@@ -165,13 +166,14 @@ public class QualityPolicyService {
         if (command.expectedGeneration() != null && !command.expectedGeneration().equals(head.generation)) {
             throw new ConflictException("quality policy was changed by another administrator; refresh and retry");
         }
-        var baseBindings = command.rollbackRevision() != null
-            ? bindingsOf(command.rollbackRevision())
-            : bindingsOf(head.activeRevision);
-        var bindings = new ArrayList<>(baseBindings);
+        var base = policyOf(command.rollbackRevision() != null ? command.rollbackRevision() : head.activeRevision);
+        var bindings = copyBindings(base);
+        var exemptions = command.exemptions() == null
+            ? QualityExemptions.copyOf(base.exemptions)
+            : QualityExemptions.normalize(command.exemptions());
         applyCommand(bindings, command);
         validateBudget(bindings);
-        return activatePolicy(head, bindings, command.changeReason(), userId);
+        return activatePolicy(head, bindings, exemptions, command.changeReason(), userId);
     }
 
     private void applyCommand(List<QualityRuleBinding> bindings, ActivatePolicyCommand command) {
@@ -200,13 +202,14 @@ public class QualityPolicyService {
     }
 
     private AgentQualityPolicyRevision activatePolicy(AgentQualityPolicyHead head, List<QualityRuleBinding> bindings,
-                                                      String changeReason, String userId) {
+                                                      List<String> exemptions, String changeReason, String userId) {
         int nextRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(0) + 1;
         var policy = new AgentQualityPolicyRevision();
         policy.id = "policy:" + nextRevision;
         policy.revision = nextRevision;
         policy.scope = SCOPE_SERVER;
         policy.bindings = bindings;
+        policy.exemptions = exemptions;
         policy.changeReason = changeReason;
         policy.activatedBy = userId;
         policy.activatedAt = ZonedDateTime.now();
@@ -234,9 +237,11 @@ public class QualityPolicyService {
     /** Removes a rule from the active policy and marks it retired in one audited step. */
     public void retireRule(String ruleId, String userId) {
         var head = requireHead();
-        var bindings = bindingsOf(head.activeRevision);
+        var active = policyOf(head.activeRevision);
+        var bindings = copyBindings(active);
         if (bindings.removeIf(binding -> ruleId.equals(binding.ruleId))) {
-            activatePolicy(head, bindings, "retire rule " + ruleId, userId);
+            activatePolicy(head, bindings, QualityExemptions.copyOf(active.exemptions),
+                "retire rule " + ruleId, userId);
         }
         var rule = requireRule(ruleId);
         rule.lifecycle = QualityRuleLifecycle.RETIRED;
@@ -246,9 +251,12 @@ public class QualityPolicyService {
         store.replaceRule(rule);
     }
 
-    private List<QualityRuleBinding> bindingsOf(int revision) {
-        var policy = store.getPolicy(revision)
+    private AgentQualityPolicyRevision policyOf(int revision) {
+        return store.getPolicy(revision)
             .orElseThrow(() -> new BadRequestException("unknown quality policy revision: " + revision));
+    }
+
+    private List<QualityRuleBinding> copyBindings(AgentQualityPolicyRevision policy) {
         var bindings = new ArrayList<QualityRuleBinding>();
         if (policy.bindings == null) return bindings;
         for (var binding : policy.bindings) {
@@ -361,10 +369,15 @@ public class QualityPolicyService {
         public int generation() {
             return head.generation;
         }
+
+        public List<String> exemptions() {
+            return policy.exemptions == null ? List.of() : List.copyOf(policy.exemptions);
+        }
     }
 
     public record ActivatePolicyCommand(Integer rollbackRevision, String ruleId, Integer ruleRevision,
                                         QualityEnforcement enforcement, Integer expectedGeneration,
-                                        String changeReason, List<String> suspend, List<String> resume) {
+                                        String changeReason, List<String> suspend, List<String> resume,
+                                        List<String> exemptions) {
     }
 }

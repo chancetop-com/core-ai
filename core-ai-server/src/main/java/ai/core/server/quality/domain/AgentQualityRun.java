@@ -58,6 +58,13 @@ public class AgentQualityRun {
     @Field(name = "checks_complete")
     public Boolean checksComplete;
 
+    /** True when the subject skipped rule evaluation because it is built-in or whitelisted. */
+    @Field(name = "exempted")
+    public Boolean exempted;
+
+    @Field(name = "exemption_reason")
+    public String exemptionReason;
+
     @Field(name = "issues")
     public List<StoredQualityIssue> issues;
 

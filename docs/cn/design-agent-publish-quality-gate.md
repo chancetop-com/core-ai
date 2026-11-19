@@ -128,6 +128,8 @@
 
 **接入决策与理由：**普通及交互式替代发布都应共享门禁；个人助手 fork 对过滤后的新配置执行门禁，被过滤的引用记录为 WARN，失败不创建 PUBLISHED 副本；交互式 builtin reset 先检查候选再写入。启动初始化/migration 不同步依赖外部模型，属于明确的受信 seed 路径，用代码检查和 CI fixture 验证，并审计标记 trusted-seed；不向用户开放 bypass；每个 migration 例外必须在 14.5 列出并说明理由。Workflow 不是本次 Agent 发布 API 的入口，但 `OWNED_EDITABLE` snapshot 是等价的可执行配置固化路径；v0.3 采纳 AI 技术评审建议，将其纳入首版（见 8.6），不再作为可选范围。当前 Agent CLI/Hub 无独立 publish 子命令；以后新增必须调用相同 service。
 
+**管理员豁免白名单（2026-11-19 实现）：** 管理员可在 Settings → Quality → Agent Quality 的 Exemptions 卡片维护 agent id 白名单；名单随 active policy revision 固化，保存必须填写 `change_reason`，只有 human platform admin 可写。命中后该 agent 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`。built-in system agent（`system_default=true`）与 personal assistant copy（`forked_from` 非空）自动豁免，无需为每个用户的 `assistant:<userId>` 逐一登记。普通作者仍无 bypass。
+
 ## 4. 架构与扩展契约
 
 ### 4.1 组件边界
@@ -909,6 +911,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 | v0.3 | 2026-11-12 | core-ai | AI 技术评审修订：发布元数据快照、MCP server/tool 拆分、workflow snapshot 准入、WARN 交付、decision route 指纹、B2 单一投影、publication record、fork/B3/admin/runbook/内部 caller 边界；更新验收与 ADR | 处理 AI 技术评审 P0/P1；不改变用户原始需求 | 待Review |
 | v0.4（实施记录） | 2026-11-14 | core-ai | 记录用户实施授权与 R-IMPL-01..13 的落地选择（存储、SHADOW 种子、幂等/并发、fork、workflow、MCP tool 未缓存、试测与 UI） | 用户授权实施；OPEN 决策按默认/最保守方案落地并留痕 | 用户授权实施（2026-11-14） |
 | v0.5（实施验证记录） | 2026-11-14 | core-ai | 记录 2.0.235–2.0.238 的实现与 dev E2E 结果、V38 迁移、剩余限制；交互式 builtin reset 改为全部候选检查通过后再写入 | 实施完成并完成 dev 验证；不改变用户原始需求 | 用户授权实施（2026-11-14） |
+| v0.6（实施记录） | 2026-11-19 | core-ai | 新增管理员豁免白名单：随 agent policy revision 固化的 `exemptions` 列表；built-in system agent 与 personal assistant copy 自动豁免；gate/report/receipt 记录 `exempted` + `exemption_reason` | 用户要求豁免已知违规但不愿修改的默认 assistant agent，且无法逐用户配置 | 用户请求（2026-11-19） |
 
 ### 14.4 设计自查记录
 

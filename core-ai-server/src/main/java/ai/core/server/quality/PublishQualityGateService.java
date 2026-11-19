@@ -75,7 +75,10 @@ public class PublishQualityGateService implements PublishQualityGate {
         var lease = enforce ? concurrencyGuard.acquire(entity.id, userId) : null;
         try {
             var run = createRun(entity, candidate, userId, policy, mode, operationKeyHash);
-            var evaluation = evaluateRules(entity, candidate, policy, run);
+            var exemptionReason = exemptionReason(entity, policy);
+            var evaluation = exemptionReason == null
+                ? evaluateRules(entity, candidate, policy, run)
+                : exemptEvaluation(exemptionReason);
             finishRun(run, evaluation);
             var result = resultOf(run, false);
             if (enforce) assertPublishable(result);
@@ -138,6 +141,18 @@ public class PublishQualityGateService implements PublishQualityGate {
         return run;
     }
 
+    private String exemptionReason(AgentDefinition entity, QualityPolicyService.ActivePolicy policy) {
+        var builtIn = QualityExemptions.builtInAgentReason(entity);
+        if (builtIn != null) return builtIn;
+        var matched = QualityExemptions.match(policy.exemptions(), entity.id);
+        return matched == null ? null : QualityExemptions.WHITELIST_REASON + ": " + matched;
+    }
+
+    private Evaluation exemptEvaluation(String reason) {
+        LOGGER.info("agent quality gate exempted, reason={}", reason);
+        return new Evaluation(QualityRunAggregator.aggregate(List.of()), null, reason);
+    }
+
     private Evaluation evaluateRules(AgentDefinition entity, PublishCandidate candidate,
                                      QualityPolicyService.ActivePolicy policy, AgentQualityRun run) {
         var budget = QualityBudget.forDeadline(RUN_DEADLINE);
@@ -156,7 +171,7 @@ public class PublishQualityGateService implements PublishQualityGate {
             outcomes.add(evaluateRule(snapshot, rule, budget, entity));
         }
         var aggregated = QualityRunAggregator.aggregate(outcomes);
-        return new Evaluation(aggregated, shadowError);
+        return new Evaluation(aggregated, shadowError, null);
     }
 
     private QualityRunAggregator.RuleOutcome evaluateRule(PublishQualitySnapshot snapshot,
@@ -195,6 +210,8 @@ public class PublishQualityGateService implements PublishQualityGate {
         run.routeFingerprint = aggregated.routeFingerprint();
         run.ruleResultDigest = aggregated.ruleResultDigest();
         run.shadowExecutionError = evaluation.shadowError();
+        run.exempted = evaluation.exemptionReason() != null;
+        run.exemptionReason = evaluation.exemptionReason();
         run.runStatus = QualityRunStatus.COMPLETED;
         run.finishedAt = ZonedDateTime.now();
         if (!store.updateRun(run, QualityRunStatus.STARTED)) {
@@ -278,7 +295,8 @@ public class PublishQualityGateService implements PublishQualityGate {
         return left == null ? right == null : left.equals(right);
     }
 
-    private record Evaluation(QualityRunAggregator.Aggregated aggregated, String shadowError) {
+    private record Evaluation(QualityRunAggregator.Aggregated aggregated, String shadowError,
+                              String exemptionReason) {
     }
 }
 

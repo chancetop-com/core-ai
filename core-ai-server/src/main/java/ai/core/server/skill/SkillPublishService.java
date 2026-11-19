@@ -47,6 +47,10 @@ public class SkillPublishService {
         var result = gate.evaluate(candidate);
         var report = SkillQualityReport.of(candidate, result);
         if (!result.passed()) throw failure(result, report);
+        if (result.exempted()) {
+            LOGGER.info("skill quality gate exempted, qualifiedName={}, reason={}",
+                candidate.qualifiedName(), result.exemptionReason());
+        }
 
         var previous = existing == null ? null : existing.resources;
         var expected = existing == null || existing.revision == null ? 0 : existing.revision;
@@ -110,6 +114,8 @@ public class SkillPublishService {
         receipt.packageDigest = candidate.packageDigest;
         receipt.metadataHash = candidate.metadataHash;
         receipt.gateResult = QualityGateResult.PASSED;
+        receipt.exempted = result.exempted();
+        receipt.exemptionReason = result.exemptionReason();
         receipt.checksComplete = result.checksComplete();
         receipt.warnCount = result.warnCount();
         receipt.ruleResultDigest = result.ruleResultDigest();

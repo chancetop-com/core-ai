@@ -72,6 +72,9 @@ public class QualityPublicationService {
         if (run.policyRevision == null || policy.revision() != run.policyRevision) {
             throw QualityGateException.stale("发布质量策略在检查后发生变化，请重新检查。");
         }
+        // Exempt runs evaluated no rules; the policy revision above is the only currency that can change the
+        // exemption decision, so there is nothing left to hash or re-check.
+        if (Boolean.TRUE.equals(run.exempted)) return;
         var snapshot = snapshotService.snapshot(candidate, run.policyRevision);
         if (run.dependencyFingerprint != null
             && !run.dependencyFingerprint.equals(snapshot.dependencyFingerprint())) {

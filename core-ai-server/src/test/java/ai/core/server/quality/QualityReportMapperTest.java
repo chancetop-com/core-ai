@@ -26,6 +26,8 @@ class QualityReportMapperTest {
         run.policyRevision = 5;
         run.definitionRevision = 3;
         run.checksComplete = Boolean.TRUE;
+        run.exempted = Boolean.TRUE;
+        run.exemptionReason = "built-in system agent";
         run.createdAt = ZonedDateTime.now();
         run.issues = List.of(
             issue(QualityEnforcement.WARN, QualityIssueStatus.FAIL),
@@ -45,6 +47,8 @@ class QualityReportMapperTest {
         assertThat(view.warnCount).isEqualTo(1);
         assertThat(view.blockFailCount).isEqualTo(1);
         assertThat(view.incompleteCount).isEqualTo(1);
+        assertThat(view.exempted).isTrue();
+        assertThat(view.exemptionReason).isEqualTo("built-in system agent");
     }
 
     private StoredQualityIssue issue(QualityEnforcement enforcement, QualityIssueStatus status) {

@@ -30,6 +30,12 @@ public class SkillQualityReceipt {
     @Field(name = "gate_result")
     public QualityGateResult gateResult;
 
+    @Field(name = "exempted")
+    public Boolean exempted;
+
+    @Field(name = "exemption_reason")
+    public String exemptionReason;
+
     @Field(name = "checks_complete")
     public Boolean checksComplete;
 

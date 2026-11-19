@@ -2,6 +2,8 @@ package ai.core.server.skill.quality;
 
 import ai.core.server.quality.QualityBudget;
 import ai.core.server.quality.QualityDecisionGateway;
+import ai.core.server.quality.QualityExemptions;
+import ai.core.server.quality.QualityHashes;
 import ai.core.server.quality.QualityRuleEvaluation;
 import ai.core.server.quality.QualityRunAggregator;
 import ai.core.server.quality.domain.QualityEnforcement;
@@ -68,6 +70,8 @@ public class SkillQualityGate {
     public SkillQualityResult evaluate(SkillPublishCandidate candidate) {
         if (policyService == null || registry == null) return evaluateStatic(candidate);
         var policy = policyService.active();
+        var matched = QualityExemptions.match(policy.exemptions(), candidate.qualifiedName(), candidate.name);
+        if (matched != null) return exemptResult(policy.revision(), matched);
         var budget = QualityBudget.forDeadline(DEADLINE);
         var outcomes = new ArrayList<QualityRunAggregator.RuleOutcome>();
         for (var active : policy.rules()) {
@@ -144,6 +148,12 @@ public class SkillQualityGate {
         return new QualityRuleEvaluation(QualityIssueStatus.ERROR, List.of(issue), null, "RULE_EXECUTION_ERROR");
     }
 
+    private SkillQualityResult exemptResult(int policyRevision, String matched) {
+        return new SkillQualityResult(UUID.randomUUID().toString(), ai.core.server.quality.domain.QualityGateResult.PASSED,
+            true, List.of(), List.of(), null, QualityHashes.issueDigest(List.of()), 0, policyRevision, true,
+            QualityExemptions.WHITELIST_REASON + ": " + matched);
+    }
+
     private SkillQualityResult result(QualityRunAggregator.Aggregated aggregated, int policyRevision) {
         var warnCount = 0;
         for (var issue : aggregated.issues()) {
@@ -151,6 +161,6 @@ public class SkillQualityGate {
         }
         return new SkillQualityResult(UUID.randomUUID().toString(), aggregated.gateResult(),
             aggregated.checksComplete(), aggregated.issues(), aggregated.ruleResults(),
-            aggregated.routeFingerprint(), aggregated.ruleResultDigest(), warnCount, policyRevision);
+            aggregated.routeFingerprint(), aggregated.ruleResultDigest(), warnCount, policyRevision, false, null);
     }
 }

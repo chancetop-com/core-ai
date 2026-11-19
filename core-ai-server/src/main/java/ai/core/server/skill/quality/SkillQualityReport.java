@@ -23,6 +23,8 @@ public class SkillQualityReport {
         report.metadataHash = candidate.metadataHash;
         report.gateResult = result.gateResult();
         report.checksComplete = result.checksComplete();
+        report.exempted = result.exempted();
+        report.exemptionReason = result.exemptionReason();
         report.warnCount = result.warnCount();
         report.issues = result.issues();
         report.ruleResults = result.ruleResults();
@@ -39,6 +41,8 @@ public class SkillQualityReport {
     public int policyRevision = SkillQualityGate.FALLBACK_POLICY_REVISION;
     public QualityGateResult gateResult;
     public boolean checksComplete;
+    public boolean exempted;
+    public String exemptionReason;
     public int warnCount;
     public List<StoredQualityIssue> issues;
     public List<StoredRuleResult> ruleResults;

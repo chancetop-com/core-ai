@@ -5,6 +5,7 @@ import { skillQualityApi, type QualityPolicy, type SkillQualityRule } from '../.
 import Pagination from '../../../components/Pagination';
 import { useListState } from '../../../hooks/useListState';
 import EnforcementBadge from './EnforcementBadge';
+import QualityExemptions from './QualityExemptions';
 
 export default function SkillQualityList() {
   const [rules, setRules] = useState<SkillQualityRule[]>([]);
@@ -66,6 +67,8 @@ export default function SkillQualityList() {
           </button>
         </div>
       </div>
+
+      <QualityExemptions api={skillQualityApi} policy={policy} kind="skill" onSaved={load} />
 
       <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
         <table className="w-full text-sm">

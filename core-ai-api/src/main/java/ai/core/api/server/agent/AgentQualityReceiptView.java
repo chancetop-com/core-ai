@@ -29,6 +29,12 @@ public class AgentQualityReceiptView {
     @Property(name = "gate_result")
     public String gateResult;
 
+    @Property(name = "exempted")
+    public Boolean exempted;
+
+    @Property(name = "exemption_reason")
+    public String exemptionReason;
+
     @Property(name = "rule_result_digest")
     public String ruleResultDigest;
 

@@ -31,4 +31,8 @@ public class ActivateAgentQualityPolicyRequest {
 
     @Property(name = "resume")
     public List<String> resume;
+
+    /** Replaces the whitelist when present; null keeps the active policy's exemptions. */
+    @Property(name = "exemptions")
+    public List<String> exemptions;
 }

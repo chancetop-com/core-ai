@@ -27,6 +27,10 @@ public class SkillQualityPolicyRevision {
     @Field(name = "bindings")
     public List<QualityRuleBinding> bindings;
 
+    /** Skill names or namespace/name pairs that skip the gate entirely; audited with the policy revision. */
+    @Field(name = "exemptions")
+    public List<String> exemptions;
+
     @Field(name = "change_reason")
     public String changeReason;
 

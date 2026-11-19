@@ -116,6 +116,40 @@ class SkillQualityPolicyGateTest {
     }
 
     @Test
+    void whitelistedSkillSkipsRuleEvaluationByQualifiedName() {
+        activateExemptions(List.of("demo/demo-skill"));
+
+        var result = gate.evaluate(candidate());
+
+        assertThat(result.gateResult()).isEqualTo(QualityGateResult.PASSED);
+        assertThat(result.exempted()).isTrue();
+        assertThat(result.exemptionReason()).isEqualTo("quality exemption whitelist: demo/demo-skill");
+        assertThat(result.policyRevision()).isEqualTo(2);
+        assertThat(result.issues()).isEmpty();
+        assertThat(result.ruleResults()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(decisions);
+    }
+
+    @Test
+    void whitelistedSkillMatchesTheBareNameToo() {
+        activateExemptions(List.of("demo-skill"));
+
+        var result = gate.evaluate(candidate());
+
+        assertThat(result.exempted()).isTrue();
+        assertThat(result.exemptionReason()).isEqualTo("quality exemption whitelist: demo-skill");
+    }
+
+    @Test
+    void laterPolicyChangesKeepTheExemptions() {
+        activateExemptions(List.of("demo/demo-skill"));
+        policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, customRuleId, 1,
+            QualityEnforcement.SHADOW, 2, "observe only", null, null, null), "admin-1");
+
+        assertThat(policyService.active().exemptions()).containsExactly("demo/demo-skill");
+    }
+
+    @Test
     void decisionErrorFailsClosed() {
         activate(QualityEnforcement.BLOCK);
         when(decisions.decide(any(), any(), anyList(), any(), any()))
@@ -133,7 +167,12 @@ class SkillQualityPolicyGateTest {
 
     private void activate(QualityEnforcement enforcement) {
         policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, customRuleId, 1,
-            enforcement, 1, "test policy", null, null), "admin-1");
+            enforcement, 1, "test policy", null, null, null), "admin-1");
+    }
+
+    private void activateExemptions(List<String> exemptions) {
+        policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, null, null,
+            null, 1, "exemption whitelist", null, null, exemptions), "admin-1");
     }
 
     private ValidatedDecision decision(double probability) {
