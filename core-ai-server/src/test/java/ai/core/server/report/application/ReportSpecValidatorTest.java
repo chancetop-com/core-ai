@@ -71,7 +71,7 @@ class ReportSpecValidatorTest {
                           "display": {"type": "LINE", "x": "bucket", "series": [{"field": "x"}]}
                         }
                         """), dataset()));
-        assertTrue(error.issues().stream().anyMatch(issue -> issue.code().equals("UNKNOWN_MEASURE_FIELD")));
+        assertTrue(error.issues().stream().anyMatch(issue -> "UNKNOWN_MEASURE_FIELD".equals(issue.code())));
     }
 
     @Test
@@ -93,7 +93,7 @@ class ReportSpecValidatorTest {
                           "display": {"type": "LINE", "x": "bucket", "series": [{"field": "x"}]}
                         }
                         """), dataset()));
-        assertTrue(error.issues().stream().anyMatch(issue -> issue.code().equals("CHART_AXIS_AMBIGUOUS")));
+        assertTrue(error.issues().stream().anyMatch(issue -> "CHART_AXIS_AMBIGUOUS".equals(issue.code())));
     }
 
     private Dataset dataset() {

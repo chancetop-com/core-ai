@@ -6,7 +6,6 @@ import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
 import ai.core.server.report.domain.ReportConstants;
-import ai.core.server.report.domain.ReportData;
 import ai.core.server.report.domain.ReportSpec;
 import ai.core.server.report.store.PgReportInvalidCountRow;
 import ai.core.server.report.store.PgReportRangeRow;
@@ -64,7 +63,7 @@ class ReportQueryServicePgTest {
             statement.execute("CREATE TABLE IF NOT EXISTS dataset.dataset_records (id text PRIMARY KEY, dataset_id text, agent_id text, "
                     + "run_id text, session_id text, user_id text, data jsonb, run_started_at timestamptz, created_at timestamptz, "
                     + "created_by text, updated_at timestamptz, updated_by text)");
-        } catch (Exception e) {
+        } catch (java.sql.SQLException e) {
             throw new IllegalStateException("failed to initialize report query test schema", e);
         }
     }

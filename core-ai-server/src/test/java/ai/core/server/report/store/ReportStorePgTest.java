@@ -57,7 +57,7 @@ class ReportStorePgTest {
             statement.execute("CREATE TABLE IF NOT EXISTS app.home_report_pins (id text PRIMARY KEY, user_id text NOT NULL, report_id text NOT NULL, "
                     + "position integer NOT NULL, width text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(), "
                     + "updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE(user_id, report_id))");
-        } catch (Exception e) {
+        } catch (java.sql.SQLException e) {
             throw new IllegalStateException("failed to initialize report store test schema", e);
         }
     }
