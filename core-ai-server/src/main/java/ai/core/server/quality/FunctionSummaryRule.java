@@ -20,6 +20,8 @@ public class FunctionSummaryRule implements QualityRuleEvaluator {
     public static final String KEY = "DESC.FUNCTION_SUMMARY_REQUIRED";
     public static final String QUESTION = "function_summary_present";
     public static final String PREDICATE = "仅从该 description，读者能否明确知道 Agent 的至少一项实际功能或任务";
+    private static final String INSTRUCTION = "判断读者是否能从该 description 明确知道 Agent 的至少一项实际功能或任务。"
+        + "只有名字、版本号、标签、宣传语（如“最好用的智能助手”）不算；简短但具体的功能介绍算。";
 
     @Override
     public QualityRuleEvaluation evaluate(QualityRuleContext context) {
@@ -28,10 +30,7 @@ public class FunctionSummaryRule implements QualityRuleEvaluator {
         if (context.decisions() == null) return decisionUnavailable(context);
 
         var state = JsonUtil.toJson(Map.of("task", "publish_quality_function_summary", "description", description));
-        var question = DecisionQuestion.noul(QUESTION,
-            "判断读者是否能从该 description 明确知道 Agent 的至少一项实际功能或任务。"
-                + "只有名字、版本号、标签、宣传语（如“最好用的智能助手”）不算；简短但具体的功能介绍算。",
-            criteria());
+        var question = DecisionQuestion.noul(QUESTION, INSTRUCTION, criteria());
         try {
             var decision = context.decisions().decide(context.rule().modelAlias, state, List.of(question),
                 context.rule().expectedRouteFingerprint, context.budget());
@@ -100,7 +99,8 @@ public class FunctionSummaryRule implements QualityRuleEvaluator {
     public RuleTemplate template() {
         return new RuleTemplate(KEY, "description 必须包含功能简介", "DECISION", "DESCRIPTION",
             "description 必须让读者明确知道 Agent 的至少一项实际功能。",
-            List.of(), List.of(), true);
+            List.of(), List.of(), true,
+            List.of(new QuestionSpec(QUESTION, "noul", INSTRUCTION, criteria())));
     }
 }
 

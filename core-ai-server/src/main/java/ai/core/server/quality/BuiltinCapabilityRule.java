@@ -179,7 +179,9 @@ public class BuiltinCapabilityRule implements QualityRuleEvaluator {
             "提示词要求执行文件、网络、代码、图片或视频操作时，必须配置对应 builtin 能力。",
             List.of(new RuleParameterSpec("providerPolicy", "ENUM", false,
                 "能力来源策略；首版只支持 BUILTIN_REQUIRED。", "BUILTIN_REQUIRED",
-                List.of("BUILTIN_REQUIRED"))), List.of(), true);
+                List.of("BUILTIN_REQUIRED"))), List.of(), true,
+            ORDER.stream().map(capability -> new QuestionSpec(questionName(capability), "noul",
+                instruction(capability), criteria())).toList());
     }
 
     private record CapabilityOutcome(QualityIssueStatus status, List<StoredQualityIssue> issues) {

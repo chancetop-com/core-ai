@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, FlaskConical, Trash2 } from 'lucide-react';
-import type { QualityAdminApi, QualityPolicy, QualityRule, RuleTemplate, RuleTestResponse } from '../../../api/quality';
+import type { QualityAdminApi, QualityPolicy, QualityRule, RuleQuestion, RuleTemplate, RuleTestResponse } from '../../../api/quality';
 import ToggleSwitch from '../../../components/ToggleSwitch';
 import EnforcementBadge from './EnforcementBadge';
 
@@ -42,6 +42,27 @@ const EMPTY_RULE = {
 };
 
 type EnforcementLevel = 'BLOCK' | 'WARN';
+
+function DecisionQuestionList({ questions, question }: { questions: RuleQuestion[]; question?: string }) {
+  if (!questions.length) return <>{question || '-'}</>;
+  return (
+    <ul className="space-y-2">
+      {questions.map(item => (
+        <li key={item.name}>
+          <div className="font-mono text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+            {item.name}{item.type ? ` · ${item.type}` : ''}
+          </div>
+          <div>{item.instruction || '-'}</div>
+          {item.criteria && Object.keys(item.criteria).length > 0 && (
+            <div className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+              {Object.entries(item.criteria).map(([key, value]) => `${key}: ${value}`).join(' · ')}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export default function QualityRuleEditor({
   api,
@@ -147,6 +168,8 @@ export default function QualityRuleEditor({
     [templates, rule],
   );
   const editableParams = template?.parameters || [];
+  const builtIn = Boolean(rule?.built_in);
+  const codeQuestions = template?.questions || [];
 
   const save = async () => {
     if (!rule || !canEditDefinition(rule)) return;
@@ -347,8 +370,12 @@ export default function QualityRuleEditor({
                   <dd className="mt-0.5">{rule.description || '-'}</dd>
                 </div>
                 <div className="md:col-span-2">
-                  <dt className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Decision question</dt>
-                  <dd className="mt-0.5">{rule.decision_question || '-'}</dd>
+                  <dt className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                    {codeQuestions.length ? 'Decision questions' : 'Decision question'}
+                  </dt>
+                  <dd className="mt-0.5">
+                    <DecisionQuestionList questions={codeQuestions} question={rule.decision_question} />
+                  </dd>
                 </div>
                 <div>
                   <dt className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>Inputs</dt>
@@ -382,16 +409,29 @@ export default function QualityRuleEditor({
                     rows={2} className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
                     style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
                 </label>
-                <label className="block text-xs">Decision question
-                  <textarea value={String(draft.decision_question || '')} onChange={e => setDraft({ ...draft, decision_question: e.target.value })}
-                    rows={3} className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
-                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
-                </label>
-                <label className="block text-xs">Instructions
-                  <textarea value={String(draft.decision_instruction || '')} onChange={e => setDraft({ ...draft, decision_instruction: e.target.value })}
-                    rows={3} className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
-                    style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
-                </label>
+                {builtIn && codeQuestions.length > 0 && (
+                  <div className="md:col-span-2 rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
+                    <div className="text-xs font-medium mb-2">Built-in decision questions</div>
+                    <DecisionQuestionList questions={codeQuestions} />
+                    <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                      Defined in code and read-only. Adjust parameters, thresholds or enforcement to tune this rule.
+                    </div>
+                  </div>
+                )}
+                {!builtIn && (
+                  <>
+                    <label className="block text-xs">Decision question
+                      <textarea value={String(draft.decision_question || '')} onChange={e => setDraft({ ...draft, decision_question: e.target.value })}
+                        rows={3} className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
+                        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
+                    </label>
+                    <label className="block text-xs">Instructions
+                      <textarea value={String(draft.decision_instruction || '')} onChange={e => setDraft({ ...draft, decision_instruction: e.target.value })}
+                        rows={3} className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
+                        style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
+                    </label>
+                  </>
+                )}
                 <label className="block text-xs">Pass threshold
                   <input type="number" step="0.01" value={Number(draft.affirmative_threshold ?? 0.8)}
                     onChange={e => setDraft({ ...draft, affirmative_threshold: Number(e.target.value) })}
@@ -436,20 +476,22 @@ export default function QualityRuleEditor({
                   </div>
                 )}
 
-                <div className="md:col-span-2 text-xs">
-                  Inputs:
-                  {inputOptions.map(option => (
-                    <label key={option} className="inline-flex items-center gap-1 ml-2">
-                      <input type="checkbox"
-                        checked={((draft.input_selector as string[]) || []).includes(option)}
-                        onChange={e => {
-                          const current = (draft.input_selector as string[]) || [];
-                          setDraft({ ...draft, input_selector: e.target.checked ? [...current, option] : current.filter(v => v !== option) });
-                        }} />
-                      {option}
-                    </label>
-                  ))}
-                </div>
+                {!builtIn && (
+                  <div className="md:col-span-2 text-xs">
+                    Inputs:
+                    {inputOptions.map(option => (
+                      <label key={option} className="inline-flex items-center gap-1 ml-2">
+                        <input type="checkbox"
+                          checked={((draft.input_selector as string[]) || []).includes(option)}
+                          onChange={e => {
+                            const current = (draft.input_selector as string[]) || [];
+                            setDraft({ ...draft, input_selector: e.target.checked ? [...current, option] : current.filter(v => v !== option) });
+                          }} />
+                        {option}
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

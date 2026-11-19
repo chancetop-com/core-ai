@@ -158,6 +158,13 @@ export interface RuleParameter {
   options?: string[];
 }
 
+export interface RuleQuestion {
+  name: string;
+  type?: string;
+  instruction?: string;
+  criteria?: Record<string, string>;
+}
+
 export interface RuleTemplate {
   evaluator_key: string;
   name: string;
@@ -167,6 +174,7 @@ export interface RuleTemplate {
   parameters: RuleParameter[];
   input_options: string[];
   supports_decision: boolean;
+  questions?: RuleQuestion[];
 }
 
 export interface PolicyBinding {

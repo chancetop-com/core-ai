@@ -27,6 +27,8 @@ import java.util.regex.Pattern;
 public class ResourceBindingRule implements QualityRuleEvaluator {
     public static final String KEY = "PROMPT.RESOURCE_BINDING_REQUIRED";
     public static final String GLOBAL_QUESTION = "uncovered_resource_required";
+    private static final String GLOBAL_INSTRUCTION = "除了已列出的候选资源外，提示词是否还要求使用任何未在已配置资源中出现的工具、"
+        + "API、MCP server、skill、sub-agent 或 dataset？无法确定资源名时也回答 yes。";
     private static final int MAX_CANDIDATES = 12;
     private static final Pattern EXPLICIT_ID = Pattern.compile(
         "(?:api-app|api-service|api-operation|mcp-tool|builtin|llm-call):[A-Za-z0-9_.:\\-]+");
@@ -50,9 +52,7 @@ public class ResourceBindingRule implements QualityRuleEvaluator {
         for (int i = 0; i < candidates.size(); i++) {
             questions.add(DecisionQuestion.noul(questionName(i), instruction(candidates.get(i)), criteria()));
         }
-        questions.add(DecisionQuestion.noul(GLOBAL_QUESTION,
-            "除了已列出的候选资源外，提示词是否还要求使用任何未在已配置资源中出现的工具、"
-                + "API、MCP server、skill、sub-agent 或 dataset？无法确定资源名时也回答 yes。", criteria()));
+        questions.add(DecisionQuestion.noul(GLOBAL_QUESTION, GLOBAL_INSTRUCTION, criteria()));
 
         try {
             var decision = context.decisions().decide(context.rule().modelAlias, state, questions,
@@ -230,7 +230,8 @@ public class ResourceBindingRule implements QualityRuleEvaluator {
         return new RuleTemplate(KEY, "指令所需资源与配置一致", "HYBRID", "PROMPT",
             "提示词中实际要求使用的命名资源必须有对应配置；未知名称只做字段级提示。",
             List.of(new RuleParameterSpec("catalogLimit", "INTEGER", false,
-                "候选目录上限，默认 2000。", "2000", List.of())), List.of(), true);
+                "候选目录上限，默认 2000。", "2000", List.of())), List.of(), true,
+            List.of(new QuestionSpec(GLOBAL_QUESTION, "noul", GLOBAL_INSTRUCTION, criteria())));
     }
 
     private record Candidate(String name, String type, boolean bound, String locatedBy) {

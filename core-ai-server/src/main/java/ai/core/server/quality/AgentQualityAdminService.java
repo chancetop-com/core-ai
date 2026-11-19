@@ -9,6 +9,7 @@ import ai.core.api.server.agent.AgentQualityPolicyListResponse;
 import ai.core.api.server.agent.AgentQualityPolicyView;
 import ai.core.api.server.agent.AgentQualityRuleListResponse;
 import ai.core.api.server.agent.AgentQualityRuleParameterView;
+import ai.core.api.server.agent.AgentQualityRuleQuestionView;
 import ai.core.api.server.agent.AgentQualityRuleTemplateListResponse;
 import ai.core.api.server.agent.AgentQualityRuleTemplateView;
 import ai.core.api.server.agent.AgentQualityRuleView;
@@ -414,6 +415,16 @@ public class AgentQualityAdminService {
             parameters.add(item);
         }
         view.parameters = parameters;
+        var questions = new ArrayList<AgentQualityRuleQuestionView>();
+        for (var question : template.questions()) {
+            var item = new AgentQualityRuleQuestionView();
+            item.name = question.name();
+            item.type = question.type();
+            item.instruction = question.instruction();
+            item.criteria = question.criteria();
+            questions.add(item);
+        }
+        view.questions = questions;
         return view;
     }
 }

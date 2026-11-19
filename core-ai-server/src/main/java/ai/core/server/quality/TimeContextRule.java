@@ -130,7 +130,8 @@ public class TimeContextRule implements QualityRuleEvaluator {
             List.of(new RuleParameterSpec("temporalScope", "ENUM", false,
                 "时间指令范围：CURRENT_TIME_DEPENDENT（默认，仅当前时钟依赖）或 ANY_TEMPORAL_INSTRUCTION（严格）。",
                 "CURRENT_TIME_DEPENDENT", List.of("CURRENT_TIME_DEPENDENT", "ANY_TEMPORAL_INSTRUCTION"))),
-            List.of(), true);
+            List.of(), true,
+            List.of(new QuestionSpec(QUESTION, "noul", instruction("CURRENT_TIME_DEPENDENT"), criteria())));
     }
 }
 

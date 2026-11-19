@@ -31,4 +31,7 @@ public class AgentQualityRuleTemplateView {
 
     @Property(name = "supports_decision")
     public Boolean supportsDecision;
+
+    @Property(name = "questions")
+    public List<AgentQualityRuleQuestionView> questions;
 }

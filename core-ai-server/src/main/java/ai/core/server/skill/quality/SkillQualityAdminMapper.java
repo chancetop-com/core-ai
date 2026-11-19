@@ -3,6 +3,7 @@ package ai.core.server.skill.quality;
 import ai.core.api.server.skill.SkillQualityPolicyBindingView;
 import ai.core.api.server.skill.SkillQualityPolicyView;
 import ai.core.api.server.skill.SkillQualityRuleParameterView;
+import ai.core.api.server.skill.SkillQualityRuleQuestionView;
 import ai.core.api.server.skill.SkillQualityRuleTemplateView;
 import ai.core.api.server.skill.SkillQualityRuleView;
 import ai.core.server.quality.QualityRuleEvaluator;
@@ -107,6 +108,16 @@ public final class SkillQualityAdminMapper {
             parameters.add(item);
         }
         view.parameters = parameters;
+        var questions = new ArrayList<SkillQualityRuleQuestionView>();
+        for (var question : template.questions()) {
+            var item = new SkillQualityRuleQuestionView();
+            item.name = question.name();
+            item.type = question.type();
+            item.instruction = question.instruction();
+            item.criteria = question.criteria();
+            questions.add(item);
+        }
+        view.questions = questions;
         return view;
     }
 
