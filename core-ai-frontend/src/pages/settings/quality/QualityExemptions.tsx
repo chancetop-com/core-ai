@@ -42,7 +42,7 @@ export default function QualityExemptions({ api, policy, kind, onSaved }: Props)
   };
 
   const hint = kind === 'agent'
-    ? 'One agent id per line. Built-in system agents and personal assistant copies are exempt automatically.'
+    ? 'One agent id (or exact agent name) per line. Built-in system agents and personal assistant copies are exempt automatically.'
     : 'One skill name or namespace/name per line. Built-in agent exemptions do not apply to skills.';
 
   return (

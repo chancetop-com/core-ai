@@ -144,7 +144,7 @@ public class PublishQualityGateService implements PublishQualityGate {
     private String exemptionReason(AgentDefinition entity, QualityPolicyService.ActivePolicy policy) {
         var builtIn = QualityExemptions.builtInAgentReason(entity);
         if (builtIn != null) return builtIn;
-        var matched = QualityExemptions.match(policy.exemptions(), entity.id);
+        var matched = QualityExemptions.match(policy.exemptions(), entity.id, entity.name);
         return matched == null ? null : QualityExemptions.WHITELIST_REASON + ": " + matched;
     }
 

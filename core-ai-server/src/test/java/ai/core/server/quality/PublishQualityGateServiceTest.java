@@ -86,6 +86,20 @@ class PublishQualityGateServiceTest {
     }
 
     @Test
+    void whitelistedAgentCanBeMatchedByName() {
+        when(policyService.active()).thenReturn(activePolicy("Report Renderer"));
+        var entity = new AgentDefinition();
+        entity.id = "agent-9";
+        entity.name = "Report Renderer";
+
+        var result = service.evaluate(entity, candidate(entity), "user-1", QualityGateMode.PUBLISH, null, true);
+
+        assertThat(result.run().exempted).isTrue();
+        assertThat(result.run().exemptionReason)
+            .isEqualTo(QualityExemptions.WHITELIST_REASON + ": Report Renderer");
+    }
+
+    @Test
     void ordinaryAgentStillRunsTheSnapshotPath() {
         when(policyService.active()).thenReturn(activePolicy());
         when(snapshotService.snapshot(any(), eq(7))).thenReturn(

@@ -128,7 +128,7 @@
 
 **接入决策与理由：**普通及交互式替代发布都应共享门禁；个人助手 fork 对过滤后的新配置执行门禁，被过滤的引用记录为 WARN，失败不创建 PUBLISHED 副本；交互式 builtin reset 先检查候选再写入。启动初始化/migration 不同步依赖外部模型，属于明确的受信 seed 路径，用代码检查和 CI fixture 验证，并审计标记 trusted-seed；不向用户开放 bypass；每个 migration 例外必须在 14.5 列出并说明理由。Workflow 不是本次 Agent 发布 API 的入口，但 `OWNED_EDITABLE` snapshot 是等价的可执行配置固化路径；v0.3 采纳 AI 技术评审建议，将其纳入首版（见 8.6），不再作为可选范围。当前 Agent CLI/Hub 无独立 publish 子命令；以后新增必须调用相同 service。
 
-**管理员豁免白名单（2026-11-19 实现）：** 管理员可在 Settings → Quality → Agent Quality 的 Exemptions 卡片维护 agent id 白名单；名单随 active policy revision 固化，保存必须填写 `change_reason`，只有 human platform admin 可写。命中后该 agent 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`。built-in system agent（`system_default=true`）与 personal assistant copy（`forked_from` 非空）自动豁免，无需为每个用户的 `assistant:<userId>` 逐一登记。普通作者仍无 bypass。
+**管理员豁免白名单（2026-11-19 实现）：** 管理员可在 Settings → Quality → Agent Quality 的 Exemptions 卡片维护 agent id/name 白名单（id 优先，name 需精确匹配）；名单随 active policy revision 固化，保存必须填写 `change_reason`，只有 human platform admin 可写。命中后该 agent 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`。built-in system agent（`system_default=true`）与 personal assistant copy（`forked_from` 非空）自动豁免，无需为每个用户的 `assistant:<userId>` 逐一登记。普通作者仍无 bypass。
 
 ## 4. 架构与扩展契约
 
