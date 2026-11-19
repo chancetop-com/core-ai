@@ -2,13 +2,13 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | Draft / 待用户 Review；P0/P1 实现进行中（dev E2E 待跑）；AI 评审记录保留 |
-| 文档版本 | v0.6（领域设计 + P0/P1 实现；未部署） |
+| 状态 | Draft / 待用户验收；P0/P1 实现完成，dev E2E 通过；AI 评审记录保留 |
+| 文档版本 | v0.7（领域设计 + P0/P1 实现；dev 2.0.303 已验收） |
 | 创建日期 | 2026-11-19 |
 | 需求提出者 / Reviewer | 用户；AI 技术评审独立记录，非用户批准 |
 | 作者 | core-ai |
 | 范围 | 对话创建/修改动态报表；Agent 直接保存；报表管理页；钉选到 `/for-you`；查询、刷新、权限与失效处理 |
-| 本次交付 | 设计文档 + 报表后端、管理页、首页钉选 P0/P1 实现；未部署 |
+| 本次交付 | 设计文档 + 报表后端、管理页、首页钉选 P0/P1 实现；dev 2.0.303 E2E 已通过 |
 | 参考方式 | 参考 Agent Gate 的治理结构、服务端强制校验、结构化错误与验收矩阵；不引入发布门禁，也不采用其 proposal/commit 审批模型 |
 
 ## 0. 原始需求与文档治理
@@ -872,7 +872,15 @@ AI 评审补充：v0.4 按 U-004 移除了 proposal/commit，P0-1/P0-2 不再适
 | v0.3 | 2026-11-19 | 加入当前会话模型 AI 技术评审（2 P0 / 11 P1 / 6 P2）；补充 §3 认证事实、§11.2 验收建议与 §13 决策建议；记录指定模型再次 429 及用户停用该模型的决定；未改实现代码 |
 | v0.4 | 2026-11-19 | 按用户 U-004 取消 proposal/human commit/approval receipt；Agent 直接创建/修改报表并保存，报表进入 `/reports`，Pin/删除/排序由用户操作；移除 proposals 表与相关 API/tool；增加审计表；按 AI 评审调整 display 矩阵、timezone、LAST tie-break、首屏 batch、REPEATABLE READ/只读事务；未改实现代码 |
 | v0.5 | 2026-11-19 | 新增 §5.1 领域模型：DatasetReport/HomeReportLayout 聚合、值对象、不变量、领域策略、应用服务与仓储、生命周期、并发/锁顺序、分层与包结构；补充 §7 存储边界（全部 PG、无 Mongo 双写）；未改实现代码 |
-| v0.6 | 2026-11-19 | 落地 P0/P1：V46 迁移、PG 仓储、ReportSpecValidator、ReportQueryService、ReportService/HomeReportService、报表/首页 API、ReportToolProvider、前端报表列表/详情/渲染器/ForYou 钉选/聊天 report_created 卡片；未部署 |
+| v0.6 | 2026-11-19 | 落地 P0/P1：V46 迁移、PG 仓储、ReportSpecValidator、ReportQueryService、ReportService/HomeReportService、报表/首页 API、ReportToolProvider、前端报表列表/详情/渲染器/ForYou 钉选/聊天 report_created 卡片；未部署 |\n| v0.7 | 2026-11-19 | dev 部署 2.0.303 并开启 SYS_REPORT_ENABLED；E2E 覆盖 Agent 创建报表/report_created 事件、报表 data、个人 Pin、batch data、删除已 Pin 报表与 layout revision 递增；UAT/prod 未动 |
+
+### 14.5 Dev E2E 记录（2026-11-19）
+
+- 镜像 `chancetop/core-ai-server:2.0.303`（CI Build Server 成功），namespace `dev-ai`，`SYS_REPORT_ENABLED=true`；`/api/capabilities` 返回 `dataset_reports=true`。
+- V46 已在 dev PostgreSQL 手工执行（Flyway 因既有 V45 checksum mismatch 拒绝迁移，未修改历史 migration）；表 `app.dataset_reports`、`app.home_report_layouts`、`app.home_report_pins`、`app.dataset_report_audits` 存在。
+- 用绑定 Dataset 的聊天会话触发 Agent：`list_report_sources`、`preview_dataset_report`、`create_dataset_report` 均成功，返回 `report_created` 事件；报表数据返回两个 bucket，ratio 0.4/0.8，边界 `to` 的记录被正确排除。
+- API E2E：`GET /api/reports`、`GET /api/reports/:id`、`GET /api/reports/:id/data`、`POST /api/for-you/report-pins`、`GET /api/for-you/report-pins`、`POST /api/for-you/report-pins/data`、`DELETE /api/reports/:id` 通过；删除已 Pin 报表后 Pin 清空且 `layout_revision` 递增。
+- 测试对象已清理；UAT/prod 未部署。
 
 ## 15. 参考资料
 
