@@ -29,6 +29,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -325,6 +326,7 @@ public class HomeTodoDigestService {
                                    List<HomeTodoSuggestion> suggestions, String model) {
         var now = ZonedDateTime.now(ZONE);
         var seenTitles = new HashSet<String>();
+        var sessionSlots = new HashMap<String, Integer>();
         int created = 0;
         int skipped = 0;
         int accepted = 0;
@@ -339,7 +341,10 @@ public class HomeTodoDigestService {
             }
             accepted++;
             var sessionId = sessionFor(suggestion.session, sessionIds);
-            var dedupeKey = "auto:" + runDate + ":" + sessionId + ":" + hash("sha-256", normalized, 12);
+            // Slot-based keys keep a retry stable even when the model rephrases a title: the same
+            // session/day/slot always maps to the same document id, so nothing is duplicated.
+            var slot = sessionSlots.merge(sessionId, 1, Integer::sum);
+            var dedupeKey = "auto:" + runDate + ":" + sessionId + ":" + slot;
             var todo = new UserTodo();
             todo.id = "auto-" + runDate.toString().replace("-", "") + "-" + hash("sha-1", userId + ":" + dedupeKey, 16);
             todo.userId = userId;

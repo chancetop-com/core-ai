@@ -284,10 +284,11 @@ examples/plugins/home/
 
 ### 7.4 去重键与确定性 id
 
-- `titleHash = sha256(normalizedTitle)[0..11]`，`normalizedTitle` = 去首尾空白、压缩连续空白、转小写。
-- `dedupeKey = "auto:" + originDate + ":" + sessionId + ":" + titleHash`。
+- `slot` = 本次运行中该会话被采纳的第几条 todo（从 1 开始；同批次内重复标题不占用 slot）。
+- `dedupeKey = "auto:" + originDate + ":" + sessionId + ":" + slot`。
 - `id = "auto-" + yyyyMMdd + "-" + sha1(userId + ":" + dedupeKey)[0..15]`。
-- 同一用户、同一天、同一会话、同一标题 → 同一个 `id` → `insertIfAbsent` 永远只成功一次。
+- 同一用户、同一天、同一会话、同一槽位 → 同一个 `id` → `insertIfAbsent` 永远只成功一次。
+- **为什么用槽位而不是标题哈希**：dev E2E 暴露了真实风险——同一会话重试时模型会把同一件事换一种说法（“Reply to the tax office” / “Answer the tax authority”），标题哈希会生成第二条近似重复。槽位键让重试稳定映射到同一批文档；模型改序时旧标题保留、不会产生重复。
 - 同一批次内再加一层内存集合：跨会话近似重复标题（归一化后相同）只保留第一条，避免两个会话各生成一条几乎一样的 todo。
 
 ### 7.5 生成审计实体（`home_todo_digest_runs`）
@@ -443,7 +444,7 @@ examples/plugins/home/
 | 调度接线 | `ForYouModule` | store/service/job 与 for-you 一起绑定；`fixedRate("home-todo-digest", 15m)` |
 | 迁移 | `V47__home_todo_digest.sql` | `app.home_todo_digest_runs` + 两个索引 |
 | Desktop 测试 | `test/homeDataClient.test.mjs`、`pluginE2E`、`pluginPageHost.smoke`、`homePage.smoke` | 14 项数据客户端用例 + 插件安装/授权 + 真实页面 DOM 增删改 |
-| Server 测试 | `HomeTodoDigestServiceTest` | 9 项：确定性 id、同日不重跑、FAILED 重试、跳过空会话、非法 JSON、标题去重、会话归属、未知标签回退、历史数据兼容 |
+| Server 测试 | `HomeTodoDigestServiceTest` | 10 项：确定性 id、同日不重跑、FAILED 重试、跳过空会话、非法 JSON、标题去重、会话归属、未知标签回退、历史数据兼容、改述标题仍映射同一 id |
 
 ### 12.2 与设计的偏差
 

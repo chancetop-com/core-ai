@@ -80,6 +80,20 @@ class HomeTodoDigestServiceTest {
     }
 
     @Test
+    void aRephrasedTitleKeepsTheSameSlotAndId() {
+        var firstRun = fixture();
+        firstRun.service.output = "{\"todos\":[{\"session\":\"S1\",\"title\":\"Reply to the tax office\"}]}";
+        firstRun.service.processUser("u-1", List.of(session("s-1")), batch());
+
+        var secondRun = fixture();
+        secondRun.service.output = "{\"todos\":[{\"session\":\"S1\",\"title\":\"Answer the tax authority\"}]}";
+        secondRun.service.processUser("u-1", List.of(session("s-1")), batch());
+
+        assertEquals("auto:2026-11-18:s-1:1", firstRun.todos.getFirst().dedupeKey);
+        assertEquals(firstRun.todos.getFirst().id, secondRun.todos.getFirst().id);
+    }
+
+    @Test
     void aCompletedRunIsNeverRepeated() {
         var fixture = fixture();
         var run = new HomeTodoDigestRun();
