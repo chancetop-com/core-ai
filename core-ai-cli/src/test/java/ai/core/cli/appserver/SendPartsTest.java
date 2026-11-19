@@ -45,6 +45,36 @@ class SendPartsTest {
     }
 
     @Test
+    void binaryFileIsReferencedByPathInsteadOfInlined() throws Exception {
+        var xlsx = staging.resolve("report.xlsx");
+        Files.write(xlsx, new byte[]{0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x01, 0x02});
+        var json = "{\"type\":\"file\",\"path\":\"" + xlsx.toString().replace("\\", "\\\\") + "\"}";
+
+        var parsed = SendParts.parse(parts(json), workspace, staging);
+
+        assertTrue(parsed.text().contains("[Attached file:"));
+        assertTrue(parsed.text().contains("report.xlsx"));
+        assertTrue(parsed.text().contains("not included here"));
+        assertFalse(parsed.text().contains("```"));
+        assertTrue(parsed.attachments().isEmpty());
+        assertTrue(parsed.hasContent());
+    }
+
+    @Test
+    void largeTextFileIsReferencedInsteadOfRejected() throws Exception {
+        var csv = staging.resolve("big.csv");
+        Files.writeString(csv, "x".repeat(100 * 1024 + 1));
+        var json = "{\"type\":\"file\",\"path\":\"" + csv.toString().replace("\\", "\\\\") + "\"}";
+
+        var parsed = SendParts.parse(parts(json), workspace, staging);
+
+        assertTrue(parsed.text().contains("[Attached file:"));
+        assertTrue(parsed.text().contains("big.csv"));
+        assertFalse(parsed.text().contains("```"));
+        assertTrue(parsed.attachments().isEmpty());
+    }
+
+    @Test
     void imagePartBecomesAttachment() throws Exception {
         Files.write(workspace.resolve("img.png"), new byte[]{1, 2, 3});
         var parsed = SendParts.parse(parts("{\"type\":\"image\",\"path\":\"img.png\"}"), workspace, staging);

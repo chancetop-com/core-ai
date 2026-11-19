@@ -1,6 +1,7 @@
 package ai.core.cli.appserver;
 
 import ai.core.agent.AttachedContent;
+import ai.core.utils.FileContents;
 import ai.core.utils.ImageDownscaler;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,8 +18,9 @@ import java.util.Locale;
 
 /**
  * Parses {@code session/send} parts into message text plus LLM attachments. Paths must resolve inside
- * the workspace or the session staging directory; small text files are inlined as fenced blocks,
- * images / PDFs are attached as base64.
+ * the workspace or the session staging directory; small text files are inlined as fenced blocks, images /
+ * PDFs are attached as base64, and every other file (spreadsheets, archives, etc.) is referenced by path so
+ * the agent opens it with its own tools instead of uploading its bytes to the model.
  *
  * @author stephen
  */
@@ -47,7 +49,7 @@ public final class SendParts {
         var type = part.path("type").asText("");
         switch (type) {
             case "text" -> text.append(part.path("text").asText("")).append('\n');
-            case "file" -> text.append(inlineFile(part, workspaceRoot, stagingRoot));
+            case "file" -> text.append(fileContent(part, workspaceRoot, stagingRoot));
             case "image" -> attachments.add(binaryAttachment(part, workspaceRoot, stagingRoot,
                     AttachedContent.AttachedContentType.IMAGE, true));
             case "pdf" -> attachments.add(binaryAttachment(part, workspaceRoot, stagingRoot,
@@ -56,18 +58,38 @@ public final class SendParts {
         }
     }
 
-    private static String inlineFile(JsonNode part, Path workspaceRoot, Path stagingRoot) {
+    /**
+     * Small text reaches the model inline (no tool round trip). A binary file — or text too large to
+     * inline — stays on disk and the model gets its path, which keeps bytes it cannot read out of the
+     * prompt and lets the agent open the file with whatever tool the format needs.
+     */
+    private static String fileContent(JsonNode part, Path workspaceRoot, Path stagingRoot) {
         var path = resolvePath(part, workspaceRoot, stagingRoot);
         try {
             long size = Files.size(path);
-            if (size > MAX_TEXT_BYTES) {
-                throw RpcException.business("PART_TOO_LARGE", "file is larger than 100KB, use the read_file tool instead");
+            if (size <= MAX_TEXT_BYTES) {
+                var bytes = Files.readAllBytes(path);
+                if (FileContents.looksLikeText(bytes)) {
+                    return "\n```" + extension(path) + "\n" + new String(bytes, StandardCharsets.UTF_8) + "\n```\n";
+                }
             }
-            var content = Files.readString(path, StandardCharsets.UTF_8);
-            return "\n```" + extension(path) + "\n" + content + "\n```\n";
+            return fileReference(path, size);
         } catch (IOException e) {
             throw RpcException.business("PART_READ_FAILED", "failed to read file: " + e.getMessage(), e);
         }
+    }
+
+    private static String fileReference(Path path, long size) {
+        return "\n[Attached file: " + path + " (" + sizeLabel(size) + ")]\n"
+                + "The file is on local disk and its content is not included here; when the task needs it, "
+                + "open that path with your tools (a shell command or a dedicated reader for binary formats, "
+                + "read_file for text and images).\n";
+    }
+
+    private static String sizeLabel(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1024 * 1024) return String.format(Locale.ROOT, "%.1f KB", bytes / 1024.0);
+        return String.format(Locale.ROOT, "%.1f MB", bytes / (1024.0 * 1024));
     }
 
     private static AttachedContent binaryAttachment(JsonNode part, Path workspaceRoot, Path stagingRoot,

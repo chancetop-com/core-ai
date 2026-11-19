@@ -92,6 +92,8 @@ interface DesktopSettings {
   sdkBrokerEnabled?: boolean;
   /** Start the installed app when the user signs in (default on). The window still closes to tray. */
   launchAtLogin?: boolean;
+  /** Download a newer release in the background; installing still asks first (default on). */
+  autoUpdate?: boolean;
   /** Bundled engine version whose standalone CLI copies this install has already refreshed. */
   cliSyncedEngineVersion?: string;
 }
@@ -133,6 +135,8 @@ const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
 const WINDOW_MIN = { width: 960, height: 600 };
 const UPDATE_CHECK_DELAY_MS = 3_000;
+/** A tray-resident app can run for days; releases are picked up without a restart. */
+const UPDATE_RECHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const CLI_SYNC_DELAY_MS = 4_000;
 type ColorScheme = 'system' | 'light' | 'dark';
 function normalizeColorScheme(value: unknown): ColorScheme {
@@ -197,6 +201,7 @@ function normalizeSettings(loaded: DesktopSettings): DesktopSettings {
   if (result.computerUse === undefined) result.computerUse = true;
   if (result.browserSkillEnabled === undefined) result.browserSkillEnabled = true;
   if (result.launchAtLogin === undefined) result.launchAtLogin = true;
+  if (result.autoUpdate === undefined) result.autoUpdate = true;
   result.notifyTarget = normalizeNotifyTarget(result.notifyTarget);
   result.notifySessions = normalizeNotifySessions(result.notifySessions);
   const list = Array.isArray(result.workspaces) ? result.workspaces.filter((entry): entry is string => typeof entry === 'string') : [];
@@ -796,10 +801,14 @@ const ATTACHMENT_FILTERS = [
   {
     name: 'Images and documents',
     extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'md', 'txt', 'log', 'json', 'yaml', 'yml',
-      'toml', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'go', 'sh', 'ps1', 'sql'],
+      'toml', 'csv', 'xml', 'html', 'css', 'js', 'ts', 'py', 'java', 'go', 'sh', 'ps1', 'sql',
+      'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'],
   },
   { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp'] },
-  { name: 'Documents', extensions: ['pdf', 'md', 'txt', 'log', 'json', 'yaml', 'yml', 'csv', 'xml'] },
+  {
+    name: 'Documents',
+    extensions: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'md', 'txt', 'log', 'json', 'yaml', 'yml', 'csv', 'xml'],
+  },
   { name: 'All files', extensions: ['*'] },
 ];
 async function attachPreviews(attachments: StagedAttachment[]): Promise<void> {
@@ -920,6 +929,7 @@ function registerIpc(): void {
     if (patch.notifySessions !== undefined) settings.notifySessions = normalizeNotifySessions(patch.notifySessions);
     if (typeof patch.backgroundScheduling === 'boolean') configureBackgroundScheduling();
     if (typeof patch.launchAtLogin === 'boolean') applyLaunchAtLogin();
+    if (typeof patch.autoUpdate === 'boolean') updateService?.setAutoDownload(patch.autoUpdate);
     saveSettings();
     applyColorScheme();
     let skillsChanged = false;
@@ -1737,18 +1747,30 @@ else {
       currentVersion: clientVersion,
       isPackaged: app.isPackaged,
       downloadDir: path.join(app.getPath('temp'), 'core-ai-desktop-updates'),
+      autoDownload: settings.autoUpdate !== false,
       onState: (state) => send('update:state', state),
       install: (installerPath) => runDesktopInstaller(installerPath),
       openFile: async (filePath) => {
         await shell.openPath(filePath);
       },
     });
+    // A crash mid-download or an older app version leaves non-installable files behind; the check
+    // below then prunes every cached installer of another release.
+    updateService.cleanupAbandoned();
     // Startup update check (design §4.7): a newer release badges the Settings row in the sidebar
-    // without the user opening About. Delayed so window paint and engine start-up go first, and
-    // skipped when the About panel already triggered a check.
+    // without the user opening About, and auto-download starts fetching it in the background.
+    // Delayed so window paint and engine start-up go first, and skipped when the About panel
+    // already triggered a check.
     setTimeout(() => {
       if (updateService?.snapshot().phase === 'idle') void updateService.check();
     }, UPDATE_CHECK_DELAY_MS);
+    // The window usually stays open in the tray for days, so a release published after launch
+    // must still be found — and, with auto-download on, fetched without a restart.
+    const updateRecheck = setInterval(() => {
+      const phase = updateService?.snapshot().phase;
+      if (phase !== 'downloading' && phase !== 'installing') void updateService?.check();
+    }, UPDATE_RECHECK_INTERVAL_MS);
+    updateRecheck.unref();
     // A desktop update also brings a new bundled engine; refresh the standalone CLI after the
     // window and engine start-up have had the disk to themselves.
     setTimeout(() => {

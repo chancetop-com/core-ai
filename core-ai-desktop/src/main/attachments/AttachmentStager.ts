@@ -36,23 +36,20 @@ export interface StagedBufferInput {
 }
 
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp']);
-const TEXT_EXTENSIONS = new Set([
-  'md', 'markdown', 'txt', 'text', 'log', 'json', 'jsonc', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf',
-  'properties', 'xml', 'csv', 'tsv', 'html', 'htm', 'css', 'scss', 'less', 'js', 'mjs', 'cjs', 'jsx',
-  'ts', 'tsx', 'py', 'java', 'kt', 'kts', 'go', 'rs', 'c', 'h', 'cpp', 'cc', 'cxx', 'hpp', 'cs', 'rb',
-  'php', 'pl', 'lua', 'r', 'dart', 'swift', 'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'sql', 'gradle',
-  'groovy', 'vue', 'svelte', 'tf',
-]);
 export const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
 export const MAX_PDF_BYTES = 16 * 1024 * 1024;
-const MAX_TEXT_BYTES = 100 * 1024;
+export const MAX_FILE_BYTES = 100 * 1024 * 1024;
 
-export function classifyAttachment(fileName: string): AttachmentKind | null {
+/**
+ * Images and PDFs ride along as binary parts the model can see. Every other file is staged and
+ * referenced by path: the engine inlines small text but never the bytes, so the agent opens the
+ * file itself (spreadsheets, archives, office documents) — its type does not need to be known here.
+ */
+export function classifyAttachment(fileName: string): AttachmentKind {
   const extension = path.extname(fileName).slice(1).toLowerCase();
   if (IMAGE_EXTENSIONS.has(extension)) return 'image';
   if (extension === 'pdf') return 'pdf';
-  if (TEXT_EXTENSIONS.has(extension)) return 'file';
-  return null;
+  return 'file';
 }
 
 /** Mirrors EngineSessionRegistry.stagingDir (the engine's user.home is the desktop home). */
@@ -71,10 +68,6 @@ export async function stageAttachments(stagingRoot: string, sessionId: string, s
       continue;
     }
     const kind = classifyAttachment(name);
-    if (!kind) {
-      skipped.push({ name, reason: 'unsupported file type' });
-      continue;
-    }
     let size: number;
     try {
       const info = statSync(source);
@@ -116,10 +109,6 @@ export async function stageBuffers(stagingRoot: string, sessionId: string, input
       continue;
     }
     const kind = classifyAttachment(name);
-    if (!kind) {
-      skipped.push({ name, reason: 'unsupported file type' });
-      continue;
-    }
     const data = input?.data;
     if (!(data instanceof ArrayBuffer)) {
       skipped.push({ name, reason: 'could not be staged (missing data)' });
@@ -178,12 +167,12 @@ export async function sweepStaging(stagingRoot: string, maxAgeMs: number): Promi
 }
 
 function maxBytesOf(kind: AttachmentKind): number {
-  if (kind === 'file') return MAX_TEXT_BYTES;
+  if (kind === 'file') return MAX_FILE_BYTES;
   return kind === 'pdf' ? MAX_PDF_BYTES : MAX_IMAGE_BYTES;
 }
 
 function sizeReasonOf(kind: AttachmentKind): string {
-  if (kind === 'file') return 'larger than 100 KB — mention its path in the message instead';
+  if (kind === 'file') return 'larger than 100 MB';
   return kind === 'pdf' ? 'larger than 16 MB' : 'larger than 50 MB';
 }
 

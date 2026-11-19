@@ -3,6 +3,7 @@ package ai.core.tool.tools;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.FileContents;
 import ai.core.utils.ImageFormats;
 import core.framework.util.Strings;
 import org.slf4j.Logger;
@@ -26,7 +27,6 @@ public class ReadFileTool extends CheapFileTool {
     private static final Logger LOGGER = LoggerFactory.getLogger(ReadFileTool.class);
     private static final int DEFAULT_LINE_LIMIT = 2000;
     private static final int MAX_LINE_LENGTH = 2000;
-    private static final int TEXT_INSPECTION_BYTES = 4096;
     private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "webp", "bmp");
 
     private static final String TOOL_DESC = """
@@ -80,17 +80,6 @@ public class ReadFileTool extends CheapFileTool {
 
     public static Builder builder() {
         return new Builder();
-    }
-
-    private static boolean looksLikeText(byte[] bytes) {
-        var inspected = Math.min(bytes.length, TEXT_INSPECTION_BYTES);
-        var controlBytes = 0;
-        for (var i = 0; i < inspected; i++) {
-            var value = bytes[i];
-            if (value == '\n' || value == '\r' || value == '\t') continue;
-            if (value < 0x20) controlBytes++;
-        }
-        return inspected == 0 || controlBytes * 10 < inspected;
     }
 
     @Override
@@ -178,7 +167,7 @@ public class ReadFileTool extends CheapFileTool {
      */
     private ToolCallResult readNonImageFile(String filePath, byte[] bytes, long startTime) {
         var size = bytes.length;
-        if (!looksLikeText(bytes)) {
+        if (!FileContents.looksLikeText(bytes)) {
             return ToolCallResult.failed("Error: " + filePath + " has an image file name but is neither an image ("
                             + ImageFormats.READABLE_FORMAT_LIST + ") nor text (" + size + " bytes)")
                     .withDuration(System.currentTimeMillis() - startTime);

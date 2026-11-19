@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import stagerModule from '../dist/test/attachmentStager.js';
 
-const { classifyAttachment, stagingDirOf, stageAttachments, stageBuffers, removeStaged, sweepStaging, MAX_IMAGE_BYTES } = stagerModule;
+const { classifyAttachment, stagingDirOf, stageAttachments, stageBuffers, removeStaged, sweepStaging, MAX_IMAGE_BYTES, MAX_FILE_BYTES } = stagerModule;
 
 function tempDir() {
   return mkdtempSync(path.join(os.tmpdir(), 'attachment-stager-'));
@@ -22,9 +22,23 @@ test('classify maps extensions to engine part types', () => {
   assert.equal(classifyAttachment('notes.md'), 'file');
   assert.equal(classifyAttachment('script.PY'), 'file');
   assert.equal(classifyAttachment('data.csv'), 'file');
-  assert.equal(classifyAttachment('archive.zip'), null);
-  assert.equal(classifyAttachment('image.bmp'), null);
-  assert.equal(classifyAttachment('README'), null);
+  assert.equal(classifyAttachment('report.xlsx'), 'file');
+  assert.equal(classifyAttachment('archive.zip'), 'file');
+  assert.equal(classifyAttachment('image.bmp'), 'file');
+  assert.equal(classifyAttachment('README'), 'file');
+});
+
+test('an xlsx is staged as a file the agent opens itself, not as something the model reads', async () => {
+  const root = tempDir();
+  const source = path.join(root, '社媒数据.xlsx');
+  writeFileSync(source, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0, 1, 2]));
+
+  const result = await stageAttachments(path.join(root, 'staging'), 'session-1', [source]);
+  assert.equal(result.skipped.length, 0);
+  assert.equal(result.attachments.length, 1);
+  assert.equal(result.attachments[0].kind, 'file');
+  assert.equal(result.attachments[0].name, '社媒数据.xlsx');
+  assert.ok(existsSync(result.attachments[0].path));
 });
 
 test('stage copies the file into the session staging directory', async () => {
@@ -43,25 +57,23 @@ test('stage copies the file into the session staging directory', async () => {
   assert.ok(existsSync(attachment.path));
 });
 
-test('unsupported, missing and oversize files are skipped with reasons', async () => {
+test('missing and oversize files are skipped with reasons', async () => {
   const root = tempDir();
-  const exe = path.join(root, 'tool.exe');
-  writeFileSync(exe, 'MZ');
-  const bigText = path.join(root, 'big.txt');
-  writeFileSync(bigText, 'x'.repeat(100 * 1024 + 1));
+  const bigFile = path.join(root, 'big.bin');
+  writeFileSync(bigFile, 'x');
+  truncateSync(bigFile, MAX_FILE_BYTES + 1);
   const bigImage = path.join(root, 'huge.png');
   writeFileSync(bigImage, 'x');
   truncateSync(bigImage, MAX_IMAGE_BYTES + 1);
 
   const result = await stageAttachments(path.join(root, 'staging'), 'session-1', [
-    exe, bigText, bigImage, path.join(root, 'missing.pdf'),
+    bigFile, bigImage, path.join(root, 'missing.pdf'),
   ]);
   assert.equal(result.attachments.length, 0);
-  assert.equal(result.skipped.length, 4);
-  assert.equal(result.skipped[0].reason, 'unsupported file type');
-  assert.match(result.skipped[1].reason, /100 KB/);
-  assert.match(result.skipped[2].reason, /50 MB/);
-  assert.match(result.skipped[3].reason, /could not be read/);
+  assert.equal(result.skipped.length, 3);
+  assert.match(result.skipped[0].reason, /100 MB/);
+  assert.match(result.skipped[1].reason, /50 MB/);
+  assert.match(result.skipped[2].reason, /could not be read/);
 });
 
 test('same file re-staged reuses the copy, changed size gets a suffixed name', async () => {
@@ -114,14 +126,16 @@ test('stageBuffers strips directories from names and applies the pick gates', as
     { name: 'huge.png', data: big.buffer },
     { name: 'no-data.png' },
   ]);
-  assert.equal(result.attachments.length, 1);
+  assert.equal(result.attachments.length, 2);
   assert.equal(result.attachments[0].name, 'screenshot.png');
+  assert.equal(result.attachments[0].kind, 'image');
   assert.equal(result.attachments[0].path, path.join(staging, 's', 'screenshot.png'));
-  assert.equal(result.skipped.length, 4);
+  assert.equal(result.attachments[1].name, 'archive.zip');
+  assert.equal(result.attachments[1].kind, 'file');
+  assert.equal(result.skipped.length, 3);
   assert.equal(result.skipped[0].reason, 'not a file');
-  assert.equal(result.skipped[1].reason, 'unsupported file type');
-  assert.match(result.skipped[2].reason, /50 MB/);
-  assert.match(result.skipped[3].reason, /missing data/);
+  assert.match(result.skipped[1].reason, /50 MB/);
+  assert.match(result.skipped[2].reason, /missing data/);
 });
 
 test('staging directories are per session', () => {
