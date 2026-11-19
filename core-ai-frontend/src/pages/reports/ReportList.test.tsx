@@ -64,7 +64,8 @@ describe('ReportList', () => {
 
     await screen.findByText('Showing 1-10 of 25');
     expect(screen.getAllByText('Tester').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('HR简历库 · BAR · rev 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Dataset').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/HR简历库/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole('button', { name: /next/i }));
     await screen.findByText('Showing 11-20 of 25');

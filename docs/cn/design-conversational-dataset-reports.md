@@ -90,6 +90,10 @@
 - **不做 proposal / approval receipt / human commit 流程。**Agent 创建/修改报表属于用户授权范围内的工具调用，人类控制点是管理页的 Pin/删除/排序，而不是聊天里的二次确认。
 - **首版不做报表版本回滚/历史对比。**只保留 `revision` 与审计摘要；需要回滚时另立需求。
 
+### 1.4 后续条目（不在 v1）
+
+- **多 Dataset / 多源报表**：v1 固定单 Dataset；`spec.source.dataset_id` 为单值，管理页的 `Dataset` 也只展示单值。跨 Dataset join、多源合并和各源独立筛选留作后续需求，不在本次实现。
+
 ## 2. 方案依据与取舍
 
 | 依据 | 采用 | 不照搬 / 理由 |

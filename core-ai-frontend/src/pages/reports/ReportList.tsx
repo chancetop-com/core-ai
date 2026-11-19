@@ -209,7 +209,7 @@ export default function ReportList() {
                       )}
                     </div>
                     <div className="text-xs mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }}>
-                      {report.dataset_name || report.dataset_id} · {report.display_type || 'TABLE'} · rev {report.revision}
+                      {report.display_type || 'TABLE'} · rev {report.revision}
                     </div>
                   </div>
                   <ExternalLink size={14} className="shrink-0" style={{ color: 'var(--color-text-secondary)' }} />
@@ -221,10 +221,10 @@ export default function ReportList() {
 
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-3 text-[11px]"
                   style={{ color: 'var(--color-text-secondary)' }}>
+                  <div className="truncate"><span className="opacity-70">Dataset</span> {report.dataset_name || report.dataset_id}</div>
                   <div className="truncate"><span className="opacity-70">Creator</span> {creator}</div>
                   <div className="truncate"><span className="opacity-70">Updated</span> {formatTime(report.updated_at)}</div>
                   <div><span className="opacity-70">Status</span> {report.pin_id ? 'Pinned' : 'Unpinned'}</div>
-                  <div><span className="opacity-70">Revision</span> {report.revision}</div>
                 </div>
 
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t" style={{ borderColor: 'var(--color-border)' }}>
