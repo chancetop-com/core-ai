@@ -45,7 +45,8 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class HomeTodoDigestService {
     public static final ZoneId ZONE = ZoneId.of("Asia/Shanghai");
-    public static final LocalTime RUN_AFTER = LocalTime.of(7, 30);
+    /** Just after midnight: the day that just closed is final, and the list is ready before the workday. */
+    public static final LocalTime RUN_AFTER = LocalTime.of(0, 10);
     public static final String PROMPT_VERSION = "v1";
     static final String STATUS_RUNNING = "RUNNING";
     static final String STATUS_COMPLETED = "COMPLETED";
@@ -89,7 +90,7 @@ public class HomeTodoDigestService {
     @Inject
     SystemSettingsService systemSettingsService;
 
-    /** Runs every tick; the calendar guard makes the first tick after 07:30 do the work. */
+    /** Runs every tick; the calendar guard makes the first tick after 00:10 do the work. */
     public void run() {
         var now = ZonedDateTime.now(ZONE);
         if (now.toLocalTime().isBefore(RUN_AFTER)) return;

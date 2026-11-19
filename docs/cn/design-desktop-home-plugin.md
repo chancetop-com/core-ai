@@ -311,7 +311,8 @@ examples/plugins/home/
 ### 8.1 调度
 
 - 类型：server job（`Job` + `schedule().fixedRate("home-todo-digest", job, Duration.ofMinutes(15))`）。
-- 触发条件：`LocalTime.now(Asia/Shanghai) >= 07:30`；总结日期 = 上海时区的“昨天”（00:00:00 含，次日 00:00:00 不含）。
+- 触发条件：`LocalTime.now(Asia/Shanghai) >= 00:10`；总结日期 = 上海时区的“昨天”（00:00:00 含，次日 00:00:00 不含）。
+- 为什么选 00:10：一天刚结束时“昨天”的窗口已经封闭，生成的 todo 在用户早上打开应用前就绪；同时避免了 07:30 之后才启动的 pod 在白天补跑造成的时间漂移。
 - 为什么不用 `dailyAt`：`SchedulerConfig.timeZone()` 是全局且必须在任何 trigger 之前调用；为单个任务改全局时区会改变所有既有 job 的语义。fixedRate + 日历守卫在 pod 重启/补跑时也更稳。
 - 多副本：运行记录主键为 `{userId}:{date}`，`insertIfAbsent` 抢占；`COMPLETED` 直接跳过；`RUNNING` 未超时（30 分钟）跳过；`FAILED` 或超时的 `RUNNING` 允许重试。
 - 补跑边界：只补“当天已过 07:30 但仍未完成”的情况；跨天不回溯（明确记录为限制）。
@@ -419,7 +420,7 @@ examples/plugins/home/
 | D1 | 数据通路 | 页面直连 server / engine RPC / main 代理 | **main 代理**：页面无网络且不能持凭据；engine RPC 不承担 server HTTP 代理 |
 | D2 | 能力命名 | 复用 `sessions.read` / 新增域名 | **新增 `reports.read`/`todos.read`/`todos.write`**：语义清晰、可独立撤销 |
 | D3 | 每日任务位置 | desktop agent schedule / server job | **server job**：desktop 可能关闭，审计与数据同源 |
-| D4 | 调度方式 | 全局 `timeZone` + `dailyAt` / fixedRate + 守卫 | **fixedRate 15m + 07:30 守卫**：不污染全局 scheduler |
+| D4 | 调度方式 | 全局 `timeZone` + `dailyAt` / fixedRate + 守卫 | **fixedRate 15m + 00:10 守卫**：不污染全局 scheduler，窗口在午夜后即封闭 |
 | D5 | 去重键 | 仅标题 / 标题+会话+日期 | **标题+会话+日期**：满足“同一会话/同一天不重复”，并允许不同会话各自提醒 |
 | D6 | 模型 | 专用默认模型 / 复用记忆抽取模型 | **复用 `memoryExtractionModel()`**：已有管理员配置入口，成本可控 |
 | D7 | 报表渲染范围 | 完整图表 / 最小预览 | **最小预览**：METRIC/TABLE/BAR/LINE，首页不承担完整报表工作台 |
@@ -438,7 +439,7 @@ examples/plugins/home/
 | Todo 模型 | `core-ai-server/.../domain/UserTodo.java` | `source`/`originDate`/`originSessionIds`/`dedupeKey`/`generatedBy`/`generatedAt`；历史文档读作 MANUAL |
 | 视图/API | `core-ai-api/.../foryou/*` | `ForYouTodoView` 扩展；`GET /api/for-you/todos/digest?date=` |
 | 审计实体 | `HomeTodoDigestRun` + PG/Mongo store | 每用户每天一条，id = `user:date` |
-| 每日任务 | `ai.core.server.home.HomeTodoDigestService/Job` | 15 分钟 tick + 上海 07:30 守卫；虚拟线程并发；单用户失败不影响其他用户 |
+| 每日任务 | `ai.core.server.home.HomeTodoDigestService/Job` | 15 分钟 tick + 上海 00:10 守卫；虚拟线程并发；单用户失败不影响其他用户 |
 | 调度接线 | `ForYouModule` | store/service/job 与 for-you 一起绑定；`fixedRate("home-todo-digest", 15m)` |
 | 迁移 | `V47__home_todo_digest.sql` | `app.home_todo_digest_runs` + 两个索引 |
 | Desktop 测试 | `test/homeDataClient.test.mjs`、`pluginE2E`、`pluginPageHost.smoke`、`homePage.smoke` | 14 项数据客户端用例 + 插件安装/授权 + 真实页面 DOM 增删改 |
