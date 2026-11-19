@@ -243,7 +243,8 @@ export default function AgentEditor({ versionId }: { versionId?: string } = {}) 
     api.systemPrompts.list(0, 100).then(setSystemPrompts).catch(console.error);
     api.tools.list().then(res => setAllTools(res.tools || [])).catch(console.error);
     api.tools.listBuiltinGroupTools(SELF_HARNESS_GROUP_ID).then(res => setSelfHarnessTools(res.tools || [])).catch(console.error);
-    api.agents.list().then(res => {
+    // pickers only need identity/type/status; summary keeps the payload small instead of pulling every agent definition
+    api.agents.listPickers().then(res => {
       const published = (res.agents || []).filter(a =>
         a.id !== id &&
         (a.status === 'PUBLISHED' || a.status === 'DRAFT')
@@ -2153,7 +2154,7 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 <>
                   <div className="flex justify-between gap-2"><dt>Published name</dt><dd className="truncate max-w-40" title={agent.published_name || agent.name}>{agent.published_name || agent.name}</dd></div>
                   <div className="flex justify-between gap-2"><dt>Published desc</dt><dd className="truncate max-w-40" title={agent.published_description || ''}>{agent.published_description || '-'}</dd></div>
-                  <div className="flex justify-between"><dt>Quality gate</dt><dd>{agent.quality?.gate_result || '-'}{agent.quality?.warn_count ? ` (${agent.quality.warn_count} warn)` : ''}</dd></div>
+                  <div className="flex justify-between gap-2"><dt>Quality gate</dt><dd className="truncate max-w-40" title={agent.quality?.exemption_reason || ''}>{agent.quality?.gate_result || '-'}{agent.quality?.exempted ? ' (exempt)' : ''}{agent.quality?.warn_count ? ` (${agent.quality.warn_count} warn)` : ''}</dd></div>
                   <div className="flex justify-between gap-2"><dt>Quality run</dt><dd className="font-mono truncate max-w-32" title={agent.quality?.run_id || ''}>{agent.quality?.run_id || '-'}</dd></div>
                 </>
               )}

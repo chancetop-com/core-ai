@@ -17,7 +17,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 
 /**
  * @author stephen
@@ -61,11 +63,11 @@ public class SessionCreateHelper {
             }
         }
         if (result.loadedSkillIds() != null && !result.loadedSkillIds().isEmpty()) {
+            var skillNames = resolveSkillNames(result.loadedSkillIds());
             for (var id : result.loadedSkillIds()) {
-                String name = resolveSkillName(id);
                 var v = new IdName();
                 v.id = id;
-                v.name = name != null ? name : id;
+                v.name = skillNames.getOrDefault(id, id);
                 loadedSkills.add(v);
             }
         }
@@ -152,12 +154,11 @@ public class SessionCreateHelper {
         }
     }
 
-    String resolveSkillName(String id) {
-        if (id == null) return null;
+    private Map<String, String> resolveSkillNames(List<String> ids) {
         try {
-            return skillService.get(id).name;
+            return skillService.batchResolve(new HashSet<>(ids));
         } catch (Exception e) {
-            return id;
+            return Map.of();
         }
     }
 

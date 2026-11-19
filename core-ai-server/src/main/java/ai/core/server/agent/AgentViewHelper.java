@@ -19,6 +19,7 @@ import ai.core.server.user.UserStore;
 import ai.core.server.util.IdLists;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -33,7 +34,7 @@ final class AgentViewHelper {
 
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     static AgentDefinitionView buildDetailedView(AgentDefinition entity, AgentDefinitionStore store, UserStore userStore, SkillService skillService) {
-        var view = buildView(entity, Map.of(), Map.of());
+        var view = buildView(entity, Map.of(), skillNames(entity.skillIds, skillService));
         view.name = entity.name;
         view.description = entity.description;
         view.createdBy = userName(userStore, entity.userId);
@@ -41,10 +42,18 @@ final class AgentViewHelper {
         if (view.subAgents != null) {
             view.subAgents.forEach(sa -> sa.name = agentName(store, sa.id));
         }
-        if (view.skills != null) {
-            view.skills.forEach(s -> s.name = skillName(skillService, s.id));
-        }
         return view;
+    }
+
+    // one lookup for the whole reference set: reading each skill separately loads its content/resources payload
+    private static Map<String, String> skillNames(List<String> skillIds, SkillService skillService) {
+        var ids = IdLists.clean(skillIds);
+        if (ids.isEmpty()) return Map.of();
+        try {
+            return skillService.batchResolve(new HashSet<>(ids));
+        } catch (Exception e) {
+            return Map.of();
+        }
     }
 
     static String lastModifiedBy(AgentDefinition entity) {
@@ -61,14 +70,6 @@ final class AgentViewHelper {
             return store.get(agentId).map(a -> a.name).orElse(agentId);
         } catch (Exception e) {
             return agentId;
-        }
-    }
-
-    private static String skillName(SkillService skillService, String skillId) {
-        try {
-            return skillService.get(skillId).name;
-        } catch (Exception e) {
-            return skillId;
         }
     }
 

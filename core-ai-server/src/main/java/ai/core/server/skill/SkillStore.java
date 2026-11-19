@@ -5,6 +5,7 @@ import ai.core.server.domain.SkillSourceType;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -20,6 +21,12 @@ public interface SkillStore {
     List<SkillDefinition> listByIds(Collection<String> ids);
 
     List<SkillDefinition> list(String namespace, SkillSourceType sourceType, Integer offset, Integer limit);
+
+    /** Same rows as {@link #list} but without the content/resources payload, for listing and pickers. */
+    List<SkillDefinition> listSummaries(String namespace, SkillSourceType sourceType, Integer offset, Integer limit);
+
+    /** id to name only, for resolving references without reading skill bodies. */
+    Map<String, String> findNames(Collection<String> ids);
 
     long count(String namespace, SkillSourceType sourceType);
 

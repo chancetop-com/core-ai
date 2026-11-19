@@ -19,7 +19,6 @@ import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -144,14 +143,25 @@ public class SkillService {
     }
 
     public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn, Integer offset, Integer limit) {
+        return list(filter, userId, query, searchIn, offset, limit, true);
+    }
+
+    /**
+     * @param includeContent false only when the caller maps catalog metadata (the list view): skill bodies are then
+     *                       never selected, so the returned entities carry no {@code content}/{@code resources}
+     */
+    public List<SkillDefinition> list(SkillFilter filter, String userId, String query, String searchIn,
+                                      Integer offset, Integer limit, boolean includeContent) {
         String namespace = filter == null ? null : filter.namespace();
         var sourceType = sourceType(filter);
         if (SkillQueryHelper.notInMemoryFilters(userId, query)) {
-            return skillStore.list(namespace, sourceType, offset, limit);
+            return includeContent
+                ? skillStore.list(namespace, sourceType, offset, limit)
+                : skillStore.listSummaries(namespace, sourceType, offset, limit);
         }
 
-        var candidates = skillStore.list(namespace, sourceType, null, null);
         var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
+        var candidates = candidates(namespace, sourceType, includeContent);
         var filtered = candidates.stream()
             .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
             .toList();
@@ -166,9 +176,19 @@ public class SkillService {
         }
 
         var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
-        return skillStore.list(namespace, sourceType, null, null).stream()
+        // counting never reads the entities, so only a content search needs the bodies
+        var candidates = SkillQueryHelper.requiresContent(searchScope)
+            ? skillStore.list(namespace, sourceType, null, null)
+            : skillStore.listSummaries(namespace, sourceType, null, null);
+        return candidates.stream()
             .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
             .count();
+    }
+
+    private List<SkillDefinition> candidates(String namespace, SkillSourceType sourceType, boolean includeContent) {
+        return includeContent
+            ? skillStore.list(namespace, sourceType, null, null)
+            : skillStore.listSummaries(namespace, sourceType, null, null);
     }
 
     private SkillSourceType sourceType(SkillFilter filter) {
@@ -363,11 +383,7 @@ public class SkillService {
     public Map<String, String> batchResolve(Set<String> skillIds) {
         var cleanIds = IdLists.clean(new ArrayList<>(skillIds));
         if (cleanIds.isEmpty()) return Map.of();
-        var result = new HashMap<String, String>();
-        for (var def : skillStore.listByIds(cleanIds)) {
-            result.put(def.id, def.name);
-        }
-        return result;
+        return skillStore.findNames(cleanIds);
     }
 
     public List<SkillMetadata> resolveSkills(List<String> skillIds) {

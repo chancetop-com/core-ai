@@ -8,7 +8,6 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
-import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.domain.ToolSourceType;
 import ai.core.server.domain.User;
@@ -113,10 +112,7 @@ class AgentDefinitionServiceTest {
         var service = new AgentDefinitionService();
         service.skillService = mock(SkillService.class);
 
-        var skill = new SkillDefinition();
-        skill.id = "skill-1";
-        skill.name = "Skill One";
-        when(service.skillService.get("skill-1")).thenReturn(skill);
+        when(service.skillService.batchResolve(java.util.Set.of("skill-1"))).thenReturn(java.util.Map.of("skill-1", "Skill One"));
 
         var entity = new AgentDefinition();
         entity.id = "agent-1";
@@ -133,7 +129,7 @@ class AgentDefinitionServiceTest {
         assertEquals(1, view.skills.size());
         assertEquals("skill-1", view.skills.get(0).id);
         assertEquals("Skill One", view.skills.get(0).name);
-        verify(service.skillService).get("skill-1");
+        verify(service.skillService).batchResolve(java.util.Set.of("skill-1"));
         verifyNoMoreInteractions(service.skillService);
     }
 

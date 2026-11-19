@@ -82,7 +82,8 @@ public class SkillWebServiceImpl implements SkillWebService {
             effectiveRequest.query,
             effectiveRequest.searchIn,
             effectiveRequest.offset,
-            effectiveRequest.limit
+            effectiveRequest.limit,
+            false
         );
         var response = new ListSkillsResponse();
         response.skills = skills.stream().map(this::toView).toList();

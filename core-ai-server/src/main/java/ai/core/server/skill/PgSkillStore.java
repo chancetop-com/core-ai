@@ -13,7 +13,9 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 
@@ -23,6 +25,8 @@ import java.util.function.Consumer;
 public class PgSkillStore implements SkillStore {
     private static final String TABLE = "app.skills";
     private static final String SELECT = "SELECT data::text AS data FROM " + TABLE;
+    // jsonb minus content/resources keeps the row payload small; without it every listing detoasts skill bodies
+    private static final String SELECT_SUMMARY = "SELECT (data - 'content' - 'resources')::text AS data FROM " + TABLE;
 
     private static SkillDefinition toSkill(PgDocumentRow row) {
         return JsonUtil.fromJson(SkillDefinition.class, row.data);
@@ -62,8 +66,31 @@ public class PgSkillStore implements SkillStore {
 
     @Override
     public List<SkillDefinition> list(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
+        return selectPage(SELECT, namespace, sourceType, offset, limit);
+    }
+
+    @Override
+    public List<SkillDefinition> listSummaries(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
+        return selectPage(SELECT_SUMMARY, namespace, sourceType, offset, limit);
+    }
+
+    @Override
+    public Map<String, String> findNames(Collection<String> ids) {
+        if (ids.isEmpty()) return Map.of();
+        var placeholders = String.join(", ", Collections.nCopies(ids.size(), "?"));
+        var rows = database.select("SELECT id, data ->> 'name' AS name FROM " + TABLE
+            + " WHERE id IN (" + placeholders + ")", PgSkillNameRow.class, ids.toArray());
+        var names = new HashMap<String, String>();
+        for (var row : rows) {
+            names.put(row.id, row.name);
+        }
+        return names;
+    }
+
+    private List<SkillDefinition> selectPage(String select, String namespace, SkillSourceType sourceType,
+                                             Integer offset, Integer limit) {
         var params = new ArrayList<Object>();
-        var sql = new StringBuilder(SELECT.length() + 160).append(SELECT).append(where(namespace, sourceType, params))
+        var sql = new StringBuilder(select.length() + 160).append(select).append(where(namespace, sourceType, params))
             .append(" ORDER BY updated_at DESC, id DESC");
         if (offset != null || limit != null) {
             sql.append(" LIMIT ? OFFSET ?");

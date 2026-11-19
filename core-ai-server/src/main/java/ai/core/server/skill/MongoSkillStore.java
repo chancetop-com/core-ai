@@ -10,7 +10,9 @@ import core.framework.mongo.Query;
 
 import java.time.ZonedDateTime;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -49,9 +51,34 @@ public class MongoSkillStore implements SkillStore {
 
     @Override
     public List<SkillDefinition> list(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
+        return findPage(filter(namespace, sourceType), offset, limit, null);
+    }
+
+    @Override
+    public List<SkillDefinition> listSummaries(String namespace, SkillSourceType sourceType, Integer offset, Integer limit) {
+        return findPage(filter(namespace, sourceType), offset, limit,
+            com.mongodb.client.model.Projections.exclude("content", "resources"));
+    }
+
+    @Override
+    public Map<String, String> findNames(Collection<String> ids) {
+        if (ids.isEmpty()) return Map.of();
         var query = new Query();
-        query.filter = filter(namespace, sourceType);
+        query.filter = Filters.in("_id", ids.toArray(new String[0]));
+        query.projection = com.mongodb.client.model.Projections.include("_id", "name");
+        var names = new HashMap<String, String>();
+        for (var skill : skillCollection.find(query)) {
+            names.put(skill.id, skill.name);
+        }
+        return names;
+    }
+
+    private List<SkillDefinition> findPage(org.bson.conversions.Bson filter, Integer offset, Integer limit,
+                                           org.bson.conversions.Bson projection) {
+        var query = new Query();
+        query.filter = filter;
         query.sort = com.mongodb.client.model.Sorts.descending("updated_at");
+        if (projection != null) query.projection = projection;
         if (offset != null || limit != null) {
             query.skip = Math.max(0, offset != null ? offset : 0);
             query.limit = Math.clamp(limit != null ? limit : 20, 1, 100);

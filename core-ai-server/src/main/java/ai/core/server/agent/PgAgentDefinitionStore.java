@@ -1,6 +1,8 @@
 package ai.core.server.agent;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentStatus;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
@@ -18,6 +20,10 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
     private static final String TABLE = "app.agents";
     private static final String SELECT = "SELECT id, user_id, name, name_key, type, status, system_default, "
         + "forked_from, has_published_config, created_at, updated_at, data::text AS data FROM " + TABLE;
+    // list summaries need the catalog name only; selecting data::text here detoasts every agent document
+    private static final String SELECT_SUMMARY = "SELECT id, name, type, status, "
+        + "data ->> 'publishedName' AS published_name, data ->> 'description' AS description, "
+        + "data ->> 'publishedDescription' AS published_description FROM " + TABLE;
     private static final String INSERT = "INSERT INTO " + TABLE + " (id, user_id, name, name_key, type, status, "
         + "system_default, forked_from, has_published_config, created_at, updated_at, data) ";
 
@@ -36,7 +42,7 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
 
     @Override
     public List<AgentDefinition> find(AgentDefinitionQuery request) {
-        var sql = new StringBuilder(SELECT.length() + 128).append(SELECT);
+        var sql = new StringBuilder(SELECT.length() + 128).append(request.summaryOnly ? SELECT_SUMMARY : SELECT);
         var params = new ArrayList<>();
         conditions(request, sql, params);
         var sort = switch (request.sortField) {
@@ -54,8 +60,23 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
         }
         sql.append(" OFFSET ?");
         params.add(Math.max(request.offset, 0));
-        return database.select(sql.toString(), PgAgentDefinitionRow.class, params.toArray())
-            .stream().map(PgAgentDefinitionStore::toDefinition).toList();
+        return request.summaryOnly
+            ? database.select(sql.toString(), PgAgentSummaryRow.class, params.toArray())
+                .stream().map(PgAgentDefinitionStore::toSummary).toList()
+            : database.select(sql.toString(), PgAgentDefinitionRow.class, params.toArray())
+                .stream().map(PgAgentDefinitionStore::toDefinition).toList();
+    }
+
+    private static AgentDefinition toSummary(PgAgentSummaryRow row) {
+        var definition = new AgentDefinition();
+        definition.id = row.id;
+        definition.name = row.name;
+        definition.type = row.type != null ? DefinitionType.valueOf(row.type) : null;
+        definition.status = row.status != null ? AgentStatus.valueOf(row.status) : null;
+        definition.description = row.description;
+        definition.publishedName = row.publishedName;
+        definition.publishedDescription = row.publishedDescription;
+        return definition;
     }
 
     @Override

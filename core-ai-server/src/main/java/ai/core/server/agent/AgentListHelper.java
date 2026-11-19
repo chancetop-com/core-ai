@@ -3,6 +3,7 @@ package ai.core.server.agent;
 import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.DefinitionType;
 import ai.core.server.user.UserStore;
 import ai.core.server.skill.SkillService;
 
@@ -35,6 +36,15 @@ final class AgentListHelper {
         var view = new AgentDefinitionView();
         view.id = entity.id;
         view.name = AgentViewHelper.catalogName(entity);
+        return view;
+    }
+
+    /** Picker view: enough for a selection dropdown, still no definition payload. */
+    static AgentDefinitionView toPickerView(AgentDefinition entity) {
+        var view = toSummaryView(entity);
+        view.description = AgentViewHelper.catalogDescription(entity);
+        view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
+        view.status = entity.status != null ? entity.status.name() : null;
         return view;
     }
 
@@ -197,6 +207,7 @@ final class AgentListHelper {
         var query = new AgentDefinitionQuery();
         query.ids = new ArrayList<>(agentIds);
         query.limit = agentIds.size();
+        query.summaryOnly = true;
         for (var agent : agentDefinitionStore.find(query)) {
             map.put(agent.id, agent.name);
         }

@@ -616,6 +616,8 @@ export interface AgentQualityReceipt {
   execution_candidate_hash?: string;
   metadata_hash?: string;
   gate_result?: string;
+  exempted?: boolean;
+  exemption_reason?: string;
   rule_result_digest?: string;
   route_fingerprint?: string;
   warn_count?: number;
@@ -2320,6 +2322,8 @@ export const api = {
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },
+    listPickers: () =>
+      request<ListAgentsResponse>('/api/agents?view=picker'),
     get: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>

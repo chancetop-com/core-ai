@@ -127,7 +127,10 @@ public class AgentDefinitionService {
 
     public ListAgentsResponse list(String userId, ListAgentsRequest request) {
         var effectiveRequest = request != null ? request : new ListAgentsRequest();
-        boolean summary = Boolean.TRUE.equals(effectiveRequest.summary);
+        String view = AgentQueryHelper.trimToNull(effectiveRequest.view);
+        // legacy callers pass summary=true for the same id/name payload
+        boolean summary = "summary".equals(view) || (view == null && Boolean.TRUE.equals(effectiveRequest.summary));
+        boolean picker = "picker".equals(view);
         boolean paginated = effectiveRequest.page != null || effectiveRequest.limit != null;
         int pageNum = effectiveRequest.page != null && effectiveRequest.page > 0 ? effectiveRequest.page : 1;
         int pageSize = effectiveRequest.limit != null && effectiveRequest.limit > 0 ? Math.min(effectiveRequest.limit, 200) : 20;
@@ -142,6 +145,8 @@ public class AgentDefinitionService {
             String sortField = AgentQueryHelper.sortField(effectiveRequest.sort);
             var query = query(userId, effectiveRequest);
             query.limit = null;
+            // keyword search matches description, so a lightweight projection cannot serve it
+            query.summaryOnly = false;
             var assistant = personalAssistantService.findPersonalAssistant(userId);
             paged = listHelper.searchAgents(query, keyword, sortField,
                 assistant != null ? assistant.id : PersonalAssistantService.DEFAULT_ASSISTANT_TEMPLATE_ID);
@@ -166,6 +171,8 @@ public class AgentDefinitionService {
         var response = new ListAgentsResponse();
         if (summary) {
             response.agents = paged.stream().map(AgentListHelper::toSummaryView).toList();
+        } else if (picker) {
+            response.agents = paged.stream().map(AgentListHelper::toPickerView).toList();
         } else {
             var userNameMap = listHelper.resolveUserNames(paged);
             var subAgentNameMap = listHelper.resolveSubAgentNames(paged);
@@ -214,8 +221,14 @@ public class AgentDefinitionService {
         var ids = splitIds(request.ids);
         if (!ids.isEmpty()) query.ids = ids;
         query.sortField = AgentQueryHelper.sortField(request.sort);
-        query.summaryOnly = Boolean.TRUE.equals(request.summary);
+        query.summaryOnly = lightweightView(request);
         return query;
+    }
+
+    private static boolean lightweightView(ListAgentsRequest request) {
+        String view = blankToNull(request.view);
+        return "summary".equals(view) || "picker".equals(view)
+            || (view == null && Boolean.TRUE.equals(request.summary));
     }
 
     private AgentDefinitionQuery directQuery(String userId, String name) {
@@ -226,7 +239,7 @@ public class AgentDefinitionService {
         return query;
     }
 
-    private String blankToNull(String value) {
+    private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value;
     }
 

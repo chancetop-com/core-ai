@@ -62,6 +62,11 @@ public final class SkillQueryHelper {
         };
     }
 
+    /** True when matching needs the skill body, so the listing cannot use the summary projection. */
+    public static boolean requiresContent(String searchIn) {
+        return SEARCH_IN_CONTENT.equals(normalizedSearchIn(searchIn));
+    }
+
     private static boolean matchesName(SkillDefinition skill, String needle) {
         return containsIgnoreCase(skill.name, needle) || containsIgnoreCase(skill.qualifiedName, needle);
     }

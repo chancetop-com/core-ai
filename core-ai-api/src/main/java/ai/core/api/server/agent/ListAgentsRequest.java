@@ -32,4 +32,8 @@ public class ListAgentsRequest {
 
     @QueryParam(name = "summary")
     public Boolean summary;
+
+    /** Optional lightweight view: {@code summary} (id, name) or {@code picker} (id, name, description, type, status). */
+    @QueryParam(name = "view")
+    public String view;
 }
