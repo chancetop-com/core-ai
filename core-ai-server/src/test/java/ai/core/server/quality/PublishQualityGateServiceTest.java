@@ -33,7 +33,7 @@ class PublishQualityGateServiceTest {
         service.policyService = policyService;
         service.registry = registry;
         service.snapshotService = snapshotService;
-        when(store.updateRun(any(), eq(QualityRunStatus.STARTED))).thenReturn(true);
+        when(store.updateRun(any(), eq(QualityRunStatus.STARTED))).thenReturn(Boolean.TRUE);
     }
 
     @Test
