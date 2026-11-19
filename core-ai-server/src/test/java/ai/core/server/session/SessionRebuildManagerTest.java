@@ -169,9 +169,12 @@ class SessionRebuildManagerTest {
         var publicUrlConfiguration = mock(PublicUrlConfiguration.class);
         var systemSettingsService = mock(SystemSettingsService.class);
         var mediaProvider = mock(MediaProvider.class);
+        var toolRegistry = mock(ToolRegistryService.class);
+        when(toolRegistry.resolveToToolRegistryForChatSession(any(), any(), any()))
+                .thenReturn(ai.core.tool.registry.ToolRegistryFactory.createEmpty());
         var manager = new SessionRebuildManager(new SessionRebuildManager.Deps(
             chatMessageService, ai.core.server.agent.MongoAgentDefinitionStore.of(agents), mock(SessionSkillManager.class), subAgentManager,
-            sandboxService, artifactSetup, mock(ToolRegistryService.class), mock(SystemPromptService.class),
+            sandboxService, artifactSetup, toolRegistry, mock(SystemPromptService.class),
             mock(DatasetService.class), mock(DatasetRecordService.class), mock(FileService.class),
             publicUrlConfiguration, null, null, systemSettingsService, users, memoryExperimentService(), agentMemoryService(), sessionSearchService(), mediaProvider,
             null, mock(ApiUserQuotaService.class), null, null, null, null, null));
@@ -265,8 +268,8 @@ class SessionRebuildManagerTest {
         when(sandboxService.getEffectiveConfig(any(AgentSandboxConfig.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0, AgentSandboxConfig.class).toConfig());
         var toolRegistry = mock(ToolRegistryService.class);
-        when(toolRegistry.resolveToolRefs(java.util.List.of(safeTool), "session-1", "viewer"))
-                .thenReturn(java.util.List.of());
+        when(toolRegistry.resolveToToolRegistryForChatSession(java.util.List.of(safeTool), "session-1", "viewer"))
+                .thenReturn(ai.core.tool.registry.ToolRegistryFactory.createEmpty());
         var manager = runtimeRebuildManager(chatMessageService, agents, skillManager, subAgentManager,
                 sandboxService, toolRegistry);
 
@@ -282,7 +285,7 @@ class SessionRebuildManagerTest {
         assertEquals("safe-dataset", build.getValue().config().datasetId);
         assertTrue(build.getValue().config().systemPrompt.startsWith("safe published prompt"));
         assertFalse(build.getValue().config().systemPrompt.contains("legacy private prompt"));
-        verify(toolRegistry).resolveToolRefs(java.util.List.of(safeTool), "session-1", "viewer");
+        verify(toolRegistry).resolveToToolRegistryForChatSession(java.util.List.of(safeTool), "session-1", "viewer");
         verify(toolRegistry, never()).resolveToolRefs(eq(java.util.List.of(privateTool)), eq("session-1"), any());
         verify(skillManager).restoreDefinitionSkills(any(), eq(java.util.List.of("safe-skill")));
         verify(skillManager, never()).resolveAccessibleDefinitionSkills(any(), any());
@@ -689,6 +692,8 @@ class SessionRebuildManagerTest {
                                                          SessionSubAgentManager subAgentManager,
                                                          SandboxService sandboxService,
                                                          ToolRegistryService toolRegistryService) {
+        when(toolRegistryService.resolveToToolRegistryForChatSession(any(), any(), any()))
+                .thenReturn(ai.core.tool.registry.ToolRegistryFactory.createEmpty());
         @SuppressWarnings("unchecked")
         var users = ai.core.server.user.MongoUserStore.of((MongoCollection<User>) mock(MongoCollection.class));
         return new SessionRebuildManager(new SessionRebuildManager.Deps(

@@ -40,7 +40,6 @@ import ai.core.server.util.IdLists;
 import ai.core.server.web.sse.SseEventBridge;
 import ai.core.session.InMemoryToolPermissionStore;
 import ai.core.session.InProcessAgentSession;
-import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -335,10 +334,10 @@ public class SessionRebuildManager {
         var effectiveConfig = params.config != null ? params.config : new SessionConfig();
         var sandbox = setupSandboxContext(params.sessionId, params.userId, params.sandboxConfig,
                 params.agentName, params.allowSandboxReattach, agentId);
-        List<ToolCall> tools = (params.toolRefs != null && !params.toolRefs.isEmpty())
-                ? toolRegistryService.resolveToolRefs(params.toolRefs, params.sessionId, params.userId)
-                : new ArrayList<>();
-        var toolRegistry = SessionSubAgentManager.toolsToRegistry(tools);
+        // a rebuilt chat session must not hold the request while a cold sandbox-hosted MCP downloads its
+        // package; the provider retries each materialize until the server is registered
+        var toolRegistry = toolRegistryService.resolveToToolRegistryForChatSession(
+                params.toolRefs, params.sessionId, params.userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, params.datasetConfig,
                 hasText(agentId) ? agentId : "default", params.sessionId);
         var memoryInject = attachMemory(toolRegistry, sandbox.context, agentId);
@@ -348,7 +347,7 @@ public class SessionRebuildManager {
             extraVars = datasetHelper().buildDatasetSystemVars(params.datasetConfig);
         }
         extraVars = injectConfigVars(extraVars, params.configVars);
-        logRebuildStart(params, tools);
+        logRebuildStart(params);
         var agent = subAgentManager.buildAgent(new SessionSubAgentManager.BuildAgentParams(
                 effectiveConfig, toolRegistry,
                 sandbox.context, params.agentName, extraVars, agentId,
@@ -378,13 +377,13 @@ public class SessionRebuildManager {
         logger.info("doRebuild done, sessionId={}, elapsedMs={}", params.sessionId, System.currentTimeMillis() - start);
         return session;
     }
-    private void logRebuildStart(RebuildParams params, List<ToolCall> tools) {
-        var toolCount = tools != null ? tools.size() : 0;
+    private void logRebuildStart(RebuildParams params) {
+        var baseToolRefCount = params.toolRefs != null ? params.toolRefs.size() : 0;
         var skillCount = params.state != null && params.state.skillIds != null ? params.state.skillIds.size() : 0;
         var subAgentCount = params.state != null && params.state.subAgentIds != null ? params.state.subAgentIds.size() : 0;
         var dynamicToolCount = params.state != null && params.state.tools != null ? params.state.tools.size() : 0;
-        logger.info("doRebuild start, sessionId={}, fromAgent={}, baseTools={}, dynamicTools={}, skills={}, subAgents={}",
-                params.sessionId, params.state != null && params.state.fromAgent, toolCount, dynamicToolCount, skillCount, subAgentCount);
+        logger.info("doRebuild start, sessionId={}, fromAgent={}, baseToolRefs={}, dynamicTools={}, skills={}, subAgents={}",
+                params.sessionId, params.state != null && params.state.fromAgent, baseToolRefCount, dynamicToolCount, skillCount, subAgentCount);
     }
     private void renewSessionOwnership(String sessionId) {
         if (ownershipRegistry != null) {
