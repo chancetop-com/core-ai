@@ -14,7 +14,3 @@ export interface RegistryPlugin {
   components: string[];
   updatedAt: string | null;
 }
-
-export type RegistryListResult =
-  | { ok: true; plugins: RegistryPlugin[]; total: number }
-  | { ok: false; code: string; message?: string };

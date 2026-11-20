@@ -102,7 +102,6 @@ contextBridge.exposeInMainWorld('coreai', {
   pluginsRemove: (pluginId: string) => ipcRenderer.invoke('plugins:remove', pluginId),
   pluginsSetSetting: (pluginId: string, key: string, value: string | number | boolean) =>
     ipcRenderer.invoke('plugins:setSetting', pluginId, key, value),
-  pluginsRegistryList: (query: string) => ipcRenderer.invoke('plugins:registryList', query),
   pluginsRegistryInstall: (pluginId: string) => ipcRenderer.invoke('plugins:registryInstall', pluginId),
   pluginPageOpen: (request: { pluginId: string; pageId: string; workspace: string; bounds: { x: number; y: number; width: number; height: number }; artifactPath?: string }) =>
     ipcRenderer.invoke('pluginPage:open', request),

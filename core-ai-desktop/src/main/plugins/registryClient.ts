@@ -41,11 +41,6 @@ interface RawRegistryPlugin {
   updated_at?: unknown;
 }
 
-interface RawSearchResponse {
-  plugins?: unknown;
-  total?: unknown;
-}
-
 function normalizeServerUrl(value: string): string {
   return String(value ?? '').trim().replace(/\/+$/, '');
 }
@@ -109,15 +104,6 @@ function requestJson(entry: AuthEntry, pathname: string, timeoutMs = 15_000): Pr
     request.on('error', (error) => reject(error instanceof RegistryError ? error : new RegistryError('registry_unreachable', error.message)));
     request.end();
   });
-}
-
-export async function searchRegistryPlugins(entry: AuthEntry, query: string, limit = 50): Promise<{ plugins: RegistryPlugin[]; total: number }> {
-  const params = new URLSearchParams();
-  if (query.trim()) params.set('query', query.trim());
-  params.set('limit', String(limit));
-  const payload = await requestJson(entry, `/api/plugins?${params.toString()}`) as RawSearchResponse;
-  const plugins = Array.isArray(payload?.plugins) ? payload.plugins.map(toPlugin).filter((plugin): plugin is RegistryPlugin => plugin !== null) : [];
-  return { plugins, total: typeof payload?.total === 'number' ? payload.total : plugins.length };
 }
 
 export async function getRegistryPlugin(entry: AuthEntry, id: string): Promise<RegistryPlugin> {
