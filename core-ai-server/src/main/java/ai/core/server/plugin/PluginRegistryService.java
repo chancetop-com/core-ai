@@ -29,7 +29,14 @@ public class PluginRegistryService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Pattern PLUGIN_ID = Pattern.compile("[a-z0-9][a-z0-9._-]{0,63}");
     private static final Pattern DIGEST = Pattern.compile("[a-fA-F0-9]{64}");
-    private static final Set<String> CAPABILITIES = Set.of("ui.dock", "ui.settings", "ui.composer", "engine.skills");
+    private static final Set<String> CAPABILITIES = Set.of(
+            "ui.dock", "ui.settings", "ui.composer", "ui.pages", "ui.slots", "ui.renderers",
+            "artifacts.read", "reports.read", "todos.read", "todos.write", "engine.skills",
+            "prompt.sections", "browser.control", "tools.register", "terminal.exec", "hooks.guard",
+            "sandbox.provider", "agents.orchestrate", "media.assets.read", "media.assets.write",
+            "media.models.read", "media.generate", "sessions.read", "sessions.write", "memory.read",
+            "memory.write", "workspace.read", "usage.read", "plugin.storage", "events.read",
+            "notification.send", "schedules.read", "schedules.write");
     private static final int MAX_MANIFEST_BYTES = 64 * 1024;
     private static final long MAX_PACKAGE_BYTES = 256L * 1024 * 1024;
 

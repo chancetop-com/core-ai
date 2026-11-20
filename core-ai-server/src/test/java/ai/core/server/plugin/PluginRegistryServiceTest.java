@@ -80,8 +80,21 @@ class PluginRegistryServiceTest {
         assertThrows(BadRequestException.class, () -> registry.register("u", badSize));
 
         var unknownCapability = request("example.hello-plugin", "b".repeat(64));
-        unknownCapability.manifest = manifest("example.hello-plugin", "1.0.0", "\"browser.control\"");
+        unknownCapability.manifest = manifest("example.hello-plugin", "1.0.0", "\"ui.nonsense\"");
         assertThrows(BadRequestException.class, () -> registry.register("u", unknownCapability));
+    }
+
+    @Test
+    void pageCapabilitiesOfDesktopPluginsAreAccepted() {
+        var store = new InMemoryStore();
+        var request = request("core-ai.home", "b".repeat(64));
+        request.manifest = manifest("core-ai.home", "0.1.0",
+                "\"ui.pages\", \"reports.read\", \"todos.read\", \"todos.write\", \"plugin.storage\"");
+
+        var view = service(store).register("u", request);
+
+        assertEquals(List.of("ui.pages", "reports.read", "todos.read", "todos.write", "plugin.storage"),
+                view.requiredCapabilities);
     }
 
     @Test
