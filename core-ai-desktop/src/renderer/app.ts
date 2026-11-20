@@ -747,6 +747,8 @@ interface StreamingState {
   panels: HTMLElement | null;
   toolsPanel: HTMLElement | null;
   toolsToggle: AssistToggle | null;
+  /** Tools started under this bubble: the chip's count and time total describe exactly these rows. */
+  tools: UiTool[];
   compressionToggle: AssistToggle | null;
   compressionRows: number;
   taskToggle: AssistToggle | null;
@@ -5167,7 +5169,7 @@ function ensureStreaming(view: SessionView): StreamingState {
     bubble.append(body);
     wrapper.append(bubble);
     view.transcript.append(wrapper);
-    view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, compressionToggle: null, compressionRows: 0, taskToggle: null, toolUses: null };
+    view.streaming = { view, text: '', renderedText: '', renderTimer: null, bubble, body, reasoningToggle: null, reasoningScroller: null, reasoningBlocks: [], activeReasoning: null, reasoningTotalMs: 0, reasoningTick: null, reasoningLiveStart: null, chips: null, panels: null, toolsPanel: null, toolsToggle: null, tools: [], compressionToggle: null, compressionRows: 0, taskToggle: null, toolUses: null };
     ensureAssistBlock(view.streaming);
     // A rich card emitted mid-turn seals the bubble it arrived under; the turn clock chip rides along
     // into this new bubble so "Running · Ns" keeps ticking next to the live output.
@@ -5294,13 +5296,12 @@ function followPanelScroll(panel: HTMLElement | null): void {
   panel.scrollTop = panel.scrollHeight;
 }
 
-/** "Tool use (n) · 12m" — the chip doubles as the turn's tool-time total. */
+/** "Tool use (n) · 12m" — the chip doubles as this bubble's tool-time total, never the session's. */
 function updateToolsLabel(view: SessionView): void {
   const current = view.streaming;
   if (!current?.toolsToggle) return;
-  const count = current.toolsPanel?.childElementCount ?? 0;
-  const total = [...view.toolMap.values()].reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
-  current.toolsToggle.setLabel(`Tool use (${count})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
+  const total = current.tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
+  current.toolsToggle.setLabel(`Tool use (${current.tools.length})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
 }
 
 function appendToolStart(view: SessionView, event: any): void {
@@ -5312,6 +5313,7 @@ function appendToolStart(view: SessionView, event: any): void {
   tool.statusNode = entry.statusNode;
   tool.resultNode = entry.resultNode;
   tool.durationNode = entry.durationNode;
+  current.tools.push(tool);
   panel.append(entry.node);
   refreshToolsBusy(entry.node);
   followPanelScroll(panel);
