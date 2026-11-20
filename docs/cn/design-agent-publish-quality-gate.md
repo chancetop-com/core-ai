@@ -3,7 +3,7 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Implemented / Dev-verified（用户于 2026-11-14 授权实施） |
-| 文档版本 | v0.5（实施验证记录） |
+| 文档版本 | v0.7（实施验证记录） |
 | 创建日期 | 2026-11-12 |
 | 需求提出者 / Reviewer | 用户；2026-11-14 授权实施；AI 技术评审见 §14.2 |
 | 作者 | core-ai |
@@ -969,6 +969,23 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 - 管理 UI 与 Agent 编辑器的视觉 E2E 未执行：验证时宿主桌面处于锁屏状态，无法驾驶内置浏览器。前端构建通过、API 契约与组件 wiring 已审查；issue 的“定位”动作已按 field_path 滚动到 description / prompt / tools / skills / subagents / datasets 对应区块。P3 视觉验收仍待人工确认。
 - `CFG.MCP_TOOL_AVAILABLE` 仍为 SHADOW / INDETERMINATE（R-IMPL-08），报告 TTL 清理与后台 reconciler 未实现（R-IMPL-03 / R-IMPL-10）。
 - 启动初始化与 migration 保持 trusted seed，不调用模型门禁；交互式 builtin reset 已改为“全部候选先检查、全部通过后统一写入”，避免部分重置。
+
+### 14.7 实施验证记录（decision instruction override，dev，2026-11-20）
+
+**代码与镜像：**commit `beb03435d`（功能）+ `ef762bfcb`（SpotBugs 表达式顺序），镜像 `2.0.324`，CI `Build Server` run `44710578704`，pod digest `sha256:cc38ce44…` 与 Docker Hub tag 一致。本次仅操作 dev（`FBRDevAKSCluster` / namespace `dev-ai`），未触碰 UAT / prod；UAT 仍为 `2.0.320`。
+
+**静态与自动化检查：**CI `./gradlew :core-ai-server:check`（compile、unit test、checkstyle、PMD、SpotBugs）通过；`npm --prefix core-ai-frontend run build` 通过。新增 `FunctionSummaryRuleTest` 覆盖 override 生效与空值回退。
+
+| 场景 | dev 实测结果 |
+|---|---|
+| 模板能力位 | `GET /api/admin/agent-quality/rule-templates`：`DESC.FUNCTION_SUMMARY_REQUIRED` 与 `PROMPT.TIME_CONTEXT_REQUIRED` 返回 `supports_instruction_override=true`；`PROMPT.BUILTIN_CAPABILITY_REQUIRED`、`PROMPT.RESOURCE_BINDING_REQUIRED` 与 CODE 规则为 false |
+| 管理 UI | `/quality/agent/qrule:DESC.FUNCTION_SUMMARY_REQUIRED` 渲染 “Decision instructions override” 文本域，placeholder 为内置默认 instruction；清空后保存 revision 4，文本域回到空值 |
+| 默认判定 | revision 1 对 `description=最好用的智能助手` 试测 `FAIL`，`affirmative_probability=0.00026` |
+| 轻度 override | revision 2 写入宽松 instruction，同一 description 试测 `INDETERMINATE`，概率提升至 `0.679` |
+| 明确 override | revision 3 instruction 明确覆盖 criteria（宣传语也算），同一 description 试测 `PASS` |
+| 清理 | revision 4 清空 override 并试测默认行为，结果 `FAIL`、概率 `0.00023`；active policy 仍绑定 revision 1 / `BLOCK`，发布门禁行为未改变 |
+
+**剩余限制：**内置规则的 question name/type/criteria 仍由代码拥有；管理员通过 instruction 表达宽松/严格边界。若未来需要直接编辑 criteria，应单独设计结构化编辑器，而不是把 criteria 当自由文本。
 
 ## 15. 参考资料
 
