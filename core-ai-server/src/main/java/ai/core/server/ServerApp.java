@@ -110,22 +110,21 @@ public class ServerApp extends App {
     // large one-time data copies can exceed the default start budget; the canary overrides it
     private static final Duration STARTUP_TIMEOUT = Duration.ofSeconds(
         Math.max(60, Long.parseLong(System.getenv().getOrDefault("SYS_STARTUP_TIMEOUT_SECONDS", "180"))));
-
     @SuppressFBWarnings("MDM_RUNTIME_EXIT_OR_HALT")
     private static void halt() {
         Runtime.getRuntime().halt(1);
     }
-
     private volatile boolean startupCompleted;
     private Thread startupWatchdog;
-
+    private boolean mongoRequired;
+    private boolean postgresConfigured;
     @Override
     protected void initialize() {
         // must run before any other startup hook, see StartupDependencyCheck
         onStartup(this::verifyStartupDependencies);
         load(new SystemModule("sys.properties"));
         loadProperties("agent.properties");
-        if (StoreMode.mongoRequired(this::property)) registerMongo();
+        registerMongo();
         load(new PostgresModule());
         // quality policy/run storage must exist before AgentDefinitionModule binds the publish gate
         load(new AgentQualityStoreModule());
@@ -174,9 +173,8 @@ public class ServerApp extends App {
 
     private void verifyStartupDependencies() {
         startStartupWatchdog();
-        var database = StoreMode.postgresConfigured(this::property) ? bean(Database.class) : null;
-        var mongo = StoreMode.mongoRequired(this::property) ? bean(Mongo.class) : null;
-        new StartupDependencyCheck(database, mongo).verify();
+        new StartupDependencyCheck(postgresConfigured ? bean(Database.class) : null,
+            mongoRequired ? bean(Mongo.class) : null).verify();
     }
     /**
      * A startup hook that never returns leaves the http server up, so k8s keeps the pod ready while the
@@ -337,23 +335,17 @@ public class ServerApp extends App {
         mongo.collection(ProjectReportDraft.class);
         mongo.collection(ProjectStatsEntity.class);
     }
-
     private void registerMongo() {
+        mongoRequired = StoreMode.mongoRequired(this::property);
+        postgresConfigured = StoreMode.postgresConfigured(this::property);
+        if (!mongoRequired) return;
         var mongo = config(MongoConfig.class);
         mongo.uri(requiredProperty("sys.mongo.uri"));
 
         registerCoreCollections(mongo);
-
         mongo.collection(SystemPrompt.class);
         mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
-        mongo.collection(ChatSession.class);
-        mongo.collection(SessionShare.class);
-        mongo.view(SessionShareFile.class);
-        mongo.view(ToolRef.class);
-        mongo.collection(SessionFeedback.class);
-        mongo.collection(UserChannelTarget.class);
-        mongo.collection(SessionNotice.class);
 
         registerTraceCollections(mongo);
 
@@ -396,6 +388,13 @@ public class ServerApp extends App {
     }
 
     private void registerCoreCollections(MongoConfig mongo) {
+        mongo.collection(ChatSession.class);
+        mongo.collection(SessionShare.class);
+        mongo.view(SessionShareFile.class);
+        mongo.view(ToolRef.class);
+        mongo.collection(SessionFeedback.class);
+        mongo.collection(UserChannelTarget.class);
+        mongo.collection(SessionNotice.class);
         mongo.collection(User.class);
         mongo.collection(ApiKey.class);
         mongo.collection(AsyncToolTaskRecord.class);
