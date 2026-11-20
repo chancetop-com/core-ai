@@ -88,8 +88,19 @@ class PluginRegistryServiceTest {
     void pageCapabilitiesOfDesktopPluginsAreAccepted() {
         var store = new InMemoryStore();
         var request = request("core-ai.home", "b".repeat(64));
-        request.manifest = manifest("core-ai.home", "0.1.0",
-                "\"ui.pages\", \"reports.read\", \"todos.read\", \"todos.write\", \"plugin.storage\"");
+        request.manifest = """
+                {
+                  "name": "My Home",
+                  "version": "0.1.0",
+                  "coreai": {
+                    "schemaVersion": 1,
+                    "id": "core-ai.home",
+                    "capabilities": {
+                      "required": ["ui.pages", "reports.read", "todos.read", "todos.write", "plugin.storage"]
+                    }
+                  }
+                }
+                """;
 
         var view = service(store).register("u", request);
 
