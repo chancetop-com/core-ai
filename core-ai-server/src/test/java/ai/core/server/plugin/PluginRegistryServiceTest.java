@@ -2,6 +2,7 @@ package ai.core.server.plugin;
 
 import ai.core.api.server.plugin.RegisterPluginRequest;
 import ai.core.server.domain.PluginRegistryEntry;
+import core.framework.db.Table;
 import core.framework.web.exception.BadRequestException;
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class PluginRegistryServiceTest {
@@ -110,6 +112,12 @@ class PluginRegistryServiceTest {
         assertEquals("1.1.0", updated.version);
         assertEquals(created, store.entries.getFirst().createdAt);
         assertEquals(first.id, updated.id);
+    }
+
+    @Test
+    void theCountRowIsAViewNotATable() {
+        // core-ng rejects a db().view() class that carries @Table and the app fails to start
+        assertNull(PgPluginCountRow.class.getAnnotation(Table.class));
     }
 
     private static final class InMemoryStore implements PluginRegistryStore {
