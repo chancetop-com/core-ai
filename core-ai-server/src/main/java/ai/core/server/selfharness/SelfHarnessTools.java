@@ -29,6 +29,26 @@ import java.util.Map;
 public class SelfHarnessTools {
     public static final String TOOL_SET_NAME = "self-harness";
     private static final String TOOL_ENTRY_ID = "builtin:" + TOOL_SET_NAME;
+    private static final String REPORT_SPEC_GUIDE = """
+
+            ReportSpec JSON (spec_version=1):
+            {"spec_version":1,
+             "source":{"dataset_id":"<dataset id>"},
+             "query":{"mode":"AGGREGATE","time_field":"meta.created_at",
+                      "time_range":{"kind":"LAST_N_COMPLETE_DAYS","days":30},
+                      "timezone":"Asia/Shanghai","bucket":"DAY",
+                      "filters":[{"field":"status","value":"active"}],
+                      "measures":[{"id":"records","label":"Records","op":"COUNT"}]},
+             "display":{"type":"BAR","x":"bucket","series":[{"field":"records"}],"precision":0}}
+
+            Rules:
+            - mode=AGGREGATE for metrics and charts; mode=RECORDS for a record list (display TABLE only; requires record_fields with top-level schema field names, and no measures).
+            - time_field=meta.created_at or meta.run_started_at. time_range.kind=TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|ROLLING_DAYS (days 1..366)|FIXED (ISO-8601 from/to). timezone is a required IANA zone.
+            - bucket=NONE|HOUR|DAY|WEEK|MONTH. category_field is one optional top-level schema field.
+            - filters match top-level schema fields by equality; values are string, number or boolean.
+            - measures: op=SUM|AVG|MIN|MAX|COUNT|LAST. COUNT needs no field; the others use field="data.<schema field>" (NUMBER except LAST). Base and derived measures are capped at 8; derived op=RATIO with numerator/denominator set to base measure ids.
+            - display.type=METRIC (exactly one measure, no bucket/category), LINE or BAR (exactly one of bucket/category; series reference measure ids; format=NUMBER|PERCENT|CURRENCY), or TABLE.
+            """;
 
     @Inject
     SelfHarnessApiCaller caller;
@@ -49,7 +69,7 @@ public class SelfHarnessTools {
         registerProjectQueryTools(builder, tools, groups);
 
         toolRegistryService.registerBuiltinToolGroup(TOOL_ENTRY_ID, "Self Harness",
-                "Tools for managing agents, skills, datasets, tool registries, and inspecting session traces",
+                "Tools for managing agents, skills, datasets, dataset reports, tool registries, and inspecting session traces",
                 tools, groups);
     }
 
@@ -138,7 +158,54 @@ public class SelfHarnessTools {
                         ToolCallParameter.builder().name("limit").description("Max records to return (default 100)").type(ToolCallParameterType.INTEGER).build(),
                         ToolCallParameter.builder().name("offset").description("Pagination offset").type(ToolCallParameterType.INTEGER).build()
                 )));
+        registerDatasetReportTools(builder, tools);
         group("Datasets", tools, groups);
+    }
+
+    /**
+     * Dataset reports turn a GENERAL dataset into a reusable metric/chart/table definition. The tools mirror the
+     * chat report tools but are owner-scoped by ReportService instead of a session dataset binding, so the
+     * builder can set reports up while it creates the agent and its datasets.
+     */
+    private void registerDatasetReportTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+        tools.add(builder.buildCustom("list_dataset_reports",
+                "List the current user's saved dataset reports, newest first. Optional dataset_id narrows to one dataset; limit/offset paginate. "
+                        + "Returns report_id, title, revision, dataset_id, dataset_name, display_type, pinned and updated_at. Call get_dataset_report before updating a report.",
+                List.of(
+                        string("dataset_id", "Filter by dataset ID", null),
+                        integer("limit", "Max results (default 20, max 100)", null),
+                        integer("offset", "Pagination offset", null))));
+        tools.add(builder.buildCustom("get_dataset_report",
+                "Read one saved dataset report: title, description, dataset_id, current revision, spec_json and url. "
+                        + "Pass the returned revision as expected_revision when calling update_dataset_report.",
+                List.of(string("report_id", "Saved report ID", Boolean.TRUE))));
+        tools.add(builder.buildCustom("preview_dataset_report",
+                "Validate a report spec and run it against real dataset data without saving it. Use this while designing a report and before create_dataset_report. "
+                        + "Returns status, columns, up to 20 preview rows, matched_record_count, resolved range and freshness. The source must be a GENERAL dataset and every referenced field must exist in its schema."
+                        + REPORT_SPEC_GUIDE,
+                reportSpecParameters()));
+        tools.add(builder.buildCustom("create_dataset_report",
+                "Create and save a dataset report owned by the current user on top of a GENERAL dataset. "
+                        + "The report appears under Datasets > Reports and opens at /datasets/reports/<id>. It is NOT pinned to the home page — the user pins it in the UI. "
+                        + "Use the exact dataset id (never the name) from create_dataset or list_datasets, and call preview_dataset_report first when unsure."
+                        + REPORT_SPEC_GUIDE,
+                reportSpecParameters()));
+        tools.add(builder.buildCustom("update_dataset_report",
+                "Update a saved dataset report. Call get_dataset_report first and pass its current revision as expected_revision; a mismatch is rejected and the saved report stays unchanged. "
+                        + "title, description and spec_json replace the saved definition; spec_json uses the same format as create_dataset_report.",
+                List.of(
+                        string("report_id", "Saved report ID", Boolean.TRUE),
+                        integer("expected_revision", "Current revision from get_dataset_report", Boolean.TRUE),
+                        string("title", "Report title, at most 120 characters", Boolean.TRUE),
+                        string("description", "Optional description, at most 2000 characters", null),
+                        string("spec_json", "New ReportSpec JSON string, spec_version=1 (same format as create_dataset_report)", Boolean.TRUE))));
+    }
+
+    private List<ToolCallParameter> reportSpecParameters() {
+        return List.of(
+                string("title", "Report title, at most 120 characters", Boolean.TRUE),
+                string("description", "Optional description, at most 2000 characters", null),
+                string("spec_json", "ReportSpec JSON string, spec_version=1; see the spec format and rules in this tool's description", Boolean.TRUE));
     }
 
     private void registerToolTools(SelfHarnessToolBuilder builder, List<ToolCall> tools, Map<String, String> groups) {

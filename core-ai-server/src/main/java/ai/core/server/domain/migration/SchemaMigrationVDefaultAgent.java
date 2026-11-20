@@ -106,14 +106,17 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
                   - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
                 - Shared data (datasets). If the agent needs to persist data across sessions and share it with all its users (e.g. a resume/talent pool database, reviewed resume evaluations, interview results, product catalogs, ticket lists), it needs a dataset — determine which datasets it needs and the permission level (READ to query, WRITE to also insert/update, FULL to also delete).
                 - Reusable capability packs (skills). If the agent needs a reusable skill that is not in the catalog, create it with `create_skill` (SKILL.md content with name/description frontmatter), then attach its id via `skill_ids` in `create_agent` or `update_agent`.
+                - Dataset reports (optional). If the data the agent produces should be monitored (a daily volume chart, a KPI, a table of the latest records), plan a report on top of the dataset. Reports only work on GENERAL datasets — SESSION state datasets cannot back a report.
 
             3. **Create datasets**: If the agent needs shared data, use the `create_dataset` tool to create the dataset(s) (e.g. a "talent pool" dataset for an HR assistant), then attach the returned dataset id via `dataset_config` in `create_agent` or `update_agent`. The dataset is then visible to every user who talks to the agent through its dataset tools — access follows the agent, not the individual user. For very long conversations, create a type=SESSION dataset so the agent can persist per-session state (progress, decisions, intermediate conclusions) via get_session_state/set_session_state and does not forget key information.
 
-            4. **Create draft**: Use the `create_agent` tool to create the agent in DRAFT status. Show the user the draft details.
+            4. **Create reports (optional)**: When the agent's dataset data should be watched over time, create a dataset report on a GENERAL dataset. Read the dataset schema first (`get_dataset`), describe the report in one sentence, then call `preview_dataset_report` to validate the spec against real data and `create_dataset_report` to save it. The report opens at /datasets/reports/<id> and is listed under Datasets > Reports. Reports are owned by the current user and are never pinned automatically — if the user wants one on their home page, tell them to pin it in the report page. Use `list_dataset_reports`/`get_dataset_report` before changing anything and `update_dataset_report` with the current revision to modify a saved report.
 
-            5. **Iterate**: If the user wants changes, use the `update_agent` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent.
+            5. **Create draft**: Use the `create_agent` tool to create the agent in DRAFT status. Show the user the draft details.
 
-            6. **Publish**: When the user confirms they're satisfied, use the `publish_agent` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
+            6. **Iterate**: If the user wants changes, use the `update_agent` tool to modify the existing draft by its agent_id. NEVER create a new draft to change an existing one — always use update_agent.
+
+            7. **Publish**: When the user confirms they're satisfied, use the `publish_agent` tool with the draft's agent_id to publish it. Tell the user the agent is available and can be tested in the Chat page.
 
             ## Agent Naming Guidelines
             - Use clear, descriptive names that reflect the agent's purpose
@@ -134,6 +137,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - Default to `builtin-all` tools unless the user specifies otherwise
             - Always recommend an appropriate max_turns value based on the agent's task type
             - Always recommend whether the agent needs a multimodal model based on whether it will process images
+            - Datasets, skills and reports are created with the caller's identity. Never guess a dataset or report id: read it from `list_datasets`/`create_dataset` or `list_dataset_reports` and pass the id, not the name.
+            - Never promise that a report is on the user's home page. The report tools cannot pin: the user pins a report in the report page.
+            - When another agent calls you as a subagent, finish with a compact handoff: agent_id and status, dataset ids with permissions, skill ids, report ids and their URLs.
             - If the user mentions needing sub-agents, MCP tools, service APIs, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
             """;
 
@@ -150,9 +156,11 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         // (e.g. a talent pool) and attach them to agents via dataset_config
         // 20260824002: add create_skill self-harness tool so the builder can create catalog skills
         // from SKILL.md content and attach them to agents via skill_ids
+        // 20261120001: add the dataset report tools (list/get/preview/create/update_dataset_report) so the builder
+        // can create and maintain reports on the datasets it manages; description/prompt now advertise that capability
         // the seeded default prompt only reaches fresh environments ($setOnInsert); already deployed
         // environments get the personality through SchemaMigrationVDefaultAssistantPersonality instead
-        return "20260824002";
+        return "20261120001";
     }
 
     @Override
@@ -233,7 +241,10 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var filter = new Document("_id", AGENT_BUILDER_ID);
         var update = new Document("$set", new Document()
             .append("name", "Agent Builder")
-            .append("description", "Interactive builder for creating and publishing AI agents through conversation")
+            .append("description", "Agent creation specialist: designs and publishes AI agents through conversation — system prompt, tools, model, "
+                + "shared datasets (GENERAL data or SESSION state), catalog skills, and dataset reports (metric/chart/table). "
+                + "Also lists and inspects existing agents, skills, datasets and tools, and updates or publishes existing drafts. "
+                + "Use it when the task is to create or change an agent, or to set up the datasets, skills or reports an agent needs.")
             .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
             .append("tools", toolRefs)
             .append("max_turns", 50)
@@ -263,7 +274,9 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var toolRefs = new ArrayList<Document>();
         toolRefs.add(new Document("id", "builtin:builtin-all").append("type", "BUILTIN"));
         for (var toolName : List.of("list_agents", "create_agent", "get_agent", "update_agent", "publish_agent",
-                "list_skills", "get_skill", "create_skill", "list_datasets", "create_dataset", "get_dataset", "list_dataset_records", "list_tools")) {
+                "list_skills", "get_skill", "create_skill", "list_datasets", "create_dataset", "get_dataset", "list_dataset_records",
+                "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report",
+                "list_tools")) {
             toolRefs.add(new Document("id", "builtin:self-harness:" + toolName).append("type", "BUILTIN").append("source", "Self Harness"));
         }
         return toolRefs;

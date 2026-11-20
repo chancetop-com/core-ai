@@ -36,6 +36,12 @@ public class SessionDatasetHelper {
         reportService = service;
     }
 
+    /** Null when the report feature is disabled for this deployment. */
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MS_EXPOSE_REP")
+    public static ReportService reportService() {
+        return reportService;
+    }
+
     private final DatasetService datasetService;
     private final DatasetRecordService datasetRecordService;
 
