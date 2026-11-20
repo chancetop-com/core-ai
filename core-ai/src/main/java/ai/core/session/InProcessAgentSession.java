@@ -388,6 +388,11 @@ public class InProcessAgentSession implements AgentSession {
         return turnDriver.isProcessing();
     }
 
+    /** Epoch millis when the current turn started; only meaningful while {@link #isTurnRunning()}. */
+    public long turnStartedAtMillis() {
+        return turnStartedAtMs;
+    }
+
     public boolean hasPendingWork() {
         var taskManager = agent.getExecutionContext().getTaskManager();
         return isTurnRunning() || turnInput.hasPending() || !commandQueue.isEmpty()

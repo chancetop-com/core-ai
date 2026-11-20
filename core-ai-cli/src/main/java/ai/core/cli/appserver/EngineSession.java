@@ -67,6 +67,11 @@ public class EngineSession {
         return session.isTurnRunning();
     }
 
+    /** Epoch millis when the running turn started; meaningless while the session is idle. */
+    long turnStartedAt() {
+        return session.turnStartedAtMillis();
+    }
+
     @SuppressWarnings("PMD.UseTryWithResources")
     public void close() {
         try {

@@ -5788,6 +5788,15 @@ function setViewStatus(view: SessionView, status: string): void {
   if (view === mountedView) applyComposerStatus(view.status);
 }
 
+/** Moves a row to the top of the sidebar; true when it was not already there. */
+function promoteSessionRow(row: SessionRow): boolean {
+  const index = state.sessions.indexOf(row);
+  if (index <= 0) return false;
+  state.sessions.splice(index, 1);
+  state.sessions.unshift(row);
+  return true;
+}
+
 /** Updates the sidebar row of whichever session the event belongs to; the viewed one drives the chip. */
 function handleStatusEvent(event: any): void {
   const status = String(event.status ?? 'idle').toLowerCase();
@@ -5799,6 +5808,9 @@ function handleStatusEvent(event: any): void {
       row.status = status;
       rowChanged = true;
     }
+    // A starting turn is a session's newest activity, but its snapshot is only dated when the turn
+    // saves: promote the row now instead of waiting for the listing refresh at turn end.
+    if (row && status === 'running') rowChanged = promoteSessionRow(row) || rowChanged;
   }
   const view = findSessionView(typeof event.sessionId === 'string' ? event.sessionId : state.sessionId);
   if (view) setViewStatus(view, status);
