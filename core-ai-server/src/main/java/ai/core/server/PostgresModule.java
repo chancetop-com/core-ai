@@ -49,7 +49,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.file.PgFileMigrationMarkerRow.class);
         db().view(ai.core.server.small.PgSmallMigrationLockRow.class);
         db().view(ai.core.server.small.PgSmallMigrationMarkerRow.class);
-        db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
+        registerForYouViews();
         registerAgentViews();
         registerRuntimeViews();
         registerMessagingViews();
@@ -61,6 +61,12 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.skill.PgSkillNameRow.class);
         db().view(PgUserRow.class);
         db().view(PgUserIdRow.class);
+    }
+
+    private void registerForYouViews() {
+        db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
+        // the desktop plugin registry list counts rows; a missing view fails every search with 500
+        db().view(ai.core.server.plugin.PgPluginCountRow.class);
     }
 
     private void registerAgentViews() {
