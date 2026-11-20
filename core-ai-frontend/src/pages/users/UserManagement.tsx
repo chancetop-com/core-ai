@@ -61,7 +61,7 @@ export default function UserManagement() {
   const [roleOptions, setRoleOptions] = useState<string[]>(['user', 'admin']);
 
   useEffect(() => {
-    api.agents.list(undefined, undefined, 1000).then(res => setAgents(res.agents)).catch(() => {});
+    api.agents.listPickers().then(res => setAgents(res.agents)).catch(() => {});
   }, []);
 
   useEffect(() => {

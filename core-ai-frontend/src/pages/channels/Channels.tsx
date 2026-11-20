@@ -47,7 +47,7 @@ export default function Channels() {
     setLoading(true);
     Promise.all([
       api.channels.list(),
-      api.agents.list(),
+      api.agents.listPickers(),
       api.channels.types(),
     ])
       .then(([channelsRes, agentsRes, typesRes]) => {

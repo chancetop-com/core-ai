@@ -20,11 +20,11 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
     private static final String TABLE = "app.agents";
     private static final String SELECT = "SELECT id, user_id, name, name_key, type, status, system_default, "
         + "forked_from, has_published_config, created_at, updated_at, data::text AS data FROM " + TABLE;
-    // list summaries need the catalog name only; selecting data::text here detoasts every agent document.
+    // list summaries need the catalog fields only; selecting data::text here detoasts every agent document.
     // json keys are bound as parameters: the framework rejects quoted literals in SQL
-    private static final String SELECT_SUMMARY = "SELECT id, name, type, status, "
+    private static final String SELECT_SUMMARY = "SELECT id, user_id, name, type, status, system_default, "
         + "data ->> ? AS published_name, data ->> ? AS description, "
-        + "data ->> ? AS published_description FROM " + TABLE;
+        + "data ->> ? AS published_description, data ->> ? AS model FROM " + TABLE;
     private static final String INSERT = "INSERT INTO " + TABLE + " (id, user_id, name, name_key, type, status, "
         + "system_default, forked_from, has_published_config, created_at, updated_at, data) ";
 
@@ -35,12 +35,15 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
     private static AgentDefinition toSummary(PgAgentSummaryRow row) {
         var definition = new AgentDefinition();
         definition.id = row.id;
+        definition.userId = row.userId;
         definition.name = row.name;
         definition.type = row.type != null ? DefinitionType.valueOf(row.type) : null;
         definition.status = row.status != null ? AgentStatus.valueOf(row.status) : null;
+        definition.systemDefault = row.systemDefault;
         definition.description = row.description;
         definition.publishedName = row.publishedName;
         definition.publishedDescription = row.publishedDescription;
+        definition.model = row.model;
         return definition;
     }
 
@@ -61,6 +64,7 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
             params.add("publishedName");
             params.add("description");
             params.add("publishedDescription");
+            params.add("model");
         }
         conditions(request, sql, params);
         var sort = switch (request.sortField) {

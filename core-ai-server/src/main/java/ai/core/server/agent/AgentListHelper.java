@@ -46,6 +46,8 @@ final class AgentListHelper {
         view.description = AgentViewHelper.catalogDescription(entity);
         view.type = entity.type != null ? entity.type.name() : DefinitionType.AGENT.name();
         view.status = entity.status != null ? entity.status.name() : null;
+        view.model = entity.model;
+        view.systemDefault = entity.systemDefault;
         return view;
     }
 
@@ -203,7 +205,7 @@ final class AgentListHelper {
         }
         var userNameMap = resolveUserNames(ordered);
         var views = ordered.stream().map(agent -> {
-            var view = AgentViewHelper.buildView(agent, Map.of(), Map.of());
+            var view = AgentViewHelper.buildListView(agent, Map.of(), Map.of());
             view.createdBy = userNameMap.getOrDefault(agent.userId, agent.userId);
             view.favorite = Boolean.TRUE;
             return view;

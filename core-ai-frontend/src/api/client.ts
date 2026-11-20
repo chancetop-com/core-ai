@@ -2309,7 +2309,7 @@ export const api = {
       request<ListGatewayModelsResponse>(`/api/gateway/providers/${providerId}/models/import`, { method: 'POST', body: JSON.stringify(data) }),
   },
   agents: {
-    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string, summary?: boolean) => {
+    list: (my?: boolean, query?: string, limit?: number, page?: number, sort?: string, includeSystemDefault?: boolean, type?: string, summary?: boolean, view?: string) => {
       const params = new URLSearchParams();
       if (my !== undefined) params.set('my', String(my));
       if (query) params.set('query', query);
@@ -2319,11 +2319,12 @@ export const api = {
       if (includeSystemDefault !== undefined) params.set('include_system_default', String(includeSystemDefault));
       if (type) params.set('type', type);
       if (summary !== undefined) params.set('summary', String(summary));
+      if (view) params.set('view', view);
       const qs = params.toString();
       return request<ListAgentsResponse>(`/api/agents${qs ? `?${qs}` : ''}`);
     },
-    listPickers: () =>
-      request<ListAgentsResponse>('/api/agents?view=picker'),
+    listPickers: (my?: boolean) =>
+      request<ListAgentsResponse>(`/api/agents?view=picker${my ? '&my=true' : ''}`),
     get: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>

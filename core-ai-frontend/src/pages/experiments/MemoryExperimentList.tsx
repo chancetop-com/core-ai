@@ -118,7 +118,7 @@ export default function MemoryExperimentList() {
     setShowCreate(true);
     if (agents.length === 0) {
       try {
-        const res = await api.agents.list(false, undefined, 200);
+        const res = await api.agents.listPickers();
         setAgents(res.agents);
       } catch {
         // keep dropdown empty

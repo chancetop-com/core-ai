@@ -83,7 +83,8 @@ export default function Scheduler() {
     setLoading(true);
     Promise.all([
       api.schedules.list(),
-      api.agents.list(),
+      // the page only needs catalog fields; the full agent view is ~1.7 MB in UAT
+      api.agents.listPickers(),
       api.channels.list(),
       // projects are optional context (permission-gated): a failure must not break the scheduler page
       api.projects.list(0, 200, false).catch(() => ({ projects: [], total: 0 })),
@@ -172,14 +173,24 @@ export default function Scheduler() {
     return true;
   });
 
-  const openNew = () => {
+  // agent defaults are not part of the picker payload; fetch them only when the editor needs them
+  const loadAgentVariables = async (agentId: string): Promise<Record<string, string> | undefined> => {
+    if (!agentId) return undefined;
+    try {
+      const detail = await api.agents.get(agentId);
+      return detail.variables && Object.keys(detail.variables).length > 0 ? detail.variables : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const openNew = async () => {
     const defaultAgentId = agents[0]?.id ?? '';
-    const defaultVariables = defaultAgentId ? (agentMap[defaultAgentId]?.variables || {}) : {};
     setEditor({
       ...emptyEditor(),
       open: true,
       agentId: defaultAgentId,
-      variables: Object.keys(defaultVariables).length > 0 ? defaultVariables : undefined,
+      variables: await loadAgentVariables(defaultAgentId),
     });
   };
 
@@ -544,13 +555,12 @@ export default function Scheduler() {
               <div>
                 <label className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>Agent</label>
                 <select value={editor.agentId} disabled={!!editor.editing}
-                  onChange={e => {
+                  onChange={async e => {
                     const nextAgentId = e.target.value;
-                    const defaults = agentMap[nextAgentId]?.variables || {};
                     setEditor({
                       ...editor,
                       agentId: nextAgentId,
-                      variables: Object.keys(defaults).length > 0 ? defaults : undefined,
+                      variables: await loadAgentVariables(nextAgentId),
                     });
                   }}
                   className="w-full px-3 py-2 rounded-lg border text-sm"

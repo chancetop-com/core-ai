@@ -395,7 +395,7 @@ public class AgentDefinitionService {
     }
 
     AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
-        var view = AgentViewHelper.buildView(entity, subAgentNameMap, skillNameMap);
+        var view = AgentViewHelper.buildListView(entity, subAgentNameMap, skillNameMap);
         view.createdBy = userNameMap.getOrDefault(entity.userId, entity.userId);
         var updatedBy = AgentViewHelper.lastModifiedBy(entity);
         view.updatedBy = userNameMap.getOrDefault(updatedBy, updatedBy);

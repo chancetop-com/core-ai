@@ -89,7 +89,7 @@ export default function AgentComparison() {
 
   useEffect(() => {
     loadComparisons();
-    api.agents.list(true).then(res => {
+    api.agents.listPickers(true).then(res => {
       const chatAgents = (res.agents || []).filter(agent => agent.type !== 'LLM_CALL');
       setAgents(chatAgents);
     }).catch(err => console.error('load agents failed', err));

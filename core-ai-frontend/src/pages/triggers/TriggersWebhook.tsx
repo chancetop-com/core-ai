@@ -56,7 +56,7 @@ export default function TriggersWebhook() {
 
   const load = () => {
     setLoading(true);
-    Promise.all([api.triggers.list('WEBHOOK'), api.agents.list()])
+    Promise.all([api.triggers.list('WEBHOOK'), api.agents.listPickers()])
       .then(([triggersRes, agentRes]) => {
         setTriggers(triggersRes.triggers || []);
         setAgents(agentRes.agents || []);

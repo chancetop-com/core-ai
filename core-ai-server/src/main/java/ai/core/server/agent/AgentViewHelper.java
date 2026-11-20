@@ -93,6 +93,16 @@ final class AgentViewHelper {
         return view;
     }
 
+    // List rows are catalog cards: prompts and schemas are editor detail payloads. systemPrompt
+    // alone was ~1.1 MB of a 1.7 MB /api/agents response in UAT, and no list screen renders it.
+    static AgentDefinitionView buildListView(AgentDefinition entity, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
+        var view = buildView(entity, subAgentNameMap, skillNameMap);
+        view.systemPrompt = null;
+        view.inputTemplate = null;
+        view.responseSchema = null;
+        return view;
+    }
+
     private static void applyIdentity(AgentDefinitionView view, AgentDefinition entity) {
         view.id = entity.id;
         view.name = catalogName(entity);

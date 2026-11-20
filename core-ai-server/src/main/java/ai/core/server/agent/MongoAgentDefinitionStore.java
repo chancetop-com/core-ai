@@ -44,8 +44,8 @@ public class MongoAgentDefinitionStore implements AgentDefinitionStore {
         query.limit = request.limit == null || request.limit <= 0 ? null : request.limit;
         if (request.excludeSystemPrompt) query.projection = com.mongodb.client.model.Projections.exclude("system_prompt");
         if (request.summaryOnly) {
-            query.projection = com.mongodb.client.model.Projections.include("_id", "name", "type", "status",
-                "description", "published_name", "published_description");
+            query.projection = com.mongodb.client.model.Projections.include("_id", "user_id", "name", "type", "status",
+                "system_default", "description", "published_name", "published_description", "model");
         }
         return agentDefinitionCollection.find(query);
     }

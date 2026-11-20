@@ -676,7 +676,7 @@ export default function Chat() {
 
   // Load my agents for agent selector
   useEffect(() => {
-    api.agents.list(true).then(res => {
+    api.agents.listPickers(true).then(res => {
       // LLM_CALL definitions are callable tools, not chat agents — hide them from the selector.
       const chatAgents = (res.agents || []).filter(a => a.type !== 'LLM_CALL');
       setMyAgents(chatAgents);
