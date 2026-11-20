@@ -304,8 +304,9 @@ public class ToolExecutor {
         try {
             token.throwIfCancelled();
             return ToolCallWait.await(future, 0, tool.getName(), context, threadRef).result();
-        } catch (CancellationException e) {
+        } catch (ai.core.agent.CancellationException | CancellationException e) {
             LOGGER.warn("sandbox tool call abandoned after cancel, tool={}, reason={}", tool.getName(), token.getReason());
+            future.cancel(true);
             return ToolCallResult.failed(Strings.format("tool call cancelled while running in sandbox (reason={}): {}", token.getReason(), tool.getName()));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -313,7 +314,7 @@ public class ToolExecutor {
             return ToolCallResult.failed(Strings.format("tool call interrupted: {}", tool.getName()));
         } catch (ExecutionException e) {
             var cause = e.getCause();
-            return ToolCallResult.failed(Strings.format("tool call failed<sandbox>: {}", cause != null ? cause.getMessage() : e.getMessage()), cause instanceof Exception ex ? ex : e);
+            return ToolCallResult.hardFailed(Strings.format("tool call failed<sandbox>: {}", cause != null ? cause.getMessage() : e.getMessage()), cause instanceof RuntimeException ex ? ex : new RuntimeException(e));
         } finally {
             unbind.run();
         }
@@ -326,7 +327,7 @@ public class ToolExecutor {
             return sandbox.execute(tool.getName(), functionCall.function.arguments, context);
         } catch (RuntimeException e) {
             LOGGER.warn("sandbox execution failed, tool={}", tool.getName(), e);
-            return ToolCallResult.failed("SANDBOX_UNAVAILABLE: the sandbox could not run this tool (" + e.getMessage()
+            return ToolCallResult.hardFailed("SANDBOX_UNAVAILABLE: the sandbox could not run this tool (" + e.getMessage()
                 + "). Tell the user; do not retry sandbox tools until it is fixed.", e);
         }
     }
@@ -371,7 +372,7 @@ public class ToolExecutor {
             return ToolCallResult.failed(Strings.format("tool call interrupted: {}", functionCall.function.name));
         } catch (ExecutionException e) {
             var cause = e.getCause();
-            return ToolCallResult.failed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), cause != null ? cause.getMessage() : e.getMessage()), cause instanceof Exception ex ? ex : e);
+            return ToolCallResult.hardFailed(Strings.format("tool call failed<execute>:\n{}, cause:\n{}", JSON.toJSON(functionCall), cause != null ? cause.getMessage() : e.getMessage()), cause instanceof RuntimeException ex ? ex : new RuntimeException(cause != null ? cause : e));
         }
     }
 

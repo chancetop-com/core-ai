@@ -172,7 +172,7 @@ public class SandboxClient {
             return parseResponse(response.text(), System.currentTimeMillis() - startTime);
         } catch (Exception e) {
             LOGGER.error("sandbox task poll failed: url={}, taskId={}", baseUrl, taskId, e);
-            return ToolCallResult.failed("Failed to poll task: " + e.getMessage())
+            return ToolCallResult.hardFailed("Failed to poll task: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
@@ -256,18 +256,18 @@ public class SandboxClient {
                 case "failed" -> ToolCallResult.failed(response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "failed");
-                case "timeout" -> ToolCallResult.failed("Sandbox execution timeout: " + response.result)
+                case "timeout" -> ToolCallResult.hardFailed("Sandbox execution timeout: " + response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "timeout");
                 case "pending" -> ToolCallResult.pending(response.taskId, "Async task submitted: " + response.taskId)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "pending")
                         .withStats("taskId", response.taskId);
-                default -> ToolCallResult.failed("Unknown sandbox response: " + response.status)
+                default -> ToolCallResult.hardFailed("Unknown sandbox response: " + response.status)
                         .withDuration(durationMs);
             };
         } catch (Exception e) {
-            return ToolCallResult.failed("Failed to parse sandbox response: " + e.getMessage())
+            return ToolCallResult.hardFailed("Failed to parse sandbox response: " + e.getMessage(), e)
                     .withDuration(durationMs);
         }
     }

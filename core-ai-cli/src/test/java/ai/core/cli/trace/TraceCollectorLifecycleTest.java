@@ -129,14 +129,29 @@ class TraceCollectorLifecycleTest {
     }
 
     @Test
-    void failingToolMarksToolSpanError() {
+    void recoverableToolFailureMarksToolSpanWarning() {
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
+        lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
+        lifecycle.afterModel(CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a"),
+                CompletionResponse.of(List.of(), new Usage(1, 1, 2)), null);
+        var call = FunctionCall.of("c1", "function", "grep_file", "{}");
+        lifecycle.beforeTool(call, null);
+        lifecycle.afterTool(call, null, ToolCallResult.failed("Error: path does not exist: nope"));
+        lifecycle.afterAgentRun("hi", new AtomicReference<>("done"), null);
+
+        var tool = captured.spans.stream().filter(s -> "TOOL".equals(s.type)).findFirst().orElseThrow();
+        assertEquals("WARNING", tool.status, "a missing path is a model-level miss, not a failed turn");
+    }
+
+    @Test
+    void hardToolFailureMarksToolSpanError() {
         var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
         lifecycle.afterModel(CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a"),
                 CompletionResponse.of(List.of(), new Usage(1, 1, 2)), null);
         var call = FunctionCall.of("c1", "function", "bad_tool", "{}");
         lifecycle.beforeTool(call, null);
-        lifecycle.afterTool(call, null, ToolCallResult.failed("nope"));
+        lifecycle.afterTool(call, null, ToolCallResult.hardFailed("SANDBOX_UNAVAILABLE: docker is down"));
         lifecycle.afterAgentRun("hi", new AtomicReference<>("done"), null);
 
         var tool = captured.spans.stream().filter(s -> "TOOL".equals(s.type)).findFirst().orElseThrow();

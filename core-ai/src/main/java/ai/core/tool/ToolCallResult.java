@@ -36,6 +36,19 @@ public final class ToolCallResult {
         return r;
     }
 
+    /**
+     * A failed call defaults to WARNING: the tool ran and reported a negative result the agent can act on
+     * (a missing path, an invalid argument). Use this factory when the call could not run at all — an
+     * executor fault, an unreachable sandbox, a timeout — so traces show it as an error instead.
+     */
+    public static ToolCallResult hardFailed(String error) {
+        return failed(error).withSeverity(Severity.ERROR);
+    }
+
+    public static ToolCallResult hardFailed(String error, Throwable e) {
+        return failed(error, e).withSeverity(Severity.ERROR);
+    }
+
     public static ToolCallResult waitingForInput(String taskId, String message) {
         var r = new ToolCallResult();
         r.status = Status.WAITING_FOR_INPUT;
@@ -61,6 +74,7 @@ public final class ToolCallResult {
     }
 
     private Status status;
+    private Severity severity = Severity.WARNING;
     private String taskId;
     private String result;
 
@@ -107,6 +121,23 @@ public final class ToolCallResult {
 
     public boolean isFailed() {
         return status == Status.FAILED;
+    }
+
+    /**
+     * True when the call could not run at all (executor fault, sandbox unavailable, timeout), as opposed
+     * to a tool that ran and reported a negative result the agent can recover from.
+     */
+    public boolean isHardFailure() {
+        return status == Status.FAILED && severity == Severity.ERROR;
+    }
+
+    public Severity getSeverity() {
+        return severity;
+    }
+
+    public ToolCallResult withSeverity(Severity severity) {
+        this.severity = severity;
+        return this;
     }
 
     public boolean isAsyncLaunched() {
@@ -157,6 +188,7 @@ public final class ToolCallResult {
     public ToolCallResult snapshotCopy() {
         var copy = new ToolCallResult();
         copy.status = status;
+        copy.severity = severity;
         copy.taskId = taskId;
         copy.result = result;
         copy.toolName = toolName;
@@ -311,6 +343,11 @@ public final class ToolCallResult {
         WAITING_FOR_INPUT,
         ASYNC_LAUNCHED,
         FAILED
+    }
+
+    public enum Severity {
+        WARNING,
+        ERROR
     }
 
     public enum ContentType {

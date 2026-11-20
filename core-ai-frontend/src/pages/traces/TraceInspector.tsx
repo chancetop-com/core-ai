@@ -484,7 +484,8 @@ function SpanTimelineRow({ span, bounds, selected, collapsed, onSelect, onToggle
           style={{
             left: `${left}%`,
             width: `${width}%`,
-            background: span.status === 'ERROR' ? 'var(--color-error)' : span.status === 'CANCELLED' ? '#b45309' : color,
+            background: span.status === 'ERROR' ? 'var(--color-error)'
+              : span.status === 'WARNING' || span.status === 'CANCELLED' ? '#d97706' : color,
             opacity: 0.72,
           }} />
       </div>

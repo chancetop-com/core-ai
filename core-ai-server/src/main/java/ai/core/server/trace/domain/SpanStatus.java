@@ -10,6 +10,8 @@ public enum SpanStatus {
     OK,
     @MongoEnumValue("CANCELLED")
     CANCELLED,
+    @MongoEnumValue("WARNING")
+    WARNING,
     @MongoEnumValue("ERROR")
     ERROR
 }

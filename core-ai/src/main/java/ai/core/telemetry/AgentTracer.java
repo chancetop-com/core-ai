@@ -42,6 +42,9 @@ public class AgentTracer extends Tracer {
     // Tool call attributes
     private static final AttributeKey<String> TOOL_NAME = AttributeKey.stringKey("tool.name");
     private static final AttributeKey<Boolean> TOOL_IS_SUB_AGENT = AttributeKey.booleanKey("tool.is_sub_agent");
+    // OTel has no WARN status: a tool that returned a recoverable negative result stays a non-error span,
+    // and this attribute carries the distinction for the trace UI.
+    private static final AttributeKey<String> TOOL_RESULT_SEVERITY = AttributeKey.stringKey("tool.result.severity");
 
     public AgentTracer(OpenTelemetry openTelemetry, boolean enabled) {
         super(openTelemetry, enabled);
@@ -181,10 +184,15 @@ public class AgentTracer extends Tracer {
             if (result != null) {
                 span.setAttribute(OUTPUT_VALUE, result.toString());
             }
-            // Tools report most failures (sandbox timeouts, HTTP errors) as a FAILED result rather than
-            // by throwing, so the span has to read the result to show the failure in the trace UI.
+            // A failed tool call is not a failed turn: a tool that ran and reported a negative result
+            // (missing path, invalid argument) is a warning the agent recovers from. Only a call the
+            // executor could not run at all marks the span as an error.
             if (result instanceof ToolCallResult toolResult && toolResult.isFailed()) {
-                span.setStatus(StatusCode.ERROR, toolResult.getResult());
+                if (toolResult.isHardFailure()) {
+                    span.setStatus(StatusCode.ERROR, toolResult.getResult());
+                } else {
+                    span.setAttribute(TOOL_RESULT_SEVERITY, "WARNING");
+                }
             }
 
             return result;

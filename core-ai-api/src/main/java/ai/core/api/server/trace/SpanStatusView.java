@@ -12,6 +12,8 @@ public enum SpanStatusView {
     OK,
     @Property(name = "CANCELLED")
     CANCELLED,
+    @Property(name = "WARNING")
+    WARNING,
     @Property(name = "ERROR")
     ERROR
 }

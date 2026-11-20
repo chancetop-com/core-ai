@@ -51,7 +51,7 @@ final class ToolCallWait {
                 future.cancel(true);
                 interrupt(toolThread);
                 LOGGER.warn("tool {} execution timed out after {}ms", toolName, timeoutMs);
-                return new Outcome(ToolCallResult.failed(
+                return new Outcome(ToolCallResult.hardFailed(
                         Strings.format("tool call timed out after {}ms: {}", timeoutMs, toolName)), true, false);
             }
         }

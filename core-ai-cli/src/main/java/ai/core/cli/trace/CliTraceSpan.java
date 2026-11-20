@@ -38,7 +38,7 @@ public class CliTraceSpan {
     @Property(name = "durationMs")
     public Long durationMs;
     @Property(name = "status")
-    public String status;          // OK | ERROR
+    public String status;          // OK | WARNING | CANCELLED | ERROR
     @Property(name = "attributes")
     public Map<String, String> attributes;
     @Property(name = "startedAtEpochMs")

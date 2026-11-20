@@ -334,7 +334,7 @@ export interface Span {
   cachedTokens?: number;
   costUsd?: number;
   durationMs: number;
-  status: 'OK' | 'CANCELLED' | 'ERROR';
+  status: 'OK' | 'WARNING' | 'CANCELLED' | 'ERROR';
   errorMessage?: string;
   attributes?: Record<string, string>;
   startedAt: string;

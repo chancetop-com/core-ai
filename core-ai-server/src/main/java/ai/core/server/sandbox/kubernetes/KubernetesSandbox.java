@@ -69,7 +69,7 @@ public class KubernetesSandbox implements Sandbox {
             if (isConnectionError(e)) {
                 status = SandboxStatus.ERROR;
             }
-            return ToolCallResult.failed("Sandbox execution failed: " + e.getMessage())
+            return ToolCallResult.hardFailed("Sandbox execution failed: " + e.getMessage(), e)
                     .withStats("error", "sandbox_error");
         }
     }

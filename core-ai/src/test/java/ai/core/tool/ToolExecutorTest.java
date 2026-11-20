@@ -345,6 +345,7 @@ class ToolExecutorTest {
         var result = executor.execute(tool("run_bash_command", false), FunctionCall.of("call_1", "function", "run_bash_command", "{}"), context);
 
         assertTrue(result.isFailed());
+        assertTrue(result.isHardFailure(), "an unreachable sandbox is a system fault, not a model-level miss");
         assertTrue(result.getResult().startsWith("SANDBOX_UNAVAILABLE"), result.getResult());
         assertTrue(result.getResult().contains("/networks/core-ai-sandbox"), result.getResult());
     }

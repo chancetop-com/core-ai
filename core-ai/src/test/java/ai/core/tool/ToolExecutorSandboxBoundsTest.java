@@ -53,7 +53,7 @@ class ToolExecutorSandboxBoundsTest {
             var tracer = new AgentTracer(OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build(), true);
             var executor = new ToolExecutor(List.of(), tracer, status -> { }, () -> null);
             var context = ExecutionContext.builder().sandbox(new BlockingSandbox(null,
-                ToolCallResult.failed("Sandbox execution failed: http request failed, error=timeout"))).build();
+                ToolCallResult.hardFailed("Sandbox execution failed: http request failed, error=timeout"))).build();
 
             executor.execute(new StubTool(), BASH_CALL, context);
 

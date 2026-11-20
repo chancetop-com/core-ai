@@ -141,7 +141,10 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             span.type = "TOOL";
             span.input = functionCall != null && functionCall.function != null ? truncate(functionCall.function.arguments) : null;
             span.output = result != null ? truncate(result.getResult()) : null;
-            span.status = result != null && result.isFailed() ? "ERROR" : "OK";
+            // A tool that ran and reported a negative result (missing path, invalid argument) is part of
+            // the agent loop, not a failed turn; only a call that could not run at all is an error.
+            span.status = result == null || !result.isFailed() ? "OK"
+                : result.isHardFailure() ? "ERROR" : "WARNING";
             span.startedAtEpochMs = start;
             span.completedAtEpochMs = now;
             span.durationMs = now - start;

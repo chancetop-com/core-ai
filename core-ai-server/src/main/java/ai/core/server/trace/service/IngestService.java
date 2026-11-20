@@ -369,6 +369,7 @@ public class IngestService {
     private SpanStatus mapSpanStatus(String status, Map<String, String> attributes) {
         if (isCancelled(status, attributes)) return SpanStatus.CANCELLED;
         if ("ERROR".equals(status)) return SpanStatus.ERROR;
+        if ("WARNING".equals(status)) return SpanStatus.WARNING;
         return SpanStatus.OK;
     }
 

@@ -131,6 +131,8 @@ class OTLPParseHelper {
     static SpanStatus mapSpanStatus(Status.StatusCode code, Map<String, String> attrs) {
         if (isCancelled(attrs)) return SpanStatus.CANCELLED;
         if (code == Status.StatusCode.STATUS_CODE_ERROR) return SpanStatus.ERROR;
+        // OTel has no WARN status; the tracer records a recoverable tool failure as this attribute.
+        if ("WARNING".equalsIgnoreCase(attrs.get("tool.result.severity"))) return SpanStatus.WARNING;
         return SpanStatus.OK;
     }
 
