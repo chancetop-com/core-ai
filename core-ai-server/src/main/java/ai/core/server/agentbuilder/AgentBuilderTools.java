@@ -72,7 +72,7 @@ public class AgentBuilderTools {
             return;
         }
         if (failure != null) throw failure;
-        throw new IllegalStateException("agent builder changed during seed upgrade");
+        LOGGER.warn("agent builder changed during seed upgrade, retrying on the next start");
     }
 
     public List<ToolCall> tools() {
