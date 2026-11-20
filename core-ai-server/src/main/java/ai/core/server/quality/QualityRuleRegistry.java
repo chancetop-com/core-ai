@@ -44,6 +44,11 @@ public class QualityRuleRegistry {
         return evaluators.values().stream().map(QualityRuleEvaluator::template).toList();
     }
 
+    public boolean supportsInstructionOverride(String evaluatorKey) {
+        var evaluator = evaluators.get(evaluatorKey);
+        return evaluator != null && evaluator.supportsInstructionOverride();
+    }
+
     public boolean isDecisionComposable() {
         return evaluators.containsKey(DecisionQualityRule.EVALUATOR_KEY);
     }

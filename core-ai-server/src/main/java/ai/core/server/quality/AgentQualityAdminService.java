@@ -114,6 +114,10 @@ public class AgentQualityAdminService {
             throw new BadRequestException("retired quality rule cannot be edited");
         }
         var latest = policyService.requireRevision(ruleId, rule.latestRevision);
+        if (Boolean.TRUE.equals(rule.builtIn) && request.decisionInstruction != null
+            && !request.decisionInstruction.isBlank() && !registry.supportsInstructionOverride(latest.evaluatorKey)) {
+            throw new BadRequestException("built-in quality rule does not support decision instruction overrides: " + rule.key);
+        }
         if (request.parameters != null) latest.parameters = new LinkedHashMap<>(request.parameters);
         if (request.decisionQuestion != null) latest.decisionQuestion = request.decisionQuestion;
         if (request.decisionInstruction != null) latest.decisionInstruction = request.decisionInstruction;
@@ -402,6 +406,7 @@ public class AgentQualityAdminService {
         view.category = template.category();
         view.description = template.description();
         view.supportsDecision = template.supportsDecision();
+        view.supportsInstructionOverride = registry.supportsInstructionOverride(template.evaluatorKey());
         view.inputOptions = template.inputOptions();
         var parameters = new ArrayList<AgentQualityRuleParameterView>();
         for (var parameter : template.parameters()) {

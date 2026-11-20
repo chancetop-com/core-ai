@@ -413,9 +413,25 @@ export default function QualityRuleEditor({
                   <div className="md:col-span-2 rounded-lg border p-3" style={{ borderColor: 'var(--color-border)' }}>
                     <div className="text-xs font-medium mb-2">Built-in decision questions</div>
                     <DecisionQuestionList questions={codeQuestions} />
-                    <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
-                      Defined in code and read-only. Adjust parameters, thresholds or enforcement to tune this rule.
-                    </div>
+                    {template?.supports_instruction_override ? (
+                      <>
+                        <label className="block text-xs mt-3">Decision instructions override
+                          <textarea value={String(draft.decision_instruction || '')}
+                            onChange={e => setDraft({ ...draft, decision_instruction: e.target.value })}
+                            rows={4} placeholder={codeQuestions[0]?.instruction || ''}
+                            className="mt-1 w-full px-2 py-1.5 rounded border text-sm"
+                            style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-primary)', color: 'var(--color-text-primary)' }} />
+                        </label>
+                        <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                          Leave empty to use the built-in default. The override is versioned with this rule revision;
+                          the question name, type and criteria stay in code.
+                        </div>
+                      </>
+                    ) : (
+                      <div className="text-xs mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                        Defined in code and read-only. Adjust parameters, thresholds or enforcement to tune this rule.
+                      </div>
+                    )}
                   </div>
                 )}
                 {!builtIn && (

@@ -30,4 +30,10 @@ public record QualityRuleContext(PublishQualitySnapshot snapshot,
     public double lower() {
         return rule.negativeThreshold == null ? 0.20 : rule.negativeThreshold;
     }
+
+    /** Built-in instructions stay the default; a revision may override them without changing the question. */
+    public String decisionInstruction(String fallback) {
+        return rule.decisionInstruction == null || rule.decisionInstruction.isBlank()
+            ? fallback : rule.decisionInstruction;
+    }
 }

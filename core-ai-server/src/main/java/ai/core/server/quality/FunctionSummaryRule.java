@@ -30,7 +30,7 @@ public class FunctionSummaryRule implements QualityRuleEvaluator {
         if (context.decisions() == null) return decisionUnavailable(context);
 
         var state = JsonUtil.toJson(Map.of("task", "publish_quality_function_summary", "description", description));
-        var question = DecisionQuestion.noul(QUESTION, INSTRUCTION, criteria());
+        var question = DecisionQuestion.noul(QUESTION, context.decisionInstruction(INSTRUCTION), criteria());
         try {
             var decision = context.decisions().decide(context.rule().modelAlias, state, List.of(question),
                 context.rule().expectedRouteFingerprint, context.budget());
@@ -93,6 +93,11 @@ public class FunctionSummaryRule implements QualityRuleEvaluator {
     @Override
     public int version() {
         return 1;
+    }
+
+    @Override
+    public boolean supportsInstructionOverride() {
+        return true;
     }
 
     @Override

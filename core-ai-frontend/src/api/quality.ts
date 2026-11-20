@@ -174,6 +174,7 @@ export interface RuleTemplate {
   parameters: RuleParameter[];
   input_options: string[];
   supports_decision: boolean;
+  supports_instruction_override?: boolean;
   questions?: RuleQuestion[];
 }
 

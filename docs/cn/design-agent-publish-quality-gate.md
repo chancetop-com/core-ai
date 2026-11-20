@@ -494,7 +494,7 @@ Java 实体和 API DTO 使用具体字段类型，集合值类型明确，持久
 - 必须分别度量合规样本实际阻断率（包含 FAIL / INDETERMINATE / ERROR）与确定判定覆盖率；建议首版目标为误阻断率≤5%、确定判定覆盖率≥95%，与第11节违规precision/漏检指标一起 Review；没有代表性样本时只允许 SHADOW，不自动转 BLOCK。模型版本/criteria/输入或阈值变化重新运行 fixture suite。
 - 删除采用 RETIRED，历史 revision 不物理删；回滚通过激活旧 policy revision 完成，并重新校验旧模型仍可用。
 - 管理页面有 History / Test Results / Impact tabs；统计 shadow 失败、不确定、检查故障与 latency。权限允许的 Agent 内容才可展开。
-- 内置 CODE 逻辑不可在 UI 修改；只能调支持的参数和消息，添加 CODE 算法需代码审查和测试。未来需要表达式规则时可独立引入受限 CEL checker，不在首版以 eval 实现。
+- 内置 CODE 逻辑不可在 UI 修改；只能调支持的参数和消息，添加 CODE 算法需代码审查和测试。语义型内置规则（C1、B1）可在 UI 覆盖 decision instructions：覆盖文本随规则 revision 固化并进入决策调用，question name/type/criteria 仍由代码拥有，清空即回到内置默认。未来需要表达式规则时可独立引入受限 CEL checker，不在首版以 eval 实现。
 - 回归测试必须覆盖：B2 投影 vs runtime registry（parity）、C1 发布后元数据修改、MCP tool 缓存命中/未命中、WARN 发布成功后的报告读取、model route drift、workflow snapshot gate。
 
 **理由：**治理和规则执行同样重要。保留历史、回滚和 shadow 可以缩短错误策略恢复时间，而禁止任意脚本避免把高权限设置变成 RCE 入口。
@@ -912,6 +912,7 @@ quality-check 权限至少为对该 Agent 具有当前发布管理权限；报�
 | v0.4（实施记录） | 2026-11-14 | core-ai | 记录用户实施授权与 R-IMPL-01..13 的落地选择（存储、SHADOW 种子、幂等/并发、fork、workflow、MCP tool 未缓存、试测与 UI） | 用户授权实施；OPEN 决策按默认/最保守方案落地并留痕 | 用户授权实施（2026-11-14） |
 | v0.5（实施验证记录） | 2026-11-14 | core-ai | 记录 2.0.235–2.0.238 的实现与 dev E2E 结果、V38 迁移、剩余限制；交互式 builtin reset 改为全部候选检查通过后再写入 | 实施完成并完成 dev 验证；不改变用户原始需求 | 用户授权实施（2026-11-14） |
 | v0.6（实施记录） | 2026-11-19 | core-ai | 新增管理员豁免白名单：随 agent policy revision 固化的 `exemptions` 列表；built-in system agent 与 personal assistant copy 自动豁免；gate/report/receipt 记录 `exempted` + `exemption_reason` | 用户要求豁免已知违规但不愿修改的默认 assistant agent，且无法逐用户配置 | 用户请求（2026-11-19） |
+| v0.7（实施记录） | 2026-11-20 | core-ai | 内置语义规则的 decision instructions 可由管理员在规则 revision 中覆盖（`FunctionSummaryRule`、`TimeContextRule`）；新增 `supports_instruction_override` 模板能力位与 UI 覆盖输入框 | 用户反馈 C1 判定过严且无法编辑提示词，需要不发版即可调整语义严格度 | 用户请求（2026-11-20） |
 
 ### 14.4 设计自查记录
 

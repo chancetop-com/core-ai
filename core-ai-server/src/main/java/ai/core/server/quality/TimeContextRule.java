@@ -50,7 +50,7 @@ public class TimeContextRule implements QualityRuleEvaluator {
             "temporalScope", scope,
             "definitionType", type == null ? "AGENT" : type.name(),
             "systemPrompt", prompt));
-        var question = DecisionQuestion.noul(QUESTION, instruction(scope), criteria());
+        var question = DecisionQuestion.noul(QUESTION, context.decisionInstruction(instruction(scope)), criteria());
         try {
             var decision = context.decisions().decide(context.rule().modelAlias, state,
                 List.of(question), context.rule().expectedRouteFingerprint, context.budget());
@@ -121,6 +121,11 @@ public class TimeContextRule implements QualityRuleEvaluator {
     @Override
     public int version() {
         return 1;
+    }
+
+    @Override
+    public boolean supportsInstructionOverride() {
+        return true;
     }
 
     @Override

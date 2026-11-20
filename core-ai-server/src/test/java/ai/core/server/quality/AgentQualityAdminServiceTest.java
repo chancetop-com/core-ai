@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
@@ -37,6 +38,16 @@ class AgentQualityAdminServiceTest {
         assertEquals("function_summary_present", template(templates, FunctionSummaryRule.KEY).questions.get(0).name);
         assertEquals(1, template(templates, ResourceBindingRule.KEY).questions.size());
         assertEquals(1, template(templates, TimeContextRule.KEY).questions.size());
+    }
+
+    @Test
+    void onlySemanticRulesLetAdminsOverrideInstructions() {
+        var templates = service().templates("admin").templates;
+
+        assertTrue(template(templates, FunctionSummaryRule.KEY).supportsInstructionOverride);
+        assertTrue(template(templates, TimeContextRule.KEY).supportsInstructionOverride);
+        assertFalse(template(templates, ResourceBindingRule.KEY).supportsInstructionOverride);
+        assertFalse(template(templates, BuiltinCapabilityRule.KEY).supportsInstructionOverride);
     }
 
     @Test

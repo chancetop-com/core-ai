@@ -15,6 +15,14 @@ public interface QualityRuleEvaluator {
 
     RuleTemplate template();
 
+    /**
+     * Whether an administrator may replace the decision instructions from the rule revision. Only evaluators
+     * whose semantics survive a different instruction opt in; question names, types and criteria stay in code.
+     */
+    default boolean supportsInstructionOverride() {
+        return false;
+    }
+
     record RuleParameterSpec(String name, String type, boolean required, String description,
                              String defaultValue, List<String> options) {
     }
