@@ -15,7 +15,6 @@ import ai.core.server.session.PgSessionFeedbackStore;
 import ai.core.server.session.PgSessionNoticeStore;
 import ai.core.server.session.SessionFeedbackStore;
 import ai.core.server.session.SessionNoticeStore;
-import ai.core.server.small.SmallCollectionMigrationService;
 import ai.core.server.web.foryou.MongoUserReportStore;
 import ai.core.server.web.foryou.MongoUserTodoStore;
 import ai.core.server.web.foryou.PgUserReportStore;
@@ -40,8 +39,6 @@ public class SmallCollectionStoreModule extends Module {
             bind(GeminiFileRepository.class, bind(PgGeminiFileRepository.class));
             bind(UserReportStore.class, bind(PgUserReportStore.class));
             bind(UserTodoStore.class, bind(PgUserTodoStore.class));
-            var migration = bind(SmallCollectionMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(SessionFeedbackStore.class, bind(MongoSessionFeedbackStore.class));
             bind(UserChannelTargetStore.class, bind(MongoUserChannelTargetStore.class));

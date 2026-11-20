@@ -3,7 +3,6 @@ package ai.core.server;
 import ai.core.server.asynctask.AsyncToolTaskPollJob;
 import ai.core.server.asynctask.AsyncToolTaskService;
 import ai.core.persistence.PersistenceProvider;
-import ai.core.server.asynctask.AsyncTaskMigrationService;
 import ai.core.server.asynctask.MongoAsyncTaskPersistence;
 import ai.core.server.asynctask.PgAsyncTaskPersistence;
 import core.framework.module.Module;
@@ -23,8 +22,6 @@ public class AsyncToolTaskModule extends Module {
         var pollSeconds = property("sys.asyncTask.pollSeconds").map(Integer::parseInt).orElse(10);
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(PersistenceProvider.class, bind(PgAsyncTaskPersistence.class));
-            var migration = bind(AsyncTaskMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(PersistenceProvider.class, bind(MongoAsyncTaskPersistence.class));
         }

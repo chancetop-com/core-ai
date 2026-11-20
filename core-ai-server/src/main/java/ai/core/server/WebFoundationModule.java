@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.server.domain.migration.SchemaMigrationManager;
+import ai.core.server.pg.StoreMode;
 import ai.core.server.web.CorsInterceptor;
 import ai.core.server.web.auth.AuthInterceptor;
 import ai.core.server.web.auth.PermissionInterceptor;
@@ -16,8 +17,10 @@ import java.time.Duration;
 public class WebFoundationModule extends Module {
     @Override
     protected void initialize() {
-        var migrationManager = bind(SchemaMigrationManager.class);
-        onStartup(migrationManager::migrate);
+        if (StoreMode.mongoRequired(this::property)) {
+            var migrationManager = bind(SchemaMigrationManager.class);
+            onStartup(migrationManager::migrate);
+        }
 
         bind(RequestAuthenticator.class);
         // bound before AuthInterceptor: core-ng bind() resolves @Inject eagerly

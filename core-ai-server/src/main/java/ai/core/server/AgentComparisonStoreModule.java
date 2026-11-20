@@ -1,6 +1,5 @@
 package ai.core.server;
 
-import ai.core.server.comparison.AgentComparisonMigrationService;
 import ai.core.server.comparison.AgentComparisonStore;
 import ai.core.server.comparison.ComparisonVoteStore;
 import ai.core.server.comparison.MongoAgentComparisonStore;
@@ -18,8 +17,6 @@ public class AgentComparisonStoreModule extends Module {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(AgentComparisonStore.class, bind(PgAgentComparisonStore.class));
             bind(ComparisonVoteStore.class, bind(PgComparisonVoteStore.class));
-            var migration = bind(AgentComparisonMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(AgentComparisonStore.class, bind(MongoAgentComparisonStore.class));
             bind(ComparisonVoteStore.class, bind(MongoComparisonVoteStore.class));

@@ -1,7 +1,6 @@
 package ai.core.server;
 
 import ai.core.server.pg.StoreMode;
-import ai.core.server.trace.AnalyticsDailyStatsMigrationService;
 import ai.core.server.trace.AnalyticsStatsStore;
 import ai.core.server.trace.MongoAnalyticsStatsStore;
 import ai.core.server.trace.MongoTraceDailyStatsStore;
@@ -10,13 +9,10 @@ import ai.core.server.trace.PgAnalyticsStatsStore;
 import ai.core.server.trace.PgTraceAnalytics;
 import ai.core.server.trace.PgTraceDailyStatsStore;
 import ai.core.server.trace.PgTraceStore;
-import ai.core.server.trace.TraceDailyStatsMigrationService;
 import ai.core.server.trace.TraceDailyStatsStore;
-import ai.core.server.trace.TraceMigrationService;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.service.MongoTracePayloadRepository;
 import ai.core.server.trace.service.PgTracePayloadRepository;
-import ai.core.server.trace.service.TracePayloadMigrationService;
 import ai.core.server.trace.service.TracePayloadRepository;
 import core.framework.module.Module;
 
@@ -35,22 +31,12 @@ public class TraceStoreModule extends Module {
     @Override
     protected void initialize() {
         if (postgresStore()) {
-            boolean copyLegacy = !"skip".equals(property("sys.trace.migration").orElse("copy"));
+            property("sys.trace.migration");
             bind(PgTraceAnalytics.class);
             bind(TraceStore.class, bind(PgTraceStore.class));
             bind(TraceDailyStatsStore.class, bind(PgTraceDailyStatsStore.class));
             bind(AnalyticsStatsStore.class, bind(PgAnalyticsStatsStore.class));
-            var traceMigration = bind(TraceMigrationService.class);
-            var dailyStatsMigration = bind(TraceDailyStatsMigrationService.class);
-            var analyticsStatsMigration = bind(AnalyticsDailyStatsMigrationService.class);
             bind(TracePayloadRepository.class, bind(PgTracePayloadRepository.class));
-            var payloadMigration = bind(TracePayloadMigrationService.class);
-            onStartup(() -> {
-                traceMigration.start(copyLegacy);
-                dailyStatsMigration.start(copyLegacy);
-                analyticsStatsMigration.start(copyLegacy);
-                payloadMigration.start(copyLegacy);
-            });
         } else {
             bind(TraceStore.class, bind(MongoTraceStore.class));
             bind(TraceDailyStatsStore.class, bind(MongoTraceDailyStatsStore.class));

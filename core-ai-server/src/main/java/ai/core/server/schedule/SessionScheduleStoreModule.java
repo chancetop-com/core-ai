@@ -13,8 +13,6 @@ public class SessionScheduleStoreModule extends Module {
             var store = bind(PgScheduledTaskStore.class);
             bind(SessionScheduleStore.class, store);
             bind(ScheduledTaskStore.class, store);
-            var migration = bind(SessionScheduleMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             var store = bind(MongoScheduledTaskStore.class);
             bind(SessionScheduleStore.class, store);

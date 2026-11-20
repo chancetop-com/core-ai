@@ -36,7 +36,8 @@ public class SettingsModule extends Module {
 
     private void bindGatewaySecretProtector() {
         var secret = property("sys.gateway.secret.key").map(String::trim).filter(key -> !key.isBlank()).orElse(null);
-        var legacy = requiredProperty("sys.mongo.uri");
+        var legacy = property("sys.gateway.legacy.secret").map(String::trim).filter(key -> !key.isBlank()).orElse(null);
+        if (legacy == null) legacy = requiredProperty("sys.mongo.uri");
         bind(secret == null ? new GatewaySecretProtector(legacy) : new GatewaySecretProtector(secret, legacy));
     }
 }

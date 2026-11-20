@@ -2,7 +2,6 @@ package ai.core.server;
 
 import ai.core.server.trace.MongoSpanStore;
 import ai.core.server.trace.PgSpanStore;
-import ai.core.server.trace.SpanMigrationService;
 import ai.core.server.trace.SpanStore;
 import core.framework.module.Module;
 
@@ -12,15 +11,13 @@ import core.framework.module.Module;
 public class SpanStoreModule extends Module {
     @Override
     protected void initialize() {
-        registerStore(property("sys.trace.span.migration").orElse("copy"));
+        property("sys.trace.span.migration");
+        registerStore();
     }
 
-    private void registerStore(String spanMigration) {
+    private void registerStore() {
         if (postgresStore()) {
             bind(SpanStore.class, bind(PgSpanStore.class));
-            boolean copyLegacySpans = !"skip".equals(spanMigration);
-            var migration = bind(SpanMigrationService.class);
-            onStartup(() -> migration.start(copyLegacySpans));
         } else {
             bind(SpanStore.class, bind(MongoSpanStore.class));
         }

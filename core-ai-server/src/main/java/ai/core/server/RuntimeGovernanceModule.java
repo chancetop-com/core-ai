@@ -9,7 +9,6 @@ import ai.core.server.runtime.MongoRuntimeSampleStore;
 import ai.core.server.runtime.PgRuntimeSampleStore;
 import ai.core.server.runtime.RuntimeCapacityGuard;
 import ai.core.server.runtime.RuntimeLimitsProvider;
-import ai.core.server.runtime.RuntimeSampleMigrationService;
 import ai.core.server.runtime.RuntimeSampleService;
 import ai.core.server.runtime.RuntimeSampleStore;
 import ai.core.server.runtime.RuntimeSettingsService;
@@ -79,9 +78,7 @@ public class RuntimeGovernanceModule extends Module {
         if (StoreMode.postgres(property("sys.runtime.store.mode").orElse("auto"),
             property("sys.store.mode").orElse("mongo"), "sys.runtime.store.mode")) {
             bind(RuntimeSampleStore.class, bind(PgRuntimeSampleStore.class));
-            var migration = bind(RuntimeSampleMigrationService.class);
-            boolean copyLegacy = !"skip".equals(property("sys.runtime.migration").orElse("copy"));
-            onStartup(() -> migration.start(copyLegacy));
+            property("sys.runtime.migration");
         } else {
             bind(RuntimeSampleStore.class, bind(MongoRuntimeSampleStore.class));
         }

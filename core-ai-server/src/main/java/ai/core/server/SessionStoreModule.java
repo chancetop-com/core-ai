@@ -1,8 +1,6 @@
 package ai.core.server;
 
-import ai.core.server.session.ChatMessageMigrationService;
 import ai.core.server.session.ChatMessageStore;
-import ai.core.server.session.ChatSessionMigrationService;
 import ai.core.server.session.ChatSessionStore;
 import ai.core.server.session.MongoChatMessageStore;
 import ai.core.server.session.MongoChatSessionStore;
@@ -22,10 +20,6 @@ public class SessionStoreModule extends Module {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(ChatSessionStore.class, bind(PgChatSessionStore.class));
             bind(ChatMessageStore.class, bind(PgChatMessageStore.class));
-            var sessionMigration = bind(ChatSessionMigrationService.class);
-            onStartup(sessionMigration::migrate);
-            var messageMigration = bind(ChatMessageMigrationService.class);
-            onStartup(messageMigration::migrate);
         } else {
             bind(ChatSessionStore.class, bind(MongoChatSessionStore.class));
             bind(ChatMessageStore.class, bind(MongoChatMessageStore.class));

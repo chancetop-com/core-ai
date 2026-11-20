@@ -1,5 +1,6 @@
 package ai.core.server;
 
+import core.framework.db.Database;
 import core.framework.mongo.Mongo;
 import org.bson.Document;
 import org.slf4j.Logger;
@@ -13,9 +14,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.BooleanSupplier;
 
 /**
- * MongoDB still backs the remaining legacy collections, so a startup that cannot reach it must
- * fail instead of leaving a half initialized instance behind. The probe runs on its own virtual
- * thread with a hard timeout because the client may block far longer than its socket timeout.
+ * Startup probes for the stores that are actually configured. PostgreSQL is the business store in
+ * every FBR environment; MongoDB is optional and is only probed while the legacy store is still
+ * enabled. Each probe runs on its own virtual thread with a hard timeout because the clients may
+ * block far longer than their configured socket timeout.
  *
  * @author stephen
  */
@@ -23,14 +25,20 @@ public final class StartupDependencyCheck {
     private static final Logger LOGGER = LoggerFactory.getLogger(StartupDependencyCheck.class);
     private static final Duration TIMEOUT = Duration.ofSeconds(10);
 
+    private final Database database;
     private final Mongo mongo;
 
-    public StartupDependencyCheck(Mongo mongo) {
+    public StartupDependencyCheck(Database database, Mongo mongo) {
+        this.database = database;
         this.mongo = mongo;
     }
 
     public void verify() {
-        verify("mongo", this::pingMongo);
+        if (database == null && mongo == null) {
+            throw new Error("no store dependency is configured");
+        }
+        if (database != null) verify("postgres", this::pingPostgres);
+        if (mongo != null) verify("mongo", this::pingMongo);
     }
 
     private void verify(String name, BooleanSupplier probe) {
@@ -55,6 +63,12 @@ public final class StartupDependencyCheck {
             Thread.currentThread().interrupt();
             throw new Error("startup dependency check interrupted, name=" + name, e);
         }
+    }
+
+    private boolean pingPostgres() {
+        return database.selectOne("SELECT 1 AS ok", PgStartupRow.class)
+            .map(row -> row.ok != null && row.ok == 1)
+            .orElse(false);
     }
 
     private boolean pingMongo() {

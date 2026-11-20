@@ -1,6 +1,5 @@
 package ai.core.server;
 
-import ai.core.server.file.FileRecordMigrationService;
 import ai.core.server.file.FileRecordStore;
 import ai.core.server.file.MongoFileRecordStore;
 import ai.core.server.file.PgFileRecordStore;
@@ -16,8 +15,6 @@ public class FileStoreModule extends Module {
     protected void initialize() {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(FileRecordStore.class, bind(PgFileRecordStore.class));
-            var migration = bind(FileRecordMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(FileRecordStore.class, bind(MongoFileRecordStore.class));
         }

@@ -67,6 +67,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.web.foryou.PgForYouCountRow.class);
         // the desktop plugin registry list counts rows; a missing view fails every search with 500
         db().view(ai.core.server.plugin.PgPluginCountRow.class);
+        db().view(PgStartupRow.class);
     }
 
     private void registerAgentViews() {

@@ -1,7 +1,6 @@
 package ai.core.server;
 
 import ai.core.server.hub.HubCallCleanupJob;
-import ai.core.server.hub.HubCallMigrationService;
 import ai.core.server.hub.HubCallStore;
 import ai.core.server.hub.MongoHubCallStore;
 import ai.core.server.hub.PgHubCallStore;
@@ -17,8 +16,6 @@ public class HubCallStoreModule extends Module {
     protected void initialize() {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(HubCallStore.class, bind(PgHubCallStore.class));
-            var migration = bind(HubCallMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(HubCallStore.class, bind(MongoHubCallStore.class));
         }

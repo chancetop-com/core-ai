@@ -90,8 +90,10 @@ import ai.core.server.trace.domain.TracePayloadBlob;
 import ai.core.server.trigger.domain.Trigger;
 import ai.core.server.rbac.RbacModule;
 import ai.core.server.replay.ReplayModule;
+import ai.core.server.pg.StoreMode;
 import core.framework.module.App;
 import core.framework.module.SystemModule;
+import core.framework.db.Database;
 import core.framework.mongo.Mongo;
 import core.framework.mongo.module.MongoConfig;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -121,12 +123,9 @@ public class ServerApp extends App {
     protected void initialize() {
         // must run before any other startup hook, see StartupDependencyCheck
         onStartup(this::verifyStartupDependencies);
-
         load(new SystemModule("sys.properties"));
         loadProperties("agent.properties");
-
-        registerMongo();
-
+        if (StoreMode.mongoRequired(this::property)) registerMongo();
         load(new PostgresModule());
         // quality policy/run storage must exist before AgentDefinitionModule binds the publish gate
         load(new AgentQualityStoreModule());
@@ -175,9 +174,10 @@ public class ServerApp extends App {
 
     private void verifyStartupDependencies() {
         startStartupWatchdog();
-        new StartupDependencyCheck(bean(Mongo.class)).verify();
+        var database = StoreMode.postgresConfigured(this::property) ? bean(Database.class) : null;
+        var mongo = StoreMode.mongoRequired(this::property) ? bean(Mongo.class) : null;
+        new StartupDependencyCheck(database, mongo).verify();
     }
-
     /**
      * A startup hook that never returns leaves the http server up, so k8s keeps the pod ready while the
      * runtime stays partially initialized. Halt the process instead of serving traffic in that state.

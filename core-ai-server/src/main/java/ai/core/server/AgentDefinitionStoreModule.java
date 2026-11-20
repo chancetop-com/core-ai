@@ -1,6 +1,5 @@
 package ai.core.server;
 
-import ai.core.server.agent.AgentDefinitionMigrationService;
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.agent.MongoAgentDefinitionStore;
 import ai.core.server.agent.PgAgentDefinitionStore;
@@ -17,8 +16,6 @@ public class AgentDefinitionStoreModule extends Module {
     protected void initialize() {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(AgentDefinitionStore.class, bind(PgAgentDefinitionStore.class));
-            var migration = bind(AgentDefinitionMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(AgentDefinitionStore.class, bind(MongoAgentDefinitionStore.class));
         }

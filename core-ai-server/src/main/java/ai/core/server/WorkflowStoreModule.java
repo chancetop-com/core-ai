@@ -9,7 +9,6 @@ import ai.core.server.workflow.PgWorkflowNodeRunStore;
 import ai.core.server.workflow.PgWorkflowRunStore;
 import ai.core.server.workflow.PgWorkflowVersionStore;
 import ai.core.server.workflow.WorkflowDefinitionStore;
-import ai.core.server.workflow.WorkflowMigrationService;
 import ai.core.server.workflow.WorkflowNodeRunStore;
 import ai.core.server.workflow.WorkflowRunStore;
 import ai.core.server.workflow.WorkflowVersionStore;
@@ -26,8 +25,6 @@ public class WorkflowStoreModule extends Module {
             bind(WorkflowVersionStore.class, bind(PgWorkflowVersionStore.class));
             bind(WorkflowRunStore.class, bind(PgWorkflowRunStore.class));
             bind(WorkflowNodeRunStore.class, bind(PgWorkflowNodeRunStore.class));
-            var migration = bind(WorkflowMigrationService.class);
-            onStartup(migration::migrate);
         } else {
             bind(WorkflowDefinitionStore.class, bind(MongoWorkflowDefinitionStore.class));
             bind(WorkflowVersionStore.class, bind(MongoWorkflowVersionStore.class));
