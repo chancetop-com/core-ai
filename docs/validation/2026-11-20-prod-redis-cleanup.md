@@ -5,9 +5,9 @@
 - 镜像：`chancetop/core-ai-server:2.0.318`（原 `2.0.285`；与 UAT 验证过的镜像一致）
 - 配置：删除 `SYS_STATE_BACKEND` / `SYS_LEASE_BACKEND` / `SYS_RPC_TRANSPORT` /
   `SYS_SSE_DELIVERY` / `SYS_COMMAND_BACKEND` / `SYS_JEDIS_HOST`
-- Flyway：无新 migration，保持 V45
+- Flyway：V45 → V47（V46 `dataset_reports`、V47 `home_todo_digest_runs`）
 - 备份：`core-ai-pre-redis-cleanup-20261119` completed（06:27:27–06:28:55 UTC）
-- 结论：**PASS**，prod 的 Jedis Redis 已下线
+- 结论：**PASS**，prod 的 Jedis Redis 已下线；V46/V47 为发布后补应用
 
 ## 前置检查
 
@@ -15,10 +15,25 @@
 |---|---|
 | 当前版本 | `2.0.285`，2/2 |
 | PG | `postgresql` 3/3 Ready，`core_ai` 1,494 MB |
-| Flyway | 最新 V45 |
+| Flyway | prod 最新 V45；2.0.318 需要 V46/V47（UAT 已到 V47） |
 | 本地 LLM 端点 | `litellm.api.base=https://litellm.connexup-dev.net`，不依赖 prod |
 | 镜像 | `2.0.318`，UAT 已运行 97m，CI Build Server 成功 |
 | 备份 | 新增 `core-ai-pre-redis-cleanup-20261119`，completed |
+
+## Flyway 补应用
+
+发布 2.0.318 后启动日志出现 `relation "app.home_todo_digest_runs" does not exist`
+（`HomeTodoDigestService`）。核对发现 2.0.318 包含 V46（dataset reports）和 V47
+（home todo digest），而 prod 只到 V45；UAT 已在 V47。随后通过临时 prod Flyway 配置 +
+`kubectl port-forward pod/postgresql-1 15434:5432` 执行：
+
+```powershell
+.\gradlew :core-ai-server-db-migration:flywayMigrate -Penv=prod
+```
+
+结果：`app.flyway_schema_history` V45 → V47，表已创建；V46/V47 均为 additive
+`IF NOT EXISTS`。教训：后续 prod 发布前先对比 UAT 的 Flyway 版本，不要只看“本次是否新增
+migration”。
 
 ## 变更
 
