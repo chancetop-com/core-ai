@@ -289,33 +289,49 @@ function addTurn(model: TranscriptModel, record: TranscriptRecord): void {
     startedAt: ts,
   };
   const inputs = Array.isArray(record.inputs) ? record.inputs as TurnInput[] : [];
-  if (inputs.length) {
-    inputs.forEach((input, index) => {
-      const text = input.text ?? input.text_preview ?? undefined;
+  // A task notification is the plumbing that woke this turn: once the task has a row under its
+  // launching message's Tasks chip, the note would only repeat that row.
+  if (!(kind === 'task_note' && taskNotesCovered(inputs, model))) {
+    if (inputs.length) {
+      inputs.forEach((input, index) => {
+        const text = input.text ?? input.text_preview ?? undefined;
+        turn.items.push({
+          seq: record.seq,
+          key: `${record.seq}:${index}`,
+          kind: 'input',
+          text,
+          textRef: input.text_ref,
+          textPreview: input.text_preview,
+          attachments: Array.isArray(input.attachments) ? input.attachments : [],
+          clientTurnId: input.client_turn_id ?? null,
+          steering: false,
+          ts,
+        });
+      });
+    } else {
       turn.items.push({
         seq: record.seq,
-        key: `${record.seq}:${index}`,
+        key: `${record.seq}:0`,
         kind: 'input',
-        text,
-        textRef: input.text_ref,
-        textPreview: input.text_preview,
-        attachments: Array.isArray(input.attachments) ? input.attachments : [],
-        clientTurnId: input.client_turn_id ?? null,
+        attachments: [],
         steering: false,
         ts,
       });
-    });
-  } else {
-    turn.items.push({
-      seq: record.seq,
-      key: `${record.seq}:0`,
-      kind: 'input',
-      attachments: [],
-      steering: false,
-      ts,
-    });
+    }
   }
   model.turns.push(turn);
+}
+
+function taskNotesCovered(inputs: TurnInput[], model: TranscriptModel): boolean {
+  if (!inputs.length) return false;
+  for (const input of inputs) {
+    const notifications = parseTaskNotifications(input.text ?? input.text_preview);
+    if (!notifications) return false;
+    if (!notifications.every((notification) => notification.taskId !== null && model.taskIndex[notification.taskId] !== undefined)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function applySteer(model: TranscriptModel, record: TranscriptRecord): void {
@@ -413,10 +429,11 @@ function addTool(model: TranscriptModel, record: TranscriptRecord): void {
   };
   turn.items.push(item);
   if (taskId) {
-    model.taskIndex[taskId] = turn.turnId;
+    const owner = taskOwner(model, taskId, turn);
+    if (!model.taskIndex[taskId]) model.taskIndex[taskId] = owner.turnId;
     const pending = model.pendingTaskStatus[taskId];
     if (pending) {
-      updateTask(turn, taskId, name, pending, record.seq);
+      updateTask(owner, taskId, name, pending, record.seq);
       delete model.pendingTaskStatus[taskId];
     }
   }
@@ -426,9 +443,11 @@ function applyToolResult(model: TranscriptModel, record: TranscriptRecord): void
   const turn = turnFor(model, record);
   if (!turn) return;
   const callId = String(record.callId ?? '');
-  const existing = turn.items.find((item): item is ToolItem => item.kind === 'tool' && item.callId === callId);
   const result = recordText(record, 'result');
   const status = String(record.status ?? 'unknown');
+  const toolName = String(record.toolName ?? 'tool');
+  const taskId = status === 'async_launched' ? launchedTaskId(record, result) : null;
+  const existing = turn.items.find((item): item is ToolItem => item.kind === 'tool' && item.callId === callId);
   if (existing) {
     existing.status = status;
     existing.result = result;
@@ -436,24 +455,53 @@ function applyToolResult(model: TranscriptModel, record: TranscriptRecord): void
     existing.resultPreview = typeof record.result_preview === 'string' ? record.result_preview : undefined;
     existing.resultSeq = record.seq;
     existing.durationMs = recordNumber(record, 'durationMs');
-    return;
+    if (taskId) existing.taskId = taskId;
+  } else {
+    turn.items.push({
+      seq: record.seq,
+      key: `${record.seq}:0`,
+      kind: 'tool',
+      callId,
+      name: toolName,
+      useKind: toolUseKind(toolName, record.toolType),
+      status,
+      approval: null,
+      result,
+      resultRef: recordRef(record, 'result'),
+      resultPreview: typeof record.result_preview === 'string' ? record.result_preview : undefined,
+      resultSeq: record.seq,
+      durationMs: recordNumber(record, 'durationMs'),
+      taskId,
+      toolType: typeof record.toolType === 'string' ? record.toolType : null,
+    });
   }
-  turn.items.push({
-    seq: record.seq,
-    key: `${record.seq}:0`,
-    kind: 'tool',
-    callId,
-    name: String(record.toolName ?? 'tool'),
-    useKind: toolUseKind(String(record.toolName ?? 'tool'), record.toolType),
-    status,
-    approval: null,
-    result,
-    resultRef: recordRef(record, 'result'),
-    resultPreview: typeof record.result_preview === 'string' ? record.result_preview : undefined,
-    resultSeq: record.seq,
-    durationMs: recordNumber(record, 'durationMs'),
-    toolType: typeof record.toolType === 'string' ? record.toolType : null,
-  });
+  if (taskId) linkTask(model, turn, taskId, toolName, record.seq);
+}
+
+/**
+ * The launch result names the task it started; the row then lives under the launching turn's Tasks
+ * chip even before the terminal status arrives (a reload must not lose the task).
+ */
+function launchedTaskId(record: TranscriptRecord, result: string | undefined): string | null {
+  if (typeof record.taskId === 'string' && record.taskId) return record.taskId;
+  const match = result ? /<task-id>([\s\S]*?)<\/task-id>/.exec(result) : null;
+  const taskId = match?.[1].trim();
+  return taskId ? taskId : null;
+}
+
+function linkTask(model: TranscriptModel, turn: Turn, taskId: string, toolName: string, seq: number): void {
+  const owner = taskOwner(model, taskId, turn);
+  if (!model.taskIndex[taskId]) model.taskIndex[taskId] = owner.turnId;
+  const status = model.pendingTaskStatus[taskId];
+  if (status) delete model.pendingTaskStatus[taskId];
+  updateTask(owner, taskId, toolName, status ?? 'running', seq);
+}
+
+/** A task row belongs to the turn that launched it, not to a later poll that names the same id. */
+function taskOwner(model: TranscriptModel, taskId: string, fallback: Turn): Turn {
+  const turnId = model.taskIndex[taskId];
+  if (!turnId) return fallback;
+  return model.turns.find((turn) => turn.turnId === turnId) ?? fallback;
 }
 
 function applyApproval(model: TranscriptModel, record: TranscriptRecord): void {

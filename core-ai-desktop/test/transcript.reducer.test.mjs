@@ -71,7 +71,38 @@ test('task note source and task index are tracked', () => {
     { seq: 5, turn_id: null, kind: 'task_status', taskId: 't-x', status: 'completed' },
   ]);
   assert.equal(model.turns[0].kind, 'task_note');
+  assert.equal(model.turns[0].items.filter((item) => item.kind === 'input').length, 1);
   assert.equal(model.pendingTaskStatus['t-x'], 'completed');
+});
+
+test('an async launch links its task and the notification adds no note', () => {
+  const launch = '<task-notification>\n<task-id>t-1</task-id>\n<status>async_launched</status>\n</task-notification>\n';
+  const note = '<task-notification>\n<task-id>t-1</task-id>\n<status>completed</status>\n</task-notification>\n';
+  const model = reduceAll([
+    start(2, 'run it'),
+    { seq: 3, turn_id: 't2', kind: 'tool_start', callId: 'c1', toolName: 'run_bash_command', arguments: '{}' },
+    { seq: 4, turn_id: 't2', kind: 'tool_result', callId: 'c1', toolName: 'run_bash_command', status: 'async_launched', result: launch },
+    { seq: 5, turn_id: null, kind: 'task_status', taskId: 't-1', toolName: 'run_bash_command', status: 'completed' },
+    start(6, note, 'task_note'),
+    { seq: 7, turn_id: 't6', kind: 'assistant_text', text: 'done' },
+    { seq: 8, turn_id: 't6', kind: 'turn_complete', message_count: 2 },
+  ]);
+  assert.equal(model.taskIndex['t-1'], 't2');
+  const task = model.turns[0].items.find((item) => item.kind === 'task');
+  assert.equal(task.taskId, 't-1');
+  assert.equal(task.status, 'completed');
+  assert.equal(model.turns[0].items.find((item) => item.kind === 'tool').taskId, 't-1');
+  assert.equal(model.turns[1].kind, 'task_note');
+  assert.equal(model.turns[1].items.filter((item) => item.kind === 'input').length, 0);
+});
+
+test('a note still renders when its task was launched outside the loaded records', () => {
+  const note = '<task-notification>\n<task-id>t-9</task-id>\n<status>completed</status>\n</task-notification>\n';
+  const model = reduceAll([
+    start(2, note, 'task_note'),
+    { seq: 3, turn_id: 't2', kind: 'assistant_text', text: 'done' },
+  ]);
+  assert.equal(model.turns[0].items.filter((item) => item.kind === 'input').length, 1);
 });
 
 test('memory runs merge by runId', () => {

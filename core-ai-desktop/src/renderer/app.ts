@@ -4837,12 +4837,23 @@ function addTranscriptMemory(chips: HTMLElement, panels: HTMLElement, turn: Turn
   addTranscriptToggle(chips, panels, `Memory (${turn.memoryRuns.length})`, body);
 }
 
+/** The Tasks chip reuses the record-tool status colors, whose classes are success/failure. */
+const TASK_ROW_STATUS_CLASS: Record<string, string> = {
+  completed: 'success',
+  done: 'success',
+  success: 'success',
+  cancelled: 'failure',
+  failed: 'failure',
+  error: 'failure',
+  timeout: 'failure',
+};
+
 function addTranscriptTasks(chips: HTMLElement, panels: HTMLElement, tasks: TaskItem[]): void {
   const body = el('div');
   for (const task of tasks) {
     const row = el('div', 'record-tool');
     row.append(el('span', 'record-tool-name', task.toolName ?? task.taskId));
-    row.append(el('span', `record-tool-status ${task.status}`, task.status));
+    row.append(el('span', `record-tool-status ${TASK_ROW_STATUS_CLASS[task.status] ?? task.status}`, task.status));
     body.append(row);
   }
   addTranscriptToggle(chips, panels, `Tasks (${tasks.length})`, body);
