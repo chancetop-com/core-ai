@@ -64,14 +64,15 @@ public class PgPluginRegistryStore implements PluginRegistryStore {
         store().delete(id);
     }
 
-    private String where(String queryText, List<Object> params) {
+    // package-private for tests: the params must stay paired with their columns
+    String where(String queryText, List<Object> params) {
         if (queryText == null || queryText.isBlank()) return "";
         var like = "%" + queryText.trim() + "%";
         params.add("name");
+        params.add(like);
         params.add("description");
+        params.add(like);
         params.add("vendor");
-        params.add(like);
-        params.add(like);
         params.add(like);
         params.add(like);
         return " WHERE data ->> ? ILIKE ? OR data ->> ? ILIKE ? OR data ->> ? ILIKE ? OR id ILIKE ?";
