@@ -21,7 +21,6 @@ import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
@@ -45,10 +44,9 @@ class SpanStoreModuleTest {
         module.initialize();
 
         assertInstanceOf(PgSpanStore.class, module.store);
-        assertEquals(1, module.startupTasks.size());
+        assertEquals(0, module.startupTasks.size());
+        assertFalse(module.boundClasses.contains(SpanMigrationService.class));
         verifyNoInteractions(module.migration);
-        module.startupTasks.getFirst().execute();
-        verify(module.migration).start(true);
     }
 
     @Test
@@ -60,7 +58,7 @@ class SpanStoreModuleTest {
 
             Class<? extends SpanStore> expected = "pg".equals(mode) ? PgSpanStore.class : MongoSpanStore.class;
             assertInstanceOf(expected, module.store);
-            assertEquals("pg".equals(mode) ? 1 : 0, module.startupTasks.size());
+            assertEquals(0, module.startupTasks.size());
         }
     }
 
@@ -95,16 +93,16 @@ class SpanStoreModuleTest {
     }
 
     @Test
-    void explicitPostgresRetainsConfiguredMigrationSkip() throws Exception {
+    void explicitPostgresDoesNotStartMongoMigration() {
         var module = new RecordingSpanStoreModule(Map.of("sys.store.mode", "pg", "sys.trace.span.store.mode", "pg",
             "sys.trace.span.migration", "skip"));
 
         module.initialize();
 
         assertInstanceOf(PgSpanStore.class, module.store);
-        assertEquals(1, module.startupTasks.size());
-        module.startupTasks.getFirst().execute();
-        verify(module.migration).start(false);
+        assertEquals(0, module.startupTasks.size());
+        assertFalse(module.boundClasses.contains(SpanMigrationService.class));
+        verifyNoInteractions(module.migration);
     }
 
     @Test

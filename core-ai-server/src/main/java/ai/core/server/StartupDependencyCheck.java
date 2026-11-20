@@ -66,9 +66,8 @@ public final class StartupDependencyCheck {
     }
 
     private boolean pingPostgres() {
-        return database.selectOne("SELECT 1 AS ok", PgStartupRow.class)
-            .map(row -> row.ok != null && row.ok == 1)
-            .orElse(false);
+        var row = database.selectOne("SELECT 1 AS ok", PgStartupRow.class).orElse(null);
+        return row != null && row.ok != null && row.ok.intValue() == 1;
     }
 
     private boolean pingMongo() {
