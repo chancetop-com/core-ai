@@ -38,7 +38,7 @@ class SessionSandboxMcpStarter {
 
         if (mcpDependencies.sandboxService() != null) mcpDependencies.sandboxService().ensureSandboxReady(sessionId);
 
-        var sessionMgr = mcpDependencies.sandboxService() != null ? mcpDependencies.sandboxService().getOrCreateSessionMcpManager(sessionId) : null;
+        var sessionMgr = mcpDependencies.sandboxService() != null ? mcpDependencies.sandboxService().sessionMcpProcesses().managerFor(sessionId) : null;
         if (sessionMgr == null) return null;
 
         for (var entry : sandboxHostedEntries) {

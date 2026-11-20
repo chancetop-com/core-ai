@@ -78,9 +78,11 @@ Three registration entry points:
   `McpClientManager` passed in, only after `/mcp/start` reports the process ready. Called by
   `SessionSandboxMcpStarter` during `resolveToolRefs(refs, sessionId)`. With `background=true`
   (chat session creation) the start runs on a virtual thread and the call returns immediately;
-  the tool provider bound to the session manager uses `ONCE_NON_EMPTY`, so it retries on later
-  turns until the server appears and then caches the tool set. The blocking mode is kept for
-  one-shot runs whose first turn needs the tools.
+  in-flight starts are tracked per session so the session's agent can hold its turn until they
+  settle (`SessionMcpReadinessLifecycle` → `SandboxService.awaitSessionMcpStarts`). The tool
+  provider bound to the session manager uses `ONCE_NON_EMPTY`, so it also retries on later turns
+  if a start failed or outlived the wait. The blocking mode is kept for one-shot runs whose first
+  turn needs the tools.
 
 ### `SandboxService`
 
@@ -138,8 +140,10 @@ lifetime of the session.
 Chat sessions go through the same flow via `AgentSessionManager.createSessionFromAgent`
 and `SessionRebuildManager.doRebuild`, which both create the LazySandbox before
 calling `resolveToolRefs`. Session creation passes `backgroundStart=true`: the create API
-returns without waiting for `/mcp/start`, and the session's provider lists the server's tools
-from the first turn that happens after the process is ready.
+returns without waiting for `/mcp/start`. The session's agent carries a
+`SessionMcpReadinessLifecycle`, so the first turn that arrives before the process is ready waits
+for the in-flight start (bounded by `MCP_TURN_START_WAIT_TIMEOUT_SECONDS`) instead of running
+without the configured MCP tools; the provider then lists the server's tools from that turn on.
 
 ## Concurrency
 

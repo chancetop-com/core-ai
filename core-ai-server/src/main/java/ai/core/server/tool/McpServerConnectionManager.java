@@ -171,27 +171,33 @@ class McpServerConnectionManager {
 
         var key = sessionId + '\u0000' + entry.id;
         if (!startingOnSession.add(key)) return;
+        var tracker = sandboxService != null ? sandboxService.sessionMcpProcesses() : null;
+        if (tracker != null) tracker.beginStart(sessionId, entry.id);
         Thread.startVirtualThread(() -> {
+            var started = false;
             try {
-                startOnSession(entry, sessionManager, sandbox, sessionId, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
+                started = startOnSession(entry, sessionManager, sandbox, sessionId, SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
             } finally {
                 startingOnSession.remove(key);
+                if (tracker != null) tracker.finishStart(sessionId, entry.id, started);
             }
         });
     }
 
-    private void startOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox,
-                                String sessionId, int startupTimeoutSeconds) {
+    private boolean startOnSession(ToolRegistryEntry entry, McpClientManager sessionManager, Sandbox sandbox,
+                                   String sessionId, int startupTimeoutSeconds) {
         try {
             var command = command(entry);
             var args = parseArgsList(entry.config.get("args"));
             var env = McpServerConfig.parseEnv(entry.config.get("env"));
             sandbox.startMcpServer(entry.id, command, args, env, startupTimeoutSeconds);
-            if (sandboxService != null) sandboxService.recordSessionMcpServer(sessionId, entry.id);
+            if (sandboxService != null) sandboxService.sessionMcpProcesses().record(sessionId, entry.id);
             sessionManager.addServer(buildSandboxBackedConfig(entry, sandbox));
             LOGGER.info("started sandbox-hosted mcp server on session sandbox, id={}, ip={}, startupTimeout={}s", entry.id, sandbox.ip(), startupTimeoutSeconds);
+            return true;
         } catch (Exception e) {
             LOGGER.warn("failed to start sandbox-hosted mcp server on session, id={}: {}", entry.id, e.getMessage());
+            return false;
         }
     }
 

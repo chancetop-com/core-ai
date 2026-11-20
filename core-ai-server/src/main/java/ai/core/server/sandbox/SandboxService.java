@@ -1,7 +1,6 @@
 package ai.core.server.sandbox;
 
 import ai.core.api.server.session.SandboxEvent;
-import ai.core.mcp.client.McpClientManager;
 import ai.core.sandbox.Sandbox;
 import ai.core.sandbox.SandboxConfig;
 import ai.core.sandbox.SandboxProvider;
@@ -296,14 +295,9 @@ public class SandboxService {
         SandboxReleaseSupport.capture(this, sessionId, sandboxId);
     }
 
-    /** Returns the McpClientManager scoped to this session, creating it if needed. */
-    public McpClientManager getOrCreateSessionMcpManager(String sessionId) {
-        return sessionMcpProcesses.managerFor(sessionId);
-    }
-
-    /** Record that an MCP server id was started on the session's sandbox so we can stop it on release. */
-    public void recordSessionMcpServer(String sessionId, String serverId) {
-        sessionMcpProcesses.record(sessionId, serverId);
+    /** Per-session MCP managers and in-flight sandbox MCP server starts. */
+    public SessionMcpProcesses sessionMcpProcesses() {
+        return sessionMcpProcesses;
     }
 
     // Called by LazySandbox post-acquire hook after the sandbox materializes.

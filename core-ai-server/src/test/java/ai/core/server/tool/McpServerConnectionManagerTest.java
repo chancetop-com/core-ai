@@ -8,6 +8,7 @@ import ai.core.server.domain.ToolRegistryEntry;
 import ai.core.server.domain.ToolType;
 import ai.core.server.sandbox.SandboxClient;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.SessionMcpProcesses;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -39,6 +40,7 @@ class McpServerConnectionManagerTest {
     private final ApplicationMcpManager applicationManager = mock(ApplicationMcpManager.class);
     private final McpClientManager mcpManager = mock(McpClientManager.class);
     private final SandboxService sandboxService = mock(SandboxService.class);
+    private final SessionMcpProcesses sessionMcpProcesses = mock(SessionMcpProcesses.class);
     private final SandboxClient discoveryClient = mock(SandboxClient.class);
     private final Sandbox sandbox = mock(Sandbox.class);
     private final McpServerConnectionManager connectionManager = new McpServerConnectionManager(sandboxService, applicationManager);
@@ -46,6 +48,7 @@ class McpServerConnectionManagerTest {
     @BeforeEach
     void setUp() {
         when(applicationManager.getOrCreate()).thenReturn(mcpManager);
+        when(sandboxService.sessionMcpProcesses()).thenReturn(sessionMcpProcesses);
         when(sandboxService.getDiscoverySandboxClient()).thenReturn(discoveryClient);
         when(discoveryClient.getBaseUrl()).thenReturn("https://discovery.example.test");
         when(sandbox.getMcpEndpoint()).thenReturn("https://session.example.test");
@@ -109,7 +112,7 @@ class McpServerConnectionManagerTest {
         connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", false);
 
         verify(sandbox).startMcpServer(entry.id, "python", List.of("server.py"), Map.of(), SandboxConstants.SESSION_MCP_STARTUP_TIMEOUT_SECONDS);
-        verify(sandboxService).recordSessionMcpServer("session-id", entry.id);
+        verify(sessionMcpProcesses).record("session-id", entry.id);
         verify(mcpManager).addServer(any(McpServerConfig.class));
         verifyNoInteractions(applicationManager, discoveryClient);
     }
@@ -130,9 +133,11 @@ class McpServerConnectionManagerTest {
 
         assertTrue(elapsedMs < 1000, "session registration must not wait for the sandbox start, took " + elapsedMs + "ms");
         release.countDown();
+        verify(sessionMcpProcesses).beginStart("session-id", entry.id);
         verify(sandbox, timeout(2000)).startMcpServer(entry.id, "python", List.of("server.py"), Map.of(), SandboxConstants.MCP_STARTUP_TIMEOUT_SECONDS);
         verify(mcpManager, timeout(2000)).addServer(any(McpServerConfig.class));
-        verify(sandboxService, timeout(2000)).recordSessionMcpServer("session-id", entry.id);
+        verify(sessionMcpProcesses, timeout(2000)).record("session-id", entry.id);
+        verify(sessionMcpProcesses, timeout(2000)).finishStart("session-id", entry.id, true);
     }
 
     @Test
@@ -143,9 +148,11 @@ class McpServerConnectionManagerTest {
 
         connectionManager.registerOnSession(entry, mcpManager, sandbox, "session-id", true);
 
+        verify(sessionMcpProcesses).beginStart("session-id", entry.id);
         verify(sandbox, timeout(2000)).startMcpServer(anyString(), anyString(), anyList(), anyMap(), anyInt());
         verify(mcpManager, never()).addServer(any(McpServerConfig.class));
-        verifyNoInteractions(sandboxService);
+        verify(sessionMcpProcesses, timeout(2000)).finishStart("session-id", entry.id, false);
+        verify(sessionMcpProcesses, never()).record(anyString(), anyString());
     }
 
     private Map<String, String> sandboxConfig() {

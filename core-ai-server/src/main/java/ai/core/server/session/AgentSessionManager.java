@@ -58,7 +58,6 @@ public class AgentSessionManager {
     private final ConcurrentMap<String, InProcessAgentSession> sessions = new ConcurrentHashMap<>();
     private final ConcurrentMap<String, Long> sessionLastActivity = new ConcurrentHashMap<>();
     public final SessionRuntimeStats runtimeStats = new SessionRuntimeStats(sessions, sessionLastActivity);
-
     @Inject
     ToolRegistryService toolRegistryService;
     @Inject
@@ -250,6 +249,7 @@ public class AgentSessionManager {
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration, sandboxService.attachmentRepository())) : null,
                 memoryInject, SessionSubAgentManager.channelInject(config)));
+        agent.addLifecycle(new SessionMcpReadinessLifecycle(sandboxService, sessionId));
         return new AgentBuildResult(agent, sessionRef);
     }
 

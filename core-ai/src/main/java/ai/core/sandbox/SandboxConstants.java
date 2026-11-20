@@ -81,6 +81,12 @@ public final class SandboxConstants {
     // that a stuck MCP server does not cause session creation to take minutes.
     public static final int SESSION_MCP_STARTUP_TIMEOUT_SECONDS = 30;
 
+    // A chat session starts its sandbox-hosted MCP servers in the background, so the first turn can
+    // arrive while they are still starting. The turn waits for them instead of running without the
+    // tools the agent was configured with; the start itself is bounded by MCP_STARTUP_TIMEOUT_SECONDS,
+    // this only adds a safety margin so a turn cannot hang on a stuck start request.
+    public static final int MCP_TURN_START_WAIT_TIMEOUT_SECONDS = MCP_STARTUP_TIMEOUT_SECONDS + 30;
+
     // Per-server HTTP connect timeout (seconds) for MCP servers during session creation.
     // Shorter than the global default (10s) so unreachable servers fail fast without
     // blocking session creation. See McpServerConfig.connectTimeout default.

@@ -15,6 +15,7 @@ import ai.core.server.domain.ToolType;
 import ai.core.server.gateway.GatewayEndpointType;
 import ai.core.server.run.LLMCallExecutor;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.SessionMcpProcesses;
 import ai.core.server.sandboxhub.SandboxHubCatalog;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallResult;
@@ -76,8 +77,10 @@ class ToolRefResolutionServiceTest {
         when(sessionManager.safeListTools(enabled.id)).thenReturn(List.of(mcpTool("enabled_tool")));
         var sandbox = mock(Sandbox.class);
         var sandboxService = mock(SandboxService.class);
+        var mcpProcesses = mock(SessionMcpProcesses.class);
         when(sandboxService.getSandbox("session-1")).thenReturn(sandbox);
-        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        when(mcpProcesses.managerFor("session-1")).thenReturn(sessionManager);
+        when(sandboxService.sessionMcpProcesses()).thenReturn(mcpProcesses);
         var connectionManager = mock(McpServerConnectionManager.class);
         var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, applicationManager);
         var service = new ToolRefResolutionService(Map.of(entry.id, entry, enabled.id, enabled),
@@ -98,8 +101,10 @@ class ToolRefResolutionServiceTest {
         entry.config = Map.of("transport", "sandbox_hosted");
         var sandboxService = mock(SandboxService.class);
         var sessionManager = mcpManager(List.of("list_locations"));
+        var mcpProcesses = mock(SessionMcpProcesses.class);
         when(sandboxService.getSandbox("session-1")).thenReturn(mock(Sandbox.class));
-        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        when(mcpProcesses.managerFor("session-1")).thenReturn(sessionManager);
+        when(sandboxService.sessionMcpProcesses()).thenReturn(mcpProcesses);
         var connectionManager = mock(McpServerConnectionManager.class);
         var applicationManager = new ApplicationMcpManager();
         var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, applicationManager);
@@ -110,7 +115,7 @@ class ToolRefResolutionServiceTest {
 
         verifyNoInteractions(connectionManager);
         verify(sandboxService, never()).ensureSandboxReady("session-1");
-        verify(sandboxService, never()).getOrCreateSessionMcpManager("session-1");
+        verify(mcpProcesses, never()).managerFor("session-1");
     }
 
     @Test
@@ -127,8 +132,10 @@ class ToolRefResolutionServiceTest {
         when(sessionManager.hasServer(entry.id)).thenReturn(Boolean.FALSE, Boolean.TRUE);
         when(sessionManager.safeListTools(entry.id)).thenReturn(List.of(mcpTool("list_collections")));
         var sandboxService = mock(SandboxService.class);
+        var mcpProcesses = mock(SessionMcpProcesses.class);
         when(sandboxService.getSandbox("session-1")).thenReturn(sandbox);
-        when(sandboxService.getOrCreateSessionMcpManager("session-1")).thenReturn(sessionManager);
+        when(mcpProcesses.managerFor("session-1")).thenReturn(sessionManager);
+        when(sandboxService.sessionMcpProcesses()).thenReturn(mcpProcesses);
         var connectionManager = mock(McpServerConnectionManager.class);
         var dependencies = new McpResolutionDependencies(connectionManager, sandboxService, new ApplicationMcpManager());
         var service = new ToolRefResolutionService(Map.of(entry.id, entry), Map.of(), dependencies, null, null, null);
@@ -574,9 +581,11 @@ class ToolRefResolutionServiceTest {
         var applicationManager = new ApplicationMcpManager();
         applicationManager.set(application);
         var sandboxService = mock(SandboxService.class);
+        var mcpProcesses = mock(SessionMcpProcesses.class);
+        when(sandboxService.sessionMcpProcesses()).thenReturn(mcpProcesses);
         for (var entry : sessions.entrySet()) {
             when(sandboxService.getSandbox(entry.getKey())).thenReturn(mock(Sandbox.class));
-            when(sandboxService.getOrCreateSessionMcpManager(entry.getKey())).thenReturn(entry.getValue());
+            when(mcpProcesses.managerFor(entry.getKey())).thenReturn(entry.getValue());
         }
         var dependencies = new McpResolutionDependencies(mock(McpServerConnectionManager.class), sandboxService, applicationManager);
         return mcpService(dependencies, Map.of("transport", "sandbox_hosted"));
