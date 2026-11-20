@@ -83,8 +83,8 @@ export default function Scheduler() {
     setLoading(true);
     Promise.all([
       api.schedules.list(),
-      // the page only needs catalog fields; the full agent view is ~1.7 MB in UAT
-      api.agents.listPickers(),
+      // the page only needs agent names; the full agent view is ~1.7 MB in UAT
+      api.agents.listSummaries(),
       api.channels.list(),
       // projects are optional context (permission-gated): a failure must not break the scheduler page
       api.projects.list(0, 200, false).catch(() => ({ projects: [], total: 0 })),

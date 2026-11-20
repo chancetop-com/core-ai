@@ -15,7 +15,7 @@ export default function AgentQualityDetail() {
       keyPlaceholder="PROMPT.OUTPUT_REQUIREMENT_PRESENT"
       note="A passing test only proves this revision on the current sample; BLOCK activation requires tested revisions and budget review. An inactive revision does not affect publishing."
       loadFixtures={async () => {
-        const response = await api.agents.listPickers();
+        const response = await api.agents.listSummaries();
         return (response.agents || []).map(agent => ({ id: agent.id, label: `${agent.name} (${agent.id})` }));
       }}
       testPayload={(fixtureId, sample) => ({

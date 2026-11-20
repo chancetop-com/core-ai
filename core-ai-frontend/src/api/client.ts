@@ -2325,6 +2325,8 @@ export const api = {
     },
     listPickers: (my?: boolean) =>
       request<ListAgentsResponse>(`/api/agents?view=picker${my ? '&my=true' : ''}`),
+    listSummaries: (my?: boolean) =>
+      request<ListAgentsResponse>(`/api/agents?view=summary${my ? '&my=true' : ''}`),
     get: (id: string) =>
       request<AgentDefinition>(`/api/agents/${id}`),
     create: (data: Partial<AgentDefinition>) =>
