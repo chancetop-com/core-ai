@@ -23,8 +23,7 @@ function useRegistryNavItems(): SectionNavItem[] {
       ],
     },
     {
-      label: 'Tools', icon: Wrench, show: can('tool.view') || can('mcp.view') || can('apitool.view'), children: [
-        { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: can('tool.view') },
+      label: 'Tools', icon: Wrench, show: can('mcp.view') || can('apitool.view'), children: [
         { to: '/mcp', icon: Network, label: 'MCP Servers', show: can('mcp.view') },
         { to: '/api-tools', icon: Key, label: 'API Tools', show: can('apitool.view') },
       ],

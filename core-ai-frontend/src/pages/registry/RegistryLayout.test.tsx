@@ -47,7 +47,6 @@ describe('Registry sub navigation', () => {
       ['Channels', '/triggers/channels'],
       ['OpenClaw', '/triggers/openclaw'],
       ['Schedule', '/triggers/schedule'],
-      ['Builtin Tools', '/tools/builtin'],
       ['MCP Servers', '/mcp'],
       ['API Tools', '/api-tools'],
       ['Skills', '/skills'],

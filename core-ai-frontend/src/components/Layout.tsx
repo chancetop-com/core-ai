@@ -16,8 +16,8 @@ interface NavItem {
   children?: { to: string; icon?: React.ComponentType<{ size: number; className?: string }>; label: string; show: boolean; permission?: string }[];
 }
 
-const REGISTRY_PATHS = ['/agents', '/workflows', '/system-prompts', '/triggers', '/tools', '/mcp', '/api-tools', '/skills', '/plugins', '/datasets', '/reports', '/quality', '/runs'];
-const REGISTRY_PERMISSIONS = ['agent.view', 'workflow.view', 'prompt.view', 'trigger.view', 'tool.view', 'mcp.view', 'apitool.view', 'skill.view', 'plugin.view', 'dataset.view', 'agent.quality.manage'];
+const REGISTRY_PATHS = ['/agents', '/workflows', '/system-prompts', '/triggers', '/mcp', '/api-tools', '/skills', '/plugins', '/datasets', '/reports', '/quality', '/runs'];
+const REGISTRY_PERMISSIONS = ['agent.view', 'workflow.view', 'prompt.view', 'trigger.view', 'mcp.view', 'apitool.view', 'skill.view', 'plugin.view', 'dataset.view', 'agent.quality.manage'];
 
 function isRegistryPath(pathname: string): boolean {
   return REGISTRY_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`));
@@ -49,8 +49,6 @@ export default function Layout() {
       '/scheduler': 'Scheduler',
       '/tasks': 'Tasks',
       '/mcp': 'MCP',
-      '/tools': 'Tools',
-      '/tools/builtin': 'Built-in Tools',
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
       '/plugins': 'Plugins',

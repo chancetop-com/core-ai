@@ -45,7 +45,6 @@ const Scheduler = lazy(() => import('./pages/scheduler/Scheduler'));
 const Tasks = lazy(() => import('./pages/tasks/Tasks'));
 const Mcp = lazy(() => import('./pages/mcp/Mcp'));
 const McpDetail = lazy(() => import('./pages/mcp/McpDetail'));
-const BuiltinTools = lazy(() => import('./pages/tools/BuiltinTools'));
 const ApiTools = lazy(() => import('./pages/api-tools/ApiTools'));
 const ApiToolDetail = lazy(() => import('./pages/api-tools/ApiToolDetail'));
 const SkillList = lazy(() => import('./pages/skills/SkillList'));
@@ -250,8 +249,9 @@ function AuthenticatedApp() {
                       <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
                       {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
                       <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
-                      <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
-                      <Route path="/tools/builtin" element={<RequirePermission permission="tool.view"><BuiltinTools /></RequirePermission>} />
+                      {/* Backward compat: the builtin tools page was removed; old links land on the registry */}
+                      <Route path="/tools" element={<Navigate to="/registry" replace />} />
+                      <Route path="/tools/builtin" element={<Navigate to="/registry" replace />} />
                       <Route path="/mcp" element={<RequirePermission permission="mcp.view"><Mcp /></RequirePermission>} />
                       <Route path="/mcp/:id" element={<RequirePermission permission="mcp.view"><McpDetail /></RequirePermission>} />
                       <Route path="/api-tools" element={<RequirePermission permission="apitool.view"><ApiTools /></RequirePermission>} />

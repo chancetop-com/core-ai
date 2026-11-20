@@ -13,7 +13,7 @@ public final class SpaRoutes {
     public static final List<String> PATHS = List.of(
         "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
         "/system-prompts", "/dashboard", "/traces", "/generations", "/observability", "/calls", "/skills", "/plugins",
-        "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools", "/mcp",
+        "/prompts", "/scheduler", "/tasks", "/api-tools", "/mcp",
         "/triggers", "/datasets", "/reports", "/reports/:id", "/datasets/reports", "/datasets/reports/:id",
         "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore", "/report-issue",
         "/projects", "/notifications",
@@ -34,7 +34,7 @@ public final class SpaRoutes {
         "/shared/artifacts/:token",
         "/shared/sessions/:token",
         "/triggers/webhook", "/triggers/schedule", "/triggers/channels", "/triggers/openclaw",
-        "/tools/builtin",
+        "/tools", "/tools/builtin",
         "/settings", "/settings/users", "/settings/api-keys", "/settings/api-users", "/settings/gateway", "/settings/system",
         "/settings/cost-alerts", "/settings/tasks", "/settings/sandbox", "/settings/agent-quality",
         "/settings/skill-quality", "/settings/quality",
