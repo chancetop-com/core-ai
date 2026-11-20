@@ -15,6 +15,7 @@ import ai.core.api.server.session.ErrorEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TaskStatusEvent;
+import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.context.CompressionReport;
 import ai.core.session.lifecycle.TaskRunCoordinator;
@@ -29,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
@@ -40,6 +42,8 @@ import java.util.function.Function;
  */
 @SuppressWarnings("this-escape")
 public class InProcessAgentSession implements AgentSession {
+    private static final Set<String> UNTRACKED_PENDING_TOOLS = Set.of("generate_video", "generate_image");
+
     private static TaskRunOutcome outcomeOfStatus(String status) {
         if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
         if ("cancelled".equals(status)) return TaskRunOutcome.CANCELLED;
@@ -597,7 +601,15 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
+    private void observeToolResult(ToolResultEvent event) {
+        if (!"pending".equals(event.status) || event.toolName == null) return;
+        if (UNTRACKED_PENDING_TOOLS.contains(event.toolName)) {
+            taskRuns.markUntrackable("required_adapter_not_wired:" + event.toolName);
+        }
+    }
+
     private void dispatch(AgentEvent event) {
+        if (event instanceof ToolResultEvent toolResult) observeToolResult(toolResult);
         logger.debug("dispatching event: {}, sessionId={}, thread={}", event.getClass().getSimpleName(), sessionId, Thread.currentThread().getName());
         for (AgentEventListener listener : listeners) {
             try {

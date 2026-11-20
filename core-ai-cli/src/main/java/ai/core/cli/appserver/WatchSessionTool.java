@@ -102,6 +102,9 @@ final class WatchSessionTool extends ToolCall {
             if (!last.isMissingNode()) node.set("lastEndedTaskRun", last);
             return ToolCallResult.failed(node.toPrettyString());
         }
+        if (!"complete".equals(run.coverage())) {
+            return ToolCallResult.failed("TASK_RUN_UNTRACKABLE: required work adapter is not wired (" + run.coverage() + ")");
+        }
         return request(payload(sessionId, run.taskRunId(), run.runGeneration(), scope, args), context);
     }
 
@@ -119,6 +122,10 @@ final class WatchSessionTool extends ToolCall {
         }
         if (ref.runGeneration() == 0) {
             return ToolCallResult.failed("task_run_ref must include the generation, e.g. run-1#3");
+        }
+        if (active != null && ref.taskRunId().equals(active.taskRunId())
+                && ref.runGeneration() == active.runGeneration() && !"complete".equals(active.coverage())) {
+            return ToolCallResult.failed("TASK_RUN_UNTRACKABLE: required work adapter is not wired (" + active.coverage() + ")");
         }
         return request(payload(sessionId, ref.taskRunId(), ref.runGeneration(), scope, args), context);
     }

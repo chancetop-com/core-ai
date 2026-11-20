@@ -235,6 +235,11 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         if (taskRunId == null || taskRunId.isBlank()) throw RpcException.invalidParams("taskRunId is required");
         var active = session.taskRuns().activeSnapshot();
         if (active != null && taskRunId.equals(active.taskRunId()) && active.runGeneration() == runGeneration) {
+            if (!"complete".equals(active.coverage())) {
+                throw RpcException.business("TASK_RUN_UNTRACKABLE",
+                        "task run has required work that is not tracked: " + active.coverage(),
+                        "coverage", active.coverage());
+            }
             var ttl = ttlMillis > 0 ? Math.min(ttlMillis, MAX_BIND_TTL_MILLIS) : DEFAULT_BIND_TTL_MILLIS;
             var expiresAt = System.currentTimeMillis() + ttl;
             var lease = new Lease(watchId, taskRunId, runGeneration, expiresAt);

@@ -1,6 +1,9 @@
 package ai.core.session;
 
 import ai.core.agent.Agent;
+import ai.core.api.server.session.AgentEventListener;
+import ai.core.api.server.session.ToolResultEvent;
+import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -59,6 +62,35 @@ class TaskRunLifecycleIntegrationTest {
             assertEquals(TaskRunOutcome.RETURNED, recorder.ended.get().outcome());
             assertEquals(TaskRunState.TERMINAL, session.taskRuns().lastEndedSnapshot().state());
             assertEquals(opened.taskRunId(), session.taskRuns().lastEndedSnapshot().taskRunId());
+        } finally {
+            session.close();
+        }
+    }
+
+    @Test
+    void anUntrackedRemoteMediaLaunchCannotClaimReturned() throws InterruptedException {
+        var provider = new MockLLMProvider();
+        provider.addResponse(response("submitted"));
+        var agent = Agent.builder().llmProvider(provider).build();
+        var session = new InProcessAgentSession("s-task-run-media", agent, true, new InMemoryToolPermissionStore());
+        var turnDone = new CountDownLatch(1);
+        session.onEvent(new AgentEventListener() {
+            @Override
+            public void onTurnComplete(TurnCompleteEvent event) {
+                turnDone.countDown();
+            }
+        });
+        try {
+            session.taskRuns().openRoot("request-1");
+            session.dispatchEvent(ToolResultEvent.of(session.id(), "call-1", "generate_video", "pending", "video-1"));
+            session.sendMessage("hello");
+            assertTrue(turnDone.await(10, TimeUnit.SECONDS));
+
+            var snapshot = session.taskRuns().activeSnapshot();
+            assertTrue(snapshot != null, "the run must stay open for the untracked remote work");
+            assertEquals("untrackable", snapshot.coverage());
+            assertEquals(TaskRunState.NEEDS_ATTENTION, snapshot.state());
+            assertTrue(session.taskRuns().lastEndedSnapshot() == null);
         } finally {
             session.close();
         }
