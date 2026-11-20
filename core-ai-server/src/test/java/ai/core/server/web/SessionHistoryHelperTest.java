@@ -67,6 +67,62 @@ class SessionHistoryHelperTest {
     }
 
     @Test
+    void historyResponseTruncatesHugeToolPayloadsButKeepsSmallOnes() {
+        var service = mock(ChatMessageService.class);
+        var message = new ChatMessage();
+        message.role = "agent";
+        var huge = new ChatMessage.ToolCallRecord();
+        huge.callId = "c-1";
+        huge.name = "fetch";
+        huge.arguments = "a".repeat(10_000);
+        huge.result = "r".repeat(1_000_000);
+        var small = new ChatMessage.ToolCallRecord();
+        small.callId = "c-2";
+        small.name = "ok";
+        small.arguments = "{\"q\":1}";
+        small.result = "done";
+        message.tools = List.of(huge, small);
+        when(service.history("s-3")).thenReturn(List.of(message));
+
+        var response = SessionHistoryHelper.build(service, "s-3");
+
+        var tools = response.messages.getFirst().tools;
+        assertTrue(tools.get(0).arguments.startsWith("aaaa"));
+        assertTrue(tools.get(0).arguments.contains("characters truncated"));
+        assertTrue(tools.get(0).arguments.length() < 5_000);
+        assertTrue(tools.get(0).result.contains("characters truncated"));
+        assertTrue(tools.get(0).result.length() < 17_000);
+        assertEquals("{\"q\":1}", tools.get(1).arguments);
+        assertEquals("done", tools.get(1).result);
+    }
+
+    @Test
+    void historyResponseCapsTheWholeToolPayloadPerMessage() {
+        var service = mock(ChatMessageService.class);
+        var message = new ChatMessage();
+        message.role = "agent";
+        var tools = new java.util.ArrayList<ChatMessage.ToolCallRecord>();
+        for (int i = 0; i < 10; i++) {
+            var tool = new ChatMessage.ToolCallRecord();
+            tool.callId = "c-" + i;
+            tool.name = "fetch";
+            tool.result = "r".repeat(16_000);
+            tools.add(tool);
+        }
+        message.tools = tools;
+        when(service.history("s-4")).thenReturn(List.of(message));
+
+        var response = SessionHistoryHelper.build(service, "s-4");
+
+        int kept = response.messages.getFirst().tools.stream()
+                .mapToInt(tool -> Math.min(tool.result.length(), 16_000))
+                .sum();
+        // the per-message budget is 64k; the truncation markers may add a few hundred chars
+        assertTrue(kept <= 65_000);
+        assertTrue(response.messages.getFirst().tools.getLast().result.contains("characters truncated"));
+    }
+
+    @Test
     void historyResponseIncludesPersistedCompression() {
         var service = mock(ChatMessageService.class);
         var message = new ChatMessage();

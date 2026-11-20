@@ -15,6 +15,13 @@ import java.util.List;
  * @author stephen
  */
 public final class SessionHistoryHelper {
+    // Tool payloads dominate the stored transcript (UAT: 761 MB of 782 MB) and a single result
+    // can exceed 1 MB. The transcript only needs a readable prefix; the full payload stays in the
+    // message store and the run trace.
+    private static final int MAX_TOOL_ARGUMENTS_CHARS = 4_000;
+    private static final int MAX_TOOL_RESULT_CHARS = 16_000;
+    private static final int MAX_TOOL_PAYLOAD_CHARS_PER_MESSAGE = 64_000;
+
     public static SessionHistoryResponse build(ChatMessageService chatMessageService, String sessionId) {
         var response = new SessionHistoryResponse();
         response.messages = toMessages(chatMessageService.history(sessionId));
@@ -78,17 +85,34 @@ public final class SessionHistoryHelper {
 
     private static List<Message.ToolCallRecord> toToolRecords(
             List<ai.core.server.domain.ChatMessage.ToolCallRecord> records) {
-        return records.stream().map(record -> {
+        var budget = MAX_TOOL_PAYLOAD_CHARS_PER_MESSAGE;
+        var tools = new ArrayList<Message.ToolCallRecord>(records.size());
+        for (var record : records) {
             var tool = new Message.ToolCallRecord();
             tool.callId = record.callId;
             tool.name = record.name;
-            tool.arguments = record.arguments;
-            tool.result = record.result;
+            var argumentsLimit = Math.min(MAX_TOOL_ARGUMENTS_CHARS, Math.max(budget, 0));
+            tool.arguments = truncate(record.arguments, argumentsLimit);
+            budget = Math.max(budget - keptChars(tool.arguments, argumentsLimit), 0);
+            var resultLimit = Math.min(MAX_TOOL_RESULT_CHARS, Math.max(budget, 0));
+            tool.result = truncate(record.result, resultLimit);
+            budget = Math.max(budget - keptChars(tool.result, resultLimit), 0);
             tool.status = record.status;
             tool.toolType = record.toolType;
             tool.durationMs = record.durationMs;
-            return tool;
-        }).toList();
+            tools.add(tool);
+        }
+        return tools;
+    }
+
+    private static int keptChars(String value, int limit) {
+        return value == null ? 0 : Math.min(value.length(), limit);
+    }
+
+    private static String truncate(String value, int limit) {
+        if (value == null || value.length() <= limit) return value;
+        return value.substring(0, limit)
+                + "\n\n… [" + (value.length() - limit) + " characters truncated; full output is available in the run trace]";
     }
 
     private static Message.SandboxRecord toSandboxRecord(

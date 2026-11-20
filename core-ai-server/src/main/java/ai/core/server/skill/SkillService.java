@@ -22,6 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * @author stephen
@@ -29,6 +30,10 @@ import java.util.Set;
 public class SkillService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillService.class);
     private static final int MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024;
+    // Skill bodies and resources stay inline in the skills table (UAT: 55 MB), so every summary
+    // read detoasts the whole table (~1 s) just to drop those two keys. Summaries only change on
+    // a write; a short per-pod TTL keeps list pages fast and bounds cross-pod staleness.
+    private static final long SUMMARY_CACHE_TTL_MS = 10_000;
 
     private static ForbiddenException unavailableSkill() {
         return new ForbiddenException("skill is unavailable");
@@ -43,6 +48,8 @@ public class SkillService {
     @Inject
     SkillPublishService publishService;
 
+    private final Map<String, SummaryCache> summaryCache = new ConcurrentHashMap<>();
+
     private volatile Runnable catalogInvalidator = () -> {
     };
 
@@ -52,6 +59,7 @@ public class SkillService {
     }
 
     private void invalidateCatalog() {
+        summaryCache.clear();
         catalogInvalidator.run();
     }
 
@@ -152,7 +160,7 @@ public class SkillService {
         if (SkillQueryHelper.notInMemoryFilters(userId, options.query())) {
             return options.includeContent()
                 ? skillStore.list(namespace, sourceType, options.offset(), options.limit())
-                : skillStore.listSummaries(namespace, sourceType, options.offset(), options.limit());
+                : SkillQueryHelper.page(summaryCandidates(namespace, sourceType), options.offset(), options.limit());
         }
 
         var searchScope = SkillQueryHelper.normalizedSearchIn(options.searchIn());
@@ -168,14 +176,14 @@ public class SkillService {
         String namespace = filter == null ? null : filter.namespace();
         var sourceType = sourceType(filter);
         if (SkillQueryHelper.notInMemoryFilters(userId, query)) {
-            return skillStore.count(namespace, sourceType);
+            return summaryCandidates(namespace, sourceType).size();
         }
 
         var searchScope = SkillQueryHelper.normalizedSearchIn(searchIn);
         // counting never reads the entities, so only a content search needs the bodies
         var candidates = SkillQueryHelper.requiresContent(searchScope)
             ? skillStore.list(namespace, sourceType, null, null)
-            : skillStore.listSummaries(namespace, sourceType, null, null);
+            : summaryCandidates(namespace, sourceType);
         return candidates.stream()
             .filter(skill -> SkillQueryHelper.matchesUserId(skill, userId) && SkillQueryHelper.matchesQuery(skill, query, searchScope))
             .count();
@@ -184,7 +192,17 @@ public class SkillService {
     private List<SkillDefinition> candidates(String namespace, SkillSourceType sourceType, boolean includeContent) {
         return includeContent
             ? skillStore.list(namespace, sourceType, null, null)
-            : skillStore.listSummaries(namespace, sourceType, null, null);
+            : summaryCandidates(namespace, sourceType);
+    }
+
+    private List<SkillDefinition> summaryCandidates(String namespace, SkillSourceType sourceType) {
+        var key = (namespace == null ? "" : namespace) + '\u0000' + (sourceType == null ? "" : sourceType.name());
+        var now = System.currentTimeMillis();
+        var cached = summaryCache.get(key);
+        if (cached != null && now - cached.loadedAt() < SUMMARY_CACHE_TTL_MS) return cached.skills();
+        var skills = List.copyOf(skillStore.listSummaries(namespace, sourceType, null, null));
+        summaryCache.put(key, new SummaryCache(skills, now));
+        return skills;
     }
 
     private SkillSourceType sourceType(SkillFilter filter) {
@@ -423,5 +441,8 @@ public class SkillService {
      *                       never selected, so the returned entities carry no {@code content}/{@code resources}
      */
     public record ListOptions(String query, String searchIn, Integer offset, Integer limit, boolean includeContent) {
+    }
+
+    private record SummaryCache(List<SkillDefinition> skills, long loadedAt) {
     }
 }
