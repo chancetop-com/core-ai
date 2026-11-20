@@ -1,7 +1,12 @@
 package ai.core.server.selfharness;
 
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.server.domain.migration.SchemaMigrationVDefaultAgent;
+import ai.core.tool.ToolCall;
+
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -19,9 +24,9 @@ class SelfHarnessToolsTest {
         var registry = initializedRegistry();
 
         verify(registry).registerBuiltinToolGroup(anyString(), anyString(), anyString(),
-                argThat(tools -> tools.stream().anyMatch(tool -> "create_dataset_report".equals(tool.getName()))),
-                argThat(groups -> "Datasets".equals(groups.get("create_dataset"))
-                        && "Datasets".equals(groups.get("create_dataset_report"))));
+                argThat(tools -> tools.stream().map(ToolCall::getName).toList().containsAll(SchemaMigrationVDefaultAgent.AGENT_BUILDER_TOOL_NAMES)),
+                argThat(groups -> List.of("list_report_sources", "list_dataset_reports", "get_dataset_report", "preview_dataset_report",
+                        "create_dataset_report", "update_dataset_report").stream().allMatch(name -> "Datasets".equals(groups.get(name)))));
     }
 
     @Test

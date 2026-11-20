@@ -106,6 +106,9 @@ public class AgentDefinition {
     @Field(name = "system_default")
     public Boolean systemDefault;
 
+    @Field(name = "system_seed_version")
+    public String systemSeedVersion;
+
     @Field(name = "enable_memory")
     public Boolean enableMemory;
 

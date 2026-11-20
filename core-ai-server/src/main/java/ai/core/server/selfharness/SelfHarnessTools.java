@@ -45,7 +45,7 @@ public class SelfHarnessTools {
             - mode=AGGREGATE for metrics and charts; mode=RECORDS for a record list (display TABLE only; requires record_fields with top-level schema field names, and no measures).
             - time_field=meta.created_at or meta.run_started_at. time_range.kind=TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|ROLLING_DAYS (days 1..366)|FIXED (ISO-8601 from/to). timezone is a required IANA zone.
             - bucket=NONE|HOUR|DAY|WEEK|MONTH. category_field is one optional top-level schema field.
-            - filters match top-level schema fields by equality; values are string, number or boolean.
+            - filters match top-level schema fields by equality; values are string, number, boolean or null. Omit filters when no filtering was requested; do not copy example fields that are absent from the source schema.
             - measures: op=SUM|AVG|MIN|MAX|COUNT|LAST. COUNT needs no field; the others use field="data.<schema field>" (NUMBER except LAST). Base and derived measures are capped at 8; derived op=RATIO with numerator/denominator set to base measure ids.
             - display.type=METRIC (exactly one measure, no bucket/category), LINE or BAR (exactly one of bucket/category; series reference measure ids; format=NUMBER|PERCENT|CURRENCY), or TABLE.
             """;
@@ -168,6 +168,13 @@ public class SelfHarnessTools {
      * builder can set reports up while it creates the agent and its datasets.
      */
     private void registerDatasetReportTools(SelfHarnessToolBuilder builder, List<ToolCall> tools) {
+        tools.add(builder.buildCustom("list_report_sources",
+                "List GENERAL datasets the current user may use as report sources under dataset.view permission. "
+                        + "Unlike session-bound report tools, self-harness can discover sources without attaching a dataset first. "
+                        + "Returns dataset_id, name, description and schema. q/limit/offset search and page the dataset catalog; SESSION datasets are excluded. Use dataset_id in spec_json.",
+                List.of(string("q", "Dataset search keyword", null),
+                        integer("limit", "Catalog page size (default 20, max 100)", null),
+                        integer("offset", "Dataset catalog offset; a page may contain fewer GENERAL sources", null))));
         tools.add(builder.buildCustom("list_dataset_reports",
                 "List the current user's saved dataset reports, newest first. Optional dataset_id narrows to one dataset; limit/offset paginate. "
                         + "Returns report_id, title, revision, dataset_id, dataset_name, display_type, pinned and updated_at. Call get_dataset_report before updating a report.",

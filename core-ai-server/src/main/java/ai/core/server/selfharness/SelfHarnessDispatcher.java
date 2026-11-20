@@ -102,8 +102,8 @@ public class SelfHarnessDispatcher {
                 dispatchSkill(name, args, userId);
             case "list_datasets", "get_dataset", "list_dataset_records", "create_dataset" ->
                 dispatchDataset(name, args, userId);
-            case "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report" ->
-                reportDispatcher.dispatch(name, args, userId, context);
+            case "list_report_sources", "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report" ->
+                reportDispatcher.dispatch(name, args, context);
             case "list_tools" ->
                 dispatchTool(args);
             case "list_models" ->

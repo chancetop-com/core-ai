@@ -2,6 +2,10 @@ package ai.core.server.selfharness;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.server.dataset.DatasetService;
+import ai.core.server.domain.Dataset;
+import ai.core.server.domain.DatasetType;
+import ai.core.server.apiuser.PermissionService;
+import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.report.application.ReportException;
 import ai.core.server.report.application.ReportService;
 import ai.core.server.report.domain.ReportData;
@@ -28,14 +32,18 @@ public class SelfHarnessReportDispatcher {
 
     @Inject
     DatasetService datasetService;
+    @Inject
+    PermissionService permissionService;
 
-    Object dispatch(String name, String args, String userId, ExecutionContext context) {
+    Object dispatch(String name, String args, ExecutionContext context) {
+        var userId = requireUser(context);
         var reportService = SessionDatasetHelper.reportService();
         if (reportService == null) {
             throw new IllegalStateException("dataset reports are not enabled on this server, so report tools cannot be used");
         }
         try {
             return switch (name) {
+                case "list_report_sources" -> sources(args, userId);
                 case "list_dataset_reports" -> list(reportService, args, userId);
                 case "get_dataset_report" -> get(reportService, args, userId);
                 case "preview_dataset_report" -> preview(reportService, args, userId);
@@ -46,6 +54,33 @@ public class SelfHarnessReportDispatcher {
         } catch (ReportException e) {
             throw new IllegalArgumentException(errorMessage(e), e);
         }
+    }
+
+    private String requireUser(ExecutionContext context) {
+        var caller = context != null ? context.getCaller() : null;
+        var userId = caller != null ? caller.userId() : context != null ? context.getUserId() : null;
+        if (userId == null || userId.isBlank()) throw ReportException.forbidden("AUTH_REQUIRED", "report tools require a user context");
+        return userId;
+    }
+
+    private Object sources(String args, String userId) {
+        permissionService.check(userId, PermissionCodes.DATASET_VIEW);
+        var params = arguments(args);
+        var query = stringParam(params, "q");
+        var offset = Math.max(intParam(params, "offset", 0), 0);
+        var limit = Math.min(Math.max(intParam(params, "limit", 20), 1), 100);
+        var datasets = datasetService.list(query, offset, limit);
+        return Map.of("sources", datasets.stream().filter(dataset -> DatasetService.resolveType(dataset) == DatasetType.GENERAL)
+                .map(this::sourceRow).toList(), "catalog_total", datasetService.count(query), "next_offset", offset + datasets.size());
+    }
+
+    private Map<String, Object> sourceRow(Dataset dataset) {
+        var row = new LinkedHashMap<String, Object>();
+        row.put("dataset_id", dataset.id);
+        row.put("name", dataset.name);
+        row.put("description", dataset.description);
+        row.put("schema", DatasetService.schemaViews(dataset.schema));
+        return row;
     }
 
     private Object list(ReportService reportService, String args, String userId) {
@@ -142,7 +177,7 @@ public class SelfHarnessReportDispatcher {
         payload.put("source_time", data.sourceTime);
         payload.put("evaluated_at", data.evaluatedAt);
         payload.put("freshness_status", data.freshnessStatus);
-        payload.put("has_more", data.hasMore);
+        payload.put("has_more", data.hasMore || data.rows.size() > PREVIEW_ROW_LIMIT);
         return payload;
     }
 

@@ -75,25 +75,30 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - When provided, response_schema_json must be a JSON **string** (escaped), not a raw JSON object
             """;
 
+    public static final String AGENT_BUILDER_DESCRIPTION = "Agent configuration and dataset-report specialist. Delegate agent creation or updates, "
+        + "tool and subagent bindings, model selection, shared GENERAL datasets or SESSION state, and catalog skills. "
+        + "Can independently list, read, preview, create and update the current user's dataset reports (metrics, charts and tables), "
+        + "even when no new agent is needed. Returns actual saved IDs and report URLs. Publishes agents only with user approval; "
+        + "report pinning, deletion and home layout changes remain user actions in the report page.";
+    public static final List<String> AGENT_BUILDER_TOOL_NAMES = List.of("list_agents", "create_agent", "get_agent", "update_agent", "publish_agent",
+        "list_models", "list_skills", "get_skill", "create_skill", "list_datasets", "create_dataset", "get_dataset", "list_dataset_records",
+        "list_report_sources", "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report", "list_tools");
     private static final String AGENT_BUILDER_SYSTEM_PROMPT = """
-            You are an Agent Builder assistant. Your job is to help users create new AI agents through conversation.
+            You are Agent Builder, a configuration and dataset-report specialist. Help users or a parent agent create, inspect and update agents, datasets, catalog skills and saved dataset reports. A report-only request is a complete task: do not require or create an agent draft for it.
 
             An Agent is a configurable AI assistant with a system prompt, tools, model settings, and other parameters. Users can create agents for various purposes like code review, data analysis, customer support, content generation, etc.
 
             ## Workflow
 
-            1. **Understand the requirement**: Ask the user what kind of agent they want to create. What should it do? What tools does it need? What tone/style should it use?
+            1. **Route the task**: Decide whether the request is agent setup, an existing agent update, dependency setup, or report-only work. Ask only for information that is genuinely missing; use supplied IDs and decisions. For report-only work skip agent draft and publish steps. When called as a subagent, carry out the delegated work directly and return blockers or clarification questions to the parent instead of starting another setup interview.
 
             2. **Design the agent**: Based on the requirements, determine:
                - A clear, descriptive name for the agent
                - A short description of what it does
                - A detailed system prompt that instructs the agent on its role, workflow, tone, and constraints
-               - Which builtin tools the agent needs. Common options:
-                 - `builtin-all` - all available tools (recommended for most agents)
-                 - `builtin-file-operations` - file reading and writing
-                 - `builtin-web` - web search and browsing
-                 - `builtin-code-execution` - run code in a sandbox
-               - Model preference (optional, defaults to the configured default model)
+               - Tool bindings: call `list_tools` and use exact returned IDs with their types and sources; never invent toolset names. `builtin:builtin-all` is the broad builtin set but does not include self-harness management tools. Attach only the management operations a target agent actually needs.
+               - Existing subagents: call `list_agents`/`get_agent`, verify they are usable published agents, and bind their IDs via `subagent_ids`.
+               - Model preference: leave unset for the deployment default, or call `list_models` and use an exact model_id for `model` and `multi_modal_model`; never guess a model name.
                - Temperature (optional, controls creativity)
                - Max turns. Choose based on task complexity:
                  - 5-10 turns: simple Q&A, quick lookups, small fixes
@@ -101,7 +106,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
                  - 20-30 turns: code generation, debugging, review
                  - 30-50 turns: research, analysis, report writing
                  - 50-100 turns: complex multi-step workflows, heavy tool usage
-                - Multimodal model. Set a multimodal model (e.g. "gpt-4o") when the agent needs to understand images:
+                 - Multimodal model. Use a vision-capable chat model from `list_models` when the agent needs to understand images:
                   - YES: UI design review, screenshot analysis, diagram interpretation, OCR, any task where users may upload images
                   - NO: code generation, text analysis, data processing, Q&A, translation (unless image input is expected)
                 - Shared data (datasets). If the agent needs to persist data across sessions and share it with all its users (e.g. a resume/talent pool database, reviewed resume evaluations, interview results, product catalogs, ticket lists), it needs a dataset — determine which datasets it needs and the permission level (READ to query, WRITE to also insert/update, FULL to also delete).
@@ -140,11 +145,19 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
             - Datasets, skills and reports are created with the caller's identity. Never guess a dataset or report id: read it from `list_datasets`/`create_dataset` or `list_dataset_reports` and pass the id, not the name.
             - Never promise that a report is on the user's home page. The report tools cannot pin: the user pins a report in the report page.
             - When another agent calls you as a subagent, finish with a compact handoff: agent_id and status, dataset ids with permissions, skill ids, report ids and their URLs.
-            - If the user mentions needing sub-agents, MCP tools, service APIs, or custom tool sets, tell them: "These advanced features are available in the agent configuration page. You can configure sub-agents, MCP servers, service APIs, and more there. This wizard focuses on the core setup — for advanced configuration, visit the agent edit page after publishing."
+            - Configure existing subagents, MCP/API/builtin tool references, skills, datasets and sandbox settings through `create_agent`/`update_agent` using the actual tool schemas. Do not send the user to the configuration page for operations these tools support. Do not claim you can register a new MCP server or service API when no corresponding tool is available.
+            - For reports, read the schema and a bounded sample with `get_dataset`/`list_dataset_records`; do not aggregate sampled rows as if they were the full dataset. Use the report tools for real queries. Confirm the time field, timezone, time-window semantics and metric meaning when ambiguous. A requested save authorizes creating/updating the report, not pinning, deleting or publishing an unrelated agent.
+            - On report revision conflict, re-read and reconcile before retrying; never blindly overwrite. On permission, validation or query errors, report the actual failure rather than claiming success or interpreting it as no data.
             """;
 
     private static final String DEFAULT_ASSISTANT_SYSTEM_PROMPT = "You are a helpful AI assistant.\n\n"
         + Prompts.ASSISTANT_PERSONALITY_PROMPT;
+
+    // a plain public constant would duplicate this 7.8KB prompt into every referencing class file
+    @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
+    public static String agentBuilderSystemPrompt() {
+        return AGENT_BUILDER_SYSTEM_PROMPT;
+    }
 
     @Override
     public String version() {
@@ -156,11 +169,11 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         // (e.g. a talent pool) and attach them to agents via dataset_config
         // 20260824002: add create_skill self-harness tool so the builder can create catalog skills
         // from SKILL.md content and attach them to agents via skill_ids
-        // 20261120001: add the dataset report tools (list/get/preview/create/update_dataset_report) so the builder
+        // 20261120002: add the dataset report tools (list sources/reports, get, preview, create, update) so the builder
         // can create and maintain reports on the datasets it manages; description/prompt now advertise that capability
         // the seeded default prompt only reaches fresh environments ($setOnInsert); already deployed
         // environments get the personality through SchemaMigrationVDefaultAssistantPersonality instead
-        return "20261120001";
+        return "20261120002";
     }
 
     @Override
@@ -241,10 +254,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
         var filter = new Document("_id", AGENT_BUILDER_ID);
         var update = new Document("$set", new Document()
             .append("name", "Agent Builder")
-            .append("description", "Agent creation specialist: designs and publishes AI agents through conversation — system prompt, tools, model, "
-                + "shared datasets (GENERAL data or SESSION state), catalog skills, and dataset reports (metric/chart/table). "
-                + "Also lists and inspects existing agents, skills, datasets and tools, and updates or publishes existing drafts. "
-                + "Use it when the task is to create or change an agent, or to set up the datasets, skills or reports an agent needs.")
+            .append("description", AGENT_BUILDER_DESCRIPTION)
             .append("system_prompt", AGENT_BUILDER_SYSTEM_PROMPT)
             .append("tools", toolRefs)
             .append("max_turns", 50)
@@ -273,10 +283,7 @@ public class SchemaMigrationVDefaultAgent implements SchemaMigration {
     private List<Document> agentBuilderToolRefs() {
         var toolRefs = new ArrayList<Document>();
         toolRefs.add(new Document("id", "builtin:builtin-all").append("type", "BUILTIN"));
-        for (var toolName : List.of("list_agents", "create_agent", "get_agent", "update_agent", "publish_agent",
-                "list_skills", "get_skill", "create_skill", "list_datasets", "create_dataset", "get_dataset", "list_dataset_records",
-                "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report",
-                "list_tools")) {
+        for (var toolName : AGENT_BUILDER_TOOL_NAMES) {
             toolRefs.add(new Document("id", "builtin:self-harness:" + toolName).append("type", "BUILTIN").append("source", "Self Harness"));
         }
         return toolRefs;
