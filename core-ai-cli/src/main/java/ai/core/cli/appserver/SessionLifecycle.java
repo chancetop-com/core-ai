@@ -102,6 +102,7 @@ final class SessionLifecycle {
                     bootstrap.sessionPersistence.delete(List.of(id));
                 }
                 TranscriptStore.delete(bootstrap.sessionsDir, id);
+                LifecycleJournal.delete(bootstrap.sessionsDir, id);
                 Housekeeping.deleteDir(stagingDir(id));
             } finally {
                 lock.close();

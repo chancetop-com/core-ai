@@ -29,7 +29,12 @@ final class DesktopSessionTools {
                 LocalSubmitArtifactsTool.create(workspace),
                 SendCustomEventTool.builder().build(),
                 PresentChoicesTool.builder().build(),
-                SendSessionMessageTool.create(new EngineSessionMessageForwarder(registry))));
+                SendSessionMessageTool.create(new EngineSessionMessageForwarder(registry)),
+                FindSessionsTool.create(registry),
+                InspectSessionTool.create(registry),
+                WatchSessionTool.create(registry),
+                ListSessionWatchesTool.create(registry),
+                CancelSessionWatchTool.create(registry)));
         appendArtifactInstructions(agent);
     }
 

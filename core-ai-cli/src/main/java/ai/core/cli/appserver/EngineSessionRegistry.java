@@ -1,7 +1,6 @@
 package ai.core.cli.appserver;
 
 import ai.core.api.server.session.ApprovalDecision;
-import ai.core.agent.AttachedContent;
 import ai.core.cli.CliAppHelper;
 import ai.core.cli.agent.CliAgent;
 import ai.core.cli.helper.HelperConfigStore;
@@ -48,6 +47,7 @@ public class EngineSessionRegistry {
 
     private final EngineBootstrap bootstrap;
     private final Supplier<NotificationSink> sinkSupplier;
+    private final HostRequestBridge hostRequests;
     private final SessionTitleStore titles;
     private final EngineSessionModels models;
     private final MdMemoryProvider memoryProvider;
@@ -61,9 +61,10 @@ public class EngineSessionRegistry {
     private volatile EngineScheduler scheduler;
     private volatile LocalSdkBroker sdkBroker;
 
-    public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier) {
+    public EngineSessionRegistry(EngineBootstrap bootstrap, Supplier<NotificationSink> sinkSupplier, HostRequestBridge hostRequests) {
         this.bootstrap = bootstrap;
         this.sinkSupplier = sinkSupplier;
+        this.hostRequests = hostRequests;
         this.titles = new SessionTitleStore(bootstrap.sessionsDir);
         this.models = new EngineSessionModels(bootstrap.result.llmProviders, bootstrap.sessionsDir);
         this.titleResolver = new SessionTitleResolver(titles, bootstrap.sessionManager, sessions);
@@ -226,23 +227,6 @@ public class EngineSessionRegistry {
         return node;
     }
 
-    public ObjectNode send(ObjectNode params) {
-        bootstrap.requireTrusted("sending a message");
-        intake.requireIdle("sending a message");
-        var session = requireSession(params);
-        var parsed = SendParts.parse(params, bootstrap.workspace, SessionLifecycle.stagingDir(session.id()));
-        if (!parsed.hasContent()) {
-            throw RpcException.invalidParams("message must contain text or attachments");
-        }
-        boolean queued = session.running();
-        List<AttachedContent> attachments = parsed.attachments().isEmpty() ? null : parsed.attachments();
-        session.inProcess().sendMessage(parsed.text(), null, attachments, Params.optionalText(params, "turnId"));
-        var node = Params.object();
-        node.put("accepted", true);
-        node.put("queued", queued);
-        return node;
-    }
-
     public ObjectNode cancel(ObjectNode params) {
         var session = requireSession(params);
         boolean running = session.running();
@@ -302,6 +286,10 @@ public class EngineSessionRegistry {
 
     public EngineSession find(String sessionId) {
         return sessionId == null ? null : sessions.get(sessionId);
+    }
+
+    HostRequestBridge hostRequests() {
+        return hostRequests;
     }
 
     public EngineSession any() {
@@ -378,7 +366,10 @@ public class EngineSessionRegistry {
                     "CORE_AI_HUB", brokerUrl,
                     "CORE_AI_SESSION_ID", sessionId));
         }
-        return new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
+        var lifecycle = new SessionLifecycleSource(sessionId, inProcess, bootstrap.sessionsDir, sinkSupplier);
+        var engineSession = new EngineSession(sessionId, agent, inProcess, memoryProvider, lock, recorder);
+        engineSession.setLifecycle(lifecycle);
+        return engineSession;
     }
 
     private CliAgent.Config agentConfig(String sessionId) {
@@ -410,7 +401,7 @@ public class EngineSessionRegistry {
         return store;
     }
 
-    private EngineSession requireSession(ObjectNode params) {
+    EngineSession requireSession(ObjectNode params) {
         var id = SessionIds.check(Params.requiredText(params, "sessionId"));
         var session = sessions.get(id);
         if (session == null) {

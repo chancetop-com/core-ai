@@ -50,6 +50,8 @@ public class AppServerEngine implements EngineApi {
     private final Map<String, Function<ObjectNode, JsonNode>> handlers;
     private final EngineBootstrap bootstrap;
     private final EngineSessionRegistry registry;
+    private final SessionRunApi runApi;
+    private final HostRequestBridge hostRequests;
     private final EngineScheduler scheduler;
     private final LocalSdkBroker sdkBroker;
     private final SchedulesApi schedulesApi;
@@ -65,7 +67,9 @@ public class AppServerEngine implements EngineApi {
 
     public AppServerEngine(Path workspace, Path configFile) {
         this.bootstrap = new EngineBootstrap(workspace, configFile);
-        this.registry = new EngineSessionRegistry(bootstrap, () -> sink);
+        this.hostRequests = new HostRequestBridge(() -> sink);
+        this.registry = new EngineSessionRegistry(bootstrap, () -> sink, hostRequests);
+        this.runApi = new SessionRunApi(bootstrap, registry);
         this.sdkBroker = startSdkBroker(registry);
         this.scheduler = new EngineScheduler(bootstrap, registry, () -> sink);
         this.registry.setScheduler(scheduler);
@@ -119,6 +123,8 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("speech");
         capabilities.add("media_generation");
         capabilities.add("usage_summary");
+        capabilities.add("task_run_lifecycle_v1");
+        capabilities.add("desktop_host_requests_v1");
         node.put("workspace", bootstrap.workspace.toString());
         node.set("trustState", trustNode());
         if (bootstrap.workspaceTrusted) scheduler.start();
@@ -159,6 +165,7 @@ public class AppServerEngine implements EngineApi {
 
     @Override
     public void shutdown() {
+        hostRequests.close();
         if (sdkBroker != null) sdkBroker.close();
         AppServerShutdown.close(scheduler, registry, bootstrap);
     }
@@ -168,7 +175,7 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/list", registry::list), Map.entry("session/create", registry::create),
                 Map.entry("session/resume", registry::resume), Map.entry("session/history", registry::history),
                 Map.entry("session/records", registry::records), Map.entry("session/recordPayload", registry::recordPayload),
-                Map.entry("session/send", registry::send), Map.entry("session/save", registry::save),
+                Map.entry("session/send", runApi::send), Map.entry("session/save", registry::save),
                 Map.entry("session/close", registry::close), Map.entry("session/cancel", registry::cancel),
                 Map.entry("session/approve", registry::approve), Map.entry("session/compact", registry::compact),
                 Map.entry("session/undo", registry::undo),
@@ -176,11 +183,6 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("session/export", registry::export),
                 Map.entry("session/stats", registry::stats),
                 Map.entry("engine/quiesce", this::quiesce), Map.entry("engine/resumeIntake", this::resumeIntake),
-                Map.entry("schedules/list", schedulesApi::list),
-                Map.entry("schedules/get", schedulesApi::get),
-                Map.entry("schedules/update", schedulesApi::update),
-                Map.entry("schedules/delete", schedulesApi::delete),
-                Map.entry("schedules/trigger", schedulesApi::trigger),
                 Map.entry("model/list", ignored -> modelSettings.list()),
                 Map.entry("model/get", modelSettings::get),
                 Map.entry("model/set", modelSettings::set),
@@ -211,7 +213,29 @@ public class AppServerEngine implements EngineApi {
                 Map.entry("helpers/update", helperBridge::update),
                 Map.entry("helpers/remove", helperBridge::remove)));
         handlers.putAll(extraHandlers());
+        handlers.putAll(lifecycleHandlers());
+        handlers.putAll(schedulerHandlers());
         return Map.copyOf(handlers);
+    }
+
+    private Map<String, Function<ObjectNode, JsonNode>> schedulerHandlers() {
+        return Map.of(
+                "schedules/list", schedulesApi::list,
+                "schedules/get", schedulesApi::get,
+                "schedules/update", schedulesApi::update,
+                "schedules/delete", schedulesApi::delete,
+                "schedules/trigger", schedulesApi::trigger);
+    }
+
+    private Map<String, Function<ObjectNode, JsonNode>> lifecycleHandlers() {
+        return Map.of(
+                "task_run/cancel", runApi::cancel,
+                "lifecycle/inspect", runApi::inspect,
+                "lifecycle/bind", runApi::bind,
+                "lifecycle/bindStatus", runApi::bindStatus,
+                "lifecycle/replay", runApi::replay,
+                "lifecycle/unbind", runApi::unbind,
+                "host/respond", hostRequests::respond);
     }
 
     private Map<String, Function<ObjectNode, JsonNode>> extraHandlers() {

@@ -30,6 +30,7 @@ public class EngineSession {
     private final SessionLock lock;
     private final TranscriptRecorder recorder;
     private final TranscriptReader transcript;
+    private SessionLifecycleSource lifecycle;
     private volatile long lastActivityMillis = System.currentTimeMillis();
 
     EngineSession(String id, Agent agent, InProcessAgentSession session, MdMemoryProvider memoryProvider,
@@ -41,6 +42,10 @@ public class EngineSession {
         this.lock = lock;
         this.recorder = recorder;
         this.transcript = new TranscriptReader(recorder.store());
+    }
+
+    void setLifecycle(SessionLifecycleSource lifecycle) {
+        this.lifecycle = lifecycle;
     }
 
     void touch() {
@@ -63,6 +68,10 @@ public class EngineSession {
         return session;
     }
 
+    SessionLifecycleSource lifecycle() {
+        return lifecycle;
+    }
+
     public boolean running() {
         return session.isTurnRunning();
     }
@@ -77,6 +86,7 @@ public class EngineSession {
         try {
             session.close();
         } finally {
+            if (lifecycle != null) lifecycle.close();
             TurnPersistence.clear(id);
             if (lock != null) lock.close();
         }

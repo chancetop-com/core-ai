@@ -1,5 +1,8 @@
 package ai.core.session;
 
+import ai.core.session.lifecycle.TaskRunCoordinator;
+import ai.core.session.lifecycle.TaskRunOutcome;
+import ai.core.session.lifecycle.TaskRunState;
 import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.subagent.SubagentOutputSink;
 import io.opentelemetry.api.trace.Span;
@@ -239,6 +242,43 @@ class BackgroundTaskManagerTest {
             assertFalse(manager.hasRunningTasks());
             assertEquals(0, manager.runningTaskCount());
         }
+    }
+
+    @Test
+    void backgroundTaskSettlesTheRunAndReservesItsContinuation() throws Exception {
+        var queue = new SessionCommandQueue();
+        var coordinator = new TaskRunCoordinator("test-session", "inc-1");
+        coordinator.openRoot("request-1");
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session",
+                event -> { }, coordinator);
+
+        var handle = manager.submit("bg-1", () -> "done", null);
+        handle.future().get(5, TimeUnit.SECONDS);
+        coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+
+        var snapshot = coordinator.snapshot();
+        assertEquals(TaskRunState.AWAITING_ASYNC, snapshot.state());
+        assertEquals(1, snapshot.queuedContinuations());
+        assertEquals(SessionCommandQueue.CommandMode.TASK_NOTIFICATION, queue.drainSameMode().mode());
+    }
+
+    @Test
+    void droppedContinuationReleasesTheRun() throws Exception {
+        var queue = new SessionCommandQueue();
+        var coordinator = new TaskRunCoordinator("test-session", "inc-1");
+        coordinator.openRoot("request-1");
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session",
+                event -> { }, coordinator);
+
+        var handle = manager.submit("bg-2", () -> "done", null);
+        handle.future().get(5, TimeUnit.SECONDS);
+        coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+        manager.markConsumed("bg-2");
+
+        assertTrue(queue.drainSameMode().isEmpty());
+        assertEquals(TaskRunOutcome.RETURNED, coordinator.snapshot().outcome());
     }
 
     private static final class InMemorySink implements SubagentOutputSink {

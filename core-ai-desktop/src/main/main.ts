@@ -34,6 +34,9 @@ import { channelsFromStatus, createOcgPort, type OcgChannel, OcgHttpPort } from 
 import { ensureOcgSendSecret } from './channels/OcgConfig';
 import { routeChannelToDesktop } from './channels/OcgRouting';
 import { ocgAck, ocgReply, ocgSend, ocgTargets, ocgWait, type OcgInboundMessage } from './channels/OcgCli';
+import { OriginStore } from './channels/OriginStore';
+import { SubscriptionError, SubscriptionService } from './observations/SubscriptionService';
+import { WatchStore } from './observations/WatchStore';
 import { CuaManager } from './computer/CuaManager';
 import { RemoteConversationClient, type RemoteAttachment } from './remote/RemoteConversationClient';
 import { HomeDataClient } from './home/HomeDataClient';
@@ -114,6 +117,9 @@ let updateService: UpdateService | null = null;
 let scheduleWaker: ScheduleWaker | null = null;
 let channelBridge: ChannelBridge | null = null;
 let completionNotifier: CompletionNotifier | null = null;
+let originStore: OriginStore | null = null;
+let watchStore: WatchStore | null = null;
+let subscriptionService: SubscriptionService | null = null;
 let remoteConversations: RemoteConversationClient | null = null;
 let homeData: HomeDataClient | null = null;
 let ocgAdmin: OcgHttpPort | null = null;
@@ -298,6 +304,31 @@ async function sendOcgNotification(target: NotifyTarget, text: string) {
   await ensureOcgDaemon();
   ocgAdmin ??= new OcgHttpPort();
   return ocgAdmin.send(target.channel, target.target, text, target.accountId ?? '');
+}
+
+/**
+ * One host request from an engine tool. The engine tool is waiting on its own worker; this handler
+ * must answer exactly once, and must not block the engine notification fan-out.
+ */
+async function handleHostRequest(workspace: string, params: Record<string, unknown>): Promise<void> {
+  const requestId = typeof params.requestId === 'string' ? params.requestId : '';
+  if (!requestId) return;
+  try {
+    if (!subscriptionService) throw new Error('watch service is unavailable');
+    const result = await subscriptionService.handleHostRequest(workspace, params);
+    await supervisor?.call(workspace, 'host/respond', { requestId, ok: true, result }, settings.approvalPolicy ?? 'ask');
+  } catch (error) {
+    const code = error instanceof SubscriptionError ? error.code : 'HOST_REQUEST_FAILED';
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[observations] host request ${requestId} failed: ${code}: ${message}`);
+    await supervisor?.call(workspace, 'host/respond', {
+      requestId,
+      ok: false,
+      error: { code, message },
+    }, settings.approvalPolicy ?? 'ask').catch((respondError: Error) => {
+      console.error(`[observations] could not answer host request ${requestId}: ${respondError.message}`);
+    });
+  }
 }
 
 /**
@@ -1795,6 +1826,8 @@ else {
         pluginPageHost?.onEngineEvent(workspace, method, params);
         channelBridge?.onEngineEvent(workspace, method, params);
         completionNotifier?.onEngineEvent(workspace, method, params);
+        if (method === 'host/request') void handleHostRequest(workspace, params);
+        if (method === 'session/lifecycle') subscriptionService?.onEngineEvent(workspace, method, params);
         send('engine:event', { workspace, method, params });
       },
       onLog: (workspace, line) => {
@@ -1850,6 +1883,35 @@ else {
         },
       },
     });
+    originStore = new OriginStore();
+    try {
+      watchStore = WatchStore.open(path.join(app.getPath('userData'), 'observations', 'observations.db'));
+      subscriptionService = new SubscriptionService({
+        store: watchStore,
+        origins: originStore,
+        callEngine: (workspace, method, params) => {
+          if (!supervisor) return Promise.reject(new Error('engine supervisor not ready'));
+          return supervisor.call(workspace, method, params, settings.approvalPolicy ?? 'ask');
+        },
+        send: async (target, text) => {
+          const result = await sendOcgNotification({
+            channel: target.channel,
+            target: target.target,
+            accountId: target.accountId,
+          }, text);
+          return { ok: result.ok === true, error: result.error, code: result.code };
+        },
+        sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
+        log: (line) => console.log(`[observations] ${line}`),
+        onDelivery: (delivery) => send('observations:delivery', delivery),
+      });
+      subscriptionService.start();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[observations] durable watch store unavailable: ${detail}`);
+      watchStore = null;
+      subscriptionService = null;
+    }
     completionNotifier = new CompletionNotifier({
       isEnabled: (workspace, sessionId) => settings.notifySessions?.[notifySessionKey(workspace, sessionId)] === true,
       target: () => settings.notifyTarget ?? null,
@@ -1867,6 +1929,7 @@ else {
       ocg: createOcgPort({ wait: ocgWait, reply: ocgReply, ack: ocgAck, send: ocgSend }),
       storeFile: path.join(app.getPath('userData'), 'channels', 'bridge.json'),
       consumer: 'core-ai-desktop',
+      origins: originStore ?? undefined,
       sessionTitle: (workspace, sessionId) => readSessionTitle(workspace, sessionId),
       firstUserText: (workspace, sessionId) => readFirstUserText(workspace, sessionId),
       stageMedia: async (sessionId, sourcePaths) => {
@@ -1914,6 +1977,8 @@ else {
     void browserManager?.stop();
     scheduleWaker?.stop();
     channelBridge?.stop();
+    subscriptionService?.stop();
+    watchStore?.close();
     const failsafe = setTimeout(() => app.exit(0), 8_000);
     void supervisor.shutdownAll().finally(() => {
       clearTimeout(failsafe);

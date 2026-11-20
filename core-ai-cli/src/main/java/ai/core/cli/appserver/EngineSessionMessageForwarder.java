@@ -24,9 +24,14 @@ final class EngineSessionMessageForwarder implements SendSessionMessageTool.Forw
             throw RpcException.business("SESSION_NOT_FOUND", "session not found: " + sessionId, "sessionId", sessionId);
         }
         boolean queued = target.running() || target.inProcess().hasPendingWork();
+        var taskRuns = target.inProcess().taskRuns();
+        var active = taskRuns.activeSnapshot();
+        if (active == null || active.terminal()) taskRuns.openRoot(turnId);
         if (!target.inProcess().enqueueMessage(message, null, null, turnId)) {
+            taskRuns.admissionFailed("session_queue_full");
             throw RpcException.business("SESSION_QUEUE_FULL", "session queue is full: " + sessionId, "sessionId", sessionId);
         }
+        taskRuns.requestQueued();
         return new SendSessionMessageTool.Forwarded(sessionId,
                 resumed.path("status").asText("idle"), queued, turnId);
     }

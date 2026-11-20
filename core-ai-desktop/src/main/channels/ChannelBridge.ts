@@ -4,6 +4,7 @@
 import type { StagedAttachment } from '../attachments/AttachmentStager';
 import { BridgeStore, type BridgeSessionRecord } from './BridgeStore';
 import type { OcgInboundMessage, OcgResult } from './OcgCli';
+import type { OriginStore } from './OriginStore';
 
 /** The three OCG operations the bridge needs; P1 swaps the CLI implementation for HTTP. */
 export interface OcgPort {
@@ -38,6 +39,8 @@ export interface ChannelBridgeOptions {
   ocg: OcgPort;
   storeFile: string;
   consumer: string;
+  /** Main-owned origin addresses; never exposed to the engine prompt. */
+  origins?: OriginStore;
   /** Display title of an engine session (rename sidecar first, first user message otherwise). */
   sessionTitle?: (workspace: string, sessionId: string) => string | null;
   /** First user message stored in an engine session; used to name legacy WeChat sessions. */
@@ -139,6 +142,7 @@ export class ChannelBridge {
   stop(): void {
     if (!this.running) return;
     this.running = false;
+    this.options.origins?.clearAll();
     for (const timer of this.progressTimers.values()) clearTimeout(timer);
     this.progressTimers.clear();
     this.state = { ...this.state, enabled: false, running: false, activeSessionId: null };
@@ -247,6 +251,7 @@ export class ChannelBridge {
 
     this.state = { ...this.state, activeSessionId: sessionId };
     this.emit();
+    this.options.origins?.begin({ message, workspace, sessionId });
 
     const staged = await this.stageInboundMedia(message, sessionId, mediaPaths);
     if (!text && staged.length === 0) {
@@ -316,6 +321,7 @@ export class ChannelBridge {
     this.state = { ...this.state, lastReplyAt: Date.now(), activeSessionId: null };
     this.emit();
     this.options.log(`replied ${message.id} textLen=${text.length}`);
+    this.options.origins?.clear(message.id);
     if (sessionId) {
       this.options.onSession({ kind: 'replied', sessionId, workspace, title, sessionKey: this.sessionKeyOf(message) });
     }
@@ -325,6 +331,7 @@ export class ChannelBridge {
     await this.cancelProgress(message.id);
     await this.ack(message.id);
     this.store.markHandled(message.id, state);
+    this.options.origins?.clear(message.id);
   }
 
   private async ack(id: string): Promise<void> {

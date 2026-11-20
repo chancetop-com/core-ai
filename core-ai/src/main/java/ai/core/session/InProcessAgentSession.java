@@ -17,6 +17,8 @@ import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TaskStatusEvent;
 import ai.core.api.server.session.TurnCompleteEvent;
 import ai.core.context.CompressionReport;
+import ai.core.session.lifecycle.TaskRunCoordinator;
+import ai.core.session.lifecycle.TaskRunOutcome;
 import ai.core.session.transcript.TranscriptInput;
 import ai.core.session.transcript.TranscriptKinds;
 import ai.core.session.transcript.TranscriptRecorder;
@@ -27,6 +29,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -37,6 +40,32 @@ import java.util.function.Function;
  */
 @SuppressWarnings("this-escape")
 public class InProcessAgentSession implements AgentSession {
+    private static TaskRunOutcome outcomeOfStatus(String status) {
+        if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
+        if ("cancelled".equals(status)) return TaskRunOutcome.CANCELLED;
+        return TaskRunOutcome.FAILED;
+    }
+
+    private static TaskRunOutcome terminalOutcome(AgentEvent turnEnd) {
+        if (turnEnd instanceof TurnCompleteEvent turnComplete) {
+            if (Boolean.TRUE.equals(turnComplete.maxTurnsReached)) return TaskRunOutcome.LIMITED;
+            if (Boolean.TRUE.equals(turnComplete.cancelled)) return TaskRunOutcome.CANCELLED;
+            return TaskRunOutcome.RETURNED;
+        }
+        if (turnEnd instanceof ErrorEvent) return TaskRunOutcome.FAILED;
+        return TaskRunOutcome.INTERRUPTED;
+    }
+
+    private static String terminalReason(AgentEvent turnEnd) {
+        if (turnEnd instanceof TurnCompleteEvent turnComplete) {
+            if (Boolean.TRUE.equals(turnComplete.maxTurnsReached)) return "max_turns_exceeded";
+            if (Boolean.TRUE.equals(turnComplete.cancelled)) return "user_cancelled";
+            return null;
+        }
+        if (turnEnd instanceof ErrorEvent error) return error.message;
+        return "turn_terminated";
+    }
+
     private final Logger logger = LoggerFactory.getLogger(InProcessAgentSession.class);
 
     private final String sessionId;
@@ -50,9 +79,12 @@ public class InProcessAgentSession implements AgentSession {
     // close() races the turn thread for it so a force-closed turn still terminates exactly once.
     private final AtomicBoolean turnActive = new AtomicBoolean();
     private volatile String currentTurnId;
+    private volatile String currentExecutionId;
+    private volatile TaskRunCoordinator.ExecutionKind currentExecutionKind;
     private volatile long turnStartedAtMs;
     private final SessionCustomEventEmitter customEventEmitter;
     private final TranscriptRecorder recorder;
+    private final TaskRunCoordinator taskRuns;
     public final SessionFootprintTracker footprint;
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this(sessionId, agent, autoApproveAll, permissionStore, false, null);
@@ -75,10 +107,12 @@ public class InProcessAgentSession implements AgentSession {
         this.commandQueue = new SessionCommandQueue();
         this.turnInput = new SessionTurnInput(agent);
         this.turnDriver = new TurnDriver(commandQueue, this::executeCommands);
+        this.taskRuns = new TaskRunCoordinator(sessionId, "inc-" + UUID.randomUUID());
+        this.taskRuns.setPendingWorkProbe(this::hasDeferredWork);
         var context = agent.getExecutionContext();
         context.setWaitEventListener(this::dispatch);
         if (context.getSubagentOutputSinkFactory() != null) {
-            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch));
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch, taskRuns));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
         var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
@@ -105,6 +139,11 @@ public class InProcessAgentSession implements AgentSession {
     public Agent agent() {
         return agent;
     }
+
+    public TaskRunCoordinator taskRuns() {
+        return taskRuns;
+    }
+
     @Override
     public void sendMessage(String message) {
         sendMessage(message, null);
@@ -120,24 +159,30 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void sendMessage(String message, Map<String, Object> variables, List<AttachedContent> attachedContents, String turnId) {
+        sendTrackedMessage(message, variables, attachedContents, turnId);
+    }
+
+    public SendDisposition sendTrackedMessage(String message, Map<String, Object> variables,
+                                              List<AttachedContent> attachedContents, String turnId) {
         if (turnInput.isActive() && (recorder == null || recorder.hasOpenTurn())) {
             var input = new TranscriptInput(message, attachedContents, turnId);
             var steerSeq = recorder == null ? null : recorder.steerPending(input);
             if (turnInput.offer(message, variables, attachedContents, turnId, steerSeq)) {
                 debug("message accepted for the running turn");
-                return;
+                return SendDisposition.STEERED;
             }
             if (recorder != null && steerSeq != null) recorder.steerCancel(steerSeq);
         }
-        if (commandQueue.enqueueUserInput(message, variables, attachedContents, turnId)) return;
+        if (commandQueue.enqueueUserInput(message, variables, attachedContents, turnId)) return SendDisposition.QUEUED;
         logger.warn("message refused, session queue is full, sessionId={}", sessionId);
         // A terminal ErrorEvent would clear the running turn's SSE replay buffer and make the
         // client treat the session as finished. Keep the turn alive; the rejection is logged.
-        if (turnActive.get()) return;
+        if (turnActive.get()) return SendDisposition.REJECTED;
         // The queue budget is a protection, not a silent drop: say so, and leave the session idle.
         dispatchEvent(ErrorEvent.of(sessionId,
                 "too many messages are queued for this session, wait for the running turn to finish", "QUEUE_FULL"));
         dispatchEvent(StatusChangeEvent.of(sessionId, SessionStatus.IDLE));
+        return SendDisposition.REJECTED;
     }
 
     /**
@@ -158,6 +203,7 @@ public class InProcessAgentSession implements AgentSession {
                 ? batch.values().getFirst().turnId()
                 : null;
         currentTurnId = turnId;
+        beginExecution(batch, turnId);
         turnActive.set(true);
         turnStartedAtMs = System.currentTimeMillis();
         var turnDeadline = SessionTurnWatchdog.schedule(turnToken, sessionId, turnActive::get);
@@ -197,6 +243,16 @@ public class InProcessAgentSession implements AgentSession {
         }
     }
 
+    private void beginExecution(SessionCommandQueue.CommandBatch batch, String turnId) {
+        var kind = batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT
+                ? TaskRunCoordinator.ExecutionKind.ROOT
+                : TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION;
+        var executionId = turnId != null ? turnId : "exec-" + UUID.randomUUID();
+        currentExecutionId = executionId;
+        currentExecutionKind = kind;
+        taskRuns.executionStarted(executionId, kind, batch.values().size());
+    }
+
     private void finishTurn(ScheduledFuture<?> turnDeadline, Runnable threadUnbind, CancellationToken turnToken) {
         for (var pending : turnInput.end()) {
             if (recorder != null && pending.steerSeq() != null) recorder.steerCancel(pending.steerSeq());
@@ -209,6 +265,7 @@ public class InProcessAgentSession implements AgentSession {
         turnToken.disconnect();
         currentTurnId = null;
         footprint.refresh();
+        taskRuns.pendingWorkChanged();
     }
 
     private SessionTurnUsage.Before turnUsageBefore() {
@@ -399,6 +456,16 @@ public class InProcessAgentSession implements AgentSession {
                 || taskManager != null && taskManager.hasRunningTasks();
     }
 
+    /**
+     * Deferred work only: the driver's own running turn is already represented by the coordinator's
+     * active execution and must not keep a run open after that execution has ended.
+     */
+    private boolean hasDeferredWork() {
+        var taskManager = agent.getExecutionContext().getTaskManager();
+        return turnInput.hasPending() || !commandQueue.isEmpty()
+                || taskManager != null && taskManager.hasRunningTasks();
+    }
+
     /** Messages accepted for the running turn but not yet injected before a model call. */
     public int pendingUserInputCount() {
         return turnInput.pendingCount();
@@ -412,6 +479,7 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void close() {
         logger.debug("closing agent session, sessionId={}", sessionId);
+        taskRuns.interrupt("session_closed");
         turnDriver.shutdown();
         // subagent threads persist after every run; this covers a session closed before that
         var context = agent.getExecutionContext();
@@ -463,7 +531,9 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     public void notifyTask(String taskId, String status, String toolName, String notificationXml) {
-        commandQueue.enqueueTaskNotification(notificationXml);
+        taskRuns.taskSettled(taskId, 0L, outcomeOfStatus(status), true, status);
+        boolean accepted = commandQueue.enqueueTaskNotification(notificationXml);
+        taskRuns.notificationQueued(taskId, 0L, accepted);
         dispatch(TaskStatusEvent.of(sessionId, taskId, status, toolName));
     }
 
@@ -507,6 +577,13 @@ public class InProcessAgentSession implements AgentSession {
                 }
             }
         }
+        var executionId = currentExecutionId;
+        var executionKind = currentExecutionKind;
+        currentExecutionId = null;
+        currentExecutionKind = null;
+        if (executionId != null && executionKind != null) {
+            taskRuns.executionEnded(executionId, executionKind, terminalOutcome(turnEnd), terminalReason(turnEnd));
+        }
         dispatch(turnEnd);
         dispatch(StatusChangeEvent.of(sessionId, status));
     }
@@ -548,5 +625,11 @@ public class InProcessAgentSession implements AgentSession {
             }
             return "builtin";
         };
+    }
+
+    public enum SendDisposition {
+        STEERED,
+        QUEUED,
+        REJECTED
     }
 }

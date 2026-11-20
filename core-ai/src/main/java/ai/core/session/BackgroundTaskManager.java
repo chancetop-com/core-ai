@@ -4,6 +4,8 @@ import ai.core.agent.CancellationToken;
 import ai.core.agent.Task;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.TaskStatusEvent;
+import ai.core.session.lifecycle.TaskRunCoordinator;
+import ai.core.session.lifecycle.TaskRunOutcome;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.wait.TaskCompletionRegistry;
@@ -14,14 +16,11 @@ import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
@@ -30,6 +29,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -37,29 +37,12 @@ public class BackgroundTaskManager {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(BackgroundTaskManager.class);
 
-    private static final int MAX_NOTIFICATION_RESULT_LENGTH = 30 * 1024;
-    private static final int MAX_TERMINAL_RESULT_LENGTH = 200 * 1024;
     private static final int MAX_TERMINAL_TASKS = 100;
-    private static final boolean IS_WINDOWS = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
 
-    private static String normalizePath(String path) {
-        try {
-            return Path.of(path).toAbsolutePath().normalize().toString();
-        } catch (RuntimeException e) {
-            return path;
-        }
-    }
-
-    private static boolean samePath(String left, String right) {
-        var normalizedLeft = normalizePath(left);
-        var normalizedRight = normalizePath(right);
-        return IS_WINDOWS ? normalizedLeft.equalsIgnoreCase(normalizedRight) : normalizedLeft.equals(normalizedRight);
-    }
-
-    private static String terminalResult(String result, String outputRef) {
-        if (result == null || result.length() <= MAX_TERMINAL_RESULT_LENGTH) return result;
-        return result.substring(0, MAX_TERMINAL_RESULT_LENGTH)
-                + "\n\n[Output truncated: full result is available at: " + (outputRef != null ? outputRef : "(not available)") + "]";
+    private static TaskRunOutcome outcomeOfStatus(String status) {
+        if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
+        if ("cancelled".equals(status)) return TaskRunOutcome.CANCELLED;
+        return TaskRunOutcome.FAILED;
     }
 
     private static TaskRunResult runAgentWithSink(Supplier<String> agentRunner, SubagentOutputSink sink, String taskId) {
@@ -86,6 +69,11 @@ public class BackgroundTaskManager {
         return new TaskRunResult(status, result, error);
     }
 
+    private static SharedTaskState newSharedState(TaskRunCoordinator taskRuns) {
+        return new SharedTaskState(new ConcurrentHashMap<>(), new ConsumedTasks(),
+                new TaskCompletionRegistry("background", null), taskRuns, new AtomicInteger());
+    }
+
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
     private final Map<String, RunningTask> runningTasks = new ConcurrentHashMap<>();
     private final Map<String, TerminalTask> terminalTasks;
@@ -96,15 +84,20 @@ public class BackgroundTaskManager {
     private final ExecutorService executor;
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
+    private final TaskRunCoordinator taskRuns;
+    private final AtomicInteger activeTaskCount;
 
     public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher) {
-        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor());
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(null));
+    }
+
+    public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
+                                 Consumer<AgentEvent> dispatcher, TaskRunCoordinator taskRuns) {
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(taskRuns));
     }
 
     BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher, ExecutorService executor) {
-        this(commandQueue, sinkFactory, sessionId, dispatcher, executor,
-                new SharedTaskState(new ConcurrentHashMap<>(), new ConsumedTasks(),
-                        new TaskCompletionRegistry("background", null)));
+        this(commandQueue, sinkFactory, sessionId, dispatcher, executor, newSharedState(null));
     }
 
     private BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
@@ -117,7 +110,12 @@ public class BackgroundTaskManager {
         this.terminalTasks = sharedState.terminalTasks();
         this.consumedTasks = sharedState.consumedTasks();
         this.completions = sharedState.completions();
+        this.taskRuns = sharedState.taskRuns();
+        this.activeTaskCount = sharedState.activeTaskCount();
         commandQueue.setTaskNotificationFilter(this::isNotificationSuperseded);
+        commandQueue.setNotificationDroppedListener((taskId, generation) -> {
+            if (taskRuns != null) taskRuns.notificationDropped(taskId, generation);
+        });
     }
 
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token) {
@@ -146,8 +144,10 @@ public class BackgroundTaskManager {
         var completion = completions.register(taskId, sessionId);
         var running = new RunningTask(null, notified, outputRef, onNeverStarted, notify, completion);
         runningTasks.put(taskId, running);
+        activeTaskCount.incrementAndGet();
+        if (taskRuns != null) taskRuns.taskLaunched(taskId, completion.ref().generation());
         var otelContext = Context.current();
-        var future = executor.submit(() -> {
+        var future = submitTask(taskId, completion.ref().generation(), () -> {
             running.started.set(true);
             var scope = otelContext.makeCurrent();
             try {
@@ -166,6 +166,18 @@ public class BackgroundTaskManager {
             });
         }
         return new TaskHandle(outputRef, future);
+    }
+
+    private Future<?> submitTask(String taskId, long generation, Runnable work) {
+        try {
+            return executor.submit(work);
+        } catch (RuntimeException e) {
+            if (taskRuns != null) {
+                taskRuns.taskSettled(taskId, generation, TaskRunOutcome.FAILED, false, "task_not_started");
+            }
+            activeTaskCount.decrementAndGet();
+            throw e;
+        }
     }
 
     public void register(Task task) {
@@ -193,11 +205,11 @@ public class BackgroundTaskManager {
     }
 
     public boolean hasRunningTasks() {
-        return !runningTasks.isEmpty();
+        return activeTaskCount.get() > 0;
     }
 
     public int runningTaskCount() {
-        return runningTasks.size();
+        return activeTaskCount.get();
     }
 
     public boolean hasTask(String taskId) {
@@ -277,13 +289,13 @@ public class BackgroundTaskManager {
     public void markOutputRead(String path) {
         if (path == null || path.isBlank()) return;
         terminalTasks.forEach((taskId, task) -> {
-            if (task.outputRef != null && samePath(task.outputRef, path)) consumedTasks.mark(taskId);
+            if (task.outputRef != null && TaskNotificationText.samePath(task.outputRef, path)) consumedTasks.mark(taskId);
         });
     }
 
     private void recordTerminal(String taskId, String status, String result, String error, String outputRef,
                                 TaskCompletionRegistry.Entry completion) {
-        var terminal = new TerminalTask(status, terminalResult(result, outputRef), error, outputRef);
+        var terminal = new TerminalTask(status, TaskNotificationText.terminalResult(result, outputRef), error, outputRef);
         terminalTasks.put(taskId, terminal);
         trimTerminalTasks();
         completion.complete(terminal.toResult().withStats("taskStatus", status));
@@ -302,6 +314,7 @@ public class BackgroundTaskManager {
     private boolean cancelRunning(String taskId, RunningTask running) {
         if (!running.notified.compareAndSet(false, true)) return false;
         runningTasks.remove(taskId, running);
+        activeTaskCount.decrementAndGet();
         running.future.cancel(true);
         runNeverStarted(taskId, running);
         recordTerminal(taskId, "cancelled", null, "cancelled by user", running.outputRef, running.completion);
@@ -325,16 +338,26 @@ public class BackgroundTaskManager {
     private void notifyTerminal(String taskId, String status, String result, String error, RunningTask running) {
         if (!running.notified.compareAndSet(false, true)) return;
         runningTasks.remove(taskId, running);
+        activeTaskCount.decrementAndGet();
         recordTerminal(taskId, status, result, error, running.outputRef, running.completion);
         publishTerminal(taskId, status, running.outputRef, result, error, running);
     }
 
     private void publishTerminal(String taskId, String status, String outputRef, String result, String error,
                                  RunningTask running) {
-        // A live wait suppresses only the automatic turn; the UI status event below is always delivered.
-        if (running.notify && !running.completion.isNotificationSuppressed()) {
-            commandQueue.enqueueTaskNotification(buildNotificationXml(taskId, status, outputRef, result, error,
-                    running.completion.ref().generation()));
+        var generation = running.completion.ref().generation();
+        boolean continuationExpected = running.notify && !running.completion.isNotificationSuppressed();
+        if (taskRuns != null) {
+            taskRuns.taskSettled(taskId, generation, outcomeOfStatus(status), continuationExpected, status);
+        }
+        if (continuationExpected) {
+            var xml = TaskNotificationText.buildNotificationXml(taskId, status, outputRef, result, error, generation);
+            if (taskRuns != null) {
+                boolean accepted = commandQueue.enqueueTaskNotification(xml);
+                taskRuns.notificationQueued(taskId, generation, accepted);
+            } else {
+                commandQueue.enqueueTaskNotification(xml);
+            }
         }
         dispatcher.accept(TaskStatusEvent.of(sessionId, taskId, status));
     }
@@ -354,29 +377,11 @@ public class BackgroundTaskManager {
 
     public BackgroundTaskManager createChild() {
         return new BackgroundTaskManager(commandQueue, sinkFactory, sessionId, dispatcher, executor,
-                new SharedTaskState(terminalTasks, consumedTasks, completions));
+                new SharedTaskState(terminalTasks, consumedTasks, completions, taskRuns, activeTaskCount));
     }
 
     public List<Task> getTasks() {
         return Collections.unmodifiableList(tasks);
-    }
-
-    private String buildNotificationXml(String taskId, String status, String outputRef, String result, String error,
-                                        long generation) {
-        var resultXml = "completed".equals(status)
-                ? "<result>" + truncateResult(result, outputRef) + "</result>"
-                : "<error>" + truncateResult(error, outputRef) + "</error>";
-        var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        return "<task-notification>%n<task-id>%s</task-id>%n<task-generation>%d</task-generation>%n<status>%s</status>%n%s%s%n</task-notification>%n"
-                .formatted(taskId, generation, status, outputRefXml, resultXml);
-    }
-
-    private String truncateResult(String text, String outputRef) {
-        if (text == null || text.length() <= MAX_NOTIFICATION_RESULT_LENGTH) return text;
-        var truncated = text.substring(0, MAX_NOTIFICATION_RESULT_LENGTH);
-        var suffix = "\n\n[Output truncated: showing first " + MAX_NOTIFICATION_RESULT_LENGTH
-                + " characters. Full output is available at: " + outputRef + "]";
-        return truncated + suffix;
     }
 
     public record TaskHandle(String outputRef, Future<?> future) {
@@ -406,33 +411,8 @@ public class BackgroundTaskManager {
     }
 
     private record SharedTaskState(Map<String, TerminalTask> terminalTasks, ConsumedTasks consumedTasks,
-                                   TaskCompletionRegistry completions) {
-    }
-
-    /** Consumption tombstones are generation-keyed: a re-run owes a notification, old ones stay dropped. */
-    private static final class ConsumedTasks {
-        private static final String ALL_GENERATIONS = "#*";
-
-        private final Set<String> keys = ConcurrentHashMap.newKeySet();
-
-        private void mark(String taskId) {
-            keys.add(taskId + ALL_GENERATIONS);
-        }
-
-        private void mark(String taskId, long generation) {
-            keys.add(taskId + "#" + generation);
-        }
-
-        private boolean isConsumed(String taskId) {
-            var prefix = taskId + "#";
-            return keys.stream().anyMatch(key -> key.startsWith(prefix));
-        }
-
-        private boolean isConsumed(String taskId, Long generation) {
-            if (keys.contains(taskId + ALL_GENERATIONS)) return true;
-            if (generation == null) return isConsumed(taskId);
-            return keys.contains(taskId + "#" + generation);
-        }
+                                   TaskCompletionRegistry completions, TaskRunCoordinator taskRuns,
+                                   AtomicInteger activeTaskCount) {
     }
 
     private record TerminalTask(String status, String result, String error, String outputRef, long completedAtMs) {

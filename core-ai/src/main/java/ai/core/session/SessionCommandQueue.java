@@ -12,6 +12,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
@@ -35,6 +36,7 @@ public class SessionCommandQueue {
     private final ReentrantLock lock = new ReentrantLock();
     private final Condition notEmpty = lock.newCondition();
     private volatile BiPredicate<String, Long> taskNotificationFilter;
+    private volatile BiConsumer<String, Long> notificationDroppedListener;
 
     /**
      * A terminal task whose result the session already consumed (or whose automatic notification a
@@ -49,6 +51,10 @@ public class SessionCommandQueue {
     /** Compatibility for hosts that only know task ids; a generation-less notification is matched by id. */
     void setConsumedTaskFilter(Predicate<String> filter) {
         this.taskNotificationFilter = (taskId, generation) -> filter.test(taskId);
+    }
+
+    void setNotificationDroppedListener(BiConsumer<String, Long> listener) {
+        this.notificationDroppedListener = listener;
     }
 
     public void enqueueUserInput(String value, Map<String, Object> variables) {
@@ -100,6 +106,8 @@ public class SessionCommandQueue {
      * Consumed task notifications are dropped instead of starting an empty turn.
      */
     public CommandBatch drainSameMode() {
+        var dropped = new ArrayList<String>();
+        CommandBatch batch;
         lock.lock();
         try {
             if (queue.isEmpty()) return new CommandBatch(null, List.of());
@@ -108,14 +116,17 @@ public class SessionCommandQueue {
             while (!queue.isEmpty() && queue.peek().mode() == targetMode) {
                 var message = queue.poll().value();
                 if (targetMode == CommandMode.TASK_NOTIFICATION && isConsumedNotification(message.value())) {
+                    dropped.add(message.value());
                     continue;
                 }
                 values.add(message);
             }
-            return new CommandBatch(targetMode, values);
+            batch = new CommandBatch(targetMode, values);
         } finally {
             lock.unlock();
         }
+        dropped.forEach(this::notifyNotificationDropped);
+        return batch;
     }
 
     /**
@@ -168,12 +179,28 @@ public class SessionCommandQueue {
      * from spawning spurious turns.
      */
     public void drainTaskNotifications() {
+        var dropped = new ArrayList<String>();
         lock.lock();
         try {
-            queue.removeIf(cmd -> cmd.mode() == CommandMode.TASK_NOTIFICATION);
+            queue.removeIf(cmd -> {
+                if (cmd.mode() != CommandMode.TASK_NOTIFICATION) return false;
+                dropped.add(cmd.value().value());
+                return true;
+            });
         } finally {
             lock.unlock();
         }
+        dropped.forEach(this::notifyNotificationDropped);
+    }
+
+    private void notifyNotificationDropped(String notification) {
+        var listener = notificationDroppedListener;
+        if (listener == null) return;
+        Matcher taskId = TASK_ID_PATTERN.matcher(notification);
+        if (!taskId.find()) return;
+        Matcher generation = TASK_GENERATION_PATTERN.matcher(notification);
+        var parsedGeneration = generation.find() ? Long.valueOf(generation.group(1)) : null;
+        listener.accept(taskId.group(1), parsedGeneration);
     }
 
     private boolean isConsumedNotification(String notification) {
