@@ -130,6 +130,36 @@ export class SubscriptionService {
     return this.summary(watch);
   }
 
+  /** Local settings view: all watches this profile owns, not scoped to a channel origin. */
+  listForUi(): Record<string, unknown> {
+    const watches = this.options.store.listAllWatches(50);
+    return {
+      ok: true,
+      watches: watches.map((watch) => ({
+        watchId: watch.watchId,
+        sourceAlias: watch.sourceAlias,
+        sourceSessionId: watch.sourceSessionId,
+        taskRunId: watch.taskRunId,
+        runGeneration: watch.runGeneration,
+        state: watch.state,
+        deliveryState: watch.deliveryState,
+        channel: watch.target.channel,
+        targetMasked: maskTarget(watch.target.target),
+        createdAt: watch.createdAt,
+        expiresAt: watch.expiresAt,
+        lastError: watch.lastError,
+      })),
+    };
+  }
+
+  cancelForUi(watchId: string): Record<string, unknown> {
+    const watch = this.options.store.getWatch(watchId);
+    if (!watch) return { ok: false, error: 'WATCH_NOT_FOUND' };
+    const cancelled = this.options.store.cancelWatch(watchId);
+    this.options.log(`watch ${watchId} cancelled from settings`);
+    return { ok: true, watchId, deliveryState: cancelled?.deliveryState ?? null };
+  }
+
   private listWatches(origin: OriginGrant, payload: Record<string, unknown>): Record<string, unknown> {
     const limit = Math.max(1, Math.min(Number(payload.limit ?? 20), 50));
     const watches = this.options.store.listWatches(origin.sessionId, limit);
@@ -319,4 +349,10 @@ function formatDuration(ms: number): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return `用时：${hours}小时${rest > 0 ? `${rest}分` : ''}。`;
+}
+
+function maskTarget(value: string): string {
+  const text = value ?? '';
+  if (text.length <= 10) return text;
+  return `${text.slice(0, 4)}…${text.slice(-4)}`;
 }

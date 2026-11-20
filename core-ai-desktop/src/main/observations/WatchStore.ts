@@ -197,6 +197,14 @@ export class WatchStore {
     return rows.map(toWatch);
   }
 
+  listAllWatches(limit: number): WatchRecord[] {
+    const rows = this.db.prepare(`
+      SELECT w.*, (SELECT d.state FROM deliveries d WHERE d.watch_id = w.watch_id ORDER BY d.created_at DESC LIMIT 1) AS delivery_state
+      FROM watches w ORDER BY w.created_at DESC LIMIT ?
+    `).all(limit) as Row[];
+    return rows.map(toWatch);
+  }
+
   matchWatch(watchId: string, eventId: string, body: string): DeliveryRecord | null {
     const deliveryId = `delivery-${randomUUID()}`;
     const now = Date.now();

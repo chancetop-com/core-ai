@@ -1376,6 +1376,14 @@ function registerIpc(): void {
     }
     return channelBridge?.snapshot() ?? null;
   });
+  ipcMain.handle('observations:list', (): Record<string, unknown> => {
+    if (!subscriptionService) return { ok: false, error: 'WATCH_SERVICE_UNAVAILABLE' };
+    return subscriptionService.listForUi();
+  });
+  ipcMain.handle('observations:cancel', (_event, watchId: string): Record<string, unknown> => {
+    if (!subscriptionService) return { ok: false, error: 'WATCH_SERVICE_UNAVAILABLE' };
+    return subscriptionService.cancelForUi(watchId);
+  });
   ipcMain.handle('notifications:targets', async () => {
     await ensureOcgDaemon();
     const result = await ocgTargets();

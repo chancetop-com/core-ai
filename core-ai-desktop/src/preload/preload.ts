@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('coreai', {
   notificationsTest: () => ipcRenderer.invoke('notifications:test'),
   notificationsVerify: (workspace?: string, sessionId?: string) =>
     ipcRenderer.invoke('notifications:verify', workspace, sessionId),
+  observationsList: () => ipcRenderer.invoke('observations:list'),
+  observationsCancel: (watchId: string) => ipcRenderer.invoke('observations:cancel', watchId),
   onNotificationDelivery: (callback: (state: unknown) => void) => {
     const listener = (_event: unknown, payload: unknown) => callback(payload);
     ipcRenderer.on('notifications:delivery', listener);

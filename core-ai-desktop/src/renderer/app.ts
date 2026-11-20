@@ -381,6 +381,21 @@ interface ProviderProbeResult {
   error?: string;
 }
 
+interface ObservationWatchView {
+  watchId: string;
+  sourceAlias: string | null;
+  sourceSessionId: string;
+  taskRunId: string;
+  runGeneration: number;
+  state: string;
+  deliveryState: string | null;
+  channel: string;
+  targetMasked: string;
+  createdAt: number;
+  expiresAt: number;
+  lastError: string | null;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -451,6 +466,8 @@ stageAttachmentBuffers(sessionId: string, entries: Array<{ name: string; data: A
   notificationsSessionSet(workspace: string, sessionId: string, enabled: boolean): Promise<boolean>;
   notificationsTest(): Promise<{ ok: boolean; error?: string }>;
   notificationsVerify(workspace?: string, sessionId?: string): Promise<{ ok: boolean; error?: string }>;
+  observationsList(): Promise<{ ok: boolean; watches?: ObservationWatchView[]; error?: string }>;
+  observationsCancel(watchId: string): Promise<{ ok: boolean; watchId?: string; deliveryState?: string | null; error?: string }>;
   onNotificationDelivery(callback: (result: { ok: boolean; error?: string; targetLabel?: string }) => void): () => void;
   updateStatus(): Promise<UpdateState | null>;
   updateCheck(): Promise<UpdateState | null>;
@@ -7522,6 +7539,51 @@ function collapsibleSettingsSection(title: string, hint: string): { root: HTMLEl
   return { root, body };
 }
 
+async function renderWatchesSection(): Promise<HTMLElement> {
+  const section = collapsibleSettingsSection('Watches', 'Task run watches created from IM conversations');
+  const result = await window.coreai.observationsList().catch((error: unknown): {
+    ok: boolean; watches?: ObservationWatchView[]; error?: string;
+  } => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+  if (!result.ok) {
+    section.body.append(el('div', 'hint', `Watch store unavailable: ${result.error ?? 'unknown error'}`));
+    return section.root;
+  }
+  const watches = result.watches ?? [];
+  if (watches.length === 0) {
+    section.body.append(el('div', 'hint', 'No watches yet. Ask the channel agent to tell you when a task run ends.'));
+    return section.root;
+  }
+  const grid = el('dl', 'settings-grid');
+  for (const watch of watches) {
+    const alias = watch.sourceAlias || watch.sourceSessionId;
+    grid.append(el('dt', undefined, alias));
+    const cell = el('dd');
+    const status = [watch.state, watch.deliveryState ? `delivery: ${watch.deliveryState}` : 'delivery: pending']
+      .filter(Boolean).join(' · ');
+    cell.append(el('div', undefined, status));
+    cell.append(el('div', 'hint',
+      `${watch.channel} · ${watch.targetMasked} · run ${watch.taskRunId.slice(0, 12)}… · expires ${new Date(watch.expiresAt).toLocaleString()}`));
+    if (watch.lastError) cell.append(el('div', 'hint', `last error: ${watch.lastError}`));
+    if (watch.state === 'active' || watch.state === 'matched') {
+      const cancel = el('button', 'btn small', 'Cancel watch') as HTMLButtonElement;
+      cancel.onclick = async () => {
+        if (!window.confirm(`Cancel watch ${watch.watchId.slice(0, 12)}…? This does not stop the source task.`)) return;
+        const cancelled = await window.coreai.observationsCancel(watch.watchId);
+        if (!cancelled.ok) {
+          toast(`Could not cancel watch: ${cancelled.error ?? 'unknown error'}`, 'error');
+          return;
+        }
+        toast('Watch cancelled');
+        if (state.nav === 'settings') await renderContent();
+      };
+      cell.append(cancel);
+    }
+    grid.append(cell);
+  }
+  section.body.append(grid);
+  return section.root;
+}
+
 async function renderSettingsPanel(): Promise<HTMLElement> {
   const { root, body } = panel('Settings', state.workspace
     ? 'Engine, built-in skills, approval policy, scheduled tasks and permission rules'
@@ -7661,6 +7723,7 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   body.append(await renderBuiltinSkillsSection());
   body.append(await renderBrowserAutomationSection());
   body.append(await renderChannelsSection());
+  body.append(await renderWatchesSection());
   body.append(await renderComputerUseSection());
   body.append(renderWorkspaceTrustSection());
   body.append(await renderPluginsSection());

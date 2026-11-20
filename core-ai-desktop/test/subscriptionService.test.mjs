@@ -156,6 +156,33 @@ test('startup reconciliation turns an ended run into a delivery after a host res
   assert.equal(store.getWatch('watch-recovered').deliveryState, 'accepted');
 });
 
+test('the settings view lists and cancels watches without a channel origin', async (t) => {
+  const { store, service } = harness(t, async () => ({ status: 'bound' }));
+  store.createActiveWatch({
+    watchId: 'watch-settings',
+    originId: 'origin-1',
+    ownerSessionId: 'channel-session',
+    sourceWorkspace: 'ws-1',
+    sourceSessionId: 'source',
+    taskRunId: 'run-9',
+    runGeneration: 1,
+    scope: 'current_task_run',
+    action: 'notify_origin',
+    sourceAlias: '本地任务',
+    target: { channel: 'openclaw-weixin', accountId: 'acct', target: 'peer-openid-123456', chatType: 'direct' },
+    expiresAt: Date.now() + 60_000,
+  });
+
+  const listed = service.listForUi();
+  assert.equal(listed.ok, true);
+  assert.equal(listed.watches.length, 1);
+  assert.equal(listed.watches[0].targetMasked.includes('peer'), true);
+
+  const cancelled = service.cancelForUi('watch-settings');
+  assert.equal(cancelled.ok, true);
+  assert.equal(store.getWatch('watch-settings').state, 'cancelled');
+});
+
 test('a host request without an inbound origin is rejected', async (t) => {
   const { service } = harness(t, async () => ({ status: 'bound' }));
   await assert.rejects(
