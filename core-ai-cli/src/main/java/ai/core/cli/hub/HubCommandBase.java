@@ -80,6 +80,11 @@ public abstract class HubCommandBase implements Callable<Integer> {
         return new ai.core.cli.hub.agent.AgentHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
     }
 
+    protected ai.core.cli.hub.plugin.PluginHubClient pluginClient() {
+        var credentials = credentials();
+        return new ai.core.cli.hub.plugin.PluginHubClient(credentials.serverUrl(), credentials.apiKey(), credentials.insecure());
+    }
+
     /** Resolved server URL, for callers that need to record where content came from. */
     protected String serverUrl() {
         return credentials().serverUrl();

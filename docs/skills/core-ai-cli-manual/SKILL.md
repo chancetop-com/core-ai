@@ -49,7 +49,7 @@ If you are an agent operating on a machine without the CLI and cannot install so
 | Use | Entry point | Needs |
 |-----|-------------|-------|
 | Run the local agent | `core-ai-cli` (REPL), `core-ai-cli --prompt "…"` (headless), `core-ai-cli --acp-agent` (editor) | An LLM provider: either `agent.properties` or a login to core-ai-server (server acts as LLM proxy) |
-| Reach server-side resources from any agent or script | `core-ai-cli mcp` / `skill` / `api-tool` / `agent`, or `catalog` for all of them in one request (CLI ≥ 2.0.19); `tool` for local media/multimodal builtins | Login (`core-ai-cli --login`) or `CORE_AI_SERVER` + `CORE_AI_API_KEY`. No agent session; `tool call` runs the builtin in this process against your configured media/LLM providers |
+| Reach server-side resources from any agent or script | `core-ai-cli mcp` / `skill` / `api-tool` / `agent` / `plugin`, or `catalog` for tools/agents in one request (CLI ≥ 2.0.19); `tool` for local media/multimodal builtins | Login (`core-ai-cli --login`) or `CORE_AI_SERVER` + `CORE_AI_API_KEY`. No agent session; `tool call` runs the builtin in this process against your configured media/LLM providers |
 | Turn audio into text | `core-ai-cli speech transcribe <file>` / `speech models`, or the `transcribe_audio` builtin inside an agent session | Login; the server needs an `audio.transcriptions` gateway model or Azure Speech configured |
 | Write one skill script for both places | `from core_ai_session import session` — the Python SDK picks the transport (session hub in a sandbox, this CLI on your machine) | In a sandbox it is preinstalled; locally: `core-ai-cli` ≥ 2.0.10 + a login (or `FakeSession` for offline tests) |
 
@@ -96,7 +96,7 @@ core-ai-cli mcp search "jira" --json               # discover server-side tools 
 
 | Topic | File |
 |-------|------|
-| **Hub subcommands (`mcp`, `skill`, `api-tool`, `agent`, local `tool`); auth precedence, `--json`, exit codes; skill scripts with the `core_ai_session` Python SDK; sandbox vs local** | [references/hub.md](references/hub.md) |
+| **Hub subcommands (`mcp`, `skill`, `api-tool`, `agent`, `plugin`, local `tool`); auth precedence, `--json`, exit codes; skill scripts with the `core_ai_session` Python SDK; sandbox vs local** | [references/hub.md](references/hub.md) |
 | **All agent.properties keys, defaults, and descriptions** | [references/agent-properties.md](references/agent-properties.md) |
 | **CLI modes (interactive, headless, ACP, hub), flags, slash commands, custom agents** | [references/cli-modes.md](references/cli-modes.md) |
 | **hooks.json format, events, environment variables** | [references/hooks.md](references/hooks.md) |

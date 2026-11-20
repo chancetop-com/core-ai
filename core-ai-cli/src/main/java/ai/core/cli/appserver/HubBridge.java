@@ -115,14 +115,14 @@ public class HubBridge {
         }
     }
 
-    private static ObjectNode notConnected(ObjectNode node, String reason) {
+    static ObjectNode notConnected(ObjectNode node, String reason) {
         node.put("connected", false);
         node.put("reason", reason);
         return node;
     }
 
     /** A rejected request (401) is a credential problem, not an unreachable server — the panel prompts a sign-in. */
-    private static ObjectNode unreachable(ObjectNode node, RemoteApiException e) {
+    static ObjectNode unreachable(ObjectNode node, RemoteApiException e) {
         if (e.statusCode == 401) {
             return notConnected(node, "not_logged_in").put("message", e.getMessage());
         }
@@ -236,16 +236,23 @@ public class HubBridge {
         }
     }
 
-    /** The catalog and skill list are independent network calls; fetch them together for the Hub panel. */
+    /** The catalog, skill list and plugin registry are independent network calls; fetch them together for the Hub panel. */
     public ObjectNode overview(ObjectNode params) {
         boolean refresh = params.path("refresh").asBoolean(false);
         var catalogFuture = CompletableFuture.supplyAsync(() -> catalog(refresh), REFRESH_EXECUTOR);
         var skillsFuture = CompletableFuture.supplyAsync(() -> skills(Params.object().put("limit", DEFAULT_SKILL_LIMIT), refresh),
                 REFRESH_EXECUTOR);
+        var pluginsFuture = CompletableFuture.supplyAsync(() -> plugins(Params.object()), REFRESH_EXECUTOR);
         var node = Params.object();
         node.set("catalog", catalogFuture.join());
         node.set("skills", skillsFuture.join());
+        node.set("plugins", pluginsFuture.join());
         return node;
+    }
+
+    /** Desktop plugin registry entries; the panel installs a package through the desktop IPC host. */
+    public ObjectNode plugins(ObjectNode params) {
+        return HubPluginBridge.plugins(params, credentials());
     }
 
     public ObjectNode skills(ObjectNode params) {
@@ -419,7 +426,7 @@ public class HubBridge {
     }
 
     /** What the cached answers belong to: switching servers or accounts must not reuse them. */
-    private record Credentials(String serverUrl, String apiKey, boolean insecure) {
+    record Credentials(String serverUrl, String apiKey, boolean insecure) {
     }
 
     private record CachedCatalog(Credentials credentials, long fetchedAt, ObjectNode node) {

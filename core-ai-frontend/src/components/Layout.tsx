@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, BarChart3, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, BarChart3, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, Puzzle, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -42,6 +42,7 @@ export default function Layout() {
       '/tools/builtin': 'Built-in Tools',
       '/api-tools': 'API Tools',
       '/skills': 'Skills',
+      '/plugins': 'Plugins',
       '/datasets': 'Datasets',
       '/datasets/reports': 'Reports',
       '/projects': 'Projects',
@@ -84,6 +85,7 @@ export default function Layout() {
     if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
     if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
     if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
+    if (to === '/plugins') return pathname === '/plugins' || pathname.startsWith('/plugins/');
     if (to === '/datasets/reports') return pathname === '/datasets/reports' || pathname.startsWith('/datasets/reports/');
     if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
     if (to === '/projects') return pathname === '/projects' || pathname.startsWith('/projects/');
@@ -122,6 +124,7 @@ export default function Layout() {
       { to: '/api-tools', icon: Key, label: 'API Tools', show: true, permission: 'apitool.view' },
     ]},
     { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
+    { to: '/plugins', icon: Puzzle, label: 'Plugins', show: true, permission: 'plugin.view' },
     { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view', children: [
       { to: '/datasets/reports', icon: BarChart3, label: 'Reports', show: caps.datasetReports, permission: 'report.view' },
     ]},

@@ -22,7 +22,8 @@ Prerequisites: the `core-ai-cli` binary on PATH (see "Installing core-ai-cli" in
 | Skills | `core-ai-cli skill …` | **Available** (CLI ≥ 2.0.8) | Skill Hub |
 | API tools | `core-ai-cli api-tool …` | **Available** (CLI ≥ 2.0.8) | API-Tool Hub |
 | Agents | `core-ai-cli agent …` | **Available** (CLI ≥ 2.0.10) | Agent Hub |
-| Everything at once | `core-ai-cli catalog …` | **Available** (CLI ≥ 2.0.19) | Catalog |
+| Desktop plugins | `core-ai-cli plugin …` | **Available** (CLI ≥ 2.0.82) | Plugin Hub |
+| Everything at once | `core-ai-cli catalog …` | **Available** (CLI ≥ 2.0.19) | Tools and agents only |
 
 If your installed CLI reports an unknown subcommand (exit code 2), it predates that hub — upgrade with `core-ai-cli upgrade`, or fall back to the Web UI.
 
@@ -144,6 +145,30 @@ Server-side skills (`SKILL.md` + resources, the same format Claude Code and Code
 A bare name without `/` is accepted when it is unique on the server; if ambiguous the CLI exits 2 and lists candidates. Hub-linked directories carry a `.skill-hub.json` marker (id, digest, server) so `list`/`update` can detect server-side changes — `pull` writes it, and `push` writes it into the pushed directory too. `pull`/`update` resolve to the linked directory instead of creating a second copy, so pushing your own skill and pulling it back leaves one working copy, not two.
 
 Inside the REPL, `/skill` still opens the interactive menu for the same operations, and `/skill <name>` loads a local skill into the conversation.
+
+## Plugin Hub (`core-ai-cli plugin`)
+
+The server's desktop plugin registry (`/api/plugins`) pins plugin packages — a manifest, a version, a `download_url` and a sha256. The registry never hosts the bytes; `plugin install` downloads the pinned URL, verifies the digest and extracts the zip into the same `~/.core-ai/plugins/<id>/` roots the local `/plugins` command and the desktop app use. Permission: `plugin.view` (the default `user` role has it); `publish` needs `plugin.manage` (admin by default). Local `list`/`remove` need no server permission.
+
+| Command | Purpose |
+|---------|---------|
+| `plugin search [query] [--offset N] [--limit N]` | Search the registry by id, name, vendor or description |
+| `plugin show <id> [--raw]` | Identity, digest, capabilities and the full manifest. `--raw` prints only the manifest |
+| `plugin install <id> [--workspace] [--force]` | Download, verify sha256 and install. Default `~/.core-ai/plugins/<id>/`; `--workspace` writes `<workspace>/.core-ai/plugins/<id>/`; `--force` replaces an existing copy |
+| `plugin list [--workspace]` | Locally installed packages from both roots (or only the workspace root) |
+| `plugin remove <id\|name> [--workspace]` | Delete a local package by id or manifest name |
+| `plugin publish <zip> --download-url <url> [--vendor V] [--homepage U]` | Read `plugin.json` from the zip, compute sha256/size, and register (or update) the entry. The URL must serve those exact bytes |
+| `plugin delete <id>` | Delete the registry entry (the package file at the download URL is untouched); needs `plugin.manage` |
+
+`install` emits `{"id","version","status","installed_to","files"}` in `--json` mode; `publish` returns the registry entry view. A digest or size mismatch is a hard failure — nothing is extracted. The package layout is the desktop layout: `plugin.json` (or legacy `.claude-plugin/plugin.json`) at the archive root.
+
+Publishing a package from CI usually means attaching the zip to a GitHub release and running:
+
+```bash
+core-ai-cli plugin publish ./dist/acme-plugin.zip \
+  --download-url https://github.com/acme/plugin/releases/download/v1.0.0/acme-plugin.zip \
+  --json
+```
 
 ## API-Tool Hub (`core-ai-cli api-tool`)
 

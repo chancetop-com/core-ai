@@ -52,6 +52,7 @@ const ApiToolDetail = lazy(() => import('./pages/api-tools/ApiToolDetail'));
 const SkillList = lazy(() => import('./pages/skills/SkillList'));
 const SkillEditor = lazy(() => import('./pages/skills/SkillEditor'));
 const MarketplaceRepoDetail = lazy(() => import('./pages/skills/MarketplaceRepoDetail'));
+const PluginList = lazy(() => import('./pages/plugins/PluginList'));
 const DatasetList = lazy(() => import('./pages/datasets/DatasetList'));
 const DatasetEditor = lazy(() => import('./pages/datasets/DatasetEditor'));
 const DatasetRecords = lazy(() => import('./pages/datasets/DatasetRecords'));
@@ -249,6 +250,7 @@ function AuthenticatedApp() {
                     <Route path="/skills" element={<RequirePermission permission="skill.view"><SkillList /></RequirePermission>} />
                     <Route path="/skills/marketplace/:repoId" element={<RequirePermission permission="skill.view"><MarketplaceRepoDetail /></RequirePermission>} />
                     <Route path="/skills/:id/edit" element={<RequirePermission permission="skill.view"><SkillEditor /></RequirePermission>} />
+                    <Route path="/plugins" element={<RequirePermission permission="plugin.view"><PluginList /></RequirePermission>} />
                     <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
                     {caps.datasetReports && <Route path="/datasets/reports" element={<RequirePermission permission="report.view"><ReportList /></RequirePermission>} />}
                     {caps.datasetReports && <Route path="/datasets/reports/:id" element={<RequirePermission permission="report.view"><ReportDetail /></RequirePermission>} />}

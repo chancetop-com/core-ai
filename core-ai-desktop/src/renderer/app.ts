@@ -6364,12 +6364,13 @@ async function openScheduleDetail(task: ScheduledTaskView): Promise<void> {
 // the one-shot hub catalog, skills from the skill hub (pull installs the same managed copy as
 // `core-ai-cli skill pull`). Discovery is read-only; management stays in the web console.
 
-type HubKind = 'mcp' | 'api' | 'agent' | 'llm_call' | 'skill';
+type HubKind = 'mcp' | 'api' | 'agent' | 'llm_call' | 'skill' | 'plugin';
 type HubFilter = 'all' | HubKind;
 
 interface HubRow {
   kind: HubKind;
   name: string;
+  version: string | null;
   group: string | null;
   description: string | null;
   namespace: string | null;
@@ -6385,6 +6386,7 @@ const HUB_KIND_LABELS: Record<HubKind, string> = {
   agent: 'Agent',
   llm_call: 'LLM call',
   skill: 'Skill',
+  plugin: 'Plugin',
 };
 
 const HUB_FILTERS: Array<[HubFilter, string]> = [
@@ -6394,6 +6396,7 @@ const HUB_FILTERS: Array<[HubFilter, string]> = [
   ['agent', 'Agents'],
   ['llm_call', 'LLM calls'],
   ['skill', 'Skills'],
+  ['plugin', 'Plugins'],
 ];
 
 const HUB_SECTION_CAP = 50;
@@ -6401,7 +6404,7 @@ const HUB_SECTION_CAP = 50;
 function hubSignInState(retry?: () => void): HTMLElement {
   const empty = el('div', 'empty-state');
   empty.append(el('div', 'big', 'Not connected'));
-  empty.append(el('div', 'notice', 'Sign in to browse server capabilities — MCP tools, API tools, agents and skills your account can use. Local sessions work without it.'));
+  empty.append(el('div', 'notice', 'Sign in to browse server capabilities — MCP tools, API tools, agents, skills and desktop plugins your account can use. Local sessions work without it.'));
   const button = el('button', 'btn primary', 'Sign in');
   button.style.marginTop = '10px';
   button.onclick = () => openLoginDialog(retry);
@@ -6454,7 +6457,7 @@ function hubCertificateState(detail: string, retry: () => Promise<void>): HTMLEl
   return empty;
 }
 
-function hubRows(catalogData: any, skillsData: any): HubRow[] {
+function hubRows(catalogData: any, skillsData: any, pluginsData: any): HubRow[] {
   const rows: HubRow[] = [];
   const kinds = HUB_FILTERS.map(([key]) => key);
   for (const tool of catalogData?.tools ?? []) {
@@ -6463,6 +6466,7 @@ function hubRows(catalogData: any, skillsData: any): HubRow[] {
     rows.push({
       kind,
       name: String(tool.path || tool.name || ''),
+      version: null,
       group: tool.group ? String(tool.group) : null,
       description: tool.description ? String(tool.description) : null,
       namespace: null,
@@ -6476,6 +6480,7 @@ function hubRows(catalogData: any, skillsData: any): HubRow[] {
     rows.push({
       kind: 'skill',
       name: String(skill.name ?? ''),
+      version: null,
       group: skill.namespace ? String(skill.namespace) : null,
       description: skill.description ? String(skill.description) : null,
       namespace: skill.namespace ? String(skill.namespace) : null,
@@ -6483,6 +6488,20 @@ function hubRows(catalogData: any, skillsData: any): HubRow[] {
       resourceCount: typeof skill.resourceCount === 'number' ? skill.resourceCount : null,
       stale: false,
       refId: null,
+    });
+  }
+  for (const plugin of pluginsData?.plugins ?? []) {
+    rows.push({
+      kind: 'plugin',
+      name: String(plugin.name ?? plugin.id ?? ''),
+      version: plugin.version ? String(plugin.version) : null,
+      group: plugin.vendor ? String(plugin.vendor) : null,
+      description: plugin.description ? String(plugin.description) : null,
+      namespace: null,
+      qualifiedName: null,
+      resourceCount: null,
+      stale: false,
+      refId: plugin.id ? String(plugin.id) : null,
     });
   }
   return rows;
@@ -6515,11 +6534,12 @@ function isHubInstalled(installed: HubInstalled, row: HubRow): boolean {
 }
 
 function buildHubRow(row: HubRow, installed: HubInstalled, onPulled: (row: HubRow, actions: HTMLElement) => void,
-                     mount: HubHelperMount): HTMLElement {
+                     mount: HubHelperMount, pluginMount: HubPluginMount): HTMLElement {
   const item = el('div', 'hub-row');
   const head = el('div', 'hub-row-head');
   head.append(el('span', 'hub-row-name', row.name));
   let meta = HUB_KIND_LABELS[row.kind];
+  if (row.version) meta += ` v${row.version}`;
   if (row.group) meta += ` · ${row.group}`;
   if (row.kind === 'skill' && row.resourceCount != null) meta += ` · ${row.resourceCount} files`;
   if (row.kind === 'agent' && row.refId && mount.loaded.has(row.refId)) meta += ' · helper';
@@ -6533,6 +6553,13 @@ function buildHubRow(row: HubRow, installed: HubInstalled, onPulled: (row: HubRo
     pull.title = `Pull ${row.qualifiedName ?? row.name} into ~/.core-ai/skills`;
     pull.onclick = () => void pullHubSkill(row, pull, actions, onPulled);
     actions.append(pull);
+  }
+  if (row.kind === 'plugin' && row.refId) {
+    if (pluginMount.installed.has(row.refId)) actions.append(el('span', 'hub-installed', 'installed'));
+    const install = el('button', 'btn small', 'Install');
+    install.title = `Download ${row.name} from the server registry and install it locally`;
+    install.onclick = () => void installHubPlugin(row, install, actions, pluginMount);
+    actions.append(install);
   }
   if (row.kind === 'agent' && row.refId && !mount.loaded.has(row.refId)) {
     const load = el('button', 'btn small', 'Load as helper');
@@ -6582,6 +6609,36 @@ async function pullHubSkill(
   toast(`✗ Pull failed: ${outcome.error?.message ?? 'unknown error'}`, 'error');
   button.textContent = 'Pull';
   button.disabled = false;
+}
+
+/** Plugin ids installed on this machine; the registry row marks them and skips a reinstall. */
+interface HubPluginMount {
+  installed: Set<string>;
+  onInstalled: (pluginId: string) => void;
+}
+
+async function installHubPlugin(
+  row: HubRow,
+  button: HTMLButtonElement,
+  actions: HTMLElement,
+  mount: HubPluginMount,
+): Promise<void> {
+  if (!row.refId) return;
+  button.disabled = true;
+  button.textContent = 'Installing…';
+  const result = await window.coreai.pluginsRegistryInstall(row.refId);
+  if (!result.ok) {
+    toast(`✗ Install failed: ${result.message || result.code}`, 'error');
+    button.textContent = 'Install';
+    button.disabled = false;
+    return;
+  }
+  await loadPlugins();
+  mount.installed.add(row.refId);
+  mount.onInstalled(row.refId);
+  if (!actions.querySelector('.hub-installed')) actions.prepend(el('span', 'hub-installed', 'installed'));
+  toast(`Installed ${row.name} — review its permissions on the Plugins page`);
+  hubSnapshot = null;
 }
 
 // ---------- helpers (server agents mounted as delegation tools of the local agent) ----------
@@ -6722,15 +6779,15 @@ function buildHelperRow(helper: HubHelper, onChanged: () => void): HTMLElement {
 
 function renderHubFooter(footer: HTMLElement, counts: Record<HubKind, number>, sections: string[] | null, generatedAt: string | null): void {
   footer.replaceChildren();
-  const totals = `${counts.mcp} MCP tools · ${counts.api} API operations · ${counts.agent} agents · ${counts.llm_call} LLM calls · ${counts.skill} skills`;
+  const totals = `${counts.mcp} MCP tools · ${counts.api} API operations · ${counts.agent} agents · ${counts.llm_call} LLM calls · ${counts.skill} skills · ${counts.plugin} plugins`;
   footer.append(el('div', 'hint', generatedAt ? `${totals} · catalog generated ${fmtTime(generatedAt)}` : totals));
   const missing = sections == null ? [] : HUB_FILTERS
-    .filter(([key]) => key !== 'all' && key !== 'skill' && !sections.includes(key))
+    .filter(([key]) => key !== 'all' && key !== 'skill' && key !== 'plugin' && !sections.includes(key))
     .map(([key]) => HUB_KIND_LABELS[key as HubKind]);
   if (missing.length) {
     footer.append(el('div', 'notice', `No read access to: ${missing.join(', ')}`));
   }
-  const line = el('div', 'notice', 'Read-only discovery — managing servers, agents and skills stays in the web console. ');
+  const line = el('div', 'notice', 'Read-only discovery — managing servers, agents, skills and registry packages stays in the web console. ');
   if (state.auth?.serverUrl) {
     const link = el('a', 'hub-link', 'Open web console ↗');
     link.href = state.auth.serverUrl;
@@ -6748,6 +6805,7 @@ interface HubSnapshot {
   at: number;
   catalog: any;
   skills: any;
+  plugins: any;
   local: Envelope;
   helpers: HubHelpersData;
 }
@@ -6765,6 +6823,7 @@ function hubSnapshotKey(): string {
 async function fetchHubPanelData(force: boolean): Promise<{
   catalog: Envelope;
   skills: Envelope;
+  plugins: Envelope;
   local: Envelope;
   helpers: HubHelpersData;
 }> {
@@ -6782,28 +6841,30 @@ async function fetchHubPanelData(force: boolean): Promise<{
       return {
         catalog: { ok: true, result: overview.result?.catalog ?? { connected: false, reason: 'unreachable' } },
         skills: { ok: true, result: overview.result?.skills ?? { connected: false, reason: 'unreachable' } },
+        plugins: { ok: true, result: overview.result?.plugins ?? { connected: false, reason: 'unreachable' } },
         ...rest,
       };
     }
-    // An engine built before hub/overview still answers the two independent calls (METHOD_NOT_FOUND).
+    // An engine built before hub/overview still answers the independent calls (METHOD_NOT_FOUND).
     if (overview.error?.code !== -32601) {
-      return { catalog: overview, skills: overview, ...(await localAndHelpers()) };
+      return { catalog: overview, skills: overview, plugins: overview, ...(await localAndHelpers()) };
     }
   }
-  const [catalog, skills, local, helperList] = await Promise.all([
+  const [catalog, skills, plugins, local, helperList] = await Promise.all([
     callEnvelope('hub/catalog', force ? { refresh: true } : {}),
     callEnvelope('hub/skills', force ? { limit: 200, refresh: true } : { limit: 200 }),
+    callEnvelope('hub/plugins', { limit: 100 }),
     callEnvelope('skills/list', { localOnly: true }),
     callEnvelope('helpers/list'),
   ]);
-  return { catalog, skills, local, helpers: normalizeHelpers(helperList.ok ? helperList.result : null) };
+  return { catalog, skills, plugins, local, helpers: normalizeHelpers(helperList.ok ? helperList.result : null) };
 }
 
 async function renderHubPanel(): Promise<HTMLElement> {
   const host = hostOf(state.auth?.serverUrl);
   const { root, body } = panel('Hub', host
-    ? `Server capabilities via the hub — signed in to ${host}. Load agents as helpers; managing servers and skills stays in the web console.`
-    : 'Server capabilities via the hub — MCP tools, API tools, agents and skills.');
+    ? `Server capabilities via the hub — signed in to ${host}. Load agents as helpers, pull skills and install desktop plugins; management stays in the web console.`
+    : 'Server capabilities via the hub — MCP tools, API tools, agents, skills and desktop plugins.');
 
   const view: { filter: HubFilter; query: string } = { filter: 'all', query: '' };
   const cached = hubSnapshot && hubSnapshot.key === hubSnapshotKey()
@@ -6816,10 +6877,11 @@ async function renderHubPanel(): Promise<HTMLElement> {
     body.replaceChildren(wrap);
   };
 
-  const apply = (catalog: Envelope, skills: Envelope, local: Envelope, helpersData: HubHelpersData): void => {
+  const apply = (catalog: Envelope, skills: Envelope, plugins: Envelope, local: Envelope, helpersData: HubHelpersData): void => {
     const catalogData = catalog.ok ? catalog.result ?? {} : null;
     const skillsData = skills.ok ? skills.result ?? {} : null;
-    if (catalogData?.reason === 'not_logged_in' || skillsData?.reason === 'not_logged_in') {
+    const pluginsData = plugins.ok ? plugins.result ?? {} : null;
+    if (catalogData?.reason === 'not_logged_in' || skillsData?.reason === 'not_logged_in' || pluginsData?.reason === 'not_logged_in') {
       showSignIn(helpersData);
       return;
     }
@@ -6829,16 +6891,20 @@ async function renderHubPanel(): Promise<HTMLElement> {
     const skillsError = !skills.ok
       ? skills.error?.message ?? 'request failed'
       : skillsData?.connected === false ? String(skillsData.message ?? skillsData.reason) : null;
+    const pluginsError = !plugins.ok
+      ? plugins.error?.message ?? 'request failed'
+      : pluginsData?.connected === false ? String(pluginsData.message ?? pluginsData.reason) : null;
     const certificateFailure = (catalogData?.connected === false && catalogData.reason === 'untrusted_certificate')
-      || (skillsData?.connected === false && skillsData.reason === 'untrusted_certificate');
+      || (skillsData?.connected === false && skillsData.reason === 'untrusted_certificate')
+      || (pluginsData?.connected === false && pluginsData.reason === 'untrusted_certificate');
     if (certificateFailure) {
       const wrap = el('div');
       if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build(true)));
-      wrap.append(hubCertificateState(String(catalogError ?? skillsError ?? ''), () => build(true)));
+      wrap.append(hubCertificateState(String(catalogError ?? skillsError ?? pluginsError ?? ''), () => build(true)));
       body.replaceChildren(wrap);
       return;
     }
-    if (catalogError && skillsError) {
+    if (catalogError && skillsError && pluginsError) {
       const wrap = el('div');
       if (helpersData.helpers.length) wrap.append(renderHelpersSection(helpersData, () => void build(true)));
       wrap.append(hubUnreachableState(String(catalogError), () => build(true)));
@@ -6846,9 +6912,9 @@ async function renderHubPanel(): Promise<HTMLElement> {
       return;
     }
 
-    const rows = hubRows(catalogData, skillsData);
+    const rows = hubRows(catalogData, skillsData, pluginsData);
     const installed = hubInstalledSet(local);
-    const counts: Record<HubKind, number> = { mcp: 0, api: 0, agent: 0, llm_call: 0, skill: 0 };
+    const counts: Record<HubKind, number> = { mcp: 0, api: 0, agent: 0, llm_call: 0, skill: 0, plugin: 0 };
     for (const row of rows) counts[row.kind] += 1;
 
     const loadedIds = new Set(helpersData.helpers.map((helper) => helper.agentId));
@@ -6858,6 +6924,12 @@ async function renderHubPanel(): Promise<HTMLElement> {
       onLoaded: (agentId: string) => {
         loadedIds.add(agentId);
         void refreshHelpers();
+      },
+    };
+    const pluginMount: HubPluginMount = {
+      installed: new Set(state.plugins.map((plugin) => plugin.id)),
+      onInstalled: () => {
+        // The installed set is updated in place; the row already shows the badge.
       },
     };
     const helpersHost = el('div');
@@ -6875,7 +6947,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
     const toolbar = el('div', 'hub-toolbar');
     const search = el('input', 'hub-search') as HTMLInputElement;
     search.type = 'search';
-    search.placeholder = 'Search tools, agents, skills…';
+    search.placeholder = 'Search tools, agents, skills, plugins…';
     search.value = view.query;
     toolbar.append(search);
     const chips = el('div', 'hub-chips');
@@ -6891,7 +6963,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
     }
     toolbar.append(chips);
     const refresh = el('button', 'btn small hub-refresh', 'Refresh');
-    refresh.title = 'Fetch the catalog and skill list again';
+    refresh.title = 'Fetch the catalog, skills and plugin registry again';
     refresh.onclick = () => void build(true);
     toolbar.append(refresh);
 
@@ -6916,6 +6988,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
       list.replaceChildren();
       if (catalogError) list.append(el('div', 'notice error', `Capability catalog unavailable: ${catalogError}`));
       if (skillsError) list.append(el('div', 'notice error', `Skill catalog unavailable: ${skillsError}`));
+      if (pluginsError) list.append(el('div', 'notice error', `Plugin registry unavailable: ${pluginsError}`));
       for (const [key] of HUB_FILTERS) {
         if (key === 'all') continue;
         const sectionRows = visible.filter((row) => row.kind === key);
@@ -6925,7 +6998,7 @@ async function renderHubPanel(): Promise<HTMLElement> {
         header.append(el('span', 'hub-section-count', String(sectionRows.length)));
         list.append(header);
         for (const row of sectionRows.slice(0, HUB_SECTION_CAP)) {
-          list.append(buildHubRow(row, installed, onPulled, mount));
+          list.append(buildHubRow(row, installed, onPulled, mount, pluginMount));
         }
         if (sectionRows.length > HUB_SECTION_CAP) {
           list.append(el('div', 'notice', `showing first ${HUB_SECTION_CAP} of ${sectionRows.length} — refine the search to narrow`));
@@ -6950,18 +7023,25 @@ async function renderHubPanel(): Promise<HTMLElement> {
       showSignIn(normalizeHelpers(helperList.ok ? helperList.result : null));
       return;
     }
+    await loadPlugins();
     if (cached && !force) {
-      apply({ ok: true, result: cached.catalog }, { ok: true, result: cached.skills }, cached.local, cached.helpers);
+      apply({ ok: true, result: cached.catalog }, { ok: true, result: cached.skills },
+        { ok: true, result: cached.plugins }, cached.local, cached.helpers);
       return;
     }
     body.replaceChildren(loadingLine('Loading the capability catalog…'));
     const data = await fetchHubPanelData(force);
     const catalogData = data.catalog.ok ? data.catalog.result ?? {} : null;
     const skillsData = data.skills.ok ? data.skills.result ?? {} : null;
-    if (catalogData?.connected === true || skillsData?.connected === true) {
-      hubSnapshot = { key: hubSnapshotKey(), at: Date.now(), catalog: catalogData, skills: skillsData, local: data.local, helpers: data.helpers };
+    const pluginsData = data.plugins.ok ? data.plugins.result ?? {} : null;
+    if (catalogData?.connected === true || skillsData?.connected === true || pluginsData?.connected === true) {
+      hubSnapshot = {
+        key: hubSnapshotKey(), at: Date.now(),
+        catalog: catalogData, skills: skillsData, plugins: pluginsData,
+        local: data.local, helpers: data.helpers,
+      };
     }
-    apply(data.catalog, data.skills, data.local, data.helpers);
+    apply(data.catalog, data.skills, data.plugins, data.local, data.helpers);
   };
 
   // Paint the shell immediately; the catalog fills it in once the engine answers.

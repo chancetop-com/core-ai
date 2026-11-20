@@ -2167,6 +2167,38 @@ export interface UnreadCountResponse {
   unread_count: number;
 }
 
+export interface PluginRegistryEntry {
+  id: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  vendor?: string | null;
+  homepage?: string | null;
+  download_url: string;
+  sha256: string;
+  size?: number | null;
+  manifest: string;
+  required_capabilities?: string[] | null;
+  optional_capabilities?: string[] | null;
+  components?: string[] | null;
+  owner_id?: string | null;
+  updated_at?: string | null;
+}
+
+export interface PluginRegistryListResponse {
+  plugins: PluginRegistryEntry[];
+  total: number;
+}
+
+export interface RegisterPluginRequest {
+  manifest: string;
+  download_url: string;
+  sha256: string;
+  size?: number | null;
+  vendor?: string | null;
+  homepage?: string | null;
+}
+
 function buildAnalyticsParams(params: AnalyticsParams): string {
   const p = new URLSearchParams();
   p.set('mode', params.mode);
@@ -2621,6 +2653,19 @@ export const api = {
         createMarketplaceRepo: (data: { repo_url: string; branch?: string }) =>
             request<MarketplaceRepoView>('/api/skills/marketplace', { method: 'POST', body: JSON.stringify(data) }),
     },
+  plugins: {
+    list: (query?: string, offset?: number, limit?: number) => {
+      const params = new URLSearchParams();
+      if (query) params.set('query', query);
+      if (offset !== undefined) params.set('offset', String(offset));
+      if (limit !== undefined) params.set('limit', String(limit));
+      return request<PluginRegistryListResponse>(`/api/plugins${params.toString() ? `?${params}` : ''}`);
+    },
+    get: (id: string) => request<PluginRegistryEntry>(`/api/plugins/${encodeURIComponent(id)}`),
+    register: (data: RegisterPluginRequest) =>
+      request<PluginRegistryEntry>('/api/plugins', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) => request<void>(`/api/plugins/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  },
   tools: {
     list: (category?: string) => {
       const params = category ? `?category=${category}` : '';

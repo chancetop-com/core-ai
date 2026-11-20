@@ -12,7 +12,7 @@ import java.util.List;
 public final class SpaRoutes {
     public static final List<String> PATHS = List.of(
         "/", "/login", "/register", "/authorize", "/chat", "/agents", "/sessions",
-        "/system-prompts", "/dashboard", "/traces", "/generations", "/observability", "/calls", "/skills",
+        "/system-prompts", "/dashboard", "/traces", "/generations", "/observability", "/calls", "/skills", "/plugins",
         "/prompts", "/scheduler", "/tasks", "/tools", "/api-tools", "/mcp",
         "/triggers", "/datasets", "/reports", "/reports/:id", "/datasets/reports", "/datasets/reports/:id",
         "/for-you", "/for-you/artifacts", "/workflows", "/workflows/explore", "/report-issue",

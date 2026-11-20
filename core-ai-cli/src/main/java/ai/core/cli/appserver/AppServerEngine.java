@@ -233,6 +233,7 @@ public class AppServerEngine implements EngineApi {
                     bootstrap.requireTrusted("writing memory");
                     return LocalMemory.write(bootstrap.workspace, params);
                 },
+                "hub/plugins", hubBridge::plugins,
                 "usage/summary", usageApi::summary);
     }
 
