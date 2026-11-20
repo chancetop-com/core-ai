@@ -4,6 +4,7 @@ package ai.core.session.lifecycle;
  * @author stephen
  */
 public enum TaskRunState {
+    QUEUED,
     REGISTERED,
     RUNNING,
     DRAINING,

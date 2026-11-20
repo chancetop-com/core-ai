@@ -156,6 +156,11 @@ public final class ToolCallResult {
         return taskId;
     }
 
+    public ToolCallResult withTaskId(String taskId) {
+        this.taskId = taskId;
+        return this;
+    }
+
     public String getResult() {
         return result;
     }

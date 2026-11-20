@@ -226,13 +226,15 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
             var journalEnded = journal.lastEnded();
             if (journalEnded != null) node.set("lastEndedTaskRun", journalEnded);
         }
-        node.putArray("queuedTaskRunRefs");
+        var queued = node.putArray("queuedTaskRunRefs");
+        session.taskRuns().queuedSnapshots().forEach(snapshot -> queued.add(snapshotNode(snapshot)));
         return node;
     }
 
     ObjectNode bind(String watchId, String taskRunId, long runGeneration, long ttlMillis) {
         if (watchId == null || watchId.isBlank()) throw RpcException.invalidParams("watchId is required");
         if (taskRunId == null || taskRunId.isBlank()) throw RpcException.invalidParams("taskRunId is required");
+        var ttl = ttlMillis > 0 ? Math.min(ttlMillis, MAX_BIND_TTL_MILLIS) : DEFAULT_BIND_TTL_MILLIS;
         var active = session.taskRuns().activeSnapshot();
         if (active != null && taskRunId.equals(active.taskRunId()) && active.runGeneration() == runGeneration) {
             if (!"complete".equals(active.coverage())) {
@@ -240,7 +242,6 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
                         "task run has required work that is not tracked: " + active.coverage(),
                         "coverage", active.coverage());
             }
-            var ttl = ttlMillis > 0 ? Math.min(ttlMillis, MAX_BIND_TTL_MILLIS) : DEFAULT_BIND_TTL_MILLIS;
             var expiresAt = System.currentTimeMillis() + ttl;
             var lease = new Lease(watchId, taskRunId, runGeneration, expiresAt);
             if (!appendWatchBind(lease)) {
@@ -254,6 +255,8 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
             node.set("run", snapshotNode(active));
             return node;
         }
+        var queued = bindQueued(watchId, taskRunId, runGeneration, ttl);
+        if (queued != null) return queued;
         var ended = journal.endedForRun(taskRunId);
         if (ended != null) {
             var endedGeneration = ended.path("ended").path("runGeneration").asLong(0);
@@ -270,6 +273,30 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
                     "activeTaskRunId", active.taskRunId());
         }
         throw RpcException.business("TASK_RUN_NOT_FOUND", "task run not found: " + taskRunId);
+    }
+
+    private ObjectNode bindQueued(String watchId, String taskRunId, long runGeneration, long ttl) {
+        var queued = session.taskRuns().snapshotForRun(taskRunId);
+        if (queued == null || queued.state() != ai.core.session.lifecycle.TaskRunState.QUEUED
+                || runGeneration != 0 && queued.runGeneration() != runGeneration) {
+            return null;
+        }
+        if (!"complete".equals(queued.coverage())) {
+            throw RpcException.business("TASK_RUN_UNTRACKABLE",
+                    "task run has required work that is not tracked: " + queued.coverage(),
+                    "coverage", queued.coverage());
+        }
+        var lease = new Lease(watchId, taskRunId, queued.runGeneration(), System.currentTimeMillis() + ttl);
+        if (!appendWatchBind(lease)) {
+            throw RpcException.business("LIFECYCLE_STORAGE_ERROR", "could not persist the watch bind");
+        }
+        leases.put(watchId, lease);
+        var node = Params.object();
+        node.put("status", "bound");
+        node.put("watchId", watchId);
+        node.put("lifecycleSeq", journal.seq());
+        node.set("run", snapshotNode(queued));
+        return node;
     }
 
     private boolean appendWatchBind(Lease lease) {
@@ -296,9 +323,9 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
             node.put("watchId", watchId);
             node.put("taskRunId", lease.taskRunId());
             node.put("runGeneration", lease.runGeneration());
-            var active = session.taskRuns().activeSnapshot();
-            if (active != null && lease.taskRunId().equals(active.taskRunId())) {
-                node.set("run", snapshotNode(active));
+            var boundRun = session.taskRuns().snapshotForRun(lease.taskRunId());
+            if (boundRun != null) {
+                node.set("run", snapshotNode(boundRun));
             }
             return node;
         }

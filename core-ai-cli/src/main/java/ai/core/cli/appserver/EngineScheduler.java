@@ -351,8 +351,9 @@ public class EngineScheduler implements AutoCloseable {
 
         @Override
         public void send(String message) {
-            session.inProcess().taskRuns().openRoot("scheduled-" + UUID.randomUUID());
-            session.inProcess().sendMessage(message, null, null);
+            var turnId = UUID.randomUUID().toString();
+            session.inProcess().taskRuns().openRoot("scheduled-" + turnId, turnId);
+            session.inProcess().sendMessage(message, null, null, turnId);
         }
     }
 

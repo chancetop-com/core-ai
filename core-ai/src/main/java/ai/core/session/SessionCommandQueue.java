@@ -77,6 +77,22 @@ public class SessionCommandQueue {
         return enqueue(CommandMode.TASK_NOTIFICATION, new QueuedMessage(value, null, null, null));
     }
 
+    /**
+     * Returns a batch already accepted from the queue without applying the capacity limit again.
+     * Used when a queued Task Run must wait for the previous run to finish.
+     */
+    public void requeueUserInputs(List<QueuedMessage> messages) {
+        lock.lock();
+        try {
+            for (var message : messages) {
+                queue.add(new QueuedCommand(CommandMode.USER_INPUT, message, sequence.getAndIncrement()));
+            }
+            notEmpty.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
     private boolean enqueue(CommandMode mode, QueuedMessage message) {
         lock.lock();
         try {
@@ -214,8 +230,8 @@ public class SessionCommandQueue {
     }
 
     public enum CommandMode {
-        USER_INPUT(0),
-        TASK_NOTIFICATION(1);
+        TASK_NOTIFICATION(0),
+        USER_INPUT(1);
 
         final int priority;
 

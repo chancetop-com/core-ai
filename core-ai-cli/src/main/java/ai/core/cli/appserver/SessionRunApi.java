@@ -34,30 +34,35 @@ final class SessionRunApi {
         var requestId = Params.optionalText(params, "requestId");
         if (requestId == null) requestId = "request-" + UUID.randomUUID();
         var turnId = Params.optionalText(params, "turnId");
+        if (turnId == null) turnId = requestId;
         var taskRuns = session.inProcess().taskRuns();
         var before = taskRuns.activeSnapshot();
         var opened = before == null || before.terminal();
-        if (opened) taskRuns.openRoot(requestId);
+        var attachToActive = !opened && before.state() == ai.core.session.lifecycle.TaskRunState.REGISTERED;
+        var tracked = opened || !attachToActive ? taskRuns.openRoot(requestId, turnId) : before;
         boolean wasRunning = session.running();
         List<AttachedContent> attachments = parsed.attachments().isEmpty() ? null : parsed.attachments();
         var disposition = session.inProcess().sendTrackedMessage(parsed.text(), null, attachments, turnId);
         if (disposition == InProcessAgentSession.SendDisposition.QUEUED) {
-            taskRuns.requestQueued();
-        } else if (disposition == InProcessAgentSession.SendDisposition.STEERED && opened) {
-            taskRuns.interrupt("steered_into_existing_execution");
-        } else if (disposition == InProcessAgentSession.SendDisposition.REJECTED && opened) {
-            taskRuns.admissionFailed("session_queue_full");
+            taskRuns.requestQueued(turnId);
+        } else if (disposition == InProcessAgentSession.SendDisposition.STEERED) {
+            if (opened) taskRuns.interrupt("steered_into_existing_execution");
+            else taskRuns.discardQueued(turnId, "steered_into_active_run");
+        } else if (disposition == InProcessAgentSession.SendDisposition.REJECTED) {
+            if (opened) taskRuns.admissionFailed("session_queue_full");
+            else taskRuns.discardQueued(turnId, "session_queue_full");
         }
         var node = Params.object();
         node.put("accepted", disposition != InProcessAgentSession.SendDisposition.REJECTED);
-        node.put("queued", wasRunning);
+        node.put("queued", wasRunning || !opened && !attachToActive);
         node.put("requestId", requestId);
         node.put("admission", switch (disposition) {
             case STEERED -> "steered";
-            case QUEUED -> wasRunning ? "queued" : "active";
+            case QUEUED -> opened || attachToActive ? "active" : "queued";
             case REJECTED -> "rejected";
         });
-        var current = taskRuns.activeSnapshot();
+        var current = taskRuns.snapshotForRun(tracked.taskRunId());
+        if (current == null) current = taskRuns.activeSnapshot();
         if (current != null) {
             var ref = node.putObject("taskRun");
             ref.put("taskRunId", current.taskRunId());

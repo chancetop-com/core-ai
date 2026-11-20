@@ -66,6 +66,7 @@ public class GetVideoStatusTool extends ToolCall {
                     var output = saveVideo(context, provider.downloadVideo(videoId), videoId);
                     yield ToolCallResult.completed(
                             "Video generation completed.\nvideo_id: " + videoId + "\n\n[Download/play video](" + output + ")")
+                            .withTaskId(videoId)
                             .withDuration(System.currentTimeMillis() - startTime)
                             .withStats("video_id", videoId)
                             .withStats("video_path", output)
@@ -75,6 +76,7 @@ public class GetVideoStatusTool extends ToolCall {
                     clearPendingTaskIfMatches(context, videoId);
                     yield ToolCallResult.failed(
                             "Video generation failed: " + (status.error() != null ? status.error() : "unknown error"))
+                            .withTaskId(videoId)
                             .withDuration(System.currentTimeMillis() - startTime)
                             .withStats("video_id", videoId)
                             .withStats("status", "failed");

@@ -24,6 +24,7 @@ import ai.core.session.transcript.TranscriptInput;
 import ai.core.session.transcript.TranscriptKinds;
 import ai.core.session.transcript.TranscriptRecorder;
 import ai.core.session.transcript.TranscriptUsage;
+import ai.core.tool.tools.GetVideoStatusTool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -42,7 +44,7 @@ import java.util.function.Function;
  */
 @SuppressWarnings("this-escape")
 public class InProcessAgentSession implements AgentSession {
-    private static final Set<String> UNTRACKED_PENDING_TOOLS = Set.of("generate_video", "generate_image");
+    private static final Set<String> UNTRACKED_PENDING_TOOLS = Set.of("generate_image");
 
     private static TaskRunOutcome outcomeOfStatus(String status) {
         if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
@@ -89,6 +91,9 @@ public class InProcessAgentSession implements AgentSession {
     private final SessionCustomEventEmitter customEventEmitter;
     private final TranscriptRecorder recorder;
     private final TaskRunCoordinator taskRuns;
+    private final Set<String> watchingVideoJobs = ConcurrentHashMap.newKeySet();
+    private final Set<String> settledVideoJobs = ConcurrentHashMap.newKeySet();
+    private volatile boolean closed;
     public final SessionFootprintTracker footprint;
     public InProcessAgentSession(String sessionId, Agent agent, boolean autoApproveAll, ToolPermissionStore permissionStore) {
         this(sessionId, agent, autoApproveAll, permissionStore, false, null);
@@ -198,6 +203,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private void executeCommands(SessionCommandQueue.CommandBatch batch) {
+        if (batch.mode() == SessionCommandQueue.CommandMode.USER_INPUT && deferUserBatch(batch)) return;
         var executingThread = Thread.currentThread();
         var turnToken = agent.getCancellationToken().createChild();
         agent.getExecutionContext().setCancellationToken(turnToken);
@@ -245,6 +251,18 @@ public class InProcessAgentSession implements AgentSession {
         } finally {
             finishTurn(turnDeadline, threadUnbind, turnToken);
         }
+    }
+
+    private boolean deferUserBatch(SessionCommandQueue.CommandBatch batch) {
+        var turnIds = batch.values().stream().map(SessionCommandQueue.QueuedMessage::turnId)
+                .filter(value -> value != null).toList();
+        if (taskRuns.shouldDeferUserBatch(turnIds)) {
+            commandQueue.requeueUserInputs(batch.values());
+            taskRuns.awaitChange(500);
+            return true;
+        }
+        taskRuns.claimQueued(turnIds);
+        return false;
     }
 
     private void beginExecution(SessionCommandQueue.CommandBatch batch, String turnId) {
@@ -466,8 +484,7 @@ public class InProcessAgentSession implements AgentSession {
      */
     private boolean hasDeferredWork() {
         var taskManager = agent.getExecutionContext().getTaskManager();
-        return turnInput.hasPending() || !commandQueue.isEmpty()
-                || taskManager != null && taskManager.hasRunningTasks();
+        return turnInput.hasPending() || taskManager != null && taskManager.hasRunningTasks();
     }
 
     /** Messages accepted for the running turn but not yet injected before a model call. */
@@ -483,6 +500,7 @@ public class InProcessAgentSession implements AgentSession {
     @Override
     public void close() {
         logger.debug("closing agent session, sessionId={}", sessionId);
+        closed = true;
         taskRuns.interrupt("session_closed");
         turnDriver.shutdown();
         // subagent threads persist after every run; this covers a session closed before that
@@ -602,10 +620,91 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private void observeToolResult(ToolResultEvent event) {
-        if (!"pending".equals(event.status) || event.toolName == null) return;
-        if (UNTRACKED_PENDING_TOOLS.contains(event.toolName)) {
+        if (event.toolName == null) return;
+        if ("generate_video".equals(event.toolName) && "pending".equals(event.status)) {
+            startVideoWatcher(event.taskId);
+            return;
+        }
+        if ("get_video_status".equals(event.toolName)
+                && ("success".equals(event.status) || "failure".equals(event.status))) {
+            settleVideoFromPoll(event.taskId, "success".equals(event.status));
+            return;
+        }
+        if ("pending".equals(event.status) && UNTRACKED_PENDING_TOOLS.contains(event.toolName)) {
             taskRuns.markUntrackable("required_adapter_not_wired:" + event.toolName);
         }
+    }
+
+    private void startVideoWatcher(String videoId) {
+        if (videoId == null || closed) {
+            taskRuns.markUntrackable("video_status_unavailable");
+            return;
+        }
+        var context = agent.getExecutionContext();
+        var provider = context.getVideoMediaProvider();
+        if (provider == null) {
+            taskRuns.markUntrackable("video_provider_not_configured");
+            return;
+        }
+        if (!watchingVideoJobs.add(videoId)) return;
+        taskRuns.taskLaunched(videoId, 0L);
+        Thread.ofVirtual().name("video-watch-" + videoId).start(() -> watchVideo(videoId, context, provider));
+    }
+
+    private void watchVideo(String videoId, ai.core.agent.ExecutionContext context, ai.core.media.MediaProvider provider) {
+        int errors = 0;
+        for (int attempt = 0; attempt < 360 && !closed; attempt++) {
+            if (settledVideoJobs.contains(videoId)) return;
+            try {
+                var status = provider.getVideoStatus(videoId);
+                if ("completed".equals(status.status())) {
+                    var result = GetVideoStatusTool.builder().build()
+                            .execute("{\"video_id\":\"" + videoId + "\"}", context);
+                    if (settledVideoJobs.contains(videoId)) return;
+                    if (result.isCompleted()) {
+                        finishVideo(videoId, "completed", result.getResult(), null);
+                    } else {
+                        finishVideo(videoId, "failed", null, result.getResult());
+                    }
+                    return;
+                }
+                if ("failed".equals(status.status())) {
+                    finishVideo(videoId, "failed", null, status.error() != null ? status.error() : "video generation failed");
+                    return;
+                }
+                errors = 0;
+            } catch (RuntimeException e) {
+                errors++;
+                if (errors >= 12) {
+                    taskRuns.markNeedsAttention("video_status_unavailable");
+                    return;
+                }
+            }
+            try {
+                Thread.sleep(5_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+        if (!closed && !settledVideoJobs.contains(videoId)) {
+            taskRuns.markNeedsAttention("video_watch_timeout");
+        }
+    }
+
+    private void finishVideo(String videoId, String status, String result, String error) {
+        if (closed || !settledVideoJobs.add(videoId)) return;
+        watchingVideoJobs.remove(videoId);
+        logger.info("video task settled, videoId={}, status={}, error={}", videoId, status, error);
+        var xml = TaskNotificationText.buildNotificationXml(videoId, status, null, result, error, 0L);
+        notifyTask(videoId, status, "generate_video", xml);
+    }
+
+    private void settleVideoFromPoll(String videoId, boolean completed) {
+        if (videoId == null || !settledVideoJobs.add(videoId)) return;
+        watchingVideoJobs.remove(videoId);
+        taskRuns.taskSettled(videoId, 0L, completed ? TaskRunOutcome.RETURNED : TaskRunOutcome.FAILED, false,
+                completed ? "completed" : "video generation failed");
     }
 
     private void dispatch(AgentEvent event) {

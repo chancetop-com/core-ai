@@ -21,31 +21,14 @@ public final class TaskRunCoordinator {
     private static final String REASON_JOB_FAILED = "required_job_failed_without_handler";
     private static final String REASON_COVERAGE = "required_work_coverage_incomplete";
 
-    private static String disposition(TaskRunOutcome outcome) {
-        return switch (outcome) {
-            case RETURNED -> "returned";
-            case FAILED -> "failed";
-            case CANCELLED -> "cancelled";
-            case LIMITED -> "limited";
-            case INTERRUPTED -> "interrupted";
-        };
-    }
-
-    private static String jobKey(String jobId, long generation) {
-        return jobId + "#" + generation;
-    }
-
-    private static void touch(Run run) {
-        run.version++;
-    }
-
     private final String sessionId;
     private final Object lock = new Object();
     private volatile String sessionIncarnation;
     private volatile TaskRunObserver observer;
     private volatile BooleanSupplier pendingWorkProbe = () -> false;
-    private Run active;
-    private Run lastEnded;
+    private TaskRun active;
+    private TaskRun lastEnded;
+    private final Map<String, TaskRun> queuedRuns = new LinkedHashMap<>();
     private long runSequence;
 
     public TaskRunCoordinator(String sessionId, String sessionIncarnation) {
@@ -69,35 +52,140 @@ public final class TaskRunCoordinator {
         this.observer = observer;
     }
 
-    /**
-     * The last liveness probe before a run may be called returned. It is a backstop for work that has
-     * not reached its own hook yet; the decision still requires every coordinator counter to be clean.
-     */
+    /** Backstop for work that has not reached its own hook yet. */
     public void setPendingWorkProbe(BooleanSupplier pendingWorkProbe) {
         this.pendingWorkProbe = pendingWorkProbe != null ? pendingWorkProbe : () -> false;
     }
 
     public TaskRunSnapshot openRoot(String requestId) {
-        Emission emission;
+        return openRoot(requestId, null);
+    }
+
+    public TaskRunSnapshot openRoot(String requestId, String turnId) {
+        TaskRun.Emission emission;
         TaskRunSnapshot snapshot;
         synchronized (lock) {
             if (active == null || active.terminal()) {
-                var run = new Run("run-" + UUID.randomUUID(), ++runSequence, requestId, System.currentTimeMillis());
+                var run = new TaskRun("run-" + UUID.randomUUID(), ++runSequence, requestId, turnId, false,
+                        System.currentTimeMillis());
                 active = run;
-                touch(run);
-                snapshot = snapshotOf(run);
-                emission = new Emission(snapshot, null, true);
+                TaskRun.touch(run);
+                snapshot = run.snapshot(sessionId, sessionIncarnation);
+                emission = new TaskRun.Emission(snapshot, null, true);
             } else {
-                snapshot = snapshotOf(active);
-                emission = null;
+                var key = turnId != null ? turnId : requestId;
+                var existing = queuedRuns.get(key);
+                if (existing != null && !existing.terminal()) {
+                    snapshot = existing.snapshot(sessionId, sessionIncarnation);
+                    emission = null;
+                } else {
+                    var run = new TaskRun("run-" + UUID.randomUUID(), ++runSequence, requestId, turnId, true,
+                            System.currentTimeMillis());
+                    queuedRuns.put(key, run);
+                    TaskRun.touch(run);
+                    snapshot = run.snapshot(sessionId, sessionIncarnation);
+                    emission = new TaskRun.Emission(snapshot, null, true);
+                }
             }
+            lock.notifyAll();
         }
         emit(emission);
         return snapshot;
     }
 
     public void requestQueued() {
-        emit(change(active -> active.queuedRequests++));
+        requestQueued(null);
+    }
+
+    public void requestQueued(String turnId) {
+        TaskRun.Emission emission;
+        synchronized (lock) {
+            if (turnId != null && queuedRuns.containsKey(turnId)) {
+                TaskRun.touch(queuedRuns.get(turnId));
+                emission = new TaskRun.Emission(queuedRuns.get(turnId).snapshot(sessionId, sessionIncarnation), null, false);
+            } else {
+                emission = changeLocked(run -> run.queuedRequests++);
+            }
+            lock.notifyAll();
+        }
+        emit(emission);
+    }
+
+    public void discardQueued(String turnId, String reason) {
+        TaskRun.Emission emission = null;
+        synchronized (lock) {
+            if (turnId == null) return;
+            var run = queuedRuns.remove(turnId);
+            if (run != null) {
+                finishQueued(run, TaskRunOutcome.INTERRUPTED, reason);
+                emission = new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), run.ended(sessionId, sessionIncarnation), false);
+            }
+            lock.notifyAll();
+        }
+        emit(emission);
+    }
+
+    /** Promotes the queued run whose turn is now at the driver head. */
+    public TaskRunSnapshot claimQueued(java.util.List<String> turnIds) {
+        TaskRun.Emission emission = null;
+        TaskRun.Emission superseded = null;
+        TaskRunSnapshot snapshot = null;
+        synchronized (lock) {
+            if (active != null && active.terminal()) active = null;
+            String queuedKey = null;
+            for (var turnId : turnIds) {
+                if (turnId != null && queuedRuns.containsKey(turnId)) {
+                    queuedKey = turnId;
+                    break;
+                }
+            }
+            if (queuedKey == null) return null;
+            if (active != null) {
+                if (active.state() != TaskRunState.NEEDS_ATTENTION) {
+                    lock.notifyAll();
+                    return null;
+                }
+                var attentionRun = active;
+                finish(attentionRun, TaskRunOutcome.INTERRUPTED, "superseded_by_new_task");
+                superseded = new TaskRun.Emission(attentionRun.snapshot(sessionId, sessionIncarnation), attentionRun.ended(sessionId, sessionIncarnation), false);
+                active = null;
+            }
+            var run = queuedRuns.remove(queuedKey);
+            run.queued = false;
+            active = run;
+            TaskRun.touch(run);
+            snapshot = run.snapshot(sessionId, sessionIncarnation);
+            emission = new TaskRun.Emission(snapshot, null, false);
+            lock.notifyAll();
+        }
+        emit(superseded);
+        emit(emission);
+        return snapshot;
+    }
+
+    public boolean shouldDeferUserBatch(java.util.List<String> turnIds) {
+        synchronized (lock) {
+            if (active == null || active.terminal()) return false;
+            if (active.activeExecutionId != null) return true;
+            if (!active.requiredJobs.isEmpty() || !active.continuations.isEmpty()) return true;
+            if (active.state() == TaskRunState.DRAINING || active.state() == TaskRunState.AWAITING_ASYNC) return true;
+            if (active.state() == TaskRunState.NEEDS_ATTENTION) return false;
+            if (active.state() == TaskRunState.REGISTERED) {
+                if (active.turnId == null || turnIds.isEmpty()) return false;
+                return !turnIds.contains(active.turnId);
+            }
+            return false;
+        }
+    }
+
+    public void awaitChange(long millis) {
+        synchronized (lock) {
+            try {
+                lock.wait(millis);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
     }
 
     public void admissionFailed(String reason) {
@@ -115,7 +203,7 @@ public final class TaskRunCoordinator {
             if (kind == ExecutionKind.ROOT) {
                 run.queuedRequests = Math.max(0, run.queuedRequests - Math.max(0, claimedRequests));
             } else if (kind == ExecutionKind.TASK_NOTIFICATION) {
-                run.continuations.values().removeIf(value -> value.state() == ContinuationState.QUEUED);
+                run.continuations.values().removeIf(value -> value.state() == TaskRun.ContinuationState.QUEUED);
                 run.unhandledFailure = false;
                 run.failureReason = null;
             }
@@ -128,20 +216,20 @@ public final class TaskRunCoordinator {
             run.activeExecutionId = null;
             run.activeExecutionKind = null;
             if (kind == ExecutionKind.ROOT) {
-                run.rootDisposition = disposition(outcome);
+                run.rootDisposition = TaskRun.disposition(outcome);
                 if (outcome == TaskRunOutcome.FAILED || outcome == TaskRunOutcome.LIMITED) {
                     run.failureReason = reason;
                 }
             } else if (outcome == TaskRunOutcome.FAILED || outcome == TaskRunOutcome.CANCELLED
                     || outcome == TaskRunOutcome.LIMITED) {
-                run.rootDisposition = disposition(outcome);
+                run.rootDisposition = TaskRun.disposition(outcome);
                 run.failureReason = reason;
             }
         }));
     }
 
     public void taskLaunched(String jobId, long generation) {
-        emit(change(run -> run.requiredJobs.put(jobKey(jobId, generation), generation)));
+        emit(change(run -> run.requiredJobs.put(TaskRun.jobKey(jobId, generation), generation)));
     }
 
     /**
@@ -151,10 +239,10 @@ public final class TaskRunCoordinator {
      */
     public void taskSettled(String jobId, long generation, TaskRunOutcome outcome, boolean continuationExpected, String reason) {
         emit(change(run -> {
-            run.requiredJobs.remove(jobKey(jobId, generation));
+            run.requiredJobs.remove(TaskRun.jobKey(jobId, generation));
             if (continuationExpected) {
-                run.continuations.put(jobKey(jobId, generation),
-                        new Continuation(ContinuationState.PENDING, outcome == TaskRunOutcome.FAILED));
+                run.continuations.put(TaskRun.jobKey(jobId, generation),
+                        new TaskRun.Continuation(TaskRun.ContinuationState.PENDING, outcome == TaskRunOutcome.FAILED));
                 return;
             }
             if (outcome == TaskRunOutcome.FAILED) {
@@ -166,7 +254,7 @@ public final class TaskRunCoordinator {
 
     public void notificationQueued(String jobId, long generation, boolean accepted) {
         emit(change(run -> {
-            var key = jobKey(jobId, generation);
+            var key = TaskRun.jobKey(jobId, generation);
             if (!accepted) {
                 run.continuations.remove(key);
                 run.attentionReason = "continuation_queue_rejected";
@@ -174,7 +262,7 @@ public final class TaskRunCoordinator {
             }
             var continuation = run.continuations.get(key);
             if (continuation != null) {
-                run.continuations.put(key, new Continuation(ContinuationState.QUEUED, continuation.failed()));
+                run.continuations.put(key, new TaskRun.Continuation(TaskRun.ContinuationState.QUEUED, continuation.failed()));
             }
         }));
     }
@@ -182,7 +270,7 @@ public final class TaskRunCoordinator {
     public void notificationDropped(String jobId, Long generation) {
         emit(change(run -> {
             if (generation != null) {
-                run.continuations.remove(jobKey(jobId, generation));
+                run.continuations.remove(TaskRun.jobKey(jobId, generation));
                 return;
             }
             run.continuations.keySet().removeIf(key -> key.startsWith(jobId + "#"));
@@ -202,14 +290,14 @@ public final class TaskRunCoordinator {
 
     public void cancelRun(String reason) {
         emit(change(run -> {
-            run.rootDisposition = disposition(TaskRunOutcome.CANCELLED);
+            run.rootDisposition = TaskRun.disposition(TaskRunOutcome.CANCELLED);
             run.failureReason = reason;
         }));
     }
 
     public void limitRun(String reason) {
         emit(change(run -> {
-            run.rootDisposition = disposition(TaskRunOutcome.LIMITED);
+            run.rootDisposition = TaskRun.disposition(TaskRunOutcome.LIMITED);
             run.failureReason = reason;
         }));
     }
@@ -219,52 +307,82 @@ public final class TaskRunCoordinator {
     }
 
     public void interrupt(String reason) {
-        Emission emission;
+        java.util.List<TaskRun.Emission> emissions = new java.util.ArrayList<>();
         synchronized (lock) {
-            if (active == null || active.terminal()) return;
-            var run = active;
-            finish(run, TaskRunOutcome.INTERRUPTED, reason);
-            emission = new Emission(snapshotOf(run), endedOf(run), false);
+            if (active != null && !active.terminal()) {
+                var run = active;
+                finish(run, TaskRunOutcome.INTERRUPTED, reason);
+                emissions.add(new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), run.ended(sessionId, sessionIncarnation), false));
+            }
+            for (var run : queuedRuns.values()) {
+                if (run.terminal()) continue;
+                finishQueued(run, TaskRunOutcome.INTERRUPTED, reason);
+                emissions.add(new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), run.ended(sessionId, sessionIncarnation), false));
+            }
+            queuedRuns.clear();
+            lock.notifyAll();
         }
-        emit(emission);
+        emissions.forEach(this::emit);
     }
 
     public TaskRunSnapshot snapshot() {
         synchronized (lock) {
-            return active != null ? snapshotOf(active) : lastEnded != null ? snapshotOf(lastEnded) : null;
+            return active != null ? active.snapshot(sessionId, sessionIncarnation) : lastEnded != null ? lastEnded.snapshot(sessionId, sessionIncarnation) : null;
         }
     }
 
     public TaskRunSnapshot activeSnapshot() {
         synchronized (lock) {
-            return active != null ? snapshotOf(active) : null;
+            return active != null ? active.snapshot(sessionId, sessionIncarnation) : null;
         }
     }
 
     public TaskRunSnapshot lastEndedSnapshot() {
         synchronized (lock) {
-            return lastEnded != null ? snapshotOf(lastEnded) : null;
+            return lastEnded != null ? lastEnded.snapshot(sessionId, sessionIncarnation) : null;
         }
     }
 
-    private Emission change(Change change) {
-        Emission emission;
+    public TaskRunSnapshot snapshotForRun(String taskRunId) {
+        if (taskRunId == null) return null;
         synchronized (lock) {
-            if (active == null || active.terminal()) return null;
-            var run = active;
-            change.apply(run);
-            if (run.terminal()) {
-                emission = new Emission(snapshotOf(run), null, false);
-            } else {
-                touch(run);
-                var ended = evaluate(run);
-                emission = new Emission(snapshotOf(run), ended, false);
+            if (active != null && taskRunId.equals(active.taskRunId)) return active.snapshot(sessionId, sessionIncarnation);
+            if (lastEnded != null && taskRunId.equals(lastEnded.taskRunId)) return lastEnded.snapshot(sessionId, sessionIncarnation);
+            for (var run : queuedRuns.values()) {
+                if (taskRunId.equals(run.taskRunId)) return run.snapshot(sessionId, sessionIncarnation);
             }
+            return null;
+        }
+    }
+
+    public java.util.List<TaskRunSnapshot> queuedSnapshots() {
+        synchronized (lock) {
+            return queuedRuns.values().stream().map(run -> run.snapshot(sessionId, sessionIncarnation)).toList();
+        }
+    }
+
+    private TaskRun.Emission change(TaskRun.Change change) {
+        TaskRun.Emission emission;
+        synchronized (lock) {
+            emission = changeLocked(change);
+            lock.notifyAll();
         }
         return emission;
     }
 
-    private TaskRunEnded evaluate(Run run) {
+    private TaskRun.Emission changeLocked(TaskRun.Change change) {
+        if (active == null || active.terminal()) return null;
+        var run = active;
+        change.apply(run);
+        if (run.terminal()) {
+            return new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), null, false);
+        }
+        TaskRun.touch(run);
+        var ended = evaluate(run);
+        return new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), ended, false);
+    }
+
+    private TaskRunEnded evaluate(TaskRun run) {
         if (run.terminal() || run.activeExecutionId != null || run.attentionReason != null) return null;
         if (!run.requiredJobs.isEmpty() || !run.continuations.isEmpty() || run.queuedRequests > 0) return null;
         if (run.rootDisposition == null) return null;
@@ -288,33 +406,28 @@ public final class TaskRunCoordinator {
             case INTERRUPTED -> "task_run_interrupted";
         };
         finish(run, outcome, reason);
-        return endedOf(run);
+        return run.ended(sessionId, sessionIncarnation);
     }
 
-    private void finish(Run run, TaskRunOutcome outcome, String reason) {
+    private void finish(TaskRun run, TaskRunOutcome outcome, String reason) {
         run.outcome = outcome;
         run.reason = reason;
         run.endedAtMs = System.currentTimeMillis();
         run.activeExecutionId = null;
-        touch(run);
+        TaskRun.touch(run);
         lastEnded = run;
         if (active == run) active = null;
     }
 
-    private TaskRunSnapshot snapshotOf(Run run) {
-        return new TaskRunSnapshot(sessionId, sessionIncarnation, run.taskRunId, run.generation, run.version,
-                run.requestId, run.state(), run.rootDisposition, run.activeExecutionId, run.requiredJobs.size(),
-                run.pendingContinuations(), run.queuedContinuations(), run.queuedRequests, run.coverage,
-                run.attentionReason, run.startedAtMs, run.endedAtMs, run.outcome, run.reason);
+    private void finishQueued(TaskRun run, TaskRunOutcome outcome, String reason) {
+        run.outcome = outcome;
+        run.reason = reason;
+        run.endedAtMs = System.currentTimeMillis();
+        run.activeExecutionId = null;
+        TaskRun.touch(run);
     }
 
-    private TaskRunEnded endedOf(Run run) {
-        var endedAt = run.endedAtMs != null ? run.endedAtMs : System.currentTimeMillis();
-        return new TaskRunEnded(sessionId, sessionIncarnation, run.taskRunId, run.generation, run.version,
-                run.outcome, run.reason, endedAt, endedAt - run.startedAtMs, run.coverage, "not_applicable");
-    }
-
-    private void emit(Emission emission) {
+    private void emit(TaskRun.Emission emission) {
         if (emission == null || emission.snapshot() == null) return;
         var target = observer;
         if (target == null) return;
@@ -331,69 +444,5 @@ public final class TaskRunCoordinator {
         ROOT,
         CONTINUATION,
         TASK_NOTIFICATION
-    }
-
-    private enum ContinuationState {
-        PENDING,
-        QUEUED
-    }
-
-    private record Continuation(ContinuationState state, boolean failed) {
-    }
-
-    private record Emission(TaskRunSnapshot snapshot, TaskRunEnded ended, boolean registered) {
-    }
-
-    private interface Change {
-        void apply(Run run);
-    }
-
-    private static final class Run {
-        private final String taskRunId;
-        private final long generation;
-        private final String requestId;
-        private final long startedAtMs;
-        private final Map<String, Long> requiredJobs = new LinkedHashMap<>();
-        private final Map<String, Continuation> continuations = new LinkedHashMap<>();
-        private long version;
-        private String rootDisposition;
-        private String activeExecutionId;
-        private ExecutionKind activeExecutionKind;
-        private int queuedRequests;
-        private String coverage = COVERAGE_COMPLETE;
-        private String attentionReason;
-        private boolean unhandledFailure;
-        private String failureReason;
-        private Long endedAtMs;
-        private TaskRunOutcome outcome;
-        private String reason;
-
-        private Run(String taskRunId, long generation, String requestId, long startedAtMs) {
-            this.taskRunId = taskRunId;
-            this.generation = generation;
-            this.requestId = requestId;
-            this.startedAtMs = startedAtMs;
-        }
-
-        private boolean terminal() {
-            return outcome != null;
-        }
-
-        private int pendingContinuations() {
-            return (int) continuations.values().stream().filter(value -> value.state() == ContinuationState.PENDING).count();
-        }
-
-        private int queuedContinuations() {
-            return (int) continuations.values().stream().filter(value -> value.state() == ContinuationState.QUEUED).count();
-        }
-
-        private TaskRunState state() {
-            if (terminal()) return TaskRunState.TERMINAL;
-            if (attentionReason != null) return TaskRunState.NEEDS_ATTENTION;
-            if (activeExecutionId != null) return TaskRunState.RUNNING;
-            if (!requiredJobs.isEmpty() || !continuations.isEmpty() || queuedRequests > 0) return TaskRunState.AWAITING_ASYNC;
-            if (rootDisposition != null) return TaskRunState.DRAINING;
-            return TaskRunState.REGISTERED;
-        }
     }
 }

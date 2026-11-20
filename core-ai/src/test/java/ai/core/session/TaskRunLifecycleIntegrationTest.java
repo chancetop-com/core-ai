@@ -21,6 +21,7 @@ import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Usage;
 import ai.core.llm.providers.MockLLMProvider;
 import ai.core.llm.streaming.StreamingCallback;
+import ai.core.session.lifecycle.TaskRunCoordinator;
 import ai.core.session.lifecycle.TaskRunEnded;
 import ai.core.session.lifecycle.TaskRunObserver;
 import ai.core.session.lifecycle.TaskRunOutcome;
@@ -91,6 +92,41 @@ class TaskRunLifecycleIntegrationTest {
             assertEquals("untrackable", snapshot.coverage());
             assertEquals(TaskRunState.NEEDS_ATTENTION, snapshot.state());
             assertTrue(session.taskRuns().lastEndedSnapshot() == null);
+        } finally {
+            session.close();
+        }
+    }
+
+    @Test
+    void aQueuedRootDoesNotStartUntilTheActiveRunSettles() throws InterruptedException {
+        var provider = new MockLLMProvider();
+        provider.addResponse(response("queued task ran"));
+        var agent = Agent.builder().llmProvider(provider).build();
+        var session = new InProcessAgentSession("s-queued-run", agent, true, new InMemoryToolPermissionStore());
+        var turnDone = new CountDownLatch(1);
+        session.onEvent(new AgentEventListener() {
+            @Override
+            public void onTurnComplete(TurnCompleteEvent event) {
+                turnDone.countDown();
+            }
+        });
+        try {
+            var first = session.taskRuns().openRoot("request-1", "turn-1");
+            session.taskRuns().executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+            session.taskRuns().taskLaunched("job-1", 1L);
+            session.taskRuns().executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+            var queued = session.taskRuns().openRoot("request-2", "turn-2");
+            assertEquals(TaskRunState.QUEUED, queued.state());
+
+            session.sendMessage("second task", null, null, "turn-2");
+            Thread.sleep(300);
+            assertEquals(first.taskRunId(), session.taskRuns().activeSnapshot().taskRunId());
+            assertTrue(!turnDone.await(200, TimeUnit.MILLISECONDS), "the queued task must not start while required work is open");
+
+            session.taskRuns().taskSettled("job-1", 1L, TaskRunOutcome.RETURNED, false, "completed");
+            assertTrue(turnDone.await(10, TimeUnit.SECONDS), "the queued task starts after the active run ends");
+            assertEquals(queued.taskRunId(), session.taskRuns().lastEndedSnapshot().taskRunId());
+            assertEquals(TaskRunOutcome.RETURNED, session.taskRuns().lastEndedSnapshot().outcome());
         } finally {
             session.close();
         }

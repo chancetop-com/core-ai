@@ -52,15 +52,18 @@ class SessionCommandQueueTest {
     }
 
     @Test
-    void keepsPriorityAndDrainSemantics() {
+    void taskNotificationsDrainBeforeANewUserTask() {
         var queue = new SessionCommandQueue();
         queue.enqueueTaskNotification("<task/>");
         queue.enqueueUserInput("hi", null, null);
 
-        var batch = queue.drainSameMode();
-        assertEquals(SessionCommandQueue.CommandMode.USER_INPUT, batch.mode());
-        assertEquals(1, batch.values().size());
-        assertFalse(queue.isEmpty());
+        var notifications = queue.drainSameMode();
+        assertEquals(SessionCommandQueue.CommandMode.TASK_NOTIFICATION, notifications.mode());
+        assertEquals(1, notifications.values().size());
+
+        var user = queue.drainSameMode();
+        assertEquals(SessionCommandQueue.CommandMode.USER_INPUT, user.mode());
+        assertEquals(1, user.values().size());
     }
 
     @Test
@@ -71,11 +74,26 @@ class SessionCommandQueueTest {
         }
         queue.enqueueTaskNotification("<task/>");
 
+        var notifications = queue.drainSameMode();
+        assertEquals(SessionCommandQueue.CommandMode.TASK_NOTIFICATION, notifications.mode());
+        assertEquals(1, notifications.values().size());
+
         var batch = queue.drainSameMode();
         assertEquals(SessionCommandQueue.CommandMode.USER_INPUT, batch.mode());
         assertEquals(20, batch.values().size());
         for (var i = 0; i < 20; i++) {
             assertEquals("m" + i, batch.values().get(i).value());
         }
+    }
+
+    @Test
+    void requeueReturnsAcceptedInputWithoutApplyingCapacityAgain() {
+        SessionRuntimeLimits.configure(() -> new SessionRuntimeLimits(1, 0));
+        var queue = new SessionCommandQueue();
+        assertTrue(queue.enqueueUserInput("first", null, null, "turn-1"));
+        var batch = queue.drainSameMode();
+        assertTrue(queue.enqueueUserInput("filler", null, null));
+        queue.requeueUserInputs(batch.values());
+        assertEquals(2, queue.size());
     }
 }

@@ -65,6 +65,33 @@ class SessionLifecycleSourceTest {
     }
 
     @Test
+    void aQueuedRunIsVisibleToInspectAndCanBeBound() {
+        var coordinator = new TaskRunCoordinator("session-queued", "inc-test");
+        var session = mock(InProcessAgentSession.class);
+        when(session.taskRuns()).thenReturn(coordinator);
+        when(session.isTurnRunning()).thenReturn(false);
+        var sink = mock(NotificationSink.class);
+        var source = new SessionLifecycleSource("session-queued", session, tempDir, () -> sink);
+        try {
+            coordinator.openRoot("request-1", "turn-1");
+            coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+            var queued = coordinator.openRoot("request-2", "turn-2");
+
+            var inspect = source.inspect();
+            var refs = inspect.path("queuedTaskRunRefs");
+            assertEquals(1, refs.size());
+            assertEquals(queued.taskRunId(), refs.get(0).path("taskRunId").asText());
+            assertEquals("queued", refs.get(0).path("state").asText());
+
+            var bind = source.bind("watch-queued", queued.taskRunId(), queued.runGeneration(), 0);
+            assertEquals("bound", bind.path("status").asText());
+            assertEquals("queued", bind.path("run").path("state").asText());
+        } finally {
+            source.close();
+        }
+    }
+
+    @Test
     void aPreviousUnfinishedRunIsRecordedAsInterruptedOnOpen() {
         var coordinator = new TaskRunCoordinator("session-2", "inc-test");
         var session = mock(InProcessAgentSession.class);

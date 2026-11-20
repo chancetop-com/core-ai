@@ -1,5 +1,7 @@
 package ai.core.cli.appserver;
 
+import ai.core.session.lifecycle.TaskRunState;
+
 /**
  * Resolves a target session in this engine's workspace and queues the forwarded message as its next
  * user turn. Resume errors (not found, corrupt, newer version, locked by another process) propagate
@@ -25,13 +27,13 @@ final class EngineSessionMessageForwarder implements SendSessionMessageTool.Forw
         }
         boolean queued = target.running() || target.inProcess().hasPendingWork();
         var taskRuns = target.inProcess().taskRuns();
-        var active = taskRuns.activeSnapshot();
-        if (active == null || active.terminal()) taskRuns.openRoot(turnId);
+        var tracked = taskRuns.openRoot(turnId, turnId);
         if (!target.inProcess().enqueueMessage(message, null, null, turnId)) {
-            taskRuns.admissionFailed("session_queue_full");
+            if (tracked.state() == TaskRunState.QUEUED) taskRuns.discardQueued(turnId, "session_queue_full");
+            else taskRuns.admissionFailed("session_queue_full");
             throw RpcException.business("SESSION_QUEUE_FULL", "session queue is full: " + sessionId, "sessionId", sessionId);
         }
-        taskRuns.requestQueued();
+        if (tracked.state() != TaskRunState.QUEUED) taskRuns.requestQueued(turnId);
         return new SendSessionMessageTool.Forwarded(sessionId,
                 resumed.path("status").asText("idle"), queued, turnId);
     }
