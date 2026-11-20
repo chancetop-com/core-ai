@@ -148,7 +148,7 @@ Inside the REPL, `/skill` still opens the interactive menu for the same operatio
 
 ## Plugin Hub (`core-ai-cli plugin`)
 
-The server's desktop plugin registry (`/api/plugins`) pins plugin packages — a manifest, a version, a `download_url` and a sha256. The registry never hosts the bytes; `plugin install` downloads the pinned URL, verifies the digest and extracts the zip into the same `~/.core-ai/plugins/<id>/` roots the local `/plugins` command and the desktop app use. Permission: `plugin.view` (the default `user` role has it); `publish` needs `plugin.manage` (admin by default). Local `list`/`remove` need no server permission.
+The server's desktop plugin registry (`/api/plugins`) pins plugin packages — a manifest, a version, a `download_url` and a sha256. The registry never hosts the bytes; `plugin install` downloads the pinned URL, verifies the digest and extracts the zip into the same `~/.core-ai/plugins/<id>/` roots the local `/plugins` command uses. The desktop app keeps its own content-addressed store and installs a registry package through its Plugins page or Hub panel. Permission: `plugin.view` (the default `user` role has it); `publish` needs `plugin.manage` (admin by default). Local `list`/`remove` need no server permission.
 
 | Command | Purpose |
 |---------|---------|
