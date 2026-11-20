@@ -22,10 +22,10 @@ const RULE: SkillQualityRule = {
 
 function renderDetail() {
   render(
-    <MemoryRouter initialEntries={[`/settings/quality/skill/${encodeURIComponent(RULE.id!)}`]}>
+    <MemoryRouter initialEntries={[`/quality/skill/${encodeURIComponent(RULE.id!)}`]}>
       <Routes>
-        <Route path="/settings/quality/skill/:ruleId" element={<SkillQualityDetail />} />
-        <Route path="/settings/quality" element={<div>quality list</div>} />
+        <Route path="/quality/skill/:ruleId" element={<SkillQualityDetail />} />
+        <Route path="/quality" element={<div>quality list</div>} />
       </Routes>
     </MemoryRouter>,
   );

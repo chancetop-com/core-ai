@@ -1,10 +1,10 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, BarChart3, Bell, BookOpen, Bot, Brain, Calendar, ChevronRight, Cpu, Database, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Key, ListChecks, MessageCircle, Moon, Network, PanelLeft, Play, Puzzle, RotateCcw, Sparkles, Star, Sun, Terminal, FileText, LogOut, Wrench, Settings, Webhook, Workflow, Zap, Radio } from 'lucide-react';
+import { Activity, Bell, Brain, ChevronRight, Cpu, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Library, LogOut, MessageCircle, Moon, PanelLeft, Play, PlugZap, RotateCcw, ShieldCheck, Star, Sun, Terminal, Settings } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
-import { hasPermission } from '../api/permissions';
+import { getSystemSettingsAccess, hasPermission } from '../api/permissions';
 import QuickActionDialog from './QuickActionDialog';
 
 interface NavItem {
@@ -16,6 +16,13 @@ interface NavItem {
   children?: { to: string; icon?: React.ComponentType<{ size: number; className?: string }>; label: string; show: boolean; permission?: string }[];
 }
 
+const REGISTRY_PATHS = ['/agents', '/workflows', '/system-prompts', '/triggers', '/tools', '/mcp', '/api-tools', '/skills', '/plugins', '/datasets', '/reports', '/quality', '/runs'];
+const REGISTRY_PERMISSIONS = ['agent.view', 'workflow.view', 'prompt.view', 'trigger.view', 'tool.view', 'mcp.view', 'apitool.view', 'skill.view', 'plugin.view', 'dataset.view', 'agent.quality.manage'];
+
+function isRegistryPath(pathname: string): boolean {
+  return REGISTRY_PATHS.some(path => pathname === path || pathname.startsWith(`${path}/`));
+}
+
 export default function Layout() {
   const { dark, toggle } = useTheme();
   const caps = useCapabilities();
@@ -23,15 +30,19 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
+  const { canManageSystem, canManageSnapshots } = getSystemSettingsAccess(user);
 
   useEffect(() => {
     const titles: Record<string, string> = {
       '/chat': 'Chat',
       '/for-you': 'For You',
-      '/observability': 'Observability',
+      '/projects': 'Projects',
+      '/observability': 'Observation',
       '/traces': 'Traces',
       '/generations': 'Generations',
       '/calls': 'Hub Calls',
+      '/registry': 'Registry',
+      '/quality': 'Quality',
       '/agents': 'Agents',
       '/system-prompts': 'System Prompts',
       '/login': 'Login',
@@ -45,7 +56,13 @@ export default function Layout() {
       '/plugins': 'Plugins',
       '/datasets': 'Datasets',
       '/datasets/reports': 'Reports',
-      '/projects': 'Projects',
+      '/gateway': 'Gateway',
+      '/admin': 'Admin',
+      '/admin/dashboard': 'Admin Dashboard',
+      '/admin/users': 'User Management',
+      '/admin/tasks': 'System Tasks',
+      '/admin/system': 'System Configuration',
+      '/admin/cost-alerts': 'Cost Alerts',
       '/settings': 'Settings',
       '/notifications': 'Notifications',
       '/triggers': 'Triggers',
@@ -70,7 +87,8 @@ export default function Layout() {
       || (path.startsWith('/projects/') && path.endsWith('/playbook') ? 'Playbook' : null)
       || (path.startsWith('/projects/') && path.includes('/subjects/') ? 'Subject Detail' : null)
       || (path.startsWith('/projects/') ? 'Project Detail' : null)
-      || (path.startsWith('/settings/') ? 'Settings' : null)
+      || (path.startsWith('/quality/') ? 'Quality' : null)
+      || (path.startsWith('/admin/') ? 'Admin' : null)
       || 'core-ai';
     document.title = `${title} - core-ai`;
   }, [location.pathname]);
@@ -80,22 +98,22 @@ export default function Layout() {
   const isRouteActive = (to: string, pathname: string): boolean => {
     if (to === '/traces') return pathname === '/traces' || pathname.startsWith('/traces/');
     if (to === '/observability') return pathname === '/traces' || pathname.startsWith('/traces/') || pathname === '/generations' || pathname.startsWith('/generations/') || pathname === '/calls';
-    if (to === '/agents') return pathname === '/agents' || pathname.startsWith('/agents/');
-    if (to === '/system-prompts') return pathname === '/system-prompts' || pathname.startsWith('/system-prompts/');
-    if (to === '/tools') return pathname === '/tools' || pathname.startsWith('/tools/');
-    if (to === '/api-tools') return pathname === '/api-tools' || pathname.startsWith('/api-tools/');
-    if (to === '/skills') return pathname === '/skills' || pathname.startsWith('/skills/');
-    if (to === '/plugins') return pathname === '/plugins' || pathname.startsWith('/plugins/');
-    if (to === '/datasets/reports') return pathname === '/datasets/reports' || pathname.startsWith('/datasets/reports/');
-    if (to === '/datasets') return pathname === '/datasets' || pathname.startsWith('/datasets/');
+    if (to === '/registry') return isRegistryPath(pathname);
+    if (to === '/gateway') return pathname === '/gateway' || pathname === '/settings/gateway';
+    if (to === '/admin') return pathname === '/admin' || pathname.startsWith('/admin/');
+    if (to === '/tasks') return pathname === '/admin/tasks' || pathname.startsWith('/runs/');
+    if (to === '/settings') return pathname === '/settings' || pathname === '/settings/api-keys';
     if (to === '/projects') return pathname === '/projects' || pathname.startsWith('/projects/');
-    if (to === '/tasks') return pathname === '/tasks' || pathname.startsWith('/runs/');
-    if (to === '/settings') return pathname === '/settings' || pathname.startsWith('/settings/');
-    if (to === '/triggers') return pathname === '/triggers/webhook' || pathname === '/triggers/schedule' || pathname === '/triggers/channels' || pathname === '/triggers/openclaw';
     if (to === '/for-you') return pathname === '/for-you' || pathname.startsWith('/for-you/');
     if (to === '/experiments') return pathname === '/experiments' || pathname.startsWith('/experiments/');
     return pathname === to;
   };
+
+  const canSeeRegistry = REGISTRY_PERMISSIONS.some(permission => hasPermission(user?.permissions, permission));
+  const canSeeAdmin = user?.role === 'admin'
+    || canManageSystem
+    || canManageSnapshots
+    || ['user.manage', 'task.view', 'costalert.manage'].some(permission => hasPermission(user?.permissions, permission));
 
   const navItems: NavItem[] = [
     { to: '/for-you', icon: Star, label: 'For You', show: true, permission: 'dashboard.view', children: [
@@ -103,46 +121,36 @@ export default function Layout() {
     ]},
     { to: '/chat', icon: MessageCircle, label: 'Chat', show: caps.chat, permission: 'chat.use' },
     { to: '/projects', icon: FolderKanban, label: 'Projects', show: true, permission: 'project.view' },
-    { to: '/observability', icon: Gauge, label: 'Observability', show: caps.traces, permission: 'trace.view', children: [
+    { to: '/observability', icon: Gauge, label: 'Observation', show: caps.traces, permission: 'trace.view', children: [
       { to: '/traces', icon: Activity, label: 'Traces', show: caps.traces, permission: 'trace.view' },
       { to: '/generations', icon: Cpu, label: 'Generations', show: caps.traces, permission: 'trace.view' },
       { to: '/calls', icon: Terminal, label: 'Hub Calls', show: caps.traces, permission: 'trace.view' },
     ]},
-    { to: '/agents', icon: Bot, label: 'Agents', show: true, permission: 'agent.view' },
-    { to: '/workflows', icon: Workflow, label: 'Workflows', show: true, permission: 'workflow.view' },
-    { to: '/system-prompts', icon: FileText, label: 'System Prompts', show: caps.systemPrompts, permission: 'prompt.view' },
-    { to: '/tasks', icon: ListChecks, label: 'Tasks', show: false, permission: 'task.view' }, // hidden until Tasks page is built
-    { to: '/triggers', icon: Zap, label: 'Triggers', show: true, permission: 'trigger.view', children: [
-      { to: '/triggers/webhook', icon: Webhook, label: 'Webhook', show: true, permission: 'trigger.view' },
-      { to: '/triggers/channels', icon: Radio, label: 'Channels', show: true, permission: 'trigger.view' },
-      { to: '/triggers/openclaw', icon: Zap, label: 'OpenClaw', show: true, permission: 'trigger.view' },
-      { to: '/triggers/schedule', icon: Calendar, label: 'Schedule', show: true, permission: 'trigger.view' },
+    { to: '/registry', icon: Library, label: 'Registry', show: canSeeRegistry },
+    { to: '/experiments', icon: FlaskConical, label: 'Experiment', show: true, permission: 'experiment.view', children: [
+      { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
+      { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
+      { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
+      { to: '/experiments/agent-comparison', icon: GitCompare, label: 'Agent Comparison', show: true, permission: 'experiment.view' },
     ]},
-    { to: '/tools', icon: Wrench, label: 'Tools', show: true, permission: 'tool.view', children: [
-      { to: '/tools/builtin', icon: Wrench, label: 'Builtin Tools', show: true, permission: 'tool.view' },
-      { to: '/mcp', icon: Network, label: 'MCP', show: true, permission: 'mcp.view' },
-      { to: '/api-tools', icon: Key, label: 'API Tools', show: true, permission: 'apitool.view' },
-    ]},
-    { to: '/skills', icon: Sparkles, label: 'Skills', show: true, permission: 'skill.view' },
-    { to: '/plugins', icon: Puzzle, label: 'Plugins', show: true, permission: 'plugin.view' },
-    { to: '/datasets', icon: Database, label: 'Datasets', show: true, permission: 'dataset.view', children: [
-      { to: '/datasets/reports', icon: BarChart3, label: 'Reports', show: caps.datasetReports, permission: 'report.view' },
-    ]},
-      { to: '/experiments', icon: FlaskConical, label: 'Experiments', show: true, permission: 'experiment.view', children: [
-        { to: '/experiments/playground', icon: Play, label: 'Playground', show: true, permission: 'experiment.view' },
-        { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
-        { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
-        { to: '/experiments/agent-comparison', icon: GitCompare, label: 'Agent Comparison', show: true, permission: 'experiment.view' },
-      ]},
+    { to: '/gateway', icon: PlugZap, label: 'Gateway', show: true, permission: 'gateway.manage' },
   ].filter(item => item.show && (!item.permission || hasPermission(user?.permissions, item.permission)));
+
+  const footerActive = (to: string) => {
+    const active = isRouteActive(to, location.pathname);
+    return {
+      color: active ? 'var(--color-primary)' : 'var(--color-text-secondary)',
+      background: active ? 'var(--color-primary-bg)' : 'transparent',
+    };
+  };
 
   return (
     <div className="flex h-screen">
       <aside className="flex flex-col border-r transition-all duration-200"
-        style={{ 
+        style={{
           width: collapsed ? '60px' : '224px',
-          background: 'var(--color-bg-secondary)', 
-          borderColor: 'var(--color-border)' 
+          background: 'var(--color-bg-secondary)',
+          borderColor: 'var(--color-border)'
         }}>
         {/* Header */}
         <div className="p-3 flex items-center gap-2 border-b" style={{ borderColor: 'var(--color-border)' }}>
@@ -250,20 +258,18 @@ export default function Layout() {
           </button>
           <button onClick={() => navigate('/settings')}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
-            style={{ color: 'var(--color-text-secondary)' }}>
+            style={footerActive('/settings')}>
             <Settings size={16} />
             {!collapsed && 'Settings'}
           </button>
-          <a href="https://chancetop-com.github.io/core-ai/cn/manual/"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="Documentation (opens in a new tab)"
-            title="Documentation (opens in a new tab)"
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
-            style={{ color: 'var(--color-text-secondary)' }}>
-            <BookOpen size={16} />
-            {!collapsed && 'Documentation'}
-          </a>
+          {canSeeAdmin && (
+            <button onClick={() => navigate('/admin')}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
+              style={footerActive('/admin')}>
+              <ShieldCheck size={16} />
+              {!collapsed && 'Admin'}
+            </button>
+          )}
           <button onClick={toggle}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm w-full transition-colors cursor-pointer ${collapsed ? 'justify-center' : ''}`}
             style={{ color: 'var(--color-text-secondary)' }}>

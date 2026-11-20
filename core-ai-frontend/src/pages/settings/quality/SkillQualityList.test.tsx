@@ -7,10 +7,10 @@ import SkillQualityList from './SkillQualityList';
 
 function renderList() {
   render(
-    <MemoryRouter initialEntries={['/settings/quality?tab=skill']}>
+    <MemoryRouter initialEntries={['/quality?tab=skill']}>
       <Routes>
-        <Route path="/settings/quality" element={<SkillQualityList />} />
-        <Route path="/settings/quality/skill/:ruleId" element={<div>skill detail</div>} />
+        <Route path="/quality" element={<SkillQualityList />} />
+        <Route path="/quality/skill/:ruleId" element={<div>skill detail</div>} />
       </Routes>
     </MemoryRouter>,
   );

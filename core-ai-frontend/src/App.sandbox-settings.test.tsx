@@ -24,7 +24,7 @@ describe('System configuration sandbox permissions', () => {
       setItem: (key: string, value: string) => storage.set(key, value),
       removeItem: (key: string) => storage.delete(key),
     });
-    window.history.replaceState({}, '', '/settings/system');
+    window.history.replaceState({}, '', '/admin/system');
     vi.spyOn(capabilities, 'fetchCapabilities').mockResolvedValue(capabilities.defaultCapabilities);
     vi.spyOn(api.sandboxSnapshotSettings, 'get').mockResolvedValue({ retention_days: 14 });
     vi.spyOn(api.sandboxSnapshotSettings, 'update').mockResolvedValue({ retention_days: 21 });
@@ -49,7 +49,7 @@ describe('System configuration sandbox permissions', () => {
     const input = await screen.findByRole<HTMLInputElement>('spinbutton', { name: /retention period/i });
     expect(input.value).toBe('14');
     expect(screen.getByRole('heading', { name: 'System Configuration' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'System Configuration' }).getAttribute('href')).toBe('/settings/system');
+    expect(screen.getByRole('link', { name: 'System Configuration' }).getAttribute('href')).toBe('/admin/system');
     expect(screen.queryByRole('link', { name: 'Sandbox' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Sandbox' })).toBeTruthy();
     for (const name of ['LLM Models', 'Media & Tools', 'Storage', 'Skills', 'Runtime', 'Integrations', 'Save Settings']) {
@@ -98,7 +98,7 @@ describe('System configuration sandbox permissions', () => {
     render(<App />);
 
     expect(await screen.findByRole('spinbutton', { name: /retention period/i })).toBeTruthy();
-    expect(window.location.pathname).toBe('/settings/system');
+    expect(window.location.pathname).toBe('/admin/system');
     expect(window.location.search).toBe('?tab=sandbox');
     expect(screen.getAllByRole('link', { name: 'System Configuration' })).toHaveLength(1);
     expect(screen.queryByRole('link', { name: 'Sandbox' })).toBeNull();
@@ -129,8 +129,8 @@ describe('System configuration sandbox permissions', () => {
     window.history.replaceState({}, '', '/settings');
     render(<App />);
 
-    await waitFor(() => expect(screen.getByRole('link', { name: 'Security' })).toBeTruthy());
-    expect(screen.queryByRole('link', { name: 'Sandbox' })).toBeNull();
+    await waitFor(() => expect(screen.getByText('API keys')).toBeTruthy());
+    expect(screen.queryByRole('link', { name: 'Security' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'System Configuration' })).toBeNull();
   });
 

@@ -61,7 +61,7 @@ export default function SkillQualityList() {
           <button onClick={load} disabled={loading} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
             <RefreshCw size={14} /> Refresh
           </button>
-          <button onClick={() => navigate('/settings/quality/skill/new')} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
+          <button onClick={() => navigate('/quality/skill/new')} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
             <Plus size={14} /> New decision rule
           </button>
         </div>
@@ -86,7 +86,7 @@ export default function SkillQualityList() {
             ) : pageRules.length === 0 ? (
               <tr><td colSpan={7} className="px-3 py-8 text-center" style={{ color: 'var(--color-text-secondary)' }}>No skill quality rules</td></tr>
             ) : pageRules.map(rule => (
-              <tr key={rule.id || rule.key} onClick={() => navigate(`/settings/quality/skill/${encodeURIComponent(rule.id || rule.key)}`)}
+              <tr key={rule.id || rule.key} onClick={() => navigate(`/quality/skill/${encodeURIComponent(rule.id || rule.key)}`)}
                 className="border-t cursor-pointer" style={{ borderColor: 'var(--color-border)' }}>
                 <td className="px-3 py-3">
                   <div className="font-mono text-xs">{rule.key}</div>

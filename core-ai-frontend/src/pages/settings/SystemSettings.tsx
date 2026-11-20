@@ -925,7 +925,7 @@ function SystemSettingsContent({ canManageSystem, canManageSnapshots }: { canMan
 function NoChatModelsNotice() {
   return (
     <div className="mt-6 rounded-lg border px-4 py-3 text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-      No enabled chat gateway models are available. Add or enable a chat model under Settings → Gateway first.
+      No enabled chat gateway models are available. Add or enable a chat model under Gateway first.
     </div>
   );
 }

@@ -38,7 +38,11 @@ public final class SpaRoutes {
         "/settings", "/settings/users", "/settings/api-keys", "/settings/api-users", "/settings/gateway", "/settings/system",
         "/settings/cost-alerts", "/settings/tasks", "/settings/sandbox", "/settings/agent-quality",
         "/settings/skill-quality", "/settings/quality",
-        "/settings/quality/agent/new", "/settings/quality/agent/:ruleId", "/settings/quality/skill/:ruleKey"
+        "/settings/quality/agent/new", "/settings/quality/agent/:ruleId", "/settings/quality/skill/:ruleKey",
+        "/registry", "/gateway",
+        "/quality", "/quality/agent/new", "/quality/agent/:ruleId", "/quality/skill/:ruleId",
+        "/quality/agent-quality", "/quality/skill-quality",
+        "/admin", "/admin/dashboard", "/admin/users", "/admin/tasks", "/admin/system", "/admin/sandbox", "/admin/cost-alerts"
     );
 
     /**

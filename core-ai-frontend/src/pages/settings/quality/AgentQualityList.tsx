@@ -61,7 +61,7 @@ export default function AgentQualityList() {
           <button onClick={load} disabled={loading} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50" style={{ borderColor: 'var(--color-border)' }}>
             <RefreshCw size={14} /> Refresh
           </button>
-          <button onClick={() => navigate('/settings/quality/agent/new')} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
+          <button onClick={() => navigate('/quality/agent/new')} className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm cursor-pointer" style={{ background: 'var(--color-primary)', color: 'white' }}>
             <Plus size={14} /> New decision rule
           </button>
         </div>
@@ -86,7 +86,7 @@ export default function AgentQualityList() {
             ) : pageRules.length === 0 ? (
               <tr><td colSpan={7} className="px-3 py-8 text-center" style={{ color: 'var(--color-text-secondary)' }}>No quality rules</td></tr>
             ) : pageRules.map(rule => (
-              <tr key={rule.id} onClick={() => navigate(`/settings/quality/agent/${encodeURIComponent(rule.id)}`)}
+              <tr key={rule.id} onClick={() => navigate(`/quality/agent/${encodeURIComponent(rule.id)}`)}
                 className="border-t cursor-pointer" style={{ borderColor: 'var(--color-border)' }}>
                 <td className="px-3 py-3">
                   <div className="font-mono text-xs">{rule.key}</div>

@@ -54,3 +54,26 @@ describe('Layout desktop download entry', () => {
     expect(screen.getByRole('link', { name: 'Download core-ai-desktop' })).toBeTruthy();
   });
 });
+
+describe('Layout navigation', () => {
+  it('keeps the top level short and moves registries and admin out of it', () => {
+    renderLayout();
+
+    for (const label of ['For You', 'Chat', 'Projects', 'Observation', 'Registry', 'Experiment', 'Gateway']) {
+      expect(screen.getByRole('link', { name: label })).toBeTruthy();
+    }
+    for (const label of ['Agents', 'Workflows', 'System Prompts', 'Triggers', 'Tools', 'Skills', 'Plugins', 'Datasets']) {
+      expect(screen.queryByRole('link', { name: label })).toBeNull();
+    }
+    expect(screen.getByRole('link', { name: 'Registry' }).getAttribute('href')).toBe('/registry');
+    expect(screen.getByRole('link', { name: 'Gateway' }).getAttribute('href')).toBe('/gateway');
+  });
+
+  it('keeps personal Security under Settings and adds Admin below it', () => {
+    renderLayout();
+
+    expect(screen.getByText('Settings')).toBeTruthy();
+    expect(screen.getByText('Admin')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Documentation' })).toBeNull();
+  });
+});

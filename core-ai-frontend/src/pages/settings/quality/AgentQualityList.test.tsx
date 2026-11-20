@@ -7,10 +7,10 @@ import AgentQualityList from './AgentQualityList';
 
 function renderList() {
   render(
-    <MemoryRouter initialEntries={['/settings/quality']}>
+    <MemoryRouter initialEntries={['/quality']}>
       <Routes>
-        <Route path="/settings/quality" element={<AgentQualityList />} />
-        <Route path="/settings/quality/agent/:ruleId" element={<div>agent detail</div>} />
+        <Route path="/quality" element={<AgentQualityList />} />
+        <Route path="/quality/agent/:ruleId" element={<div>agent detail</div>} />
       </Routes>
     </MemoryRouter>,
   );

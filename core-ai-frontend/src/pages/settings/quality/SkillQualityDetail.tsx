@@ -6,7 +6,7 @@ export default function SkillQualityDetail() {
   return (
     <QualityRuleEditor
       api={skillQualityApi}
-      basePath="/settings/quality/skill"
+      basePath="/quality/skill"
       subject="skill"
       defaultInput="DESCRIPTION"
       createTitle="New decision rule"

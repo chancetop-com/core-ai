@@ -6,7 +6,7 @@ export default function AgentQualityDetail() {
   return (
     <QualityRuleEditor
       api={qualityApi}
-      basePath="/settings/quality/agent"
+      basePath="/quality/agent"
       subject="agent"
       defaultInput="SYSTEM_PROMPT"
       createTitle="New decision rule"

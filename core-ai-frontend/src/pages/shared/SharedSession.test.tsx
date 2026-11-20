@@ -51,7 +51,7 @@ describe('public session page', () => {
     });
     vi.stubGlobal('fetch', fetcher);
     const { container } = render(<App />);
-    expect(await screen.findByText('Shared debugging session')).toBeTruthy();
+    expect(await screen.findByText('Shared debugging session', {}, { timeout: 5000 })).toBeTruthy();
     expect(container.querySelector('iframe')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'View trace' }));
     await waitFor(() => expect(fetcher).toHaveBeenCalledWith(

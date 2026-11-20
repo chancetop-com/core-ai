@@ -9,12 +9,12 @@ vi.mock('./quality/AgentQualityList', () => ({ default: () => <div>agent rules</
 vi.mock('./quality/SkillQualityList', () => ({ default: () => <div>skill rules</div> }));
 vi.mock('./quality/QualityExemptionsPage', () => ({ default: () => <div>exemption list</div> }));
 
-function renderQuality(user: AuthUser, entry = '/settings/quality') {
+function renderQuality(user: AuthUser, entry = '/quality') {
   render(
     <AuthContext.Provider value={{ user, login: vi.fn(), logout: vi.fn() }}>
       <MemoryRouter initialEntries={[entry]}>
         <Routes>
-          <Route path="/settings/quality" element={<Quality />} />
+          <Route path="/quality" element={<Quality />} />
         </Routes>
       </MemoryRouter>
     </AuthContext.Provider>,
@@ -40,7 +40,7 @@ describe('Quality page tabs', () => {
   it('hides the skill and exemptions tabs from a non-admin and falls back to agent rules', () => {
     renderQuality(
       { apiKey: 'k', userId: 'qa-1', name: 'QA', role: 'user', permissions: ['agent.quality.manage'] },
-      '/settings/quality?tab=skill',
+      '/quality?tab=skill',
     );
 
     expect(screen.queryByRole('button', { name: /skill quality/i })).toBeNull();

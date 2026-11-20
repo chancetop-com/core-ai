@@ -89,7 +89,7 @@ export default function RuntimePanel() {
             While enforcement is off the guards only count and log what they would refuse — turn it on once the
             dashboard shows real headroom.
           </p>
-          <Link to="/settings" className="inline-flex items-center gap-1 text-xs mt-2" style={{ color: 'var(--color-primary)' }}>
+          <Link to="/admin/dashboard" className="inline-flex items-center gap-1 text-xs mt-2" style={{ color: 'var(--color-primary)' }}>
             <ExternalLink size={12} /> Runtime watermarks are on the Dashboard
           </Link>
         </div>

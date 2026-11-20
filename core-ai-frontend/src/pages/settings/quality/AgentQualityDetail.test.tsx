@@ -31,10 +31,10 @@ function mockLoad(enforcement = 'BLOCK') {
 
 function renderDetail() {
   render(
-    <MemoryRouter initialEntries={[`/settings/quality/agent/${encodeURIComponent('qrule:1')}`]}>
+    <MemoryRouter initialEntries={[`/quality/agent/${encodeURIComponent('qrule:1')}`]}>
       <Routes>
-        <Route path="/settings/quality/agent/:ruleId" element={<AgentQualityDetail />} />
-        <Route path="/settings/quality" element={<div>quality list</div>} />
+        <Route path="/quality/agent/:ruleId" element={<AgentQualityDetail />} />
+        <Route path="/quality" element={<div>quality list</div>} />
       </Routes>
     </MemoryRouter>,
   );

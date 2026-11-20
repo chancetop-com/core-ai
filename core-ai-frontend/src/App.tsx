@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, useParams } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useLocation } from 'react-router-dom';
 import { lazy, Suspense, useEffect, useState, useCallback } from 'react';
 import Layout from './components/Layout';
 import ErrorBoundary from './components/ErrorBoundary';
@@ -36,7 +36,6 @@ const Register = lazy(() => import('./pages/login/Register'));
 const Authorize = lazy(() => import('./pages/login/Authorize'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement'));
 const SettingsPage = lazy(() => import('./pages/settings/Settings'));
-const ApiKeysPage = lazy(() => import('./pages/settings/ApiKeys'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
 const QualityPage = lazy(() => import('./pages/settings/Quality'));
@@ -79,6 +78,10 @@ const ReplayWorkbench = lazy(() => import('./pages/experiments/ReplayWorkbench')
 const AgentComparison = lazy(() => import('./pages/experiments/AgentComparison'));
 const AgentComparisonDetail = lazy(() => import('./pages/experiments/AgentComparisonDetail'));
 const AgentVersionEditor = lazy(() => import('./pages/experiments/AgentVersionEditor'));
+const RegistryLayout = lazy(() => import('./pages/registry/RegistryLayout'));
+const RegistryHome = lazy(() => import('./pages/registry/RegistryLayout').then(module => ({ default: module.RegistryHome })));
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
+const AdminHome = lazy(() => import('./pages/admin/AdminLayout').then(module => ({ default: module.AdminHome })));
 
 function PageFallback() {
   return (
@@ -91,6 +94,18 @@ function PageFallback() {
 function LegacyReportDetailRedirect() {
   const { id } = useParams<{ id: string }>();
   return <Navigate to={id ? `/datasets/reports/${encodeURIComponent(id)}` : '/datasets/reports'} replace />;
+}
+
+/** Keeps ?tab=... on the legacy settings URLs so old bookmarks still open the right section. */
+function RedirectKeepSearch({ to }: { to: string }) {
+  const { search } = useLocation();
+  return <Navigate to={`${to}${search}`} replace />;
+}
+
+/** Maps any /settings/quality... deep link onto its new /quality... path. */
+function LegacyQualityRedirect() {
+  const { pathname, search } = useLocation();
+  return <Navigate to={`${pathname.replace('/settings/quality', '/quality')}${search}`} replace />;
 }
 
 export default function App() {
@@ -204,19 +219,62 @@ function AuthenticatedApp() {
                     <Route path="/for-you" element={<RequirePermission permission="dashboard.view"><ForYou /></RequirePermission>} />
                     <Route path="/for-you/artifacts" element={<RequirePermission permission="dashboard.view"><ArtifactList /></RequirePermission>} />
                     {caps.chat && <Route path="/chat" element={<RequirePermission permission="chat.use"><Chat /></RequirePermission>} />}
+                    <Route path="/projects" element={<RequirePermission permission="project.view"><ProjectList /></RequirePermission>} />
+                    <Route path="/projects/:id/subjects/:subjectId" element={<RequirePermission permission="project.view"><SubjectDetail /></RequirePermission>} />
+                    <Route path="/projects/:id/playbook" element={<RequirePermission permission="project.view"><PlaybookPage /></RequirePermission>} />
+                    <Route path="/projects/:id" element={<RequirePermission permission="project.view"><ProjectDetail /></RequirePermission>} />
+
                     {caps.traces && <Route path="/traces" element={<RequirePermission permission="trace.view"><TraceList /></RequirePermission>} />}
                     {caps.traces && <Route path="/traces/:id" element={<RequirePermission permission="trace.view"><TraceDetail /></RequirePermission>} />}
                     {caps.traces && <Route path="/generations" element={<RequirePermission permission="trace.view"><Generations /></RequirePermission>} />}
                     {caps.traces && <Route path="/calls" element={<RequirePermission permission="trace.view"><HubCalls /></RequirePermission>} />}
                     {caps.traces && <Route path="/observability" element={<Navigate to="/traces" replace />} />}
-                    {/* Sessions page removed - session list now in Chat sidebar */}
-                    {caps.prompts && <Route path="/prompts" element={<RequirePermission permission="prompt.view"><PromptList /></RequirePermission>} />}
-                    {caps.prompts && <Route path="/prompts/:id" element={<RequirePermission permission="prompt.view"><PromptEditor /></RequirePermission>} />}
-                    <Route path="/agents" element={<RequirePermission permission="agent.view"><AgentList /></RequirePermission>} />
-                    <Route path="/agents/:id" element={<RequirePermission permission="agent.view"><AgentEditor /></RequirePermission>} />
-                    <Route path="/agents/:id/quality-history" element={<RequirePermission permission="agent.view"><AgentQualityHistoryPage /></RequirePermission>} />
-                    <Route path="/agents/:id/memories" element={<RequirePermission permission="agent.view"><AgentMemory /></RequirePermission>} />
-                    <Route path="/runs/:id" element={<RequirePermission permission="agent.view"><RunDetail /></RequirePermission>} />
+
+                    <Route element={<RegistryLayout />}>
+                      <Route path="/registry" element={<RegistryHome />} />
+                      <Route path="/agents" element={<RequirePermission permission="agent.view"><AgentList /></RequirePermission>} />
+                      <Route path="/agents/:id" element={<RequirePermission permission="agent.view"><AgentEditor /></RequirePermission>} />
+                      <Route path="/agents/:id/quality-history" element={<RequirePermission permission="agent.view"><AgentQualityHistoryPage /></RequirePermission>} />
+                      <Route path="/agents/:id/memories" element={<RequirePermission permission="agent.view"><AgentMemory /></RequirePermission>} />
+                      <Route path="/runs/:id" element={<RequirePermission permission="agent.view"><RunDetail /></RequirePermission>} />
+                      <Route path="/workflows/explore" element={<RequirePermission permission="workflow.view"><WorkflowExplore /></RequirePermission>} />
+                      <Route path="/workflows" element={<RequirePermission permission="workflow.view"><WorkflowList /></RequirePermission>} />
+                      <Route path="/workflows/:id/runs" element={<RequirePermission permission="workflow.view"><WorkflowRuns /></RequirePermission>} />
+                      <Route path="/workflows/:id" element={<RequirePermission permission="workflow.view"><WorkflowEditor /></RequirePermission>} />
+                      {caps.systemPrompts && <Route path="/system-prompts" element={<RequirePermission permission="prompt.view"><SystemPromptList /></RequirePermission>} />}
+                      {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<RequirePermission permission="prompt.view"><SystemPromptEditor /></RequirePermission>} />}
+                      <Route path="/triggers/webhook" element={<RequirePermission permission="trigger.view"><TriggersWebhook /></RequirePermission>} />
+                      <Route path="/triggers/channels" element={<RequirePermission permission="trigger.view"><Channels /></RequirePermission>} />
+                      <Route path="/triggers/openclaw" element={<RequirePermission permission="trigger.view"><OpenClaw /></RequirePermission>} />
+                      <Route path="/triggers/schedule" element={<RequirePermission permission="trigger.view"><Scheduler /></RequirePermission>} />
+                      <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
+                      {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
+                      <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
+                      <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
+                      <Route path="/tools/builtin" element={<RequirePermission permission="tool.view"><BuiltinTools /></RequirePermission>} />
+                      <Route path="/mcp" element={<RequirePermission permission="mcp.view"><Mcp /></RequirePermission>} />
+                      <Route path="/mcp/:id" element={<RequirePermission permission="mcp.view"><McpDetail /></RequirePermission>} />
+                      <Route path="/api-tools" element={<RequirePermission permission="apitool.view"><ApiTools /></RequirePermission>} />
+                      <Route path="/api-tools/:id" element={<RequirePermission permission="apitool.view"><ApiToolDetail /></RequirePermission>} />
+                      <Route path="/skills" element={<RequirePermission permission="skill.view"><SkillList /></RequirePermission>} />
+                      <Route path="/skills/marketplace/:repoId" element={<RequirePermission permission="skill.view"><MarketplaceRepoDetail /></RequirePermission>} />
+                      <Route path="/skills/:id/edit" element={<RequirePermission permission="skill.view"><SkillEditor /></RequirePermission>} />
+                      <Route path="/plugins" element={<RequirePermission permission="plugin.view"><PluginList /></RequirePermission>} />
+                      <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
+                      {caps.datasetReports && <Route path="/datasets/reports" element={<RequirePermission permission="report.view"><ReportList /></RequirePermission>} />}
+                      {caps.datasetReports && <Route path="/datasets/reports/:id" element={<RequirePermission permission="report.view"><ReportDetail /></RequirePermission>} />}
+                      <Route path="/datasets/:id" element={<RequirePermission permission="dataset.view"><DatasetEditor /></RequirePermission>} />
+                      <Route path="/datasets/:id/records" element={<RequirePermission permission="dataset.view"><DatasetRecords /></RequirePermission>} />
+                      {caps.datasetReports && <Route path="/reports" element={<Navigate to="/datasets/reports" replace />} />}
+                      {caps.datasetReports && <Route path="/reports/:id" element={<LegacyReportDetailRedirect />} />}
+                      <Route path="/quality" element={<RequirePermission permission="agent.quality.manage"><QualityPage /></RequirePermission>} />
+                      <Route path="/quality/agent/new" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
+                      <Route path="/quality/agent/:ruleId" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
+                      <Route path="/quality/skill/:ruleId" element={user?.role === 'admin' ? <SkillQualityDetailPage /> : <Navigate to="/quality" replace />} />
+                      <Route path="/quality/agent-quality" element={<Navigate to="/quality?tab=agent" replace />} />
+                      <Route path="/quality/skill-quality" element={<Navigate to="/quality?tab=skill" replace />} />
+                    </Route>
+
                     <Route path="/experiments" element={<RequirePermission permission="experiment.view"><ReplayExperimentList origin="BLANK" /></RequirePermission>} />
                     <Route path="/experiments/playground" element={<RequirePermission permission="experiment.view"><ReplayExperimentList origin="BLANK" /></RequirePermission>} />
                     <Route path="/experiments/replay" element={<RequirePermission permission="experiment.view"><ReplayExperimentList /></RequirePermission>} />
@@ -227,59 +285,39 @@ function AuthenticatedApp() {
                     <Route path="/experiments/agent-comparison" element={<RequirePermission permission="experiment.view"><AgentComparison /></RequirePermission>} />
                     <Route path="/experiments/agent-comparison/:id" element={<RequirePermission permission="experiment.view"><AgentComparisonDetail /></RequirePermission>} />
                     <Route path="/experiments/agent-comparison/versions/:versionId" element={<RequirePermission permission="experiment.view"><AgentVersionEditor /></RequirePermission>} />
-                    <Route path="/workflows/explore" element={<RequirePermission permission="workflow.view"><WorkflowExplore /></RequirePermission>} />
-                    <Route path="/workflows" element={<RequirePermission permission="workflow.view"><WorkflowList /></RequirePermission>} />
-                    <Route path="/workflows/:id/runs" element={<RequirePermission permission="workflow.view"><WorkflowRuns /></RequirePermission>} />
-                    <Route path="/workflows/:id" element={<RequirePermission permission="workflow.view"><WorkflowEditor /></RequirePermission>} />
-                    {caps.systemPrompts && <Route path="/system-prompts" element={<RequirePermission permission="prompt.view"><SystemPromptList /></RequirePermission>} />}
-                    {caps.systemPrompts && <Route path="/system-prompts/:promptId" element={<RequirePermission permission="prompt.view"><SystemPromptEditor /></RequirePermission>} />}
-                    <Route path="/triggers/webhook" element={<RequirePermission permission="trigger.view"><TriggersWebhook /></RequirePermission>} />
-                    <Route path="/triggers/channels" element={<RequirePermission permission="trigger.view"><Channels /></RequirePermission>} />
-                    <Route path="/triggers/openclaw" element={<RequirePermission permission="trigger.view"><OpenClaw /></RequirePermission>} />
-                    <Route path="/triggers/schedule" element={<RequirePermission permission="trigger.view"><Scheduler /></RequirePermission>} />
-                    <Route path="/triggers" element={<Navigate to="/triggers/webhook" replace />} />
-                    {/* Backward compat: old /scheduler redirects to /triggers/schedule */}
-                    <Route path="/scheduler" element={<Navigate to="/triggers/schedule" replace />} />
-                    <Route path="/tasks" element={<RequirePermission permission="task.view"><Tasks /></RequirePermission>} />
-                    <Route path="/mcp" element={<RequirePermission permission="mcp.view"><Mcp /></RequirePermission>} />
-                    <Route path="/mcp/:id" element={<RequirePermission permission="mcp.view"><McpDetail /></RequirePermission>} />
-                    <Route path="/tools" element={<Navigate to="/tools/builtin" replace />} />
-                    <Route path="/tools/builtin" element={<RequirePermission permission="tool.view"><BuiltinTools /></RequirePermission>} />
-                    <Route path="/api-tools" element={<RequirePermission permission="apitool.view"><ApiTools /></RequirePermission>} />
-                    <Route path="/api-tools/:id" element={<RequirePermission permission="apitool.view"><ApiToolDetail /></RequirePermission>} />
-                    <Route path="/skills" element={<RequirePermission permission="skill.view"><SkillList /></RequirePermission>} />
-                    <Route path="/skills/marketplace/:repoId" element={<RequirePermission permission="skill.view"><MarketplaceRepoDetail /></RequirePermission>} />
-                    <Route path="/skills/:id/edit" element={<RequirePermission permission="skill.view"><SkillEditor /></RequirePermission>} />
-                    <Route path="/plugins" element={<RequirePermission permission="plugin.view"><PluginList /></RequirePermission>} />
-                    <Route path="/datasets" element={<RequirePermission permission="dataset.view"><DatasetList /></RequirePermission>} />
-                    {caps.datasetReports && <Route path="/datasets/reports" element={<RequirePermission permission="report.view"><ReportList /></RequirePermission>} />}
-                    {caps.datasetReports && <Route path="/datasets/reports/:id" element={<RequirePermission permission="report.view"><ReportDetail /></RequirePermission>} />}
-                    <Route path="/datasets/:id" element={<RequirePermission permission="dataset.view"><DatasetEditor /></RequirePermission>} />
-                    <Route path="/datasets/:id/records" element={<RequirePermission permission="dataset.view"><DatasetRecords /></RequirePermission>} />
-                    {caps.datasetReports && <Route path="/reports" element={<Navigate to="/datasets/reports" replace />} />}
-                    {caps.datasetReports && <Route path="/reports/:id" element={<LegacyReportDetailRedirect />} />}
-                    <Route path="/projects" element={<RequirePermission permission="project.view"><ProjectList /></RequirePermission>} />
-                    <Route path="/projects/:id/subjects/:subjectId" element={<RequirePermission permission="project.view"><SubjectDetail /></RequirePermission>} />
-                    <Route path="/projects/:id/playbook" element={<RequirePermission permission="project.view"><PlaybookPage /></RequirePermission>} />
-                    <Route path="/projects/:id" element={<RequirePermission permission="project.view"><ProjectDetail /></RequirePermission>} />
-                    <Route path="/settings" element={<SettingsPage />}>
-                      <Route path="api-keys" element={<ApiKeysPage />} />
-                      <Route path="gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />
-                      <Route path="system" element={canManageSystem || canManageSnapshots ? <SystemSettingsPage /> : <Navigate to="/for-you" replace />} />
-                      <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><Navigate to="/settings/system?tab=sandbox" replace /></RequirePermission>} />
-                      <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
-                      <Route path="quality" element={<RequirePermission permission="agent.quality.manage"><QualityPage /></RequirePermission>} />
-                      <Route path="quality/agent/new" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
-                      <Route path="quality/agent/:ruleId" element={<RequirePermission permission="agent.quality.manage"><AgentQualityDetailPage /></RequirePermission>} />
-                      <Route path="quality/skill/:ruleId" element={user?.role === 'admin' ? <SkillQualityDetailPage /> : <Navigate to="/settings/quality" replace />} />
-                      <Route path="agent-quality" element={<Navigate to="/settings/quality?tab=agent" replace />} />
-                      <Route path="skill-quality" element={<Navigate to="/settings/quality?tab=skill" replace />} />
-                      <Route path="api-users" element={<RequirePermission permission="user.manage"><Navigate to="/settings/users" replace /></RequirePermission>} />
-                      {user?.role === 'admin' && <Route index element={<Dashboard />} />}
+
+                    <Route path="/gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />
+
+                    {/* Settings is personal security only; legacy URLs redirect to their new homes. */}
+                    <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/settings/api-keys" element={<Navigate to="/settings" replace />} />
+                    <Route path="/settings/users" element={<Navigate to="/admin/users" replace />} />
+                    <Route path="/settings/api-users" element={<Navigate to="/admin/users" replace />} />
+                    <Route path="/settings/tasks" element={<Navigate to="/admin/tasks" replace />} />
+                    <Route path="/settings/cost-alerts" element={<Navigate to="/admin/cost-alerts" replace />} />
+                    <Route path="/settings/gateway" element={<Navigate to="/gateway" replace />} />
+                    <Route path="/settings/system" element={<RedirectKeepSearch to="/admin/system" />} />
+                    <Route path="/settings/sandbox" element={<Navigate to="/admin/system?tab=sandbox" replace />} />
+                    <Route path="/settings/quality" element={<LegacyQualityRedirect />} />
+                    <Route path="/settings/quality/agent/new" element={<Navigate to="/quality/agent/new" replace />} />
+                    <Route path="/settings/quality/agent/:ruleId" element={<LegacyQualityRedirect />} />
+                    <Route path="/settings/quality/skill/:ruleId" element={<LegacyQualityRedirect />} />
+                    <Route path="/settings/agent-quality" element={<Navigate to="/quality?tab=agent" replace />} />
+                    <Route path="/settings/skill-quality" element={<Navigate to="/quality?tab=skill" replace />} />
+
+                    <Route path="/admin" element={<AdminLayout />}>
+                      <Route index element={<AdminHome />} />
+                      <Route path="dashboard" element={user?.role === 'admin' ? <Dashboard /> : <Navigate to="/for-you" replace />} />
                       <Route path="users" element={<RequirePermission permission="user.manage"><UserManagement /></RequirePermission>} />
                       <Route path="tasks" element={<RequirePermission permission="task.view"><Tasks /></RequirePermission>} />
-                      {user?.role !== 'admin' && <Route index element={<Navigate to="/settings/api-keys" replace />} />}
+                      <Route path="system" element={canManageSystem || canManageSnapshots ? <SystemSettingsPage /> : <Navigate to="/for-you" replace />} />
+                      <Route path="sandbox" element={<RequirePermission permission="sandbox.snapshot.manage"><Navigate to="/admin/system?tab=sandbox" replace /></RequirePermission>} />
+                      <Route path="cost-alerts" element={<RequirePermission permission="costalert.manage"><CostAlerts /></RequirePermission>} />
                     </Route>
+                    <Route path="/tasks" element={<Navigate to="/admin/tasks" replace />} />
+
+                    {caps.prompts && <Route path="/prompts" element={<RequirePermission permission="prompt.view"><PromptList /></RequirePermission>} />}
+                    {caps.prompts && <Route path="/prompts/:id" element={<RequirePermission permission="prompt.view"><PromptEditor /></RequirePermission>} />}
                     <Route path="/notifications" element={<RequirePermission permission="notification.view"><NotificationsPage /></RequirePermission>} />
                     <Route path="*" element={<Navigate to={defaultPath} replace />} />
                   </Route>

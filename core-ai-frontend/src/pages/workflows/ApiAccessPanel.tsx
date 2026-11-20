@@ -51,7 +51,7 @@ export default function ApiAccessPanel({ workflowId, status, nodes, onClose }: P
       )}
 
       <Section icon={<KeyRound size={13} />} title="Authentication" defaultOpen>
-        <div style={dim}>Every request sends your account API key (Settings → API keys) as a bearer token:</div>
+        <div style={dim}>Every request sends your account API key (Settings → Security) as a bearer token:</div>
         <Code text="Authorization: Bearer YOUR_API_KEY" />
         {vars.length > 0 && (
           <>

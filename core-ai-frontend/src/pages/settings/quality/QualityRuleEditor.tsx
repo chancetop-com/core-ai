@@ -241,7 +241,7 @@ export default function QualityRuleEditor({
     setBusy(true);
     try {
       await api.retireRule(rule.id);
-      navigate('/settings/quality');
+      navigate('/quality');
     } catch (e) {
       setMessage(e instanceof Error ? e.message : 'Retire failed');
     } finally {
@@ -257,7 +257,7 @@ export default function QualityRuleEditor({
 
   return (
     <div className="p-6 max-w-5xl">
-      <button onClick={() => navigate('/settings/quality')}
+      <button onClick={() => navigate('/quality')}
         className="flex items-center gap-1 text-sm mb-4 cursor-pointer"
         style={{ color: 'var(--color-primary)' }}>
         <ArrowLeft size={16} /> Back to Quality
