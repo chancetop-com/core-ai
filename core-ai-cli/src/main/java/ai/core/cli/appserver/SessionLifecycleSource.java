@@ -251,11 +251,14 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         }
         var ended = journal.endedForRun(taskRunId);
         if (ended != null) {
-            var node = Params.object();
-            node.put("status", "already_ended");
-            node.put("watchId", watchId);
-            node.set("lastEndedTaskRun", ended);
-            return node;
+            var endedGeneration = ended.path("ended").path("runGeneration").asLong(0);
+            if (runGeneration == 0 || endedGeneration == runGeneration) {
+                var node = Params.object();
+                node.put("status", "already_ended");
+                node.put("watchId", watchId);
+                node.set("lastEndedTaskRun", ended);
+                return node;
+            }
         }
         if (active != null) {
             throw RpcException.business("TASK_RUN_NOT_ACTIVE", "task run is not active: " + taskRunId,

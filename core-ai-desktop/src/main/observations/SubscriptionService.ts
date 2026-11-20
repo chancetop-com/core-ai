@@ -164,17 +164,19 @@ export class SubscriptionService {
     const taskRunId = String(event.task_run_id ?? '');
     const runGeneration = Number(event.run_generation ?? 0);
     if (!sourceSessionId || !taskRunId || !runGeneration) return;
-    const watch = this.options.store.findActiveWatchForEnded(workspace, sourceSessionId, taskRunId, runGeneration);
-    if (!watch) return;
+    const watches = this.options.store.findActiveWatchesForEnded(workspace, sourceSessionId, taskRunId, runGeneration);
+    if (watches.length === 0) return;
     const now = this.options.now?.() ?? Date.now();
-    if (now > watch.expiresAt + RECOVERY_WINDOW_MS) {
-      this.options.log(`watch ${watch.watchId} ignored late ended event after recovery window`);
-      return;
+    for (const watch of watches) {
+      if (now > watch.expiresAt + RECOVERY_WINDOW_MS) {
+        this.options.log(`watch ${watch.watchId} ignored late ended event after recovery window`);
+        continue;
+      }
+      const body = this.render(event, watch.sourceAlias ?? watch.sourceSessionId, watch.watchId);
+      const delivery = this.options.store.matchWatch(watch.watchId, String(event.event_id ?? `${taskRunId}:${runGeneration}`), body);
+      if (!delivery) continue;
+      this.options.log(`watch ${watch.watchId} matched ${taskRunId}#${runGeneration} -> ${delivery.deliveryId}`);
     }
-    const body = this.render(event, watch.sourceAlias ?? watch.sourceSessionId, watch.watchId);
-    const delivery = this.options.store.matchWatch(watch.watchId, String(event.event_id ?? `${taskRunId}:${runGeneration}`), body);
-    if (!delivery) return;
-    this.options.log(`watch ${watch.watchId} matched ${taskRunId}#${runGeneration} -> ${delivery.deliveryId}`);
     this.schedule();
   }
 
@@ -285,7 +287,7 @@ export class SubscriptionService {
       case 'returned':
         return `你关注的${name}这次任务运行已正常收尾。\n必要后台工作已结束，按运行策略所需的结果处理已完成。${duration}\n这不是业务质量验收结论。\n任务运行：${taskRunId}。关注编号：${watchId}。`;
       case 'failed':
-        return `你关注的${name}这次任务运行已失败。\n原因类别：${String(ended.reason ?? '运行错误')}。\n任务运行：${taskRunId}。关注编号：${watchId}。需要详情可以继续询问。`;
+        return `你关注的${name}这次任务运行已失败。\n原因类别：运行失败，详情可在获授权后查询。\n任务运行：${taskRunId}。关注编号：${watchId}。`;
       case 'cancelled':
         return `你关注的${name}这次任务运行已取消。\n本次运行已逻辑终止，外部进程停止尚未确认。\n任务运行：${taskRunId}。关注编号：${watchId}。`;
       case 'limited':

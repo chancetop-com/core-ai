@@ -124,7 +124,7 @@ test('an already-ended run is delivered immediately and reports its real outcome
   assert.equal(result.status, 'already_ended');
   await waitFor(() => sent.length === 1);
   assert.match(sent[0].text, /已失败/);
-  assert.match(sent[0].text, /boom/);
+  assert.doesNotMatch(sent[0].text, /boom/);
 });
 
 test('startup reconciliation turns an ended run into a delivery after a host restart', async (t) => {

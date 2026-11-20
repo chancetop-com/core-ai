@@ -43,6 +43,8 @@ final class SessionRunApi {
         var disposition = session.inProcess().sendTrackedMessage(parsed.text(), null, attachments, turnId);
         if (disposition == InProcessAgentSession.SendDisposition.QUEUED) {
             taskRuns.requestQueued();
+        } else if (disposition == InProcessAgentSession.SendDisposition.STEERED && opened) {
+            taskRuns.interrupt("steered_into_existing_execution");
         } else if (disposition == InProcessAgentSession.SendDisposition.REJECTED && opened) {
             taskRuns.admissionFailed("session_queue_full");
         }

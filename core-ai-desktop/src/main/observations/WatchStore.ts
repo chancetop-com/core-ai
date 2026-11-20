@@ -159,14 +159,14 @@ export class WatchStore {
     return row ? toWatch(row) : null;
   }
 
-  findActiveWatchForEnded(sourceWorkspace: string, sourceSessionId: string, taskRunId: string, runGeneration: number): WatchRecord | null {
-    const row = this.db.prepare(`
+  findActiveWatchesForEnded(sourceWorkspace: string, sourceSessionId: string, taskRunId: string, runGeneration: number): WatchRecord[] {
+    const rows = this.db.prepare(`
       SELECT w.*, NULL AS delivery_state FROM watches w
       WHERE w.state = 'active' AND w.source_workspace = ? AND w.source_session_id = ?
         AND w.task_run_id = ? AND w.run_generation = ?
-      ORDER BY w.created_at DESC LIMIT 1
-    `).get(sourceWorkspace, sourceSessionId, taskRunId, runGeneration) as Row | undefined;
-    return row ? toWatch(row) : null;
+      ORDER BY w.created_at ASC
+    `).all(sourceWorkspace, sourceSessionId, taskRunId, runGeneration) as Row[];
+    return rows.map(toWatch);
   }
 
   findWatchByRun(ownerSessionId: string, sourceSessionId: string, taskRunId: string, runGeneration: number, scope: string): WatchRecord | null {
