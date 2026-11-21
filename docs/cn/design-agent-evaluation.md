@@ -831,7 +831,7 @@ Compare 先显示条件差异，再显示 Δ：质量、覆盖率、回归 case�
 | P4 产品闭环 | Experiment 管理页、dataset / grader 向导、baseline / compare / exports | **部分实施**：列表 / 详情 / run report、baseline、paired compare；无 export / A/A 快捷操作 / bridge 向导 |
 | P5 dev pilot | 小规模受控真实 Agent、代表性 task bank、容量 / cost / failure 演练 | 未开始；未执行真实 Agent 评估 |
 
-**当前交付状态：P1–P2 后端子集与最小 P4 页面已实现并通过单元 / 契约 / PG store 测试；未部署，未执行真实 Agent 评估。** 源码实现与验证记录见附录 D。Python 脚本、模型评分、ISOLATED_SANDBOX、导出、真实配额 / 成本和容量压测仍未交付，不能宣称完整功能。
+**当前交付状态：P1–P2 后端子集与最小 P4 页面已实现，已在 dev 2.0.332 完成真实 Agent E2E（导入、评分、报告、baseline、compare、cancel）；UAT / prod 未部署。** 源码实现与验证记录见附录 D。Python 脚本、模型评分、ISOLATED_SANDBOX、导出、真实配额 / 成本和容量压测仍未交付，不能宣称完整功能。
 
 首版完整目标包含 Python 脚本；如果隔离后端暂未满足条件，应把对应 profile 明确标“不可用 / 待完成”，不能删掉安全要求然后宣称脚本功能交付。后台 recovery、raw retention 清理和 budget enforcement 也是产品完整性的必要项，不仅记录一个字段。
 
@@ -1029,6 +1029,7 @@ core-ng 的 DTO / Mongo entity 类型约束与 binding / collection 规范同时
 | SPA 路由 | `./gradlew :core-ai-server:test --tests "ai.core.server.web.SpaRoutesTest"` | 通过 |
 | Migration 全链 | 新建 `core_ai_eval_migrate` 库后 `:core-ai-server-db-migration:flywayMigrate -Penv=evaltest` | 通过；V48 创建 12 张 `eval_*` 表 |
 | 静态检查 | `:core-ai-server:checkstyleMain/pmdMain/spotbugsMain` 与 `checkstyleTest/pmdTest/spotbugsTest` | 通过 |
+| Dev E2E | dev `dev-ai`，镜像 2.0.332，UI 全流程 | 通过；报告见 `docs/validation/2026-11-21-dev-agent-evaluation.md` |
 
 未执行：完整 `ServerApp` 启动 / 部署、真实 Agent 调用、真实模型评分、Python 脚本、UI E2E、容量 / 成本压测、dev / UAT / prod 环境验证。
 
@@ -1043,5 +1044,21 @@ core-ng 的 DTO / Mongo entity 类型约束与 binding / collection 规范同时
 - Evaluation 目前只有 owner + 全局 `evaluation.manage`（admin）可见性，没有 collaborator ACL；API 用户被显式拒绝。
 - 没有 AI E2E / 浏览器验收；前端只通过 TypeScript + Vite build。
 - 完整 server 测试套件当前有 3 个既有失败（`WorkflowTestModule` 未绑定 `SkillPublishService`），与本功能无直接关系，本轮未修复。
+
+### D.4 Dev E2E（2026-11-21，镜像 2.0.332）
+
+已在 `dev-ai` 使用真实 dev Agent 完成 UI 全流程，详细证据见 `docs/validation/2026-11-21-dev-agent-evaluation.md`：
+
+- 4 条算术 case：导入 v1 → EXACT suite v1 → spec v1（R=1）→ run 1（有缺陷候选，0/4）→ baseline → run 2（同缺陷，0/4）→ 修复 model 后 run 3（4/4）→ compare（EXPLORATORY，Δ=100%，CI [100%,100%]）。
+- cancel：spec v2（R=10、并发 1）启动后取消，最终 `CANCELLED`，`1 success + 0 failure + 39 unmeasured`，分母保留。
+- 首轮真实运行验证了 target failure 与 grader `NOT_RUN_TARGET_FAILED` 的区隔，以及全失败 run 仍可作为 0% baseline。
+
+Dev E2E 发现并修复：
+
+1. `2.0.330` 启动失败：evaluation 的 `ListRunsRequest` / `ListRunsResponse` / `ListDatasetsResponse` 与现有 WebService bean 简单类名重复；重命名并在契约测试中与 run / dataset 接口共享 `BeanClassValidator`。
+2. `2.0.331` 取消被计为 FAILURE：`AgentRun` 以 `FAILED + CancellationException` 结束；`2.0.332` 将其映射为 `CANCELLED`，trial 保持 `UNMEASURED`。
+3. 测试 Agent 使用 `gpt-5-mini` 时 provider 默认 temperature 0.7 被模型拒绝；切换 `deepseek-flash` 后成功。该问题属于测试 Agent 配置，不是 eval 分类错误。
+
+UAT / prod 未部署；Python / model grader、ISOLATED_SANDBOX、artifact / trace、export、A/A / bridge 仍未覆盖。
 
 后续迭代必须把性能、隔离、真实模型评分、统计数据有效性和部署证据按日期继续补入本附录，并同步 §10.3。
