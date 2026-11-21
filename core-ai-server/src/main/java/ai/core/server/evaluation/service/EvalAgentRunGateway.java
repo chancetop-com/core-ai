@@ -75,7 +75,7 @@ public class EvalAgentRunGateway {
             || status == RunStatus.CANCELLED || status == RunStatus.REJECTED;
     }
 
-    private Outcome toOutcome(AgentRun run) {
+    Outcome toOutcome(AgentRun run) {
         var usage = new EvalBodies.TrialUsage();
         if (run.tokenUsage != null) {
             usage.inputTokens = toInt(run.tokenUsage.input);
@@ -97,6 +97,9 @@ public class EvalAgentRunGateway {
         }
         if (run.status == RunStatus.REJECTED) {
             return new Outcome(EvalEnums.ExecutionResult.PLATFORM_ERROR, null, usageJson, error);
+        }
+        if (error != null && error.contains("CancellationException")) {
+            return new Outcome(EvalEnums.ExecutionResult.CANCELLED, null, usageJson, error);
         }
         return new Outcome(EvalEnums.ExecutionResult.AGENT_FAILED, null, usageJson, error);
     }
