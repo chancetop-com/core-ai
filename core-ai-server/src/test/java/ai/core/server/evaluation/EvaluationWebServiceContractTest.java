@@ -1,5 +1,7 @@
 package ai.core.server.evaluation;
 
+import ai.core.api.server.AgentRunWebService;
+import ai.core.api.server.DatasetWebService;
 import ai.core.api.server.evaluation.EvaluationWebService;
 import ai.core.server.web.EvaluationWebServiceImpl;
 import core.framework.internal.bean.BeanClassValidator;
@@ -16,7 +18,10 @@ class EvaluationWebServiceContractTest {
     @Test
     void interfaceAndImplementationPassCoreNgValidation() {
         assertDoesNotThrow(() -> {
-            new WebServiceInterfaceValidator(EvaluationWebService.class, new BeanClassValidator()).validate();
+            var beanValidator = new BeanClassValidator();
+            new WebServiceInterfaceValidator(AgentRunWebService.class, beanValidator).validate();
+            new WebServiceInterfaceValidator(DatasetWebService.class, beanValidator).validate();
+            new WebServiceInterfaceValidator(EvaluationWebService.class, beanValidator).validate();
             new WebServiceImplValidator<>(EvaluationWebService.class, new EvaluationWebServiceImpl()).validate();
         });
     }

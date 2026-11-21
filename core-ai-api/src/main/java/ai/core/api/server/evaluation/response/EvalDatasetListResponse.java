@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * @author stephen
  */
-public class ListDatasetsResponse {
+public class EvalDatasetListResponse {
     @Property(name = "datasets")
     public List<DatasetRevisionView> datasets;
 }

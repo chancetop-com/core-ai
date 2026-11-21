@@ -9,7 +9,7 @@ import ai.core.api.server.evaluation.request.GraderTestRequest;
 import ai.core.api.server.evaluation.request.ImportDatasetRequest;
 import ai.core.api.server.evaluation.request.ListCasesRequest;
 import ai.core.api.server.evaluation.request.ListEvaluationsRequest;
-import ai.core.api.server.evaluation.request.ListRunsRequest;
+import ai.core.api.server.evaluation.request.EvalRunListRequest;
 import ai.core.api.server.evaluation.request.ListTrialsRequest;
 import ai.core.api.server.evaluation.request.SetBaselineRequest;
 import ai.core.api.server.evaluation.request.StartRunRequest;
@@ -21,10 +21,10 @@ import ai.core.api.server.evaluation.response.EvaluationView;
 import ai.core.api.server.evaluation.response.GraderSuiteView;
 import ai.core.api.server.evaluation.response.GraderTestView;
 import ai.core.api.server.evaluation.response.ListCasesResponse;
-import ai.core.api.server.evaluation.response.ListDatasetsResponse;
+import ai.core.api.server.evaluation.response.EvalDatasetListResponse;
 import ai.core.api.server.evaluation.response.ListEvaluationsResponse;
 import ai.core.api.server.evaluation.response.ListGraderSuitesResponse;
-import ai.core.api.server.evaluation.response.ListRunsResponse;
+import ai.core.api.server.evaluation.response.EvalRunListResponse;
 import ai.core.api.server.evaluation.response.ListSpecsResponse;
 import ai.core.api.server.evaluation.response.ListTrialsResponse;
 import ai.core.api.server.evaluation.response.RunReportView;
@@ -103,8 +103,8 @@ public class EvaluationWebServiceImpl implements EvaluationWebService {
 
     @Override
     @PermissionsRequired(PermissionCodes.EVALUATION_VIEW)
-    public ListDatasetsResponse listDatasets(String id) {
-        var response = new ListDatasetsResponse();
+    public EvalDatasetListResponse listDatasets(String id) {
+        var response = new EvalDatasetListResponse();
         response.datasets = new ArrayList<>(16);
         for (var dataset : evaluationService.listDatasets(id, actor())) response.datasets.add(EvaluationViews.dataset(dataset));
         return response;
@@ -177,11 +177,11 @@ public class EvaluationWebServiceImpl implements EvaluationWebService {
 
     @Override
     @PermissionsRequired(PermissionCodes.EVALUATION_VIEW)
-    public ListRunsResponse listRuns(String id, ListRunsRequest request) {
+    public EvalRunListResponse listRuns(String id, EvalRunListRequest request) {
         var actorId = actor();
         int offset = request.offset == null ? 0 : Math.max(0, request.offset);
         int limit = request.limit == null ? 20 : Math.clamp(request.limit, 1, 200);
-        var response = new ListRunsResponse();
+        var response = new EvalRunListResponse();
         response.runs = new ArrayList<>(16);
         for (var run : runService.listRuns(id, actorId, offset, limit)) response.runs.add(EvaluationViews.run(run));
         response.total = runService.countRuns(id, actorId);

@@ -5,7 +5,7 @@ import core.framework.api.web.service.QueryParam;
 /**
  * @author stephen
  */
-public class ListRunsRequest {
+public class EvalRunListRequest {
     @QueryParam(name = "offset")
     public Integer offset;
 

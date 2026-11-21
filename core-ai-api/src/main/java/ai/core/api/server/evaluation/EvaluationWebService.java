@@ -8,7 +8,7 @@ import ai.core.api.server.evaluation.request.GraderTestRequest;
 import ai.core.api.server.evaluation.request.ImportDatasetRequest;
 import ai.core.api.server.evaluation.request.ListCasesRequest;
 import ai.core.api.server.evaluation.request.ListEvaluationsRequest;
-import ai.core.api.server.evaluation.request.ListRunsRequest;
+import ai.core.api.server.evaluation.request.EvalRunListRequest;
 import ai.core.api.server.evaluation.request.ListTrialsRequest;
 import ai.core.api.server.evaluation.request.SetBaselineRequest;
 import ai.core.api.server.evaluation.request.StartRunRequest;
@@ -20,10 +20,10 @@ import ai.core.api.server.evaluation.response.EvaluationView;
 import ai.core.api.server.evaluation.response.GraderSuiteView;
 import ai.core.api.server.evaluation.response.GraderTestView;
 import ai.core.api.server.evaluation.response.ListCasesResponse;
-import ai.core.api.server.evaluation.response.ListDatasetsResponse;
+import ai.core.api.server.evaluation.response.EvalDatasetListResponse;
 import ai.core.api.server.evaluation.response.ListEvaluationsResponse;
 import ai.core.api.server.evaluation.response.ListGraderSuitesResponse;
-import ai.core.api.server.evaluation.response.ListRunsResponse;
+import ai.core.api.server.evaluation.response.EvalRunListResponse;
 import ai.core.api.server.evaluation.response.ListSpecsResponse;
 import ai.core.api.server.evaluation.response.ListTrialsResponse;
 import ai.core.api.server.evaluation.response.RunReportView;
@@ -71,7 +71,7 @@ public interface EvaluationWebService {
 
     @GET
     @Path("/api/evaluations/:id/datasets")
-    ListDatasetsResponse listDatasets(@PathParam("id") String id);
+    EvalDatasetListResponse listDatasets(@PathParam("id") String id);
 
     @GET
     @Path("/api/evaluations/:id/datasets/:datasetId/cases")
@@ -106,7 +106,7 @@ public interface EvaluationWebService {
 
     @GET
     @Path("/api/evaluations/:id/runs")
-    ListRunsResponse listRuns(@PathParam("id") String id, ListRunsRequest request);
+    EvalRunListResponse listRuns(@PathParam("id") String id, EvalRunListRequest request);
 
     @GET
     @Path("/api/evaluations/:id/runs/:runId")

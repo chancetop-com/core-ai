@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * @author stephen
  */
-public class ListRunsResponse {
+public class EvalRunListResponse {
     @Property(name = "runs")
     public List<RunView> runs;
 
