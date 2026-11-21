@@ -60,14 +60,14 @@ public class PgCommandQueue {
                 "pending", retryDelaySeconds(attempts), message(error), id, podId);
     }
 
-    public void retryLater(long id, String podId, int attempts, long delaySeconds) {
-        if (attempts >= 3) {
-            database.execute("UPDATE messaging.commands SET status = ?, claimed_by = NULL, claimed_at = NULL, "
-                            + "last_error = ? WHERE id = ? AND claimed_by = ?",
-                    "failed", "unowned session is owned by another pod", id, podId);
-            return;
-        }
+    /**
+     * Requeues a command that this pod must not execute (it no longer owns the session). The target is
+     * cleared so any pod can claim it again, and the attempt counter is reset because this is not a
+     * handler failure.
+     */
+    public void retryLater(long id, String podId, long delaySeconds) {
         database.execute("UPDATE messaging.commands SET status = ?, claimed_by = NULL, claimed_at = NULL, "
+                        + "target_pod = NULL, attempts = 0, last_error = NULL, "
                         + "available_at = now() + make_interval(secs => ?) WHERE id = ? AND claimed_by = ?",
                 "pending", delaySeconds, id, podId);
     }
@@ -82,6 +82,11 @@ public class PgCommandQueue {
                 + "available_at = now() WHERE status = ? AND NOT EXISTS ("
                 + "SELECT 1 FROM messaging.pods p WHERE p.pod_id = messaging.commands.claimed_by "
                 + "AND p.heartbeat_at > now() - make_interval(secs => 30))", "pending", "processing");
+        // a pending command may still be addressed to a pod that has since disappeared: no other pod is
+        // allowed to claim it, so clear the target and let the current owner pick it up
+        database.execute("UPDATE messaging.commands c SET target_pod = NULL WHERE c.target_pod IS NOT NULL "
+                + "AND c.status = ? AND NOT EXISTS (SELECT 1 FROM messaging.pods p WHERE p.pod_id = c.target_pod "
+                + "AND p.heartbeat_at > now() - make_interval(secs => ?))", "pending", PgOwnershipStore.LIVENESS_SECONDS);
         database.execute("DELETE FROM messaging.commands WHERE status = ? AND created_at < now() - make_interval(days => ?)",
                 "failed", 1);
     }

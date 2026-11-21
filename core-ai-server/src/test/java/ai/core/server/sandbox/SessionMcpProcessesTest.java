@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -12,6 +13,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class SessionMcpProcessesTest {
     private final SessionMcpProcesses processes = new SessionMcpProcesses();
+
+    @Test
+    void hasPendingStartsTracksInFlightStarts() {
+        assertFalse(processes.hasPendingStarts("session-id"));
+
+        processes.beginStart("session-id", "server-id");
+        assertTrue(processes.hasPendingStarts("session-id"));
+
+        processes.finishStart("session-id", "server-id", true);
+        assertFalse(processes.hasPendingStarts("session-id"));
+    }
 
     @Test
     void awaitStartsReturnsImmediatelyWhenNothingIsPending() {

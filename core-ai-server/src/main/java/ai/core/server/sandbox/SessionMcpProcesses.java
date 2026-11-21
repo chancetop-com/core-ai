@@ -65,6 +65,11 @@ public class SessionMcpProcesses {
         if (perSession.isEmpty()) startingServers.remove(sessionId, perSession);
     }
 
+    public boolean hasPendingStarts(String sessionId) {
+        var perSession = startingServers.get(sessionId);
+        return perSession != null && !perSession.isEmpty();
+    }
+
     /**
      * Blocks until every in-flight sandbox MCP start for the session has settled, bounded by
      * {@code timeoutSeconds}. Never throws: a slow or failed start only leaves the tools out of this

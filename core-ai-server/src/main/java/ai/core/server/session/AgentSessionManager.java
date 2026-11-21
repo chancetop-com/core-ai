@@ -249,7 +249,7 @@ public class AgentSessionManager {
                 config, toolRegistry, context, definition.name, extraVars, definition.id,
                 sandboxOn ? List.of(new SandboxLifecycle(fileService, artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration, sandboxService.attachmentRepository())) : null,
                 memoryInject, SessionSubAgentManager.channelInject(config)));
-        agent.addLifecycle(new SessionMcpReadinessLifecycle(sandboxService, sessionId));
+        agent.addLifecycle(new SessionMcpReadinessLifecycle(sandboxService, sessionId, eventPublisher));
         return new AgentBuildResult(agent, sessionRef);
     }
 

@@ -39,14 +39,24 @@ public class EventPublisher {
         SseEventHelper.initEvent(event, sessionId);
 
         var hub = hubRegistry.get(sessionId);
-        if (hub == null && ownershipRegistry.isOwner(sessionId)) {
-            hub = hubRegistry.getOrCreate(sessionId);
+        if (ownershipRegistry.isOwnerCached(sessionId)) {
+            if (hub == null) hub = hubRegistry.getOrCreate(sessionId);
+            hub.publish(event);
+            return;
+        }
+        if (hub != null && ownershipRegistry.isOwner(sessionId)) {
+            // the short ownership cache may have gone stale while a turn is still running on this pod;
+            // do not drop a live hub just because the cached answer expired
+            hub.publish(event);
+            return;
         }
         if (hub != null) {
-            hub.publish(event);
-        } else {
-            forwardToOwner(sessionId, event);
+            // the session moved to another pod; a hub kept from the previous ownership epoch must not
+            // swallow events that only the new owner can deliver
+            LOGGER.info("dropping stale session event hub, sessionId={}", sessionId);
+            hubRegistry.remove(sessionId);
         }
+        forwardToOwner(sessionId, event);
     }
 
     private void forwardToOwner(String sessionId, SseBaseEvent event) {

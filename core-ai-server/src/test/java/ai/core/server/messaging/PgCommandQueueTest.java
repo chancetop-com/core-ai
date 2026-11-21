@@ -12,6 +12,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @EnabledIfEnvironmentVariable(named = "CORE_AI_PG_TEST_URL", matches = ".+")
@@ -101,6 +102,51 @@ class PgCommandQueueTest {
         assertFalse(queue.claim(podA, 10).isEmpty());
         queue.releaseClaimedBy(podA);
         assertEquals(1, queue.claim(podA, 10).size());
+    }
+
+    @Test
+    void retryLaterClearsTheTargetAndResetsAttempts() {
+        queue.publish(command("s-1"), podA);
+        var claimed = queue.claim(podA, 10).get(0);
+
+        queue.retryLater(claimed.id(), podA, 0);
+        sleep(100);
+
+        var row = DATABASE.selectOne("SELECT id, type, session_id, user_id, payload, request_id, target_pod, attempts "
+                + "FROM messaging.commands WHERE id = ?", PgCommandRow.class, claimed.id()).orElseThrow();
+        assertNull(row.targetPod);
+        assertEquals(0, row.attempts.intValue());
+        assertEquals(1, queue.claim(podB, 10).size(), "another pod must be able to pick up a requeued command");
+    }
+
+    @Test
+    void cleanupClearsTargetsOfDeadPodsAndKeepsLiveTargets() {
+        var deadPod = "dead-" + UUID.randomUUID();
+        var livePod = "live-" + UUID.randomUUID();
+        insertPod(deadPod, 300);
+        insertPod(livePod, 0);
+        queue.publish(command("s-dead"), deadPod);
+        queue.publish(command("s-live"), livePod);
+
+        queue.cleanup();
+
+        assertNull(targetOf("s-dead"));
+        assertEquals(livePod, targetOf("s-live"));
+        var claimed = queue.claim(podB, 10);
+        assertEquals(1, claimed.size());
+        assertEquals("s-dead", claimed.get(0).command().sessionId());
+    }
+
+    private void insertPod(String podId, long heartbeatAgeSeconds) {
+        DATABASE.execute("INSERT INTO messaging.pods (pod_id, address, started_at, heartbeat_at) "
+                        + "VALUES (?, ?, now(), now() - make_interval(secs => ?))",
+                podId, "127.0.0.1:8080", heartbeatAgeSeconds);
+    }
+
+    private String targetOf(String sessionId) {
+        return DATABASE.selectOne("SELECT id, type, session_id, user_id, payload, request_id, target_pod, attempts "
+                + "FROM messaging.commands WHERE session_id = ?", PgCommandRow.class, sessionId)
+                .map(row -> row.targetPod).orElse(null);
     }
 
     private SessionCommand command(String sessionId) {

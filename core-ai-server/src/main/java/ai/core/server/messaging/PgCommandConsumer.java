@@ -66,11 +66,20 @@ public class PgCommandConsumer {
         }
     }
 
-    private void process(PgCommandQueue.ClaimedCommand item) {
+    void process(PgCommandQueue.ClaimedCommand item) {
         var command = item.command();
-        if (item.targetPod() == null && !ownershipRegistry.claim(command.sessionId())) {
-            queue.retryLater(item.id(), podId, item.attempts(), UNOWNED_RETRY_SECONDS);
-            return;
+        if (!ownershipRegistry.isOwner(command.sessionId())) {
+            if (item.targetPod() == null && ownershipRegistry.claim(command.sessionId())) {
+                LOGGER.info("claimed unowned command locally, id={}, type={}, sessionId={}",
+                        item.id(), command.type(), command.sessionId());
+            } else {
+                // a command targeted at this pod may have been queued before ownership moved; running it
+                // here would publish its events into a pod the browser is not watching
+                LOGGER.info("command target is no longer the session owner, retrying elsewhere, id={}, type={}, sessionId={}, targetPod={}",
+                        item.id(), command.type(), command.sessionId(), item.targetPod());
+                queue.retryLater(item.id(), podId, UNOWNED_RETRY_SECONDS);
+                return;
+            }
         }
         try {
             commandHandler.handle(command);

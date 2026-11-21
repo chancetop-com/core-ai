@@ -37,12 +37,16 @@ import java.util.concurrent.TimeUnit;
 public class DirectedSessionDelivery {
     private static final Logger LOGGER = LoggerFactory.getLogger(DirectedSessionDelivery.class);
     private static final int MAX_PENDING_EVENTS = 1_000;
+    // after this many consecutive failed relay attempts, give the browser a chance to recover through
+    // its normal reconnect/history path instead of leaving it on a silent keepalive-only stream
+    private static final int MAX_RELAY_FAILURES = 12;
 
     private final SessionEventHubRegistry hubRegistry;
     private final SessionOwnershipRegistry ownershipRegistry;
     private final PodRegistry podRegistry;
     private final String internalToken;
     private final ChannelService channelService;
+    private final int maxRelayFailures;
     private final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2))
             .build();
@@ -52,11 +56,18 @@ public class DirectedSessionDelivery {
 
     public DirectedSessionDelivery(SessionEventHubRegistry hubRegistry, SessionOwnershipRegistry ownershipRegistry,
                                    PodRegistry podRegistry, String internalToken, ChannelService channelService) {
+        this(hubRegistry, ownershipRegistry, podRegistry, internalToken, channelService, MAX_RELAY_FAILURES);
+    }
+
+    DirectedSessionDelivery(SessionEventHubRegistry hubRegistry, SessionOwnershipRegistry ownershipRegistry,
+                            PodRegistry podRegistry, String internalToken, ChannelService channelService,
+                            int maxRelayFailures) {
         this.hubRegistry = hubRegistry;
         this.ownershipRegistry = ownershipRegistry;
         this.podRegistry = podRegistry;
         this.internalToken = internalToken;
         this.channelService = channelService;
+        this.maxRelayFailures = maxRelayFailures;
     }
 
     public void start() {
@@ -91,6 +102,7 @@ public class DirectedSessionDelivery {
             state.relayPending = true;
             state.pending.clear();
             state.nullOwnerCount = 0;
+            state.relayFailures = 0;
             startResolver(sessionId, state, state.generation);
         }
     }
@@ -318,6 +330,7 @@ public class DirectedSessionDelivery {
             state.relayPending = true;
             state.owner = null;
             state.pending.clear();
+            state.relayFailures = 0;
             startResolver(sessionId, state, state.generation);
         }
     }
@@ -382,6 +395,7 @@ public class DirectedSessionDelivery {
                 if (!current(sessionId, state, generation)) return;
                 state.relayActive = true;
                 state.relayPending = false;
+                state.relayFailures = 0;
                 state.pending.clear();
             }
         }
@@ -393,7 +407,20 @@ public class DirectedSessionDelivery {
 
         @Override
         public void onUnavailable(int status) {
-            LOGGER.info("session relay unavailable, sessionId={}, owner={}, status={}", sessionId, owner, status);
+            int failures;
+            synchronized (state) {
+                if (!current(sessionId, state, generation)) return;
+                failures = ++state.relayFailures;
+            }
+            if (failures >= maxRelayFailures) {
+                LOGGER.warn("session relay failed repeatedly, closing the local channel so the client can recover, "
+                                + "sessionId={}, owner={}, failures={}, status={}",
+                        sessionId, owner, failures, status);
+                closeDirected(sessionId, state);
+                return;
+            }
+            LOGGER.info("session relay unavailable, sessionId={}, owner={}, status={}, failures={}",
+                    sessionId, owner, status, failures);
             flushPending(sessionId, state, generation);
         }
     }
@@ -409,6 +436,7 @@ public class DirectedSessionDelivery {
         volatile boolean relayPending;
         volatile long generation;
         volatile SessionStatus lastStatus = SessionStatus.IDLE;
+        int relayFailures;
         int nullOwnerCount;
     }
 }
