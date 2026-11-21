@@ -255,17 +255,17 @@ Trial 执行：`PENDING -> LEASED -> PREPARING -> EXECUTING -> EXECUTION_TERMINA
 |---|---|---|---|
 | `case_id` | 必需，String | 数据集内唯一、稳定；建议业务含义 ID，不用可变行号 | 可作为诊断 ID，不发送 reference |
 | `input.text` | 必需，String | 单轮用户输入；非空，不能伪装 system / tool 消息 | 是 |
-| `input.variables` | 可选，Map<String,String> | 只能覆盖 Agent 声明的评估可输入变量；不能覆盖权限、工具或 secret | 经模板渲染后可见 |
-| `input.attachments` | 可选，List<AttachmentRef> | 相对资源路径、SHA-256、MIME、受控目标文件名；按原生 runtime 输入方式交付 | 是 |
+| `input.variables` | 可选，Map\<String,String\> | 只能覆盖 Agent 声明的评估可输入变量；不能覆盖权限、工具或 secret | 经模板渲染后可见 |
+| `input.attachments` | 可选，List\<AttachmentRef\> | 相对资源路径、SHA-256、MIME、受控目标文件名；按原生 runtime 输入方式交付 | 是 |
 | `reference.output` | 可选，String | 参考文本；精确匹配 / 语义 grader 使用；可以是合法 JSON 文本 | 否 |
-| `reference.answers` | 可选，List<String> | 有限合法答案集合；明确 normalization 规则 | 否 |
+| `reference.answers` | 可选，List\<String\> | 有限合法答案集合；明确 normalization 规则 | 否 |
 | `reference.rubric` | 可选，String | 单条任务的验收要求；不是自动证明正确的标准答案 | 否 |
-| `reference.assertions` | 可选，List<TypedAssertion> | 如文件路径、JSON 字段、数值区间、trace 事件断言；具体类型 DTO | 否；不把 oracle 文件挂给 Agent |
-| `grader_refs` | 必需，List<String> | suite 中存在的 grader ID；至少一个 required 判据，suite 统一定义 required / optional | 否 |
+| `reference.assertions` | 可选，List\<TypedAssertion\> | 如文件路径、JSON 字段、数值区间、trace 事件断言；具体类型 DTO | 否；不把 oracle 文件挂给 Agent |
+| `grader_refs` | 必需，List\<String\> | suite 中存在的 grader ID；至少一个 required 判据，suite 统一定义 required / optional | 否 |
 | `grader_parameters_json` | 可选，String | grader schema 校验后的 JSON；不可修改 grader 代码 / model route | 否 |
 | `environment.fixture_ref` | 可选，String | manifest 中公开初始文件 / 测试状态 ID；profile 必须支持 | 仅公开初始状态 |
 | `environment.clock` | 可选，ISO-8601 String | 本题运行时钟，覆盖 EvalSpec 固定 defaultEvaluationClock；不使用脚本执行机器的随机当前时间 | 按原生时间模板注入 |
-| `metadata.tags` | 可选，List<String> | 能力、难度、语言、场景等切片 | 默认否 |
+| `metadata.tags` | 可选，List\<String\> | 能力、难度、语言、场景等切片 | 默认否 |
 | `metadata.split` | 可选，Enum；缺省 `DEV` | `DEV / VALIDATION / HOLDOUT`；正式 baseline 建议 VALIDATION / HOLDOUT | 否 |
 | `metadata.weight` | 可选，Double | 默认 1，正有限数；冻结后不可根据结果调整 | 否 |
 | `metadata.source` / `note` | 可选，String | 来源、人工标注依据与注意事项；敏感信息最小化 | 否 |
