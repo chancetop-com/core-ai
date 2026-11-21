@@ -30,8 +30,8 @@ deterministic grading, report, baseline and paired comparison all worked on the 
 
 Evidence:
 
-- [success report and comparison](assets/agent-evaluation-dev-20261121/success-compare.png)
-- [cancelled run with planned denominator](assets/agent-evaluation-dev-20261121/cancel-run.png)
+- ![success report and comparison](assets/agent-evaluation-dev-20261121/success-compare.png)
+- ![cancelled run with planned denominator](assets/agent-evaluation-dev-20261121/cancel-run.png)
 
 Key DB rows:
 
