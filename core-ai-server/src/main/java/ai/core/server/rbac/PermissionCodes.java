@@ -55,6 +55,13 @@ public final class PermissionCodes {
     public static final String PROJECT_MANAGE = "project.manage";
     public static final String EXPERIMENT_VIEW = "experiment.view";
     public static final String EXPERIMENT_REPLAY = "experiment.replay";
+    // Offline Agent evaluation. The first release is a human-admin pilot: the codes are in the
+    // catalog but not granted to the default user role, so ordinary authors need an explicit grant.
+    public static final String EVALUATION_VIEW = "evaluation.view";
+    public static final String EVALUATION_MANAGE = "evaluation.manage";
+    public static final String EVALUATION_RUN = "evaluation.run";
+    public static final String EVALUATION_ORACLE_VIEW = "evaluation.oracle.view";
+    public static final String EVALUATION_EXPORT = "evaluation.export";
     // Media model comparison on the Generations page: each run is a real, billed image generation,
     // so it is not implied by trace.view (which every default `user` already holds).
     public static final String MEDIA_COMPARE = "media.compare";
@@ -91,6 +98,7 @@ public final class PermissionCodes {
             REPORT_VIEW, REPORT_MANAGE,
             PROJECT_VIEW, PROJECT_MANAGE,
             EXPERIMENT_VIEW, EXPERIMENT_REPLAY, MEDIA_COMPARE, AGENT_COMPARE, NOTIFICATION_VIEW,
+            EVALUATION_VIEW, EVALUATION_MANAGE, EVALUATION_RUN, EVALUATION_ORACLE_VIEW, EVALUATION_EXPORT,
             GATEWAY_VIEW, GATEWAY_MANAGE, SYSTEM_MANAGE, SANDBOX_SNAPSHOT_MANAGE, COSTALERT_MANAGE,
             USER_MANAGE, ANALYTICS_VIEW, RBAC_MANAGE);
 

@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Activity, Bell, Brain, ChevronRight, Cpu, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Library, LogOut, MessageCircle, Moon, PanelLeft, Play, PlugZap, RotateCcw, ShieldCheck, Star, Sun, Terminal, Settings } from 'lucide-react';
+import { Activity, Bell, Brain, ChevronRight, ClipboardCheck, Cpu, Download, Files, FlaskConical, FolderKanban, Gauge, GitCompare, Library, LogOut, MessageCircle, Moon, PanelLeft, Play, PlugZap, RotateCcw, ShieldCheck, Star, Sun, Terminal, Settings } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useCapabilities } from '../api/capabilities';
 import { useAuth } from '../api/auth';
@@ -70,9 +70,11 @@ export default function Layout() {
       '/triggers/schedule': 'Scheduler',
       '/experiments/memory': 'Agent Memory',
       '/experiments/agent-comparison': 'Agent Comparison',
+      '/experiments/evaluations': 'Evaluations',
     };
     const path = location.pathname;
     const title = titles[path]
+      || (path.startsWith('/experiments/evaluations/') ? 'Evaluation' : null)
       || (path.startsWith('/agents/') ? 'Agent Detail' : null)
       || (path.startsWith('/skills/marketplace/') ? 'Marketplace Repo' : null)
       || (path.startsWith('/skills/') ? 'Skill Detail' : null)
@@ -130,6 +132,7 @@ export default function Layout() {
       { to: '/experiments/replay', icon: RotateCcw, label: 'Replay Debug', show: true, permission: 'experiment.view' },
       { to: '/experiments/memory', icon: Brain, label: 'Agent Memory', show: true, permission: 'experiment.view' },
       { to: '/experiments/agent-comparison', icon: GitCompare, label: 'Agent Comparison', show: true, permission: 'experiment.view' },
+      { to: '/experiments/evaluations', icon: ClipboardCheck, label: 'Evaluations', show: true, permission: 'evaluation.view' },
     ]},
     { to: '/gateway', icon: PlugZap, label: 'Gateway', show: true, permission: 'gateway.manage' },
   ].filter(item => item.show && (!item.permission || hasPermission(user?.permissions, item.permission)));

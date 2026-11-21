@@ -93,6 +93,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.asynctask.PgAsyncTaskRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationLockRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationMarkerRow.class);
+        registerEvaluationViews();
     }
 
     private void registerRuntimeViews() {
@@ -136,6 +137,22 @@ public class PostgresModule extends Module {
         registerWorkflowViews();
         registerReplayViews();
         registerSpanViews();
+    }
+
+    private void registerEvaluationViews() {
+        db().view(ai.core.server.evaluation.store.PgEvaluationRow.class);
+        db().view(ai.core.server.evaluation.store.PgDatasetRevisionRow.class);
+        db().view(ai.core.server.evaluation.store.PgEvalCaseRow.class);
+        db().view(ai.core.server.evaluation.store.PgGraderSuiteRow.class);
+        db().view(ai.core.server.evaluation.store.PgSpecRow.class);
+        db().view(ai.core.server.evaluation.store.PgSnapshotRow.class);
+        db().view(ai.core.server.evaluation.store.PgRunRow.class);
+        db().view(ai.core.server.evaluation.store.PgTrialRow.class);
+        db().view(ai.core.server.evaluation.store.PgGradingRow.class);
+        db().view(ai.core.server.evaluation.store.PgAttemptRow.class);
+        db().view(ai.core.server.evaluation.store.PgBaselineRow.class);
+        db().view(ai.core.server.evaluation.store.PgEvalCountRow.class);
+        db().view(ai.core.server.evaluation.store.PgEvalNextRow.class);
     }
 
     private void registerSpanViews() {

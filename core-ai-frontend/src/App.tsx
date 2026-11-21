@@ -77,6 +77,9 @@ const ReplayWorkbench = lazy(() => import('./pages/experiments/ReplayWorkbench')
 const AgentComparison = lazy(() => import('./pages/experiments/AgentComparison'));
 const AgentComparisonDetail = lazy(() => import('./pages/experiments/AgentComparisonDetail'));
 const AgentVersionEditor = lazy(() => import('./pages/experiments/AgentVersionEditor'));
+const EvaluationList = lazy(() => import('./pages/experiments/EvaluationList'));
+const EvaluationDetail = lazy(() => import('./pages/experiments/EvaluationDetail'));
+const EvaluationRun = lazy(() => import('./pages/experiments/EvaluationRun'));
 const RegistryLayout = lazy(() => import('./pages/registry/RegistryLayout'));
 const RegistryHome = lazy(() => import('./pages/registry/RegistryLayout').then(module => ({ default: module.RegistryHome })));
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout'));
@@ -285,6 +288,9 @@ function AuthenticatedApp() {
                     <Route path="/experiments/agent-comparison" element={<RequirePermission permission="experiment.view"><AgentComparison /></RequirePermission>} />
                     <Route path="/experiments/agent-comparison/:id" element={<RequirePermission permission="experiment.view"><AgentComparisonDetail /></RequirePermission>} />
                     <Route path="/experiments/agent-comparison/versions/:versionId" element={<RequirePermission permission="experiment.view"><AgentVersionEditor /></RequirePermission>} />
+                    <Route path="/experiments/evaluations" element={<RequirePermission permission="evaluation.view"><EvaluationList /></RequirePermission>} />
+                    <Route path="/experiments/evaluations/:id" element={<RequirePermission permission="evaluation.view"><EvaluationDetail /></RequirePermission>} />
+                    <Route path="/experiments/evaluations/:id/runs/:runId" element={<RequirePermission permission="evaluation.view"><EvaluationRun /></RequirePermission>} />
 
                     <Route path="/gateway" element={<RequirePermission permission="gateway.manage"><GatewayProvidersPage /></RequirePermission>} />
 
