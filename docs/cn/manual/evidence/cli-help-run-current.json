@@ -1,0 +1,64 @@
+{
+  "source_commit": "e1afa9fab8a1c29981b6269329eca7885a578a24",
+  "runtime": "GraalVM Java 25.0.2 macOS arm64",
+  "type": "offline javac JVM; not native release",
+  "commands": [
+    {
+      "args": [
+        "--version"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "mcp",
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "mcp",
+        "call",
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "agent",
+        "run",
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "dataset",
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "report",
+        "push",
+        "--help"
+      ],
+      "exit_code": 0
+    },
+    {
+      "args": [
+        "catalog",
+        "--help"
+      ],
+      "exit_code": 0
+    }
+  ]
+}

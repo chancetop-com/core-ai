@@ -42,30 +42,14 @@ export const sidebarEn: DefaultTheme.SidebarItem[] = [
     text: 'Design & Historical Records',
     collapsed: true,
     items: [
-      { text: 'Server Architecture', link: '/en/design-server-architecture' },
-      { text: 'Client/Server', link: '/en/design-client-server-architecture' },
-      { text: 'A2A Protocol', link: '/en/design-a2a-protocol' },
-      { text: 'Agent Platform', link: '/en/design-agent-platform-architecture' },
-      { text: 'Progressive Tool Disclosure', link: '/en/design-progressive-tool-disclosure' },
-      { text: 'Native Image', link: '/en/design-native-image' }
-    ]
-  },
-  {
-    text: 'Design Phases',
-    collapsed: true,
-    items: [
-      { text: 'P0', link: '/en/DESIGN_P0' },
-      { text: 'P1', link: '/en/DESIGN_P1' },
-      { text: 'P2', link: '/en/DESIGN_P2' },
-      { text: 'P3', link: '/en/DESIGN_P3' }
+      { text: 'Server Architecture', link: '/en/design-server-architecture' }
     ]
   },
   {
     text: 'References',
     collapsed: true,
     items: [
-      { text: 'LLM Wiki', link: '/en/llm-wiki' },
-      { text: 'Skill Placement Experiment', link: '/en/experiment-skill-placement' }
+      { text: 'LLM Wiki', link: '/en/llm-wiki' }
     ]
   }
 ];

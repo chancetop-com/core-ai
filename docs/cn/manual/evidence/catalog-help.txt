@@ -1,0 +1,14 @@
+Usage: core-ai-cli catalog [-h] [--insecure] [--json] [--quiet] [--raw]
+                           [--api-key=<apiKey>] [--kind=<kind>]
+                           [--server=<server>]
+Fetch the whole hub catalog in one request (MCP tools, API operations, agents)
+      --api-key=<apiKey>   API key (overrides CORE_AI_API_KEY / auth.json)
+  -h, --help               Show help
+      --insecure           Skip TLS certificate verification (e.g. self-signed
+                             local server)
+      --json               Machine-readable single-line JSON output
+      --kind=<kind>        Only this kind: mcp | api | agent | llm_call
+      --quiet              Suppress progress and metadata output on stderr
+      --raw                Call mode: print only the tool text content to stdout
+      --server=<server>    core-ai-server base URL (overrides CORE_AI_SERVER /
+                             auth.json)

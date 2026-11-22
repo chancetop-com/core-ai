@@ -1,0 +1,29 @@
+Usage: core-ai-cli mcp call [-h] [--insecure] [--json] [--quiet] [--raw]
+                            [--api-key=<apiKey>] [--args=<argsJson>]
+                            [--args-file=<argsFile>] [--max-output=<maxOutput>]
+                            [--out-dir=<outDir>] [--server=<server>]
+                            [--timeout=<timeoutSeconds>] [--arg=<args>]...
+                            server/tool
+Execute an MCP tool on the server
+      server/tool          Qualified tool name, e.g. jira/create_issue
+      --api-key=<apiKey>   API key (overrides CORE_AI_API_KEY / auth.json)
+      --arg=<args>         Single argument key=value (repeatable, coerced by
+                             input_schema)
+      --args=<argsJson>    Arguments as a JSON object string
+      --args-file=<argsFile>
+                           Read arguments JSON from a file ('-' for stdin)
+  -h, --help               Show help
+      --insecure           Skip TLS certificate verification (e.g. self-signed
+                             local server)
+      --json               Machine-readable single-line JSON output
+      --max-output=<maxOutput>
+                           Truncate printed text after N chars (default 65536)
+      --out-dir=<outDir>   Directory for image content files (default: current
+                             dir)
+      --quiet              Suppress progress and metadata output on stderr
+      --raw                Call mode: print only the tool text content to stdout
+      --server=<server>    core-ai-server base URL (overrides CORE_AI_SERVER /
+                             auth.json)
+      --timeout=<timeoutSeconds>
+                           Server-side wait limit in seconds (default 60, max
+                             300)

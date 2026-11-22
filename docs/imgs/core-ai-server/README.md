@@ -12,14 +12,14 @@ The repository Compose file uses external volumes and enables Docker sandboxing.
 
 Create a draft, set an available model and minimal prompt, test in Chat, then publish according to permissions. Saving and publishing are separate actions. Traces help locate a failed step.
 
-![Historical Agent screen](../cn/manual/screenshots/server-agent.png)
+![Historical Agent screen](../../cn/manual/screenshots/server-agent.png)
 
-![Historical Chat screen](../cn/manual/screenshots/server-chat.png)
+![Historical Chat screen](../../cn/manual/screenshots/server-chat.png)
 
 These are real repository screenshots from July 2026. Server and models were not accessed in this documentation task; UI labels may vary by version.
 
 ## API and configuration
 
-[API navigation](/api/) · [Session REST/SSE (Chinese)](/cn/manual/#_6-使用会话-rest-与-sse) · [Configuration (Chinese)](/cn/manual/#_3-配置项与源码启动) · [Server source README](https://github.com/chancetop-com/core-ai/blob/master/core-ai-server/README.md)
+[API navigation](/en/api) · [Session REST/SSE (Chinese)](/cn/manual/#_6-使用会话-rest-与-sse) · [Configuration (Chinese)](/cn/manual/#_3-配置项与源码启动) · [Server source README](https://github.com/chancetop-com/core-ai/blob/master/core-ai-server/README.md)
 
 SSE uses PUT and `agent-session-id`. Actual availability depends on the deployed version, account, enabled models and permissions. Refer to DTOs and handlers for request contracts.
