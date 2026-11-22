@@ -831,7 +831,7 @@ Compare 先显示条件差异，再显示 Δ：质量、覆盖率、回归 case�
 | P4 产品闭环 | Experiment 管理页、dataset / grader 向导、baseline / compare / exports | **部分实施**：列表 / 详情 / run report、baseline、paired compare；无 export / A/A 快捷操作 / bridge 向导 |
 | P5 dev pilot | 小规模受控真实 Agent、代表性 task bank、容量 / cost / failure 演练 | 未开始；未执行真实 Agent 评估 |
 
-**当前交付状态：P1–P2 后端子集与最小 P4 页面已实现，已在 dev 2.0.332 完成真实 Agent E2E（导入、评分、报告、baseline、compare、cancel）；UAT / prod 未部署。** 源码实现与验证记录见附录 D。Python 脚本、模型评分、ISOLATED_SANDBOX、导出、真实配额 / 成本和容量压测仍未交付，不能宣称完整功能。
+**当前交付状态：P1–P2 后端子集与最小 P4 页面已实现，已在 dev 2.0.332 完成真实 Agent E2E（导入、评分、报告、baseline、compare、cancel）；UAT 已部署 2.0.332 并完成只读 smoke；prod 未部署。** 源码实现与验证记录见附录 D。Python 脚本、模型评分、ISOLATED_SANDBOX、导出、真实配额 / 成本和容量压测仍未交付，不能宣称完整功能。
 
 首版完整目标包含 Python 脚本；如果隔离后端暂未满足条件，应把对应 profile 明确标“不可用 / 待完成”，不能删掉安全要求然后宣称脚本功能交付。后台 recovery、raw retention 清理和 budget enforcement 也是产品完整性的必要项，不仅记录一个字段。
 
@@ -1059,6 +1059,6 @@ Dev E2E 发现并修复：
 2. `2.0.331` 取消被计为 FAILURE：`AgentRun` 以 `FAILED + CancellationException` 结束；`2.0.332` 将其映射为 `CANCELLED`，trial 保持 `UNMEASURED`。
 3. 测试 Agent 使用 `gpt-5-mini` 时 provider 默认 temperature 0.7 被模型拒绝；切换 `deepseek-flash` 后成功。该问题属于测试 Agent 配置，不是 eval 分类错误。
 
-UAT / prod 未部署；Python / model grader、ISOLATED_SANDBOX、artifact / trace、export、A/A / bridge 仍未覆盖。
+UAT 已于 2026-11-22 部署 2.0.332，V48 迁移成功，`/experiments/evaluations` 与 `/api/evaluations` 只读 smoke 通过（`docs/validation/2026-11-22-uat-agent-evaluation.md`）；未创建 UAT 评估数据，prod 未部署。Python / model grader、ISOLATED_SANDBOX、artifact / trace、export、A/A / bridge 仍未覆盖。
 
 后续迭代必须把性能、隔离、真实模型评分、统计数据有效性和部署证据按日期继续补入本附录，并同步 §10.3。
