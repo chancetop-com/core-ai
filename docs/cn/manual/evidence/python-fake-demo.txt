@@ -1,9 +1,0 @@
-{
-  "backend": "fake",
-  "matched": 1,
-  "path": "demo/echo",
-  "result": {
-    "message": "离线调用成功"
-  },
-  "recorded_calls": 1
-}

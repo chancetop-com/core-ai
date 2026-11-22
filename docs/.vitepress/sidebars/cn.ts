@@ -45,18 +45,7 @@ export const sidebarCn: DefaultTheme.SidebarItem[] = [
       { text: 'CLI Server A2A', link: '/cn/design-cli-server-a2a' },
       { text: 'A2A 远程 Agent', link: '/cn/design-a2a-remote-agent-tool' },
       { text: '记忆系统设计', link: '/cn/design-memory-system' },
-      { text: '数据集报告', link: '/cn/design-dataset-report' },
       { text: 'Sandbox 沙箱架构', link: '/cn/design-sandbox-architecture' }
-    ]
-  },
-  {
-    text: 'Skills 深度',
-    collapsed: true,
-    items: [
-      { text: '图记忆 Skill', link: '/cn/graph-memory-skill' },
-      { text: '自我改进 Skill', link: '/cn/self-impronvment-skill' },
-      { text: 'Skill 增强计划', link: '/cn/skill-enhancement-plan' },
-      { text: 'Skill 放置实验', link: '/cn/experiment-skill-placement-cn' }
     ]
   }
 ];

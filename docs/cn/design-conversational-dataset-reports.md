@@ -39,7 +39,7 @@
 - API、类名、表结构、预算和 SLO 中的新增部分均为提案，不代表已实现或已经实测。
 - 用户 Review 与 AI 技术评审分开记录；AI 评审不构成实施授权。
 - 实质修改更新版本、ADR 和修改记录；相关说明集中在本文。
-- 历史 `docs/cn/design-dataset-report.md` 描述早期数据管道与报表设想；本文是**已有 Dataset 能力之上的增量设计**，不改写历史，也不照搬其中过时的 Mongo、自动 extraction、Map DTO 和“所有报表自动上首页”等假设。
+- 早期数据集与报表设想（已删除，见 git 历史）描述早期数据管道与报表方案；本文是**已有 Dataset 能力之上的增量设计**，不改写历史，也不照搬其中过时的 Mongo、自动 extraction、Map DTO 和“所有报表自动上首页”等假设。
 
 ## 1. 目标、边界与核心提案
 
@@ -891,7 +891,7 @@ AI 评审补充：v0.4 按 U-004 移除了 proposal/commit，P0-1/P0-2 不再适
 - [S1] [Vega-Lite — View Specification](https://vega.github.io/vega-lite/docs/spec.html)：参考声明式定义和数据/展示映射，不引入 Vega runtime。
 - [S2] [PostgreSQL — Row Security Policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)：RLS、表 owner/BYPASSRLS 和权限变化的安全边界。
 - [P1] `docs/cn/design-agent-publish-quality-gate.md:14`、`:38`、`:51`：需求治理、服务端强制校验与 Review 结构；不复制其模型提案/提交门禁。
-- [P2] `docs/cn/design-dataset-report.md:1`：早期历史设想，仅用于明确本设计的增量范围，不作为现状证明。
+- [P2] 早期数据集与报表设计（已删除，见 git 历史）：仅用于明确本设计的增量范围，不作为现状证明。
 - [P3] 实际实现文件与行号集中在 §3；框架约束来自项目 AGENTS.md，并与现有 PG/DTO 代码核对。
 
 外部资料读取日期：2026-11-19。本文不把参考系统的实现能力、行为或性能当成本项目已实现的能力。

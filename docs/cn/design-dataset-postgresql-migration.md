@@ -2,7 +2,7 @@
 
 > 状态：草案（2026-11-03）
 > 前置：[design-dataset-postgresql-poc.md](design-dataset-postgresql-poc.md)、[poc-dataset-postgresql-result.md](poc-dataset-postgresql-result.md)
-> 关联：[design-dataset-report.md](design-dataset-report.md)（原 Report 设计，本文第 6 节取代其 ReportConfig 部分）
+> 关联：早期数据集与报表设计（已删除，见 git 历史；本文第 6 节取代其 ReportConfig 部分）
 > 读者：实现本计划的工程师 / agent。每个阶段都可以单独交付，章节内给出了验收标准。
 
 ## 1. 背景与目标
@@ -258,7 +258,7 @@ CREATE POLICY reader_scope ON dataset.dataset_sql_grants FOR SELECT TO dataset_r
 - 表的 owner 是 `core_ai_owner`，所以 `core_ai` 也受 RLS 约束，需要一条 `app_all` policy 放行（也可以给 `core_ai` 加 `BYPASSRLS`，二选一）；
 - `ALTER DEFAULT PRIVILEGES FOR ROLE core_ai` 要求执行它的角色（flyway 的 `core_ai_owner`）**是 core_ai 的成员**，否则会 permission denied；这一点在阶段 0 的角色创建脚本里落实（`GRANT core_ai TO core_ai_owner WITH ADMIN OPTION`，或让两者由同一个运维角色管理）；
 - 视图的 owner 是 `core_ai`（运行时由 `DatasetViewManager` 创建），并且必须带 `WITH (security_invoker = true)`，PoC 已经这样做了。否则 reader 通过视图读数据时，RLS 会按视图 owner 的身份判断，实际上等于失效；
-- 原设计（design-dataset-report.md）里有一条 `(dataset_id, run_id)` 唯一约束，但它实际没有落地：`SchemaMigrationVDatasetIndexes` 没有建这个索引，而且 `insert_dataset_record` 工具允许一个 run 写入多条记录。所以这里**不建**唯一约束，只为按 run 反查建一个普通的部分索引。
+- 早期 Report 设计里有一条 `(dataset_id, run_id)` 唯一约束，但它实际没有落地：`SchemaMigrationVDatasetIndexes` 没有建这个索引，而且 `insert_dataset_record` 工具允许一个 run 写入多条记录。所以这里**不建**唯一约束，只为按 run 反查建一个普通的部分索引。
 
 ### 4.3 写入时按 schema 校验类型
 
