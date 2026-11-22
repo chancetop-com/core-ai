@@ -24,7 +24,9 @@ Previous image: `chancetop/core-ai-server:2.0.329`
 | `/api/evaluations` | 200, `{"evaluations":[],"total":0}` |
 | UI `/experiments/evaluations` | loads; Experiment → Evaluations nav present; empty state shown |
 
-Evidence: [UAT evaluations page](assets/agent-evaluation-uat-20261122/uat-evaluations.png)
+Evidence:
+
+![UAT evaluations page](assets/agent-evaluation-uat-20261122/uat-evaluations.png)
 
 ## Not covered
 
