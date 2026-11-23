@@ -268,7 +268,10 @@ public class PgTraceAnalytics {
     }
 
     private String providerIdExpression(Map<String, String> modelToProvider, List<Object> params) {
-        return caseExpression("model", modelToProvider, params);
+        // A trace/span records the provider that actually served it (gateway-routed calls). Only
+        // legacy rows without a stored provider fall back to the current alias-to-provider mapping.
+        var fallback = caseExpression("model", modelToProvider, params);
+        return "COALESCE(provider_id, " + fallback + ")";
     }
 
     private String providerNameExpression(Map<String, String> modelToProvider, Map<String, String> providerIdToName,
@@ -277,7 +280,11 @@ public class PgTraceAnalytics {
         for (var entry : modelToProvider.entrySet()) {
             modelToName.put(entry.getKey(), providerIdToName.getOrDefault(entry.getValue(), UNKNOWN));
         }
-        return caseExpression("model", modelToName, params);
+        // Parameters are appended in SQL text order: the model fallback first, the provider-id
+        // mapping second. A stored provider wins even when the alias was remapped later.
+        var modelFallback = caseExpression("model", modelToName, params);
+        var providerName = caseExpression("provider_id", providerIdToName, params);
+        return "CASE WHEN provider_id IS NULL OR provider_id = '' THEN " + modelFallback + " ELSE " + providerName + " END";
     }
 
     private String caseExpression(String column, Map<String, String> mapping, List<Object> params) {

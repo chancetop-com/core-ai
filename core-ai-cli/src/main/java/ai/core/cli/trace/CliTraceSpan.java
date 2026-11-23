@@ -35,6 +35,8 @@ public class CliTraceSpan {
     public Long outputTokens;
     @Property(name = "cachedTokens")
     public Long cachedTokens;
+    @Property(name = "ttftMs")
+    public Long ttftMs;
     @Property(name = "durationMs")
     public Long durationMs;
     @Property(name = "status")

@@ -159,6 +159,8 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.trace.PgSpanRow.class);
         db().view(ai.core.server.trace.PgTraceCountRow.class);
         db().view(ai.core.server.trace.PgTraceIdRow.class);
+        db().view(ai.core.server.trace.PgLlmThroughputRow.class);
+        db().view(ai.core.server.trace.PgLlmModelMetricsRow.class);
         db().view(ai.core.server.trace.PgSpanMigrationLockRow.class);
         db().view(ai.core.server.trace.PgSpanMigrationMarkerRow.class);
         db().view(ai.core.server.trace.PgMigrationProgressRow.class);

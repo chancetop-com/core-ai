@@ -37,6 +37,8 @@ class PgSpanStoreTest {
         database.view(PgSpanRow.class);
         database.view(PgTraceCountRow.class);
         database.view(PgTraceIdRow.class);
+        database.view(PgLlmThroughputRow.class);
+        database.view(PgLlmModelMetricsRow.class);
         createTables();
         return database;
     }
@@ -50,13 +52,16 @@ class PgSpanStoreTest {
             statement.execute("CREATE SCHEMA IF NOT EXISTS app");
             statement.execute("CREATE TABLE IF NOT EXISTS app.spans ("
                 + "id text PRIMARY KEY, trace_id text NOT NULL, user_id text, span_id text NOT NULL, "
-                + "parent_span_id text, name text, type text, model text, status text, tool_call_id text, "
+                + "parent_span_id text, name text, type text, model text, provider_id text, status text, tool_call_id text, "
                 + "input text, output text, input_tokens bigint, output_tokens bigint, cached_tokens bigint, "
                 + "cost_usd double precision, cost_source text, pricing_model_id text, "
                 + "input_price_per_1m_tokens double precision, output_price_per_1m_tokens double precision, "
-                + "duration_ms bigint, error_message text, attributes jsonb, started_at timestamptz, "
+                + "duration_ms bigint, ttft_ms bigint, error_message text, attributes jsonb, started_at timestamptz, "
                 + "completed_at timestamptz, created_at timestamptz)");
             statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS spans_span_id_uidx ON app.spans (span_id)");
+            // the shared dev database may hold the pre-TTFT table; the migration adds the column there
+            statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS ttft_ms bigint");
+            statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS provider_id text");
         } catch (Exception e) {
             throw new IllegalStateException("failed to initialize span test schema", e);
         }
@@ -78,12 +83,14 @@ class PgSpanStoreTest {
         var span = span("s1", "t1", "l1", SpanType.LLM, ZonedDateTime.now());
         span.input = "prompt";
         span.output = "answer";
+        span.providerId = "provider-1";
         store.insert(span);
 
         var loaded = store.find("t1", "l1");
         assertEquals("s1", loaded.id);
         assertEquals(SpanType.LLM, loaded.type);
         assertEquals(SpanStatus.OK, loaded.status);
+        assertEquals("provider-1", loaded.providerId);
         assertEquals("prompt", loaded.input);
         assertEquals("answer", loaded.output);
         assertEquals("v", loaded.attributes.get("k"));
@@ -182,6 +189,86 @@ class PgSpanStoreTest {
         assertEquals(0, store.countBefore(cutoff));
         assertEquals(1, store.deleteByIds(List.of("s3")));
         assertNull(store.find("t2", "l3"));
+    }
+
+    @Test
+    void llmThroughputBucketsCallsAndTokens() {
+        var store = store();
+        var base = ZonedDateTime.parse("2026-11-23T10:00:00Z");
+        var first = span("s1", "t1", "l1", SpanType.LLM, base.plusSeconds(10));
+        first.inputTokens = 100L;
+        first.outputTokens = 50L;
+        first.cachedTokens = 40L;
+        first.costUsd = 0.5;
+        var second = span("s2", "t1", "l2", SpanType.LLM, base.plusSeconds(70));
+        second.inputTokens = 200L;
+        second.outputTokens = 60L;
+        second.cachedTokens = null;
+        second.costUsd = null;
+        var failed = span("s3", "t2", "l3", SpanType.LLM, base.plusSeconds(80));
+        failed.status = SpanStatus.ERROR;
+        failed.inputTokens = 10L;
+        failed.outputTokens = 5L;
+        store.insert(first);
+        store.insert(second);
+        store.insert(failed);
+        store.insert(span("s4", "t3", "tool-1", SpanType.TOOL, base.plusSeconds(75)));
+
+        var points = store.llmThroughput(base, base.plusMinutes(10), 1);
+
+        assertEquals(2, points.size());
+        assertEquals(base.toInstant(), points.getFirst().bucketStart.toInstant());
+        assertEquals(1L, points.getFirst().calls);
+        assertEquals(100L, points.getFirst().inputTokens);
+        assertEquals(50L, points.getFirst().outputTokens);
+        assertEquals(40L, points.getFirst().cachedTokens);
+        assertEquals(0.5, points.getFirst().costUsd, 1e-9);
+        assertEquals(2L, points.get(1).calls);
+        assertEquals(1L, points.get(1).errors);
+        assertEquals(210L, points.get(1).inputTokens);
+        assertEquals(0L, points.get(1).cachedTokens);
+    }
+
+    @Test
+    void llmModelMetricsAggregatesLatencyTtftAndErrors() {
+        var store = store();
+        var base = ZonedDateTime.parse("2026-11-23T11:00:00Z");
+        var fast = span("s1", "t1", "l1", SpanType.LLM, base);
+        fast.ttftMs = 100L;
+        fast.durationMs = 1100L;
+        fast.outputTokens = 100L;
+        var slow = span("s2", "t2", "l2", SpanType.LLM, base.plusSeconds(1));
+        slow.ttftMs = 300L;
+        slow.durationMs = 3300L;
+        slow.outputTokens = 200L;
+        var unmeasured = span("s3", "t3", "l3", SpanType.LLM, base.plusSeconds(2));
+        unmeasured.ttftMs = null;
+        unmeasured.durationMs = 500L;
+        unmeasured.status = SpanStatus.ERROR;
+        var other = span("s4", "t4", "l4", SpanType.LLM, base.plusSeconds(3));
+        other.model = "m2";
+        store.insert(fast);
+        store.insert(slow);
+        store.insert(unmeasured);
+        store.insert(other);
+
+        var models = store.llmModelMetrics(base, base.plusMinutes(10));
+
+        assertEquals(2, models.size());
+        var m1 = models.getFirst();
+        assertEquals("m1", m1.model);
+        assertEquals(3L, m1.calls);
+        assertEquals(1L, m1.errors);
+        assertEquals(2L, m1.callsWithTtft);
+        assertEquals(200.0, m1.avgTtftMs, 1e-9);
+        assertEquals(100.0, m1.p50TtftMs, 1e-9);
+        assertEquals(300.0, m1.p95TtftMs, 1e-9);
+        // (100*1000/1000 + 200*1000/3000) / 2 = (100 + 66.67) / 2
+        assertEquals(83.33, m1.avgOutputTokensPerSecond, 0.01);
+        assertEquals("m2", models.get(1).model);
+        assertEquals(1L, models.get(1).calls);
+        assertEquals(0L, models.get(1).callsWithTtft);
+        assertNull(models.get(1).p50TtftMs);
     }
 
     private PgSpanStore store() {

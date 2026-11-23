@@ -14,6 +14,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
+import static ai.core.server.trace.TraceAttribute.GATEWAY_PROVIDER_ID;
+
 final class GatewayAgentTrace {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayAgentTrace.class);
     private static final AttributeKey<String> LANGFUSE_OBSERVATION_TYPE = AttributeKey.stringKey("langfuse.observation.type");
@@ -56,6 +58,7 @@ final class GatewayAgentTrace {
                 .setAttribute(GEN_AI_SYSTEM, call.provider().type)
                 .setAttribute(GEN_AI_REQUEST_MODEL, call.upstreamModel())
                 .setAttribute(LANGFUSE_INPUT, new String(request.body(), StandardCharsets.UTF_8));
+        if (GatewaySupport.hasText(call.provider().id)) spanBuilder.setAttribute(GATEWAY_PROVIDER_ID, call.provider().id);
         if (request.endpoint() == GatewayEndpointType.CHAT_COMPLETIONS || request.endpoint() == GatewayEndpointType.RESPONSES
                 || request.endpoint() == GatewayEndpointType.MESSAGES) {
             spanBuilder.setAttribute(GEN_AI_OPERATION_NAME, "chat");

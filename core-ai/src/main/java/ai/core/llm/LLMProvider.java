@@ -5,6 +5,7 @@ import ai.core.agent.internal.AgentHelper;
 import ai.core.llm.streaming.AsyncStreamingCallback;
 import ai.core.llm.streaming.BufferedStreamingCallback;
 import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.FirstTokenProbe;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.CaptionImageRequest;
 import ai.core.llm.domain.CaptionImageResponse;
@@ -153,16 +154,20 @@ public abstract class LLMProvider {
             LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.resolveExtraBody(request.model));
         }
         var wrappedCallback = wrapCallback(callback);
+        // measured outside the buffering/async wrappers: this is the transport's latency to the first
+        // token, which is what TTFT means for an LLM call
+        var probe = new FirstTokenProbe(wrappedCallback);
         CompletionResponse response;
         try {
-            response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
+            response = invokeCompletionStream(request, probe, llmSpanContextSink, withTracing);
         } catch (RuntimeException e) {
             if (request.isPassthrough() || !healRequest(request, e)) throw e;
             // safe to reuse the wrapped callback: image-rejection 400s and oversized-body 413s both fail
             // at connection time, before any SSE data reaches the callback; mid-stream failures never
             // match the pattern checks in healRequest
-            response = invokeCompletionStream(request, wrappedCallback, llmSpanContextSink, withTracing);
+            response = invokeCompletionStream(request, probe, llmSpanContextSink, withTracing);
         }
+        response.ttftMs = probe.ttftMillis();
         postprocess(request, response);
         return response;
     }

@@ -36,6 +36,9 @@ public class Span {
     @Field(name = "model")
     public String model;
 
+    @Field(name = "provider_id")
+    public String providerId;
+
     @Field(name = "input")
     public String input;
 
@@ -68,6 +71,9 @@ public class Span {
 
     @Field(name = "duration_ms")
     public Long durationMs;
+
+    @Field(name = "ttft_ms")
+    public Long ttftMs;
 
     @Field(name = "status")
     public SpanStatus status;

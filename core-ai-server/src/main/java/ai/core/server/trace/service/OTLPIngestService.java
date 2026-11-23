@@ -1,5 +1,6 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.trace.TraceAttribute;
 import ai.core.server.run.AgentRunStore;
 import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.TraceStore;
@@ -119,6 +120,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
+        trace.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
@@ -145,7 +147,6 @@ public class OTLPIngestService {
         if (toolCallId != null && !toolCallId.isEmpty() && spanStore.existsToolCall(traceId, toolCallId)) {
             return;  // the same tool call was already synthesized by an earlier request of this conversation
         }
-
         long startMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
         long endMs = TimeUnit.NANOSECONDS.toMillis(protoSpan.getEndTimeUnixNano());
 
@@ -158,9 +159,13 @@ public class OTLPIngestService {
         span.name = protoSpan.getName();
         span.type = resolveSpanType(attrs);
         span.model = attrs.get("gen_ai.request.model");
+        span.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         span.input = OTLPParseHelper.resolveInput(attrs);
         span.output = OTLPParseHelper.resolveOutput(attrs);
         span.durationMs = endMs - startMs;
+        span.ttftMs = OTLPParseHelper.parseLongAttr(attrs,
+            TraceServiceHelper.GEN_AI_TTFT_MS,
+            TraceServiceHelper.LEGACY_TTFT_MS);
         span.status = OTLPParseHelper.mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.toolCallId = toolCallId;
@@ -182,22 +187,24 @@ public class OTLPIngestService {
         // The langfuse/gen_ai payload attributes were copied to span.input/output above; drop the
         // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
-        if (compactor != null) {
-            span.input = compactor.compact(traceId, span.input);
-            span.output = compactor.compact(traceId, span.output);
-        }
+        compactPayload(span, compactor, traceId);
         spanStore.insert(span);
-
         // Back-fill model onto trace if not yet set
         if (span.model != null && !span.model.isEmpty()) {
             backfillTraceModel(traceId, span.model);
         }
-
+        TraceIdentity.backfillProvider(traceStore, traceId, span.providerId);
         // Increment trace token/cost totals atomically instead of reloading all spans
         incrementTraceTokens(traceId, span);
         // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
         // (LLM spans carry the tokens but no user.id), so usage is metered synchronously via the
         // ExecutionContext tokenCostCallback wired in SessionContextBuilder / AgentRunBuilder instead.
+    }
+
+    private void compactPayload(Span span, TracePayloadStore.Compactor compactor, String traceId) {
+        if (compactor == null) return;
+        span.input = compactor.compact(traceId, span.input);
+        span.output = compactor.compact(traceId, span.output);
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -238,6 +245,10 @@ public class OTLPIngestService {
         var spanModel = attrs.get("gen_ai.request.model");
         if (spanModel != null && !spanModel.isEmpty() && (trace.model == null || trace.model.isEmpty())) {
             update.model = spanModel;
+        }
+        var spanProvider = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
+        if (spanProvider != null && !spanProvider.isEmpty() && (trace.providerId == null || trace.providerId.isEmpty())) {
+            update.providerId = spanProvider;
         }
         // Prefer richer span info: if this span carries session/agent/user attributes,
         // upgrade the trace's identity fields (they may be null when the first-arrived
@@ -292,6 +303,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
+        trace.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = OTLPParseHelper.mapTraceStatus(protoSpan.getStatus().getCode(), attrs);
@@ -417,7 +429,7 @@ public class OTLPIngestService {
             span.pricingModelId = attrs.get("gen_ai.usage.pricing_model_id");
             return;
         }
-        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
+        var price = modelPricingService.resolve(span.model, span.providerId, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();
         span.pricingModelId = price.modelId();

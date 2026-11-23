@@ -1,5 +1,6 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.trace.TraceAttribute;
 import ai.core.server.trace.TraceIdentityField;
 import ai.core.server.trace.TraceStore;
 
@@ -20,7 +21,15 @@ final class TraceIdentity {
         putIfPresent(values, TraceIdentityField.SESSION_ID, attrs.get("session.id"));
         putIfPresent(values, TraceIdentityField.AGENT_ID, attrs.get("gen_ai.agent.id"));
         putIfPresent(values, TraceIdentityField.AGENT_NAME, attrs.get("gen_ai.agent.name"));
+        putIfPresent(values, TraceIdentityField.PROVIDER_ID, attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID));
         if (values.isEmpty()) return;
+        traceStore.backfillIdentity(traceId, values);
+    }
+
+    static void backfillProvider(TraceStore traceStore, String traceId, String providerId) {
+        if (providerId == null || providerId.isBlank()) return;
+        var values = new EnumMap<TraceIdentityField, String>(TraceIdentityField.class);
+        values.put(TraceIdentityField.PROVIDER_ID, providerId);
         traceStore.backfillIdentity(traceId, values);
     }
 

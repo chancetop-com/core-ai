@@ -5,6 +5,7 @@ import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import ai.core.server.trace.TraceAttribute;
 import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.TraceUpdate;
@@ -122,6 +123,7 @@ public class IngestService {
         trace.agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
         trace.name = friendlyTraceName(rootSpan.name, trace.agentName);
         trace.model = rootSpan.model;
+        trace.providerId = attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
         trace.userId = resolveUserId(authUserId, rootSpan.attributes);
         trace.source = source;
@@ -184,6 +186,7 @@ public class IngestService {
         if (agentId != null) update.agentId = agentId;
         if (rootSpan.model != null && !rootSpan.model.isBlank()) update.model = rootSpan.model;
         traceStore.update(update);
+        TraceIdentity.backfillProvider(traceStore, traceId, attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID));
         if (agentName != null) backfillTraceName(traceId, rootSpan.name, agentName);
     }
 
@@ -197,12 +200,14 @@ public class IngestService {
         span.name = spanReq.name;
         span.type = mapSpanType(spanReq.type);
         span.model = spanReq.model;
+        span.providerId = attr(spanReq.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
         span.input = spanReq.input;
         span.output = spanReq.output;
         span.inputTokens = spanReq.inputTokens;
         span.outputTokens = spanReq.outputTokens;
         span.cachedTokens = resolveCachedTokens(spanReq);
         applyCost(span, spanReq.costUsd, spanReq.attributes);
+        span.ttftMs = resolveTtftMs(spanReq);
         span.durationMs = spanReq.durationMs;
         span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
         // CLI spans carry the failure text in output (no OTLP status message); mirror it into
@@ -234,6 +239,7 @@ public class IngestService {
         if (spanReq.model != null && !spanReq.model.isEmpty()) {
             backfillTraceModel(spanReq.traceId, spanReq.model);
         }
+        TraceIdentity.backfillProvider(traceStore, spanReq.traceId, span.providerId);
         backfillTraceIdentity(spanReq.traceId, spanReq.name, spanReq.attributes);
 
         // Incrementally roll up this span's tokens/cost onto the parent trace doc.
@@ -316,6 +322,11 @@ public class IngestService {
             "prompt_tokens_details.cached_tokens");
     }
 
+    private Long resolveTtftMs(IngestSpanRequest spanReq) {
+        if (spanReq.ttftMs != null) return spanReq.ttftMs;
+        return parseLongAttr(spanReq.attributes, TraceServiceHelper.GEN_AI_TTFT_MS, TraceServiceHelper.LEGACY_TTFT_MS);
+    }
+
     private void applyCost(Span span, Double requestCostUsd, Map<String, String> attributes) {
         if (requestCostUsd != null) {
             span.costUsd = requestCostUsd;
@@ -326,7 +337,7 @@ public class IngestService {
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
-        var price = modelPricingService.resolve(span.model, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
+        var price = modelPricingService.resolve(span.model, span.providerId, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();
         span.pricingModelId = price.modelId();

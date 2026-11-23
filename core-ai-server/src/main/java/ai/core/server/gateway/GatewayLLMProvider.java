@@ -22,6 +22,7 @@ import ai.core.server.domain.GatewayModelConfig;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.utils.JsonUtil;
 import core.framework.web.exception.BadRequestException;
+import io.opentelemetry.api.trace.Span;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,6 +35,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import static ai.core.server.gateway.GatewaySupport.hasText;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
 import static ai.core.server.gateway.GatewaySupport.urlEncode;
+import static ai.core.server.trace.TraceAttribute.GATEWAY_PROVIDER_ID;
 
 /**
  * Bridges the agent runtime {@link LLMProvider} interface onto gateway-managed providers:
@@ -155,6 +157,9 @@ public class GatewayLLMProvider extends LLMProvider {
                 attemptEndpoint = attempt.responses() ? GatewayModelService.ENDPOINT_RESPONSES : endpoint;
                 var provider = attempt.route().provider();
                 var upstreamModel = attempt.route().upstreamModel();
+                // Persist the provider that actually serves this attempt on the LLM span, so trace
+                // analytics and pricing do not have to guess it from the (possibly duplicated) alias.
+                if (hasText(provider.id)) Span.current().setAttribute(GATEWAY_PROVIDER_ID, provider.id);
                 var upstream = upstreamProvider(provider, upstreamModel, attemptEndpoint);
                 request.setEndpoint(attemptEndpoint);
                 if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {

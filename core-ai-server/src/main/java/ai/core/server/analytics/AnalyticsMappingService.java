@@ -5,6 +5,7 @@ import core.framework.inject.Inject;
 import org.bson.Document;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +16,14 @@ import java.util.Map;
  */
 public class AnalyticsMappingService {
     public static Document buildProviderAddFields(Map<String, String> modelToProvider) {
-        return buildSwitchAddFields("provider_id", "$model", modelToProvider, "unknown");
+        // A trace records the provider that actually served it (gateway-routed calls). Only legacy
+        // rows without a stored provider fall back to the current alias-to-provider mapping.
+        var fallback = switchExpression("$model", modelToProvider, "unknown");
+        var missing = new Document("$or", List.of(
+            new Document("$eq", List.of("$provider_id", null)),
+            new Document("$eq", List.of("$provider_id", ""))));
+        var expression = new Document("$cond", List.of(missing, fallback, "$provider_id"));
+        return new Document("$addFields", new Document("provider_id", expression));
     }
 
     public static Document buildProviderNameAddFields(Map<String, String> providerIdToName) {
@@ -24,17 +32,20 @@ public class AnalyticsMappingService {
 
     private static Document buildSwitchAddFields(String field, String inputRef,
                                                   Map<String, String> mapping, String defaultVal) {
+        return new Document("$addFields", new Document(field, switchExpression(inputRef, mapping, defaultVal)));
+    }
+
+    private static Object switchExpression(String inputRef, Map<String, String> mapping, String defaultVal) {
         var branches = new ArrayList<Document>();
         for (var entry : mapping.entrySet()) {
             branches.add(new Document("case",
                 new Document("$eq", List.of(inputRef, entry.getKey())))
                 .append("then", entry.getValue()));
         }
-        Object value = branches.isEmpty()
+        return branches.isEmpty()
             ? defaultVal
             : new Document("$switch",
                 new Document("branches", branches).append("default", defaultVal));
-        return new Document("$addFields", new Document(field, value));
     }
 
     @Inject
@@ -54,7 +65,15 @@ public class AnalyticsMappingService {
         var models = gatewayModelStore.listAll();
         Map<String, String> mapping = new LinkedHashMap<>();
         Map<String, String> prefixedMapping = new LinkedHashMap<>();
-        var enabledModels = models.stream().filter(model -> !Boolean.FALSE.equals(model.enabled)).toList();
+        // For legacy rows without a stored provider, resolve a duplicated alias the same way the
+        // router does: lowest priority number first, then the stable tie-breakers.
+        var enabledModels = models.stream()
+            .filter(model -> !Boolean.FALSE.equals(model.enabled))
+            .sorted(Comparator
+                .comparingLong((GatewayModelConfig model) -> model.priority == null ? 100L : model.priority)
+                .thenComparing(model -> model.modelId == null ? "" : model.modelId)
+                .thenComparing(model -> model.providerId == null ? "" : model.providerId))
+            .toList();
         addModelMappings(mapping, prefixedMapping, enabledModels, modelPrefixes);
         addModelMappings(mapping, prefixedMapping, models, modelPrefixes);
         prefixedMapping.forEach(mapping::putIfAbsent);

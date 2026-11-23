@@ -28,6 +28,12 @@ public interface SpanStore {
 
     List<Span> generations(int offset, int limit, String model, List<String> userIds, List<String> traceIds);
 
+    /** LLM call counts and token sums per time bucket, for the dashboard's RPM/TPM curves. */
+    List<LlmThroughputRow> llmThroughput(ZonedDateTime from, ZonedDateTime to, int bucketMinutes);
+
+    /** Per-model latency/TTFT/error metrics over the window, for the dashboard's model table. */
+    List<LlmModelMetricsRow> llmModelMetrics(ZonedDateTime from, ZonedDateTime to);
+
     List<Span> before(ZonedDateTime cutoff, int offset, int limit);
 
     List<Span> pageByTrace(String traceId, int offset, int limit);

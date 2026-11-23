@@ -6,5 +6,5 @@ package ai.core.server.trace;
  * @author stephen
  */
 public enum TraceIdentityField {
-    USER_ID, SESSION_ID, AGENT_ID, AGENT_NAME
+    USER_ID, SESSION_ID, AGENT_ID, AGENT_NAME, PROVIDER_ID
 }

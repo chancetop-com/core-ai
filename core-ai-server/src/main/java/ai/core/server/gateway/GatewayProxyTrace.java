@@ -20,6 +20,7 @@ final class GatewayProxyTrace {
     private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
+    private static final AttributeKey<Long> GEN_AI_RESPONSE_TTFT_MS = AttributeKey.longKey("gen_ai.response.time_to_first_token_ms");
     // cap the span output so a very long streaming response cannot inflate the stored span
     private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
 
@@ -53,14 +54,21 @@ final class GatewayProxyTrace {
     // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content),
     // the responses endpoint streams it as response.output_text.delta events and anthropic as
     // content_block_delta/text_delta; concatenate every shape so the span output holds the final answer.
-    static void appendStreamOutput(StringBuilder output, String data) {
-        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return;
+    /**
+     * @return true when this event carried assistant text, i.e. the caller can now record the TTFT
+     */
+    static boolean appendStreamOutput(StringBuilder output, String data) {
+        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return false;
         var body = parseStreamChunk(data);
-        if (body == null) return;
+        if (body == null) return false;
         var content = chatChunkContent(body);
         if (content == null) content = responsesDeltaText(body);
         if (content == null) content = anthropicDeltaText(body);
-        if (content != null && !content.isBlank()) output.append(content);
+        if (content != null && !content.isBlank()) {
+            output.append(content);
+            return true;
+        }
+        return false;
     }
 
     private static void applyUsage(Span span, GatewayUsage usage) {
@@ -106,5 +114,21 @@ final class GatewayProxyTrace {
     }
 
     private GatewayProxyTrace() {
+    }
+
+    /**
+     * Wall clock since the upstream request was issued, recorded on the span at the first content event.
+     * Non-streaming calls have no separate first token, so callers only use this on streamed responses.
+     */
+    static final class TimeToFirstToken {
+        private final long startNanos = System.nanoTime();
+        private boolean recorded;
+
+        void record(Span span) {
+            if (recorded) return;
+            recorded = true;
+            if (!span.getSpanContext().isValid()) return;
+            span.setAttribute(GEN_AI_RESPONSE_TTFT_MS, Math.max(0, (System.nanoTime() - startNanos) / 1_000_000));
+        }
     }
 }

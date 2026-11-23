@@ -81,6 +81,7 @@ public class HttpTraceUploader implements TraceUploader {
         m.put("inputTokens", s.inputTokens);
         m.put("outputTokens", s.outputTokens);
         m.put("cachedTokens", s.cachedTokens);
+        m.put("ttftMs", s.ttftMs);
         m.put("durationMs", s.durationMs);
         m.put("status", s.status);
         m.put("attributes", s.attributes);

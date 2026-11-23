@@ -34,6 +34,10 @@ final class TraceServiceHelper {
     static final String LANGFUSE_OBSERVATION_OUTPUT = "langfuse.observation.output";
     static final String GEN_AI_PROMPT = "gen_ai.prompt";
     static final String GEN_AI_COMPLETION = "gen_ai.completion";
+    /** Provider-side time to the first content token; recorded by the LLM provider template. */
+    static final String GEN_AI_TTFT_MS = "gen_ai.response.time_to_first_token_ms";
+    /** Same measurement under its pre-convention name, accepted for older clients. */
+    static final String LEGACY_TTFT_MS = "core_ai.ttft_ms";
 
     /** Existence check that never fetches the (potentially megabyte-sized) document body. */
     static boolean exists(MongoCollection<?> collection, Bson filter) {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import ModeTimeSelector from './components/ModeTimeSelector';
 import RuntimeWatermarks from './components/RuntimeWatermarks';
+import LlmOps from './components/LlmOps';
 import GlobalSummaryCards from './components/GlobalSummaryCards';
 import GlobalTrendChart from './components/GlobalTrendChart';
 import DimensionTabs from './components/DimensionTabs';
@@ -138,25 +139,46 @@ export default function Dashboard() {
     return filtered;
   }, [state.dimensionData, state.dimensionTrend]);
 
-  const [view, setView] = useState<'analytics' | 'runtime'>('analytics');
+  const [view, setView] = useState<'analytics' | 'runtime' | 'llm'>('analytics');
 
   const viewSwitch = (
     <div className="flex items-center gap-2">
-      {(['analytics', 'runtime'] as const).map(candidate => (
+      {([
+        { key: 'analytics', label: 'Analytics' },
+        { key: 'runtime', label: 'Runtime' },
+        { key: 'llm', label: 'LLM Ops' },
+      ] as const).map(candidate => (
         <button
-          key={candidate}
-          onClick={() => setView(candidate)}
-          className="px-3 py-1.5 rounded-lg text-sm capitalize"
+          key={candidate.key}
+          onClick={() => setView(candidate.key)}
+          className="px-3 py-1.5 rounded-lg text-sm"
           style={{
-            background: view === candidate ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
-            color: view === candidate ? '#fff' : 'var(--color-text)',
+            background: view === candidate.key ? 'var(--color-primary)' : 'var(--color-bg-tertiary)',
+            color: view === candidate.key ? '#fff' : 'var(--color-text)',
           }}
         >
-          {candidate}
+          {candidate.label}
         </button>
       ))}
     </div>
   );
+
+  if (view === 'llm') {
+    return (
+      <div className="p-6">
+        <div className="mb-5 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">LLM Operations</h1>
+            <p className="text-sm mt-1" style={{ color: 'var(--color-text-secondary)' }}>
+              Requests and tokens per minute, plus per-model TTFT, latency and error metrics from the live LLM spans
+            </p>
+          </div>
+          {viewSwitch}
+        </div>
+        <LlmOps />
+      </div>
+    );
+  }
 
   if (view === 'runtime') {
     return (

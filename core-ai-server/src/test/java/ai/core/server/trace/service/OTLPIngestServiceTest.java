@@ -404,6 +404,55 @@ class OTLPIngestServiceTest {
     }
 
     @Test
+    void recordsTtftFromGenAiAttributeOnTheSpan() {
+        var service = service();
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "gpt-5.6-terra"),
+            attr("gen_ai.response.time_to_first_token_ms", "1840"),
+            attr("gen_ai.usage.input_tokens", "10"),
+            attr("gen_ai.usage.output_tokens", "20"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(spanCollection).insert(inserted.capture());
+        assertEquals(1840L, inserted.getValue().ttftMs);
+    }
+
+    @Test
+    void recordsServingProviderOnSpanAndTrace() {
+        var service = service();
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "deepseek-flash"),
+            attr("gateway.provider.id", "provider-1"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(spanCollection).insert(inserted.capture());
+        assertEquals("provider-1", inserted.getValue().providerId);
+
+        var updates = ArgumentCaptor.forClass(Bson.class);
+        verify(traceCollection, atLeastOnce()).update(any(Bson.class), updates.capture());
+        assertTrue(updates.getAllValues().stream()
+            .map(Object::toString)
+            .anyMatch(update -> update.contains("provider_id") && update.contains("provider-1")));
+    }
+
+    @Test
+    void leavesTtftNullWhenTheCallDidNotReportIt() {
+        var service = service();
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat", attr("gen_ai.request.model", "gpt-5.6-terra"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(spanCollection).insert(inserted.capture());
+        assertNull(inserted.getValue().ttftMs);
+    }
+
+    @Test
     void startedRootSpanCreatesAttributedTrace() {
         var service = service();
         when(traceCollection.find(any(Query.class))).thenReturn(List.of());

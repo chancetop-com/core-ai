@@ -97,6 +97,7 @@ public class MongoTraceStore implements TraceStore {
             if (update.agentName != null || writeNulls) updates.add(Updates.set("agent_name", update.agentName));
             if (update.agentId != null || writeNulls) updates.add(Updates.set("agent_id", update.agentId));
             if (update.model != null) updates.add(Updates.set("model", update.model));
+            if (update.providerId != null) updates.add(Updates.set("provider_id", update.providerId));
         }
         if (update.inputTokensDelta != null && update.inputTokensDelta != 0) {
             updates.add(Updates.inc("input_tokens", update.inputTokensDelta));
@@ -143,6 +144,7 @@ public class MongoTraceStore implements TraceStore {
             case SESSION_ID -> "session_id";
             case AGENT_ID -> "agent_id";
             case AGENT_NAME -> "agent_name";
+            case PROVIDER_ID -> "provider_id";
         };
     }
 
@@ -161,6 +163,7 @@ public class MongoTraceStore implements TraceStore {
             case AGENT_ID -> "agent_id";
             case MODEL -> "model";
             case NAME -> "name";
+            case PROVIDER_ID -> "provider_id";
         };
     }
 

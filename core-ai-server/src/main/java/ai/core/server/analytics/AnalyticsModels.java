@@ -74,4 +74,42 @@ public final class AnalyticsModels {
         GlobalSummary totals
     ) {
     }
+
+    public record LlmThroughputPoint(
+        String bucketStart,
+        long calls,
+        long errors,
+        long inputTokens,
+        long outputTokens,
+        long cachedTokens,
+        double costUsd
+    ) {
+    }
+
+    public record LlmModelMetrics(
+        String model,
+        long calls,
+        long errors,
+        long callsWithTtft,
+        long inputTokens,
+        long outputTokens,
+        long cachedTokens,
+        double costUsd,
+        Long avgTtftMs,
+        Long p50TtftMs,
+        Long p95TtftMs,
+        Long avgDurationMs,
+        Long p50DurationMs,
+        Long p95DurationMs,
+        Double avgOutputTokensPerSecond
+    ) {
+    }
+
+    public record LlmMetrics(
+        int windowMinutes,
+        int bucketMinutes,
+        List<LlmThroughputPoint> points,
+        List<LlmModelMetrics> models
+    ) {
+    }
 }

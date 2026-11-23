@@ -20,6 +20,9 @@ public class PgTraceRow {
     @Column(name = "model")
     public String model;
 
+    @Column(name = "provider_id")
+    public String providerId;
+
     @Column(name = "type")
     public String type;
 

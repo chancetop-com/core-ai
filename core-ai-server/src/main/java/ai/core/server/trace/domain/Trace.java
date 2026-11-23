@@ -24,6 +24,11 @@ public class Trace {
     @Field(name = "model")
     public String model;
 
+    // provider that actually served the LLM calls in this trace; null for traces ingested before
+    // provider attribution was recorded (analytics then falls back to the model-to-provider mapping)
+    @Field(name = "provider_id")
+    public String providerId;
+
     @Field(name = "type")
     public String type;       // agent | llm_call | external
 

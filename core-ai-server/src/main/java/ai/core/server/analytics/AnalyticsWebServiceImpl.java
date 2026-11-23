@@ -10,6 +10,10 @@ import ai.core.api.server.analytics.AnalyticsTrendPointView;
 import ai.core.api.server.analytics.AnalyticsWebService;
 import ai.core.api.server.analytics.ListAnalyticsDimensionTrendResponse;
 import ai.core.api.server.analytics.ListAnalyticsTrendResponse;
+import ai.core.api.server.analytics.LlmMetricsRequest;
+import ai.core.api.server.analytics.LlmMetricsView;
+import ai.core.api.server.analytics.LlmModelMetricsView;
+import ai.core.api.server.analytics.LlmThroughputPointView;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
@@ -41,6 +45,8 @@ public class AnalyticsWebServiceImpl implements AnalyticsWebService {
 
     @Inject
     AdminAnalyticsService analyticsService;
+    @Inject
+    LlmMetricsService llmMetricsService;
     @Inject
     UserStore userStore;
     @Inject
@@ -127,6 +133,46 @@ public class AnalyticsWebServiceImpl implements AnalyticsWebService {
             return view;
         }).toList();
         return response;
+    }
+
+    @Override
+    public LlmMetricsView llmMetrics(LlmMetricsRequest request) {
+        requireAdmin();
+        var metrics = llmMetricsService.metrics(request.minutes, request.bucketMinutes);
+        var view = new LlmMetricsView();
+        view.windowMinutes = metrics.windowMinutes();
+        view.bucketMinutes = metrics.bucketMinutes();
+        view.points = metrics.points().stream().map(point -> {
+            var pointView = new LlmThroughputPointView();
+            pointView.bucketStart = point.bucketStart();
+            pointView.calls = point.calls();
+            pointView.errors = point.errors();
+            pointView.inputTokens = point.inputTokens();
+            pointView.outputTokens = point.outputTokens();
+            pointView.cachedTokens = point.cachedTokens();
+            pointView.costUsd = point.costUsd();
+            return pointView;
+        }).toList();
+        view.models = metrics.models().stream().map(model -> {
+            var modelView = new LlmModelMetricsView();
+            modelView.model = model.model();
+            modelView.calls = model.calls();
+            modelView.errors = model.errors();
+            modelView.callsWithTtft = model.callsWithTtft();
+            modelView.inputTokens = model.inputTokens();
+            modelView.outputTokens = model.outputTokens();
+            modelView.cachedTokens = model.cachedTokens();
+            modelView.costUsd = model.costUsd();
+            modelView.avgTtftMs = model.avgTtftMs();
+            modelView.p50TtftMs = model.p50TtftMs();
+            modelView.p95TtftMs = model.p95TtftMs();
+            modelView.avgDurationMs = model.avgDurationMs();
+            modelView.p50DurationMs = model.p50DurationMs();
+            modelView.p95DurationMs = model.p95DurationMs();
+            modelView.avgOutputTokensPerSecond = model.avgOutputTokensPerSecond();
+            return modelView;
+        }).toList();
+        return view;
     }
 
     private AnalyticsGlobalView toGlobalView(AnalyticsModels.GlobalSummary summary) {

@@ -19,16 +19,17 @@ import java.util.Map;
  */
 public class PgSpanStore implements SpanStore {
     private static final String TABLE = "app.spans";
-    private static final String COLUMNS = "id, trace_id, user_id, span_id, parent_span_id, name, type, model, status, "
+    private static final String COLUMNS = "id, trace_id, user_id, span_id, parent_span_id, name, type, model, provider_id, status, "
         + "tool_call_id, input_tokens, output_tokens, cached_tokens, cost_usd, cost_source, pricing_model_id, "
-        + "input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, error_message, attributes::text AS attributes, "
+        + "input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, ttft_ms, error_message, attributes::text AS attributes, "
         + "started_at, completed_at, created_at";
     private static final String SELECT = "SELECT " + COLUMNS + " FROM " + TABLE;
     private static final String SELECT_WITH_PAYLOAD = "SELECT " + COLUMNS + ", input, output FROM " + TABLE;
     private static final String INSERT = "INSERT INTO " + TABLE + " (id, trace_id, user_id, span_id, parent_span_id, name, "
-        + "type, model, status, tool_call_id, input, output, input_tokens, output_tokens, cached_tokens, cost_usd, "
-        + "cost_source, pricing_model_id, input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, "
+        + "type, model, provider_id, status, tool_call_id, input, output, input_tokens, output_tokens, cached_tokens, cost_usd, "
+        + "cost_source, pricing_model_id, input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, ttft_ms, "
         + "error_message, attributes, started_at, completed_at, created_at) ";
+    private static final String INSERT_VALUES = "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)";
     private static final int DELETE_BATCH_SIZE = 500;
     private static final int BULK_SIZE = 200;
     private static final long BULK_PAYLOAD_BYTES = 8L * 1024 * 1024;
@@ -43,6 +44,7 @@ public class PgSpanStore implements SpanStore {
         span.name = row.name;
         span.type = row.type != null ? SpanType.valueOf(row.type) : null;
         span.model = row.model;
+        span.providerId = row.providerId;
         span.status = row.status != null ? SpanStatus.valueOf(row.status) : null;
         span.toolCallId = row.toolCallId;
         span.input = row.input;
@@ -56,6 +58,7 @@ public class PgSpanStore implements SpanStore {
         span.inputPricePer1MTokens = row.inputPricePer1MTokens;
         span.outputPricePer1MTokens = row.outputPricePer1MTokens;
         span.durationMs = row.durationMs;
+        span.ttftMs = row.ttftMs;
         span.errorMessage = row.errorMessage;
         span.attributes = row.attributes != null ? JsonUtil.fromJson(ATTRIBUTES_TYPE, row.attributes) : null;
         span.startedAt = row.startedAt;
@@ -74,11 +77,11 @@ public class PgSpanStore implements SpanStore {
 
     private static Object[] params(Span span) {
         return new Object[]{
-            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model,
+            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model, span.providerId,
             span.status != null ? span.status.name() : null, span.toolCallId, JsonSanitizer.text(span.input),
             JsonSanitizer.text(span.output), span.inputTokens, span.outputTokens, span.cachedTokens, span.costUsd,
             span.costSource, span.pricingModelId, span.inputPricePer1MTokens, span.outputPricePer1MTokens,
-            span.durationMs, JsonSanitizer.text(span.errorMessage),
+            span.durationMs, span.ttftMs, JsonSanitizer.text(span.errorMessage),
             span.attributes != null ? JsonUtil.toJson(span.attributes) : null,
             span.startedAt, span.completedAt, span.createdAt
         };
@@ -101,8 +104,7 @@ public class PgSpanStore implements SpanStore {
 
     @Override
     public void insert(Span span) {
-        database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)",
-            params(span));
+        database.execute(INSERT + INSERT_VALUES, params(span));
     }
 
     @Override
@@ -125,8 +127,7 @@ public class PgSpanStore implements SpanStore {
     }
 
     private void flush(List<Object[]> batch) {
-        database.batchExecute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?) "
-            + "ON CONFLICT DO NOTHING", batch);
+        database.batchExecute(INSERT + INSERT_VALUES + " ON CONFLICT DO NOTHING", batch);
     }
 
     @Override
@@ -198,6 +199,80 @@ public class PgSpanStore implements SpanStore {
     }
 
     @Override
+    public List<LlmThroughputRow> llmThroughput(ZonedDateTime from, ZonedDateTime to, int bucketMinutes) {
+        // floor(epoch / bucket) keeps buckets aligned to the epoch, so a minute bucket never straddles a
+        // clock boundary; core-ng's SQL inspector bans string literals, hence the bound interval params
+        int bucketSeconds = bucketMinutes * 60;
+        var sql = "SELECT to_timestamp((floor(extract(epoch from started_at) / ?) * ?)::double precision) AS bucket_start"
+            + ", COUNT(*) AS calls"
+            + ", COUNT(*) FILTER (WHERE status = ?) AS errors"
+            + ", COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens"
+            + ", COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens"
+            + ", COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens"
+            + ", COALESCE(SUM(cost_usd), 0) AS cost_usd"
+            + " FROM " + TABLE + " WHERE type = ? AND started_at >= ? AND started_at < ?"
+            + " GROUP BY 1 ORDER BY 1";
+        return database.select(sql, PgLlmThroughputRow.class,
+                bucketSeconds, bucketSeconds, SpanStatus.ERROR.name(), SpanType.LLM.name(), from, to)
+            .stream().map(row -> {
+                var value = new LlmThroughputRow();
+                value.bucketStart = row.bucketStart;
+                value.calls = row.calls;
+                value.errors = row.errors;
+                value.inputTokens = row.inputTokens;
+                value.outputTokens = row.outputTokens;
+                value.cachedTokens = row.cachedTokens;
+                value.costUsd = row.costUsd;
+                return value;
+            }).toList();
+    }
+
+    @Override
+    public List<LlmModelMetricsRow> llmModelMetrics(ZonedDateTime from, ZonedDateTime to) {
+        // percentile_disc ignores NULLs, so models recorded before TTFT existed still get latency
+        // percentiles and a null TTFT instead of failing the whole row
+        var sql = "SELECT COALESCE(model, ?) AS model"
+            + ", COUNT(*) AS calls"
+            + ", COUNT(*) FILTER (WHERE status = ?) AS errors"
+            + ", COUNT(ttft_ms) AS calls_with_ttft"
+            + ", COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens"
+            + ", COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens"
+            + ", COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens"
+            + ", COALESCE(SUM(cost_usd), 0) AS cost_usd"
+            + ", AVG(ttft_ms)::float8 AS avg_ttft_ms"
+            + ", percentile_disc(0.5) WITHIN GROUP (ORDER BY ttft_ms)::float8 AS p50_ttft_ms"
+            + ", percentile_disc(0.95) WITHIN GROUP (ORDER BY ttft_ms)::float8 AS p95_ttft_ms"
+            + ", AVG(duration_ms)::float8 AS avg_duration_ms"
+            + ", percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50_duration_ms"
+            + ", percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p95_duration_ms"
+            + ", AVG(CASE WHEN ttft_ms IS NOT NULL AND output_tokens > 0 AND duration_ms > ttft_ms"
+            + " THEN output_tokens * 1000.0 / (duration_ms - ttft_ms) END)::float8 AS avg_output_tokens_per_second"
+            + " FROM " + TABLE + " WHERE type = ? AND started_at >= ? AND started_at < ?"
+            + " GROUP BY 1 ORDER BY calls DESC";
+        return database.select(sql, PgLlmModelMetricsRow.class,
+                "(unknown)", SpanStatus.ERROR.name(), SpanType.LLM.name(), from, to)
+            .stream().map(row -> {
+                var value = new LlmModelMetricsRow();
+                value.model = row.model;
+                value.calls = row.calls;
+                value.errors = row.errors;
+                value.callsWithTtft = row.callsWithTtft;
+                value.inputTokens = row.inputTokens;
+                value.outputTokens = row.outputTokens;
+                value.cachedTokens = row.cachedTokens;
+                value.costUsd = row.costUsd;
+                value.avgTtftMs = row.avgTtftMs;
+                value.p50TtftMs = row.p50TtftMs;
+                value.p95TtftMs = row.p95TtftMs;
+                value.avgDurationMs = row.avgDurationMs;
+                value.p50DurationMs = row.p50DurationMs;
+                value.p95DurationMs = row.p95DurationMs;
+                value.avgOutputTokensPerSecond = row.avgOutputTokensPerSecond;
+                return value;
+            }).toList();
+    }
+
+    @Override
     public List<Span> before(ZonedDateTime cutoff, int offset, int limit) {
         return database.select(SELECT_WITH_PAYLOAD + " WHERE started_at < ? ORDER BY started_at, id LIMIT ? OFFSET ?",
                 PgSpanRow.class, cutoff, limit, offset)
@@ -240,3 +315,4 @@ public class PgSpanStore implements SpanStore {
         return deleted;
     }
 }
+

@@ -106,6 +106,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             span.model = req != null ? req.model : null;
             span.input = req != null && req.messages != null ? truncate(JsonUtil.toJson(req.messages)) : null;
             span.output = resp != null && resp.choices != null ? truncate(JsonUtil.toJson(resp.choices)) : null;
+            span.ttftMs = resp != null ? resp.ttftMs : null;
             applyUsage(span, resp != null ? resp.usage : null);
             span.status = "OK";
             var start = state.llmStartMs > 0 ? state.llmStartMs : now;

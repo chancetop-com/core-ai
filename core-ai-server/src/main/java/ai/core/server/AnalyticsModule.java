@@ -4,6 +4,7 @@ import ai.core.api.server.analytics.AnalyticsWebService;
 import ai.core.server.analytics.AdminAnalyticsService;
 import ai.core.server.analytics.AnalyticsMappingService;
 import ai.core.server.analytics.AnalyticsWebServiceImpl;
+import ai.core.server.analytics.LlmMetricsService;
 import core.framework.module.Module;
 
 /**
@@ -14,6 +15,7 @@ public class AnalyticsModule extends Module {
     protected void initialize() {
         bind(AnalyticsMappingService.class);
         bind(AdminAnalyticsService.class);
+        bind(LlmMetricsService.class);
         api().service(AnalyticsWebService.class, bind(AnalyticsWebServiceImpl.class));
     }
 }

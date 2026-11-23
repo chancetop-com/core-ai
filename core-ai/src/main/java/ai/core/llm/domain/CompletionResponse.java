@@ -1,5 +1,6 @@
 package ai.core.llm.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import core.framework.api.json.Property;
 
 import java.util.List;
@@ -19,4 +20,10 @@ public class CompletionResponse {
     public List<Choice> choices;
     @Property(name = "usage")
     public Usage usage;
+    /**
+     * Provider-side latency from issuing the request to the first content/reasoning token, measured by
+     * {@link ai.core.llm.LLMProvider}. It is runtime observability data, not part of the wire payload.
+     */
+    @JsonIgnore
+    public Long ttftMs;
 }

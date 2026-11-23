@@ -18,6 +18,7 @@ public class IngestSpanRequest {
     public Long outputTokens;
     public Long cachedTokens;
     public Double costUsd;
+    public Long ttftMs;
     public Long durationMs;
     public String status;
     public Map<String, String> attributes;

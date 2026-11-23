@@ -39,4 +39,8 @@ public interface AnalyticsWebService {
     @GET
     @Path("/api/admin/analytics/:dimension/trend")
     ListAnalyticsDimensionTrendResponse dimensionTrend(@PathParam("dimension") String dimension, AnalyticsDimensionTrendRequest request);
+
+    @GET
+    @Path("/api/admin/analytics/llm-metrics")
+    LlmMetricsView llmMetrics(LlmMetricsRequest request);
 }

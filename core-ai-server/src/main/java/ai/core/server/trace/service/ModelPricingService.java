@@ -14,8 +14,11 @@ public class ModelPricingService {
     ai.core.server.gateway.GatewayModelStore gatewayModelStore;
 
     // Gateway Model configuration price (cached input split + optional peak-hour multiplier); null when not configured.
-    Price resolveGatewayModel(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt) {
-        var gatewayModel = gatewayModel(model);
+    // When the serving provider is known, price that provider's row; an alias may be registered on
+    // several providers, and each row carries its own prices.
+    Price resolveGatewayModel(String model, String providerId, Long inputTokens, Long outputTokens, Long cachedTokens,
+                              ZonedDateTime startedAt) {
+        var gatewayModel = gatewayModel(model, providerId);
         if (gatewayModel == null || gatewayModel.inputPricePer1MTokens == null || gatewayModel.outputPricePer1MTokens == null) {
             return null;
         }
@@ -33,7 +36,13 @@ public class ModelPricingService {
 
     // Resolution order: explicit Gateway Model pricing > upstream-reported attribute cost > catalog estimate.
     public Price resolve(String model, Long inputTokens, Long outputTokens, Long cachedTokens, ZonedDateTime startedAt, Double upstreamCost) {
-        var gatewayPrice = resolveGatewayModel(model, inputTokens, outputTokens, cachedTokens, startedAt);
+        return resolve(model, null, inputTokens, outputTokens, cachedTokens, startedAt, upstreamCost);
+    }
+
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public Price resolve(String model, String providerId, Long inputTokens, Long outputTokens, Long cachedTokens,
+                         ZonedDateTime startedAt, Double upstreamCost) {
+        var gatewayPrice = resolveGatewayModel(model, providerId, inputTokens, outputTokens, cachedTokens, startedAt);
         if (gatewayPrice != null) return gatewayPrice;
         if (upstreamCost != null) return new Price(upstreamCost, "upstream", null, null, null);
         return resolveCatalog(model, inputTokens, outputTokens, cachedTokens, startedAt);
@@ -54,8 +63,14 @@ public class ModelPricingService {
         return LLMModelContextRegistry.isPeakHour(startedAt.toInstant()) ? configured : 1.0;
     }
 
-    private GatewayModelConfig gatewayModel(String model) {
+    private GatewayModelConfig gatewayModel(String model, String providerId) {
         if (model == null || model.isBlank()) return null;
+        if (providerId != null && !providerId.isBlank()) {
+            var providerModel = gatewayModelStore.listByProviderId(providerId).stream()
+                    .filter(candidate -> model.equals(candidate.modelId))
+                    .findFirst();
+            if (providerModel.isPresent()) return providerModel.get();
+        }
         var models = gatewayModelStore.listByModelId(model);
         if (!models.isEmpty()) return models.getFirst();
         return null;

@@ -35,6 +35,8 @@ public class TraceUpdate {
     public String agentName;
     public String agentId;
     public String model;
+    // provider that actually served the call; set only when known (gateway-routed traces)
+    public String providerId;
     public Map<String, String> metadata;
     // write the identity columns even when null, used when the root span replaces a provisional trace
     public boolean writeIdentityNulls;
@@ -52,6 +54,6 @@ public class TraceUpdate {
     public Double costUsdDelta;
 
     public enum EmptyGuard {
-        AGENT_NAME, AGENT_ID, MODEL, NAME
+        AGENT_NAME, AGENT_ID, MODEL, NAME, PROVIDER_ID
     }
 }

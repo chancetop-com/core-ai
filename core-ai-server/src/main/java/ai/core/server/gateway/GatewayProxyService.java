@@ -173,10 +173,11 @@ public class GatewayProxyService {
     private void streamAnthropicEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
         var translator = new AnthropicMessagesStream(call.requestedModel());
         var output = new StringBuilder();
+        var ttft = new GatewayProxyTrace.TimeToFirstToken();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                GatewayProxyTrace.appendStreamOutput(output, event.data());
+                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
                 for (var translated : translator.onEvent(event.type(), event.data())) {
                     channel.sendRawEvent(translated.event(), translated.data());
                 }
@@ -191,11 +192,12 @@ public class GatewayProxyService {
 
     private void streamEvents(GatewayUpstreamCall call, RawSseChannel<?> channel, Span span) {
         var output = new StringBuilder();
+        var ttft = new GatewayProxyTrace.TimeToFirstToken();
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 channel.sendRawEvent(event.type(), event.data());
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                GatewayProxyTrace.appendStreamOutput(output, event.data());
+                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
                 if ("[DONE]".equals(event.data())) break;
             }
         }
@@ -294,12 +296,13 @@ public class GatewayProxyService {
     private Response bufferedStream(GatewayUpstreamCall call, Span span, GatewayEndpointType endpoint) {
         var builder = new StringBuilder();
         var output = new StringBuilder();
+        var ttft = new GatewayProxyTrace.TimeToFirstToken();
         var translator = AnthropicMessagesBridge.active(endpoint, call.provider())
                 ? new AnthropicMessagesStream(call.requestedModel()) : null;
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                GatewayProxyTrace.appendStreamOutput(output, event.data());
+                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
                 if (translator == null) {
                     appendEvent(builder, event.id(), event.type(), event.data());
                 } else {

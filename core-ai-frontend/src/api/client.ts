@@ -2963,6 +2963,13 @@ export const api = {
       const qs = buildAnalyticsParams(params);
       return (await request<{ points: DimensionTrendPoint[] }>(`/api/admin/analytics/${dimension}/trend?${qs}&keys=${encodeURIComponent(params.keys)}`)).points;
     },
+    llmMetrics: (params: { minutes?: number; bucketMinutes?: number }) => {
+      const qs = new URLSearchParams();
+      if (params.minutes !== undefined) qs.set('minutes', String(params.minutes));
+      if (params.bucketMinutes !== undefined) qs.set('bucket_minutes', String(params.bucketMinutes));
+      const suffix = qs.toString() ? `?${qs}` : '';
+      return request<LlmMetrics>(`/api/admin/analytics/llm-metrics${suffix}`);
+    },
   },
   artifacts: {
     listMy: (offset = 0, limit = 20, agentId?: string) => {
@@ -3365,6 +3372,41 @@ export interface AnalyticsParams {
   from?: string;
   to?: string;
   sort?: string;
+}
+
+export interface LlmThroughputPoint {
+  bucketStart: string;
+  calls: number;
+  errors: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+}
+
+export interface LlmModelMetrics {
+  model: string;
+  calls: number;
+  errors: number;
+  callsWithTtft: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedTokens: number;
+  costUsd: number;
+  avgTtftMs: number | null;
+  p50TtftMs: number | null;
+  p95TtftMs: number | null;
+  avgDurationMs: number | null;
+  p50DurationMs: number | null;
+  p95DurationMs: number | null;
+  avgOutputTokensPerSecond: number | null;
+}
+
+export interface LlmMetrics {
+  windowMinutes: number;
+  bucketMinutes: number;
+  points: LlmThroughputPoint[];
+  models: LlmModelMetrics[];
 }
 
 // --- Artifacts ---

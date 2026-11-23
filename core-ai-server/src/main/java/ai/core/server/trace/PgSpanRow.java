@@ -32,6 +32,9 @@ public class PgSpanRow {
     @Column(name = "model")
     public String model;
 
+    @Column(name = "provider_id")
+    public String providerId;
+
     @Column(name = "status")
     public String status;
 
@@ -70,6 +73,9 @@ public class PgSpanRow {
 
     @Column(name = "duration_ms")
     public Long durationMs;
+
+    @Column(name = "ttft_ms")
+    public Long ttftMs;
 
     @Column(name = "error_message")
     public String errorMessage;

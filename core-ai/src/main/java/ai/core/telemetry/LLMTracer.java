@@ -36,6 +36,7 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
     private static final AttributeKey<Double> GEN_AI_USAGE_COST_USD = AttributeKey.doubleKey("gen_ai.usage.cost_usd");
     private static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASON = AttributeKey.stringKey("gen_ai.response.finish_reasons");
+    private static final AttributeKey<Long> GEN_AI_RESPONSE_TTFT_MS = AttributeKey.longKey("gen_ai.response.time_to_first_token_ms");
     private static final AttributeKey<Boolean> CORE_AI_RESPONSE_NULL = AttributeKey.booleanKey("core_ai.response.null");
 
     // Langfuse-specific attributes (maps directly to Langfuse data model)
@@ -181,6 +182,9 @@ public class LLMTracer extends Tracer {
         var choice = firstChoice(response);
         if (choice != null && choice.finishReason != null) {
             span.setAttribute(GEN_AI_RESPONSE_FINISH_REASON, choice.finishReason.name());
+        }
+        if (response.ttftMs != null) {
+            span.setAttribute(GEN_AI_RESPONSE_TTFT_MS, response.ttftMs);
         }
     }
 

@@ -1,6 +1,7 @@
 package ai.core.server.trace;
 
 import ai.core.server.trace.domain.Span;
+import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
@@ -10,9 +11,13 @@ import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.bson.conversions.Bson;
 
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.TreeMap;
 
 /**
  * @author stephen
@@ -24,6 +29,18 @@ public class MongoSpanStore implements SpanStore {
         var store = new MongoSpanStore();
         store.spanCollection = collection;
         return store;
+    }
+
+    private static long safe(Long value) {
+        return value != null ? value : 0L;
+    }
+
+    private static Double percentile(List<Long> values, double percentile) {
+        if (values.isEmpty()) return null;
+        var sorted = new ArrayList<>(values);
+        Collections.sort(sorted);
+        int index = (int) Math.ceil(percentile * sorted.size()) - 1;
+        return (double) sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
     }
 
     @Inject
@@ -111,6 +128,53 @@ public class MongoSpanStore implements SpanStore {
     }
 
     @Override
+    public List<LlmThroughputRow> llmThroughput(ZonedDateTime from, ZonedDateTime to, int bucketMinutes) {
+        long bucketMillis = bucketMinutes * 60_000L;
+        var buckets = new TreeMap<Long, LlmThroughputRow>();
+        spanCollection.forEach(llmQuery(from, to), span -> {
+            var row = buckets.computeIfAbsent(bucketStart(span, bucketMillis), start -> {
+                var value = new LlmThroughputRow();
+                value.bucketStart = ZonedDateTime.ofInstant(Instant.ofEpochMilli(start), ZonedDateTime.now().getZone());
+                value.calls = 0L;
+                value.errors = 0L;
+                value.inputTokens = 0L;
+                value.outputTokens = 0L;
+                value.cachedTokens = 0L;
+                value.costUsd = 0.0;
+                return value;
+            });
+            row.calls++;
+            if (span.status == SpanStatus.ERROR) row.errors++;
+            row.inputTokens += safe(span.inputTokens);
+            row.outputTokens += safe(span.outputTokens);
+            row.cachedTokens += safe(span.cachedTokens);
+            row.costUsd += span.costUsd != null ? span.costUsd : 0.0;
+        });
+        return new ArrayList<>(buckets.values());
+    }
+
+    @Override
+    public List<LlmModelMetricsRow> llmModelMetrics(ZonedDateTime from, ZonedDateTime to) {
+        var models = new LinkedHashMap<String, ModelAccumulator>();
+        spanCollection.forEach(llmQuery(from, to), span -> models
+            .computeIfAbsent(span.model != null ? span.model : "(unknown)", ignored -> new ModelAccumulator())
+            .accept(span));
+        return models.values().stream().map(ModelAccumulator::toRow).toList();
+    }
+
+    private Query llmQuery(ZonedDateTime from, ZonedDateTime to) {
+        var query = new Query();
+        query.filter = Filters.and(Filters.eq("type", SpanType.LLM), Filters.gte("started_at", from), Filters.lt("started_at", to));
+        query.projection = Projections.include("model", "status", "input_tokens", "output_tokens", "cached_tokens",
+            "cost_usd", "duration_ms", "ttft_ms", "started_at");
+        return query;
+    }
+
+    private long bucketStart(Span span, long bucketMillis) {
+        return span.startedAt.toInstant().toEpochMilli() / bucketMillis * bucketMillis;
+    }
+
+    @Override
     public List<Span> before(ZonedDateTime cutoff, int offset, int limit) {
         var query = new Query();
         query.filter = Filters.lt("started_at", cutoff);
@@ -153,4 +217,66 @@ public class MongoSpanStore implements SpanStore {
         }
         return deleted;
     }
+
+    /**
+     * Java-side rollup for the legacy Mongo store. Percentiles are computed over a bounded sample so a
+     * week of traffic cannot pull every latency into memory; the PG store leaves this to SQL.
+     */
+    private final class ModelAccumulator {
+        private static final int MAX_PERCENTILE_SAMPLES = 20_000;
+
+        private long calls;
+        private long errors;
+        private long inputTokens;
+        private long outputTokens;
+        private long cachedTokens;
+        private double costUsd;
+        private long durationSum;
+        private long ttftSum;
+        private long decodeSpeedSamples;
+        private double decodeSpeedSum;
+        private final List<Long> ttfts = new ArrayList<>();
+        private final List<Long> durations = new ArrayList<>();
+
+        void accept(Span span) {
+            calls++;
+            if (span.status == SpanStatus.ERROR) errors++;
+            inputTokens += safe(span.inputTokens);
+            outputTokens += safe(span.outputTokens);
+            cachedTokens += safe(span.cachedTokens);
+            costUsd += span.costUsd != null ? span.costUsd : 0.0;
+            if (span.ttftMs != null) {
+                ttftSum += span.ttftMs;
+                if (ttfts.size() < MAX_PERCENTILE_SAMPLES) ttfts.add(span.ttftMs);
+            }
+            if (span.durationMs != null) {
+                durationSum += span.durationMs;
+                if (durations.size() < MAX_PERCENTILE_SAMPLES) durations.add(span.durationMs);
+                if (span.ttftMs != null && span.outputTokens != null && span.outputTokens > 0 && span.durationMs > span.ttftMs) {
+                    decodeSpeedSum += span.outputTokens * 1000.0 / (span.durationMs - span.ttftMs);
+                    decodeSpeedSamples++;
+                }
+            }
+        }
+
+        LlmModelMetricsRow toRow() {
+            var row = new LlmModelMetricsRow();
+            row.calls = calls;
+            row.errors = errors;
+            row.callsWithTtft = (long) ttfts.size();
+            row.inputTokens = inputTokens;
+            row.outputTokens = outputTokens;
+            row.cachedTokens = cachedTokens;
+            row.costUsd = costUsd;
+            row.avgTtftMs = ttfts.isEmpty() ? null : (double) ttftSum / ttfts.size();
+            row.p50TtftMs = percentile(ttfts, 0.5);
+            row.p95TtftMs = percentile(ttfts, 0.95);
+            row.avgDurationMs = calls == 0 ? null : (double) durationSum / calls;
+            row.p50DurationMs = percentile(durations, 0.5);
+            row.p95DurationMs = percentile(durations, 0.95);
+            row.avgOutputTokensPerSecond = decodeSpeedSamples == 0 ? null : decodeSpeedSum / decodeSpeedSamples;
+            return row;
+        }
+    }
 }
+

@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Guards the one bug this shape of SQL keeps producing: a statement whose {@code ?} count does not
@@ -68,6 +69,7 @@ class PgTraceSqlParamsTest {
         update.agentName = "a";
         update.agentId = "a";
         update.model = "m";
+        update.providerId = "p1";
         update.metadata = Map.of("k", "v");
         update.inputTokensDelta = 1L;
         update.outputTokensDelta = 1L;
@@ -166,6 +168,21 @@ class PgTraceSqlParamsTest {
         store.realtimeTrend(from, to, Map.of(), Map.of());
 
         assertEquals(20, database.statementCount());
+    }
+
+    @Test
+    void analyticsPrefersStoredProvider() {
+        var database = new RecordingDatabase();
+        var store = store(database);
+        var from = ZonedDateTime.parse("2026-11-01T00:00:00Z");
+        var to = ZonedDateTime.parse("2026-11-02T00:00:00Z");
+
+        store.realtimeStats(from, to, TraceDimension.PROVIDER, Map.of("m1", "p1"), Map.of("p1", "Pn1"));
+        store.analyticsRollup(from, to, Map.of("m1", "p1"), Map.of("p1", "Pn1"));
+
+        var statements = database.statements();
+        assertTrue(statements.stream().anyMatch(sql -> sql.contains("COALESCE(provider_id,")));
+        assertTrue(statements.stream().anyMatch(sql -> sql.contains("CASE WHEN provider_id IS NULL")));
     }
 
     @Test
