@@ -99,6 +99,7 @@ public final class SessionHistoryHelper {
             budget = Math.max(budget - keptChars(tool.result, resultLimit), 0);
             tool.status = record.status;
             tool.toolType = record.toolType;
+            tool.parentCallId = record.parentCallId;
             tool.durationMs = record.durationMs;
             tools.add(tool);
         }

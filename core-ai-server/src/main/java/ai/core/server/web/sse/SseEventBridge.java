@@ -84,6 +84,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.toolNotes = event.diff;
         sse.toolType = event.toolType;
         sse.taskId = event.taskId;
+        sse.parentCallId = event.parentCallId;
         sse.runInBackground = event.runInBackground;
         if (event.arguments != null) {
             @SuppressWarnings("unchecked")
@@ -101,6 +102,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.status = event.status;
         sse.result = event.result;
         sse.toolType = event.toolType;
+        sse.parentCallId = event.parentCallId;
         sse.durationMs = event.durationMs;
         eventPublisher.publish(sessionId, sse);
     }

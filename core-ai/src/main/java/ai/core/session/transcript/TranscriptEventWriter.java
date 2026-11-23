@@ -75,6 +75,7 @@ final class TranscriptEventWriter {
         TranscriptPayloads.putText(recorder.store(), record, "arguments", event.arguments);
         TranscriptPayloads.putText(recorder.store(), record, "diff", event.diff);
         record.put("taskId", event.taskId);
+        record.put("parentCallId", event.parentCallId);
         record.put("run_in_background", event.runInBackground);
         record.put("model", event.model);
         record.put("toolType", event.toolType);
@@ -92,6 +93,7 @@ final class TranscriptEventWriter {
         TranscriptPayloads.putText(recorder.store(), record, "result", mergeResult(event.result, tail));
         record.put("durationMs", event.durationMs);
         record.put("taskId", event.taskId);
+        record.put("parentCallId", event.parentCallId);
         record.put("toolType", event.toolType);
         recorder.commitLocked(record);
     }

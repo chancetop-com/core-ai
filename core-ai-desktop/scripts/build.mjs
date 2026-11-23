@@ -67,6 +67,7 @@ const targets = [
   { entryPoints: ['src/main/plugins/pluginTerminal.ts'], outfile: 'dist/test/pluginTerminal.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/pluginView.ts'], outfile: 'dist/test/pluginView.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/reducer.ts'], outfile: 'dist/test/transcript.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/renderer/chat/transcriptView.ts'], outfile: 'dist/test/transcriptView.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/classify.ts'], outfile: 'dist/test/transcriptClassify.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/transcript/time.ts'], outfile: 'dist/test/transcriptTime.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/remoteProtocol.ts'], outfile: 'dist/test/remoteProtocol.js', platform: 'node', target: 'node20', format: 'cjs' },

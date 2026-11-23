@@ -81,6 +81,9 @@ public class ChatMessage {
         @Field(name = "tool_type")
         public String toolType;
 
+        @Field(name = "parent_call_id")
+        public String parentCallId;
+
         @Field(name = "duration_ms")
         public Long durationMs;
     }

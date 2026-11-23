@@ -48,6 +48,8 @@ public final class ExecutionContext {
     private Caller caller;
     private final String taskId;
     private final String taskName;
+    /** Call id of the tool call this subagent was spawned by; null for the session's own context. */
+    private final String parentCallId;
     private final Map<String, Object> customVariables;
     private final ToolCallAsyncTaskManager asyncTaskManager;
     private List<AttachedContent> attachedContents;
@@ -89,6 +91,7 @@ public final class ExecutionContext {
         this.caller = builder.caller;
         this.taskId = builder.taskId;
         this.taskName = builder.taskName;
+        this.parentCallId = builder.parentCallId;
         this.attachedContents = builder.attachedContent == null ? null : List.of(builder.attachedContent);
         this.customVariables = Maps.newHashMap();
         this.customVariables.putAll(builder.customVariables);
@@ -131,6 +134,10 @@ public final class ExecutionContext {
 
     public String getTaskName() {
         return taskName;
+    }
+
+    public String getParentCallId() {
+        return parentCallId;
     }
 
     public Map<String, Object> getCustomVariables() {

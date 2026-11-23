@@ -290,6 +290,7 @@ public class ChatMessageService {
             tc.name = event.toolName;
             tc.arguments = event.arguments;
             tc.toolType = event.toolType;
+            tc.parentCallId = event.parentCallId;
         }
 
         @Override
@@ -298,6 +299,7 @@ public class ChatMessageService {
             tc.callId = event.callId;
             if (tc.name == null) tc.name = event.toolName;
             if (tc.toolType == null) tc.toolType = event.toolType;
+            if (tc.parentCallId == null) tc.parentCallId = event.parentCallId;
             tc.result = event.result;
             tc.status = event.status;
             tc.durationMs = event.durationMs;

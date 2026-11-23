@@ -26,11 +26,16 @@ export function skillNameFrom(argumentsText: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-export function subagentLabelFrom(argumentsText: unknown): string | null {
+export function subagentTypeFrom(argumentsText: unknown): string | null {
   const parsed = parseArguments(argumentsText);
   const rawType = parsed?.subagent_type;
+  return typeof rawType === 'string' && rawType.trim() ? rawType.trim() : null;
+}
+
+export function subagentLabelFrom(argumentsText: unknown): string | null {
+  const parsed = parseArguments(argumentsText);
   const rawDescription = parsed?.description;
-  const type = typeof rawType === 'string' && rawType.trim() ? rawType.trim() : null;
+  const type = subagentTypeFrom(argumentsText);
   const description = typeof rawDescription === 'string' && rawDescription.trim() ? rawDescription.trim() : null;
   if (type && description) return `${type} · ${description}`;
   return type;

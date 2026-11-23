@@ -926,6 +926,32 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 .tool-status.success, .task-status.success { color: var(--green); }
 .tool-status.failure, .task-status.failure { color: var(--red); }
 .tool-status.running, .task-status.running { color: var(--amber); }
+.tool-tag, .record-tool-tag {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--faint);
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 0 5px;
+}
+.tool-child-count {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--faint);
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  padding: 0 6px;
+}
+.tool-children {
+  border-left: 1px solid var(--border);
+  margin: 2px 0 4px 16px;
+  padding-left: 10px;
+}
+.tool-children[hidden] { display: none; }
+.tool-children .tool-entry-head { font-size: 11.5px; padding: 3px 0; }
+.tool-children .tool-name { font-size: 12px; }
+.tool-entry-orphan .tool-name::before,
+.record-tool-orphan .record-tool-name::before { content: '↳ '; color: var(--faint); }
 .task-status.running::before {
   content: '';
   display: inline-block;
@@ -995,6 +1021,12 @@ img.artifact-inline-image { display: block; max-width: 100%; margin: 6px 0; bord
 
 .record-tool { border-top: 1px dashed var(--border); padding: 6px 0; }
 .record-tool:first-child { border-top: none; }
+.record-tool-children {
+  border-left: 1px solid var(--border);
+  margin: 3px 0 2px;
+  padding-left: 10px;
+}
+.record-tool-children .record-tool { padding: 4px 0; }
 .record-tool-head { display: flex; align-items: baseline; gap: 8px; }
 .record-tool-name { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
 .record-tool-duration { font-size: 11px; color: var(--faint); }

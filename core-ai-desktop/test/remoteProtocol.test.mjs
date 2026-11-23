@@ -63,6 +63,18 @@ test('history roles and tool fields normalize before rendering', () => {
   assert.equal(agent.events[0].callId, undefined);
 });
 
+test('subagent tool links survive the remote boundary', () => {
+  const start = normalizeRemoteEvent({
+    type: 'tool_start', call_id: 'c2', tool_name: 'grep', tool_args: {}, parent_call_id: 'c1',
+  });
+  assert.equal(start.parentCallId, 'c1');
+
+  const [agent] = normalizeRemoteMessages([{
+    role: 'agent', content: '', tools: [{ call_id: 'c2', name: 'grep', parent_call_id: 'c1' }],
+  }]);
+  assert.equal(agent.tools[0].parentCallId, 'c1');
+});
+
 test('unknown and malformed events are ignored', () => {
   assert.equal(normalizeRemoteEvent(null), null);
   assert.equal(normalizeRemoteEvent({ content: 'no type' }), null);

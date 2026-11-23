@@ -28,6 +28,7 @@ public final class ExecutionContextBuilder {
     Caller caller;
     String taskId;
     String taskName;
+    String parentCallId;
     ToolCallAsyncTaskManager asyncTaskManager;
     AttachedContent attachedContent;
     PersistenceProvider persistenceProvider;
@@ -63,6 +64,11 @@ public final class ExecutionContextBuilder {
 
     public ExecutionContextBuilder taskName(String taskName) {
         this.taskName = taskName;
+        return this;
+    }
+
+    public ExecutionContextBuilder parentCallId(String parentCallId) {
+        this.parentCallId = parentCallId;
         return this;
     }
 

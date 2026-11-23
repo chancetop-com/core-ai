@@ -12,6 +12,7 @@ export interface RemoteEvent {
   arguments?: string;
   diff?: string;
   toolType?: string | null;
+  parentCallId?: string | null;
   status?: string;
   result?: string;
   reasoning?: string;
@@ -31,6 +32,7 @@ export interface RemoteTool {
   result?: string;
   status?: string;
   toolType?: string | null;
+  parentCallId?: string | null;
   durationMs?: number;
 }
 
@@ -103,6 +105,7 @@ export function normalizeRemoteEvent(raw: unknown): RemoteEvent | null {
       base.arguments = argumentText(event.arguments ?? event.tool_args);
       base.diff = text(event.diff ?? event.tool_notes);
       base.toolType = text(event.toolType ?? event.tool_type) ?? null;
+      base.parentCallId = text(event.parentCallId ?? event.parent_call_id) ?? null;
       break;
     case 'tool_result':
       base.callId = text(event.callId ?? event.call_id);
@@ -110,6 +113,7 @@ export function normalizeRemoteEvent(raw: unknown): RemoteEvent | null {
       base.result = text(event.result);
       base.status = text(event.status);
       base.toolType = text(event.toolType ?? event.tool_type) ?? null;
+      base.parentCallId = text(event.parentCallId ?? event.parent_call_id) ?? null;
       base.durationMs = milliseconds(event.duration_ms ?? event.durationMs);
       break;
     case 'plan_update':
@@ -166,6 +170,7 @@ function normalizeTools(raw: unknown): RemoteTool[] {
       result: text(tool.result),
       status: text(tool.status),
       toolType: text(tool.toolType ?? tool.tool_type) ?? null,
+      parentCallId: text(tool.parentCallId ?? tool.parent_call_id) ?? null,
       durationMs: milliseconds(tool.duration_ms ?? tool.durationMs),
     };
   });

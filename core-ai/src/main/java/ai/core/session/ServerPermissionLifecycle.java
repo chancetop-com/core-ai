@@ -141,6 +141,7 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
             startEvent.diff = generatePreviewDiff(toolName, argMap);
         }
         startEvent.taskId = (String) argMap.getOrDefault("task_id", context.getTaskId());
+        startEvent.parentCallId = context.getParentCallId();
         startEvent.runInBackground = isBackground(argMap);
         startEvent.toolType = toolTypeResolver != null ? toolTypeResolver.apply(toolName) : null;
         if (TaskTool.TOOL_NAME.equals(toolName)) {
@@ -218,7 +219,8 @@ public class ServerPermissionLifecycle extends AbstractLifecycle {
         event.taskId = toolResult.getTaskId() != null
                 ? toolResult.getTaskId()
                 : (String) argMap.getOrDefault("task_id", executionContext.getTaskId());
-        event.toolType = toolTypeResolver.apply(toolName);
+        event.toolType = toolTypeResolver != null ? toolTypeResolver.apply(toolName) : null;
+        event.parentCallId = executionContext.getParentCallId();
         event.durationMs = toolResult.getDurationMs();
         dispatcher.accept(event);
     }

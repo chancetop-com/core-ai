@@ -25,6 +25,9 @@ public class SseToolResultEvent extends SseBaseEvent {
     @Property(name = "tool_type")
     public String toolType;
 
+    @Property(name = "parent_call_id")
+    public String parentCallId;
+
     @Property(name = "duration_ms")
     public Long durationMs;
 }

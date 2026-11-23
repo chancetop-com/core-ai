@@ -86,6 +86,8 @@ export interface ToolItem {
   resultSeq?: number;
   durationMs?: number;
   taskId?: string | null;
+  /** Call id of the tool call that spawned this call's subagent; null for a top-level call. */
+  parentCallId?: string | null;
   runInBackground?: boolean;
   toolType?: string | null;
 }
@@ -424,6 +426,7 @@ function addTool(model: TranscriptModel, record: TranscriptRecord): void {
     diff: recordText(record, 'diff'),
     diffRef: recordRef(record, 'diff'),
     taskId,
+    parentCallId: typeof record.parentCallId === 'string' ? record.parentCallId : null,
     runInBackground: recordBool(record, 'run_in_background'),
     toolType: typeof record.toolType === 'string' ? record.toolType : null,
   };
@@ -455,6 +458,7 @@ function applyToolResult(model: TranscriptModel, record: TranscriptRecord): void
     existing.resultPreview = typeof record.result_preview === 'string' ? record.result_preview : undefined;
     existing.resultSeq = record.seq;
     existing.durationMs = recordNumber(record, 'durationMs');
+    if (typeof record.parentCallId === 'string' && record.parentCallId) existing.parentCallId = record.parentCallId;
     if (taskId) existing.taskId = taskId;
   } else {
     turn.items.push({
@@ -472,6 +476,7 @@ function applyToolResult(model: TranscriptModel, record: TranscriptRecord): void
       resultSeq: record.seq,
       durationMs: recordNumber(record, 'durationMs'),
       taskId,
+      parentCallId: typeof record.parentCallId === 'string' ? record.parentCallId : null,
       toolType: typeof record.toolType === 'string' ? record.toolType : null,
     });
   }

@@ -42,6 +42,10 @@ public class ToolResultEvent implements AgentEvent {
     @Property(name = "taskId")
     public String taskId;
 
+    /** Call id of the tool call that spawned this call's subagent; null for a top-level call. */
+    @Property(name = "parentCallId")
+    public String parentCallId;
+
     @Property(name = "toolType")
     public String toolType;
 

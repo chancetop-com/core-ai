@@ -533,10 +533,15 @@ interface UiTool {
   name: string;
   status: string;
   durationMs?: number;
+  /** Set when this call ran inside a subagent; names the `task` call that spawned it. */
+  parentCallId?: string | null;
   node?: HTMLElement;
   statusNode?: HTMLElement;
   resultNode?: HTMLElement;
   durationNode?: HTMLElement;
+  childrenNode?: HTMLElement;
+  childCount?: number;
+  setChildCount?: (count: number) => void;
 }
 
 /**
@@ -4795,6 +4800,7 @@ function remoteHistoryModel(messages: RemoteHistoryMessage[]): TranscriptModel {
         result: tool.result,
         durationMs: tool.durationMs,
         toolType: tool.toolType ?? null,
+        parentCallId: tool.parentCallId ?? null,
       });
     });
     if (message.content) {
@@ -5313,27 +5319,50 @@ function followPanelScroll(panel: HTMLElement | null): void {
   panel.scrollTop = panel.scrollHeight;
 }
 
-/** "Tool use (n) · 12m" — the chip doubles as this bubble's tool-time total, never the session's. */
+/** "Tool use (n · k nested) · 12m" — top-level rows are what the panel lists; nested calls ride under their subagent. */
 function updateToolsLabel(view: SessionView): void {
   const current = view.streaming;
   if (!current?.toolsToggle) return;
+  const callIds = new Set(current.tools.map((tool) => tool.callId));
+  const nested = current.tools.filter((tool) => tool.parentCallId && callIds.has(tool.parentCallId)).length;
   const total = current.tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
-  current.toolsToggle.setLabel(`Tool use (${current.tools.length})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
+  const nestedLabel = nested ? ` · ${nested} nested` : '';
+  current.toolsToggle.setLabel(`Tool use (${current.tools.length - nested}${nestedLabel})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
 }
 
 function appendToolStart(view: SessionView, event: any): void {
   const current = ensureStreaming(view);
-  const panel = ensureToolPanel(current);
-  const tool: UiTool = { callId: event.callId, name: event.toolName ?? 'tool', status: 'running' };
-  const entry = liveToolEntryView(tool.name, event.arguments);
+  const parentCallId = typeof event.parentCallId === 'string' && event.parentCallId ? event.parentCallId : null;
+  const parent = parentCallId ? view.toolMap.get(parentCallId) : undefined;
+  const tool: UiTool = {
+    callId: event.callId,
+    name: event.toolName ?? 'tool',
+    status: 'running',
+    parentCallId,
+  };
+  const entry = liveToolEntryView(tool.name, event.arguments, event.toolType);
   tool.node = entry.node;
   tool.statusNode = entry.statusNode;
   tool.resultNode = entry.resultNode;
   tool.durationNode = entry.durationNode;
-  current.tools.push(tool);
-  panel.append(entry.node);
+  tool.childrenNode = entry.childrenNode;
+  tool.setChildCount = entry.setChildCount;
+  if (parent?.childrenNode) {
+    parent.childrenNode.hidden = false;
+    parent.childrenNode.append(entry.node);
+    parent.childCount = (parent.childCount ?? 0) + 1;
+    parent.setChildCount?.(parent.childCount);
+    tool.node.classList.add('tool-entry-child');
+    // A background subagent can outlive its own turn: its later calls nest under the old row but
+    // must not inflate the current bubble's count.
+    if (parent.node?.closest('.assist-panel-body') === current.toolsPanel) current.tools.push(tool);
+  } else {
+    if (parentCallId) tool.node.classList.add('tool-entry-orphan');
+    ensureToolPanel(current).append(entry.node);
+    current.tools.push(tool);
+  }
   refreshToolsBusy(entry.node);
-  followPanelScroll(panel);
+  followPanelScroll(entry.node.closest('.assist-panel-body') as HTMLElement | null);
   updateToolsLabel(view);
   const useKind = toolUseKind(tool.name, event.toolType);
   if (useKind) recordToolUse(current, useKind, toolUseLabel(useKind, tool.name, event.arguments));

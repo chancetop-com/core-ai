@@ -17,6 +17,20 @@ const start = (seq, text, source = 'user') => ({
   message_count_before: 0,
 });
 
+test('a subagent call keeps the id of the tool call that spawned it', () => {
+  const model = reduceAll([
+    start(2, 'go'),
+    { seq: 3, turn_id: 't2', kind: 'tool_start', callId: 'c1', toolName: 'task', arguments: '{}', toolType: 'subagent' },
+    { seq: 4, turn_id: 't2', kind: 'tool_start', callId: 'c2', toolName: 'grep', arguments: '{}', parentCallId: 'c1' },
+    { seq: 5, turn_id: 't2', kind: 'tool_result', callId: 'c2', toolName: 'grep', status: 'success', result: 'ok', parentCallId: 'c1' },
+  ]);
+  const tools = model.turns[0].items.filter((item) => item.kind === 'tool');
+  assert.equal(tools.length, 2);
+  assert.equal(tools[0].parentCallId, null);
+  assert.equal(tools[1].parentCallId, 'c1');
+  assert.equal(tools[1].status, 'success');
+});
+
 test('groups a turn with text, tool, approval and summary', () => {
   const model = reduceAll([
     { seq: 1, kind: 'session_start', turn_id: null },

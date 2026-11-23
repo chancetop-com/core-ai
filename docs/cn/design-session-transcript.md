@@ -148,8 +148,8 @@ TranscriptRecorder（唯一写入者，一把锁）
 | `steer` | `steerPending`（**`turnInput.offer` 之前**）/ `steerCommit`（`PendingUserInputInjector.inject`）/ `steerCancel`（offer 失败、`SessionTurnInput.end` 重新入队、`sessionStart` 发现 dangling） | `state: "pending" \| "committed" \| "cancelled", text, attachments[], client_turn_id, ref_seq?` | pending 一条完整记录（写前 flush 正文）；committed/cancelled 只带 `ref_seq`；`steerSeq` 与 `turnId` 穿过 `PendingUserInputQueue.PendingUserInput` |
 | `assistant_text` | `text_chunk` 折叠 | `text` | |
 | `reasoning` | `reasoning_complete` | `reasoning, durationMs` | |
-| `tool_start` | 同名事件 | `callId, toolName, arguments, diff, taskId, run_in_background, model, toolType` | |
-| `tool_result` | 同名事件 + 同 callId 的输出尾巴 | `callId, toolName, status, result, durationMs, taskId, toolType` | |
+| `tool_start` | 同名事件 | `callId, toolName, arguments, diff, taskId, parentCallId, run_in_background, model, toolType` | `parentCallId` = 启动该调用的 `task` 调用的 callId（子代理内的调用才有） |
+| `tool_result` | 同名事件 + 同 callId 的输出尾巴 | `callId, toolName, status, result, durationMs, taskId, parentCallId, toolType` | |
 | `tool_approval` | 请求事件 / `approval` | `callId, toolName, suggestedPattern, decision` | 两条 |
 | `batch_tool_start` | 同名事件 | `group, tools[], task_id` | |
 | `plan_update` | 同名事件 | `todos[]` | |
@@ -221,7 +221,7 @@ reducer 规则：
 
 - `session_start` 忽略。`turn_start` → 新 turn（`source` 透传），`inputs[]` 每项一个 `input` item（`key = seq:i`）；`source:"task_note"` 的 turn 其 input 用 `parseTaskNotifications` 渲染为 task note，不作用户气泡；`steer{pending}` → 当前 open turn 的 `input{steering:true, seq}`，`steer{committed, ref_seq}` 只改状态，`steer{cancelled, ref_seq}` 移除该 item；**selector 规则**：`taskIndex` 命中同 taskId 的任务行时隐藏该 task_note turn 的 input（镜像 `downgradeDuplicateTaskNotes`）。`error{terminal:false}` → `notice{level:error}`，不关轮；`error{terminal:true}` 关轮并追加 notice。
 - 乐观气泡：以 `client_turn_id` 为 key 创建 pending；被 `turn_start.inputs[]` 或 `steer{pending}` 认领即转正；`session/send` 返回 `queued:true` 的消息**保留到下一轮 `turn_start` 认领**，不在当前轮结束时标失败；只有 `session/send` 失败或 `engine/ready`（引擎重启）才标"未送达"。
-- `tool_start` → `tool` item；`run_in_background`/`taskId` 非空 → `taskIndex[taskId] = turnId`，并消费 `pendingTaskStatus[taskId]`；`tool_result` 按 callId 合并。
+- `tool_start` → `tool` item；`run_in_background`/`taskId` 非空 → `taskIndex[taskId] = turnId`，并消费 `pendingTaskStatus[taskId]`；`tool_result` 按 callId 合并。`parentCallId` 指向启动该调用的 `task` 调用的 callId：桌面端据此把子代理的 tool 嵌在该 task 行下；父行不在本 turn（后台子代理、旧记录）时仍作为顶层行渲染并加 `↳` 标记。
 - `task_status`：经 `taskIndex` 回写起始轮；**找不到 → `pendingTaskStatus`**，不挂当前轮（H2）。
 - `turn_id = null` 的 `memory`/晚到 `artifact` → seq 之前最近的 turn（含 open）。
 - `turn_complete`/`error` 关闭 turn：running `tool` 置 cancelled；无 `text` item 且 `output` 非空 → 合成 `text`；`error` 追加 `notice`。`notice{level:system}` 原样为 item。

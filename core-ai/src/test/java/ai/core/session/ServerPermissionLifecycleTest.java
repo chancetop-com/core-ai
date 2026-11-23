@@ -4,8 +4,10 @@ import ai.core.agent.ExecutionContext;
 import ai.core.agent.subagent.SubagentModelRef;
 import ai.core.agent.subagent.SubagentThreadKind;
 import ai.core.api.server.session.AgentEvent;
+import ai.core.api.server.session.ToolResultEvent;
 import ai.core.api.server.session.ToolStartEvent;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -58,6 +60,34 @@ class ServerPermissionLifecycleTest {
         events.clear();
         lifecycle.beforeTool(FunctionCall.of("call-2", "function", "task", "{\"task_id\":\"sa-1\"}"), context);
         assertEquals("m-thread", ((ToolStartEvent) events.get(0)).model);
+    }
+
+    @Test
+    void subagentCallsNameTheToolCallThatSpawnedThem() {
+        var events = new ArrayList<AgentEvent>();
+        var lifecycle = new ServerPermissionLifecycle("s-1", events::add, null, true, null, null);
+        var subContext = ExecutionContext.builder()
+                .sessionId("subagent:explore-1")
+                .parentCallId("call-task-1")
+                .build();
+        var call = FunctionCall.of("call-2", "function", "read_file", "{\"file_path\":\"a.md\"}");
+
+        lifecycle.beforeTool(call, subContext);
+        lifecycle.afterTool(call, subContext, ToolCallResult.completed("ok"));
+
+        assertEquals("call-task-1", ((ToolStartEvent) events.get(0)).parentCallId);
+        assertEquals("call-task-1", ((ToolResultEvent) events.get(1)).parentCallId);
+    }
+
+    @Test
+    void topLevelCallsHaveNoParent() {
+        var events = new ArrayList<AgentEvent>();
+        var lifecycle = new ServerPermissionLifecycle("s-1", events::add, null, true, null, null);
+        var call = FunctionCall.of("call-1", "function", "read_file", "{\"file_path\":\"a.md\"}");
+
+        lifecycle.beforeTool(call, context());
+
+        assertNull(((ToolStartEvent) events.getFirst()).parentCallId);
     }
 
     private ExecutionContext context() {

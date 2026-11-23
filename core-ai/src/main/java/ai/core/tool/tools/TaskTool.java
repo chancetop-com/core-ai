@@ -287,6 +287,7 @@ public class TaskTool extends ToolCall {
                 .sandbox(context.getSandbox())
                 .taskId(taskId)
                 .taskName(taskName)
+                .parentCallId(context.getCurrentToolCallId())
                 .runBudget(context.getRunBudget() == null ? null : context.getRunBudget().childScope())
                 .waitCapability(context.getWaitCapability())
                 .build();

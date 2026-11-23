@@ -30,6 +30,9 @@ public class SseToolStartEvent extends SseBaseEvent {
     @Property(name = "task_id")
     public String taskId;
 
+    @Property(name = "parent_call_id")
+    public String parentCallId;
+
     @Property(name = "run_in_background")
     public Boolean runInBackground;
 }

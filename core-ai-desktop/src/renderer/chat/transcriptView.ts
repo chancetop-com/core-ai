@@ -1,7 +1,7 @@
 // Shared transcript primitives used by both the local engine transcript and the remote
 // server conversation. Keeping the chip/panel/tool/plan markup here is what makes the two
 // backends look and behave the same; the state machines above them stay backend-specific.
-import { toolUseKind, toolUseLabel, type ToolUseKind } from '../transcript/classify';
+import { subagentTypeFrom, toolUseKind, toolUseLabel, type ToolUseKind } from '../transcript/classify';
 import type { ToolItem } from '../transcript/reducer';
 
 export interface AssistToggle {
@@ -150,22 +150,33 @@ export interface LiveToolEntryView {
   statusNode: HTMLElement;
   resultNode: HTMLElement;
   durationNode: HTMLElement;
+  /** Nested calls of a subagent land here; hidden until the first one arrives. */
+  childrenNode: HTMLElement;
+  setChildCount(count: number): void;
 }
 
 /**
  * The collapsed one-line tool row a running turn shows inside its "Tool use" panel. Static history
  * uses the denser record-tool markup instead; this is the live shape both backends share.
  */
-export function liveToolEntryView(name: string, argumentsText: string | undefined): LiveToolEntryView {
+export function liveToolEntryView(name: string, argumentsText: string | undefined,
+                                  toolType?: unknown): LiveToolEntryView {
   const entry = createEl('div', 'tool-entry');
   const head = createEl('button', 'tool-entry-head') as HTMLButtonElement;
   const chevron = createEl('span', 'tool-chevron', '▸');
-  head.append(chevron, createEl('span', 'tool-name', name), createEl('span', 'tool-desc', toolSummary(argumentsText)));
+  head.append(chevron, createEl('span', 'tool-name', name));
+  const tag = toolOriginTag(name, argumentsText, toolType);
+  if (tag) head.append(createEl('span', 'tool-tag', tag));
+  head.append(createEl('span', 'tool-desc', toolSummary(argumentsText)));
+  const childCountNode = createEl('span', 'tool-child-count');
+  childCountNode.hidden = true;
   const durationNode = createEl('span', 'tool-duration');
   const statusNode = createEl('span', 'tool-status running', 'running');
-  head.append(durationNode, statusNode);
+  head.append(childCountNode, durationNode, statusNode);
   const body = createEl('div', 'tool-entry-body');
   body.hidden = true;
+  const childrenNode = createEl('div', 'tool-children');
+  childrenNode.hidden = true;
   body.append(createEl('pre', undefined, prettyJson(argumentsText)));
   const resultNode = createEl('pre');
   resultNode.style.display = 'none';
@@ -174,8 +185,26 @@ export function liveToolEntryView(name: string, argumentsText: string | undefine
     body.hidden = !body.hidden;
     chevron.textContent = body.hidden ? '▸' : '▾';
   };
-  entry.append(head, body);
-  return { node: entry, statusNode, resultNode, durationNode };
+  // A subagent's own calls stay outside the collapsible body: they are the activity, not detail.
+  entry.append(head, childrenNode, body);
+  return {
+    node: entry,
+    statusNode,
+    resultNode,
+    durationNode,
+    childrenNode,
+    setChildCount: (count: number) => {
+      childCountNode.hidden = count <= 0;
+      childCountNode.textContent = `${count} tool${count === 1 ? '' : 's'}`;
+    },
+  };
+}
+
+/** A subagent call is tagged with its agent type so a `task` row reads as the origin of a nested list. */
+export function toolOriginTag(name: string, argumentsText: unknown, toolType?: unknown): string | null {
+  if (toolUseKind(name, toolType ?? null) !== 'subagent') return null;
+  const type = subagentTypeFrom(argumentsText);
+  return type ? `subagent · ${type}` : 'subagent';
 }
 
 export interface ReasoningBlockView {
@@ -208,17 +237,61 @@ export interface ToolRecordView {
   resultNode: HTMLElement | null;
 }
 
-export function toolRecordView(tool: ToolItem,
-                               onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void): ToolRecordView {
+export interface ToolTree {
+  roots: ToolItem[];
+  childrenOf: Map<string, ToolItem[]>;
+  callIds: Set<string>;
+  nestedCount: number;
+}
+
+/**
+ * One level of the hierarchy: a subagent call owns the calls whose parentCallId names it. A child
+ * whose parent was not loaded (a background subagent's later turn, an old transcript) stays a root
+ * so nothing disappears; it is marked instead.
+ */
+export function toolTree(tools: ToolItem[]): ToolTree {
+  const callIds = new Set(tools.map((tool) => tool.callId));
+  const childrenOf = new Map<string, ToolItem[]>();
+  const roots: ToolItem[] = [];
+  let nestedCount = 0;
+  for (const tool of tools) {
+    const parentId = tool.parentCallId;
+    if (parentId && parentId !== tool.callId && callIds.has(parentId)) {
+      const children = childrenOf.get(parentId) ?? [];
+      children.push(tool);
+      childrenOf.set(parentId, children);
+      nestedCount += 1;
+    } else {
+      roots.push(tool);
+    }
+  }
+  return { roots, childrenOf, callIds, nestedCount };
+}
+
+function buildToolRecord(tool: ToolItem, childrenOf: Map<string, ToolItem[]>,
+                         onLoadFull: ((row: HTMLElement, seq: number, field: string, className: string) => void) | undefined,
+                         seen: Set<string>, orphan: boolean): ToolRecordView {
   const row = createEl('div', 'record-tool');
+  if (orphan) row.classList.add('record-tool-orphan');
   const head = createEl('div', 'record-tool-head');
   head.append(createEl('span', 'record-tool-name', tool.name));
+  const tag = toolOriginTag(tool.name, tool.arguments, tool.toolType);
+  if (tag) head.append(createEl('span', 'record-tool-tag', tag));
   if (tool.durationMs) head.append(createEl('span', 'record-tool-duration', formatSpan(tool.durationMs)));
   const status = tool.status === 'ok' ? 'success' : tool.status;
   const statusNode = createEl('span', `record-tool-status ${status}`, tool.status);
   head.append(statusNode);
   if (tool.approval) head.append(createEl('span', 'record-tool-approval', tool.approval));
   row.append(head);
+  const children = seen.has(tool.callId) ? [] : (childrenOf.get(tool.callId) ?? []);
+  if (children.length) {
+    seen.add(tool.callId);
+    const block = createEl('div', 'record-tool-children');
+    for (const child of children) {
+      block.append(buildToolRecord(child, childrenOf, onLoadFull, seen, false).node);
+    }
+    row.append(block);
+  }
   if (tool.arguments) row.append(transcriptPre(tool.arguments, 'record-tool-args'));
   let resultNode: HTMLElement | null = null;
   const result = tool.result ?? tool.resultPreview;
@@ -232,6 +305,11 @@ export function toolRecordView(tool: ToolItem,
   return { node: row, statusNode, resultNode };
 }
 
+export function toolRecordView(tool: ToolItem,
+                               onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void): ToolRecordView {
+  return buildToolRecord(tool, new Map(), onLoadFull, new Set(), false);
+}
+
 export function toolRecordEl(tool: ToolItem,
                              onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void): HTMLElement {
   return toolRecordView(tool, onLoadFull).node;
@@ -239,10 +317,15 @@ export function toolRecordEl(tool: ToolItem,
 
 export function addTranscriptTools(chips: HTMLElement, panels: HTMLElement, tools: ToolItem[],
                                    onLoadFull?: (row: HTMLElement, seq: number, field: string, className: string) => void): void {
+  const tree = toolTree(tools);
   const body = createEl('div');
-  for (const tool of tools) body.append(toolRecordEl(tool, onLoadFull));
+  for (const tool of tree.roots) {
+    const orphan = Boolean(tool.parentCallId) && !tree.callIds.has(tool.parentCallId!);
+    body.append(buildToolRecord(tool, tree.childrenOf, onLoadFull, new Set(), orphan).node);
+  }
   const total = tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
-  addTranscriptToggle(chips, panels, `Tool use (${tools.length})${total > 0 ? ` · ${formatSpan(total)}` : ''}`, body);
+  const nested = tree.nestedCount ? ` · ${tree.nestedCount} nested` : '';
+  addTranscriptToggle(chips, panels, `Tool use (${tree.roots.length}${nested})${total > 0 ? ` · ${formatSpan(total)}` : ''}`, body);
 }
 
 export function addTranscriptToolUse(chips: HTMLElement, panels: HTMLElement, kind: ToolUseKind,
@@ -372,6 +455,7 @@ export function toolItemOf(tool: {
   result?: string;
   status?: string;
   toolType?: string | null;
+  parentCallId?: string | null;
 }, seq: number): ToolItem {
   const name = tool.name ?? 'tool';
   return {
@@ -386,5 +470,6 @@ export function toolItemOf(tool: {
     arguments: tool.arguments,
     result: tool.result,
     toolType: tool.toolType ?? null,
+    parentCallId: tool.parentCallId ?? null,
   };
 }

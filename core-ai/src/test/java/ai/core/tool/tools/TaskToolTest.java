@@ -21,6 +21,8 @@ import ai.core.llm.streaming.StreamingCallback;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.session.BackgroundTaskManager;
 import ai.core.session.SessionCommandQueue;
+import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallResult;
 import ai.core.tool.registry.ListToolProvider;
 import ai.core.tool.registry.ToolRegistry;
 import ai.core.tool.subagent.SubagentOutputSink;
@@ -57,6 +59,12 @@ class TaskToolTest {
         );
     }
 
+    private static CompletionResponse recordParentToolCall() {
+        String json = """
+                {"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":"","name":"assistant","tool_calls":[{"id":"call_child_1","type":"function","function":{"name":"record_parent","arguments":"{}"},"index":null}]}}],"usage":{"prompt_tokens":10,"completion_tokens":20,"total_tokens":30}}""";
+        return ai.core.utils.JsonUtil.fromJson(CompletionResponse.class, json);
+    }
+
     private static AgentProfile exploreProfile() {
         return new AgentProfile()
                 .name("explore")
@@ -65,9 +73,10 @@ class TaskToolTest {
                 .source("test");
     }
 
-    private static ExecutionContext context(RecordingMockLLMProvider subProvider, PersistenceProvider persistence) {
+    private static ExecutionContext context(RecordingMockLLMProvider subProvider, PersistenceProvider persistence,
+                                            ToolCall... tools) {
         var toolRegistry = new ToolRegistry();
-        toolRegistry.registerProvider(ListToolProvider.of(List.of()));
+        toolRegistry.registerProvider(ListToolProvider.of(List.of(tools)));
         var profileRegistry = new AgentProfileRegistry();
         profileRegistry.addProvider(new SingleProfileProvider(exploreProfile()));
 
@@ -379,6 +388,44 @@ class TaskToolTest {
 
         assertTrue(second.isFailed());
         assertTrue(second.getResult().contains("[SUBAGENT_THREAD_MODEL_UNAVAILABLE]"), second.getResult());
+    }
+
+    @Test
+    void subagentToolCallsNameTheSpawnedCallId() {
+        var subProvider = new RecordingMockLLMProvider();
+        subProvider.addResponse(recordParentToolCall());
+        subProvider.addResponse(text("done"));
+        var parents = new CopyOnWriteArrayList<String>();
+        var context = context(subProvider, new MapPersistence(), new RecordParentTool(parents));
+        context.setCurrentToolCallId("call_task_1");
+
+        var result = TaskTool.builder().build()
+                .execute("{\"description\":\"work\",\"prompt\":\"do it\",\"subagent_type\":\"explore\"}", context);
+
+        assertTrue(result.isCompleted(), result.getResult());
+        assertEquals(List.of("call_task_1"), parents);
+    }
+
+    static class RecordParentTool extends ToolCall {
+        private final List<String> parents;
+
+        RecordParentTool(List<String> parents) {
+            setName("record_parent");
+            setDescription("records the subagent's parent call id");
+            setParameters(List.of());
+            this.parents = parents;
+        }
+
+        @Override
+        public ToolCallResult execute(String arguments) {
+            return ToolCallResult.completed("recorded");
+        }
+
+        @Override
+        public ToolCallResult execute(String arguments, ExecutionContext context) {
+            parents.add(context.getParentCallId());
+            return ToolCallResult.completed("recorded");
+        }
     }
 
     static class FixedModelResolver implements SubagentModelResolver {
