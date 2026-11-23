@@ -15,6 +15,11 @@ rl.on('line', (line) => {
   const { id, method, params } = frame;
   switch (method) {
     case 'initialize':
+      if (process.env.FAKE_ENGINE_BUSY === '1') {
+        process.stderr.write('another core-ai engine is already running for this workspace: engine (pid 123)\n');
+        setTimeout(() => process.exit(2), 20);
+        return;
+      }
       send({ jsonrpc: '2.0', id, result: {
         protocolVersion: '1.0',
         engineVersion: 'fake',

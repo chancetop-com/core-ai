@@ -27,6 +27,7 @@ const CALL_TIMEOUTS: Record<string, number> = { 'speech/transcribe': 10 * 60_000
 
 export class EngineSupervisor {
   private readonly engines = new Map<string, EngineState>();
+  private readonly creating = new Map<string, Promise<EngineState>>();
   constructor(private readonly options: EngineSupervisorOptions) {}
 
   async call(workspace: string, method: string, params: Record<string, unknown> = {}, approvalPolicy = 'ask'): Promise<unknown> {
@@ -68,22 +69,43 @@ export class EngineSupervisor {
   }
 
   private async acquire(workspace: string, approvalPolicy: string): Promise<EngineState> {
-    let state = this.engines.get(workspace);
-    if (state && !state.client.isRunning) {
-      this.engines.delete(workspace);
-      this.options.onLog?.(workspace, 'discarded exited engine; respawning');
-      state = undefined;
+    for (;;) {
+      const state = this.engines.get(workspace);
+      if (state && !state.client.isRunning) {
+        this.engines.delete(workspace);
+        this.options.onLog?.(workspace, 'discarded exited engine; respawning');
+      } else if (state) {
+        if (state.approvalPolicy !== approvalPolicy) { await this.dispose(workspace); continue; }
+        await state.ready;
+        return state;
+      }
+      // Concurrent callers share one spawn: a second engine for the same workspace would exit
+      // immediately (the engine takes a workspace lock), leaving its caller with a dead client.
+      const inflight = this.creating.get(workspace);
+      if (inflight) { await inflight.catch(() => undefined); continue; }
+      const creation = this.create(workspace, approvalPolicy);
+      this.creating.set(workspace, creation);
+      try {
+        return await creation;
+      } finally {
+        if (this.creating.get(workspace) === creation) this.creating.delete(workspace);
+      }
     }
-    if (state && state.approvalPolicy !== approvalPolicy) { await this.dispose(workspace); state = undefined; }
-    if (!state) {
-      const client = await this.spawnClient(workspace);
-      const created: EngineState = { client, approvalPolicy, capabilities: [], trustState: null, ready: Promise.resolve() };
-      created.ready = this.initialize(created, workspace).catch((error: Error) => { this.engines.delete(workspace); throw error; });
-      this.engines.set(workspace, created);
-      state = created;
-    }
-    await state.ready;
-    return state;
+  }
+
+  private async create(workspace: string, approvalPolicy: string): Promise<EngineState> {
+    const client = await this.spawnClient(workspace);
+    const created: EngineState = { client, approvalPolicy, capabilities: [], trustState: null, ready: Promise.resolve() };
+    this.engines.set(workspace, created);
+    created.ready = this.initialize(created, workspace).catch((error: Error) => {
+      if (this.engines.get(workspace) === created) this.engines.delete(workspace);
+      // A handshake failure leaves the process holding the workspace lock; without this kill the
+      // next spawn exits (code=2, another engine is already running) and the workspace stays stuck.
+      client.kill();
+      throw error;
+    });
+    await created.ready;
+    return created;
   }
 
   private async initialize(state: EngineState, workspace: string): Promise<void> {

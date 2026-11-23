@@ -8,7 +8,7 @@ const { EngineSupervisor } = supervisorModule;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fakeEngine = path.join(here, 'fixtures', 'fake-engine.mjs');
 
-function createSupervisor() {
+function createSupervisor(options = {}) {
   const logs = [];
   const supervisor = new EngineSupervisor({
     enginePath: process.execPath,
@@ -16,6 +16,7 @@ function createSupervisor() {
     clientVersion: 'test',
     onEvent: () => undefined,
     onLog: (_workspace, line) => logs.push(line),
+    ...options,
   });
   return { supervisor, logs };
 }
@@ -56,4 +57,31 @@ test('discards a dead engine entry and respawns it on the next call', async () =
   assert.equal(supervisor.isRunning(workspace), true);
   assert.ok(logs.some((line) => line.includes('discarded exited engine')));
   await supervisor.shutdownAll();
+});
+
+test('concurrent first calls share a single engine spawn', async () => {
+  const { supervisor, logs } = createSupervisor({
+    extraEnv: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {};
+    },
+  });
+  const workspace = path.dirname(fakeEngine);
+  const results = await Promise.all([
+    supervisor.call(workspace, 'echo', { id: 1 }),
+    supervisor.call(workspace, 'echo', { id: 2 }),
+  ]);
+  assert.deepEqual(results, [{ id: 1 }, { id: 2 }]);
+  assert.equal(logs.filter((line) => line.startsWith('engine spawned:')).length, 1);
+  await supervisor.shutdownAll();
+});
+
+test('reports the engine stderr reason when the process exits', async () => {
+  const { supervisor } = createSupervisor({ extraEnv: async () => ({ FAKE_ENGINE_BUSY: '1' }) });
+  const workspace = path.dirname(fakeEngine);
+  await assert.rejects(
+    () => supervisor.call(workspace, 'echo', {}),
+    /engine exited \(code=2, signal=null\): another core-ai engine is already running/,
+  );
+  assert.equal(supervisor.isRunning(workspace), false);
 });
