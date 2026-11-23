@@ -42,8 +42,60 @@ class PluginFormatDetectorTest {
         Files.createDirectories(repoDir.resolve(".claude-plugin"));
         Files.writeString(repoDir.resolve(".claude-plugin").resolve("plugin.json"),
             "{\"skills\": \"skills\"}");
+        Files.createDirectories(repoDir.resolve("skills"));
 
         assertEquals(List.of("skills"), detector.detectSkillPaths(repoDir));
+    }
+
+    @Test
+    void detectsEveryRootDeclaredAsArray(@TempDir Path repoDir) throws IOException {
+        // AgriciDaniel/claude-ads layout: a shared reference root next to the platform skills
+        Files.createDirectories(repoDir.resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("plugin.json"),
+            "{\"name\": \"claude-ads\", \"skills\": [\"./ads/\", \"./skills/\"]}");
+        Files.createDirectories(repoDir.resolve("ads").resolve("references"));
+        Files.writeString(repoDir.resolve("ads").resolve("SKILL.md"),
+            "---\nname: ads\ndescription: Operate paid advertising\n---\n");
+        Files.writeString(repoDir.resolve("ads").resolve("references").resolve("tiktok-audit.md"), "# TikTok audit");
+        Files.createDirectories(repoDir.resolve("skills").resolve("ads-tiktok"));
+        Files.writeString(repoDir.resolve("skills").resolve("ads-tiktok").resolve("SKILL.md"),
+            "---\nname: ads-tiktok\ndescription: Audit TikTok Ads\n---\n\nRead `ads/references/tiktok-audit.md`.\n");
+
+        var paths = detector.detectSkillPaths(repoDir);
+        assertEquals(List.of("ads", "skills"), paths);
+
+        var loader = new SkillLoader(10 * 1024 * 1024);
+        var skills = new ArrayList<SkillMetadata>();
+        for (var path : paths) {
+            skills.addAll(loader.loadFromSource(repoDir.resolve(path).toString()));
+        }
+        assertEquals(2, skills.size());
+        var ads = skills.stream().filter(skill -> "ads".equals(skill.getName())).findFirst().orElseThrow();
+        assertTrue(ads.getResources().contains("references/tiktok-audit.md"));
+    }
+
+    @Test
+    void ignoresDeclaredSkillPathThatDoesNotExist(@TempDir Path repoDir) throws IOException {
+        Files.createDirectories(repoDir.resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("plugin.json"),
+            "{\"skills\": [\"./ads/\", \"./skills/\"]}");
+        Files.createDirectories(repoDir.resolve("skills"));
+
+        assertEquals(List.of("skills"), detector.detectSkillPaths(repoDir));
+    }
+
+    @Test
+    void detectsNestedPluginManifestOfMarketplaceSource(@TempDir Path repoDir) throws IOException {
+        Files.createDirectories(repoDir.resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve(".claude-plugin").resolve("marketplace.json"),
+            "{\"plugins\": [{\"name\": \"demo\", \"source\": \"./mods/demo\"}]}");
+        Files.createDirectories(repoDir.resolve("mods").resolve("demo").resolve(".claude-plugin"));
+        Files.writeString(repoDir.resolve("mods").resolve("demo").resolve(".claude-plugin").resolve("plugin.json"),
+            "{\"skills\": [\"./ads\", \"./skills\"]}");
+        Files.createDirectories(repoDir.resolve("mods").resolve("demo").resolve("ads"));
+        Files.createDirectories(repoDir.resolve("mods").resolve("demo").resolve("skills"));
+
+        assertEquals(List.of("mods/demo/ads", "mods/demo/skills"), detector.detectSkillPaths(repoDir));
     }
 
     @Test

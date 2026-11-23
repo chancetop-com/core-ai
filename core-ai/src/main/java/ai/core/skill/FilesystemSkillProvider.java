@@ -59,12 +59,47 @@ public class FilesystemSkillProvider implements SkillProvider {
         if (skill.getSkillDir() == null) {
             throw new SkillLoadException("skill has no directory: " + skill.getName());
         }
-        var file = Path.of(skill.getSkillDir(), resourcePath);
+        var direct = Path.of(skill.getSkillDir(), resourcePath);
+        var content = readFile(direct);
+        if (content != null) return content;
+        var shared = readFromSharedRoot(skill.getSkillDir(), resourcePath);
+        if (shared != null) return shared;
+        throw new SkillLoadException("failed to read resource: " + direct);
+    }
+
+    private String readFile(Path file) {
+        if (!Files.isRegularFile(file)) return null;
         try {
             return Files.readString(file, StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new SkillLoadException("failed to read resource: " + file, e);
         }
+    }
+
+    /**
+     * A skill inside a multi-skill tree may reference a file by its shared-root path (for example
+     * {@code ads/references/x.md} from a skill below a {@code skills/} root). Look for that path on each
+     * ancestor of the skill directory, bounded by the provider root so a skill cannot read outside the
+     * tree it was discovered in.
+     */
+    private String readFromSharedRoot(String skillDir, String resourcePath) {
+        if (path == null) return null;
+        Path root;
+        Path dir;
+        try {
+            root = Path.of(path).toAbsolutePath().normalize();
+            dir = Path.of(skillDir).toAbsolutePath().normalize();
+        } catch (RuntimeException e) {
+            return null;
+        }
+        if (!dir.startsWith(root)) return null;
+        for (var ancestor = dir.getParent(); ancestor != null && ancestor.startsWith(root); ancestor = ancestor.getParent()) {
+            var candidate = ancestor.resolve(resourcePath).normalize();
+            if (!candidate.startsWith(root)) continue;
+            var content = readFile(candidate);
+            if (content != null) return content;
+        }
+        return null;
     }
 
     @Override

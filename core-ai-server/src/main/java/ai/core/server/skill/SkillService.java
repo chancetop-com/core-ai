@@ -110,16 +110,9 @@ public class SkillService {
             repoManager().cloneRepo(repoUrl, branch, tempDir);
             String commitHash = repoManager().headCommit(tempDir);
 
-            String effectiveSkillPath = skillPath;
-            if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
-                // Auto-detect plugin format when no explicit skill path is provided
-                var detector = new PluginFormatDetector();
-                List<String> detectedPaths = detector.detectSkillPaths(tempDir);
-                if (!detectedPaths.isEmpty()) {
-                    // Use the first detected path (concatenate if multiple)
-                    effectiveSkillPath = String.join(",", detectedPaths);
-                    LOGGER.info("auto-detected skill path(s): {} for repo {}", effectiveSkillPath, repoUrl);
-                }
+            String effectiveSkillPath = resolveSkillPath(tempDir, skillPath);
+            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank() && !effectiveSkillPath.equals(skillPath)) {
+                LOGGER.info("resolved skill path(s): {} for repo {}", effectiveSkillPath, repoUrl);
             }
 
             List<SkillMetadata> skills;
@@ -293,14 +286,7 @@ public class SkillService {
             repoManager().cloneRepo(config.repoUrl, config.branch, tempDir);
             String commitHash = remoteHead != null ? remoteHead : repoManager().headCommit(tempDir);
 
-            String effectiveSkillPath = config.skillPath;
-            if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
-                var detector = new PluginFormatDetector();
-                List<String> detectedPaths = detector.detectSkillPaths(tempDir);
-                if (!detectedPaths.isEmpty()) {
-                    effectiveSkillPath = String.join(",", detectedPaths);
-                }
-            }
+            String effectiveSkillPath = resolveSkillPath(tempDir, config.skillPath);
 
             List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
@@ -345,6 +331,21 @@ public class SkillService {
         request.sourceType = SkillSourceType.REPO;
         request.repoConfig = repoConfig(source);
         return publishService.publish(request).entity();
+    }
+
+    /**
+     * A plugin manifest owns its skill layout: a path stored by an older detection can miss a declared
+     * root (for example a shared reference root next to {@code skills/}), so a manifest declaration wins
+     * over the stored value. Repos without a manifest keep their configured path, and only an
+     * unconfigured repo falls back to convention detection.
+     */
+    private String resolveSkillPath(Path repoDir, String configured) {
+        var detector = new PluginFormatDetector();
+        var declared = detector.declaredSkillPaths(repoDir);
+        if (!declared.isEmpty()) return String.join(",", declared);
+        if (configured != null && !configured.isBlank()) return configured;
+        var detected = detector.detectSkillPaths(repoDir);
+        return detected.isEmpty() ? null : String.join(",", detected);
     }
 
     private SkillRepoConfig repoConfig(SkillRepoSource source) {

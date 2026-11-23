@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Auto-detects plugin formats (Claude Code, Codex CLI, etc.) in a cloned
@@ -42,11 +41,30 @@ public class PluginFormatDetector {
     }
 
     /**
+     * Skill directories declared by the repository plugin manifest. A Claude Code plugin may declare
+     * {@code "skills"} as one path or as an array of paths; both forms are part of the format, and a
+     * multi-root plugin (e.g. a shared {@code ads/} root plus {@code skills/}) only imports correctly
+     * when every declared root is read.
+     */
+    public List<String> declaredSkillPaths(Path repoDir) {
+        var root = repoDir.normalize();
+        var paths = new ArrayList<String>();
+        for (var raw : manifestSkillPaths(root.resolve(".claude-plugin").resolve("plugin.json"))) {
+            addIfPresent(paths, root, root, raw);
+        }
+        for (var raw : manifestSkillPaths(root.resolve("plugin.json"))) {
+            addIfPresent(paths, root, root, raw);
+        }
+        return distinct(paths);
+    }
+
+    /**
      * Detect plugin format and return the relative skill directory paths.
      * <p>
      * Detection order:
      * <ol>
-     *   <li>Claude Code {@code .claude-plugin/plugin.json} → {@code "skills"} field</li>
+     *   <li>Claude Code {@code plugin.json} → {@code "skills"} field (string or array), read from
+     *       {@code .claude-plugin/plugin.json} or the repository root</li>
      *   <li>Claude Code {@code .claude-plugin/marketplace.json} → plugin sources → skill dirs</li>
      *   <li>Codex CLI {@code .agents/plugins/marketplace.json} → plugin sources</li>
      *   <li>Common conventions: {@code .claude/skills/}</li>
@@ -61,7 +79,7 @@ public class PluginFormatDetector {
      */
     public List<String> detectSkillPaths(Path repoDir) {
         // 1. Try Claude Code plugin.json format
-        List<String> paths = detectClaudeCodePluginFormat(repoDir);
+        List<String> paths = declaredSkillPaths(repoDir);
         if (!paths.isEmpty()) {
             LOGGER.info("Detected Claude Code plugin.json format in {}", repoDir);
             return paths;
@@ -97,23 +115,46 @@ public class PluginFormatDetector {
         return List.of();
     }
 
-    /**
-     * Claude Code format: .claude-plugin/plugin.json → "skills" field
-     */
-    private List<String> detectClaudeCodePluginFormat(Path repoDir) {
-        Path pluginJsonPath = repoDir.resolve(".claude-plugin").resolve("plugin.json");
-        if (!Files.exists(pluginJsonPath)) return List.of();
-
+    /** The {@code skills} values of one plugin manifest, accepting both the string and the array form. */
+    private List<String> manifestSkillPaths(Path manifest) {
+        if (!Files.isRegularFile(manifest)) return List.of();
         try {
-            JsonNode node = MAPPER.readTree(pluginJsonPath.toFile());
-            String skillsPath = getTextValue(node, "skills");
-            if (skillsPath != null && !skillsPath.isBlank()) {
-                return List.of(skillsPath);
-            }
+            return textValues(MAPPER.readTree(manifest.toFile()).get("skills"));
         } catch (IOException e) {
-            LOGGER.warn("Failed to parse .claude-plugin/plugin.json", e);
+            LOGGER.warn("Failed to parse {}", manifest, e);
+            return List.of();
         }
-        return List.of();
+    }
+
+    private List<String> textValues(JsonNode node) {
+        if (node == null) return List.of();
+        if (node.isTextual()) return List.of(node.asText());
+        if (!node.isArray()) return List.of();
+        var values = new ArrayList<String>();
+        for (var item : node) {
+            if (item.isTextual()) values.add(item.asText());
+        }
+        return values;
+    }
+
+    private void addIfPresent(List<String> paths, Path repoDir, Path baseDir, String raw) {
+        if (raw == null || raw.isBlank()) return;
+        Path resolved;
+        try {
+            resolved = baseDir.resolve(raw.trim()).normalize();
+        } catch (RuntimeException e) {
+            LOGGER.warn("Ignoring invalid skill path '{}' in {}", raw, baseDir);
+            return;
+        }
+        if (!resolved.startsWith(repoDir)) {
+            LOGGER.warn("Ignoring skill path '{}' that escapes the repository: {}", raw, resolved);
+            return;
+        }
+        if (!Files.isDirectory(resolved)) {
+            LOGGER.warn("Ignoring skill path '{}' that is not a directory: {}", raw, resolved);
+            return;
+        }
+        paths.add(relativePath(repoDir, resolved));
     }
 
     /**
@@ -172,30 +213,22 @@ public class PluginFormatDetector {
 
     /**
      * Resolve a plugin source directory to find its skill paths.
-     * Checks for nested plugin.json, then common conventions.
+     * Checks for a nested plugin manifest, then common conventions.
      */
     private List<String> resolvePluginSkillPath(Path repoDir, String source) {
         Path pluginDir = repoDir.resolve(source).normalize();
-        List<String> paths = new ArrayList<>();
-        tryResolveFromPluginJson(repoDir, pluginDir).ifPresent(paths::add);
-        paths.addAll(resolveConventionDirs(repoDir, pluginDir));
-        return paths;
-    }
-
-    private Optional<String> tryResolveFromPluginJson(Path repoDir, Path pluginDir) {
-        Path pluginJson = pluginDir.resolve("plugin.json");
-        if (!Files.exists(pluginJson)) return Optional.empty();
-        try {
-            JsonNode node = MAPPER.readTree(pluginJson.toFile());
-            String skillsPath = getTextValue(node, "skills");
-            if (skillsPath == null || skillsPath.isBlank()) return Optional.empty();
-            Path resolved = pluginDir.resolve(skillsPath).normalize();
-            if (!Files.isDirectory(resolved)) return Optional.empty();
-            return Optional.of(relativePath(repoDir, resolved));
-        } catch (IOException e) {
-            LOGGER.warn("Failed to parse plugin.json in {}", pluginDir, e);
-            return Optional.empty();
+        if (!pluginDir.startsWith(repoDir.normalize()) || !Files.isDirectory(pluginDir)) {
+            LOGGER.warn("Ignoring plugin source '{}' that is not a directory inside the repository", source);
+            return List.of();
         }
+        List<String> paths = new ArrayList<>();
+        for (var manifest : List.of(pluginDir.resolve("plugin.json"), pluginDir.resolve(".claude-plugin").resolve("plugin.json"))) {
+            for (var raw : manifestSkillPaths(manifest)) {
+                addIfPresent(paths, repoDir.normalize(), pluginDir, raw);
+            }
+        }
+        paths.addAll(resolveConventionDirs(repoDir, pluginDir));
+        return distinct(paths);
     }
 
     /**
@@ -217,8 +250,10 @@ public class PluginFormatDetector {
     }
 
     private String relativePath(Path repoDir, Path target) {
+        var relative = repoDir.normalize().relativize(target);
+        if (relative.toString().isEmpty()) return ".";
         // Normalize separators so persisted skill paths are portable across platforms
-        return repoDir.relativize(target).toString().replace('\\', '/');
+        return relative.toString().replace('\\', '/');
     }
 
     private List<String> distinct(List<String> paths) {

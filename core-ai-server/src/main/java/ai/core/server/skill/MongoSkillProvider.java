@@ -1,5 +1,7 @@
 package ai.core.server.skill;
 
+import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillResource;
 import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillProvider;
@@ -7,6 +9,7 @@ import core.framework.inject.Inject;
 
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Skill source backed by Mongo. Does NOT implement SkillProvider directly — callers
@@ -17,6 +20,14 @@ import java.util.Set;
  * @author stephen
  */
 public class MongoSkillProvider {
+    private static final int MAX_LISTED_RESOURCES = 10;
+
+    private static SkillResource findResource(SkillDefinition definition, String path) {
+        if (definition.resources == null) return null;
+        return definition.resources.stream()
+            .filter(resource -> resource.path.equals(path))
+            .findFirst().orElse(null);
+    }
 
     @Inject
     SkillStore skillStore;
@@ -31,6 +42,9 @@ public class MongoSkillProvider {
      */
     public SkillProvider scoped(Set<String> allowedIds) {
         return new ScopedProvider(allowedIds);
+    }
+
+    private record ResourceOwner(SkillDefinition definition, String path) {
     }
 
     private final class ScopedProvider implements SkillProvider {
@@ -56,24 +70,50 @@ public class MongoSkillProvider {
 
         @Override
         public String readResource(SkillMetadata skill, String resourcePath) {
-            var def = skillService.findByQualifiedName(skill.getQualifiedName());
-            if (def.resources == null || def.resources.isEmpty()) {
-                throw new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName()
-                    + " (this skill has no resources; only SKILL.md is available)");
-            }
-            var resource = def.resources.stream()
-                .filter(candidate -> candidate.path.equals(resourcePath))
-                .findFirst().orElse(null);
-            if (resource == null) {
-                throw new SkillLoadException("resource not found: " + resourcePath + " in " + skill.getQualifiedName());
-            }
-            if (resource.storagePath != null) {
-                throw new SkillLoadException("resource is a binary or large file and cannot be read as text: " + resourcePath
-                    + " in " + skill.getQualifiedName()
-                    + " (read it from the sandbox at /skill/" + skill.getName() + "/" + resourcePath
-                    + " after use_skill, or pull the skill with the CLI)");
-            }
+            var definition = skillService.findByQualifiedName(skill.getQualifiedName());
+            var owner = ownerOf(definition, resourcePath);
+            var resource = owner == null ? null : findResource(owner.definition(), owner.path());
+            if (owner == null || resource == null) throw notFound(skill, definition, resourcePath);
+            if (resource.storagePath != null) throw notText(skill, owner, resourcePath);
             return resource.content;
+        }
+
+        /**
+         * A skill in a multi-root plugin may reference a file by its plugin-root path (for example
+         * {@code ads/references/tiktok-audit.md} from a skill under {@code skills/}); the hub stores each
+         * declared root as its own skill, so resolve the leading segment against a sibling skill of the
+         * same repository before failing.
+         */
+        private ResourceOwner ownerOf(SkillDefinition definition, String resourcePath) {
+            if (findResource(definition, resourcePath) != null) return new ResourceOwner(definition, resourcePath);
+            int slash = resourcePath.indexOf('/');
+            if (slash <= 0 || definition.namespace == null) return null;
+            if (definition.repoConfig == null || definition.repoConfig.repoUrl == null) return null;
+            var sibling = skillService.findByQualifiedNameOrNull(
+                definition.namespace + "/" + resourcePath.substring(0, slash));
+            if (sibling == null || sibling.id.equals(definition.id)) return null;
+            if (sibling.repoConfig == null || !definition.repoConfig.repoUrl.equals(sibling.repoConfig.repoUrl)) return null;
+            var relativePath = resourcePath.substring(slash + 1);
+            return findResource(sibling, relativePath) == null ? null : new ResourceOwner(sibling, relativePath);
+        }
+
+        private SkillLoadException notFound(SkillMetadata skill, SkillDefinition definition, String resourcePath) {
+            var message = "resource not found: " + resourcePath + " in " + skill.getQualifiedName();
+            if (definition.resources == null || definition.resources.isEmpty()) {
+                return new SkillLoadException(message + " (this skill has no resources; only SKILL.md is available)");
+            }
+            var listed = definition.resources.stream().map(resource -> resource.path)
+                .limit(MAX_LISTED_RESOURCES).collect(Collectors.joining(", "));
+            var suffix = definition.resources.size() > MAX_LISTED_RESOURCES
+                ? " (+" + (definition.resources.size() - MAX_LISTED_RESOURCES) + " more)" : "";
+            return new SkillLoadException(message + " (available: " + listed + suffix + ")");
+        }
+
+        private SkillLoadException notText(SkillMetadata skill, ResourceOwner owner, String resourcePath) {
+            return new SkillLoadException("resource is a binary or large file and cannot be read as text: " + resourcePath
+                + " in " + skill.getQualifiedName()
+                + " (read it from the sandbox at /skill/" + owner.definition().name + "/" + owner.path()
+                + " after use_skill, or pull the skill with the CLI)");
         }
 
         @Override
