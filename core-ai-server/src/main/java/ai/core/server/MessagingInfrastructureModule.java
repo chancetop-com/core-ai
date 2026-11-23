@@ -64,7 +64,7 @@ class MessagingInfrastructureModule extends Module {
 
         bind(new A2ATaskRegistry(bind(PgA2ATaskSnapshotStore.class), ownershipRegistry));
         bind(new A2AEventRelay(podRegistry, internalToken));
-        bind(new RpcClient(new HttpRpcTransport(podRegistry::address, internalToken)));
+        bind(new RpcClient(ownershipRegistry, new HttpRpcTransport(podRegistry::address, internalToken)));
         // generic "run locally when this pod owns the session, otherwise RPC to the owner" helper; bound
         // here so modules loaded before MessagingRuntimeModule can inject it
         bind(PodLocalExecutor.class);

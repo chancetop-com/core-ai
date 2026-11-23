@@ -4,6 +4,7 @@ import ai.core.utils.JsonUtil;
 
 import java.time.Duration;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -37,17 +38,13 @@ public class RpcClient {
     private final SessionOwnershipRegistry ownershipRegistry;
     private final RpcTransport httpTransport;
 
-    public RpcClient(RpcTransport httpTransport) {
-        this(null, httpTransport);
-    }
-
     public RpcClient(SessionOwnershipRegistry ownershipRegistry, RpcTransport httpTransport) {
-        this.ownershipRegistry = ownershipRegistry;
+        this.ownershipRegistry = Objects.requireNonNull(ownershipRegistry, "ownershipRegistry");
         this.httpTransport = httpTransport;
     }
 
     public <T> T call(SessionCommand command, Class<T> responseType, Duration timeout) {
-        var owner = ownershipRegistry == null ? null : ownershipRegistry.getOwner(command.sessionId());
+        var owner = ownershipRegistry.getOwner(command.sessionId());
         if (owner == null || owner.isBlank()) {
             throw new RpcNotDeliveredException("no session owner, sessionId=" + command.sessionId());
         }
