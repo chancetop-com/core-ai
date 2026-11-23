@@ -5,6 +5,7 @@ import ai.core.agent.Agent;
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
 import ai.core.agent.Task;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.agent.subagent.SubagentModelRef;
 import ai.core.agent.subagent.SubagentModelUnavailableException;
@@ -12,6 +13,7 @@ import ai.core.agent.subagent.SubagentThread;
 import ai.core.agent.subagent.SubagentThreadKind;
 import ai.core.agent.subagent.SubagentThreadRegistry;
 import ai.core.agent.subagent.SubagentThreadUnavailableException;
+import ai.core.context.CompressionLifecycle;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
 import ai.core.session.BackgroundTaskManager;
@@ -53,6 +55,16 @@ public class TaskTool extends ToolCall {
 
     private static boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * A subagent inherits session-scoped lifecycles (permissions, tracing, hooks) but not the parent's compression:
+     * it builds its own from its own model window, and the parent's copy would compress the subagent's context with
+     * the parent model's window.
+     */
+    static List<AbstractLifecycle> inheritedLifecycles(List<AbstractLifecycle> parent) {
+        if (parent == null) return List.of();
+        return parent.stream().filter(lifecycle -> !(lifecycle instanceof CompressionLifecycle)).toList();
     }
 
     @Override
@@ -296,7 +308,7 @@ public class TaskTool extends ToolCall {
         subContext.setLlmProvider(context.getLlmProvider());
         subContext.setModel(context.getModel());
         subContext.setDecisionProvider(context.getDecisionProvider());
-        subContext.setLifecycles(context.getLifecycle());
+        subContext.setLifecycles(inheritedLifecycles(context.getLifecycle()));
         subContext.setTokenCostCallback(context.getTokenCostCallback());
         subContext.setSubAgentConfigs(context.getSubAgentConfigs());
         subContext.setSubagentModelResolver(context.getSubagentModelResolver());

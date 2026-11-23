@@ -2,12 +2,15 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.SubAgentConfig;
+import ai.core.agent.lifecycle.AbstractLifecycle;
 import ai.core.agent.profile.AgentProfile;
 import ai.core.agent.profile.AgentProfileProvider;
 import ai.core.agent.profile.AgentProfileRegistry;
 import ai.core.agent.subagent.SubagentModelResolver;
 import ai.core.agent.subagent.SubagentModelUnavailableException;
 import ai.core.agent.subagent.SubagentThreadState;
+import ai.core.context.Compression;
+import ai.core.context.CompressionLifecycle;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
@@ -96,6 +99,17 @@ class TaskToolTest {
         var tool = TaskTool.builder().build();
 
         assertEquals("subagent", tool.getSourceType());
+    }
+
+    @Test
+    void subagentsDoNotInheritTheParentCompressionLifecycle() {
+        var parentCompression = new CompressionLifecycle(new Compression(0.8, 5, 15000, null, null, "parent-model"));
+        var parentTracing = new AbstractLifecycle() {
+        };
+
+        var inherited = TaskTool.inheritedLifecycles(List.of(parentCompression, parentTracing));
+
+        assertEquals(List.of(parentTracing), inherited);
     }
 
     @Test

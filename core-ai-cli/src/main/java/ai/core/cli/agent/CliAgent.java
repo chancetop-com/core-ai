@@ -94,9 +94,10 @@ public class CliAgent {
         configureLifecycles(builder, config, hookLifecycle);
         var pluginGuards = PluginGuards.fromEnvironment();
         if (pluginGuards != null) builder.addAgentLifecycle(pluginGuards);
+        // the model must be set before compression: Compression resolves its context window from it
+        if (config.modelOverride != null) builder.model(config.modelOverride);
         builder.compression(config.compressionConfig);
         if (config.persistenceProvider != null) builder.persistenceProvider(config.persistenceProvider);
-        if (config.modelOverride != null) builder.model(config.modelOverride);
         var multiModalModel = config.providers.getDefaultProvider().config.getMultiModalModel();
         if (multiModalModel != null) builder.multiModalModel(multiModalModel);
         var agent = builder.build();
