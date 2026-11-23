@@ -181,8 +181,10 @@ class PgTraceSqlParamsTest {
         store.analyticsRollup(from, to, Map.of("m1", "p1"), Map.of("p1", "Pn1"));
 
         var statements = database.statements();
-        assertTrue(statements.stream().anyMatch(sql -> sql.contains("COALESCE(provider_id,")));
+        assertTrue(statements.stream().anyMatch(sql -> sql.contains("CASE WHEN provider_id IS NULL OR length(provider_id) = 0")));
         assertTrue(statements.stream().anyMatch(sql -> sql.contains("CASE WHEN provider_id IS NULL")));
+        // core-ng's SQL inspector rejects single-quoted literals; the provider expression must stay parameterized
+        assertTrue(statements.stream().noneMatch(sql -> sql.contains("'")));
     }
 
     @Test
