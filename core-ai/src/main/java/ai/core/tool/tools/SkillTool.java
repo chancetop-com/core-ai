@@ -195,8 +195,8 @@ public class SkillTool extends ToolCall {
                 sb.append("- ").append(resource).append('\n');
             }
         }
-        sb.append(SkillSdkCapabilityManifest.parse(skill.getAllowedTools(), skill.getMetadata()).summary());
-        sb.append("</skill>");
+        sb.append(SkillSdkCapabilityManifest.parse(skill.getAllowedTools(), skill.getMetadata()).summary())
+                .append("</skill>");
         return sb.toString();
     }
 

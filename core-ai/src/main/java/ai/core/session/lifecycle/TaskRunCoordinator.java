@@ -16,7 +16,6 @@ public final class TaskRunCoordinator {
     public static final String COVERAGE_COMPLETE = "complete";
     public static final String COVERAGE_UNTRACKABLE = "untrackable";
     public static final String COVERAGE_UNKNOWN = "unknown";
-
     private static final String REASON_RETURNED = "required_work_settled_and_processing_finished";
     private static final String REASON_JOB_FAILED = "required_job_failed_without_handler";
     private static final String REASON_COVERAGE = "required_work_coverage_incomplete";
@@ -127,9 +126,9 @@ public final class TaskRunCoordinator {
 
     /** Promotes the queued run whose turn is now at the driver head. */
     public TaskRunSnapshot claimQueued(java.util.List<String> turnIds) {
-        TaskRun.Emission emission = null;
+        TaskRun.Emission emission;
         TaskRun.Emission superseded = null;
-        TaskRunSnapshot snapshot = null;
+        TaskRunSnapshot snapshot;
         synchronized (lock) {
             if (active != null && active.terminal()) active = null;
             String queuedKey = null;
@@ -148,7 +147,6 @@ public final class TaskRunCoordinator {
                 var attentionRun = active;
                 finish(attentionRun, TaskRunOutcome.INTERRUPTED, "superseded_by_new_task");
                 superseded = new TaskRun.Emission(attentionRun.snapshot(sessionId, sessionIncarnation), attentionRun.ended(sessionId, sessionIncarnation), false);
-                active = null;
             }
             var run = queuedRuns.remove(queuedKey);
             run.queued = false;
@@ -170,11 +168,8 @@ public final class TaskRunCoordinator {
             if (!active.requiredJobs.isEmpty() || !active.continuations.isEmpty()) return true;
             if (active.state() == TaskRunState.DRAINING) return true;
             if (active.state() == TaskRunState.AWAITING_ASYNC) {
-                // AWAITING_ASYNC here means only queuedRequests are outstanding; the request that
-                // opened this run is exactly the batch at the driver head, and deferring it would
-                // wait for an executionStarted that can never come.
-                if (active.turnId == null || turnIds.isEmpty()) return true;
-                return !turnIds.contains(active.turnId);
+                // Only queuedRequests remain; the batch owning this turn must run, not wait forever.
+                return active.turnId == null || !turnIds.contains(active.turnId);
             }
             if (active.state() == TaskRunState.NEEDS_ATTENTION) return false;
             if (active.state() == TaskRunState.REGISTERED) {
@@ -423,7 +418,7 @@ public final class TaskRunCoordinator {
         run.activeExecutionId = null;
         TaskRun.touch(run);
         lastEnded = run;
-        if (active == run) active = null;
+        if (run.equals(active)) active = null;
     }
 
     private void finishQueued(TaskRun run, TaskRunOutcome outcome, String reason) {

@@ -70,14 +70,15 @@ public final class TranscriptReader {
         int completed = 0;
         for (var group : groups) {
             for (var record : group) {
-                if (!TranscriptKinds.TURN_COMPLETE.equals(record.kind)) continue;
-                input += number(record, "input_tokens");
-                output += number(record, "output_tokens");
-                cached += number(record, "cached_tokens");
-                var turnCost = record.decimal("cost_usd");
-                if (turnCost != null) cost += turnCost;
-                completed++;
-                break;
+                if (TranscriptKinds.TURN_COMPLETE.equals(record.kind)) {
+                    input += number(record, "input_tokens");
+                    output += number(record, "output_tokens");
+                    cached += number(record, "cached_tokens");
+                    var turnCost = record.decimal("cost_usd");
+                    if (turnCost != null) cost += turnCost;
+                    completed++;
+                    break;
+                }
             }
         }
         return new Usage(input, output, cached, cost, groups.size(), completed);
