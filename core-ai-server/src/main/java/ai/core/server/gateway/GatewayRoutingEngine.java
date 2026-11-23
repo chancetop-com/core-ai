@@ -39,7 +39,7 @@ public class GatewayRoutingEngine {
             // duplicate modelIds across providers are failover routes; publish the highest priority one
             for (var route : models) {
                 if (seen.add(route.model.modelId)) {
-                    data.add(new GatewayPublishedModel(route.model.modelId, route.provider.name));
+                    data.add(new GatewayPublishedModel(route.model.modelId, route.provider.name, route.model.contextWindow));
                 }
             }
         } else {
@@ -370,7 +370,7 @@ public class GatewayRoutingEngine {
     private void addLegacyModel(List<GatewayPublishedModel> data, Set<String> seen, GatewayProviderConfig provider, String model) {
         if (!hasText(model)) return;
         var modelId = prefixModel(stripPrefix(model, provider.modelPrefix), provider.modelPrefix);
-        if (seen.add(modelId)) data.add(new GatewayPublishedModel(modelId, provider.name));
+        if (seen.add(modelId)) data.add(new GatewayPublishedModel(modelId, provider.name, null));
     }
 
     private void addLegacyAvailableModel(List<GatewayAvailableModelView> data, Set<String> seen, GatewayProviderConfig provider, String model, String endpointType) {
@@ -388,6 +388,7 @@ public class GatewayRoutingEngine {
         view.displayName = route.model.displayName;
         view.providerName = route.provider.name;
         view.endpointTypes = route.model.endpointTypes;
+        view.contextWindow = route.model.contextWindow;
         view.supportsVision = route.model.supportsVision;
         view.supportsVideo = route.model.supportsVideo;
         view.supportsFile = route.model.supportsFile;

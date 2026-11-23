@@ -20,6 +20,10 @@ public class GatewayAvailableModelView {
     @Property(name = "endpointTypes")
     public List<String> endpointTypes;
 
+    /** Max input tokens the model accepts; clients size their context/compression budget from it. */
+    @Property(name = "contextWindow")
+    public Long contextWindow;
+
     @Property(name = "supportsVision")
     public Boolean supportsVision;
 

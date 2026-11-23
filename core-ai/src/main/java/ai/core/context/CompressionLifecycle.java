@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author xander
@@ -18,9 +19,20 @@ public class CompressionLifecycle extends AbstractLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger(CompressionLifecycle.class);
 
     private final Compression compression;
+    private final CompressionThrashGuard thrashGuard;
 
     public CompressionLifecycle(Compression compression) {
+        this(compression, new CompressionThrashGuard());
+    }
+
+    CompressionLifecycle(Compression compression, CompressionThrashGuard thrashGuard) {
         this.compression = compression;
+        this.thrashGuard = thrashGuard;
+    }
+
+    @Override
+    public void beforeAgentRun(AtomicReference<String> query, ExecutionContext executionContext) {
+        thrashGuard.beginRun();
     }
 
     @Override
@@ -29,6 +41,7 @@ public class CompressionLifecycle extends AbstractLifecycle {
         if (request == null || request.messages == null) {
             return;
         }
+        thrashGuard.check(compression.getMaxContextTokens());
         var budget = executionContext == null ? null : executionContext.getRunBudget();
         if (budget != null && budget.tokens() != null
                 && budget.tokens().remainingTokens() <= budget.tokens().reserveTokens()) {
@@ -40,12 +53,15 @@ public class CompressionLifecycle extends AbstractLifecycle {
         if (compressed != request.messages) {
             request.messages.clear();
             request.messages.addAll(compressed);
+            thrashGuard.onCompression();
             LOGGER.debug("Messages compressed before model call, agent messages updated in-place");
         }
     }
 
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
+        thrashGuard.onToolCall(functionCall);
+
         if (toolResult == null || !toolResult.isCompleted()) {
             return;
         }

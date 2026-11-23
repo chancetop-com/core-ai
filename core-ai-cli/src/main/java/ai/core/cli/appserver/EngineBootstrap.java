@@ -16,6 +16,7 @@ import ai.core.cli.auth.RuntimeAuthConfig;
 import ai.core.cli.config.LlmProviderStore;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderWiring;
+import ai.core.cli.config.ServerModelCatalog;
 import ai.core.cli.log.CliLogger;
 import ai.core.cli.media.MediaModelCatalog;
 import ai.core.cli.memory.MemoryTriggerService;
@@ -170,6 +171,7 @@ public class EngineBootstrap {
         registerAuthListener(result);
         CliAppHelper.configureInlineImages(result, props);
         ProviderWiring.applyDefault(store, result.llmProviders, props);
+        ServerModelCatalog.installContextWindowResolver();
         return store;
     }
 

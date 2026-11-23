@@ -55,6 +55,11 @@ public final class LLMModelContextRegistry {
         return hour >= 9 && hour < 12 || hour >= 14 && hour < 18;
     }
 
+    /** Installs the live catalog used to size gateway-only ids; without it they fall back to the bundled defaults. */
+    public static void setExternalContextWindowProvider(ModelContextWindowProvider provider) {
+        ExternalModelContextWindows.setProvider(provider);
+    }
+
     private final Map<String, ModelInfo> modelInfoMap = new ConcurrentHashMap<>();
 
     private LLMModelContextRegistry() {
@@ -196,6 +201,16 @@ public final class LLMModelContextRegistry {
     public int getMaxInputTokens(String modelName) {
         var info = getModelInfo(modelName);
         return info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
+    }
+
+    /** Max input tokens for the model, from the bundled registry or the live catalog; 0 = unknown to both. */
+    public int contextWindow(String modelName) {
+        if (modelName == null) return 0;
+        var info = getModelInfo(modelName);
+        if (info != null && info.contextWindow() > 0) {
+            return info.contextWindow();
+        }
+        return ExternalModelContextWindows.resolve(modelName);
     }
 
     public ModelInfo getModelInfo(String modelName) {

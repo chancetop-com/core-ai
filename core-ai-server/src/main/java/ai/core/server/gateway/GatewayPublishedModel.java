@@ -1,4 +1,4 @@
 package ai.core.server.gateway;
 
-record GatewayPublishedModel(String id, String ownedBy) {
+record GatewayPublishedModel(String id, String ownedBy, Long contextWindow) {
 }

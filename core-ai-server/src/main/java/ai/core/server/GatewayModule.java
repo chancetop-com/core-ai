@@ -8,6 +8,7 @@ import ai.core.api.server.hubmodels.HubMediaModelWebService;
 import ai.core.api.server.hubmodels.HubModelWebService;
 import ai.core.api.server.media.MediaJobWebService;
 import ai.core.decision.DecisionProvider;
+import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.LLMProviderType;
 import ai.core.llm.LLMProviders;
@@ -81,6 +82,10 @@ public class GatewayModule extends Module {
     private void configureGateway() {
         var gatewaySecretProtector = bean(GatewaySecretProtector.class);
         var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
+        LLMModelContextRegistry.setExternalContextWindowProvider(modelId -> {
+            var config = gatewayRoutingEngine.modelConfig(modelId);
+            return config == null || config.contextWindow == null ? 0 : config.contextWindow.intValue();
+        });
         bind(GeminiFileService.class);
         var videoUnderstandingService = bind(GeminiVideoUnderstandingService.class);
         bind(UnderstandVideoTool.VideoUnderstandingService.class, videoUnderstandingService);

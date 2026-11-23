@@ -39,6 +39,8 @@ public class BackgroundTaskManager {
 
     private static final int MAX_TERMINAL_TASKS = 100;
 
+    private static final int MAX_TERMINAL_NOTE_LENGTH = 4000;
+
     private static TaskRunOutcome outcomeOfStatus(String status) {
         if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
         if ("cancelled".equals(status)) return TaskRunOutcome.CANCELLED;
@@ -63,10 +65,24 @@ public class BackgroundTaskManager {
                 error = e.getMessage();
                 LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
             }
+            writeTerminalNote(sink, status, error);
         } finally {
             sink.close();
         }
         return new TaskRunResult(status, result, error);
+    }
+
+    /** A failed or cancelled subagent still leaves a readable file behind instead of a zero-byte result. */
+    private static void writeTerminalNote(SubagentOutputSink sink, String status, String error) {
+        try {
+            var detail = error == null || error.isBlank() ? "no error detail" : error;
+            if (detail.length() > MAX_TERMINAL_NOTE_LENGTH) {
+                detail = detail.substring(0, MAX_TERMINAL_NOTE_LENGTH) + "\n[error truncated]";
+            }
+            sink.write("[task " + status + "]\n" + detail + "\n");
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to write terminal note for background task: {}", e.getMessage());
+        }
     }
 
     private static SharedTaskState newSharedState(TaskRunCoordinator taskRuns) {

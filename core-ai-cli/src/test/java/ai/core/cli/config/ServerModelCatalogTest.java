@@ -1,6 +1,7 @@
 package ai.core.cli.config;
 
 import ai.core.api.server.gateway.GatewayAvailableModelView;
+import ai.core.llm.LLMModelContextRegistry;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -62,6 +63,29 @@ class ServerModelCatalogTest {
         assertEquals("m2", catalog.find("m2").modelId);
         assertNull(catalog.find("missing"));
         assertNull(catalog.find(null));
+    }
+
+    @Test
+    void exposesTheContextWindowTheHubReports() {
+        var withWindow = model("kie-gpt-6.2-sol");
+        withWindow.contextWindow = 922_000L;
+        var catalog = new ServerModelCatalog(() -> List.of(withWindow, model("no-window")));
+
+        assertEquals(922_000L, catalog.find("kie-gpt-6.2-sol").contextWindow);
+        assertNull(catalog.find("no-window").contextWindow);
+    }
+
+    @Test
+    void resolverFeedsTheCatalogWindowIntoTheModelRegistry() {
+        try {
+            var withWindow = model("kie-gpt-6.2-sol-test");
+            withWindow.contextWindow = 922_000L;
+            ServerModelCatalog.installContextWindowResolver(new ServerModelCatalog(() -> List.of(withWindow)));
+
+            assertEquals(922_000, LLMModelContextRegistry.getInstance().contextWindow("kie-gpt-6.2-sol-test"));
+        } finally {
+            LLMModelContextRegistry.setExternalContextWindowProvider(null);
+        }
     }
 
     private GatewayAvailableModelView model(String id) {

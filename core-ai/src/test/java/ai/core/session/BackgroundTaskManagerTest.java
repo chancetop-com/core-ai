@@ -94,6 +94,22 @@ class BackgroundTaskManagerTest {
     }
 
     @Test
+    void failedTaskWritesItsErrorInsteadOfLeavingAnEmptyOutputFile() throws Exception {
+        var sink = new CapturingSink("fail-1");
+        var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> sink, "test-session", event -> { });
+
+        var handle = manager.submit("fail-1", () -> {
+            throw new IllegalStateException("upstream exploded");
+        }, null);
+        handle.future().get(5, TimeUnit.SECONDS);
+        var result = manager.pollTask("fail-1");
+        assertFalse(result.isCompleted());
+        assertTrue(result.getResult().contains("upstream exploded"));
+        assertTrue(sink.content.startsWith("[task failed]"));
+        assertTrue(sink.content.contains("upstream exploded"));
+    }
+
+    @Test
     void cancelBeforeStartRunsTheNeverStartedCallback() throws Exception {
         try (var executor = Executors.newSingleThreadExecutor()) {
             var manager = new BackgroundTaskManager(new SessionCommandQueue(), taskId -> new InMemorySink(taskId), "test-session", event -> { }, executor);

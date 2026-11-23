@@ -359,6 +359,24 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void modelsEndpointPublishesConfiguredContextWindow() throws Exception {
+        var provider = provider("KIE", "kie", "https://api.kie.ai", "kie/", "gpt-6.1-sol");
+        var withWindow = model("gpt-6.2-sol", provider.id, "gpt-6.2-sol", List.of("responses"));
+        withWindow.contextWindow = 922_000L;
+        var service = service(provider, List.of(withWindow,
+                model("gpt-6.1-sol", provider.id, "gpt-6.1-sol", List.of("responses"))));
+
+        var body = responseBody(service.models());
+        var data = (List<Map<String, Object>>) body.get("data");
+        var gpt62 = data.stream().filter(row -> "gpt-6.2-sol".equals(row.get("id"))).findFirst().orElseThrow();
+
+        assertEquals(922_000L, ((Number) gpt62.get("context_window")).longValue());
+        assertFalse(data.stream().filter(row -> "gpt-6.1-sol".equals(row.get("id")))
+                .findFirst().orElseThrow().containsKey("context_window"));
+    }
+
+    @Test
     void modelRegistryRespectsEndpointType() throws Exception {
         var provider = provider("LiteLLM", "litellm", "https://litellm.example.com", "litellm/", "deepseek/default");
         var service = service(provider, model("fast-response", provider.id, "deepseek/response-model", List.of("responses")));

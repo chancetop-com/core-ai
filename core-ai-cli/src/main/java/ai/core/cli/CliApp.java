@@ -18,6 +18,7 @@ import ai.core.cli.config.InteractiveConfigSetup;
 import ai.core.cli.config.LlmProviderStore;
 import ai.core.cli.config.ModelRegistry;
 import ai.core.cli.config.ProviderWiring;
+import ai.core.cli.config.ServerModelCatalog;
 import ai.core.cli.helper.HelperConfigStore;
 import ai.core.cli.hook.ScriptHookLifecycle;
 import ai.core.cli.log.CliLogger;
@@ -281,6 +282,7 @@ public class CliApp {
     }
 
     private AgentSessionRunner createLocalRunner(TerminalUI ui, SessionContext ctx, String sessionId) {
+        ServerModelCatalog.installContextWindowResolver();
         var scheduledTaskStore = new ai.core.cli.schedule.FileScheduledTaskStore(
                 Path.of(System.getProperty("user.home"), ".core-ai", "schedules.json"), workspace);
         var imageMediaProvider = CliAppHelper.sessionMediaProvider(ctx.imageMediaProvider(), sessionId);

@@ -74,6 +74,20 @@ class LLMModelContextRegistryTest {
     }
 
     @Test
+    void unknownModelUsesTheExternalContextWindowProvider() {
+        try {
+            LLMModelContextRegistry.setExternalContextWindowProvider(
+                    model -> "kie-gpt-6.2-sol".equals(model) ? 922_000 : 0);
+
+            assertEquals(922_000, registry.contextWindow("kie-gpt-6.2-sol"));
+            assertEquals(0, registry.contextWindow("still-unknown"));
+            assertEquals(128000, registry.contextWindow("gpt-4o"), "the bundled registry wins for known models");
+        } finally {
+            LLMModelContextRegistry.setExternalContextWindowProvider(null);
+        }
+    }
+
+    @Test
     void testGetModelInfo() {
         var info = registry.getModelInfo("gpt-4o");
         assertNotNull(info);

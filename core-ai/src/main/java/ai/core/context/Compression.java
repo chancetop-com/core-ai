@@ -81,8 +81,8 @@ public class Compression {
         if (contextWindowOverride != null) {
             return contextWindowOverride;
         }
-        var modelInfo = contextModel != null ? LLMModelContextRegistry.getInstance().getModelInfo(contextModel) : null;
-        return modelInfo != null ? modelInfo.contextWindow() : FALLBACK_MAX_CONTEXT_TOKENS;
+        var resolved = contextModel != null ? LLMModelContextRegistry.getInstance().contextWindow(contextModel) : 0;
+        return resolved > 0 ? resolved : FALLBACK_MAX_CONTEXT_TOKENS;
     }
     private int calculateMaxToolResultTokens() {
         if (maxContextTokens <= 0) {

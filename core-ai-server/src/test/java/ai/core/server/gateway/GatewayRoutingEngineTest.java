@@ -268,6 +268,25 @@ class GatewayRoutingEngineTest {
     }
 
     @SuppressWarnings("unchecked")
+    @Test
+    void availableModelsCarryTheConfiguredContextWindow() {
+        var model = model("kie-gpt-6.2-sol", false, 100);
+        model.contextWindow = 922_000L;
+        var engine = engine(List.of(model, model("no-window", false, 200)));
+
+        var available = engine.availableModels();
+        var published = engine.models();
+
+        assertEquals(922_000L, available.stream()
+                .filter(view -> "kie-gpt-6.2-sol".equals(view.modelId)).findFirst().orElseThrow().contextWindow);
+        assertNull(available.stream()
+                .filter(view -> "no-window".equals(view.modelId)).findFirst().orElseThrow().contextWindow);
+        assertEquals(922_000L, published.stream()
+                .filter(view -> "kie-gpt-6.2-sol".equals(view.id())).findFirst().orElseThrow().contextWindow());
+        assertNull(published.stream()
+                .filter(view -> "no-window".equals(view.id())).findFirst().orElseThrow().contextWindow());
+    }
+
     private GatewayRoutingEngine engine(List<GatewayModelConfig> models) {
         return engine(models, null);
     }

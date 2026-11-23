@@ -120,6 +120,7 @@ public class GatewayProxyService {
             row.put("id", model.id());
             row.put("object", "model");
             row.put("owned_by", model.ownedBy());
+            if (model.contextWindow() != null) row.put("context_window", model.contextWindow());
             return row;
         }).toList();
         var response = new LinkedHashMap<String, Object>();
