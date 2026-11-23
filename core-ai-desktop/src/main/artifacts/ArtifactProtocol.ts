@@ -1,15 +1,16 @@
 // coreai-artifact:// — serves local artifacts to the renderer without base64 over IPC. The scheme is
-// registered as privileged before app ready (module top level); the handler is installed on ready. A
-// per-workspace token occupies the FIRST PATH segment, never the host: a `standard` scheme lowercases
-// and IDN-normalizes the host, so a token there would not round-trip. Files under {workspace}/.core-ai
-// and paths registered in {workspace}/.core-ai/artifacts/manifest.jsonl (the engine's submit_artifacts)
-// are served; `..`, absolute paths and symlink escapes are rejected.
+// registered as privileged with every other custom scheme (see shared/protocolSchemes); the handler
+// is installed on ready. A per-workspace token occupies the FIRST PATH segment, never the host: a
+// `standard` scheme lowercases and IDN-normalizes the host, so a token there would not round-trip.
+// Files under {workspace}/.core-ai and paths registered in {workspace}/.core-ai/artifacts/manifest.jsonl
+// (the engine's submit_artifacts) are served; `..`, absolute paths and symlink escapes are rejected.
 import { protocol } from 'electron';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { statSync } from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import { ARTIFACT_SCHEME } from '../../shared/protocolSchemes';
 import {
   contentTypeFor,
   decodeRelativePath,
@@ -21,23 +22,13 @@ import {
   tokenOf,
 } from './artifactPath.js';
 
-const SCHEME = 'coreai-artifact';
+const SCHEME = ARTIFACT_SCHEME;
 
 /** The renderer is a `file://` page; a fetch to this scheme is cross-origin and needs an allow-origin. */
 const CORS_HEADERS = { 'Access-Control-Allow-Origin': '*' };
 
 const tokenByWorkspace = new Map<string, string>();
 const workspaceByToken = new Map<string, string>();
-
-/** Must run before app ready; a custom scheme is not `'self'` and needs explicit privileges. */
-export function registerArtifactScheme(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: SCHEME,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
-    },
-  ]);
-}
 
 /** Base URL for the renderer; stable per workspace (sha256 of the resolved path). */
 export function artifactBase(workspace: string): { baseUrl: string } {

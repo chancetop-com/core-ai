@@ -1,6 +1,6 @@
 // Electron main: window + IPC + engine supervision. Agent work (loops, file IO, compression)
 // stays in the engine child process; this process only routes.
-import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, screen, session, shell, Tray } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, protocol, screen, session, shell, Tray } from 'electron';
 import QRCode from 'qrcode';
 import { spawn } from 'node:child_process';
 import http from 'node:http';
@@ -10,10 +10,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { removeStaged, stageAttachments, stageBuffers, sweepStaging, type StagedAttachment, type StagedBufferInput } from './attachments/AttachmentStager';
-import { artifactBase, registerArtifactProtocol, registerArtifactScheme } from './artifacts/ArtifactProtocol';
+import { artifactBase, registerArtifactProtocol } from './artifacts/ArtifactProtocol';
 import { PluginPageHost, PluginPageError } from './plugins/PluginPageHost';
 import { runPluginTerminal } from './plugins/pluginTerminal';
-import { registerPluginPageSchemes } from './plugins/PluginPageProtocol';
+import { PRIVILEGED_SCHEMES } from '../shared/protocolSchemes';
 import {
   type AuthServerEntry,
   type AuthStatus,
@@ -136,8 +136,9 @@ const providerReloadInFlight = new Set<string>();
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
-registerArtifactScheme();
-registerPluginPageSchemes();
+// One call for every custom scheme: a later call re-builds the privilege categories from its own
+// list and drops the earlier call's schemes (see shared/protocolSchemes).
+protocol.registerSchemesAsPrivileged(PRIVILEGED_SCHEMES);
 const WINDOW_BACKGROUND = { dark: '#0f1115', light: '#f4f6f8' };
 const WINDOW_DEFAULT = { width: 1280, height: 840 };
 const WINDOW_MIN = { width: 960, height: 600 };

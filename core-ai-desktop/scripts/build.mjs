@@ -57,6 +57,7 @@ const targets = [
   { entryPoints: ['src/renderer/artifactList.ts'], outfile: 'dist/test/artifactList.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/renderer/richCard.ts'], outfile: 'dist/test/richCard.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/shared/pluginManifest.ts'], outfile: 'dist/test/pluginManifest.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/shared/protocolSchemes.ts'], outfile: 'dist/test/protocolSchemes.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/zip.ts'], outfile: 'dist/test/pluginZip.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/pluginStore.ts'], outfile: 'dist/test/pluginStore.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/plugins/PluginHost.ts'], outfile: 'dist/test/pluginHost.js', platform: 'node', target: 'node20', format: 'cjs' },

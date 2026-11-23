@@ -1,9 +1,11 @@
 // Two isolated schemes for plugin pages: the page package (HTML/CSS/JS) and generated media.
 // Both are served from a dedicated session partition, so the page has no cookie, storage or
-// network context shared with the host renderer.
-import { protocol, type Session } from 'electron';
+// network context shared with the host renderer. Their privileges live in shared/protocolSchemes,
+// which registers every custom scheme in one call.
+import type { Session } from 'electron';
 import { createReadStream, statSync } from 'node:fs';
 import { Readable } from 'node:stream';
+import { PLUGIN_ASSET_SCHEME, PLUGIN_PAGE_SCHEME } from '../../shared/protocolSchemes';
 import {
   PLUGIN_PAGE_CSP,
   contentTypeFor,
@@ -11,22 +13,6 @@ import {
   resolveMediaFile,
   resolvePackageFile,
 } from './pluginPagePaths.js';
-
-export const PLUGIN_PAGE_SCHEME = 'coreai-plugin-page';
-export const PLUGIN_ASSET_SCHEME = 'coreai-plugin-asset';
-
-export function registerPluginPageSchemes(): void {
-  protocol.registerSchemesAsPrivileged([
-    {
-      scheme: PLUGIN_PAGE_SCHEME,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
-    },
-    {
-      scheme: PLUGIN_ASSET_SCHEME,
-      privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
-    },
-  ]);
-}
 
 export function installPluginPageProtocol(ses: Session, packageDir: string): void {
   ses.protocol.handle(PLUGIN_PAGE_SCHEME, (request) => serveFile(request, (relative) =>
