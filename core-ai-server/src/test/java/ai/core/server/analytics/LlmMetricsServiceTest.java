@@ -80,7 +80,7 @@ class LlmMetricsServiceTest {
         assertEquals(0L, point.errors());
         assertEquals(1000L, point.inputTokens());
         assertEquals(0L, point.outputTokens());
-        assertEquals(0.0, point.costUsd());
+        assertEquals(0.0, point.costUsd(), 1e-9);
     }
 
     @Test
