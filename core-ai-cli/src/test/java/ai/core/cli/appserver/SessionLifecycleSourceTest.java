@@ -28,13 +28,12 @@ class SessionLifecycleSourceTest {
         var coordinator = new TaskRunCoordinator("session-1", "inc-test");
         var session = mock(InProcessAgentSession.class);
         when(session.taskRuns()).thenReturn(coordinator);
-        when(session.isTurnRunning()).thenReturn(false);
+        when(session.isTurnRunning()).thenReturn(Boolean.FALSE);
         var events = new ArrayList<JsonNode>();
         NotificationSink sink = (method, params) -> {
             if ("session/lifecycle".equals(method)) events.add(params.path("event"));
         };
-        var source = new SessionLifecycleSource("session-1", session, tempDir, () -> sink);
-        try {
+        try (var source = new SessionLifecycleSource("session-1", session, tempDir, () -> sink)) {
             var opened = coordinator.openRoot("request-1");
             coordinator.requestQueued();
             coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
@@ -59,8 +58,6 @@ class SessionLifecycleSourceTest {
 
             var bind = source.bind("watch-1", opened.taskRunId(), opened.runGeneration(), 0);
             assertEquals("already_ended", bind.path("status").asText());
-        } finally {
-            source.close();
         }
     }
 
@@ -69,10 +66,9 @@ class SessionLifecycleSourceTest {
         var coordinator = new TaskRunCoordinator("session-queued", "inc-test");
         var session = mock(InProcessAgentSession.class);
         when(session.taskRuns()).thenReturn(coordinator);
-        when(session.isTurnRunning()).thenReturn(false);
+        when(session.isTurnRunning()).thenReturn(Boolean.FALSE);
         var sink = mock(NotificationSink.class);
-        var source = new SessionLifecycleSource("session-queued", session, tempDir, () -> sink);
-        try {
+        try (var source = new SessionLifecycleSource("session-queued", session, tempDir, () -> sink)) {
             coordinator.openRoot("request-1", "turn-1");
             coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
             var queued = coordinator.openRoot("request-2", "turn-2");
@@ -86,8 +82,6 @@ class SessionLifecycleSourceTest {
             var bind = source.bind("watch-queued", queued.taskRunId(), queued.runGeneration(), 0);
             assertEquals("bound", bind.path("status").asText());
             assertEquals("queued", bind.path("run").path("state").asText());
-        } finally {
-            source.close();
         }
     }
 
@@ -96,7 +90,7 @@ class SessionLifecycleSourceTest {
         var coordinator = new TaskRunCoordinator("session-2", "inc-test");
         var session = mock(InProcessAgentSession.class);
         when(session.taskRuns()).thenReturn(coordinator);
-        when(session.isTurnRunning()).thenReturn(false);
+        when(session.isTurnRunning()).thenReturn(Boolean.FALSE);
         var sink = mock(NotificationSink.class);
 
         var journal = LifecycleJournal.open(tempDir, "session-2");
@@ -111,13 +105,10 @@ class SessionLifecycleSourceTest {
         journal.append("run_registered", payload);
         journal.close();
 
-        var source = new SessionLifecycleSource("session-2", session, tempDir, () -> sink);
-        try {
+        try (var source = new SessionLifecycleSource("session-2", session, tempDir, () -> sink)) {
             var ended = source.inspect().path("lastEndedTaskRun");
             assertEquals("interrupted", ended.path("ended").path("outcome").asText());
             assertEquals("engine_restarted", ended.path("ended").path("reason").asText());
-        } finally {
-            source.close();
         }
     }
 }

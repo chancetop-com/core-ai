@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Supplier;
@@ -32,7 +33,7 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         node.put("runGeneration", snapshot.runGeneration());
         node.put("version", snapshot.version());
         node.put("requestId", snapshot.requestId());
-        node.put("state", snapshot.state().name().toLowerCase());
+        node.put("state", snapshot.state().name().toLowerCase(Locale.ROOT));
         if (snapshot.rootDisposition() != null) node.put("rootDisposition", snapshot.rootDisposition());
         if (snapshot.activeExecutionId() != null) node.put("activeExecutionId", snapshot.activeExecutionId());
         node.put("requiredJobsUnsettled", snapshot.requiredJobsUnsettled());
@@ -43,7 +44,7 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         if (snapshot.attentionReason() != null) node.put("attentionReason", snapshot.attentionReason());
         node.put("startedAtMs", snapshot.startedAtMs());
         if (snapshot.endedAtMs() != null) node.put("endedAtMs", snapshot.endedAtMs());
-        if (snapshot.outcome() != null) node.put("outcome", snapshot.outcome().name().toLowerCase());
+        if (snapshot.outcome() != null) node.put("outcome", snapshot.outcome().name().toLowerCase(Locale.ROOT));
         if (snapshot.reason() != null) node.put("reason", snapshot.reason());
         return node;
     }
@@ -55,7 +56,7 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         node.put("taskRunId", ended.taskRunId());
         node.put("runGeneration", ended.runGeneration());
         node.put("version", ended.version());
-        node.put("outcome", ended.outcome().name().toLowerCase());
+        node.put("outcome", ended.outcome().name().toLowerCase(Locale.ROOT));
         node.put("reason", ended.reason());
         node.put("endedAtMs", ended.endedAtMs());
         node.put("durationMs", ended.durationMs());
@@ -181,7 +182,7 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
             case "run_ended" -> "task_run.ended";
             default -> journalType;
         });
-        event.put("state", snapshot.state().name().toLowerCase());
+        event.put("state", snapshot.state().name().toLowerCase(Locale.ROOT));
         if (snapshot.rootDisposition() != null) event.put("root_disposition", snapshot.rootDisposition());
         if (snapshot.activeExecutionId() != null) event.put("execution_id", snapshot.activeExecutionId());
         event.put("required_jobs_unsettled", snapshot.requiredJobsUnsettled());
@@ -190,7 +191,7 @@ final class SessionLifecycleSource implements TaskRunObserver, AutoCloseable {
         event.put("coverage", snapshot.coverage());
         if (snapshot.attentionReason() != null) event.put("attention_reason", snapshot.attentionReason());
         if (ended != null) {
-            event.put("outcome", ended.outcome().name().toLowerCase());
+            event.put("outcome", ended.outcome().name().toLowerCase(Locale.ROOT));
             event.put("reason", ended.reason());
             event.put("duration_ms", ended.durationMs());
             event.put("external_stop_state", ended.externalStopState());

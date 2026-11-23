@@ -113,7 +113,7 @@ final class WatchSessionTool extends ToolCall {
         var ref = SessionToolSupport.parseRunRef(getStringValue(args, "task_run_ref"));
         if (ref == null) return ToolCallResult.failed("task_run_ref is required for explicit_task_run");
         var active = target.inProcess().taskRuns().activeSnapshot();
-        if (ref.runGeneration() == 0 && active != null && ref.taskRunId().equals(active.taskRunId())) {
+        if (active != null && ref.runGeneration() == 0 && ref.taskRunId().equals(active.taskRunId())) {
             ref = new SessionToolSupport.RunRef(active.taskRunId(), active.runGeneration());
         }
         if (ref.runGeneration() == 0) {

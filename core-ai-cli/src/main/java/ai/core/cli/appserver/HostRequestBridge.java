@@ -57,7 +57,13 @@ final class HostRequestBridge {
             throw new IllegalStateException("host request interrupted: " + operation, e);
         } catch (ExecutionException e) {
             var cause = e.getCause();
-            throw cause instanceof RuntimeException runtime ? runtime : new IllegalStateException("host request failed", e);
+            if (cause instanceof RpcException rpc && rpc.data() != null) {
+                throw new RpcException(rpc.code(), rpc.getMessage(), rpc.data(), e);
+            }
+            if (cause instanceof RuntimeException runtime) {
+                throw new IllegalStateException(runtime.getMessage(), e);
+            }
+            throw new IllegalStateException("host request failed", e);
         }
     }
 

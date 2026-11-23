@@ -63,7 +63,7 @@ final class FindSessionsTool extends ToolCall {
         var params = Params.object();
         params.put("limit", 50);
         var sessions = registry.list(params).path("sessions");
-        var builder = new StringBuilder();
+        var builder = new StringBuilder(128 * limit);
         int found = 0;
         for (var session : sessions) {
             if (context != null && context.getSessionId() != null
@@ -79,10 +79,10 @@ final class FindSessionsTool extends ToolCall {
                 }
             }
             if (found > 0) builder.append('\n');
-            builder.append("session_id: ").append(id).append('\n');
-            builder.append("title: ").append(title).append('\n');
-            builder.append("status: ").append(session.path("status").asText("idle")).append('\n');
-            builder.append("updated_at: ").append(session.path("updatedAt").asText("")).append('\n');
+            builder.append("session_id: ").append(id)
+                    .append("\ntitle: ").append(title)
+                    .append("\nstatus: ").append(session.path("status").asText("idle"))
+                    .append("\nupdated_at: ").append(session.path("updatedAt").asText("")).append('\n');
             found++;
             if (found >= limit) break;
         }

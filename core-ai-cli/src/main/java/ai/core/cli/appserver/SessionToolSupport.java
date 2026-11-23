@@ -15,7 +15,7 @@ final class SessionToolSupport {
         if (value instanceof Number number) return number.intValue();
         if (value instanceof String text && !text.isBlank()) {
             try {
-                return Integer.parseInt(text.strip());
+                return Integer.valueOf(text.strip());
             } catch (NumberFormatException e) {
                 return null;
             }
