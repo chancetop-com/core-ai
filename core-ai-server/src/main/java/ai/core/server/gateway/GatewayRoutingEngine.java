@@ -445,7 +445,6 @@ public class GatewayRoutingEngine {
 
     private record RegisteredGatewayModel(GatewayModelConfig model, GatewayProviderConfig provider) {
     }
-
     private record Snapshot(List<GatewayProviderConfig> providers, List<GatewayModelConfig> models, long createdAt) {
     }
 }

@@ -82,10 +82,7 @@ public class GatewayModule extends Module {
     private void configureGateway() {
         var gatewaySecretProtector = bean(GatewaySecretProtector.class);
         var gatewayRoutingEngine = bind(GatewayRoutingEngine.class);
-        LLMModelContextRegistry.setExternalContextWindowProvider(modelId -> {
-            var config = gatewayRoutingEngine.modelConfig(modelId);
-            return config == null || config.contextWindow == null ? 0 : config.contextWindow.intValue();
-        });
+        registerModelContextWindowProvider(gatewayRoutingEngine);
         bind(GeminiFileService.class);
         var videoUnderstandingService = bind(GeminiVideoUnderstandingService.class);
         bind(UnderstandVideoTool.VideoUnderstandingService.class, videoUnderstandingService);
@@ -112,6 +109,13 @@ public class GatewayModule extends Module {
         registerGatewayProviderRoutes();
         registerGatewayModelRoutes();
         registerGatewayProxyRoutes();
+        bindGatewayLLMProvider(gatewayRoutingEngine, gatewaySecretProtector);
+        bind(ImageModelCompareService.class);
+        api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
+        http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
+    }
+
+    private void bindGatewayLLMProvider(GatewayRoutingEngine gatewayRoutingEngine, GatewaySecretProtector gatewaySecretProtector) {
         var llmProviders = bean(LLMProviders.class);
         var fallbackLLMProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getProvider();
         var gatewayLLMConfig = fallbackLLMProvider == null ? new LLMProviderConfig(null, null, null) : new LLMProviderConfig(fallbackLLMProvider.config);
@@ -129,9 +133,14 @@ public class GatewayModule extends Module {
         bind(gatewayLLMProvider);
         llmProviders.addProvider(LLMProviderType.GATEWAY, gatewayLLMProvider);
         llmProviders.setDefaultProvider(LLMProviderType.GATEWAY);
-        bind(ImageModelCompareService.class);
-        api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
-        http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
+    }
+
+    /** Agents size their compression budget from the gateway's per-model context window. */
+    private void registerModelContextWindowProvider(GatewayRoutingEngine gatewayRoutingEngine) {
+        LLMModelContextRegistry.setExternalContextWindowProvider(modelId -> {
+            var config = gatewayRoutingEngine.modelConfig(modelId);
+            return config == null || config.contextWindow == null ? 0 : config.contextWindow.intValue();
+        });
     }
 
     private void bindGatewayMediaProvider(GatewayRoutingEngine routingEngine, GatewaySecretProtector secretProtector,
