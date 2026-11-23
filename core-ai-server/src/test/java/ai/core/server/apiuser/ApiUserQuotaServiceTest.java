@@ -14,10 +14,12 @@ import org.mockito.ArgumentCaptor;
 import java.time.ZonedDateTime;
 import java.util.Optional;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -70,6 +72,28 @@ class ApiUserQuotaServiceTest {
         when(collection.get("user-1")).thenReturn(Optional.of(user));
 
         assertThrows(QuotaExceededException.class, () -> service.checkQuota("user-1"));
+    }
+
+    @Test
+    void recordUsageDoesNotAbortTheRunWhenTheStoreIsUnavailable() {
+        var store = mock(ai.core.server.user.UserStore.class);
+        var service = new ApiUserQuotaService();
+        service.userStore = store;
+        doThrow(new IllegalStateException("connection refused"))
+            .when(store).incrementQuotaUsage("user-1", 10L, 5L);
+
+        assertDoesNotThrow(() -> service.recordUsage("user-1", 10L, 5L));
+    }
+
+    @Test
+    void recordUsageForwardsUsageToTheStore() {
+        var store = mock(ai.core.server.user.UserStore.class);
+        var service = new ApiUserQuotaService();
+        service.userStore = store;
+
+        service.recordUsage("user-1", 10L, 5L);
+
+        verify(store).incrementQuotaUsage("user-1", 10L, 5L);
     }
 
     @SuppressWarnings("unchecked")

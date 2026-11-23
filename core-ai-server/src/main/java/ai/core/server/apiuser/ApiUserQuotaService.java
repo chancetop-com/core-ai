@@ -3,6 +3,8 @@ package ai.core.server.apiuser;
 import ai.core.server.domain.User;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 
@@ -13,6 +15,8 @@ import java.time.ZonedDateTime;
  * @author stephen
  */
 public class ApiUserQuotaService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ApiUserQuotaService.class);
+
     @Inject
     UserStore userStore;
 
@@ -48,10 +52,18 @@ public class ApiUserQuotaService {
      * quota was checked — independent of trace span attribution.
      * Conditionally $inc only for users with a configured quota, so unconfigured users are untouched.
      * The window counter is lazily reset by {@link #checkQuota} on the next day boundary.
+     * <p>
+     * Metering is a side effect of a live turn: a database failure here must not abort the run.
+     * The consumed-token counter can lag by one call when it is unavailable.
      */
     public void recordUsage(String userId, long inputTokens, long outputTokens) {
         if (userId == null) return;
-        userStore.incrementQuotaUsage(userId, inputTokens, outputTokens);
+        try {
+            userStore.incrementQuotaUsage(userId, inputTokens, outputTokens);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to record quota usage, userId={}, inputTokens={}, outputTokens={}, error={}",
+                userId, inputTokens, outputTokens, e.getMessage());
+        }
     }
 
     /**
