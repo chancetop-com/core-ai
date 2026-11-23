@@ -168,7 +168,14 @@ public final class TaskRunCoordinator {
             if (active == null || active.terminal()) return false;
             if (active.activeExecutionId != null) return true;
             if (!active.requiredJobs.isEmpty() || !active.continuations.isEmpty()) return true;
-            if (active.state() == TaskRunState.DRAINING || active.state() == TaskRunState.AWAITING_ASYNC) return true;
+            if (active.state() == TaskRunState.DRAINING) return true;
+            if (active.state() == TaskRunState.AWAITING_ASYNC) {
+                // AWAITING_ASYNC here means only queuedRequests are outstanding; the request that
+                // opened this run is exactly the batch at the driver head, and deferring it would
+                // wait for an executionStarted that can never come.
+                if (active.turnId == null || turnIds.isEmpty()) return true;
+                return !turnIds.contains(active.turnId);
+            }
             if (active.state() == TaskRunState.NEEDS_ATTENTION) return false;
             if (active.state() == TaskRunState.REGISTERED) {
                 if (active.turnId == null || turnIds.isEmpty()) return false;
