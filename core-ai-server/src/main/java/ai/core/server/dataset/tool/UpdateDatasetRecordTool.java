@@ -94,15 +94,15 @@ public final class UpdateDatasetRecordTool extends ToolCall {
         }
 
         var dataset = datasetService.get(datasetId);
-        DatasetRecordWriteRules.NormalizedWrite normalized;
+        Map<String, Object> filtered;
         try {
-            normalized = DatasetRecordWriteRules.normalizePatchWithDroppedFields(dataset, data);
+            filtered = DatasetRecordWriteRules.normalizePatch(dataset, data);
         } catch (IllegalArgumentException e) {
             return ToolCallResult.failed(e.getMessage());
         }
-        var filtered = normalized.data();
         if (filtered.isEmpty()) {
-            return ToolCallResult.failed(DatasetRecordWriteRules.noMatchingFieldsMessage(dataset, normalized.droppedFields()));
+            return ToolCallResult.failed("none of the provided fields match the dataset schema: "
+                    + DatasetRecordWriteRules.schemaFieldNames(dataset));
         }
 
         var updatedBy = context != null ? context.getUserId() : null;
@@ -111,6 +111,6 @@ public final class UpdateDatasetRecordTool extends ToolCall {
             return ToolCallResult.failed("record not found, id=" + recordId);
         }
 
-        return ToolCallResult.completed(DatasetOpPayloads.recordUpdated(recordId, datasetId, filtered.keySet(), normalized.droppedFields()));
+        return ToolCallResult.completed(DatasetOpPayloads.recordUpdated(recordId, datasetId, filtered.keySet()));
     }
 }

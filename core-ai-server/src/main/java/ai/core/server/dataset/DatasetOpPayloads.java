@@ -80,37 +80,21 @@ public final class DatasetOpPayloads {
     }
 
     public static String recordInserted(String datasetId, Collection<String> fields) {
-        return recordInserted(datasetId, fields, null);
-    }
-
-    public static String recordInserted(String datasetId, Collection<String> fields, Collection<String> droppedFields) {
         var response = new LinkedHashMap<String, Object>();
         response.put("status", "created");
         response.put("dataset_id", datasetId);
         response.put("inserted_fields", fields);
         response.put("message", "record inserted successfully");
-        if (droppedFields != null && !droppedFields.isEmpty()) {
-            response.put("dropped_fields", droppedFields);
-            response.put("dropped_fields_message", "these fields are not in the dataset schema and were not stored");
-        }
         return JsonUtil.toJson(response);
     }
 
     public static String recordUpdated(String recordId, String datasetId, Collection<String> fields) {
-        return recordUpdated(recordId, datasetId, fields, null);
-    }
-
-    public static String recordUpdated(String recordId, String datasetId, Collection<String> fields, Collection<String> droppedFields) {
         var response = new LinkedHashMap<String, Object>();
         response.put("status", "updated");
         response.put("record_id", recordId);
         response.put("dataset_id", datasetId);
         response.put("updated_fields", fields);
         response.put("message", "record updated successfully");
-        if (droppedFields != null && !droppedFields.isEmpty()) {
-            response.put("dropped_fields", droppedFields);
-            response.put("dropped_fields_message", "these fields are not in the dataset schema and were not stored");
-        }
         return JsonUtil.toJson(response);
     }
 

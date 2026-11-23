@@ -98,7 +98,7 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireSessionDataset(resolved, datasetRef);
-        var data = normalize(resolved, parseData(dataText), false).data();
+        var data = normalize(resolved, parseData(dataText), false);
         var dataJson = JsonUtil.toJson(data);
         var size = bytes(dataJson);
         if (size > DatasetRecordService.MAX_STATE_BYTES) {
@@ -116,7 +116,7 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireSessionDataset(resolved, datasetRef);
-        var data = normalize(resolved, parseData(dataText), true).data();
+        var data = normalize(resolved, parseData(dataText), true);
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
@@ -154,17 +154,15 @@ public class HubDatasetService {
         var session = sessionRegistry.requireAccessible(sessionId, userId);
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireRecordDataset(resolved);
-        var normalized = normalize(resolved, parseData(dataText), false);
-        var data = normalized.data();
+        var data = normalize(resolved, parseData(dataText), false);
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
-        if (!normalized.droppedFields().isEmpty()) detail.put("dropped_fields", normalized.droppedFields());
         return audited(session.id, userId, ref(resolved, OP_RECORDS_INSERT, GROUP_RECORDS), detail, () -> {
             var request = new DatasetRecordService.InsertRequest(resolved.datasetId, session.agentId, sessionId,
                     ZonedDateTime.now(), data, userId, userId);
             datasetRecordService.insert(request);
-            return DatasetOpPayloads.recordInserted(resolved.datasetId, data.keySet(), normalized.droppedFields());
+            return DatasetOpPayloads.recordInserted(resolved.datasetId, data.keySet());
         });
     }
 
@@ -173,18 +171,16 @@ public class HubDatasetService {
         var resolved = resolve(session, datasetRef, Access.WRITE);
         requireRecordDataset(resolved);
         if (!hasText(recordId)) throw new BadRequestException("record_id is required");
-        var normalized = normalize(resolved, parseData(dataText), true);
-        var data = normalized.data();
+        var data = normalize(resolved, parseData(dataText), true);
         var detail = detail(resolved.datasetId);
         detail.put("record_id", recordId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
-        if (!normalized.droppedFields().isEmpty()) detail.put("dropped_fields", normalized.droppedFields());
         return audited(session.id, userId, ref(resolved, OP_RECORDS_UPDATE, GROUP_RECORDS), detail, () -> {
             if (!datasetRecordService.update(resolved.datasetId, recordId, data, userId)) {
                 throw new NotFoundException("record not found, id=" + recordId);
             }
-            return DatasetOpPayloads.recordUpdated(recordId, resolved.datasetId, data.keySet(), normalized.droppedFields());
+            return DatasetOpPayloads.recordUpdated(recordId, resolved.datasetId, data.keySet());
         });
     }
 
@@ -250,17 +246,18 @@ public class HubDatasetService {
         if (sessionError != null) throw new BadRequestException(sessionError);
     }
 
-    private DatasetRecordWriteRules.NormalizedWrite normalize(Resolved resolved, Map<String, Object> data, boolean patch) {
-        DatasetRecordWriteRules.NormalizedWrite normalized;
+    private Map<String, Object> normalize(Resolved resolved, Map<String, Object> data, boolean patch) {
+        Map<String, Object> normalized;
         try {
             normalized = patch
-                    ? DatasetRecordWriteRules.normalizePatchWithDroppedFields(resolved.dataset, data)
-                    : DatasetRecordWriteRules.normalizeWithDroppedFields(resolved.dataset, data);
+                    ? DatasetRecordWriteRules.normalizePatch(resolved.dataset, data)
+                    : DatasetRecordWriteRules.normalize(resolved.dataset, data);
         } catch (IllegalArgumentException e) {
             throw new BadRequestException(e.getMessage(), "BAD_REQUEST", e);
         }
-        if (normalized.data().isEmpty()) {
-            throw new BadRequestException(DatasetRecordWriteRules.noMatchingFieldsMessage(resolved.dataset, normalized.droppedFields()));
+        if (normalized.isEmpty()) {
+            throw new BadRequestException("none of the provided fields match the dataset schema: "
+                    + DatasetRecordWriteRules.schemaFieldNames(resolved.dataset));
         }
         return normalized;
     }

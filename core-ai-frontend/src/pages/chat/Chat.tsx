@@ -21,7 +21,6 @@ import AgentSelector from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages, compressionSegment, customEventSegments, appendCustomSegments } from './utils';
-import { datasetBindingsDiffer } from './datasetConfigDrift';
 import { adoptCachedChat, chatCacheKeys } from './cache';
 import { clearActiveAgentBubble, ensureTrailingAgentBubble, mergeHistoryWithLive, resolveRestoredTurn, trackStrandedTurn } from './streamRecovery';
 import SandboxTerminalPanel from './components/SandboxTerminalPanel';
@@ -165,8 +164,6 @@ export default function Chat() {
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set());
   // Dataset config draft for session-level override
   const [draftDatasetConfigs, setDraftDatasetConfigs] = useState<DatasetConfigDraft[]>([]);
-  // The agent's dataset bindings changed after this session was created: the session keeps its snapshot
-  const [datasetBindingsChanged, setDatasetBindingsChanged] = useState(false);
   const [datasets, setDatasets] = useState<{ id: string; name: string }[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   // per-chat switch: ping the owner on their channel when a long turn of this session ends
@@ -532,7 +529,6 @@ export default function Chat() {
     setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
     setDraftDatasetConfigs([]);
-    setDatasetBindingsChanged(false);
     setNotifyOnComplete(Boolean(session.notify_on_complete));
     setShowConfigModal(false);
     setShowSkillPicker(false);
@@ -562,10 +558,6 @@ export default function Chat() {
             if (!sessionInfo?.dataset_config?.length && fetched.dataset_config && fetched.dataset_config.length > 0) {
               setDraftDatasetConfigs(fetched.dataset_config.map(c => ({ ...c, _key: crypto.randomUUID() })));
             }
-            if (sessionInfo && sessionInfo.dataset_config_changed === undefined
-              && datasetBindingsDiffer(sessionInfo.dataset_config, fetched.dataset_config)) {
-              setDatasetBindingsChanged(true);
-            }
           }
         }).catch(() => {
           // Agent may have been deleted; fall through to "Select Agent" placeholder.
@@ -591,11 +583,6 @@ export default function Chat() {
         })));
       } else if (sessionAgent?.dataset_config && sessionAgent.dataset_config.length > 0) {
         setDraftDatasetConfigs(sessionAgent.dataset_config.map(c => ({ ...c, _key: crypto.randomUUID() })));
-      }
-      // The session keeps the bindings it was created with; a difference from the agent means the
-      // change only takes effect in a new chat.
-      if (sessionInfo) {
-        setDatasetBindingsChanged(sessionInfo.dataset_config_changed === true);
       }
       const hydrated = historyToChatMessages(res.messages || []);
       // A trailing user message means the agent reply may not be persisted yet. Keep
@@ -2162,15 +2149,6 @@ export default function Chat() {
       ) : (
         <>
       {/* Chat messages */}
-      {datasetBindingsChanged && (
-        <div
-          className="mx-4 mt-3 px-3 py-2 rounded-lg text-xs leading-relaxed"
-          style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--color-text)' }}
-        >
-          The agent's dataset bindings differ from this conversation's. This chat keeps the bindings it
-          started with - start a new chat to use the agent's current datasets and tools.
-        </div>
-      )}
       <ChatMessagesPanel
         messages={messages}
         status={status}

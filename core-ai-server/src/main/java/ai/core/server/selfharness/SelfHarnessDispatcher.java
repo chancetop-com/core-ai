@@ -30,7 +30,6 @@ import ai.core.server.trace.service.TraceListFilter;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.service.TraceVisibility;
 import ai.core.server.trace.service.TraceVisibilityResolver;
-import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -51,12 +50,6 @@ import java.util.Map;
 public class SelfHarnessDispatcher {
     private static final String INTERNAL_USER = "internal";
 
-    static final String DATASET_BINDING_NOTICE =
-            "dataset_config was saved to the agent draft. Dataset bindings are captured when a chat session is "
-                    + "created, so existing sessions keep their current tools - the change takes effect only in a new "
-                    + "session. If this agent is published and used by others, publish_agent is also required for them "
-                    + "to see it.";
-
     // the result only needs enough to pick a skill and pass its id on: serializing the full entity
     // (content + resources) turned a whole-catalog listing into ~90MB of tool output
     private static Map<String, Object> skillRow(SkillDefinition skill) {
@@ -71,17 +64,6 @@ public class SelfHarnessDispatcher {
         row.put("user_id", skill.userId);
         row.put("updated_at", skill.updatedAt != null ? skill.updatedAt.toString() : null);
         return row;
-    }
-
-    /**
-     * Keeps the view flat and appends the notice: scripts read the updated agent's fields at the top level, so
-     * wrapping the response would break them. Only dataset changes carry a notice today.
-     */
-    static Object withSessionScopedNotice(Object view, boolean notice) {
-        if (!notice) return view;
-        var map = JsonUtil.toMap(JSON.toJSON(view));
-        map.put("warning", DATASET_BINDING_NOTICE);
-        return map;
     }
 
     @Inject
@@ -149,9 +131,7 @@ public class SelfHarnessDispatcher {
             }
             case "update_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                var request = SelfHarnessRequestBinder.bind(UpdateAgentRequest.class, args);
-                var view = agentService.update((String) params.get("id"), request, userId);
-                yield withSessionScopedNotice(view, request.datasetConfig != null);
+                yield agentService.update((String) params.get("id"), SelfHarnessRequestBinder.bind(UpdateAgentRequest.class, args), userId);
             }
             case "publish_agent" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);

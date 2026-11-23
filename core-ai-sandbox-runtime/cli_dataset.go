@@ -114,7 +114,7 @@ func (env *cliEnv) datasetList() *cliError {
 	}
 	datasets := catalog.datasetBindings()
 	if env.opts.json {
-		env.printJSON(hubDatasetListResponse{SessionID: catalog.SessionID, Datasets: nonNilDatasets(datasets), Hint: catalog.DatasetsHint})
+		env.printJSON(hubDatasetListResponse{SessionID: catalog.SessionID, Datasets: nonNilDatasets(datasets)})
 		return nil
 	}
 	if env.opts.quiet {
@@ -124,7 +124,7 @@ func (env *cliEnv) datasetList() *cliError {
 		fmt.Fprintln(env.stdout, "  (this hub reports no datasets section; the server may predate it)")
 		return nil
 	}
-	env.renderDatasetList(datasets, catalog.DatasetsHint)
+	env.renderDatasetList(datasets)
 	return nil
 }
 
@@ -406,12 +406,9 @@ func datasetFieldNames(value any) []string {
 	return names
 }
 
-func (env *cliEnv) renderDatasetList(datasets []hubCatalogDataset, hint string) {
+func (env *cliEnv) renderDatasetList(datasets []hubCatalogDataset) {
 	if len(datasets) == 0 {
 		fmt.Fprintln(env.stdout, "  (no datasets bound to this session)")
-		if strings.TrimSpace(hint) != "" {
-			fmt.Fprintf(env.stdout, "  hint: %s\n", hint)
-		}
 		return
 	}
 	nameWidth := 1
