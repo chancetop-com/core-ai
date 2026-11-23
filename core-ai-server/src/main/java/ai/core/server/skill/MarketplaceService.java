@@ -60,7 +60,9 @@ public class MarketplaceService {
     public List<SkillDefinition> installRepo(String userId, String repoId) {
         var repo = getRepo(repoId);
         LOGGER.info("installing skills from marketplace repo, repoId={}, url={}", repoId, repo.repoUrl);
-        return skillService.registerFromRepo(userId, repo.repoUrl, repo.branch, repo.skillPath);
+        // The stored path was auto-detected by the detector of that day; re-detect so a layout this
+        // release learned to read (for example an array-valued plugin manifest) is picked up on install.
+        return skillService.registerFromRepo(userId, repo.repoUrl, repo.branch, null);
     }
 
     public MarketplaceRepo register(String repoUrl, String branch) {

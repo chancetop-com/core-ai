@@ -83,6 +83,18 @@ class MongoSkillProviderTest {
     }
 
     @Test
+    void resolvesSiblingSkillMdToItsContent() {
+        var sibling = definition("ads", REPO, null);
+        sibling.content = "# Ads conductor";
+        when(skillService.findByQualifiedName("AgriciDaniel/ads-tiktok"))
+            .thenReturn(definition("ads-tiktok", REPO, null));
+        when(skillService.findByQualifiedNameOrNull("AgriciDaniel/ads")).thenReturn(sibling);
+
+        assertEquals("# Ads conductor", provider.scoped(java.util.Set.of("ads-tiktok-id"))
+            .readResource(metadata("ads-tiktok"), "ads/SKILL.md"));
+    }
+
+    @Test
     void doesNotResolveThroughSiblingSkillOfAnotherRepo() {
         when(skillService.findByQualifiedName("AgriciDaniel/ads-tiktok"))
             .thenReturn(definition("ads-tiktok", REPO, null));

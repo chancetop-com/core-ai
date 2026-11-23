@@ -110,9 +110,9 @@ public class SkillService {
             repoManager().cloneRepo(repoUrl, branch, tempDir);
             String commitHash = repoManager().headCommit(tempDir);
 
-            String effectiveSkillPath = resolveSkillPath(tempDir, skillPath);
-            if (effectiveSkillPath != null && !effectiveSkillPath.isBlank() && !effectiveSkillPath.equals(skillPath)) {
-                LOGGER.info("resolved skill path(s): {} for repo {}", effectiveSkillPath, repoUrl);
+            String effectiveSkillPath = skillPath;
+            if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
+                effectiveSkillPath = detectSkillPath(tempDir);
             }
 
             List<SkillMetadata> skills;
@@ -286,7 +286,7 @@ public class SkillService {
             repoManager().cloneRepo(config.repoUrl, config.branch, tempDir);
             String commitHash = remoteHead != null ? remoteHead : repoManager().headCommit(tempDir);
 
-            String effectiveSkillPath = resolveSkillPath(tempDir, config.skillPath);
+            String effectiveSkillPath = resolveSyncedSkillPath(tempDir, config.skillPath);
 
             List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
@@ -333,18 +333,16 @@ public class SkillService {
         return publishService.publish(request).entity();
     }
 
-    /**
-     * A plugin manifest owns its skill layout: a path stored by an older detection can miss a declared
-     * root (for example a shared reference root next to {@code skills/}), so a manifest declaration wins
-     * over the stored value. Repos without a manifest keep their configured path, and only an
-     * unconfigured repo falls back to convention detection.
-     */
-    private String resolveSkillPath(Path repoDir, String configured) {
-        var detector = new PluginFormatDetector();
-        var declared = detector.declaredSkillPaths(repoDir);
+    /** A plugin manifest owns its layout, so a declared root wins over a path stored by an older detection. */
+    private String resolveSyncedSkillPath(Path repoDir, String configured) {
+        var declared = new PluginFormatDetector().declaredSkillPaths(repoDir);
         if (!declared.isEmpty()) return String.join(",", declared);
         if (configured != null && !configured.isBlank()) return configured;
-        var detected = detector.detectSkillPaths(repoDir);
+        return detectSkillPath(repoDir);
+    }
+
+    private String detectSkillPath(Path repoDir) {
+        var detected = new PluginFormatDetector().detectSkillPaths(repoDir);
         return detected.isEmpty() ? null : String.join(",", detected);
     }
 

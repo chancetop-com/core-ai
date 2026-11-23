@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
  */
 public class MongoSkillProvider {
     private static final int MAX_LISTED_RESOURCES = 10;
+    private static final String SKILL_FILE = "SKILL.md";
 
     private static SkillResource findResource(SkillDefinition definition, String path) {
         if (definition.resources == null) return null;
@@ -72,8 +73,10 @@ public class MongoSkillProvider {
         public String readResource(SkillMetadata skill, String resourcePath) {
             var definition = skillService.findByQualifiedName(skill.getQualifiedName());
             var owner = ownerOf(definition, resourcePath);
-            var resource = owner == null ? null : findResource(owner.definition(), owner.path());
-            if (owner == null || resource == null) throw notFound(skill, definition, resourcePath);
+            if (owner == null) throw notFound(skill, definition, resourcePath);
+            if (SKILL_FILE.equals(owner.path())) return owner.definition().content;
+            var resource = findResource(owner.definition(), owner.path());
+            if (resource == null) throw notFound(skill, definition, resourcePath);
             if (resource.storagePath != null) throw notText(skill, owner, resourcePath);
             return resource.content;
         }
@@ -82,7 +85,8 @@ public class MongoSkillProvider {
          * A skill in a multi-root plugin may reference a file by its plugin-root path (for example
          * {@code ads/references/tiktok-audit.md} from a skill under {@code skills/}); the hub stores each
          * declared root as its own skill, so resolve the leading segment against a sibling skill of the
-         * same repository before failing.
+         * same repository before failing. A sibling's {@code SKILL.md} is not a resource, so it resolves
+         * to that skill's stored content.
          */
         private ResourceOwner ownerOf(SkillDefinition definition, String resourcePath) {
             if (findResource(definition, resourcePath) != null) return new ResourceOwner(definition, resourcePath);
@@ -94,6 +98,7 @@ public class MongoSkillProvider {
             if (sibling == null || sibling.id.equals(definition.id)) return null;
             if (sibling.repoConfig == null || !definition.repoConfig.repoUrl.equals(sibling.repoConfig.repoUrl)) return null;
             var relativePath = resourcePath.substring(slash + 1);
+            if (SKILL_FILE.equals(relativePath) && sibling.content != null) return new ResourceOwner(sibling, relativePath);
             return findResource(sibling, relativePath) == null ? null : new ResourceOwner(sibling, relativePath);
         }
 
