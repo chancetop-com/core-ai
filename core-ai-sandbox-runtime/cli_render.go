@@ -52,6 +52,8 @@ type hubCatalogResponse struct {
 	Tools        []hubToolSummary  `json:"tools"`
 	// Datasets is nil on a server older than the datasets section; an empty list means the session has no bindings.
 	Datasets *[]hubCatalogDataset `json:"datasets,omitempty"`
+	// DatasetsHint explains an empty Datasets section: whether the agent has bindings a new session would pick up.
+	DatasetsHint string `json:"datasets_hint,omitempty"`
 }
 
 type hubCatalogDataset struct {
@@ -73,6 +75,7 @@ type hubSchemaField struct {
 type hubDatasetListResponse struct {
 	SessionID string              `json:"session_id"`
 	Datasets  []hubCatalogDataset `json:"datasets"`
+	Hint      string              `json:"hint,omitempty"`
 }
 
 type hubCatalogGroup struct {

@@ -114,4 +114,46 @@ class DatasetRecordWriteRulesTest {
         var normalized = DatasetRecordWriteRules.normalize(dataset, data("label", "x", "unknown", "y"));
         assertEquals(Map.of("label", "x"), normalized);
     }
+
+    @Test
+    void reportsTheFieldsThatWereDropped() {
+        var dataset = dataset(field("label", SchemaFieldType.STRING));
+
+        var normalized = DatasetRecordWriteRules.normalizeWithDroppedFields(dataset, data("label", "x", "lable", "y"));
+
+        assertEquals(Map.of("label", "x"), normalized.data());
+        assertEquals(List.of("lable"), normalized.droppedFields());
+    }
+
+    @Test
+    void patchReportsDroppedFieldsToo() {
+        var dataset = dataset(field("label", SchemaFieldType.STRING));
+
+        var normalized = DatasetRecordWriteRules.normalizePatchWithDroppedFields(dataset, data("label", null, "extra", 1));
+
+        assertTrue(normalized.data().containsKey("label"));
+        assertEquals(List.of("extra"), normalized.droppedFields());
+    }
+
+    @Test
+    void schemaLessDatasetDropsNothing() {
+        var dataset = new Dataset();
+        dataset.id = "ds-1";
+
+        var normalized = DatasetRecordWriteRules.normalizeWithDroppedFields(dataset, data("anything", "value"));
+
+        assertEquals("value", normalized.data().get("anything"));
+        assertTrue(normalized.droppedFields().isEmpty());
+    }
+
+    @Test
+    void noMatchingFieldsMessageNamesTheDroppedFields() {
+        var dataset = dataset(field("label", SchemaFieldType.STRING));
+
+        var message = DatasetRecordWriteRules.noMatchingFieldsMessage(dataset, List.of("lable"));
+
+        assertTrue(message.contains("none of the provided fields"));
+        assertTrue(message.contains("label"));
+        assertTrue(message.contains("unknown fields: [lable]"));
+    }
 }

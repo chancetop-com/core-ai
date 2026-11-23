@@ -28,4 +28,12 @@ public class SessionInfo {
 
     @Property(name = "dataset_config")
     public List<DatasetConfigEntry> datasetConfig;
+
+    /**
+     * True when the agent's dataset bindings differ from the ones this session captured at creation. A session keeps
+     * its captured tools for its whole life, so the difference only takes effect in a new session; {@code null} when
+     * the agent is gone or the comparison is not possible.
+     */
+    @Property(name = "dataset_config_changed")
+    public Boolean datasetConfigChanged;
 }

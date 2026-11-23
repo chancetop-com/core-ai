@@ -148,6 +148,36 @@ func TestCliDatasetListOnServerWithoutTheSection(t *testing.T) {
 	}
 }
 
+func TestCliDatasetListExplainsAnEmptySection(t *testing.T) {
+	const hint = "this session has no dataset bindings; its agent now has 2 dataset binding(s), " +
+		"but dataset bindings are captured when a session is created - start a new session to use them"
+	stub := &hubStub{handler: func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"session_id":"s-1","groups":[],"tools":[],"datasets":[],"datasets_hint":"` + hint + `"}`))
+	}}
+	stub.start(t)
+
+	code, stdout, stderr := runCLI(t, "dataset", "list", "--json")
+	if code != exitSuccess {
+		t.Fatalf("exit = %d, want 0 (%s)", code, stderr)
+	}
+	var list hubDatasetListResponse
+	if err := json.Unmarshal([]byte(strings.TrimSpace(stdout)), &list); err != nil {
+		t.Fatalf("list stdout is not one json line: %q (%v)", stdout, err)
+	}
+	if list.Hint != hint {
+		t.Fatalf("hint = %q, want %q", list.Hint, hint)
+	}
+
+	code, human, _ := runCLI(t, "dataset", "list")
+	if code != exitSuccess {
+		t.Fatalf("human exit = %d, want 0", code)
+	}
+	if !strings.Contains(human, "no datasets bound to this session") || !strings.Contains(human, "hint: "+hint) {
+		t.Fatalf("human output = %q, want the server hint", human)
+	}
+}
+
 func TestCliDatasetShowResolvesIdAndName(t *testing.T) {
 	var calls []datasetCall
 	datasetStub(t, "", &calls).start(t)

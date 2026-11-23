@@ -9,19 +9,27 @@ import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
 import ai.core.api.server.sandboxhub.SandboxHubToolSearchRequest;
 import ai.core.api.server.sandboxhub.SandboxHubToolsResponse;
 import ai.core.sandbox.SandboxConstants;
+import ai.core.server.agent.AgentDefinitionService;
+import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.RpcNotDeliveredException;
 import ai.core.server.messaging.SessionCommand;
 import ai.core.server.rbac.PermissionsBypass;
 import ai.core.server.sandboxhub.SandboxHubService.SandboxHubSession;
+import ai.core.server.session.SessionRegistry;
 import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 import core.framework.web.exception.UnauthorizedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * Sandbox hub endpoints. Auth is the {@code cst_} session token: the interceptor already verified it
@@ -39,6 +47,7 @@ import java.time.Instant;
  * @author xander
  */
 public class SandboxHubWebServiceImpl implements SandboxHubWebService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SandboxHubWebServiceImpl.class);
     private static final String BEARER_PREFIX = "Bearer ";
     private static final int RPC_TIMEOUT_MARGIN_SECONDS = 5;
     private static final int MAX_CALL_TIMEOUT_SECONDS = (int) (SandboxConstants.MAX_TOOL_TIMEOUT_MS / 1000) + RPC_TIMEOUT_MARGIN_SECONDS;
@@ -58,6 +67,10 @@ public class SandboxHubWebServiceImpl implements SandboxHubWebService {
     PodLocalExecutor podLocalExecutor;
     @Inject
     RpcClient rpcClient;
+    @Inject
+    SessionRegistry sessionRegistry;
+    @Inject
+    AgentDefinitionService agentDefinitionService;
 
     @Override
     @PermissionsBypass
@@ -70,7 +83,10 @@ public class SandboxHubWebServiceImpl implements SandboxHubWebService {
     @PermissionsBypass
     public SandboxHubCatalogResponse catalog() {
         var session = session();
-        return SandboxHubViews.catalog(snapshot(session), session.sessionId(), session.sandboxId(), session.expiresAt());
+        var snapshot = snapshot(session);
+        var response = SandboxHubViews.catalog(snapshot, session.sessionId(), session.sandboxId(), session.expiresAt());
+        response.datasetsHint = datasetHint(session.sessionId(), !snapshot.datasetsOrEmpty().isEmpty());
+        return response;
     }
 
     @Override
@@ -89,7 +105,7 @@ public class SandboxHubWebServiceImpl implements SandboxHubWebService {
     @PermissionsBypass
     public SandboxHubCallResponse call(String name, HubCallRequest request) {
         var session = session();
-        return podLocalExecutor.execute(session.sessionId(),
+        return onOwner(session,
                 () -> hubService.call(session, name, request),
                 SessionCommand.sandboxToolCall(session.sessionId(), session.userId(), callPayload(session, name, request), rpcClient.newRequestId()),
                 SandboxHubCallResponse.class,
@@ -100,7 +116,7 @@ public class SandboxHubWebServiceImpl implements SandboxHubWebService {
     @PermissionsBypass
     public SandboxHubCallResponse task(String taskId) {
         var session = session();
-        return podLocalExecutor.execute(session.sessionId(),
+        return onOwner(session,
                 () -> hubService.task(session, taskId),
                 SessionCommand.sandboxToolPoll(session.sessionId(), session.userId(), taskId, rpcClient.newRequestId()),
                 SandboxHubCallResponse.class,
@@ -108,11 +124,50 @@ public class SandboxHubWebServiceImpl implements SandboxHubWebService {
     }
 
     private SandboxHubCatalogSnapshot snapshot(SandboxHubSession session) {
-        return podLocalExecutor.execute(session.sessionId(),
+        return onOwner(session,
                 () -> hubService.snapshot(session),
                 SessionCommand.sandboxCatalog(session.sessionId(), session.userId(), rpcClient.newRequestId()),
                 SandboxHubCatalogSnapshot.class,
                 CATALOG_TIMEOUT);
+    }
+
+    /**
+     * Runs a hub operation on the pod that owns the session. When forwarding cannot be delivered (no pod holds the
+     * lease: the session was idle-evicted, its pod restarted, or the lease was lost) the old code turned that into a
+     * 500 even though {@code getSession()} rebuilds and re-claims the session from the database. Doing that here keeps
+     * the sandbox's dataset and catalog calls alive across evictions instead of failing until the next chat message.
+     */
+    <T> T onOwner(SandboxHubSession session, Supplier<T> localOp, SessionCommand command,
+                  Class<T> responseType, Duration timeout) {
+        try {
+            return podLocalExecutor.execute(session.sessionId(), localOp, command, responseType, timeout);
+        } catch (RpcNotDeliveredException e) {
+            LOGGER.info("sandbox hub call was not delivered, rebuilding locally, sessionId={}, reason={}",
+                    session.sessionId(), e.getMessage());
+            return localOp.get();
+        }
+    }
+
+    /**
+     * Explains an empty dataset section: whether the agent already has bindings (so a new session would pick them up)
+     * and why this session does not show them. Null when the session has bindings or the lookup is impossible.
+     */
+    private String datasetHint(String sessionId, boolean sessionHasBindings) {
+        if (sessionHasBindings) return null;
+        var chatSession = sessionRegistry.get(sessionId);
+        if (chatSession == null || chatSession.agentId == null) {
+            return SandboxHubDatasetHint.describe(false, 0);
+        }
+        int agentBindings = 0;
+        try {
+            var definition = agentDefinitionService.getEntity(chatSession.agentId);
+            List<AgentDatasetConfig> config = AgentDefinitionService.resolveDatasetConfig(definition);
+            agentBindings = config == null ? 0 : config.size();
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to resolve agent dataset bindings for the hub hint, sessionId={}, agentId={}",
+                    sessionId, chatSession.agentId, e);
+        }
+        return SandboxHubDatasetHint.describe(false, agentBindings);
     }
 
     // The sandbox id is not part of the session on the owning pod, so it travels with the call and lands

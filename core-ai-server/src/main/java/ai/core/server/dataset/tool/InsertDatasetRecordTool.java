@@ -93,21 +93,21 @@ public final class InsertDatasetRecordTool extends ToolCall {
         }
 
         var dataset = datasetService.get(datasetId);
-        Map<String, Object> filtered;
+        DatasetRecordWriteRules.NormalizedWrite normalized;
         try {
-            filtered = DatasetRecordWriteRules.normalize(dataset, data);
+            normalized = DatasetRecordWriteRules.normalizeWithDroppedFields(dataset, data);
         } catch (IllegalArgumentException e) {
             return ToolCallResult.failed(e.getMessage());
         }
+        var filtered = normalized.data();
         if (filtered.isEmpty()) {
-            return ToolCallResult.failed("none of the provided fields match the dataset schema: "
-                    + DatasetRecordWriteRules.schemaFieldNames(dataset));
+            return ToolCallResult.failed(DatasetRecordWriteRules.noMatchingFieldsMessage(dataset, normalized.droppedFields()));
         }
 
         var effectiveRunId = runId != null ? runId : UUID.randomUUID().toString();
         var userId = context != null ? context.getUserId() : null;
         recordService.insert(new DatasetRecordService.InsertRequest(datasetId, agentId, effectiveRunId, ZonedDateTime.now(), filtered, userId, userId));
 
-        return ToolCallResult.completed(DatasetOpPayloads.recordInserted(datasetId, filtered.keySet()));
+        return ToolCallResult.completed(DatasetOpPayloads.recordInserted(datasetId, filtered.keySet(), normalized.droppedFields()));
     }
 }

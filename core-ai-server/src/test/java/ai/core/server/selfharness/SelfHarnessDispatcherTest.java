@@ -1,5 +1,6 @@
 package ai.core.server.selfharness;
 
+import ai.core.api.server.agent.AgentDefinitionView;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.service.TraceAccessControl;
 import ai.core.server.trace.service.TraceListFilter;
@@ -74,6 +75,25 @@ class SelfHarnessDispatcherTest {
         dispatcher().dispatch("get_session_trace_summary", "{\"session_id\":\"s1\"}", null);
 
         verify(traceService).sessionSummary("s1", List.of("internal"));
+    }
+
+    @Test
+    void datasetUpdateKeepsTheViewFlatAndAppendsTheNewSessionNotice() {
+        var view = new AgentDefinitionView();
+        view.id = "assistant:u1";
+
+        var result = SelfHarnessDispatcher.withSessionScopedNotice(view, true);
+
+        var map = (Map<?, ?>) result;
+        assertEquals("assistant:u1", map.get("id"));
+        assertEquals(SelfHarnessDispatcher.DATASET_BINDING_NOTICE, map.get("warning"));
+    }
+
+    @Test
+    void otherUpdatesReturnTheViewUntouched() {
+        var view = new AgentDefinitionView();
+
+        assertSame(view, SelfHarnessDispatcher.withSessionScopedNotice(view, false));
     }
 
     private SelfHarnessDispatcher dispatcher() {

@@ -154,7 +154,6 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                 }
             }
             createHelper.loadExtraSubAgentsOnSessionCreate(sessionId, request, loadedSubAgents, userId);
-
             createHelper.saveSessionState(sessionId, state);
 
             var response = new CreateSessionResponse();
@@ -221,6 +220,7 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
                 return entry;
             }).toList();
         }
+        response.datasetConfigChanged = SessionDatasetDrift.changed(meta, agentDefinitionService);
         return response;
     }
 

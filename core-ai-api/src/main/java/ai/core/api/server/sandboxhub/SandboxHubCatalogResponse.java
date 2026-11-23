@@ -43,4 +43,11 @@ public class SandboxHubCatalogResponse {
      */
     @Property(name = "datasets")
     public List<SandboxHubDatasetView> datasets;
+
+    /**
+     * Present only when {@code datasets} is empty: whether the agent now has bindings (a new session would pick
+     * them up) and why this session does not. Clients render it next to the empty section.
+     */
+    @Property(name = "datasets_hint")
+    public String datasetsHint;
 }

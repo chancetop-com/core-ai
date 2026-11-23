@@ -1502,6 +1502,11 @@ The system prompt should define how this agent behaves, its capabilities, and it
                 <p className="text-xs mb-3" style={{ color: 'var(--color-text-secondary)', opacity: 0.7 }}>
                   Tip: SESSION datasets require WRITE or FULL to persist state. At most one GENERAL dataset can be the output target.
                 </p>
+                <p className="text-xs mb-3 px-2 py-1.5 rounded-lg" style={{ color: 'var(--color-text)', background: 'rgba(245,158,11,0.12)' }}>
+                  Dataset bindings are captured when a chat session is created. Existing conversations keep their current
+                  tools - changes here take effect only in a new session. If this agent is published and shared, publish
+                  it again for other users to see the change.
+                </p>
 
                 {/* Current dataset config */}
                 {datasetConfig.length > 0 && (

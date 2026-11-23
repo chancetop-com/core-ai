@@ -2,11 +2,15 @@ package ai.core.server.sandboxhub;
 
 import ai.core.api.server.mcphub.HubCallRequest;
 import ai.core.api.server.sandboxhub.SandboxHubCallResponse;
+import ai.core.api.server.sandboxhub.SandboxHubDatasetView;
 import ai.core.api.server.sandboxhub.SandboxHubSessionView;
 import ai.core.api.server.sandboxhub.SandboxHubToolDetail;
+import ai.core.server.agent.AgentDefinitionService;
 import ai.core.server.messaging.CommandType;
 import ai.core.server.messaging.RpcClient;
+import ai.core.server.messaging.RpcNotDeliveredException;
 import ai.core.server.messaging.SessionCommand;
+import ai.core.server.session.SessionRegistry;
 import ai.core.server.web.PodLocalExecutor;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.web.auth.SandboxPrincipal;
@@ -25,6 +29,8 @@ import java.util.Optional;
 import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -53,6 +59,7 @@ class SandboxHubWebServiceImplTest {
     private SandboxHubService hubService;
     private SessionTokenService tokenService;
     private PodLocalExecutor podLocalExecutor;
+    private SessionRegistry sessionRegistry;
 
     @BeforeEach
     void setUp() {
@@ -60,6 +67,7 @@ class SandboxHubWebServiceImplTest {
         hubService = mock(SandboxHubService.class);
         tokenService = mock(SessionTokenService.class);
         podLocalExecutor = mock(PodLocalExecutor.class);
+        sessionRegistry = mock(SessionRegistry.class);
         var rpcClient = mock(RpcClient.class);
 
         var webContext = mock(WebContext.class);
@@ -76,6 +84,8 @@ class SandboxHubWebServiceImplTest {
         impl.hubService = hubService;
         impl.podLocalExecutor = podLocalExecutor;
         impl.rpcClient = rpcClient;
+        impl.sessionRegistry = sessionRegistry;
+        impl.agentDefinitionService = mock(AgentDefinitionService.class);
     }
 
     @Test
@@ -183,6 +193,49 @@ class SandboxHubWebServiceImplTest {
 
         assertThrows(UnauthorizedException.class, impl::catalog);
         verify(podLocalExecutor, never()).execute(anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void catalogWithoutAnOwnerRebuildsLocallyInsteadOfFailing() {
+        doThrow(new RpcNotDeliveredException("no session owner, sessionId=s1"))
+                .when(podLocalExecutor).execute(anyString(), any(), any(), any(), any());
+        when(hubService.snapshot(any())).thenReturn(SandboxHubCatalogSnapshot.of("menu-agent", List.of()));
+
+        var catalog = impl.catalog();
+
+        assertEquals("menu-agent", catalog.agentName);
+    }
+
+    @Test
+    void callWithoutAnOwnerRunsTheLocalOperation() {
+        doThrow(new RpcNotDeliveredException("no session owner, sessionId=s1"))
+                .when(podLocalExecutor).execute(anyString(), any(), any(), any(), any());
+        var expected = new SandboxHubCallResponse();
+        when(hubService.call(any(), eq("menu_hub_search"), any())).thenReturn(expected);
+
+        assertSame(expected, impl.call("menu_hub_search", request("{}", 30)));
+    }
+
+    @Test
+    void catalogExplainsAnEmptyDatasetSection() {
+        doReturn(SandboxHubCatalogSnapshot.of("menu-agent", List.of())).when(podLocalExecutor).execute(anyString(), any(), any(), any(), any());
+        when(sessionRegistry.get(SESSION_ID)).thenReturn(null);
+
+        var catalog = impl.catalog();
+
+        assertTrue(catalog.datasetsHint.startsWith("this session has no dataset bindings"));
+    }
+
+    @Test
+    void catalogOmitsTheHintWhenTheSessionHasBindings() {
+        var dataset = new SandboxHubDatasetView();
+        dataset.datasetId = "d1";
+        doReturn(SandboxHubCatalogSnapshot.of("menu-agent", List.of(), List.of(dataset)))
+                .when(podLocalExecutor).execute(anyString(), any(), any(), any(), any());
+
+        var catalog = impl.catalog();
+
+        assertNull(catalog.datasetsHint);
     }
 
     @Test

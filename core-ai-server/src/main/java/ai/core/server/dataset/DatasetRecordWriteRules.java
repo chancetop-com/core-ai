@@ -13,6 +13,8 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,7 +31,7 @@ public final class DatasetRecordWriteRules {
      * Null values are dropped, matching the stored shape of a new record.
      */
     public static Map<String, Object> normalize(Dataset dataset, Map<String, Object> data) {
-        return normalizeInternal(dataset, data, false);
+        return normalizeWithDroppedFields(dataset, data).data();
     }
 
     /**
@@ -37,15 +39,40 @@ public final class DatasetRecordWriteRules {
      * value is filtered and type-checked like an insert.
      */
     public static Map<String, Object> normalizePatch(Dataset dataset, Map<String, Object> data) {
+        return normalizePatchWithDroppedFields(dataset, data).data();
+    }
+
+    public static NormalizedWrite normalizeWithDroppedFields(Dataset dataset, Map<String, Object> data) {
+        return normalizeInternal(dataset, data, false);
+    }
+
+    public static NormalizedWrite normalizePatchWithDroppedFields(Dataset dataset, Map<String, Object> data) {
         return normalizeInternal(dataset, data, true);
     }
 
-    private static Map<String, Object> normalizeInternal(Dataset dataset, Map<String, Object> data, boolean patch) {
-        if (data == null) return new LinkedHashMap<>();
-        if (dataset == null || dataset.schema == null || dataset.schema.isEmpty()) return new LinkedHashMap<>(data);
+    /**
+     * The failure a write gets when every supplied field was outside the schema, naming the fields that were
+     * dropped so a typo in a column name is visible instead of silently writing a partial row.
+     */
+    public static String noMatchingFieldsMessage(Dataset dataset, List<String> droppedFields) {
+        var message = "none of the provided fields match the dataset schema: " + schemaFieldNames(dataset);
+        if (droppedFields != null && !droppedFields.isEmpty()) {
+            message += "; unknown fields: " + droppedFields;
+        }
+        return message;
+    }
+
+    private static NormalizedWrite normalizeInternal(Dataset dataset, Map<String, Object> data, boolean patch) {
+        if (data == null) return new NormalizedWrite(new LinkedHashMap<>(), List.of());
+        if (dataset == null || dataset.schema == null || dataset.schema.isEmpty()) {
+            return new NormalizedWrite(new LinkedHashMap<>(data), List.of());
+        }
         var normalized = new LinkedHashMap<String, Object>();
+        var known = new HashSet<String>();
         for (var field : dataset.schema) {
-            if (field == null || field.name == null || field.name.isBlank() || !data.containsKey(field.name)) continue;
+            if (field == null || field.name == null || field.name.isBlank()) continue;
+            known.add(field.name);
+            if (!data.containsKey(field.name)) continue;
             var value = data.get(field.name);
             if (value == null) {
                 if (patch) normalized.put(field.name, null);
@@ -53,7 +80,11 @@ public final class DatasetRecordWriteRules {
                 normalized.put(field.name, convert(field, value));
             }
         }
-        return normalized;
+        var dropped = new ArrayList<String>();
+        for (var key : data.keySet()) {
+            if (!known.contains(key)) dropped.add(key);
+        }
+        return new NormalizedWrite(normalized, List.copyOf(dropped));
     }
 
     public static List<String> schemaFieldNames(Dataset dataset) {
@@ -142,5 +173,13 @@ public final class DatasetRecordWriteRules {
     }
 
     private DatasetRecordWriteRules() {
+    }
+
+    /**
+     * The write-side view of a payload: the fields that will be stored plus the keys the dataset schema does not
+     * know. Kept together so a caller can report a silently dropped column instead of guessing why a value is
+     * missing.
+     */
+    public record NormalizedWrite(Map<String, Object> data, List<String> droppedFields) {
     }
 }
