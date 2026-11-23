@@ -64,6 +64,13 @@ public class DatasetService {
         return datasetMetaStore.get(id);
     }
 
+    /** Every dataset whose name is exactly this one; callers treat more than one match as ambiguous. */
+    public List<Dataset> listByExactName(String name) {
+        if (name == null || name.isBlank()) return List.of();
+        var matches = datasetMetaStore.findByName(name);
+        return matches == null ? List.of() : matches;
+    }
+
     public Dataset update(String id, String name, String description, List<SchemaField> schema, DatasetType type) {
         var entity = datasetMetaStore.get(id);
         if (entity == null) return null;

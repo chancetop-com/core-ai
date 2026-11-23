@@ -1,5 +1,6 @@
 package ai.core.server.hub;
 
+import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.hub.HubDatasetDataRequest;
 import ai.core.api.server.hub.HubDatasetListView;
 import ai.core.api.server.hub.HubDatasetOpResponse;
@@ -10,6 +11,7 @@ import ai.core.api.server.hub.HubDatasetView;
 import ai.core.api.server.hub.HubDatasetWebService;
 import ai.core.server.dataset.DatasetService;
 import ai.core.server.dataset.tool.DatasetAccessRegistry;
+import ai.core.server.domain.Dataset;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
@@ -36,6 +38,17 @@ public class HubDatasetWebServiceImpl implements HubDatasetWebService {
         return view;
     }
 
+    // dataset scope carries no binding, so permission stays null
+    private static HubDatasetView view(Dataset dataset) {
+        var view = new HubDatasetView();
+        view.datasetId = dataset.id;
+        view.name = dataset.name;
+        view.type = DatasetService.resolveType(dataset).name();
+        view.description = dataset.description;
+        view.schema = DatasetService.schemaViews(dataset.schema);
+        return view;
+    }
+
     private static HubDatasetOpResponse response(String op, String payload) {
         var response = new HubDatasetOpResponse();
         response.op = op;
@@ -49,6 +62,8 @@ public class HubDatasetWebServiceImpl implements HubDatasetWebService {
 
     @Inject
     HubDatasetService hubDatasetService;
+    @Inject
+    HubDatasetCatalogService catalogService;
     @Inject
     WebContext webContext;
 
@@ -117,6 +132,63 @@ public class HubDatasetWebServiceImpl implements HubDatasetWebService {
     public HubDatasetOpResponse renameField(String sessionId, String datasetId, HubDatasetRenameRequest request) {
         return response(HubDatasetService.OP_FIELDS_RENAME,
                 hubDatasetService.renameField(sessionId, datasetId, request == null ? null : request.from,
+                        request == null ? null : request.to, userId()));
+    }
+
+    // ---------- dataset scope: the caller's own dataset permissions, no session ----------
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
+    public HubDatasetListView listAll(ListDatasetsRequest request) {
+        var effective = request != null ? request : new ListDatasetsRequest();
+        var response = new HubDatasetListView();
+        response.datasets = catalogService.listDatasets(effective.query, effective.offset, effective.limit, userId())
+                .stream().map(HubDatasetWebServiceImpl::view).toList();
+        return response;
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
+    public HubDatasetView getDataset(String datasetId) {
+        return view(catalogService.getDataset(datasetId, userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_VIEW)
+    public HubDatasetOpResponse queryDatasetRecords(String datasetId, HubDatasetRecordsQuery query) {
+        var effective = query == null ? new HubDatasetRecordsQuery() : query;
+        var request = new HubDatasetService.RecordQuery(effective.filter, effective.fields, effective.from,
+                effective.to, effective.limit, effective.offset);
+        return response(HubDatasetService.OP_RECORDS_QUERY,
+                catalogService.queryRecords(datasetId, request, userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
+    public HubDatasetOpResponse insertDatasetRecord(String datasetId, HubDatasetDataRequest request) {
+        return response(HubDatasetService.OP_RECORDS_INSERT,
+                catalogService.insertRecord(datasetId, data(request), userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
+    public HubDatasetOpResponse updateDatasetRecord(String datasetId, String recordId, HubDatasetDataRequest request) {
+        return response(HubDatasetService.OP_RECORDS_UPDATE,
+                catalogService.updateRecord(datasetId, recordId, data(request), userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
+    public HubDatasetOpResponse deleteDatasetRecord(String datasetId, String recordId) {
+        return response(HubDatasetService.OP_RECORDS_DELETE,
+                catalogService.deleteRecord(datasetId, recordId, userId()));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.DATASET_MANAGE)
+    public HubDatasetOpResponse renameDatasetField(String datasetId, HubDatasetRenameRequest request) {
+        return response(HubDatasetService.OP_FIELDS_RENAME,
+                catalogService.renameField(datasetId, request == null ? null : request.from,
                         request == null ? null : request.to, userId()));
     }
 

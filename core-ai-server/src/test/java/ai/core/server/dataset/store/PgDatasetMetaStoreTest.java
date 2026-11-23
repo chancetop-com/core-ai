@@ -20,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Metadata and view changes must commit or roll back together; a failed view rebuild cannot leave the
@@ -88,6 +89,20 @@ class PgDatasetMetaStoreTest {
         assertEquals(2, row.schemaVersion);
         var view = DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id));
         assertEquals(0, DATABASE.select("SELECT total AS value FROM " + view, DatasetViewManagerTest.ValueRow.class).size());
+    }
+
+    @Test
+    void findByNameReturnsEveryExactMatch() {
+        var first = dataset();
+        var second = dataset();
+        metaStore.createWithSchema(first);
+        metaStore.createWithSchema(second);
+
+        var matches = metaStore.findByName("meta-test");
+
+        assertEquals(2, matches.size());
+        assertTrue(matches.stream().anyMatch(dataset -> dataset.id.equals(first.id)));
+        assertTrue(matches.stream().anyMatch(dataset -> dataset.id.equals(second.id)));
     }
 
     @Test

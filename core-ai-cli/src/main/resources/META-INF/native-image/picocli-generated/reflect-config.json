@@ -324,6 +324,12 @@
     "allDeclaredFields": true
   },
   {
+    "name": "ai.core.cli.hub.dataset.DatasetRenameFieldCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredMethods": true,
+    "allDeclaredFields": true
+  },
+  {
     "name": "ai.core.cli.hub.dataset.DatasetCommandBase",
     "allDeclaredConstructors": true,
     "allDeclaredMethods": true,

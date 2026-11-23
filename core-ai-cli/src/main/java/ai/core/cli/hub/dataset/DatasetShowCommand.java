@@ -12,17 +12,23 @@ import java.util.List;
 /**
  * @author stephen
  */
-@Command(name = "show", description = "Show one bound dataset: type, permission and schema")
+@Command(name = "show", description = "Show one dataset: type, permission and schema")
 class DatasetShowCommand extends DatasetCommandBase {
-    @Parameters(index = "0", paramLabel = "dataset", description = "Dataset id, or a name unique in this session")
+    @Parameters(index = "0", paramLabel = "dataset",
+            description = "Dataset id, or a name unique in this session or in the catalog")
     String dataset;
 
     @Override
     protected Integer execute() {
-        var sessionId = sessionId();
-        var view = datasetClient().datasets(sessionId);
-        var datasets = view.datasets == null ? List.<HubDatasetView>of() : view.datasets;
-        var resolved = new DatasetRefResolver().resolve(datasets, dataset);
+        var sessionId = sessionIdOrNull();
+        HubDatasetView resolved;
+        if (sessionId != null) {
+            var view = datasetClient().datasets(sessionId);
+            var datasets = view.datasets == null ? List.<HubDatasetView>of() : view.datasets;
+            resolved = new DatasetRefResolver().resolve(datasets, dataset);
+        } else {
+            resolved = datasetClient().dataset(dataset);
+        }
         if (json()) {
             HubRenderer.printJson(resolved);
         } else if (!quiet()) {

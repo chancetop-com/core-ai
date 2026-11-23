@@ -29,15 +29,19 @@ import java.util.UUID;
 import java.util.function.Supplier;
 
 /**
- * Dataset access for scripts running outside the agent loop, addressed by session. A local script reaches it
- * through the hub endpoints, a sandbox script through the dataset section of the sandbox catalog; both run the
- * same operations the agent tools run, over the session's dataset bindings, and return the very same payload
- * text so a script cannot tell which surface answered it.
+ * Dataset access for scripts running outside the agent loop. A local script reaches it through the hub
+ * endpoints, a sandbox script through the dataset section of the sandbox catalog; both run the same operations
+ * the agent tools run and return the very same payload text so a script cannot tell which surface answered it.
+ * <p>
+ * This class is the session scope: a session is the agent's binding set, the dataset ref resolves only inside it,
+ * and the binding decides read/write/delete. {@link HubDatasetCatalogService} is the other scope — GENERAL datasets
+ * addressed directly, under the caller's own permissions, with no session.
  *
  * @author stephen
  */
 public class HubDatasetService {
     public static final String OP_DATASETS_LIST = "datasets.list";
+    public static final String OP_DATASETS_GET = "datasets.get";
     public static final String OP_STATE_GET = "state.get";
     public static final String OP_STATE_SET = "state.set";
     public static final String OP_STATE_PATCH = "state.patch";
@@ -69,7 +73,7 @@ public class HubDatasetService {
         var detail = new LinkedHashMap<String, Object>();
         detail.put("count", bindings.size());
         // the typed list is assembled by the web layer; only the call itself is audited here
-        audited(session, userId, new OpRef(OP_DATASETS_LIST, GROUP_DATASETS, null, null), detail, () -> null);
+        audited(session.id, userId, new OpRef(OP_DATASETS_LIST, GROUP_DATASETS, null, null), detail, () -> null);
         return bindings;
     }
 
@@ -79,7 +83,7 @@ public class HubDatasetService {
         requireSessionDataset(resolved, datasetRef);
         var detail = detail(resolved.datasetId());
         detail.put("fields", names(fields));
-        return audited(session, userId, ref(resolved, OP_STATE_GET, GROUP_STATE), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_STATE_GET, GROUP_STATE), detail, () -> {
             var record = datasetRecordService.queryBySession(resolved.datasetId, sessionId).orElse(null);
             Map<String, Object> state = null;
             if (record != null) {
@@ -102,7 +106,7 @@ public class HubDatasetService {
         }
         var detail = detail(resolved.datasetId);
         detail.put("bytes", size);
-        return audited(session, userId, ref(resolved, OP_STATE_SET, GROUP_STATE), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_STATE_SET, GROUP_STATE), detail, () -> {
             datasetRecordService.upsertBySession(resolved.datasetId, sessionId, dataJson, session.agentId, userId);
             return DatasetOpPayloads.stateSaved(resolved.datasetId, sessionId);
         });
@@ -116,7 +120,7 @@ public class HubDatasetService {
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
-        return audited(session, userId, ref(resolved, OP_STATE_PATCH, GROUP_STATE), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_STATE_PATCH, GROUP_STATE), detail, () -> {
             try {
                 datasetRecordService.patchBySession(resolved.datasetId, sessionId, JsonUtil.toJsonWithNulls(data), session.agentId, userId);
             } catch (IllegalArgumentException e) {
@@ -139,7 +143,7 @@ public class HubDatasetService {
         detail.put("filter_keys", filter != null ? new ArrayList<>(filter.keySet()) : null);
         detail.put("limit", query.limit());
         detail.put("offset", query.offset());
-        return audited(session, userId, ref(resolved, OP_RECORDS_QUERY, GROUP_RECORDS), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_RECORDS_QUERY, GROUP_RECORDS), detail, () -> {
             var request = new DatasetRecordService.QueryRequest(resolved.datasetId, from, to, fields,
                     query.limit(), query.offset(), null, filter);
             return DatasetOpPayloads.records(resolved.datasetId, datasetRecordService.query(request));
@@ -154,7 +158,7 @@ public class HubDatasetService {
         var detail = detail(resolved.datasetId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
-        return audited(session, userId, ref(resolved, OP_RECORDS_INSERT, GROUP_RECORDS), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_RECORDS_INSERT, GROUP_RECORDS), detail, () -> {
             var request = new DatasetRecordService.InsertRequest(resolved.datasetId, session.agentId, sessionId,
                     ZonedDateTime.now(), data, userId, userId);
             datasetRecordService.insert(request);
@@ -172,7 +176,7 @@ public class HubDatasetService {
         detail.put("record_id", recordId);
         detail.put("bytes", bytes(JsonUtil.toJson(data)));
         detail.put("fields", new ArrayList<>(data.keySet()));
-        return audited(session, userId, ref(resolved, OP_RECORDS_UPDATE, GROUP_RECORDS), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_RECORDS_UPDATE, GROUP_RECORDS), detail, () -> {
             if (!datasetRecordService.update(resolved.datasetId, recordId, data, userId)) {
                 throw new NotFoundException("record not found, id=" + recordId);
             }
@@ -187,7 +191,7 @@ public class HubDatasetService {
         var detail = detail(resolved.datasetId());
         detail.put("from", from);
         detail.put("to", to);
-        return audited(session, userId, ref(resolved, OP_FIELDS_RENAME, GROUP_FIELDS), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_FIELDS_RENAME, GROUP_FIELDS), detail, () -> {
             try {
                 var result = datasetService.renameField(resolved.datasetId(), from, to, userId);
                 return DatasetOpPayloads.fieldRenamed(resolved.datasetId(), from, to, result.records());
@@ -204,7 +208,7 @@ public class HubDatasetService {
         if (!hasText(recordId)) throw new BadRequestException("record_id is required");
         var detail = detail(resolved.datasetId);
         detail.put("record_id", recordId);
-        return audited(session, userId, ref(resolved, OP_RECORDS_DELETE, GROUP_RECORDS), detail, () -> {
+        return audited(session.id, userId, ref(resolved, OP_RECORDS_DELETE, GROUP_RECORDS), detail, () -> {
             if (!datasetRecordService.delete(resolved.datasetId, recordId)) {
                 throw new NotFoundException("record not found, id=" + recordId);
             }
@@ -258,11 +262,11 @@ public class HubDatasetService {
         return normalized;
     }
 
-    private String audited(ChatSession session, String userId, OpRef opRef, Map<String, Object> detail,
+    private String audited(String sessionId, String userId, OpRef opRef, Map<String, Object> detail,
                            Supplier<String> body) {
         var callId = auditService.begin(new HubCallAuditService.BeginRequest(UUID.randomUUID().toString(),
                 HubCallAuditService.KIND_DATASET, userId, userType(userId), "hub", opRef.target(), opRef.refId(),
-                opRef.group(), opRef.op(), JsonUtil.toJson(detail), null, null, session.id));
+                opRef.group(), opRef.op(), JsonUtil.toJson(detail), null, null, sessionId));
         var startedAt = System.currentTimeMillis();
         String payload;
         try {

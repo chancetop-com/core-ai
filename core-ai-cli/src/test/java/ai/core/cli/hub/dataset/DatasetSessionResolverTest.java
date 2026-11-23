@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -38,5 +39,17 @@ class DatasetSessionResolverTest {
 
         assertEquals(HubExitCodes.USAGE, error.exitCode);
         assertEquals("missing session: pass --session <id> or set CORE_AI_SESSION_ID", error.getMessage());
+    }
+
+    @Test
+    void resolveOrNullReturnsNullWhenNoSessionIsNamed() {
+        assertNull(resolver.resolveOrNull(null, Map.of()));
+        assertNull(resolver.resolveOrNull("  ", Map.of("CORE_AI_SESSION_ID", " ")));
+    }
+
+    @Test
+    void resolveOrNullAppliesTheSamePrecedence() {
+        assertEquals("from-option", resolver.resolveOrNull(" from-option ", Map.of("CORE_AI_SESSION_ID", "from-env")));
+        assertEquals("from-env", resolver.resolveOrNull(null, Map.of("CORE_AI_SESSION_ID", " from-env\n")));
     }
 }

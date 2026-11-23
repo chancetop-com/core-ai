@@ -101,6 +101,12 @@ public class PgDatasetMetaStore implements DatasetMetaStore {
         return database.selectOne(SELECT + " WHERE id = ?", PgDatasetRow.class, id).map(PgDatasetMetaStore::toDataset).orElse(null);
     }
 
+    @Override
+    public List<Dataset> findByName(String name) {
+        return database.select(SELECT + " WHERE name = ? ORDER BY id", PgDatasetRow.class, name)
+                .stream().map(PgDatasetMetaStore::toDataset).toList();
+    }
+
     public List<Dataset> listAll() {
         return database.select(SELECT + " ORDER BY id", PgDatasetRow.class).stream().map(PgDatasetMetaStore::toDataset).toList();
     }

@@ -9,7 +9,8 @@ import picocli.CommandLine.Parameters;
  */
 @Command(name = "update", description = "Update one record of a GENERAL dataset")
 class DatasetRecordsUpdateCommand extends DatasetWriteCommand {
-    @Parameters(index = "0", paramLabel = "dataset", description = "Dataset id, or a name unique in this session")
+    @Parameters(index = "0", paramLabel = "dataset",
+            description = "Dataset id, or a name unique in this session or in the catalog")
     String dataset;
 
     @Option(names = "--record-id", required = true, description = "Record id to update")
@@ -17,8 +18,10 @@ class DatasetRecordsUpdateCommand extends DatasetWriteCommand {
 
     @Override
     protected Integer execute() {
-        var sessionId = sessionId();
+        var sessionId = sessionIdOrNull();
         var data = dataText();
-        return writeResult(datasetClient().updateRecord(sessionId, dataset, recordId, data));
+        return writeResult(sessionId != null
+                ? datasetClient().updateRecord(sessionId, dataset, recordId, data)
+                : datasetClient().updateDatasetRecord(dataset, recordId, data));
     }
 }

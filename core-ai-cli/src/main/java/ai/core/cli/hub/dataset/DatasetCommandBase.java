@@ -10,7 +10,11 @@ import java.time.Duration;
 
 /**
  * Shared plumbing of the {@code core-ai-cli dataset} leaves: session resolution ({@code --session} or
- * {@code CORE_AI_SESSION_ID}) and the client that reaches that session's datasets over the hub endpoints.
+ * {@code CORE_AI_SESSION_ID}) and the client that reaches datasets over the hub endpoints.
+ * <p>
+ * A session narrows a command to that session's agent bindings. Without one, the commands that can address a
+ * dataset directly work on the dataset scope instead: GENERAL data by dataset id, authorized by the caller's own
+ * dataset permissions. State operations are session-only and keep asking for an explicit id.
  * <p>
  * Payload text is data: json/raw mode prints it verbatim (bytes identical to what the agent tools return), human mode
  * pretty prints it and adds a one-line outcome summary on stderr, so stdout stays pipeable.
@@ -18,7 +22,7 @@ import java.time.Duration;
  * @author stephen
  */
 abstract class DatasetCommandBase extends HubCommandBase {
-    @Option(names = "--session", description = "Session id (defaults to CORE_AI_SESSION_ID)")
+    @Option(names = "--session", description = "Session id (defaults to CORE_AI_SESSION_ID; omit for dataset scope)")
     String session;
 
     @Option(names = "--timeout", description = "Request timeout in seconds (default 60)")
@@ -26,8 +30,14 @@ abstract class DatasetCommandBase extends HubCommandBase {
 
     protected final DatasetRenderer datasetRenderer = new DatasetRenderer();
 
+    /** Session-scoped commands: the missing id is a usage error, never a guess. */
     protected String sessionId() {
         return new DatasetSessionResolver().resolve(session, System.getenv());
+    }
+
+    /** Commands that also work on a dataset directly: null means dataset scope. */
+    protected String sessionIdOrNull() {
+        return new DatasetSessionResolver().resolveOrNull(session, System.getenv());
     }
 
     protected DatasetHubClient datasetClient() {

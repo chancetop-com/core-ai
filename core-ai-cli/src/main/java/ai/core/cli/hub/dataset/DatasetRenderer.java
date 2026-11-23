@@ -20,7 +20,11 @@ public class DatasetRenderer {
     private final HubRenderer hubRenderer = new HubRenderer();
 
     public String listText(List<HubDatasetView> datasets) {
-        if (datasets.isEmpty()) return "  (no datasets bound to this session)\n";
+        return listText(datasets, "  (no datasets bound to this session)\n");
+    }
+
+    public String listText(List<HubDatasetView> datasets, String emptyText) {
+        if (datasets.isEmpty()) return emptyText;
         int nameWidth = datasets.stream().mapToInt(view -> length(view.name)).max().orElse(1) + 2;
         var text = new StringBuilder(256);
         for (var view : datasets) {
@@ -41,8 +45,10 @@ public class DatasetRenderer {
         var text = new StringBuilder(256);
         text.append("  ").append(nz(view.name))
                 .append("\n    dataset_id:  ").append(nz(view.datasetId))
-                .append("\n    type:        ").append(nz(view.type))
-                .append("\n    permission:  ").append(nz(view.permission));
+                .append("\n    type:        ").append(nz(view.type));
+        if (view.permission != null) {
+            text.append("\n    permission:  ").append(view.permission);
+        }
         if (view.description != null && !view.description.isBlank()) {
             text.append("\n    description: ").append(view.description);
         }

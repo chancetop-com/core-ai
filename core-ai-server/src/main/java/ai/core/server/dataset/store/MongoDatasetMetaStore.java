@@ -44,6 +44,14 @@ public class MongoDatasetMetaStore implements DatasetMetaStore {
     }
 
     @Override
+    public List<Dataset> findByName(String name) {
+        var query = new Query();
+        query.filter = Filters.eq("name", name);
+        query.sort = Sorts.ascending("_id");
+        return datasetCollection.find(query);
+    }
+
+    @Override
     public void create(Dataset dataset) {
         datasetCollection.insert(dataset);
     }

@@ -17,6 +17,9 @@ public interface DatasetMetaStore {
 
     Dataset get(String id);
 
+    /** Exact-name matches, in id order; more than one means the name is ambiguous and callers must use an id. */
+    List<Dataset> findByName(String name);
+
     void create(Dataset dataset);
 
     void update(Dataset dataset);

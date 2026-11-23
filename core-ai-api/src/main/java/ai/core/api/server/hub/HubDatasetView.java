@@ -19,7 +19,7 @@ public class HubDatasetView {
     @Property(name = "type")
     public String type;
 
-    // READ | WRITE | FULL
+    // READ | WRITE | FULL for a session binding; null when the dataset is listed outside a session
     @Property(name = "permission")
     public String permission;
 

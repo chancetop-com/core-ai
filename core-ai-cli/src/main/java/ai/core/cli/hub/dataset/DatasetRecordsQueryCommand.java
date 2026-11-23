@@ -10,7 +10,8 @@ import picocli.CommandLine.Parameters;
  */
 @Command(name = "query", description = "Query records of a GENERAL dataset")
 class DatasetRecordsQueryCommand extends DatasetCommandBase {
-    @Parameters(index = "0", paramLabel = "dataset", description = "Dataset id, or a name unique in this session")
+    @Parameters(index = "0", paramLabel = "dataset",
+            description = "Dataset id, or a name unique in this session or in the catalog")
     String dataset;
 
     @Option(names = "--filter", description = "Filter as a JSON object, e.g. '{\"status\":\"open\"}'")
@@ -33,9 +34,11 @@ class DatasetRecordsQueryCommand extends DatasetCommandBase {
 
     @Override
     protected Integer execute() {
-        var sessionId = sessionId();
+        var sessionId = sessionIdOrNull();
         var query = new DatasetHubClient.RecordQuery(filter, fields, from, to, limit, offset);
-        var response = datasetClient().queryRecords(sessionId, dataset, query);
+        var response = sessionId != null
+                ? datasetClient().queryRecords(sessionId, dataset, query)
+                : datasetClient().queryDatasetRecords(dataset, query);
         printPayload(response.payload);
         return HubExitCodes.SUCCESS;
     }

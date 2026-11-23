@@ -432,12 +432,21 @@ core-ai-cli report push report.html --project <PROJECT_ID> --subject <SUBJECT_ID
 ## 18 会话数据集与退出码
 
 ```sh
+# 不带 session：dataset scope，操作 GENERAL 数据本身
+core-ai-cli dataset list --json
+core-ai-cli dataset show <DATASET> --json
+core-ai-cli dataset records query <DATASET> --filter '{"status":"open"}' --json
+core-ai-cli dataset records insert <DATASET> --data-file payload.json --json
+core-ai-cli dataset rename-field <DATASET> --from old --to new --json
+
+# 带 session：session scope，只看到该会话 agent 绑定的数据集
 core-ai-cli dataset list --session <SESSION_ID> --json
 core-ai-cli dataset show <DATASET_ID> --session <SESSION_ID> --json
+core-ai-cli dataset records query <DATASET> --session <SESSION_ID> --json
 core-ai-cli dataset state get <DATASET_ID> --session <SESSION_ID> --json
 ```
 
-`--session` 或 `CORE_AI_SESSION_ID` 指定会话边界。先 list 查看绑定类型和权限，再选择 state 或 records 操作。写入参数请执行 `dataset state set --help`、`patch --help` 或 `dataset records insert --help` 核对，读权限不能升级为写权限。
+`--session`（或 `CORE_AI_SESSION_ID`）把命令收窄到该会话 agent 的绑定，权限来自绑定的 READ/WRITE/FULL；不提供 session 时进入 **dataset scope**：`list` 返回数据集目录，`show`/`records`/`rename-field` 直接按 dataset id 操作 GENERAL 数据，读需要 `dataset.view`，写和改名需要 `dataset.manage`。`state` 是 SESSION 数据的唯一入口，必须显式给 session；把 SESSION dataset 交给 records/rename-field 会被服务端拒绝。dataset scope 下名字只在全局唯一时可用，重名必须传 dataset id。写入参数请执行 `dataset records insert --help` 或 `rename-field --help` 核对，会话绑定的读权限不能升级为写权限。
 
 | Hub 退出码 | 含义 | 下一步 |
 | --- | --- | --- |

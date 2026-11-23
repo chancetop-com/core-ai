@@ -28,6 +28,8 @@ class DatasetHubClientTest {
     private static final String FORBIDDEN_REF = "forbidden";
     private static final String LIST_BODY = "{\"session_id\":\"s-1\",\"datasets\":[{\"dataset_id\":\"id-1\","
             + "\"name\":\"menu-state\",\"type\":\"SESSION\",\"permission\":\"WRITE\",\"schema\":[]}]}";
+    private static final String DATASET_BODY = "{\"dataset_id\":\"id-1\",\"name\":\"orders\",\"type\":\"GENERAL\","
+            + "\"schema\":[]}";
 
     private final AtomicReference<Request> lastRequest = new AtomicReference<>();
     private HttpServer server;
@@ -56,6 +58,52 @@ class DatasetHubClientTest {
         assertEquals("cli", sent().clientHeader);
         assertEquals("s-1", view.sessionId);
         assertEquals("id-1", view.datasets.getFirst().datasetId);
+    }
+
+    @Test
+    void catalogListSendsQueryAndPaging() {
+        var view = client.datasets("ord", 10, 20);
+
+        assertEquals("GET", sent().method);
+        assertEquals("/api/hub/datasets?q=ord&offset=10&limit=20", sent().path);
+        assertEquals("id-1", view.datasets.getFirst().datasetId);
+    }
+
+    @Test
+    void datasetShowUsesTheDatasetUrl() {
+        var view = client.dataset("orders");
+
+        assertEquals("GET", sent().method);
+        assertEquals("/api/hub/datasets/orders", sent().path);
+        assertEquals("GENERAL", view.type);
+    }
+
+    @Test
+    void datasetRecordsUseTheUnscopedPaths() {
+        client.queryDatasetRecords("id-1", new DatasetHubClient.RecordQuery(null, "a", null, null, null, null));
+        assertEquals("GET", sent().method);
+        assertEquals("/api/hub/datasets/id-1/records?fields=a", sent().path);
+
+        client.insertDatasetRecord("id-1", "{\"a\":1}");
+        assertEquals("POST", sent().method);
+        assertEquals("/api/hub/datasets/id-1/records", sent().path);
+        assertEquals("{\"data\":\"{\\\"a\\\":1}\"}", sent().body);
+
+        client.updateDatasetRecord("id-1", "r-1", "{\"a\":1}");
+        assertEquals("/api/hub/datasets/id-1/records/r-1", sent().path);
+
+        client.deleteDatasetRecord("id-1", "r-1");
+        assertEquals("DELETE", sent().method);
+        assertEquals("/api/hub/datasets/id-1/records/r-1", sent().path);
+    }
+
+    @Test
+    void renameSendsFromAndTo() {
+        client.renameDatasetField("id-1", "amount", "total");
+
+        assertEquals("POST", sent().method);
+        assertEquals("/api/hub/datasets/id-1/fields/rename", sent().path);
+        assertEquals("{\"from\":\"amount\",\"to\":\"total\"}", sent().body);
     }
 
     @Test
@@ -137,6 +185,10 @@ class DatasetHubClientTest {
             respond(exchange, 403, "{\"message\":\"permission denied\"}");
         } else if (path.endsWith("/datasets")) {
             respond(exchange, 200, LIST_BODY);
+        } else if (path.matches("/api/hub/datasets/[^/]+")) {
+            respond(exchange, 200, DATASET_BODY);
+        } else if (path.endsWith("/fields/rename")) {
+            respond(exchange, 200, opBody("fields.rename", "{\\\"status\\\":\\\"renamed\\\"}"));
         } else if ("DELETE".equals(exchange.getRequestMethod())) {
             respond(exchange, 200, opBody("records.delete", "{\\\"status\\\":\\\"deleted\\\"}"));
         } else if (path.endsWith("/state")) {

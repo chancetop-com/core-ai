@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -33,12 +34,24 @@ class DatasetRendererTest {
     }
 
     @Test
+    void emptyCatalogSaysSo() {
+        assertTrue(renderer.listText(List.of(), "  (no datasets)\n").contains("no datasets"));
+    }
+
+    @Test
     void detailListsSchemaFields() {
         var text = renderer.detailText(view("id-1", "menu-state", "SESSION", "WRITE", 1));
 
         assertTrue(text.contains("dataset_id:"), text);
         assertTrue(text.contains("MENU.md"), text);
         assertTrue(text.contains("string"), text);
+    }
+
+    @Test
+    void detailWithoutPermissionOmitsThatLine() {
+        var view = view("id-1", "orders", "GENERAL", null, 1);
+
+        assertFalse(renderer.detailText(view).contains("permission:"));
     }
 
     @Test
