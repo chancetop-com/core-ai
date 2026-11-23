@@ -2,6 +2,7 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.quality.QualityExemptions;
 import ai.core.server.quality.domain.QualityGateResult;
 import ai.core.server.skill.quality.SkillQualityGateException;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -39,6 +40,30 @@ class SkillPublishServiceTest {
         assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
         assertNotNull(outcome.entity().qualityReceipt);
         assertEquals(outcome.report().runId, outcome.entity().qualityReceipt.runId);
+        verify(store).insertIfAbsent(any());
+    }
+
+    @Test
+    void publishesThirdPartyRepoSkillWithoutQualityGate() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        when(store.insertIfAbsent(any())).thenReturn(true);
+        var service = service(store, blobStore);
+        var request = SkillPublishRequest.upload("marketplace", "AgriciDaniel", "ads-tiktok", """
+            ---
+            name: ads-tiktok
+            description: Imported from the claude-ads repository.
+            ---
+            # TikTok Ads Audit
+            """, Map.of());
+        request.sourceType = SkillSourceType.REPO;
+
+        var outcome = service.publish(request);
+
+        assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
+        assertTrue(outcome.report().exempted);
+        assertEquals(SkillSourceType.REPO, outcome.entity().sourceType);
+        assertEquals(QualityExemptions.THIRD_PARTY_REPO_REASON, outcome.entity().qualityReceipt.exemptionReason);
         verify(store).insertIfAbsent(any());
     }
 

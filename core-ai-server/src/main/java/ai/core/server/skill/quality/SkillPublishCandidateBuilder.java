@@ -79,11 +79,21 @@ public final class SkillPublishCandidateBuilder {
 
     public SkillPublishCandidate build(String namespace, String directoryName, String content,
                                        Map<String, byte[]> rawResources, SkillDefinition existing) {
+        return build(namespace, directoryName, content, rawResources, null, existing);
+    }
+
+    /**
+     * {@code sourceType} is the write intent (a repo import is third-party content); when null it falls back to the
+     * existing record, and a new write is an upload otherwise, so the candidate and the stored entity agree.
+     */
+    public SkillPublishCandidate build(String namespace, String directoryName, String content,
+                                       Map<String, byte[]> rawResources, SkillSourceType sourceType, SkillDefinition existing) {
         this.skillId = existing == null ? null : existing.id;
         this.namespace = namespace;
         this.directoryName = directoryName;
         this.content = content;
-        this.sourceType = existing == null ? SkillSourceType.UPLOAD : existing.sourceType;
+        this.sourceType = sourceType != null ? sourceType
+            : existing == null ? SkillSourceType.UPLOAD : existing.sourceType;
         this.document = parser.parse(content);
         this.resources = normalizeResources(rawResources);
         this.name = string(document.frontMatter.get("name"));

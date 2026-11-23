@@ -41,7 +41,7 @@ public class SkillPublishService {
         var content = request.content != null ? request.content : existingContent(request.existing);
         var existing = request.existing;
         var candidate = new SkillPublishCandidateBuilder().build(
-            request.namespace, directoryName(request), content, request.resources, existing);
+            request.namespace, directoryName(request), content, request.resources, request.sourceType, existing);
         verifyMirrors(request, candidate);
         verifyImmutableIdentity(existing, candidate);
         var result = gate.evaluate(candidate);

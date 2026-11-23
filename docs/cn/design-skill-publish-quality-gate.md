@@ -3,13 +3,13 @@
 | 项目 | 内容 |
 |---|---|
 | 状态 | Draft（待用户 Review；AI 技术评审见 §14.2，AI 评审不构成用户批准） |
-| 文档版本 | v0.4（第二轮 AI 技术评审修订；评审记录见 §14.2） |
+| 文档版本 | v0.7（2026-11-23 第三方 repo 导入豁免；修改记录见 §14.3） |
 | 创建日期 | 2026-11-16 |
 | 需求提出者 / Reviewer | 用户 |
 | 作者 | core-ai |
 | 参考设计 | `docs/cn/design-agent-publish-quality-gate.md` |
-| 范围 | Skill 发布（upload / editor save / repo import / sync / marketplace install）质量门禁、身份与元数据、权限声明、渐进式披露、Eval 数据集 |
-| 本次交付 | 设计文档 + 2026-11-16 确定性门禁实现（见 §14.6）+ 2026-11-18 规则管理与自定义 DECISION 规则（见 §14.7）；内置语义规则与 run/report 持久化未实施 |
+| 范围 | Skill 发布（upload / editor save / repo import / sync / marketplace install）质量门禁、身份与元数据、权限声明、渐进式披露、Eval 数据集；第三方 repo 导入自 2026-11-23 起豁免门禁（见 §8.6） |
+| 本次交付 | 设计文档 + 2026-11-16 确定性门禁实现（见 §14.6）+ 2026-11-18 规则管理与自定义 DECISION 规则（见 §14.7）+ 2026-11-23 第三方 repo 导入豁免（见 §8.6）；内置语义规则与 run/report 持久化未实施 |
 | 设计依据 | 用户原始需求、实际源代码、Agent Skills 生态的公开资料、AI 技术评审意见 |
 
 ## 0. 原始需求与文档治理
@@ -94,7 +94,7 @@
 
 ### 1.2 目标与不变量
 
-1. 所有面向用户的 skill 写入入口执行同一门禁：CLI push、Web upload、编辑器保存、repo 注册/同步、Marketplace 安装；不能通过 API / CLI / UI 绕开。
+1. 平台作者的 skill 写入入口执行同一门禁：CLI push、Web upload、编辑器保存；不能通过 API / CLI / UI 绕开。第三方 repo 导入（注册 / 同步 / Marketplace 安装）自 v0.7 起豁免门禁，见 §8.6。
 2. 实际写入内容必须等于被检测内容：candidate 只构建一次，frontmatter 只解析一次，resources 只读取一次，commit 写入同一对象；存储写入使用 revision CAS。
 3. `SKILL.md` 的身份、description、metadata、allowed-tools 是唯一真源；`SkillDefinition` 的这些字段是 projection，不允许请求字段与文档内容不一致时静默覆盖。
 4. 五个内容要求可以由 linked reference 满足，但链接必须从 SKILL.md 可达、目标必须存在于本次上传的 resources 中；不能只存在一个未引用的文件。
@@ -1070,9 +1070,9 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 |---|---|---|
 | `POST /api/skills/upload`（CLI push / Web upload） | 构建 candidate → 门禁 → 按 qualifiedName 查现有 → insert/update(revision CAS) → receipt/publication record | 422/409/503；新 skill 不创建；已有 skill 不改 |
 | `PUT /api/skills/:id`（编辑器保存） | 合并 resources + 新 content → 构建 candidate → 门禁 → 校验请求字段与解析值一致 → CAS update | 422/400；现有内容与 revision 不变 |
-| `POST /api/skills/register-repo` / `POST /api/skills/:id/sync` | clone/读取一次 → 每个 skill 构建 candidate → 逐个门禁 → 逐条写入 | 每个 skill 独立报告；失败项不写/保留旧内容；成功项可写 |
-| `POST /api/skills/marketplace/:id/install` | 复用 repo 注册；逐 skill 门禁 | 同上；返回 installed/skipped 列表 |
-| `SkillRepoSyncJob` | 定时同步；逐 skill 门禁 | 失败保留旧内容；记录报告与告警；不自动回滚其它 skill |
+| `POST /api/skills/register-repo` / `POST /api/skills/:id/sync` | clone/读取一次 → 每个 skill 构建 candidate → 逐条写入（v0.7 起 `sourceType=REPO` 豁免门禁，见 §8.6） | 每个 skill 独立报告；失败项不写/保留旧内容；成功项可写 |
+| `POST /api/skills/marketplace/:id/install` | 复用 repo 注册；`sourceType=REPO` 豁免门禁 | 同上；返回 installed/skipped 列表 |
+| `SkillRepoSyncJob` | 定时同步；`sourceType=REPO` 豁免门禁 | 失败保留旧内容；记录报告与告警；不自动回滚其它 skill |
 | trusted seed / migration | 不调用模型门禁；代码检查 + CI fixture + `trusted-seed` 审计 | 启动失败或记录迁移错误；不向用户开放 bypass |
 
 **关键行为：**
@@ -1147,9 +1147,10 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 - 门禁上线前已存在的 skill：保持可读、可拉取、可运行；不自动下架、不删除、不改 digest。下一次 upload/update/repo sync 时执行门禁。
 - 旧 skill 没有 `quality` receipt：Hub 可以显示 “not yet checked”（仅 owner/admin），不阻塞读取。
 - 启动 seed / migration 如果直接写 skill：必须在 §14.5 登记；走代码检查 + CI fixture，不调用模型，不向用户开放 bypass；写 `trustedSeed=true` 审计标记。
-- repo sync / marketplace 内容不是 trusted seed；必须逐 skill 检查。策展/白名单不能成为用户绕过门禁的入口。
-- 管理员紧急处理：只能回滚 policy 或临时 suspend DECISION 规则（有 actor/原因/范围/到期时间）；不能替作者跳过确定性规则。
+- repo sync / marketplace 内容不是 trusted seed；2026-11-16 的设计要求逐 skill 检查，2026-11-23 起改为第三方 repo 导入整体豁免发布门禁（见下面两条）。
+- **管理员紧急处理：** 只能回滚 policy 或临时 suspend DECISION 规则（有 actor/原因/范围/到期时间）；不能替作者跳过确定性规则。
 - **管理员豁免白名单（2026-11-19 实现）：** 为“已知违规但不能改（外部 skill）或不愿改”的 subject 提供受控豁免。白名单随 active skill policy revision 固化，保存时由服务端生成 `change_reason`，只有 human platform admin 可修改；入口是 Settings → Quality → **Exemptions** 列表页，同一页面统一展示 agent 与 skill 两个 policy 的条目，新增时先选类型（Agent/Skill）再从可搜索的 subject 选择器中选择。Agent 条目按 agent id 落库，skill 条目按 `namespace/name` 落库（精确匹配，不支持通配符）；subject 已删除时条目仍会显示且可移除。命中后该 subject 跳过全部规则评估，报告与 receipt 记录 `exempted/exemption_reason`，不再阻塞 upload/editor/repo sync/marketplace install。它不是作者可用的 bypass：普通作者没有写白名单的权限。
+- **第三方 repo 导入豁免（2026-11-23 实现）：** 由仓库注册、marketplace 安装、repo 同步写入的 skill（`sourceType=REPO`）不再执行发布质量门禁。发布 candidate 携带写入来源（`SkillPublishService` 把 `request.sourceType` 传入 builder），`SkillQualityGate` 对其短路为 `gate_result=PASSED, exempted=true, exemption_reason="third-party repo import"`，报告与 receipt 记录同一原因。理由：这些 skill 由外部作者按自己的格式编写，本平台的内容、元数据与 eval 规则不适用于其原始产物；门禁继续覆盖 upload、editor save 与 `skill push`。管理员豁免白名单保留，用于其它已知违规的 subject。
 
 ### 8.7 版本与内容变化
 
@@ -1510,6 +1511,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 | v0.4 | 2026-11-16 | core-ai | 第二轮评审修订：更正预算基线为 8 calls/120 questions/48k 字符并区分字符与 token、新增 SKILL budget profile 与 batch coordinator（首版串行）、门禁前纯内存资源物化与 blob 写入时序、CAS 失败 orphan/GC 契约、SDK 属性链/别名与 s.tool 语义、静态 descriptor catalog、heading 规范化与确定性穿透、SQ9 WARN 归属、createMarketplaceRepo 载体与 RPC header 契约、Q9 实施风险建议 | 处理 R-AI-SQ-10..14；不改变用户原始需求；不构成用户批准 | 待 Review |
 | v0.5（实施记录） | 2026-11-19 | core-ai | 新增管理员豁免白名单：随 skill policy revision 固化的 `exemptions` 列表、Skill Quality 页面编辑、命中后 gate 短路、report/receipt 记录 `exempted` + `exemption_reason` | 用户要求豁免已知违规但不能修改的外部 skill | 用户请求（2026-11-19） |
 | v0.6（实施记录） | 2026-11-19 | core-ai | 白名单从文本框改为独立列表页：Agent/Skill 条目统一展示、类型感知的 subject 选择器、`/api/admin/quality-exemptions` 列表/搜索/新增/移除 API；存储仍为 policy revision 内的 `exemptions`，每次变更激活新 revision | 用户反馈文本框式白名单不可用（“太反人类”） | 用户请求（2026-11-19） |
+| v0.7（实施记录） | 2026-11-23 | core-ai | 第三方 repo 导入（注册 / marketplace 安装 / repo 同步）不再执行发布质量门禁：candidate 携带写入 `sourceType`，`SkillQualityGate` 对 `REPO` 短路为 `exempted=true`（`exemption_reason=third-party repo import`），report/receipt 记录原因；upload / editor save / `skill push` 仍走门禁 | 用户要求三方导入的 skill 不走质量门禁（claude-ads 等外部仓库被内容规则阻断） | 用户请求（2026-11-23） |
 
 ### 14.4 设计自查记录
 

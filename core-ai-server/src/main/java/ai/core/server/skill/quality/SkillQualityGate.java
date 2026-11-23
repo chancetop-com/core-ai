@@ -67,11 +67,20 @@ public class SkillQualityGate {
         this.decisions = decisions;
     }
 
+    /**
+     * Third-party repo skills are authored outside the platform, so the publish policy covers only skills we author:
+     * a repo import is recorded as exempted with its own reason instead of running the rules.
+     */
     public SkillQualityResult evaluate(SkillPublishCandidate candidate) {
-        if (policyService == null || registry == null) return evaluateStatic(candidate);
+        if (policyService == null || registry == null) {
+            return candidate.isRepoSource()
+                ? exemptResult(FALLBACK_POLICY_REVISION, QualityExemptions.THIRD_PARTY_REPO_REASON)
+                : evaluateStatic(candidate);
+        }
         var policy = policyService.active();
+        if (candidate.isRepoSource()) return exemptResult(policy.revision(), QualityExemptions.THIRD_PARTY_REPO_REASON);
         var matched = QualityExemptions.match(policy.exemptions(), candidate.qualifiedName(), candidate.name);
-        if (matched != null) return exemptResult(policy.revision(), matched);
+        if (matched != null) return exemptResult(policy.revision(), QualityExemptions.WHITELIST_REASON + ": " + matched);
         var budget = QualityBudget.forDeadline(DEADLINE);
         var outcomes = new ArrayList<QualityRunAggregator.RuleOutcome>();
         for (var active : policy.rules()) {
@@ -148,10 +157,9 @@ public class SkillQualityGate {
         return new QualityRuleEvaluation(QualityIssueStatus.ERROR, List.of(issue), null, "RULE_EXECUTION_ERROR");
     }
 
-    private SkillQualityResult exemptResult(int policyRevision, String matched) {
+    private SkillQualityResult exemptResult(int policyRevision, String reason) {
         return new SkillQualityResult(UUID.randomUUID().toString(), ai.core.server.quality.domain.QualityGateResult.PASSED,
-            true, List.of(), List.of(), null, QualityHashes.issueDigest(List.of()), 0, policyRevision, true,
-            QualityExemptions.WHITELIST_REASON + ": " + matched);
+            true, List.of(), List.of(), null, QualityHashes.issueDigest(List.of()), 0, policyRevision, true, reason);
     }
 
     private SkillQualityResult result(QualityRunAggregator.Aggregated aggregated, int policyRevision) {

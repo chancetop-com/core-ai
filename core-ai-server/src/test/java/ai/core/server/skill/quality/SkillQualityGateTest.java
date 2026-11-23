@@ -1,5 +1,7 @@
 package ai.core.server.skill.quality;
 
+import ai.core.server.domain.SkillSourceType;
+import ai.core.server.quality.QualityExemptions;
 import ai.core.server.quality.domain.QualityGateResult;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
@@ -7,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,6 +55,38 @@ class SkillQualityGateTest {
 
         assertTrue(result.issues().stream().anyMatch(issue -> "MISSING_SECTION".equals(issue.issueReason)
             && issue.message.contains("Workflow")));
+    }
+
+    @Test
+    void thirdPartyRepoImportSkipsTheGate() {
+        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", """
+            ---
+            name: demo-skill
+            description: Imported from an external repository.
+            ---
+            # Demo
+            """, Map.of(), SkillSourceType.REPO, null);
+
+        var result = new SkillQualityGate().evaluate(candidate);
+
+        assertEquals(QualityGateResult.PASSED, result.gateResult());
+        assertTrue(result.exempted());
+        assertEquals(QualityExemptions.THIRD_PARTY_REPO_REASON, result.exemptionReason());
+    }
+
+    @Test
+    void uploadedSkillWithTheSameGapsStillRejects() {
+        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", """
+            ---
+            name: demo-skill
+            description: Uploaded by an author.
+            ---
+            # Demo
+            """, Map.of(), SkillSourceType.UPLOAD, null);
+
+        var result = new SkillQualityGate().evaluate(candidate);
+
+        assertEquals(QualityGateResult.REJECTED, result.gateResult());
     }
 
     @Test

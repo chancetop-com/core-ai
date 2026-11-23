@@ -21,6 +21,8 @@ public final class QualityExemptions {
     public static final String WHITELIST_REASON = "quality exemption whitelist";
     public static final String BUILT_IN_AGENT_REASON = "built-in system agent";
     public static final String PERSONAL_ASSISTANT_REASON = "personal assistant copy";
+    /** Third-party skills arrive from a repository the platform does not author, so our authoring rules do not apply. */
+    public static final String THIRD_PARTY_REPO_REASON = "third-party repo import";
 
     public static List<String> normalize(List<String> entries) {
         if (entries == null) return List.of();
