@@ -1679,7 +1679,8 @@ P1a 不是“可以给所有用户”的版本；它用于验证“卷真的持�
 - [S3] [GitHub Codespaces — Understanding the codespace lifecycle](https://docs.github.com/en/codespaces/about-codespaces/understanding-the-codespace-lifecycle)，2026-11-23 获取。
 - [S4] [OpenAI Codex Cloud — environments](https://developers.openai.com/codex/environments/cloud-environments)（Legacy），2026-11-23 获取。
 - [S5] [OpenAI Agents API — Sandbox lifecycle](https://developers.openai.com/api/docs/guides/agents-api/environments/lifecycle)，2026-11-23 获取。
-- 内部：[Sandbox Snapshot 机制设计](design-sandbox-snapshot.md)；[Agent Sandbox 原生能力 Adopt 设计](design-agent-sandbox-native-adoption.md)。
+- 内部：[Sandbox Snapshot 机制设计](design-sandbox-snapshot.md)；[Sandbox 沙箱子系统 — 架构与设计](design-sandbox-architecture.md)。
+- 内部（未入库）：Agent Sandbox 原生能力 Adopt 设计（`docs/cn/design-agent-sandbox-native-adoption.md`，截至本文提交时尚未随提交提供，故不设链接；文中 C18/C19 及 §2 相关引用以该文档为准，待其入库后补链接）。
 
 ## 附录 C：Review 与修改历史
 
