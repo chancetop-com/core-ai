@@ -3,6 +3,7 @@ package ai.core.llm;
 import ai.core.llm.domain.Content;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.media.MediaRef;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -70,7 +71,7 @@ public final class InlineImagePruner {
      */
     public static PruneResult prune(List<Message> messages, int maxImages, long maxBytes) {
         if (messages == null || messages.isEmpty()) return new PruneResult(messages, 0, 0);
-        var slots = collectInlineImages(messages);
+        var slots = collectImages(messages);
         if (slots.isEmpty()) return new PruneResult(messages, 0, 0);
         var kept = selectKept(messages, slots, maxImages, maxBytes);
         if (allKept(kept)) return new PruneResult(messages, 0, 0);
@@ -102,7 +103,28 @@ public final class InlineImagePruner {
             for (var partIndex = 0; partIndex < content.size(); partIndex++) {
                 var part = content.get(partIndex);
                 if (!isInlineImage(part)) continue;
-                slots.add(new ImageSlot(messageIndex, partIndex, part.imageUrl.url));
+                slots.add(new ImageSlot(messageIndex, partIndex, part.imageUrl.url, decodedBytes(part.imageUrl.url), null));
+            }
+        }
+        return slots;
+    }
+
+    private static List<ImageSlot> collectImages(List<Message> messages) {
+        var slots = new ArrayList<ImageSlot>();
+        for (var messageIndex = 0; messageIndex < messages.size(); messageIndex++) {
+            var content = messages.get(messageIndex).content;
+            if (content == null) continue;
+            for (var partIndex = 0; partIndex < content.size(); partIndex++) {
+                var part = content.get(partIndex);
+                if (isInlineImage(part)) {
+                    slots.add(new ImageSlot(messageIndex, partIndex, part.imageUrl.url, decodedBytes(part.imageUrl.url), null));
+                } else if (isImageRef(part)) {
+                    var ref = part.imageRef;
+                    var identity = ref.sha256 != null ? "sha:" + ref.sha256
+                            : ref.id != null ? "id:" + ref.id
+                            : "slot:" + messageIndex + ":" + partIndex;
+                    slots.add(new ImageSlot(messageIndex, partIndex, identity, ref.sizeBytes == null ? 0 : ref.sizeBytes, ref));
+                }
             }
         }
         return slots;
@@ -133,7 +155,7 @@ public final class InlineImagePruner {
             for (var slotIndex : newest) {
                 keep(slotIndex, slots, kept, keptPayloads);
                 count++;
-                bytes += slots.get(slotIndex).bytes();
+                bytes += slots.get(slotIndex).bytes;
             }
             lastGroupIndex--;
         }
@@ -145,7 +167,7 @@ public final class InlineImagePruner {
             for (var slotIndex : fresh) {
                 keep(slotIndex, slots, kept, keptPayloads);
                 count++;
-                bytes += slots.get(slotIndex).bytes();
+                bytes += slots.get(slotIndex).bytes;
             }
         }
         for (var i = toolSlots.size() - 1; i >= 0; i--) {
@@ -155,11 +177,11 @@ public final class InlineImagePruner {
             // agent just looked at makes it read the same file again, and a request that is still too
             // large is recovered by the 413 retry instead
             var newest = i == toolSlots.size() - 1;
-            if (!newest && (count >= maxCount || maxBytes > 0 && bytes + slot.bytes() > maxBytes)) continue;
+            if (!newest && (count >= maxCount || maxBytes > 0 && bytes + slot.bytes > maxBytes)) continue;
             if (!keptPayloads.add(slot.payload())) continue;
             kept[slotIndex] = true;
             count++;
-            bytes += slot.bytes();
+            bytes += slot.bytes;
         }
         return kept;
     }
@@ -179,7 +201,7 @@ public final class InlineImagePruner {
     private static long bytesOf(List<Integer> slotIndexes, List<ImageSlot> slots) {
         long bytes = 0;
         for (var slotIndex : slotIndexes) {
-            bytes += slots.get(slotIndex).bytes();
+            bytes += slots.get(slotIndex).bytes;
         }
         return bytes;
     }
@@ -235,9 +257,11 @@ public final class InlineImagePruner {
             var slot = slots.get(i);
             var message = messages.get(slot.messageIndex());
             var content = replaced.computeIfAbsent(slot.messageIndex(), index -> new ArrayList<>(message.content));
-            content.set(slot.partIndex(), Content.of(placeholder(messages, slot)));
+            content.set(slot.partIndex(), slot.ref() != null
+                    ? Content.of(refPlaceholder(messages, slot))
+                    : Content.of(placeholder(messages, slot)));
             prunedCount++;
-            prunedBytes += slot.bytes();
+            prunedBytes += slot.bytes;
         }
         var result = new ArrayList<Message>(messages.size());
         for (var i = 0; i < messages.size(); i++) {
@@ -321,6 +345,29 @@ public final class InlineImagePruner {
                 && part.imageUrl != null && part.imageUrl.url != null && part.imageUrl.url.startsWith("data:");
     }
 
+    private static boolean isImageRef(Content part) {
+        return part != null && part.type == Content.ContentType.IMAGE_REF && part.imageRef != null;
+    }
+
+    /**
+     * A ref that is not sent this round keeps its metadata but must never reach the provider: the
+     * placeholder names the picture so the model knows what it can no longer see.
+     */
+    private static String refPlaceholder(List<Message> messages, ImageSlot slot) {
+        var message = messages.get(slot.messageIndex());
+        var name = slot.ref().label();
+        if (message.role == RoleType.TOOL) {
+            var toolName = message.name == null || message.name.isBlank() ? "the tool" : message.name;
+            var source = toolSource(messages, slot.messageIndex(), message.toolCallId);
+            var sourceHint = source == null ? "" : " Source: " + source + ".";
+            return Strings.format("[Image result {} from {} omitted from this request: earlier images are not resent. "
+                    + "It is not visible now, do not describe it from memory.{} Call {} again if you need it.]",
+                    name, toolName, sourceHint, toolName);
+        }
+        return Strings.format("[Image {} omitted from this request: earlier images are not resent. "
+                + "It is not visible now, do not describe it from memory. Attach it again if you need it.]", name);
+    }
+
     private static long decodedBytes(String dataUri) {
         var comma = dataUri.indexOf(',');
         if (comma < 0) return 0;
@@ -381,10 +428,7 @@ public final class InlineImagePruner {
     private InlineImagePruner() {
     }
 
-    private record ImageSlot(int messageIndex, int partIndex, String payload) {
-        long bytes() {
-            return decodedBytes(payload);
-        }
+    private record ImageSlot(int messageIndex, int partIndex, String payload, long bytes, MediaRef ref) {
     }
 
     public record PruneResult(List<Message> messages, int prunedCount, long prunedBytes) {

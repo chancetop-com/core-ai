@@ -36,6 +36,7 @@ public final class SessionContextBuilder {
     private DecisionProvider decisionProvider;
     private final ApiUserQuotaService quotaService;
     private ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager;
+    private ai.core.media.SessionMediaStore mediaStore;
 
     public SessionContextBuilder(ChatArtifactSetup artifactSetup, FileService fileService,
                                  PublicUrlConfiguration publicUrlConfiguration,
@@ -60,6 +61,12 @@ public final class SessionContextBuilder {
         return this;
     }
 
+    /** Session media refs need the store to register uploads and hydrate them per request. */
+    public SessionContextBuilder withMediaStore(ai.core.media.SessionMediaStore mediaStore) {
+        this.mediaStore = mediaStore;
+        return this;
+    }
+
     public ExecutionContext build(String sessionId, String userId) {
         // pending tool results are registered against this session; the server drives and notifies them
         var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
@@ -72,6 +79,11 @@ public final class SessionContextBuilder {
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
                 .customVariables(mediaModelVariables())
                 .build();
+        if (mediaStore != null) {
+            context.getCustomVariables().put(ai.core.media.SessionMediaStore.CONTEXT_KEY, mediaStore);
+            context.getCustomVariables().put(ai.core.media.SessionMediaStore.KEY_CONTEXT_KEY,
+                    new ai.core.media.SessionMediaKey(sessionId, userId));
+        }
         // quota metering fires per LLM call (main turns, sub-agents and tool-internal calls all
         // share this context), so token usage is accounted against the session user synchronously
         context.setTokenCostCallback(usage -> quotaService.recordUsage(userId, usage.getPromptTokens(), usage.getCompletionTokens()));

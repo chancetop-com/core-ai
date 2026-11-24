@@ -31,6 +31,12 @@ public class ChatMessageAttachments {
     static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
     private static final String SANDBOX_HINT = "\n\n[Attachments are also staged in the sandbox at ";
 
+    private static String extension(String mediaType) {
+        if (mediaType == null) return "png";
+        var slash = mediaType.indexOf('/');
+        return slash < 0 ? mediaType : mediaType.substring(slash + 1);
+    }
+
     private final SandboxService sandboxService;
     private final ObjectStorageServiceResolver objectStorageResolver;
     private final SessionAttachmentRefRepository attachmentRepository;
@@ -223,10 +229,22 @@ public class ChatMessageAttachments {
             throw new BadRequestException("image attachment is larger than 50MB");
         }
         var bytes = storageService.downloadObject(container, blobName);
-        var image = ImageDownscaler.shrink(Base64.getEncoder().encodeToString(bytes), contentType);
+        var original = Base64.getEncoder().encodeToString(bytes);
+        var image = ImageDownscaler.shrink(original, contentType);
         var content = AttachedContent.ofBase64(image.data(), image.format(),
                 AttachedContent.AttachedContentType.IMAGE, (String) attachment.get("fileName"));
         content.url = (String) attachment.get("url");
+        if (image.data().equals(original)) {
+            // the uploaded blob already holds the final wire bytes: the message build registers this ref
+            // instead of copying the payload into conversation state
+            var sizeBytes = metadata == null || metadata.sizeBytes() == null
+                    ? Long.valueOf(bytes.length) : metadata.sizeBytes();
+            content.mediaRef = ai.core.media.MediaRef.blob(null, container, blobName, image.format(),
+                            extension(image.format()), sizeBytes)
+                    .etag(metadata == null ? null : metadata.etag())
+                    .displayName((String) attachment.get("fileName"))
+                    .source("upload");
+        }
         recordImageReference(attachment, sessionId, userId, metadata, bytes.length);
         return content;
     }

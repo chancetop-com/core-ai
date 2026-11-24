@@ -169,6 +169,9 @@ public class CliAgent {
                         "media.image.edit.models", editModels,
                         "media.video.model", blankToEmpty(videoModel),
                         "media.video.default.model", blankToEmpty(videoModel)))
+                .customVariable(ai.core.media.SessionMediaStore.CONTEXT_KEY, mediaStore(config))
+                .customVariable(ai.core.media.SessionMediaStore.KEY_CONTEXT_KEY,
+                        config.sessionId == null ? null : new ai.core.media.SessionMediaKey(config.sessionId, auth != null ? auth.userId() : null))
                 .persistenceProvider(config.persistenceProvider)
                 .subagentOutputSinkFactory(new FileSubagentOutputSinkFactory(config.workspace.resolve(".core-ai/tasks")))
                 .todoStoreFactory(new FileTodoStoreFactory(config.workspace.resolve(".core-ai/todos")))
@@ -190,6 +193,16 @@ public class CliAgent {
 
     private static String blankToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    /**
+     * Media bytes of a CLI session live under the workspace, next to the other session-scoped runtime
+     * files, so the store survives a CLI restart while the snapshot only keeps refs.
+     */
+    private static ai.core.media.SessionMediaStore mediaStore(Config config) {
+        return new ai.core.media.FileSessionMediaStore(config.workspace
+                .resolve(".core-ai").resolve("media").resolve("sessions")
+                .resolve(config.sessionId == null ? "default" : config.sessionId));
     }
 
     private static String effectiveImageModel(MediaProvider provider, String configured, MediaModelCatalog catalog) {

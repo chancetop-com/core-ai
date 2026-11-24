@@ -21,6 +21,7 @@ import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.ResponseFormat;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.StreamOptions;
+import ai.core.media.MediaHydrator;
 import ai.core.telemetry.LLMTracer;
 import ai.core.utils.JsonUtil;
 import core.framework.util.Strings;
@@ -189,10 +190,13 @@ public abstract class LLMProvider {
     }
 
     private CompletionResponse invokeCompletionStream(CompletionRequest request, StreamingCallback wrappedCallback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
+        // the tracer must see the refs, not the bytes: hydrate only inside the operation, so the span
+        // keeps a small, stable payload and the wire copy lives for exactly one HTTP call
+        var wireRequest = MediaHydrator.hydrate(request);
         if (tracer != null && withTracing) {
-            return tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(request, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
+            return tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(wireRequest, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
         }
-        return doCompletionStream(request, wrappedCallback);
+        return doCompletionStream(wireRequest, wrappedCallback);
     }
 
     private void enforceModalities(CompletionRequest request) {
@@ -219,7 +223,8 @@ public abstract class LLMProvider {
     private boolean shouldRetryWithoutImages(CompletionRequest request, RuntimeException e) {
         if (e.getMessage() == null || !IMAGE_REJECTION_PATTERN.matcher(e.getMessage()).find()) return false;
         return request.messages != null && request.messages.stream().anyMatch(message -> message.content != null
-                && message.content.stream().anyMatch(part -> part.type == Content.ContentType.IMAGE_URL));
+                && message.content.stream().anyMatch(part -> part.type == Content.ContentType.IMAGE_URL
+                        || part.type == Content.ContentType.IMAGE_REF));
     }
 
     private StreamingCallback wrapCallback(StreamingCallback callback) {

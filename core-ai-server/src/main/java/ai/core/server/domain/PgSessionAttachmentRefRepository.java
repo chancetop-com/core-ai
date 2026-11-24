@@ -71,6 +71,24 @@ public class PgSessionAttachmentRefRepository implements SessionAttachmentRefRep
         return findByKind(sessionId, userId, SessionAttachmentRef.KIND_SANDBOX);
     }
 
+    @Override
+    public List<SessionAttachmentRef> findOwnedMedia(String sessionId, String userId) {
+        return findByKind(sessionId, userId, SessionAttachmentRef.KIND_MEDIA);
+    }
+
+    @Override
+    public List<SessionAttachmentRef> findExpiredMedia(java.time.ZonedDateTime cutoff, int limit) {
+        var rows = database.select(SELECT + " WHERE data ->> ? = ? AND (data ->> ?)::timestamptz < ? "
+                        + "ORDER BY (data ->> ?) ASC LIMIT ?", PgDocumentRow.class,
+                "kind", SessionAttachmentRef.KIND_MEDIA, "createdAt", cutoff, "createdAt", limit);
+        return rows.stream().map(row -> JsonUtil.fromJson(SessionAttachmentRef.class, row.data)).toList();
+    }
+
+    @Override
+    public void delete(String referenceId) {
+        database.execute("DELETE FROM " + TABLE + " WHERE id = ?", referenceId);
+    }
+
     private List<SessionAttachmentRef> findByKind(String sessionId, String userId, String kind) {
         var rows = database.select(SELECT + " WHERE data ->> ? = ? AND data ->> ? = ? AND data ->> ? = ? "
                 + "ORDER BY data ->> ? DESC", PgDocumentRow.class,

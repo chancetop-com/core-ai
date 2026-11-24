@@ -84,4 +84,31 @@ public class MongoSessionAttachmentRefRepository implements SessionAttachmentRef
         query.sort = Sorts.descending("created_at");
         return collection.find(query);
     }
+
+    @Override
+    public List<SessionAttachmentRef> findOwnedMedia(String sessionId, String userId) {
+        var query = new Query();
+        query.filter = Filters.and(
+                Filters.eq("session_id", sessionId),
+                Filters.eq("user_id", userId),
+                Filters.eq("kind", SessionAttachmentRef.KIND_MEDIA));
+        query.sort = Sorts.ascending("created_at");
+        return collection.find(query);
+    }
+
+    @Override
+    public List<SessionAttachmentRef> findExpiredMedia(java.time.ZonedDateTime cutoff, int limit) {
+        var query = new Query();
+        query.filter = Filters.and(
+                Filters.eq("kind", SessionAttachmentRef.KIND_MEDIA),
+                Filters.lt("created_at", cutoff));
+        query.sort = Sorts.ascending("created_at");
+        query.limit = limit;
+        return collection.find(query);
+    }
+
+    @Override
+    public void delete(String referenceId) {
+        collection.delete(Filters.eq("_id", referenceId));
+    }
 }

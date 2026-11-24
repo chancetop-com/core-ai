@@ -64,7 +64,9 @@ public final class MessageTokenCounterUtil {
         }
         return switch (part.type) {
             case TEXT -> part.text != null ? Tokenizer.tokenCount(part.text) : 0;
-            case IMAGE_URL, FILE, VIDEO -> ATTACHMENT_TOKENS;
+            // a ref costs one attachment's tokens when the request keeps it and almost nothing when it
+            // is pruned; compression runs before the prune, so it uses the conservative attachment cost
+            case IMAGE_URL, IMAGE_REF, FILE, VIDEO -> ATTACHMENT_TOKENS;
         };
     }
 

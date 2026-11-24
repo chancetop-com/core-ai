@@ -137,6 +137,9 @@ final class LiteLLMResponsesRequestMapper {
             parts.add(imagePart(content));
             return;
         }
+        if (content.type == Content.ContentType.IMAGE_REF) {
+            throw new IllegalStateException("image ref was not hydrated before encoding the provider request");
+        }
         if (content.type == Content.ContentType.FILE && content.file != null) {
             parts.add(filePart(content.file));
         }

@@ -19,6 +19,7 @@ import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.Usage;
+import ai.core.media.MediaHydrator;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.io.JsonEOFException;
 import core.framework.http.ContentType;
@@ -173,6 +174,7 @@ public class LiteLLMProvider extends LLMProvider {
 
     @SuppressWarnings("unchecked")
     public CompletionResponse chatCompletionStream(CompletionRequest request, StreamingCallback callback) {
+        MediaHydrator.assertNoUnhydratedRefs(request.messages);
         var extraBody = request.getExtraBody() != null ? request.getExtraBody() : config.resolveExtraBody(request.model);
         var reqUrl = url.contains("/chat/completions") ? url : url + "/chat/completions";
         var req = new HTTPRequest(HTTPMethod.POST, reqUrl);

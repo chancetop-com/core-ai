@@ -7,6 +7,8 @@ import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.Tool;
+import ai.core.media.LegacyImageMigration;
+import ai.core.media.SessionMediaContext;
 
 import java.util.List;
 import java.util.function.Function;
@@ -18,15 +20,22 @@ final class ModelGateway {
     private static final int MAX_CONTEXT_RECOVERIES = 2;
 
     static Choice handLLM(Agent agent, List<Message> messages, List<Tool> tools) {
-        // the conversation, not this one request, owns the images: bound them before the request is
-        // built so an idle session cannot keep an unbounded set
-        agent.applyRetentionBudget();
         var effectiveModel = resolveEffectiveModel(agent);
         // Some explicitly configured multimodal main models do not accept reasoning_effort.
         var reasoningEffort = effectiveModel != null && effectiveModel.equals(agent.multiModalModel) ? null : agent.reasoningEffort;
         var reqTools = AgentHelper.filterRedundantVisionTools(tools, agent.getExecutionContext().isVisionNative(), effectiveModel);
+        var context = agent.getExecutionContext();
+        var mediaStore = SessionMediaContext.store(context);
+        var mediaKey = SessionMediaContext.key(context);
+        // one-time migration of snapshots written before images became refs; an inline image that is
+        // already in the working list would otherwise keep pinning its bytes for the whole session
+        if (mediaStore != null && mediaKey != null) {
+            LegacyImageMigration.migrate(messages, mediaStore, mediaKey);
+        }
         var req = CompletionRequest.of(new CompletionRequest.CompletionRequestOptions(messages, reqTools, agent.llmProvider.config == null ? 0.0 : agent.llmProvider.config.getTemperature(), effectiveModel, agent.getName(), null, null, reasoningEffort));
-        req.setSessionId(agent.getExecutionContext().getSessionId());
+        req.setSessionId(context.getSessionId());
+        req.setMediaStore(mediaStore);
+        req.setMediaKey(mediaKey);
         agent.lastLLMSpanContext = null;
         return aroundLLM(agent, r -> agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc), req);
     }

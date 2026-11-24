@@ -115,6 +115,7 @@ public class AgentSessionManager {
     @Inject SessionSearchService sessionSearchService;
     @Inject SessionReadService sessionReadService;
     @Inject SessionCompletionNotifier sessionCompletionNotifier;
+    @Inject ai.core.server.media.BlobSessionMediaStore sessionMediaStore;
 
     private SessionSkillManager skillManager;
     private SessionSubAgentManager subAgentManager;
@@ -137,7 +138,7 @@ public class AgentSessionManager {
         if (rebuildManager == null) {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionStore, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
-                    ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonStore));
+                    ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonStore, sessionMediaStore));
         }
         return rebuildManager;
     }
@@ -160,7 +161,7 @@ public class AgentSessionManager {
         if (userSessionBudget != null) userSessionBudget.acquire(userId);
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
         CallerContexts.attach(context, userStore, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
@@ -243,7 +244,7 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = datasetHelper().buildExtraVars(config, datasetConfig);
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
         var caller = CallerContexts.attach(context, userStore, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         UserIdentityPrompt.attach(context, definition, caller);

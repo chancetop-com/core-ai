@@ -13,6 +13,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
+import ai.core.media.SessionMediaContext;
 import ai.core.prompt.Prompts;
 import ai.core.reflection.ReflectionConfig;
 import ai.core.reflection.ReflectionEvaluation;
@@ -95,7 +96,7 @@ public class AgentHelper {
                     tool.function.name, tool.id, null);
             case IMAGE -> context != null && !context.isVisionNative()
                     ? Message.of(RoleType.TOOL, buildImageReference(tool, result, context), tool.function.name, tool.id, null)
-                    : Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result), "", tool.function.name, tool.id, null));
+                    : Message.of(new Message.MessageRecord(RoleType.TOOL, buildImageContent(result, context), "", tool.function.name, tool.id, null));
         };
     }
 
@@ -167,10 +168,13 @@ public class AgentHelper {
         return value instanceof Number number ? number.longValue() : null;
     }
 
-    private static List<Content> buildImageContent(ToolCallResult result) {
+    private static List<Content> buildImageContent(ToolCallResult result, ExecutionContext context) {
         // the image is carried in the history and resent on every later turn, so an unreadable payload (an
         // error body saved as probe.png, a non-image MCP content part) must not reach the model: the API
         // rejects the whole request with HTTP 400 and the run dies far away from the mistake
+        if (result.getImageRef() != null) {
+            return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT), Content.of(result.getImageRef()));
+        }
         var format = ImageFormats.detectBase64(result.getImageBase64());
         if (!ImageFormats.isModelReadable(format)) {
             LOGGER.warn("dropping image content that is not a readable image, tool={}, declaredFormat={}, detectedFormat={}",
@@ -181,6 +185,23 @@ public class AgentHelper {
         }
         // the image is carried in the history and resent on every later turn, so shrink it once here
         var image = ImageDownscaler.shrink(result.getImageBase64(), ImageFormats.mimeType(format));
+        var store = SessionMediaContext.store(context);
+        var key = SessionMediaContext.key(context);
+        if (store != null && key != null) {
+            try {
+                var ref = store.put(key, Base64.getDecoder().decode(image.data()), image.format(),
+                        result.getToolName() + " image", "tool:" + result.getToolName());
+                return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT), Content.of(ref));
+            } catch (RuntimeException e) {
+                // storing the bytes is the only way to keep them out of the message; if it fails the
+                // result degrades to text instead of falling back to an unbounded inline payload
+                LOGGER.warn("failed to store a tool image in the session media store, degrading to text, tool={}, error={}",
+                        result.getToolName(), e.getMessage());
+                return List.of(Content.of(Strings.format(
+                        "[Image result from tool {} could not be stored in the session media library and is not visible.]",
+                        result.getToolName())));
+            }
+        }
         return List.of(Content.of(Prompts.IMAGE_CAPTIONING_PROMPT),
                 Content.of(Content.ImageUrl.of(Strings.format("data:{};base64,{}", image.format(), image.data()), image.format())));
     }
@@ -262,6 +283,12 @@ public class AgentHelper {
     }
 
     private static Content buildImageAttachedContent(AttachedContent attachedContent, ExecutionContext context) {
+        var store = SessionMediaContext.store(context);
+        var key = SessionMediaContext.key(context);
+        if (store != null && key != null && attachedContent.mediaRef != null) {
+            // the producer already owns the bytes (server upload blob): register, do not copy
+            return Content.of(store.register(key, attachedContent.mediaRef));
+        }
         if (!attachedContent.isBase64()) {
             var captionPath = context != null && !context.isVisionNative();
             if (captionPath) return Content.of(imageReferenceText(attachedContent.url));
@@ -281,6 +308,16 @@ public class AgentHelper {
                     name, ImageFormats.READABLE_FORMAT_LIST));
         }
         var image = ImageDownscaler.shrink(attachedContent.data, ImageFormats.mimeType(format));
+        if (store != null && key != null) {
+            try {
+                var ref = store.put(key, Base64.getDecoder().decode(image.data()), image.format(),
+                        attachedContent.filename, "attachment");
+                return Content.of(ref);
+            } catch (RuntimeException e) {
+                // an explicit asset the user chose to send must not silently degrade to text
+                throw new IllegalStateException("failed to store the image attachment in the session media store", e);
+            }
+        }
         var dataUri = Strings.format("data:{};base64,{}", image.format(), image.data());
         return Content.of(Content.ImageUrl.of(dataUri, image.format()));
     }

@@ -1,5 +1,7 @@
 package ai.core.llm.domain;
 
+import ai.core.media.SessionMediaKey;
+import ai.core.media.SessionMediaStore;
 import core.framework.api.json.Property;
 
 import java.util.List;
@@ -85,6 +87,56 @@ public class CompletionRequest {
     // agent session id, sent to the gateway as x-session-id so one conversation merges into a single trace;
     // internal signal only, never serialized to the upstream request body
     private String sessionId;
+    // request-time media hydration scope; the store owns the bytes, the request only borrows them for
+    // one wire copy. Internal signal only, never serialized to the upstream request body.
+    private SessionMediaStore mediaStore;
+    private SessionMediaKey mediaKey;
+
+    public SessionMediaStore getMediaStore() {
+        return mediaStore;
+    }
+
+    public void setMediaStore(SessionMediaStore mediaStore) {
+        this.mediaStore = mediaStore;
+    }
+
+    public SessionMediaKey getMediaKey() {
+        return mediaKey;
+    }
+
+    public void setMediaKey(SessionMediaKey mediaKey) {
+        this.mediaKey = mediaKey;
+    }
+
+    /**
+     * A wire copy sharing every request option but carrying a different message list. Used by the
+     * hydrator so the request that the tracer sees is the state, not the encoded bytes.
+     */
+    public CompletionRequest withMessages(List<Message> messages) {
+        var copy = new CompletionRequest();
+        copy.model = model;
+        copy.messages = messages;
+        copy.temperature = temperature;
+        copy.topP = topP;
+        copy.maxCompletionTokens = maxCompletionTokens;
+        copy.parallelToolCalls = parallelToolCalls;
+        copy.tools = tools;
+        copy.toolChoice = toolChoice;
+        copy.stream = stream;
+        copy.streamOptions = streamOptions;
+        copy.responseFormat = responseFormat;
+        copy.reasoningEffort = reasoningEffort;
+        copy.name = name;
+        copy.extraBody = extraBody;
+        copy.timeoutSeconds = timeoutSeconds;
+        copy.endpoint = endpoint;
+        copy.passthrough = passthrough;
+        copy.reasoningEffortValue = reasoningEffortValue;
+        copy.sessionId = sessionId;
+        copy.mediaStore = mediaStore;
+        copy.mediaKey = mediaKey;
+        return copy;
+    }
 
     public String getSessionId() {
         return sessionId;

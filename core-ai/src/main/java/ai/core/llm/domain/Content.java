@@ -1,5 +1,6 @@
 package ai.core.llm.domain;
 
+import ai.core.media.MediaRef;
 import core.framework.api.json.Property;
 import core.framework.api.validate.NotNull;
 
@@ -18,6 +19,17 @@ public class Content {
         var content = new Content();
         content.type = ContentType.IMAGE_URL;
         content.imageUrl = imageUrl;
+        return content;
+    }
+
+    /**
+     * Conversation state points at the store instead of carrying the bytes; only a request-time
+     * hydrator turns a ref into an {@link #of(ImageUrl)} part.
+     */
+    public static Content of(MediaRef imageRef) {
+        var content = new Content();
+        content.type = ContentType.IMAGE_REF;
+        content.imageRef = imageRef.validate();
         return content;
     }
 
@@ -52,6 +64,9 @@ public class Content {
     @Property(name = "image_url")
     public ImageUrl imageUrl;
 
+    @Property(name = "image_ref")
+    public MediaRef imageRef;
+
     @Property(name = "file")
     public FileContent file;
 
@@ -63,6 +78,8 @@ public class Content {
         TEXT,
         @Property(name = "image_url")
         IMAGE_URL,
+        @Property(name = "image_ref")
+        IMAGE_REF,
         @Property(name = "file")
         FILE,
         @Property(name = "video")

@@ -94,6 +94,7 @@ public final class ToolCallResult {
     private ContentType type = ContentType.TEXT;
     private String imageBase64;
     private String imageFormat;
+    private ai.core.media.MediaRef imageRef;
 
     private ToolCallResult() {
         this.stats = new HashMap<>();
@@ -205,6 +206,7 @@ public final class ToolCallResult {
         copy.type = type;
         copy.imageBase64 = imageBase64;
         copy.imageFormat = imageFormat;
+        copy.imageRef = imageRef;
         return copy;
     }
 
@@ -301,7 +303,19 @@ public final class ToolCallResult {
     }
 
     public boolean hasImage() {
-        return type == ContentType.IMAGE && imageBase64 != null && !imageBase64.isEmpty();
+        var hasBase64 = imageBase64 != null && !imageBase64.isEmpty();
+        return type == ContentType.IMAGE && (hasBase64 || imageRef != null);
+    }
+
+    public ai.core.media.MediaRef getImageRef() {
+        return imageRef;
+    }
+
+    /** Image bytes already persisted by the caller; avoids carrying base64 through the message build. */
+    public ToolCallResult withImageRef(ai.core.media.MediaRef imageRef) {
+        this.type = ContentType.IMAGE;
+        this.imageRef = imageRef;
+        return this;
     }
 
     public ToolCallResult withImage(String base64, String format) {

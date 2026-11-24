@@ -22,4 +22,12 @@ public interface SessionAttachmentRefRepository {
     SessionAttachmentRef findBySource(String sessionId, String userId, String container, String blobName);
 
     List<SessionAttachmentRef> findSandboxAttachments(String sessionId, String userId);
+
+    /** Media-store objects owned by the session, oldest first (budget and cleanup bookkeeping). */
+    List<SessionAttachmentRef> findOwnedMedia(String sessionId, String userId);
+
+    /** Media objects written before {@code cutoff}, across sessions; the TTL sweep. */
+    List<SessionAttachmentRef> findExpiredMedia(java.time.ZonedDateTime cutoff, int limit);
+
+    void delete(String referenceId);
 }

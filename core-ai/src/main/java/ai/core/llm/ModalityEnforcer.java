@@ -60,7 +60,7 @@ public final class ModalityEnforcer {
         if (part == null || part.type == null) return null;
         return switch (part.type) {
             case TEXT -> InputModality.TEXT;
-            case IMAGE_URL -> InputModality.IMAGE;
+            case IMAGE_URL, IMAGE_REF -> InputModality.IMAGE;
             case FILE -> InputModality.FILE;
             case VIDEO -> InputModality.VIDEO;
         };
@@ -69,10 +69,16 @@ public final class ModalityEnforcer {
     private static String placeholder(Content part) {
         return switch (part.type) {
             case IMAGE_URL -> imagePlaceholder(part);
+            case IMAGE_REF -> imageRefPlaceholder(part);
             case FILE -> filePlaceholder(part);
             case VIDEO -> videoPlaceholder(part);
             case TEXT -> throw new IllegalStateException("text parts are never downgraded");
         };
+    }
+
+    private static String imageRefPlaceholder(Content part) {
+        var name = part.imageRef == null ? "image" : part.imageRef.label();
+        return Strings.format("[Image {}] (not visible to current model; use caption_image to inspect)", name);
     }
 
     private static String imagePlaceholder(Content part) {

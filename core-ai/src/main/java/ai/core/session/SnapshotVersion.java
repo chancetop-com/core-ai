@@ -8,7 +8,11 @@ import ai.core.agent.AgentPersistence;
  * @author stephen
  */
 public final class SnapshotVersion {
-    public static final int CURRENT = 1;
+    /**
+     * 2: conversation state may carry {@code Content.IMAGE_REF} instead of inline image bytes. A version
+     * 1 reader must reject it (no silent downgrade); a version 2 reader still accepts version 1.
+     */
+    public static final int CURRENT = 2;
 
     public static void check(AgentPersistence.AgentPersistenceDomain domain) {
         var version = domain.version == null ? 1 : domain.version;

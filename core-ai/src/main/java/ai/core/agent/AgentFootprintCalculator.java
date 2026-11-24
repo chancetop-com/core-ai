@@ -102,6 +102,13 @@ final class AgentFootprintCalculator {
                         if (part.imageUrl.url.startsWith("data:")) inlineImageBytes += length;
                     }
                 }
+                case IMAGE_REF -> {
+                    if (part.imageRef != null) {
+                        long length = length(part.imageRef.id) + length(part.imageRef.displayName) + length(part.imageRef.source)
+                                + length(part.imageRef.mediaType);
+                        contentBytes += length;
+                    }
+                }
                 case FILE -> {
                     if (part.file != null) {
                         long length = length(part.file.fileData) + length(part.file.fileId) + length(part.file.filename);

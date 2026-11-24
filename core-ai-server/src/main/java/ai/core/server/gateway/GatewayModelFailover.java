@@ -89,7 +89,9 @@ final class GatewayModelFailover {
         for (var message : messages) {
             if (message.content == null) continue;
             for (var content : message.content) {
-                if (content != null && (content.type == Content.ContentType.IMAGE_URL || content.type == Content.ContentType.VIDEO)) {
+                if (content != null && (content.type == Content.ContentType.IMAGE_URL
+                        || content.type == Content.ContentType.IMAGE_REF
+                        || content.type == Content.ContentType.VIDEO)) {
                     return true;
                 }
             }

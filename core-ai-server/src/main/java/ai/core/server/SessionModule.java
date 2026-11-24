@@ -76,8 +76,7 @@ public class SessionModule extends Module {
 
     private void bindSessionRuntime() {
         bind(SubAgentAssembler.class);
-        bind(SessionAgentHelper.class);
-        // history images are resent on every later turn, so oversized ones are re-encoded as they enter
+        bind(SessionAgentHelper.class);        // history images are resent on every later turn, so oversized ones are re-encoded as they enter
         // a session; the AWT encoder is JVM-only, which is why it is registered here and not in core-ai
         ImageDownscaler.register(new AwtImageShrinker());
         sessionRegistry = bind(SessionRegistry.class);
@@ -89,6 +88,7 @@ public class SessionModule extends Module {
         bind(SessionNoticePrompt.class);
         bind(SessionCompletionNotifier.class);
         bind(NotificationSettingsService.class);
+        bindSessionMedia();
         agentSessionManager = bind(AgentSessionManager.class);
         // finished async tool calls are delivered over the command bus; MessagingRuntimeModule wires
         // the dispatcher once CommandPublisher exists (it loads after this module)
@@ -97,6 +97,21 @@ public class SessionModule extends Module {
 
     private SessionActivityStore activityStore() {
         return bind(new PgSessionActivityStore());
+    }
+
+    /**
+     * Media bytes are owned by the store, not by messages. Bound before AgentSessionManager because the
+     * session execution context carries the store to every agent, tool and subagent.
+     */
+    private void bindSessionMedia() {
+        bind(new ai.core.server.media.BlobSessionMediaStore(
+                bean(ai.core.server.blob.ObjectStorageServiceResolver.class),
+                bean(ai.core.server.domain.SessionAttachmentRefRepository.class)));
+        bind(ai.core.server.media.SessionMediaMaintenanceJob.class);
+        schedule().fixedRate("session-media-maintenance", bean(ai.core.server.media.SessionMediaMaintenanceJob.class),
+                Duration.ofHours(1));
+        http().route(HTTPMethod.GET, "/api/sessions/:sessionId/media/:mediaId",
+                bind(ai.core.server.media.SessionMediaController.class));
     }
 
     private void registerSandboxTerminal() {

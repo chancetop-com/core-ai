@@ -13,6 +13,8 @@ import java.time.ZonedDateTime;
 public class SessionAttachmentRef {
     public static final String KIND_SANDBOX = "SANDBOX";
     public static final String KIND_VIDEO = "VIDEO";
+    /** A session media object owned by the media store; it may have no originating message. */
+    public static final String KIND_MEDIA = "MEDIA";
 
     @Id
     public String id;

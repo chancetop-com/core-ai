@@ -87,7 +87,6 @@ public class SessionRebuildManager {
     private final TurnStateRegistry turnStateRegistry;
     private final SessionCompletionNotifier sessionCompletionNotifier;
     private SessionDatasetHelper datasetHelper;
-
     public SessionRebuildManager(Deps deps) {
         this.chatMessageService = deps.chatMessageService;
         this.agentDefinitionStore = deps.agentDefinitionStore;
@@ -114,6 +113,7 @@ public class SessionRebuildManager {
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withDecisionProvider(deps.decisionProvider)
+                .withMediaStore(deps.mediaStore)
                 .withAsyncTaskManager(deps.asyncTaskManager);
         this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
                 subAgentManager, agentDefinitionStore);
@@ -444,6 +444,7 @@ public class SessionRebuildManager {
                         ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
                         SessionCompletionNotifier sessionCompletionNotifier,
                                   SessionReadService sessionReadService,
-                        ai.core.server.comparison.AgentComparisonStore comparisonStore) {
+                        ai.core.server.comparison.AgentComparisonStore comparisonStore,
+                        ai.core.media.SessionMediaStore mediaStore) {
     }
 }
