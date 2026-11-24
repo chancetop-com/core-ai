@@ -958,3 +958,7 @@ A1 的退出条件（硬）：
 | A-DEV-8 | trace 通过 media 端点显示原图 | A 提供 `GET /api/sessions/:sessionId/media/:mediaId`；B1 负责 span→session 的关联 | 端点鉴权依赖 session ownership，放 A 更自然 |
 | A-DEV-9 | `pruneForRetention` 的硬上限 | 不改 B0 的 retention 实现（另一会话已合入 24 MB 硬上限）；A 的 ref 不参与 retention | 避免重复实现/回退 B0 |
 
+- Dev E2E（2026-11-24，2.0.369）：1.44 MB PNG → 321,591-byte JPEG ref；media endpoint 200；
+  会话 `inline_image_bytes` 增量 0，`media_ref_bytes` 增量 79；trace input 92,945 B 无 base64。
+  记录：`docs/validation/2026-11-24-dev-session-media-trace-runtime.md`。
+

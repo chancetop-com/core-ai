@@ -651,3 +651,8 @@ C1 的退出条件：误拒率可接受；Young GC 不再触发拒绝；路由�
 | C-DEV-6 | `expected_pods`（D-C10） | 未实现，仅返回 `pods_reporting` | 属于 C0/后续项，本次不扩展到部署配置 |
 | C-DEV-7 | 路由注册表自动枚举 work controller | `WORK_ROUTES` 手工注册 + `AdmissionInterceptorTest` 覆盖已知 chat 入口 | core-ng 没有可枚举的 WebService 路由元数据；测试保证新增入口至少被显式分类 |
 | C-DEV-8 | GC 事件过滤 `reclaimedBytes` 阈值 | 报告 `gcKind` 与 `reclaimedBytes`；准入用 `oldGenPercent` 为主，after-GC 仅在 `reclaimed>0 && kind!=concurrent` 时启用 | 阈值可按实际 GC 数据再校准，避免写死 1%/1MB |
+
+- Dev E2E（2026-11-24，2.0.369）：`old_gen_percent=3.67`、`gc_kind=young`；series 13 个有序桶均含
+  `old_gen_peak_percent` / `sessions_sum_peak` / `in_flight_turns_sum_peak`；pod 视图
+  `sessions_estimated_bytes_peak_max=19,256`、`sessions_media_ref_bytes_total=79`。
+  记录：`docs/validation/2026-11-24-dev-session-media-trace-runtime.md`。

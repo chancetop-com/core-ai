@@ -409,6 +409,10 @@ Span 自身增加 `coreai.trace.payload_mode`（`ref` / `inline` / `truncated` /
 | B-DEV-2 | `Compactor` 超 12 MB 跳过 | 超限或超出 8 MB/trace 预算时替换为 `[image omitted from trace: N bytes]`；store 失败同样降级 | 旧行为会把超限图片原样内联落库，违背“span 不持有大 base64” |
 | B-DEV-3 | 单 trace 8 MB 上限 | 在 `Compactor` 内按 trace 累计（一个 ingest 批次内）；跨批次不累计 | Compactor 的生命周期是一次 ingest；跨批次精确累计需要额外计数表，收益低，先按批次约束 |
 | B-DEV-4 | 详情 hydrate 上限 2 MB | `TracePayloadStore.hydrate(..., false)` 按替换后字符预算截断，超过的部分保留 `coreai-image://` | 不需要额外查询 blob 大小即可限制响应体 |
-| B-DEV-5 | media endpoint `GET /api/traces/{traceId}/payloads/{sha256}` | 已实现，`TRACE_VIEW` + `TraceAccessControl`；返回原始 bytes + content-type | 与现有 trace 权限模型一致 |
+| B-DEV-5 | media endpoint `GET /api/traces/{traceId}/payloads/{sha256}` | 已实现，`TRACE_VIEW` + `TraceAccessControl`；返回原始 bytes + content-type。路由变量因 core-ng 只允许字母而实际为 `:hash` | 与现有 trace 权限模型一致 |
 | B-DEV-6 | CLI U1 上传 payloads | `HttpTraceUploader` 扫描 span input 中 `kind=file/sandbox` 的 ref，只读取 session media root 下的文件，总量 8 MB；随请求 `payloads` 上传 | 安全边界：伪造快照不能借 trace 上传读任意文件；blob/url ref 由服务端自行解析 |
 | B-DEV-7 | 前端按需加载图片 | 本阶段只提供端点与结构化 ref；前端仍显示 ref 元数据，图片渲染在 B2 接 | 用户要求前端只做必要展示，避免顺手改无关页面 |
+
+- Dev E2E（2026-11-24，2.0.369）：上传 1.44 MB PNG → trace input 92,945 B、无 base64、detail 1,335 B；
+  `POST /api/traces/ingest` + `GET /api/traces/{traceId}/payloads/{hash}` 返回 200 image/png。
+  记录：`docs/validation/2026-11-24-dev-session-media-trace-runtime.md`。
