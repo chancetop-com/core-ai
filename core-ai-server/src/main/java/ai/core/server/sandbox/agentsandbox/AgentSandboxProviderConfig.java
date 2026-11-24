@@ -16,4 +16,6 @@ public class AgentSandboxProviderConfig {
     public String warmPoolName;
     /** Placement of directly created sandbox pods; claims inherit the pool template's. */
     public SandboxPodPlacement podPlacement = SandboxPodPlacement.NONE;
+    /** Must match the version the client talks to; one switch upgrades every writer. */
+    public AgentSandboxApiVersion apiVersion = AgentSandboxApiVersion.V1_ALPHA1;
 }

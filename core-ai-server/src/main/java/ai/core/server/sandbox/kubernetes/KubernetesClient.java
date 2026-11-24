@@ -191,6 +191,40 @@ public class KubernetesClient {
         return serviceList.items != null ? serviceList.items : List.of();
     }
 
+    public PvcInfo createPvc(String pvcName, String pvcJson) {
+        var url = apiServer + "/api/v1/namespaces/" + namespace + "/persistentvolumeclaims";
+        var response = post(url, pvcJson);
+        if (response.statusCode == 409) {
+            // idempotent create: another replica won the race, adopt the existing claim
+            return getPvc(pvcName).orElseThrow(() ->
+                    new RuntimeException("PVC reported conflict but cannot be read: " + pvcName));
+        }
+        if (response.statusCode != 201) {
+            throw new RuntimeException("Failed to create pvc: " + response.statusCode + " " + response.text());
+        }
+        return JSON.fromJSON(PvcInfo.class, response.text());
+    }
+
+    public Optional<PvcInfo> getPvc(String pvcName) {
+        var url = apiServer + "/api/v1/namespaces/" + namespace + "/persistentvolumeclaims/" + pvcName;
+        var response = get(url);
+        if (response.statusCode == 404) {
+            return Optional.empty();
+        }
+        if (response.statusCode != 200) {
+            throw new RuntimeException("Failed to get pvc: " + response.statusCode + " " + response.text());
+        }
+        return Optional.of(JSON.fromJSON(PvcInfo.class, response.text()));
+    }
+
+    public void deletePvc(String pvcName) {
+        var url = apiServer + "/api/v1/namespaces/" + namespace + "/persistentvolumeclaims/" + pvcName;
+        var response = delete(url);
+        if (response.statusCode != 200 && response.statusCode != 202 && response.statusCode != 404) {
+            throw new RuntimeException("Failed to delete pvc: " + response.statusCode + " " + response.text());
+        }
+    }
+
     public String getPodLogs(String podName, int tailLines) {
         var url = apiServer + "/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log?tailLines=" + tailLines;
         var response = get(url);
@@ -356,5 +390,74 @@ public class KubernetesClient {
     public static class ServiceList {
         @Property(name = "items")
         public List<ServiceInfo> items;
+    }
+
+    public static class PvcInfo {
+        @Property(name = "metadata")
+        public PvcMetadata metadata;
+        @Property(name = "spec")
+        public PvcSpec spec;
+        @Property(name = "status")
+        public PvcStatus status;
+
+        public String getPhase() {
+            return status != null ? status.phase : null;
+        }
+
+        public String getStorageClass() {
+            return spec != null ? spec.storageClassName : null;
+        }
+
+        public String getRequestedStorage() {
+            if (spec == null || spec.resources == null || spec.resources.requests == null) return null;
+            return spec.resources.requests.get("storage");
+        }
+
+        public static class PvcMetadata {
+            @Property(name = "name")
+            public String name;
+            @Property(name = "namespace")
+            public String namespace;
+            @Property(name = "uid")
+            public String uid;
+            @Property(name = "labels")
+            public Map<String, String> labels;
+            @Property(name = "creationTimestamp")
+            public String creationTimestamp;
+        }
+
+        public static class PvcSpec {
+            @Property(name = "accessModes")
+            public List<String> accessModes;
+            @Property(name = "storageClassName")
+            public String storageClassName;
+            @Property(name = "resources")
+            public Resources resources;
+
+            public static class Resources {
+                @Property(name = "requests")
+                public Map<String, String> requests;
+            }
+        }
+
+        public static class PvcStatus {
+            @Property(name = "phase")
+            public String phase;
+            @Property(name = "capacity")
+            public Map<String, String> capacity;
+            @Property(name = "conditions")
+            public PvcCondition[] conditions;
+        }
+
+        public static class PvcCondition {
+            @Property(name = "type")
+            public String type;
+            @Property(name = "status")
+            public String status;
+            @Property(name = "reason")
+            public String reason;
+            @Property(name = "message")
+            public String message;
+        }
     }
 }

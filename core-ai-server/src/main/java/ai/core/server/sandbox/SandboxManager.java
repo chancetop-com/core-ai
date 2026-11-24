@@ -50,6 +50,11 @@ public class SandboxManager {
         this.provider = provider;
     }
 
+    /** Exposed so feature modules (persistent workspace) can reuse the provider's clients. */
+    public SandboxProvider provider() {
+        return provider;
+    }
+
     /** Sandboxes this pod is holding plus the cluster-wide counts the provider can report. */
     public SandboxFleet fleet() {
         var fleet = provider instanceof SandboxFleetAware aware ? aware.providerFleet() : new SandboxFleet();

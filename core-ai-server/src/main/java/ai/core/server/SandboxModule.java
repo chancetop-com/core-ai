@@ -11,6 +11,7 @@ import ai.core.server.sandbox.SandboxManager;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.SandboxServiceDependencies;
 import ai.core.server.sandbox.TokenResolver;
+import ai.core.server.sandbox.agentsandbox.AgentSandboxApiVersion;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxExtensionsClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
@@ -191,7 +192,8 @@ class SandboxModule extends Module {
         TokenResolver tokenResolver = (token != null && !token.isBlank())
                 ? TokenResolver.fixed(token)
                 : TokenResolver.inCluster();
-        var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120);
+        var apiVersion = AgentSandboxApiVersion.of(property("sys.sandbox.agentSandbox.apiVersion").orElse("v1alpha1"));
+        var client = new AgentSandboxClient(apiServer, namespace, tokenResolver, 120, apiVersion);
         var useHostPort = "true".equalsIgnoreCase(property("sys.sandbox.kubernetes.hostPort").orElse("false"));
         KubernetesClient kubernetesClient = null;
         try {
@@ -212,6 +214,7 @@ class SandboxModule extends Module {
         }
         var config = new AgentSandboxProviderConfig();
         config.client = client;
+        config.apiVersion = apiVersion;
         config.extensionsClient = extensionsClient;
         config.kubernetesClient = kubernetesClient;
         config.useHostPort = useHostPort;

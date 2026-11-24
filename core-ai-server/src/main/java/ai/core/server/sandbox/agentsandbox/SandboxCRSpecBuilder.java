@@ -17,7 +17,6 @@ import java.util.UUID;
  */
 public class SandboxCRSpecBuilder {
     private static final String API_GROUP = "agents.x-k8s.io";
-    private static final String API_VERSION = "v1alpha1";
     private static final int RUNTIME_PORT = 8080;
 
     private final SandboxConfig config;
@@ -26,14 +25,22 @@ public class SandboxCRSpecBuilder {
     private final int lifetimeSeconds;
     private final String sandboxName;
     private final SandboxPodPlacement placement;
+    private final AgentSandboxApiVersion apiVersion;
 
     @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
     public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId, int lifetimeSeconds, SandboxPodPlacement placement) {
+        this(config, sessionId, userId, lifetimeSeconds, placement, AgentSandboxApiVersion.V1_ALPHA1);
+    }
+
+    @SuppressFBWarnings("ITU_INAPPROPRIATE_TOSTRING_USE")
+    public SandboxCRSpecBuilder(SandboxConfig config, String sessionId, String userId, int lifetimeSeconds,
+                                SandboxPodPlacement placement, AgentSandboxApiVersion apiVersion) {
         this.config = config;
         this.sessionId = sessionId;
         this.userId = userId;
         this.lifetimeSeconds = lifetimeSeconds;
         this.placement = placement == null ? SandboxPodPlacement.NONE : placement;
+        this.apiVersion = apiVersion == null ? AgentSandboxApiVersion.V1_ALPHA1 : apiVersion;
         var suffix = UUID.randomUUID().toString().substring(0, 8);
         this.sandboxName = "core-ai-sandbox-" + suffix;
     }
@@ -44,7 +51,7 @@ public class SandboxCRSpecBuilder {
 
     public Map<String, Object> build() {
         var cr = new LinkedHashMap<String, Object>();
-        cr.put("apiVersion", API_GROUP + "/" + API_VERSION);
+        cr.put("apiVersion", API_GROUP + "/" + apiVersion.value);
         cr.put("kind", "Sandbox");
         cr.put("metadata", buildMetadata());
         cr.put("spec", buildSpec());
@@ -69,7 +76,11 @@ public class SandboxCRSpecBuilder {
 
     private Map<String, Object> buildSpec() {
         var spec = new LinkedHashMap<String, Object>();
-        spec.put("replicas", 1);
+        if (apiVersion.requiresReplicas) {
+            spec.put("replicas", 1);
+        } else {
+            spec.put("shutdownPolicy", "Delete");
+        }
 
         spec.put("shutdownTime", Instant.now().plus(lifetimeSeconds, ChronoUnit.SECONDS).toString());
 

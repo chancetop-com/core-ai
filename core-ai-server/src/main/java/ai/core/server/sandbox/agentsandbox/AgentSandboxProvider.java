@@ -48,6 +48,7 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
     private final String templateName;
     private final String warmPoolName;
     private final SandboxPodPlacement podPlacement;
+    private final AgentSandboxApiVersion apiVersion;
     private final AgentSandboxFleetReader fleetReader;
     private final AgentSandboxCleanupService cleanupService;
 
@@ -60,6 +61,7 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
         this.templateName = config.templateName;
         this.warmPoolName = config.warmPoolName != null ? config.warmPoolName : "default";
         this.podPlacement = config.podPlacement != null ? config.podPlacement : SandboxPodPlacement.NONE;
+        this.apiVersion = config.apiVersion != null ? config.apiVersion : AgentSandboxApiVersion.V1_ALPHA1;
         this.fleetReader = new AgentSandboxFleetReader(client, extensionsClient);
         this.cleanupService = new AgentSandboxCleanupService(client, extensionsClient, kubernetesClient);
     }
@@ -76,6 +78,24 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
     @Override
     public SandboxFleet providerFleet() {
         return fleetReader.read();
+    }
+
+    // workspace provisioning needs the same clients the chat provider was built with; duplicating
+    // them would duplicate namespace/token resolution and could point at a different API server
+    public AgentSandboxClient client() {
+        return client;
+    }
+
+    public KubernetesClient kubernetesClient() {
+        return kubernetesClient;
+    }
+
+    public SandboxPodPlacement podPlacement() {
+        return podPlacement;
+    }
+
+    public AgentSandboxApiVersion apiVersion() {
+        return apiVersion;
     }
 
     // A SandboxClaim only carries template + warm pool + lifecycle, so config that changes how the
@@ -176,7 +196,7 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
         effectiveConfig.validate();
         var lifetime = lifetimeSeconds(effectiveConfig);
 
-        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId, lifetime, podPlacement);
+        var specBuilder = new SandboxCRSpecBuilder(effectiveConfig, sessionId, userId, lifetime, podPlacement, apiVersion);
         var crName = specBuilder.sandboxName();
 
         LOGGER.info("creating agent sandbox CR: name={}, sessionId={}", crName, sessionId);

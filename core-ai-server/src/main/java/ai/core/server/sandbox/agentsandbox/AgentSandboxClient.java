@@ -19,22 +19,28 @@ import java.util.Optional;
  */
 public class AgentSandboxClient {
     private static final String API_GROUP = "agents.x-k8s.io";
-    private static final String API_VERSION = "v1alpha1";
     private static final ContentType MERGE_PATCH = ContentType.parse("application/merge-patch+json");
     private final String apiServer;
     private final String namespace;
     private final HTTPClient httpClient;
     private final TokenResolver tokenResolver;
+    private final AgentSandboxApiVersion apiVersion;
 
     public AgentSandboxClient(String apiServer, String namespace, TokenResolver tokenResolver, int timeoutSeconds) {
+        this(apiServer, namespace, tokenResolver, timeoutSeconds, AgentSandboxApiVersion.V1_ALPHA1);
+    }
+
+    public AgentSandboxClient(String apiServer, String namespace, TokenResolver tokenResolver, int timeoutSeconds,
+                              AgentSandboxApiVersion apiVersion) {
         this.apiServer = apiServer.trim().replaceAll("/+$", "");
         this.namespace = namespace;
         this.tokenResolver = tokenResolver;
+        this.apiVersion = apiVersion == null ? AgentSandboxApiVersion.V1_ALPHA1 : apiVersion;
         this.httpClient = HTTPClient.builder().trustAll().connectTimeout(Duration.ofSeconds(10)).timeout(Duration.ofSeconds(timeoutSeconds)).build();
     }
 
     private String baseUrl() {
-        return apiServer + "/apis/" + API_GROUP + "/" + API_VERSION + "/namespaces/" + namespace;
+        return apiServer + "/apis/" + API_GROUP + "/" + apiVersion.value + "/namespaces/" + namespace;
     }
 
     public SandboxCR createSandbox(String crJson) {

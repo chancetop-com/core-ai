@@ -223,6 +223,8 @@ public class ServerApp extends App {
         load(new MemoryModule());
         load(new MessagingInfrastructureModule());
         load(new SandboxModule());
+        // after SandboxModule: reuses the agent-sandbox provider's clients for PVC and runtime management
+        load(new WorkspaceModule());
         // after SandboxModule: SandboxFfmpegRunner injects SandboxService and bind() resolves eagerly
         load(new RenderModule());
         // after GatewayModule, ObjectStorageModule (FileService) and SettingsModule (SystemSettingsService)

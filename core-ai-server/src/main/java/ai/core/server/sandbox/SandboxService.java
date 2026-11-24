@@ -135,6 +135,10 @@ public class SandboxService {
         return attachmentRepository;
     }
 
+    public SandboxProvider provider() {
+        return sandboxManager.provider();
+    }
+
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
         return createSandbox(config, sessionId, userId, null);
     }
