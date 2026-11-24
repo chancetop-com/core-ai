@@ -62,6 +62,22 @@ public final class InlineImagePruner {
     }
 
     /**
+     * @param maxImages inline images to keep; 0 drops every inline image, which is how the 413
+     *                  retry rescues a request that is too large even after budget pruning,
+     *                  negative means no count limit
+     * @param maxBytes  byte budget for the kept inline images, decoded rather than base64 length,
+     *                  non-positive means no byte limit
+     */
+    public static PruneResult prune(List<Message> messages, int maxImages, long maxBytes) {
+        if (messages == null || messages.isEmpty()) return new PruneResult(messages, 0, 0);
+        var slots = collectInlineImages(messages);
+        if (slots.isEmpty()) return new PruneResult(messages, 0, 0);
+        var kept = selectKept(messages, slots, maxImages, maxBytes);
+        if (allKept(kept)) return new PruneResult(messages, 0, 0);
+        return rewrite(messages, slots, kept);
+    }
+
+    /**
      * Session retention pass: applies the request budget first, then enforces a hard ceiling on the
      * data-URI text that survives, newest images first. Unlike one request, a session must not keep an
      * unbounded newest attachment set, so the hard ceiling overrides every exemption.
@@ -76,22 +92,6 @@ public final class InlineImagePruner {
         var hard = keepNewestWithinChars(budget.messages(), maxInlineChars);
         return new PruneResult(hard.messages(), budget.prunedCount() + hard.prunedCount(),
                 budget.prunedBytes() + hard.prunedBytes());
-    }
-
-    /**
-     * @param maxImages inline images to keep; 0 drops every inline image, which is how the 413
-     *                  retry rescues a request that is too large even after budget pruning,
-     *                  negative means no count limit
-     * @param maxBytes  byte budget for the kept inline images, decoded rather than base64 length,
-     *                  non-positive means no byte limit
-     */
-    public static PruneResult prune(List<Message> messages, int maxImages, long maxBytes) {
-        if (messages == null || messages.isEmpty()) return new PruneResult(messages, 0, 0);
-        var slots = collectInlineImages(messages);
-        if (slots.isEmpty()) return new PruneResult(messages, 0, 0);
-        var kept = selectKept(messages, slots, maxImages, maxBytes);
-        if (allKept(kept)) return new PruneResult(messages, 0, 0);
-        return rewrite(messages, slots, kept);
     }
 
     private static List<ImageSlot> collectInlineImages(List<Message> messages) {
