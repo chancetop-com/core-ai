@@ -1,6 +1,7 @@
 package ai.core.context;
 
 import ai.core.llm.domain.Message;
+import ai.core.llm.domain.RoleType;
 import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,35 @@ final class CompressionSummaryInput {
         }
         LOGGER.warn("summary input truncated to the most recent {} messages (~{} tokens) to fit the context window", kept.size(), tokens);
         return kept;
+    }
+
+    static String format(List<Message> messages) {
+        StringBuilder sb = new StringBuilder(1024);
+        for (Message msg : messages) {
+            if (msg.role == RoleType.SYSTEM) {
+                continue;
+            }
+
+            if (msg.toolCalls != null && !msg.toolCalls.isEmpty()) {
+                String toolNames = msg.toolCalls.stream()
+                        .map(tc -> tc.function != null ? tc.function.name : "unknown")
+                        .collect(java.util.stream.Collectors.joining(", "));
+                sb.append("Assistant: [Called tools: ").append(toolNames).append("]\n");
+            }
+
+            String joined = msg.getJoinedTextContent();
+            String content = joined != null ? joined : "";
+            if (!content.isBlank()) {
+                String role = switch (msg.role) {
+                    case USER -> "User";
+                    case ASSISTANT -> "Assistant";
+                    case TOOL -> "Tool";
+                    default -> "Unknown";
+                };
+                sb.append(role).append(": ").append(content).append('\n');
+            }
+        }
+        return sb.toString();
     }
 
     private CompressionSummaryInput() {

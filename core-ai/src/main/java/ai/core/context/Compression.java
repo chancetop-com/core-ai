@@ -42,6 +42,7 @@ public class Compression {
     private final int keepRecentTurns;
     private final int keepTokens;
     private int maxContextTokens;
+    private int summaryMaxContextTokens;
     private final double toolResultRatio;
     private int maxToolResultTokens;
     private LLMProvider llmProvider;
@@ -67,6 +68,7 @@ public class Compression {
         this.summaryModel = summaryModel;
         this.contextModel = agentModel;
         this.maxContextTokens = resolveContextWindow();
+        this.summaryMaxContextTokens = resolveSummaryWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
     public Compression(CompressionConfig config, LLMProvider llmProvider, String agentModel) {
@@ -77,6 +79,7 @@ public class Compression {
         this.contextWindowOverride = config != null ? config.contextWindowTokens() : null;
         if (contextWindowOverride != null) {
             this.maxContextTokens = contextWindowOverride;
+            this.summaryMaxContextTokens = resolveSummaryWindow();
             this.maxToolResultTokens = calculateMaxToolResultTokens();
         }
     }
@@ -118,7 +121,20 @@ public class Compression {
         this.contextModel = agentModel;
         this.contextWindowOverride = null;
         this.maxContextTokens = resolveContextWindow();
+        this.summaryMaxContextTokens = resolveSummaryWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
+    }
+
+    private int resolveSummaryWindow() {
+        int resolved = summaryModel != null ? LLMModelContextRegistry.getInstance().contextWindow(summaryModel) : 0;
+        if (resolved <= 0) {
+            resolved = FALLBACK_MAX_CONTEXT_TOKENS;
+        }
+        return maxContextTokens > 0 ? Math.min(resolved, maxContextTokens) : resolved;
+    }
+
+    int getSummaryMaxContextTokens() {
+        return summaryMaxContextTokens;
     }
 
     /**
@@ -351,7 +367,8 @@ public class Compression {
         return Math.max(indexByTurns, indexByTokens);
     }
     private String summarize(List<Message> messagesToSummarize) {
-        String content = formatMessages(CompressionSummaryInput.fit(messagesToSummarize, maxContextTokens, MAX_SUMMARY_TOKENS));
+        String content = CompressionSummaryInput.format(
+                CompressionSummaryInput.fit(messagesToSummarize, summaryMaxContextTokens, MAX_SUMMARY_TOKENS));
         if (content.isBlank()) {
             lastFailure = "the summarized segment contained no text";
             return "";
@@ -393,34 +410,6 @@ public class Compression {
         } catch (Exception e) {
             LOGGER.warn("Failed to report compression usage", e);
         }
-    }
-    private String formatMessages(List<Message> messages) {
-        StringBuilder sb = new StringBuilder(1024);
-        for (Message msg : messages) {
-            if (msg.role == RoleType.SYSTEM) {
-                continue;
-            }
-
-            if (msg.toolCalls != null && !msg.toolCalls.isEmpty()) {
-                String toolNames = msg.toolCalls.stream()
-                    .map(tc -> tc.function != null ? tc.function.name : "unknown")
-                    .collect(java.util.stream.Collectors.joining(", "));
-                sb.append("Assistant: [Called tools: ").append(toolNames).append("]\n");
-            }
-
-            String joined = msg.getJoinedTextContent();
-            String content = joined != null ? joined : "";
-            if (!content.isBlank()) {
-                String role = switch (msg.role) {
-                    case USER -> "User";
-                    case ASSISTANT -> "Assistant";
-                    case TOOL -> "Tool";
-                    default -> "Unknown";
-                };
-                sb.append(role).append(": ").append(content).append('\n');
-            }
-        }
-        return sb.toString();
     }
     public String compressToolResult(String toolName, String result, String sessionId) {
         return compressToolResult(toolName, result, sessionId, null);

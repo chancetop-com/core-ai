@@ -63,6 +63,24 @@ class CompressionThrashGuardTest {
     }
 
     @Test
+    void progressBetweenRepeatsBreaksTheEvidence() {
+        var guard = new CompressionThrashGuard(3);
+        guard.beginRun();
+        guard.onToolCall(read("a.md"));
+        guard.onCompression();
+
+        guard.onProgress();
+        guard.onToolCall(read("a.md"));
+        assertEquals(0, guard.redundantCalls(), "the first read after progress is legitimate");
+
+        guard.onToolCall(read("a.md"));
+        guard.onToolCall(read("a.md"));
+        guard.onToolCall(read("a.md"));
+        assertEquals(3, guard.redundantCalls());
+        assertThrows(CompressionThrashException.class, () -> guard.check(1_000_000));
+    }
+
+    @Test
     void beginRunResetsEvidence() {
         var guard = new CompressionThrashGuard(2);
         guard.beginRun();

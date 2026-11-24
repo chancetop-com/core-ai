@@ -70,6 +70,26 @@ class CompressionLifecycleTest {
     }
 
     @Test
+    void aSuccessfulWriteBreaksTheReplayEvidence() {
+        var provider = new CompressionTest.MockLLMProvider("summary of the previous work");
+        var compression = new Compression(
+                new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1000, null), provider, "test-model");
+        var lifecycle = new CompressionLifecycle(compression);
+        lifecycle.beforeAgentRun(new AtomicReference<>("implement"), null);
+        var read = FunctionCall.of("call-read", "function", "read_file", "{\"file_path\":\"doc.md\"}");
+        var write = FunctionCall.of("call-write", "function", "write_file", "{\"file_path\":\"doc.md\"}");
+
+        lifecycle.afterTool(read, null, ToolCallResult.completed("content"));
+        lifecycle.beforeModel(request(oversizedMessages()), null);
+        lifecycle.afterTool(write, null, ToolCallResult.completed("ok"));
+        for (int i = 0; i < CompressionThrashGuard.DEFAULT_REDUNDANT_CALL_THRESHOLD; i++) {
+            lifecycle.afterTool(read, null, ToolCallResult.completed("content"));
+        }
+
+        assertDoesNotThrow(() -> lifecycle.beforeModel(request(oversizedMessages()), null));
+    }
+
+    @Test
     void compressesAndLearnsWhenTheProviderRejectsTheContextWindow() {
         var provider = new CompressionTest.MockLLMProvider("summary of the previous work");
         var compression = new Compression(

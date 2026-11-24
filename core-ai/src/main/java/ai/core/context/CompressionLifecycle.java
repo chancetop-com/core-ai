@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -19,6 +20,7 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class CompressionLifecycle extends AbstractLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger(CompressionLifecycle.class);
+    private static final Set<String> PROGRESS_TOOLS = Set.of("write_file", "edit_file", "hash_edit_file");
 
     private final Compression compression;
     private final CompressionThrashGuard thrashGuard;
@@ -92,6 +94,10 @@ public class CompressionLifecycle extends AbstractLifecycle {
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
         thrashGuard.onToolCall(functionCall);
+        if (toolResult != null && toolResult.isCompleted() && functionCall.function != null
+                && PROGRESS_TOOLS.contains(functionCall.function.name)) {
+            thrashGuard.onProgress();
+        }
 
         if (toolResult == null || !toolResult.isCompleted()) {
             return;

@@ -437,6 +437,15 @@ class CompressionTest {
     }
 
     @Test
+    void summaryBudgetUsesTheSummaryModelsOwnWindow() {
+        var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
+        var config = new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1_000_000, "gpt-3.5-turbo");
+        Compression target = new Compression(config, provider, "unknown-model-xyz");
+
+        assertEquals(16385, target.getSummaryMaxContextTokens());
+    }
+
+    @Test
     void learnedContextWindowOverridesTheFallbackAndOnlyMovesDown() {
         try {
             LearnedContextWindows.record("learned-model-xyz", 200_000);

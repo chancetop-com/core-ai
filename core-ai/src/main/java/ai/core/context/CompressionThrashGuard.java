@@ -3,8 +3,8 @@ package ai.core.context;
 import ai.core.agent.internal.ToolCallFingerprint;
 import ai.core.llm.domain.FunctionCall;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Detects the loop a small context window creates: the agent reads a large input, compression summarizes the
@@ -20,7 +20,8 @@ class CompressionThrashGuard {
     static final int DEFAULT_REDUNDANT_CALL_THRESHOLD = 12;
 
     private final int threshold;
-    private final Set<ToolCallFingerprint> seen = new HashSet<>();
+    /** Fingerprint -> whether the agent changed state after its last occurrence. */
+    private final Map<ToolCallFingerprint, Boolean> seen = new HashMap<>();
     private int compressions;
     private int redundantCalls;
     private FunctionCall lastRedundantCall;
@@ -44,16 +45,26 @@ class CompressionThrashGuard {
         compressions++;
     }
 
-    /** Records every executed call; the first repeat after a compression is the signal that the context was wiped. */
+    /**
+     * Records every executed call; a repeat after a compression is evidence of a wiped context only
+     * when the agent made no progress since the previous identical call. A read that follows an edit,
+     * or a rebuild that follows a fix, is a normal workflow, not a loop.
+     */
     void onToolCall(FunctionCall functionCall) {
         if (functionCall == null || functionCall.function == null) {
             return;
         }
-        if (seen.add(ToolCallFingerprint.of(functionCall)) || compressions == 0) {
+        var progressed = seen.put(ToolCallFingerprint.of(functionCall), Boolean.FALSE);
+        if (progressed == null || compressions == 0 || progressed) {
             return;
         }
         redundantCalls++;
         lastRedundantCall = functionCall;
+    }
+
+    /** A successful state-changing tool call invalidates all earlier replay evidence. */
+    void onProgress() {
+        seen.replaceAll((fingerprint, progressed) -> Boolean.TRUE);
     }
 
     /** Called before the next model call so a tripped guard aborts the run instead of being swallowed as a tool error. */
