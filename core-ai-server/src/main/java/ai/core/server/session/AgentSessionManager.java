@@ -20,6 +20,7 @@ import ai.core.server.user.UserStore;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -173,10 +174,19 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
-        var sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
+        // the sandbox factory reads the session row to resolve its workspace, so register before acquiring
+        var registration = new SessionRegistry.SessionRegistration(
+                sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig);
+        sessionRegistry.create(registration);
+        Sandbox sandbox;
+        try {
+            sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
+        } catch (RuntimeException | Error e) {
+            abortSessionCreation(sessionId);
+            throw e;
+        }
         if (sandbox != null) context.sandbox(sandbox);
-        initializeSession(session, new SessionRegistry.SessionRegistration(
-                sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig));
+        initializeSession(session, registration);
         return sessionId;
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
@@ -202,14 +212,23 @@ public class AgentSessionManager {
         }
         var sessionId = UUID.randomUUID().toString();
         var datasetConfig = sessionAgentHelper.resolveDatasetConfig(executableDefinition, config, overrides);
-        var buildResult = buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig);
+        // the sandbox factory reads the session row to resolve its workspace, so register before building
+        var registration = new SessionRegistry.SessionRegistration(
+                sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig);
+        sessionRegistry.create(registration);
+        AgentBuildResult buildResult;
+        try {
+            buildResult = buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig);
+        } catch (RuntimeException | Error e) {
+            abortSessionCreation(sessionId);
+            throw e;
+        }
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
-        initializeSession(session, new SessionRegistry.SessionRegistration(
-                sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig));
+        initializeSession(session, registration);
         var executableConfig = executableDefinition.publishedConfig;
         var loadedSkillIds = executableConfig != null ? executableConfig.skillIds : executableDefinition.skillIds;
         var loadedSubAgentIds = executableConfig != null ? executableConfig.subAgentIds : executableDefinition.subAgentIds;
