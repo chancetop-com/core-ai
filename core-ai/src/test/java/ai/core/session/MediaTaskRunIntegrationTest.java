@@ -60,6 +60,9 @@ class MediaTaskRunIntegrationTest {
             session.dispatchEvent(event);
             session.taskRuns().executionEnded("turn-1", ai.core.session.lifecycle.TaskRunCoordinator.ExecutionKind.ROOT,
                     ai.core.session.lifecycle.TaskRunOutcome.RETURNED, null);
+            // the watcher must not deliver its notification turn before the root execution ended, or the
+            // root end is rejected as a stale execution and the run can never leave the pending state
+            provider.release();
 
             assertTrue(recorder.done.await(15, TimeUnit.SECONDS), "the video watcher must finish the run");
             assertNotNull(recorder.ended);
@@ -83,6 +86,12 @@ class MediaTaskRunIntegrationTest {
     }
 
     private static final class FakeVideoProvider implements MediaProvider {
+        private final CountDownLatch released = new CountDownLatch(1);
+
+        void release() {
+            released.countDown();
+        }
+
         @Override
         public ImageGenerationResponse generateImage(ImageGenerationRequest request) {
             throw new UnsupportedOperationException();
@@ -95,6 +104,11 @@ class MediaTaskRunIntegrationTest {
 
         @Override
         public VideoStatusResponse getVideoStatus(String videoId) {
+            try {
+                released.await(10, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
             return new VideoStatusResponse(videoId, "completed", 100, null, System.currentTimeMillis());
         }
 
