@@ -162,11 +162,9 @@ public class ServerApp extends App {
         load(new ServiceApiModule());
         load(new McpServerModule());
         load(new McpModule());
-
         loadPlatformInfrastructure();
         loadDomainModules();
         loadTransportModules();
-
         // registered after all modules, so it runs as the last startup hook
         onStartup(this::markStartupCompleted);
     }
@@ -276,7 +274,7 @@ public class ServerApp extends App {
         load(new PlatformApiModule());
         load(new SelfHarnessModule());
         load(new A2AModule());
-        load(new NotificationModule());
+        loadNotificationModules();
         load(new CostAlertModule());
         load(new ForYouModule());
         load(new AgentRunnerModule());
@@ -295,6 +293,11 @@ public class ServerApp extends App {
         load(new WorkflowModule());
         // ProjectModule loads last: it injects AgentRunner and ToolRegistryService; bind() resolves eagerly.
         load(new ProjectModule());
+    }
+
+    private void loadNotificationModules() {
+        load(new NotificationModule());
+        load(new ai.core.server.agenthealth.AgentHealthModule());
     }
 
     private void loadEvaluationAndGovernance() {
@@ -328,7 +331,6 @@ public class ServerApp extends App {
             LOGGER.debug("quality gate wiring skipped, module not loaded: {}", e.getMessage());
         }
     }
-
     private void registerProjectCollections(MongoConfig mongo) {
         mongo.collection(Project.class);
         mongo.collection(ProjectSubject.class);
@@ -344,17 +346,13 @@ public class ServerApp extends App {
         if (!mongoRequired) return;
         var mongo = config(MongoConfig.class);
         mongo.uri(requiredProperty("sys.mongo.uri"));
-
         registerCoreCollections(mongo);
         mongo.collection(SystemPrompt.class);
         mongo.collection(SystemSettings.class);
         mongo.collection(ChatMessage.class);
-
         registerTraceCollections(mongo);
-
         mongo.collection(ServiceApi.class);
         mongo.collection(Trigger.class);
-
         mongo.collection(Dataset.class);
         mongo.collection(DatasetRecord.class);
 

@@ -32,6 +32,21 @@ public class MongoNotificationStore implements NotificationStore {
     }
 
     @Override
+    public boolean insertIfAbsent(Notification notification) {
+        if (notification.dedupeKey != null
+            && notificationCollection.findOne(Filters.eq("dedupe_key", notification.dedupeKey)).isPresent()) {
+            return false;
+        }
+        try {
+            notificationCollection.insert(notification);
+            return true;
+        } catch (com.mongodb.MongoWriteException e) {
+            if (e.getCode() == 11000) return false;
+            throw e;
+        }
+    }
+
+    @Override
     public List<Notification> list(String userId, NotificationCategory category, NotificationStatus status, int offset, int limit) {
         var query = new Query();
         query.filter = filter(userId, category, status);

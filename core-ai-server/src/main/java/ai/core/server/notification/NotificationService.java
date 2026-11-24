@@ -25,6 +25,34 @@ public class NotificationService {
 
     public Notification create(String userId, NotificationCategory category, NotificationType type,
                                 String title, String message, CreateContext ctx) {
+        var notification = build(userId, category, type, title, message, ctx);
+        notificationStore.insert(notification);
+        LOGGER.info("notification created, id={}, userId={}, type={}, title={}", notification.id, userId, type, title);
+        eventPublisher.push(userId, notification);
+        return notification;
+    }
+
+    /**
+     * Idempotent variant for system notifications. The store's unique dedupe key decides whether
+     * this pod created the notification; a duplicate is not pushed again.
+     */
+    public boolean createIfAbsent(String userId, NotificationCategory category, NotificationType type,
+                                  String title, String message, CreateContext ctx) {
+        var notification = build(userId, category, type, title, message, ctx);
+        String dedupeKey = ctx == null ? null : ctx.dedupeKey;
+        boolean inserted = notificationStore.insertIfAbsent(notification);
+        if (!inserted) {
+            LOGGER.debug("notification already exists, userId={}, dedupeKey={}", userId, dedupeKey);
+            return false;
+        }
+        LOGGER.info("notification created, id={}, userId={}, type={}, dedupeKey={}",
+            notification.id, userId, type, dedupeKey);
+        eventPublisher.push(userId, notification);
+        return true;
+    }
+
+    private Notification build(String userId, NotificationCategory category, NotificationType type,
+                               String title, String message, CreateContext ctx) {
         var notification = new Notification();
         notification.id = new ObjectId().toHexString();
         notification.userId = userId;
@@ -32,14 +60,11 @@ public class NotificationService {
         notification.type = type;
         notification.title = title;
         notification.message = message;
-        notification.agentId = ctx.agentId;
-        notification.sessionId = ctx.sessionId;
+        notification.agentId = ctx == null ? null : ctx.agentId;
+        notification.sessionId = ctx == null ? null : ctx.sessionId;
+        notification.dedupeKey = ctx == null ? null : ctx.dedupeKey;
         notification.status = NotificationStatus.UNREAD;
         notification.createdAt = ZonedDateTime.now();
-        notificationStore.insert(notification);
-        LOGGER.info("notification created, id={}, userId={}, type={}, title={}", notification.id, userId, type, title);
-
-        eventPublisher.push(userId, notification);
         return notification;
     }
 
@@ -66,7 +91,10 @@ public class NotificationService {
         LOGGER.info("notifications marked all read, userId={}, count={}", userId, updated);
     }
 
-    public record CreateContext(String agentId, String sessionId) {
+    public record CreateContext(String agentId, String sessionId, String dedupeKey) {
+        public CreateContext(String agentId, String sessionId) {
+            this(agentId, sessionId, null);
+        }
     }
 }
 

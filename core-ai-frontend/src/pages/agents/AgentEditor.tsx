@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain, HelpCircle, History } from 'lucide-react';
+import { ArrowLeft, Save, Trash2, Upload, Play, Copy, Check, Code, Download, FileUp, Maximize2, Minimize2, Square, Loader2, ChevronDown, ChevronRight, X, Wrench, Search, Link, Trash, Users, Sparkles, Plus, Database, Braces, SlidersHorizontal, Brain, HelpCircle, History, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition, SandboxConfig, SystemPrompt, AgentRun, AgentRunDetail, ToolRegistryView, ToolRef, SkillDefinition, ApiAppView, ApiServiceView, McpToolInfo, AgentDatasetConfig, GatewayAvailableModel } from '../../api/client';
 import { sessionApi } from '../../api/session';
@@ -13,6 +13,7 @@ import { agentVersionApi } from '../../api/comparison';
 import type { AgentVersion, ComparisonVariantConfig } from '../../api/comparison';
 import QualityReportPanel from './QualityReportPanel';
 import { ApiError, publishAgent, qualityApi, type QualityReport } from '../../api/quality';
+import { findReferenceIssue, qualityMessage, referenceLabel, referenceReason } from './agentHealth';
 
 const NEW_AGENT_SKELETON: AgentDefinition = {
   id: '', name: '', description: '', system_prompt: '', system_prompt_id: '',
@@ -683,6 +684,8 @@ The system prompt should define how this agent behaves, its capabilities, and it
       setAgent(saved);
       const report = await qualityApi.check(id);
       setQualityReport(report);
+      const refreshed = await api.agents.get(id).catch(() => null);
+      if (refreshed) setAgent(refreshed);
       if (report.gate_result === 'PASSED') setSaveSuccess(false);
     } catch (e) {
       if (e instanceof ApiError && e.qualityReport) setQualityReport(e.qualityReport);
@@ -1074,6 +1077,53 @@ The system prompt should define how this agent behaves, its capabilities, and it
           </button>
         </div>
       </div>
+
+      {agent.health && agent.health.status !== 'OK' && (
+        <div className="mb-4 rounded-xl border p-3"
+          style={{
+            borderColor: agent.health.status === 'ATTENTION' ? 'rgba(217,119,6,0.35)' : 'var(--color-border)',
+            background: agent.health.status === 'ATTENTION' ? 'rgba(217,119,6,0.08)' : 'var(--color-bg-secondary)',
+          }}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-2 min-w-0">
+              <AlertTriangle size={17} className="flex-shrink-0 mt-0.5"
+                style={{ color: agent.health.status === 'ATTENTION' ? '#d97706' : 'var(--color-text-secondary)' }} />
+              <div className="text-sm min-w-0">
+                <div className="font-medium"
+                  style={{ color: agent.health.status === 'ATTENTION' ? '#b45309' : 'var(--color-text)' }}>
+                  {agent.health.status === 'ATTENTION' ? 'Agent needs attention' : 'Some references could not be verified'}
+                </div>
+                {(agent.health.reference_issues ?? []).length > 0 && (
+                  <ul className="mt-1 space-y-1" style={{ color: 'var(--color-text-secondary)' }}>
+                    {(agent.health.reference_issues ?? []).slice(0, 5).map(issue => (
+                      <li key={`${issue.ref_type}:${issue.ref_id}`}>
+                        <span className="font-medium" style={{ color: 'var(--color-text)' }}>{referenceLabel(issue)}</span>{' '}
+                        {referenceReason(issue)}.{' '}
+                        {issue.state === 'UNVERIFIED'
+                          ? 'Retry later; the check could not verify this reference.'
+                          : issue.in_published && !issue.in_draft
+                            ? 'Publish the current draft to fix the published version.'
+                            : issue.in_draft && issue.in_published
+                              ? 'Remove it from the draft, then republish.'
+                              : 'Remove it from the draft.'}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {qualityMessage(agent.health) && (
+                  <div className="mt-1" style={{ color: 'var(--color-text-secondary)' }}>{qualityMessage(agent.health)}</div>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => document.getElementById('agent-section-tools')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="flex-shrink-0 px-3 py-1.5 rounded-lg text-xs border cursor-pointer"
+              style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              Review references
+            </button>
+          </div>
+        </div>
+      )}
 
       {qualityReport && (
         <QualityReportPanel report={qualityReport}
@@ -1622,14 +1672,18 @@ The system prompt should define how this agent behaves, its capabilities, and it
                   const isLlmCall = toolRef.id.startsWith('llm-call:');
                   const isSelfHarness = isSelfHarnessToolId(toolRef.id);
                   const tool = (isApiTool || isMcpTool || isLlmCall || isSelfHarness) ? null : allTools.find(t => t.id === toolRef.id);
+                  const referenceIssue = isApiTool ? findReferenceIssue(agent.health, 'API', toolRef.id) : undefined;
+                  const brokenReference = referenceIssue?.state === 'BROKEN';
                   const displayName = isApiTool ? getApiToolDisplayName(toolRef)
                     : isMcpTool ? getMcpToolDisplayName(toolRef)
                     : isLlmCall ? (llmCallAgents.find(a => a.id === toolRef.id.substring('llm-call:'.length))?.name || toolRef.id)
                     : isSelfHarness ? toolRef.id.substring(`${SELF_HARNESS_GROUP_ID}:`.length)
                     : (tool?.name || toolRef.id);
-                  const color = isLlmCall ? '#ec4899' : isApiTool ? '#10b981' : isSelfHarness ? '#06b6d4' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
+                  const color = brokenReference ? '#dc2626'
+                    : isLlmCall ? '#ec4899' : isApiTool ? '#10b981' : isSelfHarness ? '#06b6d4' : (toolRef.type || tool?.type) === 'MCP' ? '#8b5cf6' : '#f59e0b';
                   return (
                     <span key={`${toolRef.id}:${toolRef.source || ''}`}
+                      title={referenceIssue?.message || undefined}
                       className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px]"
                       style={{ background: `${color}10`, border: `1px solid ${color}30` }}>
                       <span style={{ color }}>{displayName}</span>
@@ -2044,15 +2098,21 @@ The system prompt should define how this agent behaves, its capabilities, and it
               <div className="flex flex-wrap gap-2 mb-3">
                 {agent.skill_ids.map((skillId: string) => {
                   const skill = allSkills.find(s => s.id === skillId);
+                  const referenceIssue = findReferenceIssue(agent.health, 'SKILL', skillId);
+                  const brokenReference = referenceIssue?.state === 'BROKEN';
                   return (
                     <span key={skillId}
+                      title={referenceIssue?.message || undefined}
                       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs"
-                      style={{ background: 'var(--color-bg-tertiary)', border: '1px solid var(--color-border)' }}>
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#ec4899' }} />
-                      <span className="font-medium">{skill?.name || skillId}</span>
+                      style={{
+                        background: brokenReference ? 'rgba(220,38,38,0.06)' : 'var(--color-bg-tertiary)',
+                        border: brokenReference ? '1px solid rgba(220,38,38,0.35)' : '1px solid var(--color-border)',
+                      }}>
+                      <span className="w-1.5 h-1.5 rounded-full" style={{ background: brokenReference ? '#dc2626' : '#ec4899' }} />
+                      <span className="font-medium">{skill?.name || referenceIssue?.ref_name || skillId}</span>
                       <span className="text-[10px] px-1 rounded"
-                        style={{ background: '#ec489915', color: '#ec4899' }}>
-                        {skill?.namespace || 'custom'}
+                        style={{ background: brokenReference ? 'rgba(220,38,38,0.1)' : '#ec489915', color: brokenReference ? '#dc2626' : '#ec4899' }}>
+                        {brokenReference ? 'missing' : (skill?.namespace || 'custom')}
                       </span>
                       <button onClick={() => update('skill_ids', agent.skill_ids!.filter((id: string) => id !== skillId))}
                         className="cursor-pointer ml-0.5 rounded hover:bg-[var(--color-bg-tertiary)]"

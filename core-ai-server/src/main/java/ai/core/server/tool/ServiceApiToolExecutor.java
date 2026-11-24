@@ -2,6 +2,8 @@ package ai.core.server.tool;
 
 import ai.core.tool.ToolCallResult;
 import core.framework.http.HTTPResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
@@ -15,8 +17,11 @@ import java.util.List;
  * @author stephen
  */
 final class ServiceApiToolExecutor {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ServiceApiToolExecutor.class);
+
     private InternalApiToolLoader internalApiToolLoader;
     private Runnable catalogInvalidator;
+    private Runnable reloadListener;
 
     void setLoader(InternalApiToolLoader loader) {
         this.internalApiToolLoader = loader;
@@ -24,6 +29,21 @@ final class ServiceApiToolExecutor {
 
     void setCatalogInvalidator(Runnable invalidator) {
         this.catalogInvalidator = invalidator;
+    }
+
+    void setReloadListener(Runnable listener) {
+        this.reloadListener = listener;
+    }
+
+    void notifyReloaded(boolean reloaded) {
+        if (!reloaded) return;
+        var listener = reloadListener;
+        if (listener == null) return;
+        try {
+            listener.run();
+        } catch (RuntimeException e) {
+            LOGGER.error("failed to run API catalog reload listener", e);
+        }
     }
 
     InternalApiToolLoader loader() {

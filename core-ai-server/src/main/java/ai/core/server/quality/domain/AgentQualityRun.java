@@ -58,6 +58,16 @@ public class AgentQualityRun {
     @Field(name = "checks_complete")
     public Boolean checksComplete;
 
+    /** Summary counts for list/health consumers; null on runs written before these columns existed. */
+    @Field(name = "warn_count")
+    public Integer warnCount;
+
+    @Field(name = "block_fail_count")
+    public Integer blockFailCount;
+
+    @Field(name = "incomplete_count")
+    public Integer incompleteCount;
+
     /** True when the subject skipped rule evaluation because it is built-in or whitelisted. */
     @Field(name = "exempted")
     public Boolean exempted;

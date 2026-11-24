@@ -41,6 +41,10 @@ public class Notification {
     @Field(name = "session_id")
     public String sessionId;
 
+    /** Optional idempotency key for system-generated notifications; null for user/agent notifications. */
+    @Field(name = "dedupe_key")
+    public String dedupeKey;
+
     @NotNull
     @Field(name = "status")
     public NotificationStatus status;

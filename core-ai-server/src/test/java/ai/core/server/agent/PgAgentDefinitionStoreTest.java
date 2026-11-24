@@ -1,8 +1,12 @@
 package ai.core.server.agent;
 
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.domain.AgentPublishedConfig;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.domain.ToolRef;
+import ai.core.server.domain.ToolSourceType;
+import ai.core.server.pg.PgDocumentRow;
 import core.framework.internal.db.DatabaseImpl;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.AfterAll;
@@ -33,6 +37,7 @@ class PgAgentDefinitionStoreTest {
         database.password = System.getenv().getOrDefault("CORE_AI_PG_TEST_PASSWORD", "core_ai");
         database.view(PgAgentDefinitionRow.class);
         database.view(PgAgentCountRow.class);
+        database.view(PgDocumentRow.class);
         createTable();
         return database;
     }
@@ -99,6 +104,27 @@ class PgAgentDefinitionStoreTest {
 
         store.delete("agent-owned");
         assertTrue(store.get("agent-owned").isEmpty());
+    }
+
+    @Test
+    void reverseReferenceQueriesReadDraftAndPublishedReferences() {
+        var draftAgent = definition("agent-draft-ref", "user-1", AgentStatus.DRAFT);
+        draftAgent.skillIds = List.of("skill-1");
+        draftAgent.tools = List.of(ToolRef.of("api-operation:menu:item:search", ToolSourceType.API));
+
+        var publishedAgent = definition("agent-published-ref", "user-2", AgentStatus.PUBLISHED);
+        publishedAgent.publishedConfig = new AgentPublishedConfig();
+        publishedAgent.publishedConfig.skillIds = List.of("skill-2");
+        publishedAgent.publishedConfig.tools = List.of(ToolRef.of("api-app:menu", ToolSourceType.API));
+
+        store.insert(draftAgent);
+        store.insert(publishedAgent);
+
+        assertEquals(List.of("agent-draft-ref"), ids(store.findReferencingAgents("skill-1")));
+        assertEquals(List.of("agent-published-ref"), ids(store.findReferencingAgents("skill-2")));
+        assertEquals(java.util.Set.of("agent-draft-ref", "agent-published-ref"),
+            java.util.Set.copyOf(ids(store.findAgentsWithApiRefs())));
+        assertEquals(2, store.listReferenceCandidates("", 10).size());
     }
 
     @Test

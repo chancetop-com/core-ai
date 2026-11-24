@@ -84,7 +84,7 @@ public class AgentDefinitionWebServiceImpl implements AgentDefinitionWebService 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_VIEW)
     public AgentDefinitionView get(String id) {
-        return agentDefinitionService.get(id);
+        return agentDefinitionService.get(id, AuthContext.userId(webContext));
     }
 
     @Override

@@ -624,6 +624,43 @@ export interface AgentQualityReceipt {
   published_at?: string;
 }
 
+export interface AgentReferenceIssue {
+  ref_type: string;
+  ref_id: string;
+  ref_name?: string | null;
+  state: 'BROKEN' | 'UNVERIFIED' | string;
+  reason?: string | null;
+  sources?: string[];
+  in_draft?: boolean;
+  in_published?: boolean;
+  message?: string | null;
+}
+
+export interface AgentQualityStatus {
+  state: 'NONE' | 'PASSED' | 'FAILED' | 'UNAVAILABLE' | 'UNKNOWN' | string;
+  run_id?: string | null;
+  mode?: string | null;
+  gate_result?: string | null;
+  block_fail_count?: number | null;
+  incomplete_count?: number | null;
+  warn_count?: number | null;
+  exempted?: boolean | null;
+  checked_at?: string | null;
+  definition_revision?: number | null;
+  current_revision?: number | null;
+  policy_revision?: number | null;
+  policy_changed?: boolean | null;
+  content_changed?: boolean | null;
+  message?: string | null;
+}
+
+export interface AgentHealth {
+  status: 'OK' | 'ATTENTION' | 'UNKNOWN' | string;
+  needs_attention?: boolean;
+  reference_issues?: AgentReferenceIssue[];
+  quality?: AgentQualityStatus | null;
+}
+
 export interface AgentDefinition {
   id: string;
   name: string;
@@ -649,6 +686,7 @@ export interface AgentDefinition {
   published_name?: string | null;
   published_description?: string | null;
   quality?: AgentQualityReceipt | null;
+  health?: AgentHealth | null;
   published_at: string;
   created_at: string;
   updated_at: string;

@@ -3,6 +3,7 @@ package ai.core.server.agent;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
+import ai.core.server.pg.PgDocumentRow;
 import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
@@ -20,6 +21,7 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
     private static final String TABLE = "app.agents";
     private static final String SELECT = "SELECT id, user_id, name, name_key, type, status, system_default, "
         + "forked_from, has_published_config, created_at, updated_at, data::text AS data FROM " + TABLE;
+    private static final String SELECT_LIGHT = "SELECT (data - ?::text - ?::text - ?::text)::text AS data FROM " + TABLE;
     // list summaries need the catalog fields only; selecting data::text here detoasts every agent document.
     // json keys are bound as parameters: the framework rejects quoted literals in SQL
     private static final String SELECT_SUMMARY = "SELECT id, user_id, name, type, status, system_default, "
@@ -181,6 +183,62 @@ public class PgAgentDefinitionStore implements AgentDefinitionStore {
 
     private String placeholders(int count) {
         return String.join(", ", Collections.nCopies(count, "?"));
+    }
+
+    /**
+     * Read projection for reference health: the system prompt is the largest field and is never
+     * needed to resolve skill/tool refs, so it is stripped in SQL before the JSON is transferred.
+     */
+    private List<AgentDefinition> selectReferenceCandidates(String where, List<Object> whereParams, String orderAndLimit) {
+        var params = new ArrayList<Object>();
+        params.add("systemPrompt");
+        params.add("inputTemplate");
+        params.add("responseSchema");
+        params.addAll(whereParams);
+        var sql = SELECT_LIGHT + where + orderAndLimit;
+        return database.select(sql, PgDocumentRow.class, params.toArray())
+            .stream().map(row -> JsonUtil.fromJson(AgentDefinition.class, row.data)).toList();
+    }
+
+    @Override
+    public List<AgentDefinition> findReferencingAgents(String skillId) {
+        var json = JsonUtil.toJson(List.of(skillId));
+        var params = new ArrayList<Object>();
+        params.add("skillIds");
+        params.add(json);
+        params.add("publishedConfig");
+        params.add("skillIds");
+        params.add(json);
+        return selectReferenceCandidates(
+            " WHERE data -> ?::text @> ?::jsonb OR data -> ?::text -> ?::text @> ?::jsonb",
+            params, "");
+    }
+
+    @Override
+    public List<AgentDefinition> findAgentsWithApiRefs() {
+        var apiRef = "[{\"type\":\"API\"}]";
+        var params = new ArrayList<Object>();
+        params.add("tools");
+        params.add(apiRef);
+        params.add("publishedConfig");
+        params.add("tools");
+        params.add(apiRef);
+        return selectReferenceCandidates(
+            " WHERE data -> ?::text @> ?::jsonb OR data -> ?::text -> ?::text @> ?::jsonb",
+            params, "");
+    }
+
+    @Override
+    public List<AgentDefinition> listReferenceCandidates(String afterId, int limit) {
+        var params = new ArrayList<Object>();
+        params.add(afterId == null ? "" : afterId);
+        params.add("tools");
+        params.add("skillIds");
+        params.add("publishedConfig");
+        params.add(Math.max(1, limit));
+        return selectReferenceCandidates(
+            " WHERE id > ? AND (jsonb_exists(data, ?::text) OR jsonb_exists(data, ?::text) OR jsonb_exists(data, ?::text))",
+            params, " ORDER BY id ASC LIMIT ?");
     }
 
     @Override

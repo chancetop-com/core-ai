@@ -248,16 +248,18 @@ class ToolRefResolutionService {
                 .toList();
     }
 
-    public void reloadApiTools() {
+    public boolean reloadApiTools() {
         if (internalApiToolLoader == null) {
             LOGGER.warn("InternalApiToolLoader not initialized, skipping reload");
-            return;
+            return false;
         }
         try {
             internalApiToolLoader.load();
             LOGGER.info("reloaded Service API tools");
+            return true;
         } catch (Exception e) {
             LOGGER.error("failed to reload Service API tools", e);
+            return false;
         }
     }
 

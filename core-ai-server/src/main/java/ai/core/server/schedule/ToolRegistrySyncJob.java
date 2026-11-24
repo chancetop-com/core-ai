@@ -40,7 +40,10 @@ public class ToolRegistrySyncJob implements Job {
             var snapshot = serviceApiService.configSnapshot();
             if (snapshot.equals(lastApiSnapshot)) return;
             mcpServerService.reload();
-            toolRegistryService.reloadApiTools();
+            if (!toolRegistryService.reloadApiTools()) {
+                LOGGER.warn("service api tools reload failed, will retry on next tick, snapshot={}", snapshot);
+                return;
+            }
             lastApiSnapshot = snapshot;
             LOGGER.info("service api tools reloaded, snapshot={}", snapshot);
         } catch (Exception e) {

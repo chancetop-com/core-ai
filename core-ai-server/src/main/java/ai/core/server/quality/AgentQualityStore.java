@@ -6,10 +6,15 @@ import ai.core.server.quality.domain.AgentQualityPolicyRevision;
 import ai.core.server.quality.domain.AgentQualityRule;
 import ai.core.server.quality.domain.AgentQualityRuleRevision;
 import ai.core.server.quality.domain.AgentQualityRun;
+import ai.core.server.quality.domain.QualityGateMode;
 import ai.core.server.quality.domain.QualityRunStatus;
 
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Persistence of publish policy, runs and publication audit. Both store modes are first-class: the agent
@@ -62,6 +67,30 @@ public interface AgentQualityStore {
     Optional<AgentQualityRun> findRunByOperationKey(String operationKeyHash);
 
     Optional<AgentQualityRun> findLatestRun(String agentId);
+
+    /**
+     * Latest completed author-side run for the agent. The default implementation is correct on any
+     * store; PostgreSQL overrides it with one DISTINCT ON query for list pages.
+     */
+    default Optional<AgentQualityRun> findLatestCompletedRun(String agentId, Set<QualityGateMode> modes) {
+        if (modes == null || modes.isEmpty()) return Optional.empty();
+        if (agentId == null) return Optional.empty();
+        return listRuns(agentId, 50).stream()
+            .filter(run -> run.runStatus == QualityRunStatus.COMPLETED
+                && run.mode != null && modes.contains(run.mode))
+            .findFirst();
+    }
+
+    default Map<String, AgentQualityRun> findLatestCompletedRuns(Collection<String> agentIds,
+                                                                 Set<QualityGateMode> modes) {
+        if (modes == null || modes.isEmpty()) return Map.of();
+        if (agentIds == null || agentIds.isEmpty()) return Map.of();
+        var result = new HashMap<String, AgentQualityRun>();
+        for (var agentId : agentIds) {
+            findLatestCompletedRun(agentId, modes).ifPresent(run -> result.put(agentId, run));
+        }
+        return result;
+    }
 
     List<AgentQualityRun> listRuns(String agentId, int limit);
 

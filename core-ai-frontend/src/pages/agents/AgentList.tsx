@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil, Brain } from 'lucide-react';
+import { Plus, Bot, Download, FileUp, Check, ChevronLeft, ChevronRight, Search, Star, Sparkles, Pencil, Brain, AlertTriangle } from 'lucide-react';
 import { api } from '../../api/client';
 import type { AgentDefinition } from '../../api/client';
 import { useAuth } from '../../api/auth';
 import { useListState } from '../../hooks/useListState';
 import StatusBadge from '../../components/StatusBadge';
+import { healthIssueCount, healthTooltip, needsAttention } from './agentHealth';
 
 const DEFAULT_LIMIT = 10;
 const DEFAULT_SORT_BY = 'updated_at';
@@ -417,6 +418,22 @@ export default function AgentList() {
                   <Bot size={18} style={{ color: 'var(--color-primary)' }} />
                 )}
                 <span className="font-medium">{a.name}</span>
+                {needsAttention(a.health) && (
+                  <span
+                    role="img"
+                    aria-label={`Agent needs attention: ${healthIssueCount(a.health)} issue${healthIssueCount(a.health) === 1 ? '' : 's'}`}
+                    title={healthTooltip(a.health)}
+                    className="inline-flex items-center gap-0.5 flex-shrink-0"
+                    style={{ color: '#d97706' }}>
+                    <AlertTriangle size={15} />
+                    {healthIssueCount(a.health) > 1 && (
+                      <span className="text-[10px] px-1 rounded-full"
+                        style={{ background: 'rgba(217,119,6,0.15)', color: '#b45309' }}>
+                        {healthIssueCount(a.health)}
+                      </span>
+                    )}
+                  </span>
+                )}
                 <StatusBadge status={a.status} />
                 <span className="px-2 py-0.5 rounded text-xs"
                   style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>

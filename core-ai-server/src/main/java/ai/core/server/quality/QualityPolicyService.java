@@ -161,6 +161,12 @@ public class QualityPolicyService {
             .orElseThrow(() -> new IllegalStateException("quality policy head is not initialized"));
     }
 
+    /** Lightweight read for list health; avoids loading the policy and every rule revision. */
+    public int activeRevision() {
+        var head = store.getHead(SCOPE_SERVER).orElse(null);
+        return head == null || head.activeRevision == null ? 0 : head.activeRevision;
+    }
+
     public AgentQualityPolicyRevision createPolicy(ActivatePolicyCommand command, String userId) {
         var head = requireHead();
         if (command.expectedGeneration() != null && !command.expectedGeneration().equals(head.generation)) {

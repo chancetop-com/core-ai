@@ -12,6 +12,9 @@ import java.util.List;
 public interface NotificationStore {
     void insert(Notification notification);
 
+    /** Insert only when the notification's dedupeKey is not already present; returns whether inserted. */
+    boolean insertIfAbsent(Notification notification);
+
     List<Notification> list(String userId, NotificationCategory category, NotificationStatus status, int offset, int limit);
 
     long count(String userId, NotificationCategory category, NotificationStatus status);

@@ -7,6 +7,7 @@ import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -38,7 +39,8 @@ public class ApiToolCatalogService {
     @Inject
     ToolRegistryService toolRegistryService;
 
-    private volatile Snapshot snapshot = new Snapshot(List.of(), Map.of(), Map.of());
+    private volatile CatalogSnapshot snapshot = CatalogSnapshot.empty(false, null);
+    private volatile ZonedDateTime nextRetryAt;
 
     public void refresh() {
         synchronized (this) {
@@ -48,8 +50,20 @@ public class ApiToolCatalogService {
 
     public void invalidate() {
         synchronized (this) {
-            snapshot = new Snapshot(List.of(), Map.of(), Map.of());
+            snapshot = CatalogSnapshot.empty(false, null);
+            nextRetryAt = null;
         }
+    }
+
+    /** Current snapshot, loading lazily. {@code loaded=false} means the last load failed. */
+    public CatalogSnapshot snapshot() {
+        return ensureLoaded();
+    }
+
+    /** Snapshot only when the last load succeeded; null on failure so health never treats it as empty. */
+    public CatalogSnapshot successSnapshot() {
+        var current = ensureLoaded();
+        return current.loaded() ? current : null;
     }
 
     /** Visible apps with service/operation counts, sorted by app name. */
@@ -111,20 +125,25 @@ public class ApiToolCatalogService {
                 .toList();
     }
 
-    private Snapshot ensureLoaded() {
+    private CatalogSnapshot ensureLoaded() {
         var current = snapshot;
-        if (!current.operations().isEmpty() || !current.apps().isEmpty()) return current;
+        if (current.loaded()) return current;
+        var retryAt = nextRetryAt;
+        if (retryAt != null && ZonedDateTime.now().isBefore(retryAt)) return current;
         synchronized (this) {
             current = snapshot;
-            if (current.operations().isEmpty() && current.apps().isEmpty()) {
-                snapshot = loadSnapshot();
-                current = snapshot;
+            if (!current.loaded()) {
+                retryAt = nextRetryAt;
+                if (retryAt == null || !ZonedDateTime.now().isBefore(retryAt)) {
+                    snapshot = loadSnapshot();
+                    current = snapshot;
+                }
             }
             return current;
         }
     }
 
-    private Snapshot loadSnapshot() {
+    private CatalogSnapshot loadSnapshot() {
         var operations = new ArrayList<CatalogOperation>();
         var apps = new HashMap<String, AppSummary>();
         try {
@@ -141,13 +160,24 @@ public class ApiToolCatalogService {
             LOGGER.debug("api-tool catalog refreshed, apps={}, operations={}", apps.size(), operations.size());
         } catch (RuntimeException e) {
             LOGGER.warn("api-tool catalog refresh failed: {}", e.getMessage());
-            return new Snapshot(List.of(), Map.of(), Map.of());
+            nextRetryAt = ZonedDateTime.now().plusSeconds(30);
+            return CatalogSnapshot.empty(false, e.getMessage());
         }
+
         var byToolName = new HashMap<String, CatalogOperation>();
+        var byRefId = new HashMap<String, CatalogOperation>();
+        var operationCountByApp = new HashMap<String, Integer>();
+        var operationCountByService = new HashMap<String, Integer>();
         for (var operation : operations) {
             byToolName.putIfAbsent(operation.toolName(), operation);
+            byRefId.putIfAbsent(operation.refId(), operation);
+            operationCountByApp.merge(operation.app(), 1, Integer::sum);
+            operationCountByService.merge(operation.app() + ":" + operation.service(), 1, Integer::sum);
         }
-        return new Snapshot(List.copyOf(operations), Map.copyOf(apps), Map.copyOf(byToolName));
+        nextRetryAt = null;
+        return new CatalogSnapshot(List.copyOf(operations), Map.copyOf(apps), Map.copyOf(byToolName),
+            Map.copyOf(byRefId), Map.copyOf(operationCountByApp), Map.copyOf(operationCountByService),
+            true, ZonedDateTime.now(), null);
     }
 
     private int addServiceOperations(InternalApiToolLoader.ApiAppCatalog api, InternalApiToolLoader.ApiServiceCatalog service,
@@ -287,7 +317,13 @@ public class ApiToolCatalogService {
     private record AppGroup(String app, int appScore, List<ScoredOperation> operations) {
     }
 
-    private record Snapshot(List<CatalogOperation> operations, Map<String, AppSummary> apps,
-                            Map<String, CatalogOperation> byToolName) {
+    public record CatalogSnapshot(List<CatalogOperation> operations, Map<String, AppSummary> apps,
+                                  Map<String, CatalogOperation> byToolName, Map<String, CatalogOperation> byRefId,
+                                  Map<String, Integer> operationCountByApp, Map<String, Integer> operationCountByService,
+                                  boolean loaded, ZonedDateTime loadedAt, String failure) {
+        static CatalogSnapshot empty(boolean loaded, String failure) {
+            return new CatalogSnapshot(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+                loaded, null, failure);
+        }
     }
 }

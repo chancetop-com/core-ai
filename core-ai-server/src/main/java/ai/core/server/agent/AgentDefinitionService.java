@@ -7,6 +7,8 @@ import ai.core.api.server.agent.ListAgentsResponse;
 import ai.core.api.server.agent.UpdateAgentRequest;
 import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.AgentDefinition;
+import ai.core.server.agenthealth.AgentHealthService;
+import ai.core.server.agenthealth.AgentReferenceTracker;
 import ai.core.server.domain.AgentStatus;
 import ai.core.server.domain.DefinitionType;
 import ai.core.server.util.IdLists;
@@ -20,7 +22,6 @@ import core.framework.web.exception.ForbiddenException;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -54,7 +55,18 @@ public class AgentDefinitionService {
     @Inject
     ai.core.server.quality.PublishQualityGate qualityGate;
 
+    private volatile AgentHealthService agentHealthService;
+    private volatile AgentReferenceTracker referenceTracker;
     private volatile Runnable catalogInvalidator;
+
+    /** Injected by AgentHealthModule after the notification and API-tool modules are bound. */
+    public void setHealthService(AgentHealthService agentHealthService) {
+        this.agentHealthService = agentHealthService;
+    }
+
+    public void setReferenceTracker(AgentReferenceTracker referenceTracker) {
+        this.referenceTracker = referenceTracker;
+    }
 
     /** Wired by {@code AgentHubModule}: the hub catalog is rebuilt lazily after any definition write. */
     public void setCatalogInvalidator(Runnable catalogInvalidator) {
@@ -105,7 +117,9 @@ public class AgentDefinitionService {
         requireAccessibleSkills(entity.skillIds, userId);
         agentDefinitionStore.insert(entity);
         notifyCatalogChanged();
-        return toView(entity);
+        var view = toView(entity);
+        view.health = AgentHealthViewAttachment.health(entity, userId, agentHealthService);
+        return view;
     }
 
     private void applyCreateConfiguration(AgentDefinition entity, CreateAgentRequest request) {
@@ -168,10 +182,7 @@ public class AgentDefinitionService {
         } else if (picker) {
             response.agents = paged.stream().map(AgentListHelper::toPickerView).toList();
         } else {
-            var userNameMap = listHelper.resolveUserNames(paged);
-            var subAgentNameMap = listHelper.resolveSubAgentNames(paged);
-            var skillNameMap = AgentListHelper.resolveSkillNames(skillService, paged);
-            response.agents = paged.stream().map(e -> toView(e, userNameMap, subAgentNameMap, skillNameMap)).toList();
+            response.agents = AgentHealthViewAttachment.fullViews(paged, userId, listHelper, skillService, agentHealthService);
         }
         listHelper.markFavorites(response, userId);
         response.total = total;
@@ -253,15 +264,23 @@ public class AgentDefinitionService {
     }
 
     public AgentDefinitionView get(String id) {
+        return get(id, null);
+    }
+
+    public AgentDefinitionView get(String id, String viewerUserId) {
         var entity = agentDefinitionStore.get(id)
                 .orElseThrow(() -> new RuntimeException("agent not found, id=" + id));
-        return toView(entity);
+        var view = toView(entity);
+        view.health = AgentHealthViewAttachment.health(entity, viewerUserId, agentHealthService);
+        return view;
     }
 
     public AgentDefinitionView getByName(String name, String userId) {
         var entity = agentDefinitionStore.findOne(directQuery(userId, name))
                 .orElseThrow(() -> new RuntimeException("agent not found, name=" + name));
-        return toView(entity);
+        var view = toView(entity);
+        view.health = AgentHealthViewAttachment.health(entity, userId, agentHealthService);
+        return view;
     }
 
     public AgentDefinition getEntity(String id) {
@@ -293,36 +312,7 @@ public class AgentDefinitionService {
         requirePersonalAssistantOwnerOrAdmin(entity, userId);
         requireAccessibleSkills(request.skillIds != null ? request.skillIds : entity.skillIds, userId);
 
-        if (request.name != null) {
-            entity.name = request.name;
-            entity.nameKey = AgentNameKey.normalize(entity.name);
-        }
-        if (request.description != null) entity.description = request.description;
-        if (request.systemPrompt != null) entity.systemPrompt = request.systemPrompt;
-        if (request.systemPromptId != null) entity.systemPromptId = request.systemPromptId;
-        if (request.model != null) entity.model = request.model;
-        if (request.multiModalModel != null) entity.multiModalModel = Strings.isBlank(request.multiModalModel) ? null : request.multiModalModel;
-        if (request.preferCaptionPath != null) entity.preferCaptionPath = request.preferCaptionPath;
-        if (request.temperature != null) entity.temperature = request.temperature;
-        if (request.thinkingEffort != null) entity.thinkingEffort = AgentViewHelper.normalizeThinkingEffort(request.thinkingEffort);
-        if (request.maxTurns != null) entity.maxTurns = request.maxTurns;
-        if (request.timeoutSeconds != null) entity.timeoutSeconds = request.timeoutSeconds;
-        if (request.tools != null) entity.tools = AgentViewHelper.toToolRefs(request.tools);
-        if (request.inputTemplate != null) entity.inputTemplate = request.inputTemplate;
-        if (request.variables != null) entity.variables = request.variables;
-        if (request.responseSchema != null) entity.responseSchema = request.responseSchema;
-        if (request.type != null) entity.type = DefinitionType.valueOf(request.type);
-        if (request.subAgentIds != null) entity.subAgentIds = IdLists.cleanOrNull(request.subAgentIds);
-        if (request.skillIds != null) entity.skillIds = IdLists.cleanOrNull(request.skillIds);
-        if (request.sandboxConfig != null) entity.sandboxConfig = AgentViewHelper.fromSandboxConfigView(request.sandboxConfig);
-        if (request.datasetConfig != null) entity.datasetConfig = AgentViewHelper.toDatasetConfigs(request.datasetConfig);
-        if (request.enableMemory != null) entity.enableMemory = request.enableMemory;
-        if (request.systemDefault != null) {
-            if (Boolean.TRUE.equals(request.systemDefault) && !isAdmin(userId)) {
-                throw new ForbiddenException("only admin can set agents as system default");
-            }
-            entity.systemDefault = request.systemDefault;
-        }
+        AgentUpdateHelper.apply(entity, request, isAdmin(userId));
         entity.updatedAt = ZonedDateTime.now();
         entity.updatedBy = userId;
 
@@ -331,8 +321,12 @@ public class AgentDefinitionService {
             throw new core.framework.web.exception.ConflictException("agent was modified by another editor; refresh and retry");
         }
         notifyCatalogChanged();
-        return toView(entity);
+        AgentHealthViewAttachment.refresh(entity, userId, referenceTracker);
+        var view = toView(entity);
+        view.health = AgentHealthViewAttachment.health(entity, userId, agentHealthService);
+        return view;
     }
+
 
     public AgentDefinitionView publish(String id, String userId) {
         return publishWithOutcome(id, userId, PublishOptions.none()).view();
@@ -351,7 +345,10 @@ public class AgentDefinitionService {
 
         var result = agentPublishService.publish(entity, userId, options);
         notifyCatalogChanged();
-        return new AgentPublishOutcome(toView(result.entity()), result.runId(), "PASSED", result.warnCount());
+        AgentHealthViewAttachment.refresh(result.entity(), userId, referenceTracker);
+        var view = toView(result.entity());
+        view.health = AgentHealthViewAttachment.health(result.entity(), userId, agentHealthService);
+        return new AgentPublishOutcome(view, result.runId(), "PASSED", result.warnCount());
     }
 
     public ai.core.api.server.agent.AgentQualityReportView checkQuality(String id, String userId, String idempotencyKey) {
@@ -387,21 +384,14 @@ public class AgentDefinitionService {
         requireOwnerOrAdminForDelete(entity, userId);
         agentDefinitionStore.delete(id);
         notifyCatalogChanged();
+        AgentHealthViewAttachment.deleted(id, referenceTracker);
     }
+
 
     @SuppressFBWarnings("CFS_CONFUSING_FUNCTION_SEMANTICS")
     AgentDefinitionView toView(AgentDefinition entity) {
         return AgentViewHelper.buildDetailedView(entity, agentDefinitionStore, userStore, skillService);
     }
-
-    AgentDefinitionView toView(AgentDefinition entity, Map<String, String> userNameMap, Map<String, String> subAgentNameMap, Map<String, String> skillNameMap) {
-        var view = AgentViewHelper.buildListView(entity, subAgentNameMap, skillNameMap);
-        view.createdBy = userNameMap.getOrDefault(entity.userId, entity.userId);
-        var updatedBy = AgentViewHelper.lastModifiedBy(entity);
-        view.updatedBy = userNameMap.getOrDefault(updatedBy, updatedBy);
-        return view;
-    }
-
     private void requireAdminForSystemDefault(AgentDefinition entity, String userId) {
         if (!Boolean.TRUE.equals(entity.systemDefault)) return;
         if (userId == null || !isAdmin(userId)) {

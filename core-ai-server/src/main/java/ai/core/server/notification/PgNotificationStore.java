@@ -20,7 +20,7 @@ public class PgNotificationStore implements NotificationStore {
     private static final String SELECT = "SELECT id, user_id, category, type, title, message, agent_id, session_id, "
         + "status, created_at, read_at, data::text AS data FROM " + TABLE;
     private static final String INSERT = "INSERT INTO " + TABLE + " (id, user_id, category, type, title, message, "
-        + "agent_id, session_id, status, created_at, read_at, data) ";
+        + "agent_id, session_id, status, created_at, read_at, dedupe_key, data) ";
 
     private static Notification toNotification(PgNotificationRow row) {
         var notification = JsonUtil.fromJson(Notification.class, row.data);
@@ -43,7 +43,13 @@ public class PgNotificationStore implements NotificationStore {
 
     @Override
     public void insert(Notification notification) {
-        database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", params(notification));
+        database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)", params(notification));
+    }
+
+    @Override
+    public boolean insertIfAbsent(Notification notification) {
+        return database.execute(INSERT + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb) "
+            + "ON CONFLICT DO NOTHING", params(notification)) > 0;
     }
 
     @Override
@@ -116,6 +122,7 @@ public class PgNotificationStore implements NotificationStore {
             notification.status != null ? notification.status.name() : null,
             notification.createdAt,
             notification.readAt,
+            notification.dedupeKey,
             JsonSanitizer.json(JsonUtil.toJson(notification))
         };
     }

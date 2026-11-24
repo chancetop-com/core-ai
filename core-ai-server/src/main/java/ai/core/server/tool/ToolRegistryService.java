@@ -120,7 +120,6 @@ public class ToolRegistryService {
             var loader = new InternalApiToolLoader(apiDefinitionService);
             serviceApiTools.setLoader(loader);
             var apiTools = loader.load();
-
             var registry = new ToolRegistryEntry();
             registry.id = API_TOOL_ID;
             registry.name = "service-api";
@@ -130,7 +129,6 @@ public class ToolRegistryService {
             registry.description = "Internal Service API tools loaded from configured API definitions";
             registry.config = Map.of("set", API_TOOL_ID);
             tools.put(registry.id, registry);
-
             dynamicToolSets.put(API_TOOL_ID, apiTools);
             LOGGER.info("loaded {} Service API tools", apiTools.size());
         } catch (Exception e) {
@@ -209,11 +207,9 @@ public class ToolRegistryService {
     public void syncDatabaseTools() {
         var dbEntries = toolRegistryStore.listByType(ToolType.MCP);
         var dbEntryIds = new HashSet<String>();
-
         for (var dbEntry : dbEntries) {
             if (dbEntry.type != ToolType.MCP) continue;
             dbEntryIds.add(dbEntry.id);
-
             var memEntry = tools.get(dbEntry.id);
             if (memEntry == null) {
                 tools.put(dbEntry.id, dbEntry);
@@ -233,7 +229,6 @@ public class ToolRegistryService {
                 LOGGER.info("synced updated mcp server from db, id={}, name={}", dbEntry.id, dbEntry.name);
             }
         }
-
         var toRemove = new ArrayList<String>();
         for (var e : tools.entrySet()) {
             var id = e.getKey();
@@ -410,6 +405,11 @@ public class ToolRegistryService {
         serviceApiTools.setCatalogInvalidator(invalidator);
     }
 
+    /** Called after a successful Service API reload; used by the agent health reconciler. */
+    public void setApiCatalogReloadListener(Runnable listener) {
+        serviceApiTools.setReloadListener(listener);
+    }
+
     public InternalApiToolLoader getInternalApiToolLoader() {
         return serviceApiTools.loader();
     }
@@ -430,9 +430,11 @@ public class ToolRegistryService {
         return serviceApiTools.callTool(toolId, argumentsJson);
     }
 
-    public void reloadApiTools() {
-        resolutionService.reloadApiTools();
+    public boolean reloadApiTools() {
+        boolean reloaded = resolutionService.reloadApiTools();
         serviceApiTools.invalidateCatalog();
+        serviceApiTools.notifyReloaded(reloaded);
+        return reloaded;
     }
 
     public HTTPResponse callServiceApiOperation(String appName, String serviceName, String operationName,

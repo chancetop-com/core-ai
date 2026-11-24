@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Bell, BellOff, CheckCheck, Loader2 } from 'lucide-react';
 import { api, type NotificationView, type UnreadCountResponse } from '../../api/client';
 
@@ -8,6 +9,7 @@ type CategoryFilter = 'ALL' | 'AGENT' | 'SYSTEM';
 type StatusFilter = 'ALL' | 'UNREAD' | 'READ';
 
 export default function Notifications() {
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<NotificationView[]>([]);
   const [total, setTotal] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -156,7 +158,13 @@ export default function Notifications() {
             {notifications.map(n => (
               <div
                 key={n.id}
-                className={`px-4 py-3 transition-colors ${n.status === 'UNREAD' ? '' : 'opacity-70'}`}
+                onClick={() => {
+                  if (n.type === 'AGENT_ATTENTION' && n.agent_id) {
+                    void handleMarkRead(n.id);
+                    navigate(`/agents/${n.agent_id}`);
+                  }
+                }}
+                className={`px-4 py-3 transition-colors ${n.status === 'UNREAD' ? '' : 'opacity-70'} ${n.type === 'AGENT_ATTENTION' && n.agent_id ? 'cursor-pointer hover:opacity-90' : ''}`}
                 style={n.status === 'UNREAD' ? { background: 'var(--color-bg-secondary)' } : {}}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
@@ -165,9 +173,10 @@ export default function Notifications() {
                         style={
                           n.type === 'PAUSE' ? { background: 'rgba(245,158,11,0.15)', color: '#d97706' }
                             : n.type === 'TERMINATE' ? { background: 'rgba(239,68,68,0.15)', color: '#dc2626' }
-                              : { background: 'rgba(59,130,246,0.15)', color: '#2563eb' }
+                              : n.type === 'AGENT_ATTENTION' ? { background: 'rgba(217,119,6,0.12)', color: '#b45309' }
+                                : { background: 'rgba(59,130,246,0.15)', color: '#2563eb' }
                         }>
-                        {n.type}
+                        {n.type === 'AGENT_ATTENTION' ? 'NEEDS ATTENTION' : n.type}
                       </span>
                       <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
                         {categoryLabel(n.category)}
@@ -190,7 +199,7 @@ export default function Notifications() {
                   </div>
                   {n.status === 'UNREAD' && (
                     <button
-                      onClick={() => handleMarkRead(n.id)}
+                      onClick={e => { e.stopPropagation(); void handleMarkRead(n.id); }}
                       className="shrink-0 px-2 py-1 text-xs rounded border transition-colors hover:opacity-80"
                       style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
                       Mark read

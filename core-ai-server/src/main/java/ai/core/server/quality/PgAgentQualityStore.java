@@ -8,14 +8,19 @@ import ai.core.server.quality.domain.AgentQualityPolicyRevision;
 import ai.core.server.quality.domain.AgentQualityRule;
 import ai.core.server.quality.domain.AgentQualityRuleRevision;
 import ai.core.server.quality.domain.AgentQualityRun;
+import ai.core.server.quality.domain.QualityGateMode;
 import ai.core.server.quality.domain.QualityRunStatus;
 import ai.core.utils.JsonUtil;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * JSONB-document implementation. Filtering only touches the fields the gate actually queries, so the
@@ -183,6 +188,42 @@ public class PgAgentQualityStore implements AgentQualityStore {
     public List<AgentQualityRun> listRuns(String agentId, int limit) {
         return select(RUNS, AgentQualityRun.class,
             " WHERE data ->> ? = ? ORDER BY data ->> ? DESC LIMIT ?", "agentId", agentId, "createdAt", limit);
+    }
+
+    @Override
+    @SuppressWarnings({"PMD.ConsecutiveLiteralAppends", "PMD.AppendCharacterWithChar",
+        "PMD.InsufficientStringBufferDeclaration"})
+    public Map<String, AgentQualityRun> findLatestCompletedRuns(Collection<String> agentIds,
+                                                                Set<QualityGateMode> modes) {
+        if (modes == null || modes.isEmpty()) return Map.of();
+        if (agentIds == null || agentIds.isEmpty()) return Map.of();
+        var ids = new ArrayList<>(agentIds);
+        var modeNames = modes.stream().map(Enum::name).toList();
+        var sql = new StringBuilder("SELECT data::text AS data FROM (SELECT data, row_number() OVER (")
+            .append("PARTITION BY data ->> ? ORDER BY data ->> ? DESC, id DESC) AS rn FROM ").append(RUNS)
+            .append(" WHERE data ->> ? IN (").append(placeholders(ids.size())).append(")")
+            .append(" AND data ->> ? = ?")
+            .append(" AND data ->> ? IN (").append(placeholders(modeNames.size())).append(")")
+            .append(") latest WHERE rn = 1");
+        var params = new ArrayList<Object>();
+        params.add("agentId");
+        params.add("finishedAt");
+        params.add("agentId");
+        params.addAll(ids);
+        params.add("runStatus");
+        params.add(QualityRunStatus.COMPLETED.name());
+        params.add("mode");
+        params.addAll(modeNames);
+        var result = new LinkedHashMap<String, AgentQualityRun>();
+        for (var row : database.select(sql.toString(), PgDocumentRow.class, params.toArray())) {
+            var run = JsonUtil.fromJson(AgentQualityRun.class, row.data);
+            if (run.agentId != null) result.put(run.agentId, run);
+        }
+        return result;
+    }
+
+    private String placeholders(int count) {
+        return String.join(", ", java.util.Collections.nCopies(count, "?"));
     }
 
     @Override

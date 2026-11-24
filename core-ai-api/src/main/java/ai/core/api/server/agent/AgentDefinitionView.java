@@ -103,6 +103,10 @@ public class AgentDefinitionView {
     @Property(name = "quality")
     public AgentQualityReceiptView quality;
 
+    /** Derived at read time; null on summary/picker/favorites views. */
+    @Property(name = "health")
+    public AgentHealthView health;
+
     @Property(name = "forked_from")
     public String forkedFrom;
 

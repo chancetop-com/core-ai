@@ -79,7 +79,7 @@ public final class QualityReportMapper {
         return view;
     }
 
-    private static int[] counts(List<StoredQualityIssue> issues) {
+    public static int[] counts(List<StoredQualityIssue> issues) {
         int warn = 0;
         int blockFail = 0;
         int incomplete = 0;

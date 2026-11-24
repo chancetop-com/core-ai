@@ -127,7 +127,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     @Override
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public void delete(String id) {
-        skillService.delete(id);
+        skillService.delete(id, AuthContext.userId(webContext));
     }
 
     @Override

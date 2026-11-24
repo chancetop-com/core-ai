@@ -54,9 +54,16 @@ public class SkillService {
     private volatile Runnable catalogInvalidator = () -> {
     };
 
+    private volatile SkillHealthListener healthListener = (id, name, actor) -> {
+    };
+
     /** Hook for the skill hub catalog: fires after any write path that changed the catalog. */
     public void setCatalogInvalidator(Runnable invalidator) {
         if (invalidator != null) catalogInvalidator = invalidator;
+    }
+
+    public void setHealthListener(SkillHealthListener listener) {
+        if (listener != null) healthListener = listener;
     }
 
     private void invalidateCatalog() {
@@ -104,13 +111,11 @@ public class SkillService {
         if (namespace == null) {
             throw new RuntimeException("cannot extract owner from repo URL: " + repoUrl);
         }
-
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory(SkillRepoManager.TEMP_DIR_PREFIX);
             repoManager().cloneRepo(repoUrl, branch, tempDir);
             String commitHash = repoManager().headCommit(tempDir);
-
             String effectiveSkillPath = skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
                 effectiveSkillPath = detectSkillPath(tempDir);
@@ -228,11 +233,20 @@ public class SkillService {
     }
 
     public void delete(String id) {
+        delete(id, null);
+    }
+
+    public void delete(String id, String actorUserId) {
         var entity = skillStore.get(id).orElse(null);
         skillStore.delete(id);
         if (entity != null) blobStore.deleteReplaced(entity.resources, null);
         invalidateCatalog();
         LOGGER.info("deleted skill, id={}", id);
+        try {
+            healthListener.onSkillDeleted(id, entity != null ? entity.name : null, actorUserId);
+        } catch (RuntimeException e) {
+            LOGGER.error("failed to run skill deletion health hook, id={}", id, e);
+        }
     }
 
     public SkillDefinition update(String id, String description, String content, List<String> allowedTools, List<SkillResourceUpdate> updates) {

@@ -207,6 +207,10 @@ public class PublishQualityGateService implements PublishQualityGate {
         run.checksComplete = aggregated.checksComplete();
         run.issues = aggregated.issues();
         run.ruleResults = aggregated.ruleResults();
+        var counts = QualityReportMapper.counts(aggregated.issues());
+        run.warnCount = counts[0];
+        run.blockFailCount = counts[1];
+        run.incompleteCount = counts[2];
         run.routeFingerprint = aggregated.routeFingerprint();
         run.ruleResultDigest = aggregated.ruleResultDigest();
         run.shadowExecutionError = evaluation.shadowError();
