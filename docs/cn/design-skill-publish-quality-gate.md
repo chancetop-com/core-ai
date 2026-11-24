@@ -1568,6 +1568,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 - `:core-ai-server:check`：通过（checkstyle、PMD、SpotBugs、test）。
 - dev E2E（2026-11-16，`2.0.246`，镜像 digest `sha256:f39cb352…c8dbed`）：通过。已验证 valid upload、missing eval、undeclared SDK usage、broken reference、missing `skill_dir`、directory mismatch、valid update（PG `revision=2` + receipt）、failed update 不改变 revision 与 receipt、成功响应 header。记录见 `docs/validation/2026-11-16-dev-skill-quality-gate.md`。
 - E2E 发现并修复：`PgSkillStore.replaceIfRevision` 的 SQL 直接写了 JSON key 的单引号，core-ng 拒绝单引号导致编辑上传 500；已改为绑定参数 `data ->> ?`，在 `2.0.246` 复测通过。
+- 编辑器预检查 dev E2E（2026-11-24，`2.0.347`，OCI index digest `sha256:99ea9034…`）：通过。valid draft（bump version）→ 200 PASSED 且 content/digest/updated_at 不变；缺 eval → 200 REJECTED `SKILL.EVAL_DATASET`；同一 REJECTED 草稿 `PUT` → 422 `SKILL_QUALITY_REJECTED` 且不写入。记录见 `docs/validation/2026-11-24-dev-skill-precheck.md`。
 - 仍未做真实模型校准、并发压力、旧 skill dry-run、repo/marketplace 端到端。
 
 ### 14.7 规则管理与自定义 DECISION 实现（2026-11-18）
