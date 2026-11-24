@@ -39,6 +39,8 @@ import ai.core.server.notification.NotificationService;
 import ai.core.server.project.MongoProjectStore;
 import ai.core.server.project.ProjectService;
 import ai.core.server.project.ProjectStore;
+import ai.core.server.quality.PassThroughQualityGate;
+import ai.core.server.quality.PublishQualityGate;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.session.SessionRegistry;
 import ai.core.server.session.ChatSessionStore;
@@ -55,8 +57,13 @@ import ai.core.server.user.UserStore;
 import ai.core.server.settings.SystemSettingsStore;
 import ai.core.server.skill.MongoSkillStore;
 import ai.core.server.skill.SkillBlobStore;
+import ai.core.server.skill.SkillPublishService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillStore;
+import ai.core.server.skill.quality.SkillQualityGate;
+import ai.core.server.skill.quality.SkillQualityPolicyService;
+import ai.core.server.skill.quality.SkillQualityRuleRegistry;
+import ai.core.server.skill.quality.SkillQualityStore;
 import ai.core.server.workflow.executor.EndExecutor;
 import ai.core.server.workflow.executor.HumanInputExecutor;
 import ai.core.server.workflow.executor.StartExecutor;
@@ -178,8 +185,8 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(SystemSettingsService.class);
         bind(ObjectStorageServiceResolver.class);
         bind(SkillBlobStore.class);
-        bind(SkillStore.class, bind(MongoSkillStore.class));
-        bind(SkillService.class);
+        bindSkillServices();
+        bind(PublishQualityGate.class, bind(PassThroughQualityGate.class));
         bind(WorkflowAgentSnapshotService.class);
         bind(WorkflowPrivateAgentSafetyValidator.class);
         bind(WorkflowPublishService.class);
@@ -202,6 +209,18 @@ public class WorkflowTestModule extends AbstractTestModule {
         bind(NotificationService.class);
         bind(WorkflowRunner.class);
         bind(WorkflowRunnerJob.class);   // claim sweep + stranded-PAUSED recovery, exercised by the resume tests
+    }
+
+    private void bindSkillServices() {
+        bind(SkillStore.class, bind(MongoSkillStore.class));
+        // SkillService injects SkillPublishService eagerly, which injects the quality gate; the gate is never
+        // exercised here, so its policy store is a mock (no extra collections to register).
+        bind(SkillQualityRuleRegistry.class);
+        bind(SkillQualityStore.class, mock(SkillQualityStore.class));
+        bind(SkillQualityPolicyService.class);
+        bind(SkillQualityGate.class);
+        bind(SkillPublishService.class);
+        bind(SkillService.class);
     }
 
     private void bindDataStores() {

@@ -34,6 +34,7 @@ import ai.core.server.web.sse.CliProxyChannelListener;
 import ai.core.server.web.sse.InternalSessionEventChannelListener;
 import ai.core.server.web.sse.InternalSsePreflight;
 import ai.core.server.web.sse.SseAuthInterceptor;
+import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -80,6 +81,7 @@ public class SessionModule extends Module {
         // a session; the AWT encoder is JVM-only, which is why it is registered here and not in core-ai
         ImageDownscaler.register(new AwtImageShrinker());
         sessionRegistry = bind(SessionRegistry.class);
+        sessionRegistry.workspaceSessionBinder(bean(WorkspaceSessionBinder.class));
         bind(ChatMessageService.class);
         bind(SessionSearchService.class);
         bind(SessionReadService.class);

@@ -23,8 +23,11 @@ public class SessionRegistry {
 
     @Inject
     ChatSessionStore chatSessionStore;
-    @Inject
     WorkspaceSessionBinder workspaceSessionBinder;
+
+    public void workspaceSessionBinder(WorkspaceSessionBinder binder) {
+        this.workspaceSessionBinder = binder;
+    }
 
     public ChatSession create(SessionRegistration registration) {
         var session = new ChatSession();
