@@ -204,3 +204,26 @@ kubectl --context FBRProdAKSCluster -n prod-ai logs deploy/core-ai-server --sinc
 - 该 env 变更已随 2.0.363 发布：`fbr-prod-env-project` main `246c7ce..59fc175`（`dc478ae` PVC RBAC、`4dbc18f` skip、`59fc175` image），Deployment revision 98。
 - 改 env 触发了滚动重启，但本次它与镜像升级合并执行，没有额外的重启窗口。
 - Mongo 是共享集群（prod 命名空间 `mongodb-0/1/2`，59 个 `core-ai` collection，同时承载 20+ 其他服务）；停 pod/PVC 不属于 core-ai 单方面动作，必须等跨团队迁移完成。
+
+## 9. 发布后观察（2026-11-24 21:33–22:05 CST）
+
+连续 32 分钟采样（29 个样本），全部为只读检查：
+
+| 项目 | 观察结果 |
+|---|---|
+| Pod | 每个样本均为 **2/2 Ready、0 restart、无 lastState/OOM** |
+| 内存 | 624–676 MiB（limit 4 GiB），无持续增长 |
+| Health | 公网 `/health-check` 每个样本 **200**；`/api/capabilities` **200**；`/api/hub/models` **401** |
+| Mongo | 每 5 分钟检查 `mongodb-0/1/2`，core-ai 连接数始终 **0/0/0** |
+| 延迟 | `/api/agents/:id` 发布前 p50/p95/p99 = 3.35/4.53/6.02 ms；发布后 = 4.41/6.14/8.25 ms；后半段回落至 4.13/5.45/7.57 ms。绝对值仍为个位数 ms；抽样 DB 时间 2.91 ms/10 次查询（发布前 3.59 ms/6 次），无 DB 退化 |
+| Action 日志 | 13:15–14:05Z：OK 6,891；WARN 40 + ERROR 2。40 条 WARN 与 2 条 ERROR 全部来自本次观察探针（401 探测 + HTTP 端口转发的 `session must be used with https`），**无生产流量 WARN/ERROR** |
+| SQL / 迁移错误 | action 与 trace 索引关键词检索（`UncheckedSQLException` / `SQLState` / `does not exist` / `deadlock` / `OutOfMemoryError` / `migration failed`）均为 **0 命中** |
+| Trace 日志 | 58 条：40 条探针 401、1 条探针 404、1 条探针 `/api/agents` 401、2 条 `job:tool-registry-sync` 的 “Replace existing Tool” 启动告警（两个 pod 各一次，非 SQL/迁移问题） |
+
+结论：**无异常，无需回滚**，保留 `2.0.363` / revision 98。回滚路径不变：
+
+```powershell
+kubectl --context FBRProdAKSCluster -n prod-ai rollout undo deploy/core-ai-server --to-revision=97
+```
+
+观察期间的健康探针会在 action/trace 中留下 401 WARN（来源 IP `128.241.248.180`）和 2 条 HTTP-only ERROR；它们是监测动作，不是业务错误。
