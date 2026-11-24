@@ -18,6 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -86,6 +88,39 @@ class SkillPublishServiceTest {
         assertTrue(extra.contains("\"message\":"));
         verify(store, never()).insertIfAbsent(any());
         verify(blobStore, never()).put(any(), any(), any());
+    }
+
+    @Test
+    void checkReturnsRejectedReportWithoutThrowingOrWriting() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        var service = service(store, blobStore);
+
+        var report = service.check(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8))));
+
+        assertEquals(QualityGateResult.REJECTED, report.gateResult);
+        assertTrue(report.issues.stream().anyMatch(issue -> "SKILL.EVAL_DATASET".equals(issue.ruleId)));
+        verify(store, never()).insertIfAbsent(any());
+        verify(store, never()).replace(any());
+        verify(store, never()).replaceIfRevision(any(), anyInt());
+        verify(blobStore, never()).put(anyString(), anyString(), any(byte[].class));
+        verify(blobStore, never()).deleteReplaced(any(), any());
+    }
+
+    @Test
+    void checkReturnsPassedReportForValidPackageWithoutWriting() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        var service = service(store, blobStore);
+
+        var report = service.check(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), resources()));
+
+        assertEquals(QualityGateResult.PASSED, report.gateResult);
+        verify(store, never()).insertIfAbsent(any());
+        verify(store, never()).replace(any());
+        verify(store, never()).replaceIfRevision(any(), anyInt());
     }
 
     @Test

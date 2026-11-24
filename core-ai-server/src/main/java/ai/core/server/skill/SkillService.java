@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.skill.quality.SkillQualityReport;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
 import ai.core.skill.SkillMetadata;
@@ -240,25 +241,17 @@ public class SkillService {
 
     public SkillPublishOutcome updateOutcome(String id, String description, String content,
                                              List<String> allowedTools, List<SkillResourceUpdate> updates) {
-        var entity = get(id);
-        var writer = writer();
-        Map<String, byte[]> resources = updates != null
-            ? writer.mergeBytes(entity.resources, updates)
-            : writer.bytesOf(entity.resources);
-        var request = new SkillPublishRequest();
-        request.userId = entity.userId;
-        request.namespace = entity.namespace;
-        request.directoryName = entity.directoryName != null ? entity.directoryName : entity.name;
-        request.content = content;
-        request.resources = resources;
-        request.existing = entity;
-        request.sourceType = entity.sourceType;
-        request.repoConfig = entity.repoConfig;
-        request.mirroredDescription = description;
-        request.mirroredAllowedTools = allowedTools;
-        var outcome = publishService.publish(request);
+        var outcome = publishService.publishUpdate(get(id), description, content, allowedTools, updates);
         invalidateCatalog();
         return outcome;
+    }
+
+    /**
+     * Runs the publish gate against the editor's unsaved draft without writing either the skill or its blobs.
+     */
+    public SkillQualityReport checkQuality(String id, String description, String content,
+                                           List<String> allowedTools, List<SkillResourceUpdate> updates) {
+        return publishService.checkUpdate(get(id), description, content, allowedTools, updates);
     }
 
     long sweepStaleRepoTempDirs() {
@@ -387,10 +380,6 @@ public class SkillService {
 
     SkillRepoManager repoManager() {
         return new SkillRepoManager(skillStore, blobStore);
-    }
-
-    private SkillResourceWriter writer() {
-        return new SkillResourceWriter(blobStore);
     }
 
     public Map<String, String> batchResolve(Set<String> skillIds) {

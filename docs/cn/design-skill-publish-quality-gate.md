@@ -1044,7 +1044,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 
 ### 7.3 Skill 编辑器与 Hub UI
 
-- 编辑器增加 “Check quality” 按钮：把当前 SKILL.md + resources + directoryName 作为 precheck candidate 发送；不写入。Save/Push 仍会重新执行门禁，不复用 precheck PASS。
+- 编辑器增加 “Check quality” 按钮：把当前 SKILL.md + resources + directoryName 作为 precheck candidate 发送；不写入。Save/Push 仍会重新执行门禁，不复用 precheck PASS。（2026-11-24 实现：`POST /api/skills/:id/quality-checks`，用已存 skill 的 namespace/directoryName/revision 评估编辑器当前草稿；CLI `skill check` 仍未提供。）
 - 质量面板按 Identity / Metadata / Description / Content / Permissions / Eval / Links 分组；BLOCK FAIL 在前，未完成次之，WARN 最后；每条显示规则编号/版本、要求、证据、建议。
 - 点击 issue 定位到 SKILL.md 对应 heading/行、metadata 字段、allowed-tools 条目、eval case 或 reference 文件；只有解析器给出精确行号时才高亮行，否则定位到 section。
 - PUBLISHED/PUSHED 成功后显示 “已检查规则数 / policy revision / warn count”；失败显示 “未写入，现有 skill 未改变”。
@@ -1137,7 +1137,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 
 ### 8.5 预检查与缓存
 
-- `POST /api/skills/quality-checks` 接受完整 candidate（multipart 或 JSON + content/resources），返回报告但不写入；供编辑器 “Check quality”、CLI `skill check` 使用。
+- `POST /api/skills/:id/quality-checks` 接受编辑器草稿（与 `PUT /api/skills/:id` 同形：content / description / allowed_tools / resources），merge resources 后返回报告但不写入；供编辑器 “Check quality” 使用。完整 candidate 形式（新 skill / CLI `skill check`）仍未实现。
 - 预检查 PASS 不是发布令牌；`skill push` / save 必须重新执行门禁，避免资源、策略、模型路由变化漏检。
 - 可以缓存非敏感的 registry/内置工具清单，但最终权威读取与 commit CAS 不得由 stale cache 取代。
 - 同一 idempotency key 的重放属于同 operation 去重，不是跨请求绕过检查。
@@ -1175,7 +1175,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 |---|---|---|
 | `POST /api/skills/upload` | 保留 URL；multipart 增加 `skill_dir` 文本字段；始终执行门禁；成功返回 SkillDefinitionView + quality headers | 所有已有调用者获得强制保护；目录一致性可验证 |
 | `PUT /api/skills/:id` | 保留 URL；merge 后执行门禁；校验 description/allowedTools 与解析值一致；支持 If-Match | 封住编辑器保存绕过；不允许字段漂移 |
-| `POST /api/skills/quality-checks` | 接受完整 candidate（multipart/JSON），同步返回 typed report，不写入 | 编辑器/CLI 预检查，不产生发布副作用 |
+| `POST /api/skills/:id/quality-checks` | 接受编辑器草稿（与 `PUT` 同形），merge 后同步返回 typed report，不写入；FAIL 也是 200 | 编辑器预检查，不产生发布副作用 |
 | `GET /api/skills/:id/quality-checks/:runId` | 读取有权限的报告与 run 状态 | 重试/调试不依赖长错误字符串 |
 | `GET /api/skills/:id/quality-checks/latest` | 读取最近报告、WARN 摘要 | 发布成功后的 WARN 交付 |
 | `GET /api/admin/skill-quality/rule-templates` | 返回 CODE/HYBRID 模板、参数 schema、支持的输入 | UI 从后端能力目录渲染，避免前后端两套规则 |
@@ -1512,6 +1512,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 | v0.5（实施记录） | 2026-11-19 | core-ai | 新增管理员豁免白名单：随 skill policy revision 固化的 `exemptions` 列表、Skill Quality 页面编辑、命中后 gate 短路、report/receipt 记录 `exempted` + `exemption_reason` | 用户要求豁免已知违规但不能修改的外部 skill | 用户请求（2026-11-19） |
 | v0.6（实施记录） | 2026-11-19 | core-ai | 白名单从文本框改为独立列表页：Agent/Skill 条目统一展示、类型感知的 subject 选择器、`/api/admin/quality-exemptions` 列表/搜索/新增/移除 API；存储仍为 policy revision 内的 `exemptions`，每次变更激活新 revision | 用户反馈文本框式白名单不可用（“太反人类”） | 用户请求（2026-11-19） |
 | v0.7（实施记录） | 2026-11-23 | core-ai | 第三方 repo 导入（注册 / marketplace 安装 / repo 同步）不再执行发布质量门禁：candidate 携带写入 `sourceType`，`SkillQualityGate` 对 `REPO` 短路为 `exempted=true`（`exemption_reason=third-party repo import`），report/receipt 记录原因；upload / editor save / `skill push` 仍走门禁 | 用户要求三方导入的 skill 不走质量门禁（claude-ads 等外部仓库被内容规则阻断） | 用户请求（2026-11-23） |
+| v0.8（实施记录） | 2026-11-24 | core-ai | 编辑器新增独立 “Check quality” 按钮：`POST /api/skills/:id/quality-checks` 复用 `SkillPublishService` 的 candidate 构建与门禁，评估当前未保存草稿但不写 skill/blob；报告面板改为固定最大高度的可滚动区域并展示 precheck 提示 | 用户要求除上传/保存外可单独触发检查，且质量报告超出可视区后无法滚动查看 | 用户请求（2026-11-24） |
 
 ### 14.4 设计自查记录
 
@@ -1555,7 +1556,7 @@ Candidate 是唯一输入：所有规则读取它，commit 写入它；禁止 co
 **尚未实现（仍为设计提案）**
 
 - 语义决策规则（description 具体性、name-content 主题、workflow/decision/output/error/QA 语义、eval 用例质量）尚未接入 `QualityDecisionGateway`；当前只做结构与覆盖检查，没有 shadow 语义报告。
-- 规则/策略管理 UI、`skill check` 预检查 API、报告持久化与查询 API、publication record 追加集合。
+- 规则/策略管理 UI、CLI `skill check` 命令（编辑器预检查 API `POST /api/skills/:id/quality-checks` 已于 2026-11-24 实现）、报告持久化与查询 API、publication record 追加集合。
 - repo/marketplace 的逐 skill 部分失败响应与 `createMarketplaceRepo` 批量载体；当前单 skill 失败会中止该次 repo 注册。
 - `qualified_name` 唯一索引与存量 `revision` 迁移回填；当前依赖 CAS + 应用层重复检查，legacy null 按 0 处理。
 - blob orphan GC、`SubjectBudgetProfile` 的共享 kernel 改造（本轮无模型调用，故未触发预算）。

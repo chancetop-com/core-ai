@@ -1,4 +1,5 @@
 import { getAuthHeaders } from './client';
+import type { UpdateSkillRequest } from './client';
 
 export interface QualityIssue {
   rule_id: string;
@@ -315,7 +316,14 @@ export const qualityApi = {
     request<QualityReport>(`/api/agents/${encodeURIComponent(agentId)}/quality-checks/${encodeURIComponent(runId)}`),
 };
 
-export const skillQualityApi = qualityAdminApi('skill');
+export const skillQualityApi = {
+  ...qualityAdminApi('skill'),
+  check: (skillId: string, draft: UpdateSkillRequest) =>
+    request<QualityReport>(`/api/skills/${encodeURIComponent(skillId)}/quality-checks`, {
+      method: 'POST',
+      body: JSON.stringify(draft),
+    }),
+};
 
 export const qualityExemptionsApi = {
   list: () => request<QualityExemptionList>('/api/admin/quality-exemptions'),

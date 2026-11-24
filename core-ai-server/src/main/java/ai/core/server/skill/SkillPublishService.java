@@ -37,14 +37,31 @@ public class SkillPublishService {
     @Inject
     SkillQualityGate gate;
 
+    /**
+     * Precheck: runs the same candidate build, metadata consistency and gate as {@link #publish}, but never writes.
+     */
+    public SkillQualityReport check(SkillPublishRequest request) {
+        var evaluated = evaluate(request);
+        return SkillQualityReport.of(evaluated.candidate(), evaluated.result());
+    }
+
+    /** Editor save: merges the stored resources with the update rows, then publishes. */
+    public SkillPublishOutcome publishUpdate(SkillDefinition entity, String description, String content,
+                                             List<String> allowedTools, List<SkillResourceUpdate> updates) {
+        return publish(updateRequest(entity, description, content, allowedTools, updates));
+    }
+
+    /** Editor precheck: the same draft merge as {@link #publishUpdate}, evaluated without writing. */
+    public SkillQualityReport checkUpdate(SkillDefinition entity, String description, String content,
+                                          List<String> allowedTools, List<SkillResourceUpdate> updates) {
+        return check(updateRequest(entity, description, content, allowedTools, updates));
+    }
+
     public SkillPublishOutcome publish(SkillPublishRequest request) {
-        var content = request.content != null ? request.content : existingContent(request.existing);
+        var evaluated = evaluate(request);
+        var candidate = evaluated.candidate();
+        var result = evaluated.result();
         var existing = request.existing;
-        var candidate = new SkillPublishCandidateBuilder().build(
-            request.namespace, directoryName(request), content, request.resources, request.sourceType, existing);
-        verifyMirrors(request, candidate);
-        verifyImmutableIdentity(existing, candidate);
-        var result = gate.evaluate(candidate);
         var report = SkillQualityReport.of(candidate, result);
         if (!result.passed()) throw failure(result, report);
         if (result.exempted()) {
@@ -60,6 +77,36 @@ public class SkillPublishService {
         LOGGER.info("published skill, id={}, qualifiedName={}, revision={}, gate={}, warns={}",
             entity.id, entity.qualifiedName, entity.revision, result.gateResult(), result.warnCount());
         return new SkillPublishOutcome(entity, report);
+    }
+
+    private Evaluated evaluate(SkillPublishRequest request) {
+        var content = request.content != null ? request.content : existingContent(request.existing);
+        var existing = request.existing;
+        var candidate = new SkillPublishCandidateBuilder().build(
+            request.namespace, directoryName(request), content, request.resources, request.sourceType, existing);
+        verifyMirrors(request, candidate);
+        verifyImmutableIdentity(existing, candidate);
+        return new Evaluated(candidate, gate.evaluate(candidate));
+    }
+
+    private SkillPublishRequest updateRequest(SkillDefinition entity, String description, String content,
+                                              List<String> allowedTools, List<SkillResourceUpdate> updates) {
+        var writer = new SkillResourceWriter(blobStore);
+        Map<String, byte[]> resources = updates != null
+            ? writer.mergeBytes(entity.resources, updates)
+            : writer.bytesOf(entity.resources);
+        var request = new SkillPublishRequest();
+        request.userId = entity.userId;
+        request.namespace = entity.namespace;
+        request.directoryName = entity.directoryName != null ? entity.directoryName : entity.name;
+        request.content = content;
+        request.resources = resources;
+        request.existing = entity;
+        request.sourceType = entity.sourceType;
+        request.repoConfig = entity.repoConfig;
+        request.mirroredDescription = description;
+        request.mirroredAllowedTools = allowedTools;
+        return request;
     }
 
     private void verifyMirrors(SkillPublishRequest request, SkillPublishCandidate candidate) {
@@ -160,6 +207,9 @@ public class SkillPublishService {
         if (values == null) return List.of();
         return values.stream().map(value -> value == null ? "" : value.trim())
             .filter(value -> !value.isEmpty()).sorted().toList();
+    }
+
+    private record Evaluated(SkillPublishCandidate candidate, SkillQualityResult result) {
     }
 }
 

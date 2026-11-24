@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download } from 'lucide-react';
+import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download, ShieldCheck } from 'lucide-react';
 import { api, ApiRequestError } from '../../api/client';
-import type { QualityReport } from '../../api/quality';
+import { ApiError as QualityApiError, skillQualityApi, type QualityReport } from '../../api/quality';
 import JSZip from 'jszip';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 import QualityReportPanel from '../agents/QualityReportPanel';
@@ -60,8 +60,10 @@ export default function SkillEditor() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [checking, setChecking] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveReport, setSaveReport] = useState<QualityReport | null>(null);
+  const [reportNote, setReportNote] = useState('');
 
   const [name, setName] = useState('');
   const [namespace, setNamespace] = useState('');
@@ -137,35 +139,38 @@ export default function SkillEditor() {
     }
   };
 
+  const buildDraft = () => {
+    const fullContent = buildSkillMdContent(parsedRef.current?.keys ?? [], { name, description, allowedTools, version }, skillBody);
+
+    // stored binaries and untouched text files are kept server-side instead of being re-sent;
+    // only changed or new files travel in the request body
+    const resourcePayload = resources.map(r => {
+      if (r.kind === 'blob') return { path: r.path, keep: true };
+      const original = originalTextsRef.current.get(r.path);
+      if (original !== undefined && original === (r.content ?? '')) return { path: r.path, keep: true };
+      return { path: r.path, content: r.content ?? '' };
+    });
+
+    const payload = {
+      description,
+      content: fullContent,
+      allowed_tools: allowedTools.length > 0 ? allowedTools : [],
+      resources: resourcePayload,
+    };
+    const bodyBytes = utf8Bytes(JSON.stringify(payload));
+    if (bodyBytes > MAX_REQUEST_BYTES) {
+      throw new Error(`This request is ${formatMegabytes(bodyBytes)} — over the 10 MB request limit (the server would reject it with a 400). Reduce the modified files and retry.`);
+    }
+    return payload;
+  };
+
   const handleSave = async () => {
     if (!id) return;
     setSaving(true);
     setSaveError('');
     setSaveReport(null);
     try {
-      const fullContent = buildSkillMdContent(parsedRef.current?.keys ?? [], { name, description, allowedTools, version }, skillBody);
-
-      // stored binaries and untouched text files are kept server-side instead of being re-sent;
-      // only changed or new files travel in the request body
-      const resourcePayload = resources.map(r => {
-        if (r.kind === 'blob') return { path: r.path, keep: true };
-        const original = originalTextsRef.current.get(r.path);
-        if (original !== undefined && original === (r.content ?? '')) return { path: r.path, keep: true };
-        return { path: r.path, content: r.content ?? '' };
-      });
-
-      const payload = {
-        description,
-        content: fullContent,
-        allowed_tools: allowedTools.length > 0 ? allowedTools : [],
-        resources: resourcePayload,
-      };
-      const bodyBytes = utf8Bytes(JSON.stringify(payload));
-      if (bodyBytes > MAX_REQUEST_BYTES) {
-        throw new Error(`This save is ${formatMegabytes(bodyBytes)} — over the 10 MB request limit (the server would reject it with a 400). Reduce the modified files and save again.`);
-      }
-
-      await api.skills.update(id, payload);
+      await api.skills.update(id, buildDraft());
 
       const saved = new Map<string, string>();
       for (const r of resources) {
@@ -174,12 +179,34 @@ export default function SkillEditor() {
       originalTextsRef.current = saved;
     } catch (e) {
       if (e instanceof ApiRequestError && e.qualityReport) {
+        setReportNote('');
         setSaveReport(e.qualityReport);
       } else {
         setSaveError(e instanceof Error ? e.message : 'Save failed');
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleCheck = async () => {
+    if (!id) return;
+    setChecking(true);
+    setSaveError('');
+    setSaveReport(null);
+    try {
+      const report = await skillQualityApi.check(id, buildDraft());
+      setReportNote('precheck — nothing saved');
+      setSaveReport(report);
+    } catch (e) {
+      if (e instanceof QualityApiError && e.qualityReport) {
+        setReportNote('precheck — nothing saved');
+        setSaveReport(e.qualityReport);
+      } else {
+        setSaveError(e instanceof Error ? e.message : 'Quality check failed');
+      }
+    } finally {
+      setChecking(false);
     }
   };
 
@@ -315,7 +342,12 @@ export default function SkillEditor() {
               <RefreshCw size={14} /> Sync
             </button>
           )}
-          <button onClick={handleSave} disabled={saving}
+          <button onClick={handleCheck} disabled={saving || checking}
+            className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer disabled:opacity-50"
+            style={{ borderColor: 'var(--color-border)' }}>
+            <ShieldCheck size={14} /> {checking ? 'Checking...' : 'Check quality'}
+          </button>
+          <button onClick={handleSave} disabled={saving || checking}
             className="flex items-center gap-1 px-4 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
             style={{ background: 'var(--color-primary)' }}>
             <Save size={14} /> {saving ? 'Saving...' : 'Save'}
@@ -324,7 +356,7 @@ export default function SkillEditor() {
       </div>
 
       {saveReport && (
-        <QualityReportPanel report={saveReport} onClose={() => setSaveReport(null)} />
+        <QualityReportPanel report={saveReport} note={reportNote} onClose={() => setSaveReport(null)} />
       )}
 
       {saveError && (

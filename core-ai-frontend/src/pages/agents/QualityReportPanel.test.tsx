@@ -42,4 +42,13 @@ describe('QualityReportPanel', () => {
     expect(screen.getByText(/Add an output specification naming the deliverable/)).toBeTruthy();
     expect(screen.getByText(/affirmative probability 0.01/)).toBeTruthy();
   });
+
+  it('scrolls the long issue list inside the panel and shows the precheck note', () => {
+    const { container } = render(<QualityReportPanel report={REPORT} note="precheck — nothing saved" />);
+
+    expect(screen.getByText(/precheck — nothing saved/)).toBeTruthy();
+    const body = container.querySelector('.overflow-y-auto');
+    expect(body).toBeTruthy();
+    expect(body!.textContent).toContain('Output artifact is named');
+  });
 });

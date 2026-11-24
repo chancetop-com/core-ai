@@ -10,6 +10,7 @@ import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
+import ai.core.api.server.skill.SkillQualityReportView;
 import ai.core.api.server.skill.SkillSdkPlanRequest;
 import ai.core.api.server.skill.SkillSdkPlanResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
@@ -39,6 +40,10 @@ public interface SkillWebService {
     @PUT
     @Path("/api/skills/:id")
     SkillDefinitionView update(@PathParam("id") String id, UpdateSkillRequest request);
+
+    @POST
+    @Path("/api/skills/:id/quality-checks")
+    SkillQualityReportView checkQuality(@PathParam("id") String id, UpdateSkillRequest request);
 
     @DELETE
     @Path("/api/skills/:id")

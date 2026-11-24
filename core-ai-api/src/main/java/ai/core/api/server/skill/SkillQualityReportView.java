@@ -39,6 +39,12 @@ public class SkillQualityReportView {
     @Property(name = "checks_complete")
     public Boolean checksComplete;
 
+    @Property(name = "exempted")
+    public Boolean exempted;
+
+    @Property(name = "exemption_reason")
+    public String exemptionReason;
+
     @Property(name = "warn_count")
     public Integer warnCount;
 

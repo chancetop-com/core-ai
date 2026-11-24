@@ -23,6 +23,8 @@ public final class SkillQualityReportMapper {
         view.policyRevision = report.policyRevision;
         view.gateResult = report.gateResult == null ? null : report.gateResult.name();
         view.checksComplete = report.checksComplete;
+        view.exempted = report.exempted;
+        view.exemptionReason = report.exemptionReason;
         view.warnCount = report.warnCount;
         view.issues = issueViews(report.issues, true);
         view.rulesEvaluated = report.ruleResults == null ? 0 : report.ruleResults.size();

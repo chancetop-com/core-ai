@@ -5,6 +5,8 @@ import { issueTargetSection } from '../../api/quality';
 
 interface Props {
   report: QualityReport;
+  /** Extra context appended to the run summary, e.g. that this was a precheck and nothing was saved. */
+  note?: string;
   onLocate?: (section: string) => void;
   onClose?: () => void;
 }
@@ -32,14 +34,14 @@ function groupLabel(issue: QualityIssue) {
   return 'CUSTOM';
 }
 
-export default function QualityReportPanel({ report, onLocate, onClose }: Props) {
+export default function QualityReportPanel({ report, note, onLocate, onClose }: Props) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const issues = report.issues || [];
   const groups = Array.from(new Set(issues.map(groupLabel)));
   const exempted = report.exempted === true;
 
   return (
-    <div className="rounded-xl border mb-4 overflow-hidden"
+    <div className="rounded-xl border mb-4 overflow-hidden shrink-0"
       style={{ borderColor: report.gate_result === 'PASSED' ? 'var(--color-success)' : 'var(--color-error)', background: 'var(--color-bg-secondary)' }}>
       <div className="flex items-center justify-between px-4 py-3"
         style={{ borderBottom: '1px solid var(--color-border)' }}>
@@ -56,6 +58,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
               Run {report.run_id} · policy {report.policy_revision ?? '-'} · checks complete {report.checks_complete ? 'yes' : 'no'}
               {!!report.warn_count && ` · ${report.warn_count} warning(s)`}
               {exempted && report.exemption_reason ? ` · ${report.exemption_reason}` : ''}
+              {note ? ` · ${note}` : ''}
             </div>
           </div>
         </div>
@@ -69,7 +72,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
           {exempted ? 'This subject skips rule evaluation, so there are no issues to fix.' : 'No issues to fix.'}
         </div>
       ) : (
-        <div className="p-3 space-y-3">
+        <div className="p-3 space-y-3 max-h-[40vh] overflow-y-auto overscroll-contain">
           {groups.map(group => {
             const groupIssues = issues.filter(issue => groupLabel(issue) === group);
             if (groupIssues.length === 0) return null;
@@ -105,7 +108,7 @@ export default function QualityReportPanel({ report, onLocate, onClose }: Props)
                             </div>
                             <div className="text-sm mt-1" style={{ color: 'var(--color-text-primary)' }}>{issue.message}</div>
                             {issue.evidence_text && (
-                              <div className="text-xs mt-1 truncate" style={{ color: 'var(--color-text-secondary)' }} title={issue.evidence_text}>
+                              <div className="text-xs mt-1 break-words" style={{ color: 'var(--color-text-secondary)' }} title={issue.evidence_text}>
                                 Evidence ({issue.evidence_kind === 'SEMANTIC_ASSESSMENT' ? 'model assessment' : 'code fact'}): {issue.evidence_text}
                               </div>
                             )}

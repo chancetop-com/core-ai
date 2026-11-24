@@ -11,6 +11,7 @@ import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
+import ai.core.api.server.skill.SkillQualityReportView;
 import ai.core.api.server.skill.SkillSdkCapabilityView;
 import ai.core.api.server.skill.SkillSdkPlanRequest;
 import ai.core.api.server.skill.SkillSdkPlanResponse;
@@ -102,15 +103,25 @@ public class SkillWebServiceImpl implements SkillWebService {
     @Override
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillDefinitionView update(String id, UpdateSkillRequest request) {
-        List<SkillResourceUpdate> resources = null;
-        if (request.resources != null) {
-            resources = request.resources.stream()
-                .map(r -> new SkillResourceUpdate(r.path, Boolean.TRUE.equals(r.keep), r.content))
-                .toList();
-        }
-        var outcome = skillService.updateOutcome(id, request.description, request.content, request.allowedTools, resources);
+        var outcome = skillService.updateOutcome(id, request.description, request.content, request.allowedTools,
+            resourceUpdates(request));
         ai.core.server.skill.quality.SkillQualityHeaders.put(webContext, outcome.report());
         return toView(outcome.entity());
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
+    public SkillQualityReportView checkQuality(String id, UpdateSkillRequest request) {
+        var report = skillService.checkQuality(id, request.description, request.content, request.allowedTools,
+            resourceUpdates(request));
+        return ai.core.server.skill.quality.SkillQualityReportMapper.toView(report);
+    }
+
+    private List<SkillResourceUpdate> resourceUpdates(UpdateSkillRequest request) {
+        if (request.resources == null) return null;
+        return request.resources.stream()
+            .map(r -> new SkillResourceUpdate(r.path, Boolean.TRUE.equals(r.keep), r.content))
+            .toList();
     }
 
     @Override

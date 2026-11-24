@@ -25,6 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
@@ -267,6 +268,30 @@ class SkillServiceTest {
     }
 
     @Test
+    void checkQualitySendsTheUnsavedDraftWithoutWriting() {
+        var collection = skillCollection();
+        var entity = skill("1", "Admin", "review", "desc");
+        entity.content = "---\nname: review\ndescription: desc\n---\n";
+        entity.directoryName = "review";
+        entity.revision = 1;
+        when(collection.get("1")).thenReturn(Optional.of(entity));
+        var publishService = mock(SkillPublishService.class);
+        var report = new ai.core.server.skill.quality.SkillQualityReport();
+        when(publishService.checkUpdate(any(), any(), any(), any(), any())).thenReturn(report);
+        var service = new SkillService();
+        service.skillStore = MongoSkillStore.of(collection);
+        service.blobStore = mock(SkillBlobStore.class);
+        service.publishService = publishService;
+        var draft = "---\nname: review\ndescription: desc\n---\n## Draft workflow\n";
+
+        var result = service.checkQuality("1", "desc", draft, null, null);
+
+        assertSame(report, result);
+        verify(publishService).checkUpdate(eq(entity), eq("desc"), eq(draft), isNull(), isNull());
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
     void uploadRejectsSkillThatFailsQualityGateBeforeWriting() {
         var collection = skillCollection();
         when(collection.findOne(any(Bson.class))).thenReturn(Optional.empty());
@@ -310,9 +335,11 @@ class SkillServiceTest {
         var collection = skillCollection();
         var entity = skill("1", "Admin", "review", "desc");
         when(collection.get("1")).thenReturn(Optional.of(entity));
+        var blobStore = mock(SkillBlobStore.class);
         var service = new SkillService();
         service.skillStore = MongoSkillStore.of(collection);
-        service.blobStore = mock(SkillBlobStore.class);
+        service.blobStore = blobStore;
+        service.publishService = publishService(service.skillStore, blobStore);
 
         var error = assertThrows(BadRequestException.class, () -> service.update("1", null, null, null,
                 List.of(new SkillResourceUpdate("missing.md", true, null))));
