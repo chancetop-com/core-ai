@@ -19,7 +19,8 @@ final class ReportParameters {
         var result = new LinkedHashMap<String, Object>();
         for (var parameter : spec.parameters != null ? spec.parameters : List.<ReportSpec.Parameter>of()) {
             if (parameter == null || parameter.name == null) continue;
-            var value = overrides != null && overrides.containsKey(parameter.name) ? overrides.get(parameter.name) : parameter.defaultValue;
+            var overridden = overrides != null ? overrides.get(parameter.name) : null;
+            var value = overridden != null ? overridden : parameter.defaultValue;
             if (value != null) result.put(parameter.name, value);
         }
         if (overrides != null) {

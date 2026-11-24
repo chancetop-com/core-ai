@@ -1,6 +1,7 @@
 package ai.core.server.report.domain;
 
 import core.framework.api.json.Property;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
 import java.util.List;
 
@@ -97,6 +98,7 @@ public class ReportSpec {
         public String op;
         @Property(name = "value")
         public Object value;
+        @SuppressFBWarnings("UWF_NULL_FIELD")
         @Property(name = "param")
         public String param;
     }
