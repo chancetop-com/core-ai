@@ -10,9 +10,13 @@ import ai.core.server.sandbox.agentsandbox.SandboxPodPlacement;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.session.ChatSessionStore;
 import ai.core.server.workspace.KubernetesWorkspaceProvisioner;
+import ai.core.server.workspace.PgWorkspaceBindingRow;
 import ai.core.server.workspace.PgWorkspaceBindingStore;
+import ai.core.server.workspace.PgWorkspaceEventRow;
 import ai.core.server.workspace.PgWorkspaceEventStore;
+import ai.core.server.workspace.PgWorkspaceRow;
 import ai.core.server.workspace.PgWorkspaceStore;
+import ai.core.server.workspace.PgWorkspaceVolumeRow;
 import ai.core.server.workspace.PgWorkspaceVolumeStore;
 import ai.core.server.workspace.WorkspaceConfig;
 import ai.core.server.workspace.WorkspaceDefaults;
@@ -46,6 +50,10 @@ public class WorkspaceModule extends Module {
         // (local mongo mode) must still start with the feature flag off.
         WorkspaceStores stores;
         if (config.enabled) {
+            db().view(PgWorkspaceRow.class);
+            db().view(PgWorkspaceVolumeRow.class);
+            db().view(PgWorkspaceBindingRow.class);
+            db().view(PgWorkspaceEventRow.class);
             stores = new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
                     bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()));
         } else {
