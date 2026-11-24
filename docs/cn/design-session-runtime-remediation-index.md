@@ -15,7 +15,7 @@
 | [`design-session-media-model.md`](design-session-media-model.md) | Q1 会话状态表示 + Q2 媒体生命周期；接口影响 Q3/Q4 | Tech design（完整） | DRAFT v0.1 |
 | [`design-trace-payload-boundary.md`](design-trace-payload-boundary.md) | Q4 Trace 载荷边界；依赖 Q1/Q5 | Tech design（小） | DRAFT v0.1 |
 | [`design-runtime-pressure-admission-metrics.md`](design-runtime-pressure-admission-metrics.md) | Q6 压力信号 + Q7 准入 + Q8b 度量语义/footprint | Tech design（完整） | DRAFT v0.1 |
-| [`note-trace-ingest-byte-budget.md`](note-trace-ingest-byte-budget.md) | Q5 Span ingest 字节预算 | Decision note（简单修复） | DRAFT v0.1 |
+| `note-trace-ingest-byte-budget.md`（未落盘） | Q5 Span ingest 字节预算 | Decision note（简单修复） | 待补 |
 | 本文 | Q1–Q8 索引、简单修复轨道、顺序 | 索引 | DRAFT v0.1 |
 
 ## 2. 问题 → 文档 / 修复
@@ -26,7 +26,7 @@
 | Q2 | 媒体字节的生命周期由谁负责 | Tech design（并入 A） | Design A §4.5、§5.4 |
 | Q3 | 一次上游请求如何组装 | 简单修复 + A 的接口 | Design A §5.2–§5.3；B0-2/3 |
 | Q4 | Trace 记录什么、何时记录 | Tech design | Design B |
-| Q5 | Span ingest 队列的容量边界 | 简单修复 + 一页 note | [`note-trace-ingest-byte-budget.md`](note-trace-ingest-byte-budget.md) |
+| Q5 | Span ingest 队列的容量边界 | 简单修复 + 一页 note | 本文 §3（Q5 行）；note 待补 |
 | Q6 | 内存压力用哪个物理信号 | Tech design | Design C §4.1、§5.1 |
 | Q7 | 准入在哪些入口、用什么状态机 | Tech design（并入 C） | Design C §4.2、§5.2 |
 | Q8 | 度量采集/聚合/呈现 | 混合：C0 简单修复 + C2 语义 | Design C §5.3–§5.5、§9 |
