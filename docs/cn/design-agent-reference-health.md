@@ -45,11 +45,11 @@
 | [9. 安全、权限与隐私](#9-安全权限与隐私) | 谁能看到什么、通知收件人、数据最小化 |
 | [10. 验收、实施计划与风险](#10-验收实施计划与风险) | 验收矩阵、分阶段、测试策略、风险 |
 | [11. 关键决策与未决事项](#11-关键决策与未决事项) | ADR 摘要、决策台账、需要用户拍板的问题 |
-| [附录 A：用户原始需求与文档治理](#附录-a用户原始需求与文档治理) | 原文与维护规则 |
-| [附录 B：设计时源码核对](#附录-b设计时源码核对) | 文件、行号、事实与约束 |
+| [附录 A：用户原始需求与文档治理](#附录-a-用户原始需求与文档治理) | 原文与维护规则 |
+| [附录 B：设计时源码核对](#附录-b-设计时源码核对) | 文件、行号、事实与约束 |
 | [附录 C：Review 与修改历史](#附录-c-review-与修改历史) | Review 记录与版本变化 |
 
-## 1. 背景、需求、目标与非目标
+## 1. 背景、需求、目标与非目标 {#1-背景需求目标与非目标}
 
 ### 1.1 第一性原理：把“Agent 需要关注”拆成四个信号
 
@@ -131,7 +131,7 @@
 
 **理由：**首版必须把“确定性的配置坏掉”与“瞬时的运行时坏掉”分开。把 MCP 连接、模型可用性、权限都塞进 Badge，会让用户很快学会忽略它；而 Skill/API 引用和质量门禁是已经发生、可审计、可操作的事实。MCP/subagent 等可以在同一套骨架上扩展，但不应在首版混入不同的可用性语义。
 
-## 2. 对用户方案的判断与总体方案
+## 2. 对用户方案的判断与总体方案 {#2-对用户方案的判断与总体方案}
 
 ### 2.1 用户方案的逐条判断
 
@@ -276,7 +276,7 @@ OK ──broken ref / quality failed──▶ ATTENTION
 
 `quality.policyChanged = run.policyRevision != currentPolicyRevision` 是附加标记，不改变 Badge；编辑器据此提示“策略已变化，需要重检”。
 
-## 3. 核心模型与不变量
+## 3. 核心模型与不变量 {#3-核心模型与不变量}
 
 ### 3.1 术语与实体关系
 
@@ -466,7 +466,7 @@ Agent 文档里有两份配置：
 
 **结论：**Badge 的**判定**（是否 `ATTENTION`）永远是派生视图；台账只服务于通知、审计、以及 `refName` 的 best-effort 展示补全。台账有值时显示删除前的 Skill 名字；台账不可用/无值时回退到 ref id，**绝不因为台账状态改变 Badge 的显示或隐藏**。这样即使台账任务失败、重复、延迟，列表仍然说真话。
 
-## 4. 检测、通知与对账
+## 4. 检测、通知与对账 {#4-检测通知与对账}
 
 ### 4.1 触发源
 
@@ -672,7 +672,7 @@ type:    AGENT_ATTENTION
 
 **核心原则：**健康检查是诊断，不是业务主路径。它不能因为自身失败让列表 500、让删除失败、让发布失败；也不能在不确定时冒充确定。
 
-## 5. 数据模型与 API
+## 5. 数据模型与 API {#5-数据模型与-api}
 
 ### 5.1 API View
 
@@ -807,7 +807,7 @@ CREATE INDEX IF NOT EXISTS agent_quality_runs_agent_finished_idx
 | `refId` | String | Skill id 或 API ref id |
 | `refName` | String | 可读名称；删除时尽量传入删除前的名字 |
 | `reason` | String | `SKILL_NOT_FOUND` / `API_TOOL_NOT_FOUND` / `MALFORMED_REFERENCE`（台账只记录 confirmed broken，不记录 UNVERIFIED） |
-| `sources` | List<String> | `DRAFT` / `PUBLISHED` |
+| `sources` | `List<String>` | `DRAFT` / `PUBLISHED` |
 | `firstDetectedAt` | ZonedDateTime | 本 episode 首次检测时间 |
 | `lastSeenAt` | ZonedDateTime | 最近一次仍检测到的时间 |
 | `notifiedAt` | ZonedDateTime | 成功创建通知的时间；null 表示待通知 |
@@ -976,7 +976,7 @@ boolean createIfAbsent(Notification notification);   // insert ... ON CONFLICT (
 }
 ```
 
-## 6. 前端与交互
+## 6. 前端与交互 {#6-前端与交互}
 
 ### 6.1 Agent 列表
 
@@ -1040,7 +1040,7 @@ boolean createIfAbsent(Notification notification);   // insert ... ON CONFLICT (
 - Tooltip 限长：最多 3 条 + `and N more`，避免遮挡列表；完整列表在编辑器横幅。
 - 图标不要放在可点击按钮内部，避免嵌套交互冲突。
 
-## 7. 服务架构与关键流程
+## 7. 服务架构与关键流程 {#7-服务架构与关键流程}
 
 ### 7.1 组件与依赖
 
@@ -1227,7 +1227,7 @@ delete(id, userId)
 - 不改 Agent 列表默认排序；
 - 不做跨 Pod SSE。
 
-## 8. 可观测性、性能与容量
+## 8. 可观测性、性能与容量 {#8-可观测性性能与容量}
 
 ### 8.1 指标与日志
 
@@ -1285,7 +1285,7 @@ delete(id, userId)
 | Agent 在检测中被删除 | 无 Badge | issue resolve/忽略 | 无 |
 | Agent 在检测中被编辑 | 下一次读取纠正 | 本次快照可能短暂不一致 | 无 |
 
-## 9. 安全、权限与隐私
+## 9. 安全、权限与隐私 {#9-安全权限与隐私}
 
 ### 9.1 可见性
 
@@ -1311,7 +1311,7 @@ delete(id, userId)
 - API ref 的 `refName` 由 id 解析（`app > service > operation`），不读 Service API payload。
 - 日志不打印完整 Agent 文档或 Skill 内容。
 
-## 10. 验收、实施计划与风险
+## 10. 验收、实施计划与风险 {#10-验收实施计划与风险}
 
 ### 10.1 验收矩阵
 
@@ -1407,7 +1407,7 @@ delete(id, userId)
 - 20/50 条列表，10% Agent 有 5 条 issue；对比无 health 的 p95。
 - 200/2000 个 Agent 带 API 引用的 reload 对账耗时。
 
-## 11. 关键决策与未决事项
+## 11. 关键决策与未决事项 {#11-关键决策与未决事项}
 
 ### 11.1 ADR 摘要
 
