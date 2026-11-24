@@ -52,6 +52,8 @@ class SandboxModule extends Module {
         property("sys.sandbox.docker.workspace.base");
         property("sys.sandbox.server.url");
         property("sys.sandbox.attachments.maxBytes");
+        property("sys.sandbox.agentSandbox.apiVersion");
+        property("sys.sandbox.timeout");
         if (providerName == null || providerName.isBlank()) {
             bindSandboxService(new SandboxService(bean(SandboxSnapshotService.class),
                     bean(ObjectStorageServiceResolver.class), bean(FileService.class),
