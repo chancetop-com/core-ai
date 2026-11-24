@@ -2,10 +2,12 @@ package ai.core.context;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.agent.lifecycle.AbstractLifecycle;
+import ai.core.llm.ContextWindowErrors;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.tool.ToolCallResult;
+import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -56,6 +58,35 @@ public class CompressionLifecycle extends AbstractLifecycle {
             thrashGuard.onCompression();
             LOGGER.debug("Messages compressed before model call, agent messages updated in-place");
         }
+    }
+
+    @Override
+    public boolean onModelError(CompletionRequest request, RuntimeException error, ExecutionContext executionContext) {
+        if (request == null || request.messages == null || !ContextWindowErrors.isContextWindowExceeded(error)) {
+            return false;
+        }
+
+        int observedTokens = MessageTokenCounterUtil.count(request.messages);
+        if (observedTokens <= 0) {
+            return false;
+        }
+        int declaredLimit = ContextWindowErrors.declaredLimit(error.getMessage());
+        int learnedWindow = declaredLimit > 0 ? declaredLimit : (int) (observedTokens * 0.8);
+        compression.learnContextWindow(request.model, learnedWindow);
+
+        int before = request.messages.size();
+        List<Message> compressed = compression.forceCompress(request.messages);
+        if (compressed == request.messages || compressed.size() >= before) {
+            LOGGER.warn("context window exceeded but compression could not shrink the conversation, model={}, tokens={}",
+                    request.model, observedTokens);
+            return false;
+        }
+        request.messages.clear();
+        request.messages.addAll(compressed);
+        thrashGuard.onCompression();
+        LOGGER.warn("recovered from a context-window rejection, model={}, tokens={}, learnedWindow={}, messages={}->{}",
+                request.model, observedTokens, learnedWindow, before, compressed.size());
+        return true;
     }
 
     @Override

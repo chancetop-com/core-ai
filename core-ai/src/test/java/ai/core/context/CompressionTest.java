@@ -1,6 +1,10 @@
 package ai.core.context;
 
+import ai.core.llm.ContextWindowErrors;
 import ai.core.llm.LLMModelContextRegistry;
+import ai.core.llm.LearnedContextWindows;
+import ai.core.llm.providers.LLMContextWindowExceededException;
+import ai.core.llm.providers.LLMStreamException;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
@@ -81,12 +85,11 @@ class CompressionTest {
     @Test
     void testShouldCompressWithProvider() {
         Compression compressionWithProvider = new Compression(0.7, 5, createMockProvider(), "test-model", "test-model");
+        int window = compressionWithProvider.getMaxContextTokens();
+        assertEquals(1_000_000, window, "unknown models default to the large fallback");
 
-        // Below threshold (70% of 128000 = 89600)
-        assertFalse(compressionWithProvider.shouldCompress(50000));
-
-        // Above threshold
-        assertTrue(compressionWithProvider.shouldCompress(100000));
+        assertFalse(compressionWithProvider.shouldCompress(window / 10));
+        assertTrue(compressionWithProvider.shouldCompress((int) (window * 0.7)));
 
         LOGGER.info("Should compress with provider test passed");
     }
@@ -137,8 +140,8 @@ class CompressionTest {
 
     @Test
     void testCompressSuccessful() {
-        // Create a compression with low threshold for testing
-        Compression testCompression = new Compression(0.0001, 2,
+        // Create a compression with a zero threshold so the tiny fixture always triggers
+        Compression testCompression = new Compression(0.0, 2,
             createMockProviderWithSummary("Test summary"), "test-model", "test-model");
 
         List<Message> messages = new ArrayList<>(22);
@@ -294,7 +297,7 @@ class CompressionTest {
     @Test
     void testUpdateModelRepointsContextWindow() {
         Compression target = new Compression(createMockProvider(), "unknown-model-xyz");
-        assertEquals(128000, target.getMaxContextTokens());
+        assertEquals(1_000_000, target.getMaxContextTokens());
 
         var modelInfo = LLMModelContextRegistry.getInstance().getModelInfo("gpt-3.5-turbo");
         assertNotNull(modelInfo, "test model must be present in the context registry");
@@ -431,6 +434,59 @@ class CompressionTest {
         assertEquals(32000, target.getMaxToolResultTokens());
 
         LOGGER.info("Tool result budget cap test passed");
+    }
+
+    @Test
+    void learnedContextWindowOverridesTheFallbackAndOnlyMovesDown() {
+        try {
+            LearnedContextWindows.record("learned-model-xyz", 200_000);
+            Compression target = new Compression(createMockProvider(), "learned-model-xyz");
+            assertEquals(200_000, target.getMaxContextTokens());
+            assertEquals(20_000, target.getMaxToolResultTokens());
+
+            target.learnContextWindow("learned-model-xyz", 120_000);
+            assertEquals(120_000, target.getMaxContextTokens());
+            assertEquals(12_000, target.getMaxToolResultTokens());
+            assertEquals(120_000, LLMModelContextRegistry.getInstance().contextWindow("learned-model-xyz"));
+
+            target.learnContextWindow("learned-model-xyz", 300_000);
+            assertEquals(120_000, target.getMaxContextTokens(), "learning never raises the window");
+        } finally {
+            LearnedContextWindows.clear();
+        }
+    }
+
+    @Test
+    void contextWindowExceededIsRecognizedOnlyFromConfirmedMessages() {
+        assertTrue(ContextWindowErrors.isContextWindowExceeded(new LLMStreamException(
+                "This model's maximum context length is 1048576 tokens. However, you requested 1200000 tokens")));
+        assertTrue(ContextWindowErrors.isContextWindowExceeded(new LLMStreamException(
+                "prompt is too long: 210000 tokens > 200000 maximum")));
+        assertTrue(ContextWindowErrors.isContextWindowExceeded(new LLMContextWindowExceededException("rejected", null)));
+        assertFalse(ContextWindowErrors.isContextWindowExceeded(new LLMStreamException("invalid tool schema")));
+        assertFalse(ContextWindowErrors.isContextWindowExceeded(new RuntimeException("statusCode=503")));
+    }
+
+    @Test
+    void summaryInputIsTrimmedToTheWindowSoRecoveryCannotOverflow() {
+        var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
+        var config = new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 8000, null);
+        Compression target = new Compression(config, provider, "unknown-model-xyz");
+
+        var messages = new ArrayList<Message>();
+        messages.add(Message.of(RoleType.SYSTEM, "system"));
+        for (int i = 0; i < 40; i++) {
+            messages.add(Message.of(RoleType.USER, "OLD-MARKER-" + i + " " + "filler ".repeat(100)));
+            messages.add(Message.of(RoleType.ASSISTANT, "ack " + i));
+        }
+        messages.add(Message.of(RoleType.USER, "NEWEST-MARKER"));
+
+        target.forceCompress(messages);
+
+        String prompt = provider.getLastPrompt();
+        assertNotNull(prompt);
+        assertFalse(prompt.contains("OLD-MARKER-0"), "the oldest messages must be dropped to fit the summary budget");
+        assertTrue(prompt.length() < 30000, "summary prompt must stay near the window, was " + prompt.length());
     }
 
     private void verifyToolPairsIntact(List<Message> messages) {

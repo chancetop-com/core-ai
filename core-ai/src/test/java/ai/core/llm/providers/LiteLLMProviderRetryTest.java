@@ -145,7 +145,7 @@ class LiteLLMProviderRetryTest {
 
         assertTrue(error.getMessage().contains("statusCode=400"), error.getMessage());
         assertFalse(error instanceof LLMUnavailableException);
-        assertEquals(1, requests.get());
+        assertEquals(2, requests.get(), "one SSE attempt plus one body read, never a retry");
     }
 
     @Test
@@ -214,6 +214,25 @@ class LiteLLMProviderRetryTest {
         assertFalse(LLMRetrySupport.retryable(new HTTPClientException("uri is invalid, uri=::bad", "INVALID_URL")));
         assertFalse(LLMRetrySupport.retryable(new LLMStreamException("invalid request")));
         assertFalse(LLMRetrySupport.retryable(new CancellationException()));
+    }
+
+    @Test
+    void keepsTheProviderBodyForContextWindowRejections() {
+        var provider = provider((exchange, attempt) -> {
+            var body = "{\"error\":{\"message\":\"This model's maximum context length is 1048576 tokens. "
+                    + "However, you requested 1200000 tokens\",\"type\":\"invalid_request_error\"}}";
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(400, body.getBytes(StandardCharsets.UTF_8).length);
+            try (OutputStream out = exchange.getResponseBody()) {
+                out.write(body.getBytes(StandardCharsets.UTF_8));
+            }
+        }, 5);
+
+        var error = assertThrows(LLMContextWindowExceededException.class,
+                () -> provider.completionStream(request(), new DefaultStreamingCallback()));
+
+        assertTrue(error.getMessage().contains("maximum context length"), error.getMessage());
+        assertEquals(2, requests.get(), "one rejected SSE attempt plus one body read");
     }
 
     @Test

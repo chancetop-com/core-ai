@@ -2,6 +2,7 @@ package ai.core.context;
 
 import ai.core.llm.LLMModelContextRegistry;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.LearnedContextWindows;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
 import ai.core.llm.domain.FunctionCall;
@@ -30,7 +31,9 @@ public class Compression {
     private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 16000;
     /** One tool result must never take a large share of the window, however large the window is. */
     private static final int MAX_TOOL_RESULT_TOKENS = 32000;
-    private static final int FALLBACK_MAX_CONTEXT_TOKENS = 128000;
+    // Unknown models default large: a wrong-small window compresses a healthy turn into thrash,
+    // while a wrong-large one costs a single rejected request that the agent recovers from.
+    private static final int FALLBACK_MAX_CONTEXT_TOKENS = 1_000_000;
     private static final int DEFAULT_KEEP_RECENT_TURNS = 5;
     private static final int DEFAULT_KEEP_TOKENS = 15000;
     private static final int MIN_SUMMARY_TOKENS = 500;
@@ -117,6 +120,26 @@ public class Compression {
         this.maxContextTokens = resolveContextWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
     }
+
+    /**
+     * Records an observed hard limit after the provider rejected the request as too large. The value
+     * is process-local and only ever moves the window down; it is used by this instance immediately and
+     * by every later compression of the same model.
+     */
+    public void learnContextWindow(String model, int maxInputTokens) {
+        if (maxInputTokens <= 0) {
+            return;
+        }
+        if (model != null && !model.isBlank()) {
+            LearnedContextWindows.record(model, maxInputTokens);
+        }
+        if (maxInputTokens < maxContextTokens) {
+            LOGGER.warn("lowering the compression window, model={}, previous={}, learned={}", contextModel, maxContextTokens, maxInputTokens);
+            maxContextTokens = maxInputTokens;
+            maxToolResultTokens = calculateMaxToolResultTokens();
+        }
+    }
+
     public boolean shouldCompress(int currentTokens) {
         if (llmProvider == null) {
             return false;
@@ -328,7 +351,7 @@ public class Compression {
         return Math.max(indexByTurns, indexByTokens);
     }
     private String summarize(List<Message> messagesToSummarize) {
-        String content = formatMessages(messagesToSummarize);
+        String content = formatMessages(CompressionSummaryInput.fit(messagesToSummarize, maxContextTokens, MAX_SUMMARY_TOKENS));
         if (content.isBlank()) {
             lastFailure = "the summarized segment contained no text";
             return "";

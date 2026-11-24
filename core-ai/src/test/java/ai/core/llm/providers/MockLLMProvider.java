@@ -43,6 +43,7 @@ import java.util.List;
  */
 public class MockLLMProvider extends LLMProvider {
     private final List<CompletionResponse> responses = new ArrayList<>();
+    private RuntimeException pendingError;
     private int callCount = 0;
 
     /**
@@ -79,11 +80,17 @@ public class MockLLMProvider extends LLMProvider {
         this.responses.addAll(List.of(responses));
     }
 
+    /** Throws on the next completion call, before any configured response is consumed. */
+    public void addError(RuntimeException error) {
+        this.pendingError = error;
+    }
+
     /**
      * Reset the mock provider by clearing all responses and resetting the call count
      */
     public void reset() {
         responses.clear();
+        pendingError = null;
         callCount = 0;
     }
 
@@ -107,6 +114,11 @@ public class MockLLMProvider extends LLMProvider {
 
     @Override
     protected CompletionResponse doCompletion(CompletionRequest request) {
+        if (pendingError != null) {
+            var error = pendingError;
+            pendingError = null;
+            throw error;
+        }
         if (callCount >= responses.size()) {
             throw new RuntimeException("No more mock responses available. "
                     + "Expected " + callCount + " calls but only " + responses.size() + " responses were configured.");

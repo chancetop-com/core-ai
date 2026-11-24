@@ -74,4 +74,12 @@ public abstract class AbstractLifecycle {
     public List<Message> onModelResponse(CompletionRequest completionRequest, CompletionResponse completionResponse, ExecutionContext executionContext) {
         return null;
     }
+
+    /**
+     * Called when the LLM call throws. Return true when this lifecycle adjusted the request so the
+     * gateway can retry it; the exception must be a failure that happened before any output was emitted.
+     */
+    public boolean onModelError(CompletionRequest completionRequest, RuntimeException error, ExecutionContext executionContext) {
+        return false;
+    }
 }

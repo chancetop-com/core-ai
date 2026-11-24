@@ -1,9 +1,12 @@
 package ai.core.context;
 
+import ai.core.llm.LLMModelContextRegistry;
+import ai.core.llm.LearnedContextWindows;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.providers.LLMStreamException;
 import ai.core.tool.ToolCallResult;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +15,10 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author stephen
@@ -61,6 +67,43 @@ class CompressionLifecycleTest {
         lifecycle.beforeAgentRun(new AtomicReference<>("second"), null);
 
         assertDoesNotThrow(() -> lifecycle.beforeModel(request(oversizedMessages()), null));
+    }
+
+    @Test
+    void compressesAndLearnsWhenTheProviderRejectsTheContextWindow() {
+        var provider = new CompressionTest.MockLLMProvider("summary of the previous work");
+        var compression = new Compression(
+                new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1000, null), provider, "overflow-test-model");
+        var lifecycle = new CompressionLifecycle(compression);
+        lifecycle.beforeAgentRun(new AtomicReference<>("implement"), null);
+        var messages = oversizedMessages();
+        var request = request(messages);
+        request.model = "overflow-test-model";
+        int before = request.messages.size();
+        try {
+            boolean recovered = lifecycle.onModelError(request, new LLMStreamException(
+                    "This model's maximum context length is 4000 tokens. However, you requested 5000 tokens"), null);
+
+            assertTrue(recovered);
+            assertTrue(request.messages.size() < before);
+            assertEquals(4000, LLMModelContextRegistry.getInstance().contextWindow("overflow-test-model"));
+        } finally {
+            LearnedContextWindows.clear();
+        }
+    }
+
+    @Test
+    void unrelatedModelErrorsAreNotClaimed() {
+        var provider = new CompressionTest.MockLLMProvider("summary");
+        var compression = new Compression(
+                new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1000, null), provider, "test-model");
+        var lifecycle = new CompressionLifecycle(compression);
+        lifecycle.beforeAgentRun(new AtomicReference<>("implement"), null);
+        var request = request(oversizedMessages());
+        int before = request.messages.size();
+
+        assertFalse(lifecycle.onModelError(request, new LLMStreamException("invalid tool schema"), null));
+        assertEquals(before, request.messages.size());
     }
 
     private CompletionRequest request(List<Message> messages) {

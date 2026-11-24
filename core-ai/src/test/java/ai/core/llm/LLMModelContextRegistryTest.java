@@ -64,7 +64,24 @@ class LLMModelContextRegistryTest {
     @Test
     void testUnknownModelReturnsDefault() {
         int maxTokens = registry.getMaxInputTokens("unknown-model-xyz");
-        assertEquals(128000, maxTokens); // default value
+        assertEquals(1_000_000, maxTokens);
+    }
+
+    @Test
+    void learnedContextWindowWinsUntilCleared() {
+        try {
+            LearnedContextWindows.record("learned-model-xyz", 200_000);
+            assertEquals(200_000, registry.contextWindow("learned-model-xyz"));
+            assertEquals(200_000, registry.getMaxInputTokens("learned-model-xyz"));
+
+            LearnedContextWindows.record("learned-model-xyz", 150_000);
+            assertEquals(150_000, registry.contextWindow("learned-model-xyz"));
+
+            LearnedContextWindows.record("learned-model-xyz", 300_000);
+            assertEquals(150_000, registry.contextWindow("learned-model-xyz"), "learning never raises a window");
+        } finally {
+            LearnedContextWindows.clear();
+        }
     }
 
     @Test

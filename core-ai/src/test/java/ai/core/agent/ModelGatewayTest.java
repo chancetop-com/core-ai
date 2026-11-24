@@ -9,10 +9,12 @@ import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.ReasoningEffort;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.providers.LLMStreamException;
 import ai.core.llm.providers.MockLLMProvider;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,5 +66,35 @@ class ModelGatewayTest {
 
         assertEquals("deepseek-model", captured.get().model);
         assertEquals(ReasoningEffort.HIGH, captured.get().reasoningEffort);
+    }
+
+    @Test
+    void retriesTheModelCallAfterALifecycleRecoversFromContextOverflow() {
+        var provider = new MockLLMProvider();
+        provider.addError(new LLMStreamException(
+                "This model's maximum context length is 1000 tokens. However, you requested 2000 tokens"));
+        provider.addResponse(CompletionResponse.of(
+                List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "ok"))),
+                null));
+        var recoveries = new AtomicInteger();
+        var agent = Agent.builder()
+                .name("context-recovery")
+                .systemPrompt("test")
+                .llmProvider(provider)
+                .model("recovery-model")
+                .addAgentLifecycle(new AbstractLifecycle() {
+                    @Override
+                    public boolean onModelError(CompletionRequest request, RuntimeException error, ExecutionContext context) {
+                        recoveries.incrementAndGet();
+                        return true;
+                    }
+                })
+                .compression(false)
+                .build();
+
+        var choice = ModelGateway.handLLM(agent, List.of(Message.of(RoleType.USER, "hi")), List.of());
+
+        assertEquals("ok", choice.message.content);
+        assertEquals(1, recoveries.get());
     }
 }

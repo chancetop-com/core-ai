@@ -36,6 +36,8 @@ final class LLMRetrySupport {
     // an error body (an ingress html page, a gateway json error) can be large; the message is
     // surfaced to the user, the full cause stays on the exception
     static final int MAX_ERROR_TEXT = 400;
+    // a rejected request's body can carry the provider's limit deep inside its JSON envelope
+    static final int MAX_BODY_TEXT = 2000;
     private static final String SERVER_PROXY_PATH = "/api/cli/v1";
     private static final String SERVER_PROXY_LEGACY_PATH = "/api/litellm/v1";
     private static final Pattern STATUS_CODE = Pattern.compile("statusCode=(\\d{3})");
@@ -112,7 +114,13 @@ final class LLMRetrySupport {
         return message.length() > MAX_ERROR_TEXT ? message.substring(0, MAX_ERROR_TEXT - 3) + "..." : message;
     }
 
-    private static Integer statusCode(String message) {
+    static String bodyText(String body) {
+        if (body == null) return "";
+        var stripped = body.strip();
+        return stripped.length() > MAX_BODY_TEXT ? stripped.substring(0, MAX_BODY_TEXT - 3) + "..." : stripped;
+    }
+
+    static Integer statusCode(String message) {
         if (message == null) return null;
         var matcher = STATUS_CODE.matcher(message);
         return matcher.find() ? Integer.valueOf(matcher.group(1)) : null;

@@ -23,7 +23,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class LLMModelContextRegistry {
     private static final Logger LOGGER = LoggerFactory.getLogger(LLMModelContextRegistry.class);
     private static final String RESOURCE_PATH = "/model_prices_and_context_window.json";
-    private static final int DEFAULT_MAX_INPUT_TOKENS = 128000;
+    // Gateway-only models rarely carry a window. Guessing small is far more expensive than guessing
+    // large: a wrong-large guess costs one rejected request that the agent recovers from, while a
+    // wrong-small guess compresses a healthy turn into thrash.
+    private static final int DEFAULT_MAX_INPUT_TOKENS = 1_000_000;
     private static final int DEFAULT_MAX_OUTPUT_TOKENS = 4096;
     private static final ZoneId SHANGHAI = ZoneId.of("Asia/Shanghai");
     private static final String[] MODEL_PREFIXES = {"azure/", "openai/", "anthropic/", "bedrock/"};
@@ -200,17 +203,24 @@ public final class LLMModelContextRegistry {
 
     public int getMaxInputTokens(String modelName) {
         var info = getModelInfo(modelName);
-        return info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
+        int resolved = info != null ? info.maxInputTokens() : DEFAULT_MAX_INPUT_TOKENS;
+        int learned = LearnedContextWindows.resolve(modelName);
+        return learned > 0 && learned < resolved ? learned : resolved;
     }
 
-    /** Max input tokens for the model, from the bundled registry or the live catalog; 0 = unknown to both. */
+    /** Max input tokens for the model, from the bundled registry, the live catalog, or a lower learned limit; 0 = unknown. */
     public int contextWindow(String modelName) {
         if (modelName == null) return 0;
+        int resolved = 0;
         var info = getModelInfo(modelName);
         if (info != null && info.contextWindow() > 0) {
-            return info.contextWindow();
+            resolved = info.contextWindow();
+        } else {
+            resolved = ExternalModelContextWindows.resolve(modelName);
         }
-        return ExternalModelContextWindows.resolve(modelName);
+        int learned = LearnedContextWindows.resolve(modelName);
+        if (learned <= 0) return resolved;
+        return resolved <= 0 || learned < resolved ? learned : resolved;
     }
 
     public ModelInfo getModelInfo(String modelName) {

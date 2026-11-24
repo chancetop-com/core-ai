@@ -15,6 +15,7 @@ import java.util.function.Function;
  * @author stephen
  */
 final class ModelGateway {
+    private static final int MAX_CONTEXT_RECOVERIES = 2;
 
     static Choice handLLM(Agent agent, List<Message> messages, List<Tool> tools) {
         var effectiveModel = resolveEffectiveModel(agent);
@@ -35,18 +36,45 @@ final class ModelGateway {
 
     static Choice aroundLLM(Agent agent, Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {
         agent.agentLifecycles.forEach(alc -> alc.beforeModel(request, agent.getExecutionContext()));
-        var resp = callLLM(agent, func, request);
+        var resp = callWithContextRecovery(agent, func, request);
 
         for (var lifecycle : agent.agentLifecycles) {
             var retryMessages = lifecycle.onModelResponse(request, resp, agent.getExecutionContext());
             if (retryMessages != null && !retryMessages.isEmpty()) {
                 retryMessages.forEach(agent::addMessage);
-                resp = callLLM(agent, func, request);
+                resp = callWithContextRecovery(agent, func, request);
                 break;
             }
         }
 
         return resp.choices.getFirst();
+    }
+
+    /**
+     * A provider that rejects a request for exceeding its context window has emitted no output, so the
+     * lifecycle may shrink the messages and the call can be safely repeated. Other failures propagate.
+     */
+    private static CompletionResponse callWithContextRecovery(Agent agent, Function<CompletionRequest, CompletionResponse> func,
+                                                              CompletionRequest request) {
+        for (int recoveries = 0; ; recoveries++) {
+            try {
+                return callLLM(agent, func, request);
+            } catch (RuntimeException e) {
+                if (recoveries >= MAX_CONTEXT_RECOVERIES) {
+                    throw e;
+                }
+                boolean adjusted = false;
+                for (var lifecycle : agent.agentLifecycles) {
+                    if (lifecycle.onModelError(request, e, agent.getExecutionContext())) {
+                        adjusted = true;
+                        break;
+                    }
+                }
+                if (!adjusted) {
+                    throw e;
+                }
+            }
+        }
     }
 
     static CompletionResponse callLLM(Agent agent, Function<CompletionRequest, CompletionResponse> func, CompletionRequest request) {

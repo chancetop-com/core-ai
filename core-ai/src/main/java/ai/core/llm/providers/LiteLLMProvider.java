@@ -6,6 +6,7 @@ import ai.core.llm.streaming.DefaultStreamingCallback;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.document.Embedding;
 import ai.core.internal.http.PatchedHTTPClientBuilder;
+import ai.core.llm.ContextWindowErrors;
 import ai.core.llm.LLMProvider;
 import ai.core.llm.LLMProviderConfig;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -22,6 +23,7 @@ import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.io.JsonEOFException;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
+import core.framework.http.HTTPClientException;
 import core.framework.http.HTTPMethod;
 import core.framework.http.HTTPRequest;
 import core.framework.util.Strings;
@@ -212,6 +214,9 @@ public class LiteLLMProvider extends LLMProvider {
                 throw e;
             } catch (RuntimeException e) {
                 if (callback.isCancelled()) break;
+                if (e instanceof HTTPClientException httpError) {
+                    enrichAndThrow(req, httpError);
+                }
                 lastError = e;
                 if (tracker.outputEmitted()) throw LLMRetrySupport.interruptedStream(req.uri, serverProxy, e);
                 if (!LLMRetrySupport.retryable(e)) throw e;
@@ -226,6 +231,36 @@ public class LiteLLMProvider extends LLMProvider {
         }
         completeCallbacks(response, callback);
         return response;
+    }
+
+    /**
+     * core-ng's SSE transport reports only the status code, so a 400 context-length rejection would reach
+     * the agent without the provider's message. Re-read the rejected request once to keep the body: the
+     * upstream already refused it before running inference, so this costs no model tokens.
+     */
+    private void enrichAndThrow(HTTPRequest req, HTTPClientException error) {
+        var statusCode = LLMRetrySupport.statusCode(error.getMessage());
+        if (statusCode == null || statusCode != 400 && statusCode != 413 && statusCode != 422) {
+            return;
+        }
+        try {
+            var response = client.execute(req);
+            if (response.statusCode >= 200 && response.statusCode < 300) {
+                return;
+            }
+            var body = LLMRetrySupport.bodyText(response.text());
+            var message = "LLM request rejected, statusCode=" + response.statusCode + ", body=" + body;
+            if (ContextWindowErrors.matches(body)) {
+                throw new LLMContextWindowExceededException(message, error);
+            }
+            var rejected = new LLMStreamException(message);
+            rejected.addSuppressed(error);
+            throw rejected;
+        } catch (LLMContextWindowExceededException | LLMStreamException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            error.addSuppressed(e);
+        }
     }
 
     private boolean waitBeforeRetry(String uri, boolean serverProxy, int failures, long firstFailureNanos,
