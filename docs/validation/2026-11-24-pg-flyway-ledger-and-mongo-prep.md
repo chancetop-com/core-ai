@@ -108,7 +108,7 @@ prod 差异与锁/耗时、备份、回滚、窗口见独立 runbook。关键提
 | `core-ai` database | 59 个 collection；`spans` 27,452 条 / 2.73 GB dataSize；`traces` 1,076 条 |
 | 回填标记 | `app.g2_migration_markers`: `traces_v1` 2026-11-14 11:11:43Z、`spans_v1` 2026-11-14 11:23:54Z；共 36 个 marker |
 | PG 侧 | `app.spans` 34,575 行；`app.traces` 1,821 行 |
-| 逐日核对 | 2026-10-25…11-13 Mongo 与 PG 完全一致；10-15…10-24 共 3,739 条已过 30 天保留期，被 `TraceArchiveService` 归档到 Blob 后从 PG 删除；06-09 的 13 条为跨期 trace，仍在 PG |
+| 逐日核对 | 2026-10-25…11-13 Mongo 与 PG 完全一致；10-15…10-24 共 3,739 条已过 30 天保留期，被 `TraceArchiveService` 归档到 Blob 后从 PG 删除。直接证据：2026-11-24T01:09Z 的归档任务上传 `12 traces / 56 spans`、cutoff=2026-10-25，正好等于 Mongo 10-24 桶的 56 条；06-09 的 13 条为跨期 trace，仍在 PG |
 | 连接 | Mongo 是共享集群，`currentOp` 中可见 product/payment/loyalty/marketing 等 20+ 服务；core-ai 没有独立可停的条件 |
 
 结论：**prod 的 legacy span/trace 已全部回填，`SYS_TRACE_SPAN_MIGRATION=copy` 只剩一次空扫描**。
