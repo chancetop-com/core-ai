@@ -37,6 +37,9 @@ var protectedEnvKeys = map[string]struct{}{
 	"MAX_ASYNC_TASKS":    {},
 	"WORKSPACE_HOME":     {},
 	"WORKSPACE_ENV_FILE": {},
+	"NPM_CONFIG_PREFIX":  {},
+	"PIP_USER":           {},
+	"PYTHONUSERBASE":     {},
 }
 
 // core-ai's own variables are reserved as a family; a workspace script must not be able to
@@ -191,6 +194,9 @@ func ensureWorkspaceDirectories() {
 	}
 	if err := os.Chmod(credDir, 0700); err != nil {
 		log.Printf("warning: failed to tighten credential dir %s: %v", credDir, err)
+	}
+	if err := os.MkdirAll(filepath.Join(workspaceDir, ".npm-global", "bin"), 0755); err != nil {
+		log.Printf("warning: failed to create npm global prefix: %v", err)
 	}
 	if logDir := os.Getenv("WORKSPACE_LOG_DIR"); logDir != "" {
 		if err := os.MkdirAll(logDir, 0755); err != nil {

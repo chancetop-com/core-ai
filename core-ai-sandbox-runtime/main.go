@@ -1215,12 +1215,13 @@ func minimalEnv() []string {
 			filepath.Join(workspaceDir, "bin") + ":" + searchPath
 	}
 	overrides := map[string]string{
-		"PATH":                    searchPath,
-		"HOME":                    home,
-		"LANG":                    "en_US.UTF-8",
-		"PYTHONIOENCODING":        "utf-8",
-		"PYTHONDONTWRITEBYTECODE": "1",
-		"PIP_USER":                "1",
+		"PATH":                     searchPath,
+		"HOME":                     home,
+		"LANG":                     "en_US.UTF-8",
+		"PYTHONIOENCODING":         "utf-8",
+		"PYTHONDONTWRITEBYTECODE":  "1",
+		"PIP_USER":                 "1",
+		"NPM_CONFIG_PREFIX":        filepath.Join(workspaceDir, ".npm-global"),
 		// Only the loopback hub is advertised: the session token stays in this process, so a
 		// script can use the session's agent-configured capabilities without holding credentials.
 		"CORE_AI_HUB": "http://127.0.0.1:" + envOrDefault("HUB_PORT", "8081") + hubPathPrefix,

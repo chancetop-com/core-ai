@@ -94,6 +94,9 @@ func TestMinimalEnvInjectsWorkspaceEnvAndKeepsOwnershipOfProtectedKeys(t *testin
 	if env["GH_CONFIG_DIR"] != defaultCredentialDir+"/gh" {
 		t.Fatalf("gh config dir must stay under the runtime credential dir, got %q", env["GH_CONFIG_DIR"])
 	}
+	if !strings.HasSuffix(env["NPM_CONFIG_PREFIX"], ".npm-global") {
+		t.Fatalf("npm global prefix must live on the workspace, got %q", env["NPM_CONFIG_PREFIX"])
+	}
 }
 
 func TestExecuteBashAppliesWorkspaceEnv(t *testing.T) {
