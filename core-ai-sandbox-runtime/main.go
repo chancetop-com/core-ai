@@ -1229,6 +1229,11 @@ func minimalEnv() []string {
 		overrides["CORE_AI_SESSION_ID"] = b.SessionID
 		overrides["CORE_AI_AGENT_NAME"] = b.AgentName
 	}
+	// GitHub installation tokens must never land on the durable workspace: credentials live in a
+	// per-runtime temp dir that dies with the pod, and gh reads the same token from there.
+	credDir := envOrDefault("CORE_AI_CRED_DIR", defaultCredentialDir)
+	overrides["CORE_AI_CRED_DIR"] = credDir
+	overrides["GH_CONFIG_DIR"] = envOrDefault("GH_CONFIG_DIR", filepath.Join(credDir, "gh"))
 	// The workspace env file is the durable layer; protected keys stay owned by the runtime,
 	// and PATH can only be extended through PATH_PREPEND (already folded in above).
 	for key, value := range values {

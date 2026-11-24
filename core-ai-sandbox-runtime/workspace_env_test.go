@@ -88,6 +88,12 @@ func TestMinimalEnvInjectsWorkspaceEnvAndKeepsOwnershipOfProtectedKeys(t *testin
 	if env["UNCHANGED_FROM_PARENT"] != "yes" {
 		t.Fatal("parent env must still be inherited")
 	}
+	if env["CORE_AI_CRED_DIR"] != defaultCredentialDir {
+		t.Fatalf("credential dir must be platform-owned, got %q", env["CORE_AI_CRED_DIR"])
+	}
+	if env["GH_CONFIG_DIR"] != defaultCredentialDir+"/gh" {
+		t.Fatalf("gh config dir must stay under the runtime credential dir, got %q", env["GH_CONFIG_DIR"])
+	}
 }
 
 func TestExecuteBashAppliesWorkspaceEnv(t *testing.T) {

@@ -35,9 +35,11 @@ class RequireGithubInstallationTokenToolTest {
         var captor = ArgumentCaptor.forClass(String.class);
         verify(sandbox).execute(org.mockito.ArgumentMatchers.eq(ShellCommandTool.TOOL_NAME), captor.capture(), any());
         var script = captor.getValue();
-        assertTrue(script.contains("$HOME/.git-credentials"));
-        assertTrue(script.contains("$HOME/.config/gh/hosts.yml"));
-        assertTrue(script.contains("git config --global credential.helper store"));
+        assertTrue(script.contains("$cred/git-credentials"));
+        assertTrue(script.contains("$gh_config/hosts.yml"));
+        assertTrue(script.contains("credential.helper"));
+        assertTrue(script.contains("store --file=$cred/git-credentials"));
+        assertFalse(script.contains("$HOME"));
     }
 
     @Test

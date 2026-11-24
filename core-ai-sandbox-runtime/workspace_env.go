@@ -17,6 +17,7 @@ const (
 	maxWorkspaceEnvFileBytes = 64 * 1024
 	maxWorkspaceEnvLineBytes = 4 * 1024
 	defaultHomeDir           = "/tmp"
+	defaultCredentialDir     = "/tmp/.core-ai/credentials"
 	pathPrependKey           = "PATH_PREPEND"
 )
 
@@ -183,6 +184,13 @@ func ensureWorkspaceDirectories() {
 	home := workspaceHome()
 	if err := os.MkdirAll(home, 0755); err != nil {
 		log.Printf("warning: failed to create home dir %s: %v", home, err)
+	}
+	credDir := envOrDefault("CORE_AI_CRED_DIR", defaultCredentialDir)
+	if err := os.MkdirAll(filepath.Join(credDir, "gh"), 0700); err != nil {
+		log.Printf("warning: failed to create credential dir %s: %v", credDir, err)
+	}
+	if err := os.Chmod(credDir, 0700); err != nil {
+		log.Printf("warning: failed to tighten credential dir %s: %v", credDir, err)
 	}
 	if logDir := os.Getenv("WORKSPACE_LOG_DIR"); logDir != "" {
 		if err := os.MkdirAll(logDir, 0755); err != nil {

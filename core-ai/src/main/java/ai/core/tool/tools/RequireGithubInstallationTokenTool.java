@@ -56,11 +56,14 @@ public final class RequireGithubInstallationTokenTool extends ToolCall {
     private static final String INJECTION_SCRIPT = """
             set -e
             umask 077
-            mkdir -p "$HOME/.config/gh"
-            printf 'version: "1"\\n' > "$HOME/.config/gh/config.yml"
-            printf 'https://x-access-token:%s@github.com\\n' '%s' > "$HOME/.git-credentials"
-            git config --global credential.helper store
-            printf 'github.com:\\n    user: x-access-token\\n    oauth_token: %s\\n    git_protocol: https\\n' '%s' > "$HOME/.config/gh/hosts.yml"
+            cred="${CORE_AI_CRED_DIR:-/tmp/.core-ai/credentials}"
+            gh_config="${GH_CONFIG_DIR:-$cred/gh}"
+            mkdir -p "$gh_config"
+            : > "$cred/git-credentials"
+            printf 'https://x-access-token:%s@github.com\\n' '%s' > "$cred/git-credentials"
+            git config --global credential.helper "store --file=$cred/git-credentials"
+            printf 'version: "1"\\n' > "$gh_config/config.yml"
+            printf 'github.com:\\n    user: x-access-token\\n    oauth_token: %s\\n    git_protocol: https\\n' '%s' > "$gh_config/hosts.yml"
             echo OK
             """;
 
