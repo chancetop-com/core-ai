@@ -6,6 +6,7 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * @author stephen
@@ -24,5 +25,7 @@ class PgRuntimeSampleSqlParamsTest {
         store.range(ZonedDateTime.parse("2026-11-01T00:00:00Z"), ZonedDateTime.parse("2026-11-02T00:00:00Z"), 10);
 
         assertEquals(3, database.statementCount());
+        assertTrue(database.statements().getLast().contains("ORDER BY collected_at ASC, pod ASC"),
+                "the series read must be ordered, sql=" + database.statements().getLast());
     }
 }

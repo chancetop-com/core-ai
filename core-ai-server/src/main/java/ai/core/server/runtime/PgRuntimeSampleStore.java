@@ -168,7 +168,9 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
 
     @Override
     public List<RuntimeSample> range(ZonedDateTime from, ZonedDateTime to, int limit) {
-        return database.select(SELECT + " WHERE collected_at >= ? AND collected_at <= ? LIMIT ?",
+        // the read side builds buckets and per-pod first/last in order; without this the series depends
+        // on whatever order the planner returned rows in, and a LIMIT cut keeps an arbitrary prefix
+        return database.select(SELECT + " WHERE collected_at >= ? AND collected_at <= ? ORDER BY collected_at ASC, pod ASC LIMIT ?",
                 PgRuntimeSampleRow.class, from, to, limit)
             .stream().map(PgRuntimeSampleStore::toSample).toList();
     }

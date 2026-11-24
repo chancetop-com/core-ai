@@ -11,9 +11,13 @@ import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -58,14 +62,20 @@ public class RuntimeSampleService {
         var now = ZonedDateTime.now();
         var samples = fetch(now.minusHours(hours), now);
         long bucketMillis = bucketMinutes * 60_000L;
-        var buckets = new LinkedHashMap<Long, Bucket>();
+        var buckets = new TreeMap<Long, Bucket>();
         for (var sample : samples) {
-            var bucket = buckets.computeIfAbsent(bucketStart(sample, bucketMillis), Bucket::new);
-            bucket.accept(sample);
+            buckets.computeIfAbsent(bucketStart(sample, bucketMillis), Bucket::new).accept(sample);
         }
         var view = new RuntimeSeriesView();
         view.bucketMinutes = bucketMinutes;
-        view.points = buckets.values().stream().map(Bucket::toPoint).toList();
+        // counters are cumulative: each bucket's increment is relative to the previous sample of the
+        // same pod, which may be in an earlier bucket (or missing entirely)
+        var previousPerPod = new HashMap<String, RuntimeSample>();
+        var points = new ArrayList<RuntimeSeriesView.Point>(buckets.size());
+        for (var bucket : buckets.values()) {
+            points.add(bucket.toPoint(previousPerPod));
+        }
+        view.points = points;
         return view;
     }
 
@@ -117,13 +127,18 @@ public class RuntimeSampleService {
         return view;
     }
 
-    /** Accumulates one time bucket: peaks for the gauges, per-pod increments for the counters. */
+    /**
+     * Accumulates one time bucket: peaks for the gauges, per-pod increments for the counters. The
+     * counter baseline is the pod's last sample before this bucket, not the first sample inside it, so
+     * an increment between two buckets is not lost; a value lower than its baseline means the process
+     * restarted, in which case the current value is the increment and the pod is counted as reset.
+     */
     private static final class Bucket {
         private final long startMillis;
-        private final Map<String, RuntimeSample> firstPerPod = new LinkedHashMap<>();
-        private final Map<String, RuntimeSample> lastPerPod = new LinkedHashMap<>();
+        private final Set<String> pods = new HashSet<>();
+        private final Map<String, RuntimeSample> lastPerPod = new HashMap<>();
+        private final Set<String> resetPods = new HashSet<>();
         private int samples;
-        private int podsReporting;
         private double heapSum;
         private Double heapPeak;
         private Integer inFlightPeak;
@@ -137,8 +152,11 @@ public class RuntimeSampleService {
         }
 
         void accept(RuntimeSample sample) {
-            if (firstPerPod.putIfAbsent(sample.pod, sample) == null) podsReporting++;
-            lastPerPod.put(sample.pod, sample);
+            pods.add(sample.pod);
+            var current = lastPerPod.get(sample.pod);
+            if (current == null || !sample.collectedAt.isBefore(current.collectedAt)) {
+                lastPerPod.put(sample.pod, sample);
+            }
             samples++;
             if (sample.heapUsedPercent != null) {
                 heapSum += sample.heapUsedPercent;
@@ -151,10 +169,10 @@ public class RuntimeSampleService {
             spanDepthPeak = max(spanDepthPeak, sample.spanIngestDepth);
         }
 
-        RuntimeSeriesView.Point toPoint() {
+        RuntimeSeriesView.Point toPoint(Map<String, RuntimeSample> previousPerPod) {
             var point = new RuntimeSeriesView.Point();
             point.bucketStart = ZonedDateTime.ofInstant(Instant.ofEpochMilli(startMillis), ZonedDateTime.now().getZone());
-            point.podsReporting = podsReporting;
+            point.podsReporting = pods.size();
             point.heapPeakPercent = heapPeak;
             point.heapAvgPercent = samples == 0 ? null : Math.round(heapSum / samples * 100) / 100.0;
             point.inFlightTurnsPeak = inFlightPeak;
@@ -162,23 +180,35 @@ public class RuntimeSampleService {
             point.runsQueuedPeak = runsQueuedPeak;
             point.sandboxesPeak = sandboxesPeak;
             point.spanIngestDepthPeak = spanDepthPeak;
-            point.turnsSaturatedDelta = delta(sample -> sample.turnsSaturated);
-            point.turnsRejectedDelta = delta(sample -> sample.turnsRejected);
-            point.runsRejectedDelta = delta(sample -> sample.runsRejected);
-            point.sandboxesRejectedDelta = delta(sample -> sample.sandboxesRejected);
-            point.spanIngestDroppedDelta = delta(sample -> sample.spanIngestDropped);
+            point.turnsSaturatedDelta = delta(previousPerPod, sample -> sample.turnsSaturated);
+            point.turnsRejectedDelta = delta(previousPerPod, sample -> sample.turnsRejected);
+            point.runsRejectedDelta = delta(previousPerPod, sample -> sample.runsRejected);
+            point.sandboxesRejectedDelta = delta(previousPerPod, sample -> sample.sandboxesRejected);
+            point.spanIngestDroppedDelta = delta(previousPerPod, sample -> sample.spanIngestDropped);
+            point.counterResets = resetPods.size();
+            // carry this bucket's last sample forward as the next bucket's baseline
+            lastPerPod.forEach(previousPerPod::put);
             return point;
         }
 
-        private Long delta(Function<RuntimeSample, Long> counter) {
+        private Long delta(Map<String, RuntimeSample> previousPerPod, Function<RuntimeSample, Long> counter) {
             long total = 0;
             boolean any = false;
             for (var entry : lastPerPod.entrySet()) {
-                var first = firstPerPod.get(entry.getKey());
-                var firstValue = counter.apply(first);
                 var lastValue = counter.apply(entry.getValue());
-                if (firstValue == null || lastValue == null) continue;
-                total += Math.max(0, lastValue - firstValue);
+                if (lastValue == null) continue;
+                var previous = previousPerPod.get(entry.getKey());
+                var previousValue = previous == null ? null : counter.apply(previous);
+                if (previousValue == null) {
+                    // first observation of this pod: its counter already includes everything since start
+                    total += lastValue;
+                } else if (lastValue >= previousValue) {
+                    total += lastValue - previousValue;
+                } else {
+                    // the counter went backwards: a container restart, the current value is the increment
+                    total += lastValue;
+                    resetPods.add(entry.getKey());
+                }
                 any = true;
             }
             return any ? total : null;

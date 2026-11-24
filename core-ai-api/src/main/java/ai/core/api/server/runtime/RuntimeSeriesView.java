@@ -62,5 +62,9 @@ public class RuntimeSeriesView {
 
         @Property(name = "span_ingest_dropped_delta")
         public Long spanIngestDroppedDelta;
+
+        /** Pods whose counters went backwards inside the bucket, i.e. a container restart. */
+        @Property(name = "counter_resets")
+        public Integer counterResets;
     }
 }
