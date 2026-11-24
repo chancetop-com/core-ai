@@ -7,6 +7,7 @@ import ai.core.api.server.dataset.ListDatasetsRequest;
 import ai.core.api.server.skill.ListSkillsRequest;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import ai.core.api.server.tool.ListToolsRequest;
+import ai.core.server.report.tool.ReportSpecGuide;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameter;
@@ -29,26 +30,6 @@ import java.util.Map;
 public class SelfHarnessTools {
     public static final String TOOL_SET_NAME = "self-harness";
     private static final String TOOL_ENTRY_ID = "builtin:" + TOOL_SET_NAME;
-    private static final String REPORT_SPEC_GUIDE = """
-
-            ReportSpec JSON (spec_version=1):
-            {"spec_version":1,
-             "source":{"dataset_id":"<dataset id>"},
-             "query":{"mode":"AGGREGATE","time_field":"meta.created_at",
-                      "time_range":{"kind":"LAST_N_COMPLETE_DAYS","days":30},
-                      "timezone":"Asia/Shanghai","bucket":"DAY",
-                      "filters":[{"field":"status","value":"active"}],
-                      "measures":[{"id":"records","label":"Records","op":"COUNT"}]},
-             "display":{"type":"BAR","x":"bucket","series":[{"field":"records"}],"precision":0}}
-
-            Rules:
-            - mode=AGGREGATE for metrics and charts; mode=RECORDS for a record list (display TABLE only; requires record_fields with top-level schema field names, and no measures).
-            - time_field=meta.created_at or meta.run_started_at. time_range.kind=TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|ROLLING_DAYS (days 1..366)|FIXED (ISO-8601 from/to). timezone is a required IANA zone.
-            - bucket=NONE|HOUR|DAY|WEEK|MONTH. category_field is one optional top-level schema field.
-            - filters match top-level schema fields by equality; values are string, number, boolean or null. Omit filters when no filtering was requested; do not copy example fields that are absent from the source schema.
-            - measures: op=SUM|AVG|MIN|MAX|COUNT|LAST. COUNT needs no field; the others use field="data.<schema field>" (NUMBER except LAST). Base and derived measures are capped at 8; derived op=RATIO with numerator/denominator set to base measure ids.
-            - display.type=METRIC (exactly one measure, no bucket/category), LINE or BAR (exactly one of bucket/category; series reference measure ids; format=NUMBER|PERCENT|CURRENCY), or TABLE.
-            """;
 
     @Inject
     SelfHarnessApiCaller caller;
@@ -146,7 +127,7 @@ public class SelfHarnessTools {
                         ToolCallParameter.builder().name("name").description("Dataset name").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
                         ToolCallParameter.builder().name("description").description("What data this dataset holds").type(ToolCallParameterType.STRING).build(),
                         ToolCallParameter.builder().name("type").description("GENERAL (default) or SESSION").type(ToolCallParameterType.STRING).build(),
-                        ToolCallParameter.builder().name("schema").description("Optional field definitions, each {name, type: STRING|NUMBER|BOOLEAN, label}").type(ToolCallParameterType.LIST).itemType(ai.core.api.server.dataset.SchemaFieldView.class).build()
+                        ToolCallParameter.builder().name("schema").description("Optional field definitions, each {name, type: STRING|NUMBER|BOOLEAN|DATE|DATETIME, label}").type(ToolCallParameterType.LIST).itemType(ai.core.api.server.dataset.SchemaFieldView.class).build()
                 )));
         tools.add(builder.buildWithPathParamOnly("get_dataset", "Get dataset detail by ID.",
                 "id", "Dataset ID"));
@@ -189,13 +170,13 @@ public class SelfHarnessTools {
         tools.add(builder.buildCustom("preview_dataset_report",
                 "Validate a report spec and run it against real dataset data without saving it. Use this while designing a report and before create_dataset_report. "
                         + "Returns status, columns, up to 20 preview rows, matched_record_count, resolved range and freshness. The source must be a GENERAL dataset and every referenced field must exist in its schema."
-                        + REPORT_SPEC_GUIDE,
+                        + ReportSpecGuide.TEXT,
                 reportSpecParameters()));
         tools.add(builder.buildCustom("create_dataset_report",
                 "Create and save a dataset report owned by the current user on top of a GENERAL dataset. "
                         + "The report appears under Datasets > Reports and opens at /datasets/reports/<id>. It is NOT pinned to the home page — the user pins it in the UI. "
                         + "Use the exact dataset id (never the name) from create_dataset or list_datasets, and call preview_dataset_report first when unsure."
-                        + REPORT_SPEC_GUIDE,
+                        + ReportSpecGuide.TEXT,
                 reportSpecParameters()));
         tools.add(builder.buildCustom("update_dataset_report",
                 "Update a saved dataset report. Call get_dataset_report first and pass its current revision as expected_revision; a mismatch is rejected and the saved report stays unchanged. "

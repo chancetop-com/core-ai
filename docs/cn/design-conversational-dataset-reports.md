@@ -368,12 +368,12 @@ Human UI (/reports, /for-you)
 |---|---|---|
 | source | dataset_id | 必须是真实、当前可读的数据源 ID；名称仅展示 |
 | query | mode | AGGREGATE / RECORDS；不能同时提交两者 |
-| query | time_field | `meta.run_started_at` / `meta.created_at`；首版不解析任意业务日期 String |
+| query | time_field | `meta.run_started_at` / `meta.created_at`，或 `data.<field>` 指向 schema 中类型为 DATE / DATETIME 的业务时间字段；不接受 STRING 日期 |
 | query | time_range | TODAY / YESTERDAY / LAST_N_COMPLETE_DAYS / ROLLING_DAYS / FIXED；明确自然日或滚动窗口 |
 | query | timezone | 必填 IANA zone；优先用户设置（拟新增），无设置时 Agent 必须询问并由用户确认；不得静默默认 UTC；预览/详情必须显示 |
-| query | bucket | NONE / HOUR / DAY / WEEK / MONTH；WEEK 为 ISO 周一开始 |
-| query | category_field | 可选 schema 字段；仅一维分类 |
-| query | filters | 等值 AND 条件，值以 `value_json` 表达标量；禁止自由 SQL 和任意 JSON 运算符 |
+| query | bucket | NONE / HOUR / DAY / WEEK / MONTH；WEEK 为 ISO 周一开始；DATE 时间字段不支持 HOUR |
+| query | category_field | 可选 schema 字段；仅一维分类；可带 `data.` 前缀，服务端归一化为顶层字段名 |
+| query | filters | 类型化条件：`field` + `op`（EQ/NE/GT/GTE/LT/LTE/IN，默认 EQ）+ `value`；值按字段类型校验，禁止自由 SQL |
 | query | measures | 最多 8 个；唯一 id、label、field、op；op 为 SUM/AVG/MIN/MAX/COUNT/LAST |
 | query | derived_measures | 首版仅 RATIO：两个 measure id 相除；不接受表达式字符串，分母 0/null 返回 null |
 | query | record_fields | RECORDS 模式白名单字段，最多 20 个；按 time_field DESC、created_at DESC、id DESC 稳定排序与有界分页 |
@@ -382,11 +382,11 @@ Human UI (/reports, /for-you)
 | display | format | NUMBER / PERCENT / CURRENCY；precision 为 0–6；货币必须明确币种 |
 | freshness | expected_interval_hours | 可选用户预期采集频率；不由报表服务推断 scheduler 已成功 |
 
-字段路径使用 `meta.*` 与 `data.*` 分离；schema 字段名原样作为参数，不把点路径与标识符字符串拼接进 SQL。首版只允许已声明的顶层 schema 字段，嵌套 JSON、无 schema Dataset 和业务日期解析后续独立扩展。
+字段路径使用 `meta.*` 与 `data.*` 分离；schema 字段名原样作为参数，不把点路径与标识符字符串拼接进 SQL。首版只允许已声明的顶层 schema 字段，嵌套 JSON 和业务日期 String 解析仍不支持；DATE / DATETIME 业务时间字段是类型化扩展。报表查询编译到 `DatasetViewManager` 生成的 typed view，字段名、类型和索引来自同一份 schema。
 
 **display × query 兼容矩阵（拟）：**METRIC 仅允许 `bucket=NONE`、`category=NONE`、单行；LINE/BAR 必须有 bucket 或 category 之一，不允许同时使用（首版不做 category→series pivot），series 引用 measure/derived；TABLE 允许 AGGREGATE/RECORDS，RECORDS 仅 TABLE。缺失 bucket 由服务端返回 `bucket_axis` 或连续 null 行；首版 series 上限 8。
 
-**首版时间边界：**使用写入元数据时间不等于业务发生日期。用户要求“按营业日统计”，而 Dataset 只有字符串 business_date 时，不可默默用 run_started_at 替代；明确告知首版边界，待扩展类型化业务时间字段。完整例子中的“每天”特指采集任务记录日期。
+**时间边界：**写入元数据时间不等于业务发生日期。需要按营业日统计时，数据集 schema 必须把该字段声明为 DATE / DATETIME；引擎不会把 STRING 日期静默当成业务时间，也不会用 `meta.created_at` 替代。DATE 时间字段的范围按报表时区的本地日期比较，桶值转换为该时区午夜的 timestamptz。
 
 ### 6.2 配置示例：评论数与加权好评率
 
@@ -877,6 +877,7 @@ AI 评审补充：v0.4 按 U-004 移除了 proposal/commit，P0-1/P0-2 不再适
 | v0.4 | 2026-11-19 | 按用户 U-004 取消 proposal/human commit/approval receipt；Agent 直接创建/修改报表并保存，报表进入 `/reports`，Pin/删除/排序由用户操作；移除 proposals 表与相关 API/tool；增加审计表；按 AI 评审调整 display 矩阵、timezone、LAST tie-break、首屏 batch、REPEATABLE READ/只读事务；未改实现代码 |
 | v0.5 | 2026-11-19 | 新增 §5.1 领域模型：DatasetReport/HomeReportLayout 聚合、值对象、不变量、领域策略、应用服务与仓储、生命周期、并发/锁顺序、分层与包结构；补充 §7 存储边界（全部 PG、无 Mongo 双写）；未改实现代码 |
 | v0.6 | 2026-11-19 | 落地 P0/P1：V46 迁移、PG 仓储、ReportSpecValidator、ReportQueryService、ReportService/HomeReportService、报表/首页 API、ReportToolProvider、前端报表列表/详情/渲染器/ForYou 钉选/聊天 report_created 卡片；未部署 |\n| v0.7 | 2026-11-19 | dev 部署 2.0.303 并开启 SYS_REPORT_ENABLED；E2E 覆盖 Agent 创建报表/report_created 事件、报表 data、个人 Pin、batch data、删除已 Pin 报表与 layout revision 递增；UAT/prod 未动 |
+| v0.8 | 2026-11-24 | 支持 DATE/DATETIME 业务时间字段作为 `time_field`；筛选器改为类型化 `op`（EQ/NE/GT/GTE/LT/LTE/IN）并按字段类型校验；category_field/filters/record_fields 接受可选 `data.` 前缀并归一化；报表查询改为编译到 `DatasetViewManager` typed view；数据集编辑器和工具说明暴露 DATE/DATETIME；未改 spec_version |
 
 ### 14.5 Dev E2E 记录（2026-11-19）
 

@@ -175,7 +175,7 @@ public class ReportToolProvider implements ToolProvider {
         return ToolCallParameters.of(
                 ToolCallParameters.ParamSpec.of(String.class, "title", "Report title, at most 120 characters.").required(),
                 ToolCallParameters.ParamSpec.of(String.class, "description", "Optional description, at most 2000 characters."),
-                ToolCallParameters.ParamSpec.of(String.class, "spec_json", "ReportSpec JSON string, spec_version=1. Use data.<field> paths from list_report_sources.").required());
+                ToolCallParameters.ParamSpec.of(String.class, "spec_json", "ReportSpec JSON string, spec_version=1." + ReportSpecGuide.TEXT).required());
     }
 
     private void requireSourceBinding(String specJson) {

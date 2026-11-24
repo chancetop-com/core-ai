@@ -12,6 +12,15 @@ public final class ReportConstants {
 
     public static final String TIME_FIELD_RUN_STARTED_AT = "meta.run_started_at";
     public static final String TIME_FIELD_CREATED_AT = "meta.created_at";
+    public static final String DATA_FIELD_PREFIX = "data.";
+
+    public static final String FILTER_OP_EQ = "EQ";
+    public static final String FILTER_OP_NE = "NE";
+    public static final String FILTER_OP_GT = "GT";
+    public static final String FILTER_OP_GTE = "GTE";
+    public static final String FILTER_OP_LT = "LT";
+    public static final String FILTER_OP_LTE = "LTE";
+    public static final String FILTER_OP_IN = "IN";
 
     public static final String RANGE_TODAY = "TODAY";
     public static final String RANGE_YESTERDAY = "YESTERDAY";

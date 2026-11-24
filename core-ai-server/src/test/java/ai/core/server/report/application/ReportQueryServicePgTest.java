@@ -1,5 +1,6 @@
 package ai.core.server.report.application;
 
+import ai.core.server.dataset.store.DatasetViewManager;
 import ai.core.server.dataset.store.PgJsonRow;
 import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetType;
@@ -63,6 +64,16 @@ class ReportQueryServicePgTest {
             statement.execute("CREATE TABLE IF NOT EXISTS dataset.dataset_records (id text PRIMARY KEY, dataset_id text, agent_id text, "
                     + "run_id text, session_id text, user_id text, data jsonb, run_started_at timestamptz, created_at timestamptz, "
                     + "created_by text, updated_at timestamptz, updated_by text)");
+            statement.execute("CREATE OR REPLACE FUNCTION dataset.dataset_to_date(v jsonb) RETURNS date "
+                    + "LANGUAGE plpgsql IMMUTABLE AS $$ BEGIN "
+                    + "IF jsonb_typeof(v) <> 'string' OR NOT (v #>> '{}') ~ '^\\d{4}-\\d{2}-\\d{2}' THEN RETURN NULL; END IF; "
+                    + "RETURN make_date(substr(v #>> '{}', 1, 4)::int, substr(v #>> '{}', 6, 2)::int, substr(v #>> '{}', 9, 2)::int); "
+                    + "EXCEPTION WHEN others THEN RETURN NULL; END $$");
+            statement.execute("CREATE OR REPLACE FUNCTION dataset.dataset_to_timestamp(v jsonb) RETURNS timestamptz "
+                    + "LANGUAGE plpgsql IMMUTABLE AS $$ BEGIN "
+                    + "IF jsonb_typeof(v) <> 'string' OR NOT (v #>> '{}') ~ '(Z|[+-]\\d{2}:?\\d{2})$' THEN RETURN NULL; END IF; "
+                    + "RETURN (v #>> '{}')::timestamptz; "
+                    + "EXCEPTION WHEN others THEN RETURN NULL; END $$");
         } catch (java.sql.SQLException e) {
             throw new IllegalStateException("failed to initialize report query test schema", e);
         }
@@ -80,10 +91,12 @@ class ReportQueryServicePgTest {
     @BeforeEach
     void setUp() {
         service.database = DATABASE;
+        service.viewManager = new DatasetViewManager();
     }
 
     @AfterEach
     void cleanup() {
+        executeDdl("DROP VIEW IF EXISTS " + DatasetViewManager.qualifiedView(DatasetViewManager.viewName(datasetId)));
         DATABASE.execute("DELETE FROM dataset.dataset_records WHERE dataset_id = ?", datasetId);
         DATABASE.execute("DELETE FROM app.datasets WHERE id = ?", datasetId);
     }
@@ -91,8 +104,8 @@ class ReportQueryServicePgTest {
     @Test
     void aggregatesBucketsAndRatioOfSums() {
         insertDataset();
-        insertRecord("2026-11-16T16:00:00Z", 2, 5);
-        insertRecord("2026-11-17T16:00:00Z", 8, 10);
+        insertRecord("2026-11-16T16:00:00Z", null, null, 2, 5);
+        insertRecord("2026-11-17T16:00:00Z", null, null, 8, 10);
 
         var data = service.query(new ReportQueryService.QueryRequest("report-1", 1, 1, spec(), dataset(),
                 ZonedDateTime.parse("2026-11-19T01:00:00Z"), null, 100, 0));
@@ -112,10 +125,59 @@ class ReportQueryServicePgTest {
     }
 
     @Test
+    void aggregatesByBusinessDateWithRangeAndTypedFilter() {
+        insertDataset();
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-16", "web", 2, 5);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "web", 8, 10);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "app", 3, 4);
+
+        var spec = spec();
+        spec.query.timeField = "data.business_date";
+        spec.query.timeRange.kind = ReportConstants.RANGE_FIXED;
+        spec.query.timeRange.from = "2026-11-16T00:00:00Z";
+        spec.query.timeRange.to = "2026-11-18T00:00:00Z";
+        spec.query.categoryField = "channel";
+        spec.query.filters = List.of(filter("channel", ReportConstants.FILTER_OP_IN, List.of("web")));
+
+        var data = service.query(new ReportQueryService.QueryRequest("report-1", 1, 1, spec, dataset(),
+                ZonedDateTime.parse("2026-11-24T01:00:00Z"), null, 100, 0));
+
+        assertEquals(ReportConstants.STATUS_READY, data.status);
+        assertEquals(2, data.matchedRecordCount);
+        assertEquals(2, data.rows.size());
+        assertEquals("web", data.rows.get(0).get(1));
+        assertEquals("5", data.rows.get(0).get(3));
+        assertEquals("web", data.rows.get(1).get(1));
+        assertEquals("10", data.rows.get(1).get(3));
+        assertEquals("2026-11-16T16:00:00Z", data.sourceTime);
+    }
+
+    @Test
+    void excludesInvalidBusinessDateRowsFromWindow() {
+        insertDataset();
+        insertRecord("2026-11-23T08:00:00Z", "not-a-date", "web", 2, 5);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "web", 8, 10);
+
+        var spec = spec();
+        spec.query.timeField = "data.business_date";
+        spec.query.timeRange.kind = ReportConstants.RANGE_FIXED;
+        spec.query.timeRange.from = "2026-11-16T00:00:00Z";
+        spec.query.timeRange.to = "2026-11-18T00:00:00Z";
+        spec.query.categoryField = null;
+
+        var data = service.query(new ReportQueryService.QueryRequest("report-1", 1, 1, spec, dataset(),
+                ZonedDateTime.parse("2026-11-24T01:00:00Z"), null, 100, 0));
+
+        assertEquals(1, data.matchedRecordCount);
+        assertEquals(1, data.rows.size());
+        assertEquals(0, data.invalidValueCount);
+    }
+
+    @Test
     void recordsModeReturnsRowsAndHonorsPagination() {
         insertDataset();
-        insertRecord("2026-11-16T16:00:00Z", 2, 5);
-        insertRecord("2026-11-17T16:00:00Z", 8, 10);
+        insertRecord("2026-11-16T16:00:00Z", null, null, 2, 5);
+        insertRecord("2026-11-17T16:00:00Z", null, null, 8, 10);
 
         var spec = spec();
         spec.query.mode = ReportConstants.MODE_RECORDS;
@@ -178,12 +240,21 @@ class ReportQueryServicePgTest {
         return measure;
     }
 
+    private ReportSpec.Filter filter(String field, String op, Object value) {
+        var filter = new ReportSpec.Filter();
+        filter.field = field;
+        filter.op = op;
+        filter.value = value;
+        return filter;
+    }
+
     private Dataset dataset() {
         var dataset = new Dataset();
         dataset.id = datasetId;
         dataset.name = "report-test";
         dataset.type = DatasetType.GENERAL;
-        dataset.schema = List.of(field("positive_count", SchemaFieldType.NUMBER), field("total", SchemaFieldType.NUMBER));
+        dataset.schema = List.of(field("positive_count", SchemaFieldType.NUMBER), field("total", SchemaFieldType.NUMBER),
+                field("channel", SchemaFieldType.STRING), field("business_date", SchemaFieldType.DATE));
         return dataset;
     }
 
@@ -191,13 +262,57 @@ class ReportQueryServicePgTest {
         DATABASE.execute("INSERT INTO app.datasets (id, name, description, user_id, type, schema_json, schema_version, created_at, updated_at) "
                         + "VALUES (?, ?, ?, ?, ?, ?::jsonb, 1, now(), now())",
                 datasetId, "report-test", null, userId, "GENERAL", JsonUtil.toJson(dataset().schema));
+        executeDdl(viewDdl());
     }
 
-    private void insertRecord(String runStartedAt, int positive, int total) {
+    private void executeDdl(String sql) {
+        try (var connection = DriverManager.getConnection(
+                System.getenv("CORE_AI_PG_TEST_URL"),
+                System.getenv().getOrDefault("CORE_AI_PG_TEST_USER", "core_ai"),
+                System.getenv().getOrDefault("CORE_AI_PG_TEST_PASSWORD", "core_ai"));
+             var statement = connection.createStatement()) {
+            statement.execute(sql);
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException("failed to execute test DDL", e);
+        }
+    }
+
+    private String viewDdl() {
+        var dataset = dataset();
+        var columns = new StringBuilder("id, dataset_id, agent_id, run_id, session_id, user_id, data, run_started_at, created_at, "
+                + "updated_at, created_by, updated_by");
+        for (var field : dataset.schema) {
+            columns.append(", ").append(expression(field)).append(" AS ").append(quote(field.name));
+        }
+        return "CREATE VIEW " + DatasetViewManager.qualifiedView(DatasetViewManager.viewName(dataset.id))
+                + " AS SELECT " + columns + " FROM dataset.dataset_records WHERE dataset_id = '" + dataset.id + "'";
+    }
+
+    private String expression(SchemaField field) {
+        var key = "'" + field.name + "'";
+        return switch (field.type) {
+            case NUMBER -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'number' THEN (data ->> " + key + ")::numeric END";
+            case BOOLEAN -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'boolean' THEN (data ->> " + key + ")::boolean END";
+            case STRING -> "CASE WHEN jsonb_typeof(data -> " + key + ") = 'string' THEN data ->> " + key + " END";
+            case DATE -> "dataset.dataset_to_date(data -> " + key + ")";
+            case DATETIME -> "dataset.dataset_to_timestamp(data -> " + key + ")";
+        };
+    }
+
+    private String quote(String identifier) {
+        return DatasetViewManager.quoteIdentifier(identifier);
+    }
+
+    private void insertRecord(String runStartedAt, String businessDate, String channel, int positive, int total) {
+        var data = new java.util.LinkedHashMap<String, Object>();
+        data.put("positive_count", positive);
+        data.put("total", total);
+        if (businessDate != null) data.put("business_date", businessDate);
+        if (channel != null) data.put("channel", channel);
         DATABASE.execute("INSERT INTO dataset.dataset_records (id, dataset_id, agent_id, run_id, user_id, data, run_started_at, "
                         + "created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::timestamptz, now(), ?, now(), ?)",
                 UUID.randomUUID().toString(), datasetId, "agent-1", "run-1", userId,
-                "{\"positive_count\":" + positive + ",\"total\":" + total + "}", runStartedAt, "test", "test");
+                JsonUtil.toJson(data), runStartedAt, "test", "test");
     }
 
     private SchemaField field(String name, SchemaFieldType type) {

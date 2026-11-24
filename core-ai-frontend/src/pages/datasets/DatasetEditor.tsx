@@ -32,7 +32,9 @@ const JAVA_CLASS_PLACEHOLDER = `public class SentimentResult {
     public List<String> keywords;
 }`;
 
-function jsonSchemaTypeToFieldType(jsType: string): string {
+function jsonSchemaTypeToFieldType(jsType: string, format?: string): string {
+  if (jsType === 'string' && format === 'date') return 'DATE';
+  if (jsType === 'string' && format === 'date-time') return 'DATETIME';
   switch (jsType) {
     case 'number': case 'integer': return 'NUMBER';
     case 'boolean': return 'BOOLEAN';
@@ -44,30 +46,39 @@ function fieldTypeToJsonSchemaType(t: string): string {
   switch (t) {
     case 'NUMBER': return 'number';
     case 'BOOLEAN': return 'boolean';
+    case 'DATE': case 'DATETIME': return 'string';
     default: return 'string';
   }
+}
+
+function fieldTypeToJsonSchemaFormat(t: string): string | undefined {
+  if (t === 'DATE') return 'date';
+  if (t === 'DATETIME') return 'date-time';
+  return undefined;
 }
 
 function parseJsonSchemaToFields(raw: string): SchemaFieldView[] {
   let schema: Record<string, unknown>;
   try { schema = JSON.parse(raw); } catch { return []; }
 
-  const properties = schema.properties as Record<string, { type?: string; description?: string; title?: string }> | undefined;
+  const properties = schema.properties as Record<string, { type?: string; format?: string; description?: string; title?: string }> | undefined;
   if (!properties || typeof properties !== 'object') return [];
 
   return Object.entries(properties).map(([name, prop]) => ({
     name,
-    type: jsonSchemaTypeToFieldType(prop.type || 'string'),
+    type: jsonSchemaTypeToFieldType(prop.type || 'string', prop.format),
     label: prop.description || prop.title || '',
   }));
 }
 
 function fieldsToJsonSchema(fields: SchemaFieldView[]): string {
-  const properties: Record<string, { type: string; description?: string }> = {};
+  const properties: Record<string, { type: string; format?: string; description?: string }> = {};
   for (const f of fields) {
-    const prop: { type: string; description?: string } = {
+    const prop: { type: string; format?: string; description?: string } = {
       type: fieldTypeToJsonSchemaType(f.type),
     };
+    const format = fieldTypeToJsonSchemaFormat(f.type);
+    if (format) prop.format = format;
     if (f.label) prop.description = f.label;
     properties[f.name] = prop;
   }
@@ -164,6 +175,7 @@ Rules:
 - Always include "type": "object" and "properties"
 - Each property must have "type" and "description"
 - Use common types: string, number, boolean, array
+- For a calendar date use {"type":"string","format":"date"}; for a timestamp use {"type":"string","format":"date-time"}
 - Be comprehensive but not overly detailed
 - Keep field names snake_case
 

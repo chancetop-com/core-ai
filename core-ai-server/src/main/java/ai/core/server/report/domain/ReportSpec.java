@@ -65,6 +65,8 @@ public class ReportSpec {
     public static class Filter {
         @Property(name = "field")
         public String field;
+        @Property(name = "op")
+        public String op;
         @Property(name = "value")
         public Object value;
     }

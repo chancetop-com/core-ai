@@ -56,11 +56,11 @@ public class DatasetViewManager {
         return truncate(name, 60);
     }
 
-    static String quoteIdentifier(String identifier) {
+    public static String quoteIdentifier(String identifier) {
         return '"' + identifier.replace("\"", "\"\"") + '"';
     }
 
-    static String qualifiedView(String viewName) {
+    public static String qualifiedView(String viewName) {
         return "dataset." + quoteIdentifier(viewName);
     }
 

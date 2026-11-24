@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 /**
@@ -33,13 +34,8 @@ public class ReportSpecValidator {
     public static final int MAX_TITLE_LENGTH = 120;
     public static final int MAX_DESCRIPTION_LENGTH = 2000;
     public static final int MAX_QUERY_DAYS = 366;
-
-    public static String dataField(String field) {
-        if (field == null || !field.startsWith("data.")) return null;
-        var name = field.substring("data.".length());
-        if (name.isBlank() || name.contains(".")) return null;
-        return name;
-    }
+    private static final Set<String> FILTER_OPS = Set.of(ReportConstants.FILTER_OP_EQ, ReportConstants.FILTER_OP_NE, ReportConstants.FILTER_OP_GT, ReportConstants.FILTER_OP_GTE,
+            ReportConstants.FILTER_OP_LT, ReportConstants.FILTER_OP_LTE, ReportConstants.FILTER_OP_IN);
 
     public ValidatedSpec validate(String title, String description, String specJson, Dataset dataset) {
         var issues = new ArrayList<Issue>();
@@ -94,9 +90,8 @@ public class ReportSpecValidator {
         if (query.mode == null || !Set.of(ReportConstants.MODE_AGGREGATE, ReportConstants.MODE_RECORDS).contains(query.mode)) {
             issues.add(new Issue("INVALID_QUERY_MODE", "/query/mode", "AGGREGATE|RECORDS", "选择查询模式"));
         }
-        if (query.timeField == null || !Set.of(ReportConstants.TIME_FIELD_RUN_STARTED_AT, ReportConstants.TIME_FIELD_CREATED_AT).contains(query.timeField)) {
-            issues.add(new Issue("INVALID_TIME_FIELD", "/query/time_field", "meta.run_started_at|meta.created_at", "使用允许的时间字段"));
-        }
+        var schema = schema(dataset);
+        var timeType = validateTimeField(query, schema, issues);
         if (query.timeRange == null) {
             issues.add(new Issue("TIME_RANGE_REQUIRED", "/query/time_range", "object", "补充时间范围"));
         } else {
@@ -106,11 +101,16 @@ public class ReportSpecValidator {
         if (query.bucket != null && !Set.of(ReportConstants.BUCKET_NONE, ReportConstants.BUCKET_HOUR, ReportConstants.BUCKET_DAY,
                 ReportConstants.BUCKET_WEEK, ReportConstants.BUCKET_MONTH).contains(query.bucket)) {
             issues.add(new Issue("INVALID_BUCKET", "/query/bucket", "NONE|HOUR|DAY|WEEK|MONTH", "选择允许的粒度"));
+        } else if (ReportConstants.BUCKET_HOUR.equals(query.bucket) && timeType == SchemaFieldType.DATE) {
+            issues.add(new Issue("INVALID_BUCKET", "/query/bucket", "NONE|DAY|WEEK|MONTH", "DATE 时间字段不支持 HOUR"));
         }
-        var schema = schema(dataset);
-        if (query.categoryField != null && !query.categoryField.isBlank()
-                && (query.categoryField.contains(".") || !schema.containsKey(query.categoryField))) {
-            issues.add(new Issue("UNKNOWN_CATEGORY_FIELD", "/query/category_field", "top-level schema field", "使用已声明的字段"));
+        if (query.categoryField != null && !query.categoryField.isBlank()) {
+            var field = ReportSpecFields.recordField(query.categoryField);
+            if (field == null || !schema.containsKey(field)) {
+                issues.add(new Issue("UNKNOWN_CATEGORY_FIELD", "/query/category_field", "top-level schema field", "使用已声明的字段"));
+            } else {
+                query.categoryField = field;
+            }
         }
         validateFilters(query, schema, issues);
         if (ReportConstants.MODE_RECORDS.equals(query.mode)) {
@@ -118,6 +118,22 @@ public class ReportSpecValidator {
         } else {
             validateMeasures(query, schema, issues);
         }
+    }
+
+    private SchemaFieldType validateTimeField(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
+        var field = query.timeField;
+        if (ReportConstants.TIME_FIELD_RUN_STARTED_AT.equals(field) || ReportConstants.TIME_FIELD_CREATED_AT.equals(field)) {
+            return SchemaFieldType.DATETIME;
+        }
+        var name = ReportSpecFields.dataField(field);
+        var type = name != null ? schema.get(name) : null;
+        if (type != SchemaFieldType.DATE && type != SchemaFieldType.DATETIME) {
+            issues.add(new Issue("INVALID_TIME_FIELD", "/query/time_field",
+                    "meta.run_started_at|meta.created_at|data.<DATE|DATETIME field>", "使用允许的时间字段"));
+            return null;
+        }
+        query.timeField = ReportConstants.DATA_FIELD_PREFIX + name;
+        return type;
     }
 
     private void validateTimezone(String timezone, List<Issue> issues) {
@@ -138,15 +154,64 @@ public class ReportSpecValidator {
         for (int i = 0; i < query.filters.size(); i++) {
             var filter = query.filters.get(i);
             var path = "/query/filters/" + i;
-            if (filter == null || filter.field == null || filter.field.isBlank()) {
+            if (filter == null) {
                 issues.add(new Issue("FILTER_FIELD_REQUIRED", path + "/field", "schema field", "补充字段"));
-            } else if (filter.field.contains(".") || !schema.containsKey(filter.field)) {
+                continue;
+            }
+            var field = ReportSpecFields.recordField(filter.field);
+            if (field == null || !schema.containsKey(field)) {
                 issues.add(new Issue("UNKNOWN_FILTER_FIELD", path + "/field", "top-level schema field", "使用已声明的字段"));
+                continue;
             }
-            if (filter != null && !isScalar(filter.value)) {
-                issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "string|number|boolean|null", "只支持等值标量"));
+            filter.field = field;
+            var op = filter.op == null || filter.op.isBlank()
+                    ? ReportConstants.FILTER_OP_EQ : filter.op.toUpperCase(Locale.ROOT);
+            if (!FILTER_OPS.contains(op)) {
+                issues.add(new Issue("INVALID_FILTER_OP", path + "/op", "EQ|NE|GT|GTE|LT|LTE|IN", "选择支持的过滤操作"));
+                continue;
             }
+            filter.op = op;
+            validateFilterValue(filter, schema.get(field), op, path, issues);
         }
+    }
+
+    private void validateFilterValue(ReportSpec.Filter filter, SchemaFieldType type, String op, String path, List<Issue> issues) {
+        if (ReportConstants.FILTER_OP_IN.equals(op)) {
+            if (!(filter.value instanceof List<?> values) || values.isEmpty()) {
+                issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "non-empty array", "IN 需要非空数组"));
+                return;
+            }
+            var normalized = new ArrayList<Object>(values.size());
+            for (var value : values) {
+                if (!ReportSpecFields.matchesType(type, value)) {
+                    issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", ReportSpecFields.typeName(type), "值类型与字段不匹配"));
+                    return;
+                }
+                normalized.add(ReportSpecFields.normalizeValue(type, value));
+            }
+            filter.value = normalized;
+            return;
+        }
+        if (filter.value == null) {
+            if (!ReportConstants.FILTER_OP_EQ.equals(op) && !ReportConstants.FILTER_OP_NE.equals(op)) {
+                issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "non-null scalar", "该操作需要非空值"));
+            }
+            return;
+        }
+        if (!ReportSpecFields.isScalar(filter.value)) {
+            issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "string|number|boolean|null", "只支持标量"));
+            return;
+        }
+        if (!ReportConstants.FILTER_OP_EQ.equals(op) && !ReportConstants.FILTER_OP_NE.equals(op)
+                && type == SchemaFieldType.BOOLEAN) {
+            issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "EQ|NE", "BOOLEAN 只支持等值比较"));
+            return;
+        }
+        if (!ReportSpecFields.matchesType(type, filter.value)) {
+            issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", ReportSpecFields.typeName(type), "值类型与字段不匹配"));
+            return;
+        }
+        filter.value = ReportSpecFields.normalizeValue(type, filter.value);
     }
 
     private void validateRecordFields(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
@@ -160,11 +225,16 @@ public class ReportSpecValidator {
             issues.add(new Issue("TOO_MANY_RECORD_FIELDS", "/query/record_fields", "<= " + MAX_RECORD_FIELDS, "减少字段"));
             return;
         }
-        for (var field : query.recordFields) {
-            if (field == null || field.contains(".") || !schema.containsKey(field)) {
-                issues.add(new Issue("UNKNOWN_RECORD_FIELD", "/query/record_fields", "top-level schema field", "使用已声明的字段: " + field));
+        var normalized = new ArrayList<String>(query.recordFields.size());
+        for (var raw : query.recordFields) {
+            var field = ReportSpecFields.recordField(raw);
+            if (field == null || !schema.containsKey(field)) {
+                issues.add(new Issue("UNKNOWN_RECORD_FIELD", "/query/record_fields", "top-level schema field", "使用已声明的字段: " + raw));
+            } else {
+                normalized.add(field);
             }
         }
+        query.recordFields = normalized;
     }
 
     private void validateMeasures(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
@@ -190,14 +260,14 @@ public class ReportSpecValidator {
                 continue;
             }
             if (!ids.add(measure.id)) issues.add(new Issue("DUPLICATE_MEASURE_ID", path + "/id", "unique", "id 不能重复"));
-            var op = measure.op == null ? "" : measure.op.toUpperCase(java.util.Locale.ROOT);
+            var op = measure.op == null ? "" : measure.op.toUpperCase(Locale.ROOT);
             if (!Set.of(ReportConstants.OP_SUM, ReportConstants.OP_AVG, ReportConstants.OP_MIN, ReportConstants.OP_MAX,
                     ReportConstants.OP_COUNT, ReportConstants.OP_LAST).contains(op)) {
                 issues.add(new Issue("INVALID_MEASURE_OP", path + "/op", "SUM|AVG|MIN|MAX|COUNT|LAST", "选择支持的聚合"));
                 continue;
             }
             if (ReportConstants.OP_COUNT.equals(op)) continue;
-            var field = dataField(measure.field);
+            var field = ReportSpecFields.dataField(measure.field);
             if (field == null) {
                 issues.add(new Issue("INVALID_MEASURE_FIELD", path + "/field", "data.<schema field>", "使用 data.<field>"));
                 continue;
@@ -298,12 +368,27 @@ public class ReportSpecValidator {
 
     private Set<String> referencedFields(ReportSpec spec) {
         var fields = new LinkedHashSet<String>();
-        if (spec.query.categoryField != null) fields.add(spec.query.categoryField);
-        if (spec.query.filters != null) for (var filter : spec.query.filters) if (filter != null && filter.field != null) fields.add(filter.field);
-        if (spec.query.recordFields != null) fields.addAll(spec.query.recordFields);
+        var timeField = ReportSpecFields.dataField(spec.query.timeField);
+        if (timeField != null) fields.add(timeField);
+        if (spec.query.categoryField != null) {
+            var field = ReportSpecFields.recordField(spec.query.categoryField);
+            if (field != null) fields.add(field);
+        }
+        if (spec.query.filters != null) {
+            for (var filter : spec.query.filters) {
+                var field = filter != null ? ReportSpecFields.recordField(filter.field) : null;
+                if (field != null) fields.add(field);
+            }
+        }
+        if (spec.query.recordFields != null) {
+            for (var raw : spec.query.recordFields) {
+                var field = ReportSpecFields.recordField(raw);
+                if (field != null) fields.add(field);
+            }
+        }
         if (spec.query.measures != null) {
             for (var measure : spec.query.measures) {
-                var field = dataField(measure != null ? measure.field : null);
+                var field = ReportSpecFields.dataField(measure != null ? measure.field : null);
                 if (field != null) fields.add(field);
             }
         }
@@ -331,10 +416,6 @@ public class ReportSpecValidator {
             }
         }
         return schema;
-    }
-
-    private boolean isScalar(Object value) {
-        return value == null || value instanceof String || value instanceof Number || value instanceof Boolean;
     }
 
     public record ValidatedSpec(ReportSpec spec, String specJson, ReportDependency dependency, Set<String> referencedFields) {
@@ -366,3 +447,4 @@ public class ReportSpecValidator {
         }
     }
 }
+
