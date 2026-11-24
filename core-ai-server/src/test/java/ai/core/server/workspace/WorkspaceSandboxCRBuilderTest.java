@@ -45,7 +45,7 @@ class WorkspaceSandboxCRBuilderTest {
         assertEquals("0", labels.get("core-ai/runtime-generation"));
 
         var podSpec = nested(podTemplate, "spec");
-        assertEquals(false, podSpec.get("automountServiceAccountToken"));
+        assertEquals(Boolean.FALSE, podSpec.get("automountServiceAccountToken"));
         var container = firstContainer(podSpec);
         var env = env(container);
         assertEquals("/workspace/home", env.get("HOME"));

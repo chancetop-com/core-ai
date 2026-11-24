@@ -8,8 +8,8 @@ import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Workspace lifecycle: the durable volume is provisioned once and survives every runtime, while
@@ -114,7 +114,7 @@ public class WorkspaceService {
             workspace.image = config.image;
             workspace.idleSleepMinutes = config.idleSleepMinutes;
             if (workspaces.insertIfAbsent(workspace)) {
-                appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", true));
+                appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", Boolean.TRUE));
                 return load(ownerUserId, workspace.id);
             }
             // another request may have created the default first, or the name belongs to a detached workspace
@@ -129,7 +129,7 @@ public class WorkspaceService {
         var slug = agentId.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
         if (slug.length() > 24) slug = slug.substring(0, 24);
         return List.of("default", "default-" + (slug.isEmpty() ? "agent" : slug),
-                "default-" + UUID.randomUUID().toString().substring(0, 8));
+                "default-" + Long.toHexString(ThreadLocalRandom.current().nextLong()));
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes) {

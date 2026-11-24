@@ -78,7 +78,7 @@ public class WorkspaceSandboxCRBuilder {
 
     private Map<String, Object> buildPodSpec() {
         var podSpec = new LinkedHashMap<String, Object>();
-        podSpec.put("automountServiceAccountToken", false);
+        podSpec.put("automountServiceAccountToken", Boolean.FALSE);
         podSpec.put("containers", List.of(buildContainer()));
         podSpec.put("volumes", buildVolumes());
         if (placement.priorityClassName != null && !placement.priorityClassName.isBlank()) {

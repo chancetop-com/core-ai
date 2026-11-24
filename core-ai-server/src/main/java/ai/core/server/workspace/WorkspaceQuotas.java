@@ -23,8 +23,8 @@ final class WorkspaceQuotas {
 
     static void checkRunning(WorkspaceConfig config, List<WorkspaceRecord> owned, String excludeId) {
         var running = owned.stream()
-                .filter(w -> !Objects.equals(w.id, excludeId))
-                .filter(w -> w.runtimeStatus == WorkspaceRuntimeStatus.READY || w.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING)
+                .filter(w -> !Objects.equals(w.id, excludeId)
+                        && (w.runtimeStatus == WorkspaceRuntimeStatus.READY || w.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING))
                 .count();
         if (running >= config.maxRunningPerUser) {
             throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED,

@@ -84,7 +84,7 @@ class AgentHealthServiceTest {
             user.role = "user";
             return Optional.of(user);
         });
-        when(permissionService.has(any(), any())).thenReturn(false);
+        when(permissionService.has(any(), any())).thenReturn(Boolean.FALSE);
         when(skillStore.findNames(any())).thenReturn(Map.of());
         when(catalogService.successSnapshot()).thenReturn(emptyCatalog());
         when(qualityStore.findLatestCompletedRuns(any(), any())).thenReturn(Map.of());

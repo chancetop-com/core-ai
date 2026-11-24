@@ -22,6 +22,7 @@ import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.server.workspace.WorkspaceStores;
 import ai.core.server.web.WorkspaceWebServiceImpl;
 import core.framework.module.Module;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,6 +39,7 @@ public class WorkspaceModule extends Module {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceModule.class);
 
     @Override
+    @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     protected void initialize() {
         var config = config();
         // The PG stores inject Database eagerly; a deployment that never configured PostgreSQL
@@ -96,6 +98,7 @@ public class WorkspaceModule extends Module {
     }
 
     private int intProperty(String key, int defaultValue) {
-        return property(key).map(v -> Integer.parseInt(v.trim())).orElse(defaultValue);
+        var value = property(key).orElse(null);
+        return value == null ? defaultValue : Integer.parseInt(value.trim());
     }
 }
