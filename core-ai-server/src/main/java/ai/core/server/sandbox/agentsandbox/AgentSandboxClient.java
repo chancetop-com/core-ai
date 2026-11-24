@@ -114,6 +114,37 @@ public class AgentSandboxClient {
         throw new RuntimeException("Sandbox CR readiness timeout: " + name);
     }
 
+    /**
+     * Workspace wakes need a runnable pod, not just a rendered service: the service FQDN appears while
+     * the pod is still Pending, so mounting and starting the workspace runtime would hit a dead endpoint.
+     */
+    public SandboxCR waitForRuntimeReady(String name, int maxWaitMs) {
+        var startTime = System.currentTimeMillis();
+        while (System.currentTimeMillis() - startTime < maxWaitMs) {
+            var opt = getSandbox(name);
+            if (opt.isEmpty()) {
+                throw new RuntimeException("Sandbox CR not found: " + name);
+            }
+            var cr = opt.get();
+            if (isFailed(cr)) {
+                throw new RuntimeException("Sandbox CR failed: " + name);
+            }
+            if (readyConditionTrue(cr)) {
+                return cr;
+            }
+            sleep(2000);
+        }
+        throw new RuntimeException("Sandbox CR readiness timeout: " + name);
+    }
+
+    private boolean readyConditionTrue(SandboxCR cr) {
+        if (cr.status == null || cr.status.conditions == null) return false;
+        for (var c : cr.status.conditions) {
+            if ("Ready".equals(c.type) && "True".equals(c.status)) return true;
+        }
+        return false;
+    }
+
     private boolean isReady(SandboxCR cr) {
         if (cr.status == null) {
             return false;

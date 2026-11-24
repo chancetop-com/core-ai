@@ -53,7 +53,7 @@ public class WorkspaceRuntimeManager {
     }
 
     public void waitReady(String name, int timeoutSeconds) {
-        client.waitForReady(name, timeoutSeconds * 1000);
+        client.waitForRuntimeReady(name, timeoutSeconds * 1000);
     }
 
     public void delete(String name) {
