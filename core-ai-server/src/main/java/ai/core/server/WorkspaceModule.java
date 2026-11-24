@@ -40,10 +40,15 @@ public class WorkspaceModule extends Module {
     @Override
     protected void initialize() {
         var config = config();
-        var workspaces = bind(new PgWorkspaceStore());
-        var volumes = bind(new PgWorkspaceVolumeStore());
-        var bindings = bind(new PgWorkspaceBindingStore());
-        var events = bind(new PgWorkspaceEventStore());
+        // The PG stores inject Database eagerly; a deployment that never configured PostgreSQL
+        // (local mongo mode) must still start with the feature flag off.
+        WorkspaceStores stores;
+        if (config.enabled) {
+            stores = new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
+                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()));
+        } else {
+            stores = new WorkspaceStores(null, null, null, null);
+        }
 
         KubernetesClient kubernetesClient = null;
         AgentSandboxClient agentSandboxClient = null;
@@ -64,8 +69,7 @@ public class WorkspaceModule extends Module {
             thread.setDaemon(true);
             return thread;
         });
-        bind(new WorkspaceService(new WorkspaceStores(workspaces, volumes, bindings, events),
-                provisioner, runtimes, config, wakeExecutor));
+        bind(new WorkspaceService(stores, provisioner, runtimes, config, wakeExecutor));
         bind(new WorkspaceSessionBinder(bean(WorkspaceService.class)));
         var sandboxService = bean(SandboxService.class);
         bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
