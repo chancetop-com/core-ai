@@ -44,9 +44,10 @@ public class PgWorkspaceVolumeStore implements WorkspaceVolumeStore {
 
     @Override
     public Optional<WorkspaceVolumeRecord> active(String workspaceId) {
-        return database.selectOne(SELECT + " WHERE workspace_id = ? AND status IN ('PROVISIONING', 'READY', 'ERROR') "
+        return database.selectOne(SELECT + " WHERE workspace_id = ? AND status IN (?, ?, ?) "
                         + "ORDER BY volume_generation DESC LIMIT 1",
-                PgWorkspaceVolumeRow.class, workspaceId).map(PgWorkspaceVolumeStore::toVolume);
+                PgWorkspaceVolumeRow.class, workspaceId, WorkspaceVolumeStatus.PROVISIONING.name(),
+                WorkspaceVolumeStatus.READY.name(), WorkspaceVolumeStatus.ERROR.name()).map(PgWorkspaceVolumeStore::toVolume);
     }
 
     @Override
