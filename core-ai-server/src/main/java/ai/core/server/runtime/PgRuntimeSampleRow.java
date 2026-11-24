@@ -163,4 +163,25 @@ public class PgRuntimeSampleRow {
 
     @Column(name = "creates_failed_total")
     public Long createsFailedTotal;
+
+    @Column(name = "old_gen_percent")
+    public Double oldGenPercent;
+
+    @Column(name = "gc_kind")
+    public String gcKind;
+
+    @Column(name = "gc_reclaimed_bytes")
+    public Long gcReclaimedBytes;
+
+    @Column(name = "sessions_estimated_bytes_peak_total")
+    public Long sessionsEstimatedBytesPeakTotal;
+
+    @Column(name = "sessions_estimated_bytes_peak_max")
+    public Long sessionsEstimatedBytesPeakMax;
+
+    @Column(name = "sessions_inline_image_bytes_peak_total")
+    public Long sessionsInlineImageBytesPeakTotal;
+
+    @Column(name = "sessions_media_ref_bytes_total")
+    public Long sessionsMediaRefBytesTotal;
 }

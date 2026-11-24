@@ -39,18 +39,10 @@ public class RuntimeStatsJob implements Job {
         stat("runtime.heap_used_percent", stats.memory.heapUsedPercent);
         stat("runtime.heap_before_gc_percent", stats.memory.heapBeforeGcPercent);
         stat("runtime.heap_after_gc_percent", stats.memory.heapAfterGcPercent);
+        stat("runtime.old_gen_percent", stats.memory.oldGenPercent);
         stat("runtime.container_memory_percent", stats.memory.containerMemoryPercent);
         stat("runtime.heap_watermark_percent", limits.heapWatermarkPercent);
-        stat("runtime.sessions_active", stats.sessions.active);
-        stat("runtime.sessions_estimated_bytes_total", stats.sessions.estimatedBytesTotal);
-        stat("runtime.sessions_estimated_bytes_p50", stats.sessions.estimatedBytesP50);
-        stat("runtime.sessions_context_tokens_p50", stats.sessions.contextTokensP50);
-        stat("runtime.sessions_inline_image_bytes_total", stats.sessions.inlineImageBytesTotal);
-        stat("runtime.sessions_idle_seconds_p50", stats.sessions.idleSecondsP50);
-        stat("runtime.sessions_created_total", stats.sessions.createdTotal);
-        stat("runtime.sessions_closed_total", stats.sessions.closedTotal);
-        stat("runtime.sessions_idle_evicted_total", stats.sessions.idleEvictedTotal);
-        stat("runtime.sessions_turns_21plus", stats.sessions.turnBucketCounts.getOrDefault("21+", 0));
+        statSessions(stats);
         stat("runtime.in_flight_turns", stats.turns.inFlight);
         stat("runtime.turns_saturated_total", stats.turns.saturatedTotal);
         stat("runtime.turns_rejected_total", stats.turns.rejectedTotal);
@@ -71,6 +63,23 @@ public class RuntimeStatsJob implements Job {
         ActionLogContext.put("runtime_pod", stats.pod);
         ActionLogContext.put("runtime_admission_enabled", limits.admissionEnabled);
         recordSample(stats);
+    }
+
+    /** Session footprint log line: totals, distribution and high-water marks. */
+    private void statSessions(RuntimeStatsView stats) {
+        stat("runtime.sessions_active", stats.sessions.active);
+        stat("runtime.sessions_estimated_bytes_total", stats.sessions.estimatedBytesTotal);
+        stat("runtime.sessions_estimated_bytes_p50", stats.sessions.estimatedBytesP50);
+        stat("runtime.sessions_context_tokens_p50", stats.sessions.contextTokensP50);
+        stat("runtime.sessions_inline_image_bytes_total", stats.sessions.inlineImageBytesTotal);
+        stat("runtime.sessions_estimated_bytes_peak_total", stats.sessions.estimatedBytesPeakTotal);
+        stat("runtime.sessions_estimated_bytes_peak_max", stats.sessions.estimatedBytesPeakMax);
+        stat("runtime.sessions_media_ref_bytes_total", stats.sessions.mediaRefBytesTotal);
+        stat("runtime.sessions_idle_seconds_p50", stats.sessions.idleSecondsP50);
+        stat("runtime.sessions_created_total", stats.sessions.createdTotal);
+        stat("runtime.sessions_closed_total", stats.sessions.closedTotal);
+        stat("runtime.sessions_idle_evicted_total", stats.sessions.idleEvictedTotal);
+        stat("runtime.sessions_turns_21plus", stats.sessions.turnBucketCounts.getOrDefault("21+", 0));
     }
 
     /** The span lane's own queue: depth and bytes say whether the observation path is keeping up. */
@@ -122,6 +131,9 @@ public class RuntimeStatsJob implements Job {
         sample.containerMemoryMax = memory.containerMemoryMax;
         sample.containerMemoryPercent = memory.containerMemoryPercent;
         sample.rss = memory.rss;
+        sample.oldGenPercent = memory.oldGenPercent;
+        sample.gcKind = memory.gcKind;
+        sample.gcReclaimedBytes = memory.gcReclaimedBytes;
     }
 
     private void applySessions(RuntimeSample sample, RuntimeStatsView.SessionStats sessions) {
@@ -136,6 +148,10 @@ public class RuntimeStatsJob implements Job {
         sample.sessionsContextTokensP50 = sessions.contextTokensP50;
         sample.sessionsContextTokensP90 = sessions.contextTokensP90;
         sample.sessionsInlineImageBytesTotal = sessions.inlineImageBytesTotal;
+        sample.sessionsEstimatedBytesPeakTotal = sessions.estimatedBytesPeakTotal;
+        sample.sessionsEstimatedBytesPeakMax = sessions.estimatedBytesPeakMax;
+        sample.sessionsInlineImageBytesPeakTotal = sessions.inlineImageBytesPeakTotal;
+        sample.sessionsMediaRefBytesTotal = sessions.mediaRefBytesTotal;
         sample.sessionsIdleSecondsP50 = sessions.idleSecondsP50;
         sample.sessionsIdleSecondsP90 = sessions.idleSecondsP90;
         sample.sessionTurnBucketCounts = sessions.turnBucketCounts;

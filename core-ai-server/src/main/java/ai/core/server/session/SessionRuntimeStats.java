@@ -46,9 +46,13 @@ public class SessionRuntimeStats {
         for (var entry : sessions.entrySet()) {
             var last = lastActivity.get(entry.getKey());
             var resident = residentSince.get(entry.getKey());
-            snapshots.add(new SessionSnapshot(entry.getKey(), entry.getValue().footprint.footprint(),
+            var tracker = entry.getValue().footprint;
+            // the turn end also refreshes; this catches a long turn (a run of tool calls) between turns
+            tracker.refreshIfDue();
+            snapshots.add(new SessionSnapshot(entry.getKey(), tracker.footprint(),
                     last == null ? 0 : Math.max(0, now - last),
-                    resident == null ? 0 : Math.max(0, now - resident)));
+                    resident == null ? 0 : Math.max(0, now - resident),
+                    tracker.peakEstimatedBytes(), tracker.peakInlineImageBytes(), tracker.peakContextTokens()));
         }
         return snapshots;
     }

@@ -116,6 +116,10 @@ public class RuntimeStatsService {
         stats.containerMemoryMax = memory.containerMemoryMax();
         stats.containerMemoryPercent = memory.containerMemoryPercent();
         stats.rss = memory.rss();
+        stats.oldGen = memory.oldGen();
+        stats.oldGenPercent = memory.oldGenPercent();
+        stats.gcKind = memory.gcKind();
+        stats.gcReclaimedBytes = memory.gcReclaimedBytes();
         return stats;
     }
 
@@ -210,6 +214,10 @@ public class RuntimeStatsService {
         private long estimatedBytesTotal;
         private long contextTokensTotal;
         private long inlineImageBytesTotal;
+        private long estimatedBytesPeakTotal;
+        private long estimatedBytesPeakMax;
+        private long inlineImageBytesPeakTotal;
+        private long mediaRefBytesTotal;
 
         private SessionAggregate() {
             for (var bucket : TURN_BUCKETS) {
@@ -228,6 +236,10 @@ public class RuntimeStatsService {
             estimatedBytesTotal += bytes;
             contextTokensTotal += tokens;
             inlineImageBytesTotal += footprint.inlineImageBytes();
+            mediaRefBytesTotal += footprint.mediaRefBytes();
+            estimatedBytesPeakTotal += snapshot.peakEstimatedBytes();
+            estimatedBytesPeakMax = Math.max(estimatedBytesPeakMax, snapshot.peakEstimatedBytes());
+            inlineImageBytesPeakTotal += snapshot.peakInlineImageBytes();
             var bucket = turnBucket(footprint.turnCount());
             bucketCounts.merge(bucket, 1, Integer::sum);
             bucketEstimatedBytes.merge(bucket, bytes, Long::sum);
@@ -245,6 +257,10 @@ public class RuntimeStatsService {
             stats.contextTokensP50 = percentile(contextTokens, 0.50);
             stats.contextTokensP90 = percentile(contextTokens, 0.90);
             stats.inlineImageBytesTotal = inlineImageBytesTotal;
+            stats.estimatedBytesPeakTotal = estimatedBytesPeakTotal;
+            stats.estimatedBytesPeakMax = estimatedBytesPeakMax;
+            stats.inlineImageBytesPeakTotal = inlineImageBytesPeakTotal;
+            stats.mediaRefBytesTotal = mediaRefBytesTotal;
             stats.idleSecondsP50 = percentile(idleSeconds, 0.50);
             stats.idleSecondsP90 = percentile(idleSeconds, 0.90);
             stats.turnBucketCounts = bucketCounts;

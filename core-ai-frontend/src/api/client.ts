@@ -2049,6 +2049,15 @@ export interface RuntimePodWatermark {
   heap_used_percent?: number;
   heap_used?: number;
   heap_max?: number;
+  heap_after_gc_percent?: number;
+  container_memory_percent?: number;
+  old_gen_percent?: number;
+  gc_kind?: string;
+  gc_reclaimed_bytes?: number;
+  sessions_estimated_bytes_total?: number;
+  sessions_estimated_bytes_peak_max?: number;
+  sessions_inline_image_bytes_total?: number;
+  sessions_media_ref_bytes_total?: number;
   sessions_active?: number;
   in_flight_turns?: number;
   turns_saturated_total?: number;
@@ -2076,16 +2085,24 @@ export interface RuntimeSeriesPoint {
   pods_reporting?: number;
   heap_peak_percent?: number;
   heap_avg_percent?: number;
+  old_gen_peak_percent?: number;
+  heap_after_gc_peak_percent?: number;
+  container_peak_percent?: number;
   in_flight_turns_peak?: number;
   sessions_peak?: number;
   runs_queued_peak?: number;
   sandboxes_peak?: number;
   span_ingest_depth_peak?: number;
+  sessions_sum_peak?: number;
+  in_flight_turns_sum_peak?: number;
+  runs_queued_sum_peak?: number;
+  sandboxes_sum_peak?: number;
   turns_saturated_delta?: number;
   turns_rejected_delta?: number;
   runs_rejected_delta?: number;
   sandboxes_rejected_delta?: number;
   span_ingest_dropped_delta?: number;
+  counter_resets?: number;
 }
 
 export interface RuntimeSeries {

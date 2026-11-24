@@ -43,6 +43,15 @@ public class RuntimePodView {
     @Property(name = "container_memory_percent")
     public Double containerMemoryPercent;
 
+    @Property(name = "old_gen_percent")
+    public Double oldGenPercent;
+
+    @Property(name = "gc_kind")
+    public String gcKind;
+
+    @Property(name = "gc_reclaimed_bytes")
+    public Long gcReclaimedBytes;
+
     @Property(name = "sessions_active")
     public Integer sessionsActive;
 
@@ -63,6 +72,18 @@ public class RuntimePodView {
 
     @Property(name = "sessions_inline_image_bytes_total")
     public Long sessionsInlineImageBytesTotal;
+
+    @Property(name = "sessions_estimated_bytes_peak_total")
+    public Long sessionsEstimatedBytesPeakTotal;
+
+    @Property(name = "sessions_estimated_bytes_peak_max")
+    public Long sessionsEstimatedBytesPeakMax;
+
+    @Property(name = "sessions_inline_image_bytes_peak_total")
+    public Long sessionsInlineImageBytesPeakTotal;
+
+    @Property(name = "sessions_media_ref_bytes_total")
+    public Long sessionsMediaRefBytesTotal;
 
     @Property(name = "sessions_idle_seconds_p50")
     public Long sessionsIdleSecondsP50;

@@ -168,4 +168,28 @@ public class RuntimeSample {
 
     @Field(name = "creates_failed_total")
     public Long createsFailedTotal;
+
+    /** G1 Old Gen after the last collection, divided by heap max; the admission primary signal. */
+    @Field(name = "old_gen_percent")
+    public Double oldGenPercent;
+
+    /** young / old / concurrent / unknown, so an after-GC value is never confused with a concurrent cycle. */
+    @Field(name = "gc_kind")
+    public String gcKind;
+
+    @Field(name = "gc_reclaimed_bytes")
+    public Long gcReclaimedBytes;
+
+    @Field(name = "sessions_estimated_bytes_peak_total")
+    public Long sessionsEstimatedBytesPeakTotal;
+
+    @Field(name = "sessions_estimated_bytes_peak_max")
+    public Long sessionsEstimatedBytesPeakMax;
+
+    @Field(name = "sessions_inline_image_bytes_peak_total")
+    public Long sessionsInlineImageBytesPeakTotal;
+
+    /** Ref metadata bytes in conversation state (Design A); store bytes are counted separately. */
+    @Field(name = "sessions_media_ref_bytes_total")
+    public Long sessionsMediaRefBytesTotal;
 }

@@ -116,7 +116,10 @@ export default function RuntimeWatermarks() {
         )}
       </section>
 
-      <ChartCard title="Heap watermark" hint={`peak and average heap use per bucket, against the configured watermark (${watermark}%)`}>
+      <ChartCard
+        title="Retained heap (max pod)"
+        hint={`highest per-pod value in each bucket; a Young GC no longer counts as pressure. Watermark ${watermark}% applies to Old Gen / after-GC.`}
+      >
         <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
@@ -124,22 +127,29 @@ export default function RuntimeWatermarks() {
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
           <ReferenceLine y={watermark} stroke="var(--color-danger, #dc2626)" strokeDasharray="4 4" label={{ value: 'watermark', fontSize: 10 }} />
-          <Line type="monotone" dataKey="heap_peak_percent" name="heap peak %" stroke="#ef4444" dot={false} />
-          <Line type="monotone" dataKey="heap_avg_percent" name="heap avg %" stroke="#22c55e" dot={false} />
+          <Line type="monotone" dataKey="old_gen_peak_percent" name="old gen % (max pod)" stroke="#3b82f6" dot={false} />
+          <Line type="monotone" dataKey="heap_after_gc_peak_percent" name="after GC % (max pod)" stroke="#a855f7" dot={false} />
+          <Line type="monotone" dataKey="container_peak_percent" name="container % (max pod)" stroke="#f59e0b" dot={false} />
+          <Line type="monotone" dataKey="heap_peak_percent" name="heap used % (instant, max pod)" stroke="#ef4444" strokeDasharray="3 3" dot={false} />
         </LineChart>
       </ChartCard>
 
-      <ChartCard title="Concurrency" hint="peak in-flight turns, sessions and queued runs per bucket (all replicas)">
+      <ChartCard
+        title="Work (max pod vs fleet sum)"
+        hint="max pod: the worst single replica; fleet sum: per-minute values summed across replicas, then the bucket maximum"
+      >
         <LineChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
           <Tooltip />
           <Legend wrapperStyle={{ fontSize: 12 }} />
-          <Line type="monotone" dataKey="in_flight_turns_peak" name="in-flight turns" stroke="#3b82f6" dot={false} />
-          <Line type="monotone" dataKey="sessions_peak" name="sessions" stroke="#8b5cf6" dot={false} />
-          <Line type="monotone" dataKey="runs_queued_peak" name="runs queued" stroke="#f59e0b" dot={false} />
-          <Line type="monotone" dataKey="sandboxes_peak" name="sandboxes" stroke="#14b8a6" dot={false} />
+          <Line type="monotone" dataKey="in_flight_turns_peak" name="turns (max pod)" stroke="#3b82f6" dot={false} />
+          <Line type="monotone" dataKey="in_flight_turns_sum_peak" name="turns (fleet sum)" stroke="#3b82f6" strokeDasharray="4 3" dot={false} />
+          <Line type="monotone" dataKey="sessions_peak" name="sessions (max pod)" stroke="#8b5cf6" dot={false} />
+          <Line type="monotone" dataKey="sessions_sum_peak" name="sessions (fleet sum)" stroke="#8b5cf6" strokeDasharray="4 3" dot={false} />
+          <Line type="monotone" dataKey="runs_queued_peak" name="runs queued (max pod)" stroke="#f59e0b" dot={false} />
+          <Line type="monotone" dataKey="sandboxes_peak" name="sandboxes (max pod)" stroke="#14b8a6" dot={false} />
         </LineChart>
       </ChartCard>
 
@@ -173,8 +183,23 @@ function PodCard({ pod, watermark }: { pod: NonNullable<RuntimePods['pods']>[num
         </span>
       </div>
       <div className="mt-2 space-y-1">
-        <Row label="Heap" value={`${heap}% of ${formatMb(pod.heap_max)}`} warn={heap >= watermark} />
+        <Row label="Heap used (instant)" value={`${heap}% of ${formatMb(pod.heap_max)}`} warn={heap >= 95} />
+        <Row
+          label="Old Gen / after GC"
+          value={`${formatPercent(pod.old_gen_percent)} / ${formatPercent(pod.heap_after_gc_percent)}`}
+          warn={(pod.old_gen_percent ?? 0) >= watermark}
+        />
+        <Row label="Container" value={formatPercent(pod.container_memory_percent)} warn={(pod.container_memory_percent ?? 0) >= 90} />
+        <Row label="GC" value={pod.gc_kind ? `${pod.gc_kind}${pod.gc_reclaimed_bytes ? ` · ${formatMb(pod.gc_reclaimed_bytes)} reclaimed` : ''}` : '—'} />
         <Row label="Sessions" value={String(pod.sessions_active ?? 0)} />
+        <Row
+          label="Session est / peak"
+          value={`${formatMb(pod.sessions_estimated_bytes_total)} / ${formatMb(pod.sessions_estimated_bytes_peak_max)}`}
+        />
+        <Row
+          label="Inline img / refs"
+          value={`${formatMb(pod.sessions_inline_image_bytes_total)} / ${formatMb(pod.sessions_media_ref_bytes_total)}`}
+        />
         <Row label="In-flight turns" value={String(pod.in_flight_turns ?? 0)} />
         <Row label="Runs" value={`${pod.runs_active ?? 0} active / ${pod.runs_queued ?? 0} queued`} />
         <Row label="Sandboxes" value={`${pod.sandboxes_live ?? 0} live (claim ${pod.claims_live ?? 0} / cr ${pod.direct_crs_live ?? 0}, failed ${pod.creates_failed_total ?? 0})`} />
@@ -219,6 +244,11 @@ function formatAge(seconds?: number) {
   if (seconds === undefined || seconds === null) return '—';
   if (seconds < 90) return `${seconds}s`;
   return `${Math.round(seconds / 60)}m`;
+}
+
+function formatPercent(value?: number) {
+  if (value === undefined || value === null) return '—';
+  return `${value}%`;
 }
 
 function formatTime(iso?: string) {

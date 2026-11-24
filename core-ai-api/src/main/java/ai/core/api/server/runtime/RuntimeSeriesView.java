@@ -32,6 +32,16 @@ public class RuntimeSeriesView {
         @Property(name = "heap_avg_percent")
         public Double heapAvgPercent;
 
+        /** Retained pressure, max pod: the highest Old Gen share any replica reported in the bucket. */
+        @Property(name = "old_gen_peak_percent")
+        public Double oldGenPeakPercent;
+
+        @Property(name = "heap_after_gc_peak_percent")
+        public Double heapAfterGcPeakPercent;
+
+        @Property(name = "container_peak_percent")
+        public Double containerPeakPercent;
+
         @Property(name = "in_flight_turns_peak")
         public Integer inFlightTurnsPeak;
 
@@ -46,6 +56,19 @@ public class RuntimeSeriesView {
 
         @Property(name = "span_ingest_depth_peak")
         public Integer spanIngestDepthPeak;
+
+        /** Fleet sum: per-minute values summed over replicas, then the bucket maximum. */
+        @Property(name = "sessions_sum_peak")
+        public Integer sessionsSumPeak;
+
+        @Property(name = "in_flight_turns_sum_peak")
+        public Integer inFlightTurnsSumPeak;
+
+        @Property(name = "runs_queued_sum_peak")
+        public Integer runsQueuedSumPeak;
+
+        @Property(name = "sandboxes_sum_peak")
+        public Integer sandboxesSumPeak;
 
         /** Increments inside the bucket, summed over pods. */
         @Property(name = "turns_saturated_delta")

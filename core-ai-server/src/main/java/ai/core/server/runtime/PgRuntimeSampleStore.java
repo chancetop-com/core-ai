@@ -28,10 +28,12 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
         + "sessions_closed_total, sessions_idle_evicted_total, in_flight_turns, turns_saturated_total, "
         + "turns_rejected_total, runs_active, runs_queued, runs_rejected_total, sandboxes_live, "
         + "sandboxes_rejected_total, span_ingest_depth, span_ingest_dropped_total, claims_live, direct_crs_live, "
-        + "creates_total, creates_failed_total) ";
+        + "creates_total, creates_failed_total, old_gen_percent, gc_kind, gc_reclaimed_bytes, "
+        + "sessions_estimated_bytes_peak_total, sessions_estimated_bytes_peak_max, "
+        + "sessions_inline_image_bytes_peak_total, sessions_media_ref_bytes_total) ";
     private static final String INSERT_VALUES = " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
         + "?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "
-        + "?, ?, ?, ?, ?) ON CONFLICT DO NOTHING";
+        + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING";
     private static final String INSERT = "INSERT INTO " + TABLE + INSERT_COLUMNS + INSERT_VALUES;
     private static final String SELECT = "SELECT id, pod, collected_at, heap_used_percent, heap_used, heap_max, "
         + "heap_before_gc, heap_before_gc_percent, heap_after_gc, heap_after_gc_percent, gc_id, gc_age_ms, "
@@ -48,7 +50,9 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
         + "sessions_closed_total, sessions_idle_evicted_total, in_flight_turns, turns_saturated_total, "
         + "turns_rejected_total, runs_active, runs_queued, runs_rejected_total, sandboxes_live, "
         + "sandboxes_rejected_total, span_ingest_depth, span_ingest_dropped_total, claims_live, direct_crs_live, "
-        + "creates_total, creates_failed_total FROM " + TABLE;
+        + "creates_total, creates_failed_total, old_gen_percent, gc_kind, gc_reclaimed_bytes, "
+        + "sessions_estimated_bytes_peak_total, sessions_estimated_bytes_peak_max, "
+        + "sessions_inline_image_bytes_peak_total, sessions_media_ref_bytes_total FROM " + TABLE;
 
     private static String json(Map<String, ?> value) {
         return value == null ? null : JsonSanitizer.json(JsonUtil.toJson(value));
@@ -73,7 +77,10 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
             sample.sessionsIdleEvictedTotal, sample.inFlightTurns, sample.turnsSaturated, sample.turnsRejected,
             sample.runsActive, sample.runsQueued, sample.runsRejected, sample.sandboxesLive, sample.sandboxesRejected,
             sample.spanIngestDepth, sample.spanIngestDropped, sample.claimsLive, sample.directCrsLive,
-            sample.createsTotal, sample.createsFailedTotal
+            sample.createsTotal, sample.createsFailedTotal,
+            sample.oldGenPercent, JsonSanitizer.text(sample.gcKind), sample.gcReclaimedBytes,
+            sample.sessionsEstimatedBytesPeakTotal, sample.sessionsEstimatedBytesPeakMax,
+            sample.sessionsInlineImageBytesPeakTotal, sample.sessionsMediaRefBytesTotal
         };
     }
 
@@ -102,6 +109,9 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
         sample.containerMemoryMax = row.containerMemoryMax;
         sample.containerMemoryPercent = row.containerMemoryPercent;
         sample.rss = row.rss;
+        sample.oldGenPercent = row.oldGenPercent;
+        sample.gcKind = row.gcKind;
+        sample.gcReclaimedBytes = row.gcReclaimedBytes;
     }
 
     private static void applySessions(RuntimeSample sample, PgRuntimeSampleRow row) {
@@ -126,6 +136,10 @@ public class PgRuntimeSampleStore implements RuntimeSampleStore {
         sample.sessionsCreatedTotal = row.sessionsCreatedTotal;
         sample.sessionsClosedTotal = row.sessionsClosedTotal;
         sample.sessionsIdleEvictedTotal = row.sessionsIdleEvictedTotal;
+        sample.sessionsEstimatedBytesPeakTotal = row.sessionsEstimatedBytesPeakTotal;
+        sample.sessionsEstimatedBytesPeakMax = row.sessionsEstimatedBytesPeakMax;
+        sample.sessionsInlineImageBytesPeakTotal = row.sessionsInlineImageBytesPeakTotal;
+        sample.sessionsMediaRefBytesTotal = row.sessionsMediaRefBytesTotal;
     }
 
     private static void applyRuntime(RuntimeSample sample, PgRuntimeSampleRow row) {

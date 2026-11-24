@@ -19,9 +19,11 @@ public record AgentFootprint(
         long reasoningBytes,
         long toolCallBytes,
         long toolResultBytes,
-        long estimatedBytes
+        long estimatedBytes,
+        int mediaRefCount,
+        long mediaRefBytes
 ) {
     /** Bump when the content-size formula changes, so samples from different formulas are not mixed. */
-    public static final int ESTIMATE_VERSION = 1;
-    public static final AgentFootprint EMPTY = new AgentFootprint(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    public static final int ESTIMATE_VERSION = 2;
+    public static final AgentFootprint EMPTY = new AgentFootprint(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }

@@ -30,12 +30,12 @@ final class AgentFootprintCalculator {
                 if (seen.add(message)) totals.add(message);
             }
         }
-        long estimatedBytes = totals.contentBytes + seen.size() * MESSAGE_OVERHEAD_BYTES + SESSION_OVERHEAD_BYTES;
+        long estimatedBytes = totals.contentBytes + totals.mediaRefBytes + seen.size() * MESSAGE_OVERHEAD_BYTES + SESSION_OVERHEAD_BYTES;
         long contextTokens = messages == null ? 0 : MessageTokenCounterUtil.count(messages);
         return new AgentFootprint(turnCount(history, messages), messages == null ? 0 : messages.size(),
                 history == null ? 0 : history.size(), contextTokens, totals.textBytes, totals.inlineImageBytes,
                 totals.fileBytes, totals.videoBytes, totals.reasoningBytes, totals.toolCallBytes,
-                totals.toolResultBytes, estimatedBytes);
+                totals.toolResultBytes, estimatedBytes, totals.mediaRefCount, totals.mediaRefBytes);
     }
 
     private static int turnCount(List<Message> history, List<Message> messages) {
@@ -63,6 +63,8 @@ final class AgentFootprintCalculator {
         private long reasoningBytes;
         private long toolCallBytes;
         private long toolResultBytes;
+        private long mediaRefBytes;
+        private int mediaRefCount;
 
         private void add(Message message) {
             if (message == null) return;
@@ -104,9 +106,10 @@ final class AgentFootprintCalculator {
                 }
                 case IMAGE_REF -> {
                     if (part.imageRef != null) {
-                        long length = length(part.imageRef.id) + length(part.imageRef.displayName) + length(part.imageRef.source)
-                                + length(part.imageRef.mediaType);
-                        contentBytes += length;
+                        // a ref is metadata only; the bytes are owned by the media store and counted there
+                        mediaRefCount++;
+                        mediaRefBytes += length(part.imageRef.id) + length(part.imageRef.displayName)
+                                + length(part.imageRef.source) + length(part.imageRef.mediaType);
                     }
                 }
                 case FILE -> {

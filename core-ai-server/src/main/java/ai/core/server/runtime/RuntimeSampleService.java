@@ -31,6 +31,23 @@ public class RuntimeSampleService {
     private static final Duration POD_LOOKBACK = Duration.ofMinutes(10);
     private static final int MAX_SAMPLES = 50000;
 
+    private static void applyRuntime(RuntimePodView view, RuntimeSample sample) {
+        view.inFlightTurns = sample.inFlightTurns;
+        view.turnsSaturated = sample.turnsSaturated;
+        view.turnsRejected = sample.turnsRejected;
+        view.runsActive = sample.runsActive;
+        view.runsQueued = sample.runsQueued;
+        view.runsRejected = sample.runsRejected;
+        view.sandboxesLive = sample.sandboxesLive;
+        view.sandboxesRejected = sample.sandboxesRejected;
+        view.spanIngestDepth = sample.spanIngestDepth;
+        view.spanIngestDropped = sample.spanIngestDropped;
+        view.claimsLive = sample.claimsLive;
+        view.directCrsLive = sample.directCrsLive;
+        view.createsTotal = sample.createsTotal;
+        view.createsFailedTotal = sample.createsFailedTotal;
+    }
+
     @Inject
     RuntimeSampleStore sampleStore;
     @Inject
@@ -99,6 +116,9 @@ public class RuntimeSampleService {
         view.heapAfterGcPercent = sample.heapAfterGcPercent;
         view.gcAgeMs = sample.gcAgeMs;
         view.containerMemoryPercent = sample.containerMemoryPercent;
+        view.oldGenPercent = sample.oldGenPercent;
+        view.gcKind = sample.gcKind;
+        view.gcReclaimedBytes = sample.gcReclaimedBytes;
         view.sessionsActive = sample.sessionsActive;
         view.sessionEstimateVersion = sample.sessionEstimateVersion;
         view.sessionsEstimatedBytesTotal = sample.sessionsEstimatedBytesTotal;
@@ -106,24 +126,15 @@ public class RuntimeSampleService {
         view.sessionsEstimatedBytesP90 = sample.sessionsEstimatedBytesP90;
         view.sessionsContextTokensP50 = sample.sessionsContextTokensP50;
         view.sessionsInlineImageBytesTotal = sample.sessionsInlineImageBytesTotal;
+        view.sessionsEstimatedBytesPeakTotal = sample.sessionsEstimatedBytesPeakTotal;
+        view.sessionsEstimatedBytesPeakMax = sample.sessionsEstimatedBytesPeakMax;
+        view.sessionsInlineImageBytesPeakTotal = sample.sessionsInlineImageBytesPeakTotal;
+        view.sessionsMediaRefBytesTotal = sample.sessionsMediaRefBytesTotal;
         view.sessionsIdleSecondsP50 = sample.sessionsIdleSecondsP50;
         view.sessionsCreatedTotal = sample.sessionsCreatedTotal;
         view.sessionsClosedTotal = sample.sessionsClosedTotal;
         view.sessionTurnBucketCounts = sample.sessionTurnBucketCounts;
-        view.inFlightTurns = sample.inFlightTurns;
-        view.turnsSaturated = sample.turnsSaturated;
-        view.turnsRejected = sample.turnsRejected;
-        view.runsActive = sample.runsActive;
-        view.runsQueued = sample.runsQueued;
-        view.runsRejected = sample.runsRejected;
-        view.sandboxesLive = sample.sandboxesLive;
-        view.sandboxesRejected = sample.sandboxesRejected;
-        view.spanIngestDepth = sample.spanIngestDepth;
-        view.spanIngestDropped = sample.spanIngestDropped;
-        view.claimsLive = sample.claimsLive;
-        view.directCrsLive = sample.directCrsLive;
-        view.createsTotal = sample.createsTotal;
-        view.createsFailedTotal = sample.createsFailedTotal;
+        applyRuntime(view, sample);
         return view;
     }
 
@@ -138,14 +149,22 @@ public class RuntimeSampleService {
         private final Set<String> pods = new HashSet<>();
         private final Map<String, RuntimeSample> lastPerPod = new HashMap<>();
         private final Set<String> resetPods = new HashSet<>();
-        private int samples;
-        private double heapSum;
+        private final Map<Long, Map<String, RuntimeSample>> minutePerPod = new TreeMap<>();
+        private final Map<String, Double> heapSumPerPod = new HashMap<>();
+        private final Map<String, Integer> heapSamplesPerPod = new HashMap<>();
         private Double heapPeak;
+        private Double oldGenPeak;
+        private Double afterGcPeak;
+        private Double containerPeak;
         private Integer inFlightPeak;
         private Integer sessionsPeak;
         private Integer runsQueuedPeak;
         private Integer sandboxesPeak;
         private Integer spanDepthPeak;
+        private Integer sessionsSumPeak;
+        private Integer inFlightSumPeak;
+        private Integer runsQueuedSumPeak;
+        private Integer sandboxesSumPeak;
 
         Bucket(long startMillis) {
             this.startMillis = startMillis;
@@ -157,16 +176,25 @@ public class RuntimeSampleService {
             if (current == null || !sample.collectedAt.isBefore(current.collectedAt)) {
                 lastPerPod.put(sample.pod, sample);
             }
-            samples++;
             if (sample.heapUsedPercent != null) {
-                heapSum += sample.heapUsedPercent;
+                heapSumPerPod.merge(sample.pod, sample.heapUsedPercent, Double::sum);
+                heapSamplesPerPod.merge(sample.pod, 1, Integer::sum);
                 if (heapPeak == null || sample.heapUsedPercent > heapPeak) heapPeak = sample.heapUsedPercent;
             }
+            oldGenPeak = max(oldGenPeak, sample.oldGenPercent);
+            afterGcPeak = max(afterGcPeak, sample.heapAfterGcPercent);
+            containerPeak = max(containerPeak, sample.containerMemoryPercent);
             inFlightPeak = max(inFlightPeak, sample.inFlightTurns);
             sessionsPeak = max(sessionsPeak, sample.sessionsActive);
             runsQueuedPeak = max(runsQueuedPeak, sample.runsQueued);
             sandboxesPeak = max(sandboxesPeak, sample.sandboxesLive);
             spanDepthPeak = max(spanDepthPeak, sample.spanIngestDepth);
+            var minute = sample.collectedAt.toInstant().toEpochMilli() / 60_000;
+            var perPod = minutePerPod.computeIfAbsent(minute, key -> new HashMap<>());
+            var currentInMinute = perPod.get(sample.pod);
+            if (currentInMinute == null || !sample.collectedAt.isBefore(currentInMinute.collectedAt)) {
+                perPod.put(sample.pod, sample);
+            }
         }
 
         RuntimeSeriesView.Point toPoint(Map<String, RuntimeSample> previousPerPod) {
@@ -174,12 +202,20 @@ public class RuntimeSampleService {
             point.bucketStart = ZonedDateTime.ofInstant(Instant.ofEpochMilli(startMillis), ZonedDateTime.now().getZone());
             point.podsReporting = pods.size();
             point.heapPeakPercent = heapPeak;
-            point.heapAvgPercent = samples == 0 ? null : Math.round(heapSum / samples * 100) / 100.0;
+            point.heapAvgPercent = averagePerPodHeap();
+            point.oldGenPeakPercent = oldGenPeak;
+            point.heapAfterGcPeakPercent = afterGcPeak;
+            point.containerPeakPercent = containerPeak;
             point.inFlightTurnsPeak = inFlightPeak;
             point.sessionsPeak = sessionsPeak;
             point.runsQueuedPeak = runsQueuedPeak;
             point.sandboxesPeak = sandboxesPeak;
             point.spanIngestDepthPeak = spanDepthPeak;
+            applyFleetSums();
+            point.sessionsSumPeak = sessionsSumPeak;
+            point.inFlightTurnsSumPeak = inFlightSumPeak;
+            point.runsQueuedSumPeak = runsQueuedSumPeak;
+            point.sandboxesSumPeak = sandboxesSumPeak;
             point.turnsSaturatedDelta = delta(previousPerPod, sample -> sample.turnsSaturated);
             point.turnsRejectedDelta = delta(previousPerPod, sample -> sample.turnsRejected);
             point.runsRejectedDelta = delta(previousPerPod, sample -> sample.runsRejected);
@@ -189,6 +225,53 @@ public class RuntimeSampleService {
             // carry this bucket's last sample forward as the next bucket's baseline
             lastPerPod.forEach(previousPerPod::put);
             return point;
+        }
+
+        /**
+         * Fleet-average heap: first average each pod inside the bucket, then average the pods, so a pod
+         * that reports more often does not dominate a pod that reports once.
+         */
+        private Double averagePerPodHeap() {
+            double total = 0;
+            var reported = 0;
+            for (var entry : heapSumPerPod.entrySet()) {
+                var count = heapSamplesPerPod.get(entry.getKey());
+                if (count == null || count == 0) continue;
+                total += entry.getValue() / count;
+                reported++;
+            }
+            return reported == 0 ? null : Math.round(total / reported * 100) / 100.0;
+        }
+
+        /**
+         * Fleet sums are aligned per minute: each pod contributes its last sample of that minute (carrying
+         * the previous minute forward when it did not report), then the bucket keeps the maximum sum.
+         * Summing raw rows instead would double-count a pod that reported twice in the same minute.
+         */
+        private void applyFleetSums() {
+            var carried = new HashMap<String, RuntimeSample>();
+            for (var minute : minutePerPod.values()) {
+                carried.putAll(minute);
+                int sessions = 0;
+                int inFlight = 0;
+                int runsQueued = 0;
+                int sandboxes = 0;
+                var reported = false;
+                for (var sample : carried.values()) {
+                    if (sample.sessionsActive != null) {
+                        sessions += sample.sessionsActive;
+                        reported = true;
+                    }
+                    if (sample.inFlightTurns != null) inFlight += sample.inFlightTurns;
+                    if (sample.runsQueued != null) runsQueued += sample.runsQueued;
+                    if (sample.sandboxesLive != null) sandboxes += sample.sandboxesLive;
+                }
+                if (!reported) continue;
+                sessionsSumPeak = max(sessionsSumPeak, sessions);
+                inFlightSumPeak = max(inFlightSumPeak, inFlight);
+                runsQueuedSumPeak = max(runsQueuedSumPeak, runsQueued);
+                sandboxesSumPeak = max(sandboxesSumPeak, sandboxes);
+            }
         }
 
         private Long delta(Map<String, RuntimeSample> previousPerPod, Function<RuntimeSample, Long> counter) {
@@ -215,6 +298,11 @@ public class RuntimeSampleService {
         }
 
         private Integer max(Integer current, Integer candidate) {
+            if (candidate == null) return current;
+            return current == null || candidate > current ? candidate : current;
+        }
+
+        private Double max(Double current, Double candidate) {
             if (candidate == null) return current;
             return current == null || candidate > current ? candidate : current;
         }

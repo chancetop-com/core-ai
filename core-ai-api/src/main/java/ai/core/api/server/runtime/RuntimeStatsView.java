@@ -80,6 +80,19 @@ public class RuntimeStatsView {
 
         @Property(name = "rss")
         public Long rss;
+
+        /** G1 Old Gen used / heap max: the retained-pressure signal admission reads. */
+        @Property(name = "old_gen")
+        public Long oldGen;
+
+        @Property(name = "old_gen_percent")
+        public Double oldGenPercent;
+
+        @Property(name = "gc_kind")
+        public String gcKind;
+
+        @Property(name = "gc_reclaimed_bytes")
+        public Long gcReclaimedBytes;
     }
 
     public static class SessionStats {
@@ -118,6 +131,18 @@ public class RuntimeStatsView {
 
         @Property(name = "inline_image_bytes_total")
         public Long inlineImageBytesTotal;
+
+        @Property(name = "estimated_bytes_peak_total")
+        public Long estimatedBytesPeakTotal;
+
+        @Property(name = "estimated_bytes_peak_max")
+        public Long estimatedBytesPeakMax;
+
+        @Property(name = "inline_image_bytes_peak_total")
+        public Long inlineImageBytesPeakTotal;
+
+        @Property(name = "media_ref_bytes_total")
+        public Long mediaRefBytesTotal;
 
         @Property(name = "idle_seconds_p50")
         public Long idleSecondsP50;

@@ -11,15 +11,17 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * JVM and container memory numbers that the per-minute runtime sample keeps. The heap watermark read by
- * {@link RuntimeCapacityGuard} is an instantaneous used/max ratio; the post-GC and peak values here are
- * what separate retained state from garbage when the numbers are used for capacity planning.
+ * JVM and container memory numbers that the per-minute runtime sample keeps. Three physical quantities
+ * are reported separately: the instantaneous heap (allocation pressure), the Old Gen after the last
+ * collection (retained pressure) and the container working set (memory outside the heap included).
+ * Admission reads the retained signal, never the instantaneous one.
  *
  * @author stephen
  */
 public final class JvmMemoryMetrics {
     private static final double PERCENT = 100.0;
     private static final long KILOBYTE = 1024;
+    private static final String OLD_GEN_POOL = "G1 Old Gen";
     private static final List<MemoryPoolMXBean> HEAP_POOLS = ManagementFactory.getMemoryPoolMXBeans().stream()
             .filter(pool -> pool.getType() == java.lang.management.MemoryType.HEAP)
             .toList();
@@ -35,18 +37,23 @@ public final class JvmMemoryMetrics {
         long heapUsed = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage().getUsed();
         long maxMemory = Runtime.getRuntime().maxMemory();
         Long heapMax = maxMemory > 0 ? maxMemory : null;
-        var gcInfo = latestGcInfo();
+        var gc = latestGc();
+        var gcInfo = gc == null ? null : gc.info();
         Long heapBeforeGc = heapUsage(gcInfo, true);
         Long heapAfterGc = heapUsage(gcInfo, false);
         Long containerMemory = readLong(CGROUP_MEMORY);
         Long containerMemoryMax = readLong(CGROUP_MEMORY_MAX);
         Long gcId = gcInfo == null ? null : gcInfo.getId();
         Long gcAgeMs = gcInfo == null ? null : Math.max(0, ManagementFactory.getRuntimeMXBean().getUptime() - gcInfo.getEndTime());
+        Long oldGen = oldGenUsage();
         return new Snapshot(heapUsed, heapMax, percent(heapUsed, heapMax),
                 heapBeforeGc, percent(heapBeforeGc, heapMax),
                 heapAfterGc, percent(heapAfterGc, heapMax), gcId, gcAgeMs,
                 containerMemory, containerMemoryMax, percent(containerMemory, containerMemoryMax),
-                readRss());
+                readRss(),
+                oldGen, percent(oldGen, heapMax),
+                gc == null ? null : gc.kind(),
+                gc == null ? null : gc.reclaimedBytes());
     }
 
     private static Long heapUsage(GcInfo gcInfo, boolean beforeGc) {
@@ -64,15 +71,46 @@ public final class JvmMemoryMetrics {
         return found ? used : null;
     }
 
-    private static GcInfo latestGcInfo() {
-        GcInfo latest = null;
+    /**
+     * The collection usage of the Old Gen pool is what survived the last collection; the live usage is
+     * a fallback for collectors that do not expose a separate collection-usage snapshot.
+     */
+    private static Long oldGenUsage() {
+        var pool = HEAP_POOLS.stream()
+                .filter(candidate -> OLD_GEN_POOL.equals(candidate.getName()))
+                .findFirst()
+                .orElse(null);
+        if (pool == null) return null;
+        var collection = pool.getCollectionUsage();
+        var usage = collection != null ? collection : pool.getUsage();
+        return usage == null ? null : usage.getUsed();
+    }
+
+    /**
+     * Picks the most recent GC event and classifies it. A concurrent cycle reports before == after, so
+     * the guard must not treat it as a point where retained memory dropped.
+     */
+    private static GcSample latestGc() {
+        GcSample latest = null;
         for (var bean : GC_BEANS) {
             var info = bean.getLastGcInfo();
-            if (info != null && (latest == null || info.getEndTime() > latest.getEndTime())) {
-                latest = info;
+            if (info == null) continue;
+            if (latest == null || info.getEndTime() > latest.info().getEndTime()) {
+                var before = heapUsage(info, true);
+                var after = heapUsage(info, false);
+                var reclaimed = before == null || after == null ? 0 : Math.max(0, before - after);
+                latest = new GcSample(info, gcKind(bean.getName()), reclaimed);
             }
         }
         return latest;
+    }
+
+    private static String gcKind(String beanName) {
+        if (beanName == null) return "unknown";
+        if (beanName.contains("Concurrent")) return "concurrent";
+        if (beanName.contains("Old")) return "old";
+        if (beanName.contains("Young")) return "young";
+        return "unknown";
     }
 
     private static Double percent(Long used, Long max) {
@@ -124,6 +162,9 @@ public final class JvmMemoryMetrics {
     private JvmMemoryMetrics() {
     }
 
+    private record GcSample(GcInfo info, String kind, long reclaimedBytes) {
+    }
+
     public record Snapshot(Long heapUsed,
                            Long heapMax,
                            Double heapUsedPercent,
@@ -136,6 +177,10 @@ public final class JvmMemoryMetrics {
                            Long containerMemory,
                            Long containerMemoryMax,
                            Double containerMemoryPercent,
-                           Long rss) {
+                           Long rss,
+                           Long oldGen,
+                           Double oldGenPercent,
+                           String gcKind,
+                           Long gcReclaimedBytes) {
     }
 }

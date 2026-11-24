@@ -93,6 +93,8 @@ public class RuntimeLimits {
     public boolean admissionEnabled;
 
     public int heapWatermarkPercent = DEFAULT_HEAP_WATERMARK_PERCENT;
+    /** Container working-set watermark: a hard OOM risk that the heap sampler cannot see. */
+    public int containerWatermarkPercent = 90;
     public int maxInFlightTurnsPerPod = DEFAULT_MAX_IN_FLIGHT_TURNS_PER_POD;
     /** 0 = no cross-pod limit. */
     public int maxInFlightTurnsGlobal;
