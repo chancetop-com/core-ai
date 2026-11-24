@@ -1,7 +1,7 @@
-# PG 迁移账本对齐与 Mongo 下线准备（dev / UAT 执行，prod 只读）
+# PG 迁移账本对齐与 Mongo 下线准备（dev / UAT / prod 执行）
 
 > 日期：2026-11-24
-> 范围：`app.flyway_schema_history` 与 V45–V53 实际 schema 的盘点、备份、dev/UAT 迁移；prod 只做只读核对与 runbook；Mongo 下线准备（不删数据）。
+> 范围：`app.flyway_schema_history` 与 V45–V53 实际 schema 的盘点、备份、dev/UAT/prod 迁移与 prod 发布；Mongo 下线准备（不删数据）。
 > 约束：不改业务代码；prod 零写操作；不删除任何 Mongo 数据/PVC/集合。
 
 ## 1. 结论
@@ -9,7 +9,7 @@
 1. **V45 checksum 不匹配已经不存在**。当前文件 checksum `-589265998`，与 dev/UAT/prod 三环境 history 行完全一致；改造前的旧文件 checksum 是 `577327395`。原因是 V45 在 2026-11-19 被改成幂等 DDL（`d39374516`），而三个环境的 history 行都在该提交之后写入。`flyway validate` 现在只报 V49/50/52/53 pending，没有 checksum 错误，因此**没有执行 `flyway repair`**（执行也只会是 no-op）。
 2. **dev 已由正常 `flyway migrate` 推进到 V53**（V49/50/52/53 全部 Success，对象原本已被手工建好，幂等 DDL 只产生 "already exists, skipping" 警告）。
 3. **UAT 已推进到 V53**；V52（workspace 7 张表 + `chat_sessions` 两列）与 V53（agent reference health 两表 + `notifications.dedupe_key` + 5 个 GIN/btree 索引）是本次真实新建的对象。UAT 2.0.363 两 pod 保持 Ready、0 重启；迁移前日志里的 `column "workspace_id" does not exist` / `relation "app.agent_health_state" does not exist` 在迁移后不再出现。
-4. **prod 未做任何写操作**；只读核对确认 head V48，缺 V49/50/52/53，无 checksum 错误。Runbook：`docs/validation/2026-11-24-prod-v49-v53-migration-runbook.md`。
+4. **prod 已按 runbook 执行（2026-11-24）**：CNPG 备份 `core-ai-pre-v49-v53-20261124` completed（backupId `20261124T130800`）；V49/V50/V52/V53 applied（12.95 s），history 52 行 / head V53，`validate` 53/53；镜像 **2.0.363**，Deployment revision 98，2/2 Ready。详见 `docs/validation/2026-11-24-prod-v49-v53-migration-runbook.md`。
 5. **prod Mongo span 已全部回填**：`app.g2_migration_markers` 的 `spans_v1` 写于 2026-11-14 11:23:54 UTC；Mongo 的 27,452 条 span 全部早于该时间。PG 当前 `app.spans` 34,575 行，其中 23,714 行早于切流点；差的 3,738 行是 2026-10-15…10-24 的旧 span，已在 30 天保留期后被归档到 Blob 并从 PG 删除（10-25 起逐日计数与 Mongo 完全一致，11-14 边界差 1 条是 `created_at` vs `started_at` 的口径差）。
 
 ## 2. 盘点（改动前）
@@ -32,7 +32,9 @@
 | UAT | `C:\Users\stephen\.core-ai\backups\flyway\20261124\uat-flyway_schema_history-20261124.sql` | 6,883 B | `5DCE7AD05A0EEA6B347951901BC206CE667F20633092E60CA1270FB41C0C5561` |
 | prod | `C:\Users\stephen\.core-ai\backups\flyway\20261124\prod-flyway_schema_history-20261124.sql` | 6,882 B | `527DAE411F18297630B04D19E69C67A3F02E3A727C09371C009822E37EA396DA` |
 
-prod 的备份是只读导出，未改动 prod。Flyway CLI 11.13.2 与按环境生成的连接配置放在 `D:\core-ai\tmp\flyway-cli` 与 `C:\Users\stephen\.core-ai\ops\flyway\{dev,uat,prod}.conf`（含凭据，未进仓库）。
+prod 的 Flyway 账本备份是在变更前用只读查询导出的。Flyway CLI 11.13.2 与按环境生成的连接配置放在 `D:\core-ai\tmp\flyway-cli` 与 `C:\Users\stephen\.core-ai\ops\flyway\{dev,uat,prod}.conf`（含凭据，未进仓库）。
+
+prod 变更前另创建了 CNPG 物理备份 `core-ai-pre-v49-v53-20261124`：`phase=completed`、`backupId=20261124T130800`、目标 `azure://fbrdevbostorage.blob.core.windows.net/pg-backup/prod`。
 
 ## 4. dev
 
@@ -78,25 +80,27 @@ UAT 应用验证（2.0.363，image `chancetop/core-ai-server:2.0.363`）：
 - 迁移前日志（12:38 UTC）确有 `column "workspace_id" does not exist` 与 `relation "app.agent_health_state" does not exist`；迁移后 5 分钟窗口内不再出现这两类错误
 - 复跑 inventory：27/27 表 present、7/7 列 present、55/55 索引 present
 
-## 6. prod（只读）
+## 6. prod（已执行）
 
-只读核对命令与结果：
-
-```sql
-SELECT installed_rank, version, description, checksum, installed_on, success
-FROM app.flyway_schema_history ORDER BY installed_rank;   -- 48 行，head V48
-```
+授权后按 runbook 执行（2026-11-24 21:08–21:14 CST）：
 
 ```powershell
-flyway -configFiles=<prod.conf> validate
-# 只报 49/50/52/53 pending；无 checksum mismatch
+# 备份：Backup CR core-ai-pre-v49-v53-20261124 → completed / backupId 20261124T130800
+# 迁移（Flyway CLI 11.13.2）
+flyway -configFiles=<prod.conf> migrate   # V49/V50/V52/V53, execution 12.952 s
+flyway -configFiles=<prod.conf> validate  # Successfully validated 53 migrations
 ```
 
-prod 差异与锁/耗时、备份、回滚、窗口见独立 runbook。关键提醒：
+结果：
 
-- env 仓库 `20-core-ai-server.yaml` 的 image 仍是 **2.0.318**，线上是 **2.0.336**；直接 apply 会降级。
-- prod CNPG 每天 02:00 备份到 Azure Blob，最近成功 2026-11-24T02:01:44Z；磁盘 2.3/50 GiB。
-- 不需要停机或重启应用；V50 在 `app.spans` 建索引会让写入排队，建议低流量窗口。
+- history：48 行 / V48 → **52 行 / head V53**；`validate` 53/53。
+- 对象：7 张 workspace 表、6 个新增列、`traces/spans` 两个 provider 索引、`chat_sessions_workspace_idx`、`notifications_dedupe_key_idx`、`agent_quality_runs_agent_finished_idx` 均存在。
+- V50 在 `app.spans`（34,575 行 / 1,502 MB）建索引耗时 1.92 s，`pg_stat_activity` 无异常长事务，应用日志无迁移错误。
+- 发布：image `2.0.363`，Deployment revision 98；pod imageID `sha256:f6ad1906…` 与 OCI index digest 一致。
+- 验证：2/2 Ready、0 restart；公网与集群内 `/health-check` 200；`/api/capabilities` 200；`/api/hub/models`、`/api/agents?view=picker` 返回 401（认证层正常）。
+- `SYS_TRACE_SPAN_MIGRATION=skip` 已生效；2.0.363 的 `SpanStoreModule` 不再绑定 `SpanMigrationService`，启动只探测 PostgreSQL（`startup dependency verified, name=postgres`），Mongo `currentOp` 中 core-ai 连接数 0。
+
+prod 差异与锁/耗时、备份、回滚、窗口见独立 runbook，现状态已更新为“已执行”。
 
 ## 7. Mongo 下线准备（未删除任何数据）
 
@@ -111,22 +115,25 @@ prod 差异与锁/耗时、备份、回滚、窗口见独立 runbook。关键提
 | 逐日核对 | 2026-10-25…11-13 Mongo 与 PG 完全一致；10-15…10-24 共 3,739 条已过 30 天保留期，被 `TraceArchiveService` 归档到 Blob 后从 PG 删除。直接证据：2026-11-24T01:09Z 的归档任务上传 `12 traces / 56 spans`、cutoff=2026-10-25，正好等于 Mongo 10-24 桶的 56 条；06-09 的 13 条为跨期 trace，仍在 PG |
 | 连接 | Mongo 是共享集群，`currentOp` 中可见 product/payment/loyalty/marketing 等 20+ 服务；core-ai 没有独立可停的条件 |
 
-结论：**prod 的 legacy span/trace 已全部回填，`SYS_TRACE_SPAN_MIGRATION=copy` 只剩一次空扫描**。
+结论：**prod 的 legacy span/trace 已全部回填，`SYS_TRACE_SPAN_MIGRATION` 已随 2.0.363 发布切换为 `skip`**。
 
-### 7.2 env 变更（本地分支，未部署）
+### 7.2 env 变更（已发布）
 
-- 仓库：`D:\fbr-prod-env-project`
-- 分支：`ops/prod-trace-span-skip`，commit `c8763c3`
+- 仓库：`D:\fbr-prod-env-project`，`main` 已推送到 `origin/main`（`246c7ce..59fc175`）。
+- 发布时先把本地 `main` rebase 到 `origin/main`（`246c7ce`），保留 PVC RBAC 提交为 `dc478ae`；
+  再 cherry-pick 原分支 `ops/prod-trace-span-skip` 的 `c8763c3` 为 `4dbc18f`；镜像提交 `59fc175`。
 - 改动：`azure/prod/kube/resource/app/ai/20-core-ai-server.yaml`
   - `SYS_TRACE_SPAN_MIGRATION: copy` → `skip`
-  - 注释说明 `spans_v1` marker 与 27,452 条回填已完成
-- 未 push、未 apply、未重启 pod；`main` 分支保持原样（工作区仍保留其他会话的两个 `02-encrypt-one.sh` 修改，未触碰）。
+  - `image: 2.0.336` → `2.0.363`
+- 已 `kubectl apply`：Deployment revision 98，2/2 Ready；pod 环境确认 `SYS_TRACE_SPAN_MIGRATION=skip`。
+- 工作区里其他会话的两个 `02-encrypt-one.sh` 未提交改动未被触碰、未丢失。
+- 原分支 `ops/prod-trace-span-skip`（`c8763c3`）保留作为历史参考，不再使用。
 
 ### 7.3 后续 P2–P4 清单
 
 **P2 运行时解耦（代码 + env）**
 
-1. `SYS_TRACE_SPAN_MIGRATION=skip`（已准备，随下次 prod 发布执行）。
+1. `SYS_TRACE_SPAN_MIGRATION=skip`（已随 2.0.363 生效）。
 2. 移除启动时的 Mongo ping（`StartupDependencyCheck`）与 `schema_versions` 读取（`SchemaMigrationManager`）；pg 模式不再注册 Mongo 连接/集合。
 3. 从 prod ConfigMap 移除 `SYS_MONGO_URI`（`azure/prod/kube/resource/app/ai/config/20-core-ai-server-config.yml`）。
 4. 用 NetworkPolicy 临时阻断 core-ai → `mongodb.prod:27017`，观察 7 天 0 连接与业务无异常。
@@ -148,10 +155,10 @@ prod 差异与锁/耗时、备份、回滚、窗口见独立 runbook。关键提
 ### 7.4 仍阻塞的事项
 
 - **Mongo 是共享集群**：prod `mongodb-0/1/2` 同时服务 20+ 个业务服务；core-ai 不能单独停 pod/PVC。
-- **prod 镜像仍是 2.0.336**：V49–V53 对应代码（TTFT/provider、workspace、agent health）尚未上线；迁移可以先做（additive），但功能验证要等镜像升级。
-- **env 仓库漂移**：prod manifest image 2.0.318 vs 线上 2.0.336；apply 前必须同步。
 - **D2 未决策**：保留自建 Mongo 支持 vs 完全删除，决定 P3 是 1–2 周还是 26–37 人日。
-- **prod 迁移需明确授权**：本 runbook 未执行任何 prod 写操作。
+- **P2 剩余代码项**：2.0.363 已不再绑定 `SpanMigrationService` 且启动只探测 PostgreSQL，但 `SYS_MONGO_URI` 仍在 ConfigMap、`registerMongo()`/`SchemaMigrationManager` 的清理仍需单独 PR。
+- **Mongo 数据归档**：P4 的 dump/restore 演练与跨团队停集群窗口尚未开始；本次未删除任何数据/PVC。
+- **后续 prod 变更仍需单独授权**：V49–V53 迁移与 2.0.363 发布已完成，但 P2–P4 不在本次授权范围。
 
 ## 8. 关键命令与 SQL 索引
 

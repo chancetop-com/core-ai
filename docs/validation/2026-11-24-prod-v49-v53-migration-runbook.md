@@ -1,10 +1,25 @@
-# prod V49–V53 迁移 Runbook（仅准备，未执行）
+# prod V49–V53 迁移 Runbook（2026-11-24 已执行）
 
-> 状态：**DRAFT / 未执行**。2026-11-24 只做只读核对与本机备份，prod 没有任何写操作。
+> 状态：**已执行**（2026-11-24 21:08–21:14 CST）。备份 `core-ai-pre-v49-v53-20261124` completed
+> （backupId `20261124T130800`）；Flyway V49–V53 applied（12.95 s）；镜像 `2.0.363`，Deployment
+> revision 98，2/2 Ready。
 > 适用对象：`FBRProdAKSCluster` / namespace `prod-ai` / CNPG `postgresql`（primary `postgresql-1`）。
 > 关联记录：`docs/validation/2026-11-24-pg-flyway-ledger-and-mongo-prep.md`。
 
-## 1. 当前事实（2026-11-24 核验）
+## 0. 执行结果
+
+| 项目 | 结果 |
+|---|---|
+| CNPG 备份 | `core-ai-pre-v49-v53-20261124`，`phase=completed`，`backupId=20261124T130800`，`azure://fbrdevbostorage.blob.core.windows.net/pg-backup/prod` |
+| Flyway | V49/V50/V52/V53 applied；execution `12.952 s`；history 52 行，head V53；`validate` 53/53 |
+| V50 索引锁 | V49 1.16 s、V50 1.92 s、V52 5.95 s、V53 3.93 s；写入排队远低于预估 5–30 s |
+| 发布 | env commits `dc478ae`、`4dbc18f`、`59fc175`；image `2.0.363`；Deployment revision 98 |
+| 镜像 digest | OCI index `sha256:f6ad1906…`；pod imageID 相同；amd64 manifest `sha256:97dbc951…` |
+| 验证 | 2/2 Ready、0 restart；`/health-check` 200（公网 + 集群内）；`/api/capabilities` 200；受保护 API 401 |
+| Mongo | pod 环境 `SYS_TRACE_SPAN_MIGRATION=skip`；`currentOp` 中 core-ai 连接数 0 |
+| 回滚 | `kubectl --context FBRProdAKSCluster -n prod-ai rollout undo deploy/core-ai-server --to-revision=97`（2.0.336） |
+
+## 1. 变更前事实（2026-11-24 核验；下方为执行前快照）
 
 | 项目 | 值 |
 |---|---|
@@ -170,7 +185,7 @@ kubectl --context FBRProdAKSCluster -n prod-ai logs deploy/core-ai-server --sinc
   ALTER TABLE app.traces DROP COLUMN IF EXISTS provider_id;
   ```
 - **数据级回滚**：恢复 `core-ai-pre-v49-v53-*` 备份（CNPG restore 或 `pg_restore`）。这是唯一能保证时间点一致的路径。
-- 注意：不要用旧镜像 2.0.318 覆盖线上 2.0.336；env 仓库的 Deployment 还停在 2.0.318，apply 前必须先同步镜像。
+- 注意：不要用 2.0.318/2.0.336 覆盖当前 2.0.363；env 仓库已在 `59fc175` 同步到 2.0.363。
 
 ## 7. 窗口与责任
 
@@ -185,7 +200,7 @@ kubectl --context FBRProdAKSCluster -n prod-ai logs deploy/core-ai-server --sinc
 
 ## 8. 与 Mongo 下线准备的关系
 
-- prod 的 `spans_v1` marker 已于 2026-11-14 11:23:54 UTC 写入，27,452 条 legacy span 已全部回填 PG；`SYS_TRACE_SPAN_MIGRATION` 可以从 `copy` 改为 `skip`。
-- 该 env 变更已准备在 `D:\fbr-prod-env-project` 的本地分支 `ops/prod-trace-span-skip`（commit `c8763c3`），**未 push、未部署**。
-- 改 env 会触发 Deployment 滚动重启；建议与下一次 prod 镜像升级合并执行，而不是单独为一个 env var 重启。
+- prod 的 `spans_v1` marker 已于 2026-11-14 11:23:54 UTC 写入，27,452 条 legacy span 已全部回填 PG；`SYS_TRACE_SPAN_MIGRATION` 已从 `copy` 改为 `skip`。
+- 该 env 变更已随 2.0.363 发布：`fbr-prod-env-project` main `246c7ce..59fc175`（`dc478ae` PVC RBAC、`4dbc18f` skip、`59fc175` image），Deployment revision 98。
+- 改 env 触发了滚动重启，但本次它与镜像升级合并执行，没有额外的重启窗口。
 - Mongo 是共享集群（prod 命名空间 `mongodb-0/1/2`，59 个 `core-ai` collection，同时承载 20+ 其他服务）；停 pod/PVC 不属于 core-ai 单方面动作，必须等跨团队迁移完成。
