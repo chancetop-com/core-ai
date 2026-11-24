@@ -424,9 +424,7 @@ class TaskToolTest {
         private final List<String> parents;
 
         RecordParentTool(List<String> parents) {
-            setName("record_parent");
-            setDescription("records the subagent's parent call id");
-            setParameters(List.of());
+            super("record_parent", "records the subagent's parent call id", List.of());
             this.parents = parents;
         }
 

@@ -221,9 +221,7 @@ public final class ExecutionContext {
         this.attachedContents = attachedContents == null || attachedContents.isEmpty() ? null : List.copyOf(attachedContents);
     }
 
-    /**
-     * Set only while a session turn is executing; null for standalone runs and between turns.
-     */
+    /** Set only while a session turn is executing; null for standalone runs and between turns. */
     public PendingUserInputQueue getPendingUserInput() {
         return pendingUserInput;
     }
@@ -232,10 +230,7 @@ public final class ExecutionContext {
         this.pendingUserInput = pendingUserInput;
     }
 
-    /**
-     * True while a message accepted during the running turn is still waiting for its injection point.
-     * A tool call checks this so a long tool cannot hold the user's message back for its whole runtime.
-     */
+    /** True while a message accepted during the running turn still waits for its injection point. */
     public boolean hasWaitingUserInput() {
         var pending = pendingUserInput;
         return pending != null && !pending.isEmpty();
@@ -375,10 +370,7 @@ public final class ExecutionContext {
         this.skillCapabilities = skillCapabilities == null ? List.of() : List.copyOf(skillCapabilities);
     }
 
-    /**
-     * True once a local skill has declared its SDK capabilities for this context. The local broker
-     * then treats the capability set as authoritative instead of exposing every agent tool.
-     */
+    /** True once a local skill declared its SDK capabilities; the broker then treats that set as authoritative. */
     public boolean isSkillCapabilityScopeActive() {
         return skillCapabilityScopeActive;
     }
@@ -408,22 +400,14 @@ public final class ExecutionContext {
         this.agentProfileRegistry = agentProfileRegistry;
     }
 
-    /**
-     * The session's subagent threads, created on first use. Subagent contexts share the registry of
-     * the context they were spawned from, so nested subagents register into the same session.
-     */
+    /** Session subagent threads, created on first use and shared with contexts spawned from this one. */
     public SubagentThreadRegistry getSubagentThreads() {
-        var registry = subagentThreads;
-        if (registry == null) {
+        if (subagentThreads == null) {
             synchronized (this) {
-                registry = subagentThreads;
-                if (registry == null) {
-                    registry = new SubagentThreadRegistry(sessionId, persistenceProvider);
-                    subagentThreads = registry;
-                }
+                if (subagentThreads == null) subagentThreads = new SubagentThreadRegistry(sessionId, persistenceProvider);
             }
         }
-        return registry;
+        return subagentThreads;
     }
 
     public void setSubagentThreads(SubagentThreadRegistry registry) {

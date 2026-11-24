@@ -35,6 +35,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -91,7 +92,7 @@ class TaskRunLifecycleIntegrationTest {
             assertTrue(snapshot != null, "the run must stay open for the untracked remote work");
             assertEquals("untrackable", snapshot.coverage());
             assertEquals(TaskRunState.NEEDS_ATTENTION, snapshot.state());
-            assertTrue(session.taskRuns().lastEndedSnapshot() == null);
+            assertNull(session.taskRuns().lastEndedSnapshot());
         } finally {
             session.close();
         }

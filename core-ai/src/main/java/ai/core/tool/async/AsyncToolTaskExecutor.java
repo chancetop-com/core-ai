@@ -83,7 +83,8 @@ public final class AsyncToolTaskExecutor {
         var state = tasks.get(taskId);
         if (state == null) {
             return ToolCallResult.failed("Task not found: " + taskId);
-        }        var snapshot = state.completion.peek();
+        }
+        var snapshot = state.completion.peek();
         if (snapshot != null) return snapshot;
 
         var future = state.future;

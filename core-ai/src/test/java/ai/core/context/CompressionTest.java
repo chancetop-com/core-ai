@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -267,7 +268,7 @@ class CompressionTest {
         String toolCallId = "call_tail";
         FunctionCall toolCall = FunctionCall.of(toolCallId, "function", "read", "{}");
 
-        List<Message> messages = new ArrayList<>();
+        List<Message> messages = new ArrayList<>(14);
         messages.add(Message.of(RoleType.SYSTEM, "System prompt"));
         for (int i = 0; i < 5; i++) {
             messages.add(Message.of(RoleType.USER, "User " + i));
@@ -378,7 +379,7 @@ class CompressionTest {
     @Test
     void testReportDescribesContextUsage() {
         var provider = new MockLLMProvider("Compressed summary", new Usage(10, 20, 30));
-        Compression target = new Compression(new CompressionConfig(true, 0.5, 2, 10, 1000, null), provider, "test-model");
+        Compression target = new Compression(new CompressionConfig(Boolean.TRUE, 0.5, 2, 10, 1000, null), provider, "test-model");
         var reports = new ArrayList<CompressionReport>();
         target.addListener(reports::add);
 
@@ -403,7 +404,7 @@ class CompressionTest {
     @Test
     void testCompressionConfigOverridesDefaults() {
         var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
-        var config = new CompressionConfig(true, 0.5, 2, 1000, 32000, "cheap-summary-model");
+        var config = new CompressionConfig(Boolean.TRUE, 0.5, 2, 1000, 32000, "cheap-summary-model");
         Compression target = new Compression(config, provider, "unknown-model-xyz");
 
         assertEquals(32000, target.getMaxContextTokens());
@@ -423,7 +424,7 @@ class CompressionTest {
     @Test
     void testToolResultBudgetIsCappedForLargeContexts() {
         var provider = new MockLLMProvider("Summary", new Usage(10, 5, 15));
-        var config = new CompressionConfig(true, 0.8, 5, 15000, 1_000_000, null);
+        var config = new CompressionConfig(Boolean.TRUE, 0.8, 5, 15000, 1_000_000, null);
         Compression target = new Compression(config, provider, "unknown-model-xyz");
 
         assertEquals(1_000_000, target.getMaxContextTokens());
@@ -594,7 +595,8 @@ class CompressionTest {
     }
 
     private Path localSpillPath(String sandboxPath) {
-        return Path.of(System.getProperty("java.io.tmpdir"), "core-ai", "session-9", Path.of(sandboxPath).getFileName().toString());
+        return Path.of(System.getProperty("java.io.tmpdir", "."), "core-ai", "session-9",
+                Objects.requireNonNull(Path.of(sandboxPath).getFileName()).toString());
     }
 
     @Test

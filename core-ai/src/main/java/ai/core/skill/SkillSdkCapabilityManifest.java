@@ -102,10 +102,9 @@ public final class SkillSdkCapabilityManifest {
     // V1 resolves exact references only; group selectors stay unsupported until expansion is implemented.
     private static boolean exactArity(String kind, List<String> parts) {
         return switch (kind) {
-            case KIND_TOOL -> parts.size() == 1;
+            case KIND_TOOL, KIND_LLM_CALL -> parts.size() == 1;
             case KIND_MCP -> parts.size() == 2;
             case KIND_API_TOOL -> parts.size() == 3;
-            case KIND_LLM_CALL -> parts.size() == 1;
             default -> false;
         };
     }
@@ -165,7 +164,7 @@ public final class SkillSdkCapabilityManifest {
      * the declarations are not model tools and must not be called by the model directly.
      */
     public String summary() {
-        if (!enabled || (entries.isEmpty() && unsupported.isEmpty())) return "";
+        if (!enabled || entries.isEmpty() && unsupported.isEmpty()) return "";
         var sb = new StringBuilder(256);
         sb.append("\n\nSDK capabilities declared by this skill (script-only; not available as model tools):\n");
         for (var entry : entries) {

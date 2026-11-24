@@ -23,7 +23,7 @@ class CompressionLifecycleTest {
     void abortTheRunWhenTheAgentReplaysCallsAfterCompression() {
         var provider = new CompressionTest.MockLLMProvider("summary of the previous work");
         var compression = new Compression(
-                new CompressionConfig(true, 0.8, 1, 100, 1000, null), provider, "test-model");
+                new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1000, null), provider, "test-model");
         var lifecycle = new CompressionLifecycle(compression);
         lifecycle.beforeAgentRun(new AtomicReference<>("review the document"), null);
 
@@ -47,7 +47,7 @@ class CompressionLifecycleTest {
     void aNewRunStartsWithCleanThrashEvidence() {
         var provider = new CompressionTest.MockLLMProvider("summary of the previous work");
         var compression = new Compression(
-                new CompressionConfig(true, 0.8, 1, 100, 1000, null), provider, "test-model");
+                new CompressionConfig(Boolean.TRUE, 0.8, 1, 100, 1000, null), provider, "test-model");
         var lifecycle = new CompressionLifecycle(compression);
         var call = FunctionCall.of("call-1", "function", "read_file", "{\"file_path\":\"doc.md\"}");
 

@@ -72,24 +72,7 @@ class ToolRegistryTest {
     @Test
     void onceNonEmptyRetriesWhileEmptyAndCachesTheFirstToolSet() {
         var calls = new AtomicInteger();
-        registry.registerProvider(new ToolProvider() {
-            @Override
-            public String id() {
-                return "late-server";
-            }
-
-            @Override
-            public RefreshPolicy refreshPolicy() {
-                return RefreshPolicy.ONCE_NON_EMPTY;
-            }
-
-            @Override
-            public Map<String, ToolCall> provide() {
-                return calls.incrementAndGet() < 2
-                        ? Map.of()
-                        : Map.of("late_tool", newEchoTool("late_tool", "available", ToolExposure.DIRECT));
-            }
-        });
+        registry.registerProvider(new LateServerProvider(calls));
 
         assertTrue(registry.materialize().getDispatchMap().isEmpty());
         assertTrue(registry.materialize().getDispatchMap().containsKey("late_tool"));
@@ -379,7 +362,31 @@ class ToolRegistryTest {
         }
     }
 
-    @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
+    static class LateServerProvider implements ToolProvider {
+        private final AtomicInteger calls;
+
+        LateServerProvider(AtomicInteger calls) {
+            this.calls = calls;
+        }
+
+        @Override
+        public String id() {
+            return "late-server";
+        }
+
+        @Override
+        public RefreshPolicy refreshPolicy() {
+            return RefreshPolicy.ONCE_NON_EMPTY;
+        }
+
+        @Override
+        public Map<String, ToolCall> provide() {
+            return calls.incrementAndGet() < 2
+                    ? Map.of()
+                    : Map.of("late_tool", newEchoTool("late_tool", "available", ToolExposure.DIRECT));
+        }
+    }
+
     static class EchoTool extends ToolCall {
         EchoTool(String name, String description) {
             setName(name);

@@ -36,7 +36,6 @@ final class TaskRun {
     long version;
     String rootDisposition;
     String activeExecutionId;
-    TaskRunCoordinator.ExecutionKind activeExecutionKind;
     int queuedRequests;
     String coverage = TaskRunCoordinator.COVERAGE_COMPLETE;
     String attentionReason;

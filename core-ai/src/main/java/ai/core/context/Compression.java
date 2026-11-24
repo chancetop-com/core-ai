@@ -334,7 +334,10 @@ public class Compression {
             return "";
         }
         int targetTokens = Math.min(MAX_SUMMARY_TOKENS, Math.max(MIN_SUMMARY_TOKENS, maxContextTokens / 10));
-        String prompt = String.format(Prompts.COMPRESSION_PROMPT, (int) (targetTokens * 0.75), content);
+        int wordLimit = (int) (targetTokens * 0.75);
+        String prompt = Prompts.COMPRESSION_PROMPT
+                .replace("%d", Integer.toString(wordLimit))
+                .replace("%s", content);
         String summary = callLLM(prompt);
         if (summary.isBlank()) return "";
         return Prompts.COMPRESSION_SUMMARY_PREFIX + summary + Prompts.COMPRESSION_SUMMARY_SUFFIX;
@@ -346,7 +349,7 @@ public class Compression {
             var response = llmProvider.completion(request);
             reportUsage(response);
 
-            if (response != null && response.choices != null && !response.choices.isEmpty()) {
+            if (response.choices != null && !response.choices.isEmpty()) {
                 var choice = response.choices.getFirst();
                 if (choice.message != null && choice.message.content != null) {
                     return choice.message.content.trim();

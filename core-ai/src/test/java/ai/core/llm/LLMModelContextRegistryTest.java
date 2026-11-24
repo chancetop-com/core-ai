@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -118,7 +119,7 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testEstimateCostUsdGpt6LunaWithCachedTokensAndProviderPrefixes() {
-        for (var model : new String[]{"gpt-6-luna", "openai/gpt-6-luna", "litellm/gpt-6-luna", "openai/responses/gpt-6-luna"}) {
+        for (var model : List.of("gpt-6-luna", "openai/gpt-6-luna", "litellm/gpt-6-luna", "openai/responses/gpt-6-luna")) {
             var cost = registry.estimateCostUsd(model, 1_000, 200, 400);
 
             assertNotNull(cost);
@@ -161,14 +162,14 @@ class LLMModelContextRegistryTest {
 
     @Test
     void testEstimateCostUsdDeepSeekOffPeakWindowsIncludeCachedTokensAndWeekends() {
-        for (var model : new String[]{"deepseek-v4-pro", "deepseek/deepseek-v4-pro"}) {
-            for (var when : new String[]{"2026-08-18T00:00:00Z", "2026-08-18T04:00:00Z", "2026-08-18T10:00:00Z", "2026-08-22T02:00:00Z"}) {
+        for (var model : List.of("deepseek-v4-pro", "deepseek/deepseek-v4-pro")) {
+            for (var when : List.of("2026-08-18T00:00:00Z", "2026-08-18T04:00:00Z", "2026-08-18T10:00:00Z", "2026-08-22T02:00:00Z")) {
                 var cost = registry.estimateCostUsd(model, 1_000, 200, 400, Instant.parse(when));
 
                 assertNotNull(cost);
                 assertEquals(0.0008008, cost, 1e-12, model + " at " + when);
             }
-            for (var when : new String[]{"2026-08-18T01:00:00Z", "2026-08-18T06:00:00Z"}) {
+            for (var when : List.of("2026-08-18T01:00:00Z", "2026-08-18T06:00:00Z")) {
                 var cost = registry.estimateCostUsd(model, 1_000, 200, 400, Instant.parse(when));
 
                 assertNotNull(cost);

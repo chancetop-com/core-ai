@@ -279,7 +279,8 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", script.toString());
         args.put("content", content);
-        writeFileTool.execute(JSON.toJSON(args)).getResult();
+        var result = writeFileTool.execute(JSON.toJSON(args));
+        assertTrue(result.isCompleted(), result.getResult());
 
         byte[] bytes = Files.readAllBytes(script);
         assertEquals((byte) 0xEF, bytes[0], "a .ps1 starts with the UTF-8 BOM");
@@ -296,7 +297,8 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", testFile.toString());
         args.put("content", "星语 notes");
-        writeFileTool.execute(JSON.toJSON(args)).getResult();
+        var result = writeFileTool.execute(JSON.toJSON(args));
+        assertTrue(result.isCompleted(), result.getResult());
 
         byte[] bytes = Files.readAllBytes(testFile);
         assertEquals((byte) 0xE6, bytes[0], "everything else stays BOM-less, or the BOM would be content");
@@ -313,7 +315,8 @@ class WriteFileToolTest {
         Map<String, Object> args = new HashMap<>();
         args.put("file_path", script.toString());
         args.put("content", content);
-        writeFileTool.execute(JSON.toJSON(args)).getResult();
+        var result = writeFileTool.execute(JSON.toJSON(args));
+        assertTrue(result.isCompleted(), result.getResult());
 
         byte[] bytes = Files.readAllBytes(script);
         assertEquals(content, new String(bytes, StandardCharsets.UTF_8), "the script keeps the single BOM it came with");

@@ -170,8 +170,8 @@ public class SkillTool extends ToolCall {
     }
 
     private SkillCapability capability(SkillMetadata skill, SkillSdkCapabilityManifest.Entry entry, ToolCall tool) {
-        var parts = entry.parts();
         if (SkillSdkCapabilityManifest.KIND_MCP.equals(entry.kind())) {
+            var parts = entry.parts();
             return new SkillCapability(skill.getQualifiedName(), skill.getQualifiedName(), "mcp",
                     "mcp:" + parts.get(0) + ":" + parts.get(1),
                     parts.get(0) + "/" + parts.get(1), parts.get(0), tool);

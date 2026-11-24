@@ -69,10 +69,10 @@ class OpenAIAudioTranscriptionClientTest {
 
         assertEquals("hello world", result.text());
         assertEquals("english", result.language());
-        assertEquals(2.5, result.durationSeconds());
+        assertEquals(2.5, result.durationSeconds(), 1e-9);
         assertEquals(2, result.segments().size());
         assertEquals("hello", result.segments().getFirst().text());
-        assertEquals(1.2, result.segments().getFirst().endSec());
+        assertEquals(1.2, result.segments().getFirst().endSec(), 1e-9);
         assertTrue(body.get().contains("name=\"response_format\""));
         assertTrue(body.get().contains("verbose_json"));
         assertTrue(body.get().contains("name=\"language\""));
@@ -104,7 +104,7 @@ class OpenAIAudioTranscriptionClientTest {
 
         assertEquals(1, result.segments().size());
         assertEquals("A", result.segments().getFirst().speaker());
-        assertEquals(1.1, result.segments().getFirst().endSec());
+        assertEquals(1.1, result.segments().getFirst().endSec(), 1e-9);
         assertTrue(body.get().contains("diarized_json"));
     }
 
@@ -156,7 +156,7 @@ class OpenAIAudioTranscriptionClientTest {
         var call = calls.get();
         var code = status.get();
         var response = responseBody.get();
-        if (retryMode.get() && call == 1) {
+        if (call == 1 && retryMode.get()) {
             code = 400;
             response = "{\"error\":{\"message\":\"response_format verbose_json is not supported\"}}";
         } else if (retryMode.get()) {

@@ -45,7 +45,7 @@ class CompressionEventDispatchTest {
         return Agent.builder()
             .llmProvider(provider)
             .maxTurn(1)
-            .compression(new CompressionConfig(true, 0.5, 2, 10, 1000, null))
+            .compression(new CompressionConfig(Boolean.TRUE, 0.5, 2, 10, 1000, null))
             .build();
     }
 

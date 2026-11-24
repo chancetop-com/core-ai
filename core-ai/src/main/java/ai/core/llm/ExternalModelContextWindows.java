@@ -1,5 +1,6 @@
 package ai.core.llm;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 final class ExternalModelContextWindows {
     private static final Logger LOGGER = LoggerFactory.getLogger(ExternalModelContextWindows.class);
 
+    @SuppressFBWarnings(value = "PMB_POSSIBLE_MEMORY_BLOAT",
+            justification = "keyed by catalog model names, a finite set resolved once per process")
     private static final Map<String, Integer> CACHE = new ConcurrentHashMap<>();
     private static volatile ModelContextWindowProvider provider;
 

@@ -46,7 +46,7 @@ class AiApiDocBuilderTest {
         assertEquals("OrderService", service.name);
         assertEquals("Order service", service.description);
 
-        var refund = service.operations.stream().filter(operation -> operation.name.equals("createRefund")).findFirst().orElseThrow();
+        var refund = service.operations.stream().filter(operation -> "createRefund".equals(operation.name)).findFirst().orElseThrow();
         assertEquals("Create refund", refund.description);
         assertEquals("{\"orderId\":\"O123\"}", refund.example);
         assertEquals("POST", refund.method);
@@ -73,7 +73,7 @@ class AiApiDocBuilderTest {
         var response = type(definition, "RefundResponse");
         assertEquals("Refund id", field(response, "refundId").description);
 
-        var orders = service.operations.stream().filter(operation -> operation.name.equals("orders")).findFirst().orElseThrow();
+        var orders = service.operations.stream().filter(operation -> "orders".equals(operation.name)).findFirst().orElseThrow();
         assertNull(orders.description);
         assertNull(orders.example);
         assertEquals("GET", orders.method);
@@ -87,7 +87,7 @@ class AiApiDocBuilderTest {
         var item = type(definition, "InventoryItem");
         assertEquals("SKU", field(item, "sku").description);
         var status = type(definition, "InventoryStatus");
-        assertTrue(status.enumConstants.stream().anyMatch(constant -> constant.name.equals("AVAILABLE")));
+        assertTrue(status.enumConstants.stream().anyMatch(constant -> "AVAILABLE".equals(constant.name)));
         assertNull(definition.description);
     }
 

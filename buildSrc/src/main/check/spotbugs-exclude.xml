@@ -79,6 +79,13 @@
         <Bug pattern="RFI_SET_ACCESSIBLE" />
     </Match>
 
+    <!-- Timed wait-for-notify primitive: callers re-read state after the wait returns. -->
+    <Match>
+        <Class name="ai.core.session.lifecycle.TaskRunCoordinator" />
+        <Method name="awaitChange" />
+        <Bug pattern="UW_UNCOND_WAIT,WA_NOT_IN_LOOP" />
+    </Match>
+
     <!-- PSC_PRESIZE_COLLECTIONS: cannot presize without knowing final count -->
     <Match>
         <Class name="ai.core.tool.tools.FuzzyMatchReplacer" />

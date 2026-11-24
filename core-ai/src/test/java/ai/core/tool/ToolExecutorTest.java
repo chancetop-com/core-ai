@@ -49,7 +49,7 @@ class ToolExecutorTest {
                 return ToolCallResult.completed(arguments);
             }
         };
-        tool.setParameters(List.of(ToolCallParameter.builder().name(parameterName).required(true).build()));
+        tool.setParameters(List.of(ToolCallParameter.builder().name(parameterName).required(Boolean.TRUE).build()));
         return tool;
     }
 
@@ -350,14 +350,11 @@ class ToolExecutorTest {
         assertTrue(result.getResult().contains("/networks/core-ai-sandbox"), result.getResult());
     }
 
-    @SuppressWarnings("PMD.ConstructorCallsOverridableMethod")
     private static class FakeToolCall extends ToolCall {
         private final boolean subAgent;
 
         FakeToolCall(String toolName, boolean isSubAgent) {
-            setName(toolName);
-            setDescription("test tool");
-            setParameters(List.of());
+            super(toolName, "test tool", List.of());
             subAgent = isSubAgent;
         }
 

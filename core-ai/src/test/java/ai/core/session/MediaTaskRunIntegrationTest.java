@@ -24,6 +24,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -62,7 +63,7 @@ class MediaTaskRunIntegrationTest {
 
             assertTrue(recorder.done.await(15, TimeUnit.SECONDS), "the video watcher must finish the run");
             assertNotNull(recorder.ended);
-            assertEquals("returned", recorder.ended.outcome().name().toLowerCase());
+            assertEquals("returned", recorder.ended.outcome().name().toLowerCase(Locale.ROOT));
             var video = workspace.resolve(".core-ai").resolve("media").resolve("videos").resolve("video-video-1.mp4");
             assertTrue(Files.isRegularFile(video), "the completed video must be downloaded");
         } finally {

@@ -216,7 +216,7 @@ public class Extraction {
         request.responseFormat = ResponseFormat.of(ExtractionResponse.class);
         CompletionResponse response = llmProvider.completion(request);
 
-        if (response == null || response.choices == null || response.choices.isEmpty()) {
+        if (response.choices == null || response.choices.isEmpty()) {
             return List.of();
         }
 

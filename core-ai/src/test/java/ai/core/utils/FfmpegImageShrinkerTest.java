@@ -1,6 +1,7 @@
 package ai.core.utils;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -139,52 +140,42 @@ class FfmpegImageShrinkerTest {
     }
 
     @Test
-    void shrinksRealImageWithFfmpeg() throws Exception {
+    void shrinksRealImageWithFfmpeg(@TempDir Path directory) throws Exception {
         var ffmpeg = ffmpeg();
         assumeTrue(ffmpeg != null, "CORE_AI_FFMPEG is not set");
-        var directory = Files.createTempDirectory("ffmpeg-shrink-test-");
-        try {
-            var source = directory.resolve("source.png");
-            runFfmpeg(ffmpeg, "-f", "lavfi", "-i", "testsrc=size=2048x2048:duration=1", "-frames:v", "1", source.toString());
-            var base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(source));
+        var source = directory.resolve("source.png");
+        runFfmpeg(ffmpeg, "-f", "lavfi", "-i", "testsrc=size=2048x2048:duration=1", "-frames:v", "1", source.toString());
+        var base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(source));
 
-            var shrunk = new FfmpegImageShrinker(() -> ffmpeg).shrinkToJpeg(base64);
+        var shrunk = new FfmpegImageShrinker(() -> ffmpeg).shrinkToJpeg(base64);
 
-            assertNotNull(shrunk);
-            var bytes = Base64.getDecoder().decode(shrunk);
-            assertEquals(0xFF, bytes[0] & 0xFF, "jpeg magic");
-            assertEquals(0xD8, bytes[1] & 0xFF, "jpeg magic");
-            var image = ImageIO.read(new ByteArrayInputStream(bytes));
-            assertEquals(1568, Math.max(image.getWidth(), image.getHeight()));
-        } finally {
-            SystemUtil.deleteDirectory(directory);
-        }
+        assertNotNull(shrunk);
+        var bytes = Base64.getDecoder().decode(shrunk);
+        assertEquals(0xFF, bytes[0] & 0xFF, "jpeg magic");
+        assertEquals(0xD8, bytes[1] & 0xFF, "jpeg magic");
+        var image = ImageIO.read(new ByteArrayInputStream(bytes));
+        assertEquals(1568, Math.max(image.getWidth(), image.getHeight()));
     }
 
     @Test
-    void flattensTransparencyOntoWhite() throws Exception {
+    void flattensTransparencyOntoWhite(@TempDir Path directory) throws Exception {
         var ffmpeg = ffmpeg();
         assumeTrue(ffmpeg != null, "CORE_AI_FFMPEG is not set");
-        var directory = Files.createTempDirectory("ffmpeg-alpha-test-");
-        try {
-            var source = directory.resolve("alpha.png");
-            runFfmpeg(ffmpeg, "-f", "lavfi", "-i", "color=c=black@0.0:s=2048x1200,format=rgba",
-                    "-f", "lavfi", "-i", "color=c=red:s=1024x1200,format=rgba",
-                    "-filter_complex", "[0][1]overlay=1024:0", "-frames:v", "1", source.toString());
-            var base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(source));
+        var source = directory.resolve("alpha.png");
+        runFfmpeg(ffmpeg, "-f", "lavfi", "-i", "color=c=black@0.0:s=2048x1200,format=rgba",
+                "-f", "lavfi", "-i", "color=c=red:s=1024x1200,format=rgba",
+                "-filter_complex", "[0][1]overlay=1024:0", "-frames:v", "1", source.toString());
+        var base64 = Base64.getEncoder().encodeToString(Files.readAllBytes(source));
 
-            var shrunk = new FfmpegImageShrinker(() -> ffmpeg).shrinkToJpeg(base64);
+        var shrunk = new FfmpegImageShrinker(() -> ffmpeg).shrinkToJpeg(base64);
 
-            assertNotNull(shrunk);
-            var image = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(shrunk)));
-            var transparentArea = image.getRGB(image.getWidth() / 8, image.getHeight() / 2);
-            assertTrue((transparentArea & 0xFF) > 240, "blue channel of the transparent area is white");
-            assertTrue((transparentArea >> 16 & 0xFF) > 240, "red channel of the transparent area is white");
-            var content = image.getRGB(image.getWidth() * 3 / 4, image.getHeight() / 2);
-            assertTrue((content >> 16 & 0xFF) > 200, "content stays red");
-            assertTrue((content & 0xFF) < 60, "content stays red");
-        } finally {
-            SystemUtil.deleteDirectory(directory);
-        }
+        assertNotNull(shrunk);
+        var image = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(shrunk)));
+        var transparentArea = image.getRGB(image.getWidth() / 8, image.getHeight() / 2);
+        assertTrue((transparentArea & 0xFF) > 240, "blue channel of the transparent area is white");
+        assertTrue((transparentArea >> 16 & 0xFF) > 240, "red channel of the transparent area is white");
+        var content = image.getRGB(image.getWidth() * 3 / 4, image.getHeight() / 2);
+        assertTrue((content >> 16 & 0xFF) > 200, "content stays red");
+        assertTrue((content & 0xFF) < 60, "content stays red");
     }
 }

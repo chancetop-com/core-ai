@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,7 +46,7 @@ class FirstTokenProbeTest {
         var first = probe.ttftMillis();
         probe.onChunk("b");
 
-        assertTrue(first != null);
+        assertNotNull(first);
         assertTrue(probe.ttftMillis() >= first);
     }
 

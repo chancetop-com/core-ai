@@ -5,6 +5,7 @@ import ai.core.session.lifecycle.TaskRunOutcome;
 import ai.core.session.lifecycle.TaskRunState;
 import ai.core.telemetry.RecordingSpanProcessor;
 import ai.core.tool.subagent.SubagentOutputSink;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.sdk.OpenTelemetrySdk;
@@ -21,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+@SuppressFBWarnings(value = "HES_LOCAL_EXECUTOR_SERVICE",
+        justification = "each test owns its single-thread executor and closes it with try-with-resources")
 class BackgroundTaskManagerTest {
 
     @SuppressWarnings("PMD.UseTryWithResources")

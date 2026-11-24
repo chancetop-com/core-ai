@@ -99,9 +99,10 @@ public final class TaskRunCoordinator {
     public void requestQueued(String turnId) {
         TaskRun.Emission emission;
         synchronized (lock) {
-            if (turnId != null && queuedRuns.containsKey(turnId)) {
-                TaskRun.touch(queuedRuns.get(turnId));
-                emission = new TaskRun.Emission(queuedRuns.get(turnId).snapshot(sessionId, sessionIncarnation), null, false);
+            var queued = turnId != null ? queuedRuns.get(turnId) : null;
+            if (queued != null) {
+                TaskRun.touch(queued);
+                emission = new TaskRun.Emission(queued.snapshot(sessionId, sessionIncarnation), null, false);
             } else {
                 emission = changeLocked(run -> run.queuedRequests++);
             }
@@ -201,7 +202,6 @@ public final class TaskRunCoordinator {
     public void executionStarted(String executionId, ExecutionKind kind, int claimedRequests) {
         emit(change(run -> {
             run.activeExecutionId = executionId;
-            run.activeExecutionKind = kind;
             if (kind == ExecutionKind.ROOT) {
                 run.queuedRequests = Math.max(0, run.queuedRequests - Math.max(0, claimedRequests));
             } else if (kind == ExecutionKind.TASK_NOTIFICATION) {
@@ -216,7 +216,6 @@ public final class TaskRunCoordinator {
         emit(change(run -> {
             if (run.activeExecutionId != null && !run.activeExecutionId.equals(executionId)) return;
             run.activeExecutionId = null;
-            run.activeExecutionKind = null;
             if (kind == ExecutionKind.ROOT) {
                 run.rootDisposition = TaskRun.disposition(outcome);
                 if (outcome == TaskRunOutcome.FAILED || outcome == TaskRunOutcome.LIMITED) {
@@ -385,7 +384,7 @@ public final class TaskRunCoordinator {
     }
 
     private TaskRunEnded evaluate(TaskRun run) {
-        if (run.terminal() || run.activeExecutionId != null || run.attentionReason != null) return null;
+        if (run.activeExecutionId != null || run.attentionReason != null || run.terminal()) return null;
         if (!run.requiredJobs.isEmpty() || !run.continuations.isEmpty() || run.queuedRequests > 0) return null;
         if (run.rootDisposition == null) return null;
         if (pendingWorkProbe.getAsBoolean()) return null;

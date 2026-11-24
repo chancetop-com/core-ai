@@ -53,6 +53,15 @@ public abstract class ToolCall {
     protected Long timeoutMs;
     ToolExposure exposure;
 
+    protected ToolCall() {
+    }
+
+    protected ToolCall(String name, String description, List<ToolCallParameter> parameters) {
+        this.name = name;
+        this.description = description;
+        this.parameters = parameters;
+    }
+
     public ToolCallResult execute(String arguments, ExecutionContext context) {
         return execute(arguments);
     }
@@ -99,15 +108,15 @@ public abstract class ToolCall {
         return needAuth;
     }
 
-    public void setName(String name) {
+    public final void setName(String name) {
         this.name = name;
     }
 
-    public void setDescription(String description) {
+    public final void setDescription(String description) {
         this.description = description;
     }
 
-    public void setParameters(List<ToolCallParameter> parameters) {
+    public final void setParameters(List<ToolCallParameter> parameters) {
         this.parameters = parameters;
     }
 
