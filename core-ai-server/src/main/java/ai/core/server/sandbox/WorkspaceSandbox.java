@@ -211,29 +211,31 @@ public class WorkspaceSandbox implements Sandbox {
     private void materialize() {
         var startedAt = System.nanoTime();
         dispatch(SandboxEvent.creating(sessionId, PENDING_ID));
+        WorkspaceBindingRecord binding;
         try {
             workspaces.wake(userId, workspaceId);
-            var binding = workspaces.bind(userId, workspaceId, sessionId);
-            var attached = findRuntime(binding);
-            if (attached == null) {
-                throw new WorkspaceException(WorkspaceException.WAKE_FAILED,
-                        "workspace runtime is gone, workspace=" + workspaceId + ", runtime=" + binding.sandboxId);
-            }
-            sandboxId = binding.sandboxId;
-            delegate = attached;
-            if (pendingBinding != null) {
-                attached.bind(pendingBinding);
-                pendingBinding = null;
-            }
-            if (postAttach != null) postAttach.run();
-            LOGGER.info("workspace runtime attached, session={}, workspace={}, runtime={}",
-                    sessionId, workspaceId, binding.sandboxId);
-            dispatch(SandboxEvent.ready(sessionId, binding.sandboxId, (System.nanoTime() - startedAt) / 1_000_000,
-                    attached.hostname(), attached.ip(), attached.image()));
+            binding = workspaces.bind(userId, workspaceId, sessionId);
         } catch (RuntimeException e) {
             dispatch(SandboxEvent.error(sessionId, PENDING_ID, "Workspace runtime failed to start"));
             throw e;
         }
+        var attached = findRuntime(binding);
+        if (attached == null) {
+            dispatch(SandboxEvent.error(sessionId, PENDING_ID, "Workspace runtime failed to start"));
+            throw new WorkspaceException(WorkspaceException.WAKE_FAILED,
+                    "workspace runtime is gone, workspace=" + workspaceId + ", runtime=" + binding.sandboxId);
+        }
+        sandboxId = binding.sandboxId;
+        delegate = attached;
+        if (pendingBinding != null) {
+            attached.bind(pendingBinding);
+            pendingBinding = null;
+        }
+        if (postAttach != null) postAttach.run();
+        LOGGER.info("workspace runtime attached, session={}, workspace={}, runtime={}",
+                sessionId, workspaceId, binding.sandboxId);
+        dispatch(SandboxEvent.ready(sessionId, binding.sandboxId, (System.nanoTime() - startedAt) / 1_000_000,
+                attached.hostname(), attached.ip(), attached.image()));
     }
 
     private Sandbox findRuntime(WorkspaceBindingRecord binding) {

@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Executor;
@@ -125,7 +126,7 @@ public class WorkspaceService {
     }
 
     private List<String> defaultNames(String agentId) {
-        var slug = agentId.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
+        var slug = agentId.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
         if (slug.length() > 24) slug = slug.substring(0, 24);
         return List.of("default", "default-" + (slug.isEmpty() ? "agent" : slug),
                 "default-" + UUID.randomUUID().toString().substring(0, 8));

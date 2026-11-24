@@ -1,8 +1,5 @@
 package ai.core.server.workspace;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 /**
  * Volume lifecycle of a workspace: make the active generation usable, replace it on reset, and keep the
  * workspace row's volume cache in sync. PVCs are owned here, never by a Sandbox.
@@ -10,8 +7,6 @@ import org.slf4j.LoggerFactory;
  * @author stephen
  */
 class WorkspaceVolumeManager {
-    private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceVolumeManager.class);
-
     private final WorkspaceVolumeStore volumes;
     private final WorkspaceStore workspaces;
     private final WorkspaceProvisioner provisioner;
