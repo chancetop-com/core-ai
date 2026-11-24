@@ -1,6 +1,5 @@
 package ai.core.server.runtime;
 
-import ai.core.api.server.runtime.RuntimeSeriesView;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
@@ -17,6 +16,30 @@ import static org.mockito.Mockito.mock;
  * @author core-ai
  */
 class RuntimeSampleServiceSeriesTest {
+    private static List<RuntimeSample> samples() {
+        var base = ZonedDateTime.parse("2026-11-24T00:00:00Z");
+        return List.of(
+                sample("pod-a", base, 10, 80, 70),
+                sample("pod-b", base, 5, 60, 60),
+                sample("pod-a", base.plusMinutes(1), 12, 80, 70),
+                sample("pod-b", base.plusMinutes(1), 6, 60, 60));
+    }
+
+    private static RuntimeSample sample(String pod, ZonedDateTime at, int sessions, double heap, double oldGen) {
+        var sample = new RuntimeSample();
+        sample.pod = pod;
+        sample.collectedAt = at;
+        sample.sessionsActive = sessions;
+        sample.inFlightTurns = 1;
+        sample.heapUsedPercent = heap;
+        sample.oldGenPercent = oldGen;
+        sample.heapAfterGcPercent = oldGen;
+        sample.containerMemoryPercent = 50.0;
+        sample.runsQueued = 0;
+        sample.sandboxesLive = 0;
+        return sample;
+    }
+
     @Test
     void separatesMaxPodPeaksFromFleetSums() {
         var service = new RuntimeSampleService();
@@ -46,29 +69,5 @@ class RuntimeSampleServiceSeriesTest {
         assertEquals(70.0, point.oldGenPeakPercent);
         assertEquals(70.0, point.heapAvgPercent);
         assertEquals(2, point.inFlightTurnsSumPeak);
-    }
-
-    private static List<RuntimeSample> samples() {
-        var base = ZonedDateTime.parse("2026-11-24T00:00:00Z");
-        return List.of(
-                sample("pod-a", base, 10, 80, 70),
-                sample("pod-b", base, 5, 60, 60),
-                sample("pod-a", base.plusMinutes(1), 12, 80, 70),
-                sample("pod-b", base.plusMinutes(1), 6, 60, 60));
-    }
-
-    private static RuntimeSample sample(String pod, ZonedDateTime at, int sessions, double heap, double oldGen) {
-        var sample = new RuntimeSample();
-        sample.pod = pod;
-        sample.collectedAt = at;
-        sample.sessionsActive = sessions;
-        sample.inFlightTurns = 1;
-        sample.heapUsedPercent = heap;
-        sample.oldGenPercent = oldGen;
-        sample.heapAfterGcPercent = oldGen;
-        sample.containerMemoryPercent = 50.0;
-        sample.runsQueued = 0;
-        sample.sandboxesLive = 0;
-        return sample;
     }
 }

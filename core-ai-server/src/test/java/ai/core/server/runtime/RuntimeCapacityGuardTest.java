@@ -13,6 +13,19 @@ import static org.mockito.Mockito.mock;
  * @author core-ai
  */
 class RuntimeCapacityGuardTest {
+    private static JvmMemoryMetrics.Snapshot snapshot(double heapPercent, double oldGenPercent,
+                                                      double afterGcPercent, double containerPercent) {
+        return new JvmMemoryMetrics.Snapshot(
+                Math.round(heapPercent * 10), 1_000L, heapPercent,
+                null, null,
+                Math.round(afterGcPercent * 10), afterGcPercent,
+                1L, 100L,
+                Math.round(containerPercent * 10), 100L, containerPercent,
+                null,
+                Math.round(oldGenPercent * 10), oldGenPercent,
+                "young", 0L);
+    }
+
     private final RuntimeCapacityGuard guard = new RuntimeCapacityGuard(mock(RuntimeLimitsProvider.class),
             mock(TurnStateRegistry.class));
     private final RuntimeLimits limits = new RuntimeLimits();
@@ -67,18 +80,5 @@ class RuntimeCapacityGuardTest {
         guard.updateState(snapshot(97, 40, 40, 50), 6_000, limits);
 
         assertEquals("heap_catastrophic", guard.currentSaturatedScope());
-    }
-
-    private static JvmMemoryMetrics.Snapshot snapshot(double heapPercent, double oldGenPercent,
-                                                      double afterGcPercent, double containerPercent) {
-        return new JvmMemoryMetrics.Snapshot(
-                Math.round(heapPercent * 10), 1_000L, heapPercent,
-                null, null,
-                Math.round(afterGcPercent * 10), afterGcPercent,
-                1L, 100L,
-                Math.round(containerPercent * 10), 100L, containerPercent,
-                null,
-                Math.round(oldGenPercent * 10), oldGenPercent,
-                "young", 0L);
     }
 }

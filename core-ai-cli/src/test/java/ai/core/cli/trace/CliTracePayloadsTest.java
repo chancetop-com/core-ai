@@ -15,6 +15,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author core-ai
  */
 class CliTracePayloadsTest {
+    private static CliTraceSpan span(String input) {
+        var span = new CliTraceSpan();
+        span.traceId = "trace-1";
+        span.input = input;
+        return span;
+    }
+
+    private static String input(Path path, String sha256) {
+        return "[{\"role\":\"USER\",\"content\":[{\"type\":\"image_ref\",\"image_ref\":{"
+                + "\"id\":\"" + sha256 + "\",\"kind\":\"file\",\"path\":\"" + path.toAbsolutePath().toString().replace("\\", "\\\\") + "\","
+                + "\"media_type\":\"image/png\",\"sha256\":\"" + sha256 + "\"}}]}]";
+    }
+
     @TempDir
     Path tempDir;
 
@@ -42,18 +55,5 @@ class CliTracePayloadsTest {
         var span = span(input(outside, "sha"));
 
         assertTrue(CliTracePayloads.collect(java.util.List.of(span), mediaRoot).isEmpty());
-    }
-
-    private static CliTraceSpan span(String input) {
-        var span = new CliTraceSpan();
-        span.traceId = "trace-1";
-        span.input = input;
-        return span;
-    }
-
-    private static String input(Path path, String sha256) {
-        return "[{\"role\":\"USER\",\"content\":[{\"type\":\"image_ref\",\"image_ref\":{"
-                + "\"id\":\"" + sha256 + "\",\"kind\":\"file\",\"path\":\"" + path.toAbsolutePath().toString().replace("\\", "\\\\") + "\","
-                + "\"media_type\":\"image/png\",\"sha256\":\"" + sha256 + "\"}}]}]";
     }
 }

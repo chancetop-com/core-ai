@@ -26,7 +26,7 @@ class MediaHydratorTest {
     void replacesARefWithTheWireDataUriAndLeavesTheInputUntouched() {
         var message = Message.of(RoleType.USER, Content.of(REF));
         var request = CompletionRequest.of(List.of(message), null, null, "model", null);
-        request.setMediaStore(store(true));
+        request.setMediaStore(new StubStore(true));
         request.setMediaKey(KEY);
 
         var wire = MediaHydrator.hydrate(request);
@@ -40,7 +40,7 @@ class MediaHydratorTest {
     @Test
     void degradesAMissingObjectToATextPlaceholder() {
         var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, Content.of(REF))), null, null, "model", null);
-        request.setMediaStore(store(false));
+        request.setMediaStore(new StubStore(false));
         request.setMediaKey(KEY);
 
         var wire = MediaHydrator.hydrate(request);
@@ -56,36 +56,40 @@ class MediaHydratorTest {
         assertThrows(IllegalStateException.class, () -> MediaHydrator.assertNoUnhydratedRefs(messages));
     }
 
-    private static SessionMediaStore store(boolean present) {
-        return new SessionMediaStore() {
-            @Override
-            public MediaRef put(SessionMediaKey key, byte[] bytes, String mediaType, String displayName, String source) {
-                throw new UnsupportedOperationException();
-            }
+    private static final class StubStore implements SessionMediaStore {
+        private final boolean present;
 
-            @Override
-            public MediaRef register(SessionMediaKey key, MediaRef existing) {
-                return existing;
-            }
+        private StubStore(boolean present) {
+            this.present = present;
+        }
 
-            @Override
-            public Optional<MediaRef> find(SessionMediaKey key, String mediaId) {
-                return Optional.empty();
-            }
+        @Override
+        public MediaRef put(SessionMediaKey key, byte[] bytes, String mediaType, String displayName, String source) {
+            throw new UnsupportedOperationException();
+        }
 
-            @Override
-            public Optional<byte[]> read(SessionMediaKey key, MediaRef ref) {
-                return present ? Optional.of(new byte[]{1, 2, 3}) : Optional.empty();
-            }
+        @Override
+        public MediaRef register(SessionMediaKey key, MediaRef existing) {
+            return existing;
+        }
 
-            @Override
-            public void deleteSession(String sessionId) {
-            }
+        @Override
+        public Optional<MediaRef> find(SessionMediaKey key, String mediaId) {
+            return Optional.empty();
+        }
 
-            @Override
-            public MediaStoreStats stats() {
-                return MediaStoreStats.EMPTY;
-            }
-        };
+        @Override
+        public Optional<byte[]> read(SessionMediaKey key, MediaRef ref) {
+            return present ? Optional.of(new byte[]{1, 2, 3}) : Optional.empty();
+        }
+
+        @Override
+        public void deleteSession(String sessionId) {
+        }
+
+        @Override
+        public MediaStoreStats stats() {
+            return MediaStoreStats.EMPTY;
+        }
     }
 }

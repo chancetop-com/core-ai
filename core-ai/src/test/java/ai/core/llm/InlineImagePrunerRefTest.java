@@ -17,6 +17,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author core-ai
  */
 class InlineImagePrunerRefTest {
+    private static MediaRef ref(String id) {
+        return MediaRef.file(id, "C:/media/" + id + ".png", "image/png", "png", 2048, id)
+                .displayName("photo-" + id + ".png")
+                .source("attachment");
+    }
+
     @Test
     void prunesOlderRefsWithinTheCountBudget() {
         var messages = java.util.List.of(
@@ -57,11 +63,5 @@ class InlineImagePrunerRefTest {
 
         assertEquals(Content.ContentType.TEXT, result.messages().get(0).content.getFirst().type);
         assertEquals(Content.ContentType.IMAGE_REF, result.messages().get(1).content.getFirst().type);
-    }
-
-    private static MediaRef ref(String id) {
-        return MediaRef.file(id, "C:/media/" + id + ".png", "image/png", "png", 2048, id)
-                .displayName("photo-" + id + ".png")
-                .source("attachment");
     }
 }

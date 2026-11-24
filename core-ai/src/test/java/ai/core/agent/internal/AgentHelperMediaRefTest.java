@@ -30,6 +30,22 @@ class AgentHelperMediaRefTest {
     private static final String PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
     private static final SessionMediaKey KEY = new SessionMediaKey("session-1", "user-1");
 
+    private static ExecutionContext context(SessionMediaStore store) {
+        return ExecutionContext.builder()
+                .sessionId(KEY.sessionId())
+                .userId(KEY.userId())
+                .customVariable(SessionMediaStore.CONTEXT_KEY, store)
+                .customVariable(SessionMediaStore.KEY_CONTEXT_KEY, KEY)
+                .build();
+    }
+
+    private static Content imagePart(Message message) {
+        return message.content.stream()
+                .filter(part -> part.type == Content.ContentType.IMAGE_REF || part.type == Content.ContentType.IMAGE_URL)
+                .findFirst()
+                .orElseThrow();
+    }
+
     @TempDir
     Path tempDir;
 
@@ -54,7 +70,7 @@ class AgentHelperMediaRefTest {
     }
 
     @Test
-    void AToolImageBecomesARefToo() {
+    void toolImageBecomesARefToo() {
         var store = new FileSessionMediaStore(tempDir);
         var context = context(store);
         var tool = FunctionCall.of("call-1", "function", "read_file", "{}");
@@ -64,21 +80,5 @@ class AgentHelperMediaRefTest {
 
         assertEquals(Content.ContentType.IMAGE_REF, imagePart(message).type);
         assertEquals(1, store.stats().objects());
-    }
-
-    private static ExecutionContext context(SessionMediaStore store) {
-        return ExecutionContext.builder()
-                .sessionId(KEY.sessionId())
-                .userId(KEY.userId())
-                .customVariable(SessionMediaStore.CONTEXT_KEY, store)
-                .customVariable(SessionMediaStore.KEY_CONTEXT_KEY, KEY)
-                .build();
-    }
-
-    private static Content imagePart(Message message) {
-        return message.content.stream()
-                .filter(part -> part.type == Content.ContentType.IMAGE_REF || part.type == Content.ContentType.IMAGE_URL)
-                .findFirst()
-                .orElseThrow();
     }
 }

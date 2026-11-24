@@ -7,8 +7,6 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -20,54 +18,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * @author core-ai
  */
 class TracePayloadStoreBudgetTest {
-    private final Map<String, TracePayloadBlob> blobs = new ConcurrentHashMap<>();
+    private static String dataUrl(String fill) {
+        // ~1.2 MB of base64 each: one fits the 2 MB detail budget, two do not
+        return "data:image/png;base64," + fill.repeat(1_200_000);
+    }
+
+    private static int occurrences(String value, String needle) {
+        var count = 0;
+        var index = value.indexOf(needle);
+        while (index >= 0) {
+            count++;
+            index = value.indexOf(needle, index + needle.length());
+        }
+        return count;
+    }
+
+    private final InMemoryRepository repository = new InMemoryRepository();
     private final TracePayloadStore store = new TracePayloadStore();
 
     @BeforeEach
     void setUp() {
-        blobs.clear();
-        store.payloadRepository = new TracePayloadRepository() {
-            @Override
-            public boolean store(TracePayloadBlob blob) {
-                blobs.put(blob.id, blob);
-                return true;
-            }
-
-            @Override
-            public List<TracePayloadBlob> findByTrace(String traceId, List<String> blobHashes) {
-                var found = new ArrayList<TracePayloadBlob>();
-                for (var hash : blobHashes) {
-                    var blob = blobs.get(traceId + ":" + hash);
-                    if (blob != null) found.add(blob);
-                }
-                return found;
-            }
-
-            @Override
-            public long deleteByTraceIds(List<String> traceIds) {
-                return 0;
-            }
-        };
+        repository.blobs.clear();
+        repository.failStore = false;
+        store.payloadRepository = repository;
     }
 
     @Test
     void replacesAnImageThatCannotBeStoredWithAPlaceholder() {
-        store.payloadRepository = new TracePayloadRepository() {
-            @Override
-            public boolean store(TracePayloadBlob blob) {
-                return false;
-            }
-
-            @Override
-            public List<TracePayloadBlob> findByTrace(String traceId, List<String> blobHashes) {
-                return List.of();
-            }
-
-            @Override
-            public long deleteByTraceIds(List<String> traceIds) {
-                return 0;
-            }
-        };
+        repository.failStore = true;
         var dataUrl = "data:image/png;base64," + "A".repeat(64);
 
         var compacted = store.newCompactor().compact("trace-1", "{\"url\":\"" + dataUrl + "\"}");
@@ -104,18 +82,32 @@ class TracePayloadStoreBudgetTest {
         assertEquals(1, occurrences(span.input, "coreai-image://"));
     }
 
-    private static String dataUrl(String fill) {
-        // ~1.2 MB of base64 each: one fits the 2 MB detail budget, two do not
-        return "data:image/png;base64," + fill.repeat(1_200_000);
-    }
+    private static final class InMemoryRepository implements TracePayloadRepository {
+        private final List<TracePayloadBlob> blobs = new ArrayList<>();
+        private boolean failStore;
 
-    private static int occurrences(String value, String needle) {
-        var count = 0;
-        var index = value.indexOf(needle);
-        while (index >= 0) {
-            count++;
-            index = value.indexOf(needle, index + needle.length());
+        @Override
+        public boolean store(TracePayloadBlob blob) {
+            if (failStore) return false;
+            blobs.add(blob);
+            return true;
         }
-        return count;
+
+        @Override
+        public List<TracePayloadBlob> findByTrace(String traceId, List<String> blobHashes) {
+            var found = new ArrayList<TracePayloadBlob>();
+            for (var blob : blobs) {
+                if (!blob.traceId.equals(traceId)) continue;
+                for (var hash : blobHashes) {
+                    if (blob.id.equals(traceId + ":" + hash)) found.add(blob);
+                }
+            }
+            return found;
+        }
+
+        @Override
+        public long deleteByTraceIds(List<String> traceIds) {
+            return 0;
+        }
     }
 }

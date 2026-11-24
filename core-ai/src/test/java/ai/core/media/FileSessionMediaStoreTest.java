@@ -30,7 +30,7 @@ class FileSessionMediaStoreTest {
 
         assertEquals(first.id, second.id);
         assertEquals(first.sha256, second.sha256);
-        assertTrue(java.nio.file.Path.of(first.path).startsWith(tempDir.resolve("media").toAbsolutePath()));
+        assertTrue(Path.of(first.path).startsWith(tempDir.resolve("media").toAbsolutePath()));
         assertArrayEquals(bytes, store.read(KEY, first).orElseThrow());
         assertEquals(1, store.stats().objects());
         assertEquals(4, store.stats().bytes());
