@@ -17,6 +17,63 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class TaskRunCoordinatorTest {
     @Test
+    void aSecondRootWaitsAsItsOwnQueuedRunUntilTheFirstRunSettles() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var first = coordinator.openRoot("request-1", "turn-1");
+        coordinator.requestQueued("turn-1");
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+
+        var second = coordinator.openRoot("request-2", "turn-2");
+        assertEquals(TaskRunState.QUEUED, second.state());
+        assertEquals(first.taskRunId(), coordinator.activeSnapshot().taskRunId());
+        assertTrue(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+        assertNull(coordinator.lastEndedSnapshot());
+
+        coordinator.taskLaunched("job-1", 1L);
+        coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+        assertTrue(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+
+        coordinator.taskSettled("job-1", 1L, TaskRunOutcome.RETURNED, false, "completed");
+        assertNull(coordinator.activeSnapshot());
+        assertEquals(TaskRunOutcome.RETURNED, coordinator.lastEndedSnapshot().outcome());
+        assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+
+        var claimed = coordinator.claimQueued(List.of("turn-2"));
+        assertEquals(second.taskRunId(), claimed.taskRunId());
+        assertEquals(TaskRunState.REGISTERED, coordinator.activeSnapshot().state());
+        coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        coordinator.executionEnded("turn-2", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+        assertEquals(TaskRunOutcome.RETURNED, coordinator.lastEndedSnapshot().outcome());
+    }
+
+    @Test
+    void aDiscardedQueuedRunNeverBecomesActive() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var active = coordinator.openRoot("request-1", "turn-1");
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        var queued = coordinator.openRoot("request-2", "turn-2");
+
+        coordinator.discardQueued("turn-2", "steered_into_active_run");
+
+        assertNull(coordinator.snapshotForRun(queued.taskRunId()));
+        assertEquals(active.taskRunId(), coordinator.activeSnapshot().taskRunId());
+    }
+
+    @Test
+    void aNeedsAttentionRunIsFencedWhenANewQueuedRunStarts() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var attention = coordinator.openRoot("request-1", "turn-1");
+        coordinator.markUntrackable("remote_media_not_wired");
+        var queued = coordinator.openRoot("request-2", "turn-2");
+        assertEquals(TaskRunState.QUEUED, queued.state());
+
+        var claimed = coordinator.claimQueued(List.of("turn-2"));
+        assertEquals(queued.taskRunId(), claimed.taskRunId());
+        assertEquals(TaskRunOutcome.INTERRUPTED, coordinator.lastEndedSnapshot().outcome());
+        assertEquals(attention.taskRunId(), coordinator.lastEndedSnapshot().taskRunId());
+    }
+
+    @Test
     void aSingleRootExecutionEndsOnlyWhenTheDriverHasReleasedTheTurn() {
         var pending = new AtomicBoolean(true);
         var coordinator = new TaskRunCoordinator("session-1", "inc-1");
@@ -187,6 +244,18 @@ class TaskRunCoordinatorTest {
         assertNotNull(second.taskRunId());
         assertFalse(first.taskRunId().equals(second.taskRunId()));
         assertNull(second.endedAtMs());
+    }
+
+    @Test
+    void aQueuedRootIsNotDeferredWhileItsOwnRunAwaitsTheDriver() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var run = coordinator.openRoot("request-1", "turn-1");
+        coordinator.requestQueued("turn-1");
+        assertEquals(TaskRunState.AWAITING_ASYNC, coordinator.snapshot().state());
+        assertEquals(run.taskRunId(), coordinator.snapshot().taskRunId());
+
+        assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-1")));
+        assertTrue(coordinator.shouldDeferUserBatch(List.of("turn-2")));
     }
 
     private static final class Recorder implements TaskRunObserver {
