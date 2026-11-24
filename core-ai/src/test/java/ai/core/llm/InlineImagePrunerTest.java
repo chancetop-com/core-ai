@@ -213,6 +213,46 @@ class InlineImagePrunerTest {
     }
 
     @Test
+    void retentionCeilingSplitsTheNewestSetInsteadOfExemptingIt() {
+        var messages = List.of(
+                userMessageWithImages("latest", imagePart(4000), imagePart(4000), imagePart(4000)));
+
+        var result = InlineImagePruner.pruneForRetention(messages, -1, Long.MAX_VALUE, 10_000);
+
+        assertEquals(1, result.prunedCount());
+        assertTrue(inlineChars(result.messages()) <= 10_000);
+        // the two newest images survive, the oldest one in the same message becomes a placeholder
+        assertEquals(Content.ContentType.TEXT, result.messages().getFirst().content.get(1).type);
+        assertTrue(result.messages().getFirst().content.get(1).text.contains("Image omitted"));
+        assertEquals(2, imageCount(result.messages().getFirst()));
+    }
+
+    @Test
+    void retentionCeilingDropsEverythingWhenTheNewestImageAloneIsTooLarge() {
+        var messages = List.of(
+                userMessage("older", imagePart(2000)),
+                userMessage("newest", imagePart(6000)));
+
+        var result = InlineImagePruner.pruneForRetention(messages, -1, Long.MAX_VALUE, 5000);
+
+        assertEquals(2, result.prunedCount());
+        assertTrue(result.messages().stream().noneMatch(this::hasImagePart));
+    }
+
+    @Test
+    void retentionCeilingLeavesASessionThatFitsAlone() {
+        var messages = List.of(
+                userMessage("first", imagePart(4000)),
+                userMessage("second", imagePart(4000)));
+
+        var result = InlineImagePruner.pruneForRetention(messages, InlineImagePruner.DEFAULT_MAX_IMAGES,
+                InlineImagePruner.DEFAULT_MAX_BYTES, 100_000);
+
+        assertEquals(0, result.prunedCount());
+        assertSame(messages, result.messages());
+    }
+
+    @Test
     void newestTurnKeepsAllItsImagesEvenOverTheCountBudget() {
         var messages = List.of(
                 userMessageWithImages("references", imagePart(4000), imagePart(4000)),
@@ -370,5 +410,14 @@ class InlineImagePrunerTest {
 
     private boolean hasImagePart(Message message) {
         return message.content != null && message.content.stream().anyMatch(part -> part.type == Content.ContentType.IMAGE_URL);
+    }
+
+    private long inlineChars(List<Message> messages) {
+        return messages.stream()
+                .filter(message -> message.content != null)
+                .flatMap(message -> message.content.stream())
+                .filter(part -> part.type == Content.ContentType.IMAGE_URL)
+                .mapToLong(part -> part.imageUrl.url.length())
+                .sum();
     }
 }

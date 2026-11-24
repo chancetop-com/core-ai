@@ -286,6 +286,9 @@ public class InProcessAgentSession implements AgentSession {
         threadUnbind.run();
         turnToken.disconnect();
         currentTurnId = null;
+        // the last tool result of a turn may be the biggest image the session holds; drop what the
+        // retention ceiling does not allow before the footprint is refreshed
+        agent.applyRetentionBudget();
         footprint.refresh();
         taskRuns.pendingWorkChanged();
     }

@@ -5,6 +5,7 @@ import ai.core.agent.internal.AgentHelper;
 import ai.core.agent.slashcommand.SlashCommandParser;
 import ai.core.context.Compression;
 import ai.core.llm.LLMProvider;
+import ai.core.llm.InlineImagePruner;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.FunctionCall;
@@ -176,6 +177,7 @@ public class Agent extends Node<Agent> {
                 && (AgentHelper.lastIsToolMsg(getMessages()) || PendingUserInputInjector.hasPending(this))
                 && currentIteCount < maxTurnNumber);
 
+        applyRetentionBudget();
         setOutput(agentOut.toString());
         if (currentIteCount >= maxTurnNumber) {
             logger.warn("agent run out of turns: maxTurnNumber - {}", maxTurnNumber);
@@ -370,6 +372,24 @@ public class Agent extends Node<Agent> {
 
     public AgentFootprint footprint() {
         return AgentFootprintCalculator.calculate(getMessages(), getHistory());
+    }
+
+    /**
+     * Session retention: bounds the inline images the live conversation keeps. A request budget cannot
+     * do this because it treats the newest attachment set as untouchable, while an idle session would
+     * hold that set (and every older one) forever. Runs before each model call and when a turn ends.
+     */
+    public void applyRetentionBudget() {
+        applyRetentionBudget(InlineImagePruner.DEFAULT_RETENTION_MAX_INLINE_CHARS);
+    }
+
+    public void applyRetentionBudget(long maxInlineChars) {
+        var messages = getMessages();
+        var pruned = InlineImagePruner.pruneForRetention(messages, InlineImagePruner.DEFAULT_MAX_IMAGES,
+                InlineImagePruner.DEFAULT_MAX_BYTES, maxInlineChars);
+        if (pruned.prunedCount() == 0) return;
+        messages.clear();
+        messages.addAll(pruned.messages());
     }
 
     /**

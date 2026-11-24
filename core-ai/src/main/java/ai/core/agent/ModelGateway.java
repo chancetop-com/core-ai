@@ -18,6 +18,9 @@ final class ModelGateway {
     private static final int MAX_CONTEXT_RECOVERIES = 2;
 
     static Choice handLLM(Agent agent, List<Message> messages, List<Tool> tools) {
+        // the conversation, not this one request, owns the images: bound them before the request is
+        // built so an idle session cannot keep an unbounded set
+        agent.applyRetentionBudget();
         var effectiveModel = resolveEffectiveModel(agent);
         // Some explicitly configured multimodal main models do not accept reasoning_effort.
         var reasoningEffort = effectiveModel != null && effectiveModel.equals(agent.multiModalModel) ? null : agent.reasoningEffort;

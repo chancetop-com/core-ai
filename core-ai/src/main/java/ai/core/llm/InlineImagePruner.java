@@ -45,6 +45,13 @@ import java.util.Set;
 public final class InlineImagePruner {
     public static final int DEFAULT_MAX_IMAGES = 16;
     public static final long DEFAULT_MAX_BYTES = 12L * 1024 * 1024;
+    /**
+     * Hard ceiling for the data-URI text a session may keep in its working messages. The request
+     * budget protects one call and exempts the live attachment set; a session lives across turns and
+     * idle periods, so it needs a ceiling that even the newest set cannot escape. Measured in the
+     * same characters {@code AgentFootprint.inlineImageBytes} reports.
+     */
+    public static final long DEFAULT_RETENTION_MAX_INLINE_CHARS = 24L * 1024 * 1024;
     /** How many newer user messages still leave the previous attachment set protected. */
     private static final int PROTECTED_RECENT_USER_TURNS = 1;
     private static final List<String> SOURCE_ARGUMENT_KEYS = List.of(
@@ -52,6 +59,23 @@ public final class InlineImagePruner {
 
     public static PruneResult prune(List<Message> messages) {
         return prune(messages, DEFAULT_MAX_IMAGES, DEFAULT_MAX_BYTES);
+    }
+
+    /**
+     * Session retention pass: applies the request budget first, then enforces a hard ceiling on the
+     * data-URI text that survives, newest images first. Unlike one request, a session must not keep an
+     * unbounded newest attachment set, so the hard ceiling overrides every exemption.
+     */
+    public static PruneResult pruneForRetention(List<Message> messages) {
+        return pruneForRetention(messages, DEFAULT_MAX_IMAGES, DEFAULT_MAX_BYTES, DEFAULT_RETENTION_MAX_INLINE_CHARS);
+    }
+
+    public static PruneResult pruneForRetention(List<Message> messages, int maxImages, long maxBytes, long maxInlineChars) {
+        var budget = prune(messages, maxImages, maxBytes);
+        if (maxInlineChars <= 0 || inlineChars(budget.messages()) <= maxInlineChars) return budget;
+        var hard = keepNewestWithinChars(budget.messages(), maxInlineChars);
+        return new PruneResult(hard.messages(), budget.prunedCount() + hard.prunedCount(),
+                budget.prunedBytes() + hard.prunedBytes());
     }
 
     /**
@@ -301,6 +325,39 @@ public final class InlineImagePruner {
         var comma = dataUri.indexOf(',');
         if (comma < 0) return 0;
         return (dataUri.length() - comma - 1L) / 4 * 3;
+    }
+
+    /**
+     * Hard-ceiling pass: keeps the newest inline images that fit the character budget and drops the
+     * rest, ignoring the whole-attachment-set rule it would otherwise split. Runs on the list the
+     * ordinary budget already produced, so it only rewrites what is still inline. The pass stops at the
+     * first image that does not fit instead of walking further back, so a session never resurrects an
+     * older image by dropping a newer one.
+     */
+    private static PruneResult keepNewestWithinChars(List<Message> messages, long maxInlineChars) {
+        var slots = collectInlineImages(messages);
+        if (slots.isEmpty()) return new PruneResult(messages, 0, 0);
+        var kept = new boolean[slots.size()];
+        long chars = 0;
+        for (var i = slots.size() - 1; i >= 0; i--) {
+            var length = slots.get(i).payload().length();
+            if (chars + length > maxInlineChars) break;
+            kept[i] = true;
+            chars += length;
+        }
+        if (allKept(kept)) return new PruneResult(messages, 0, 0);
+        return rewrite(messages, slots, kept);
+    }
+
+    private static long inlineChars(List<Message> messages) {
+        long chars = 0;
+        for (var message : messages) {
+            if (message == null || message.content == null) continue;
+            for (var part : message.content) {
+                if (isInlineImage(part)) chars += part.imageUrl.url.length();
+            }
+        }
+        return chars;
     }
 
     private static boolean allKept(boolean[] kept) {
