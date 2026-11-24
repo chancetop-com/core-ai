@@ -233,9 +233,8 @@ class AgentSessionRunnerCommandHandler {
         if (preview != null && preview.length() > 60) preview = preview.substring(0, 57) + "...";
         int removed = messages.size() - idx;
         var removedMessages = messages.subList(idx, messages.size());
-        var history = agent.getHistory();
         for (var message : removedMessages) {
-            history.remove(message);
+            agent.removeHistory(message);
         }
         removedMessages.clear();
         boolean persisted = TurnPersistence.save(agent, sessionId, LOGGER, "undo");

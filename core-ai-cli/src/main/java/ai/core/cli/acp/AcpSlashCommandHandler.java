@@ -202,9 +202,8 @@ class AcpSlashCommandHandler {
         if (idx < 0) return "Nothing to undo.";
         int removed = msgs.size() - idx;
         var removedMessages = msgs.subList(idx, msgs.size());
-        var history = agent.getHistory();
         for (var message : removedMessages) {
-            history.remove(message);
+            agent.removeHistory(message);
         }
         removedMessages.clear();
         boolean persisted = TurnPersistence.save(agent, session.sessionId(), LOGGER, "undo");

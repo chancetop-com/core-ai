@@ -8,6 +8,7 @@ import ai.core.llm.domain.CaptionImageResponse;
 import ai.core.llm.domain.Choice;
 import ai.core.llm.domain.CompletionRequest;
 import ai.core.llm.domain.CompletionResponse;
+import ai.core.llm.domain.Content;
 import ai.core.llm.domain.EmbeddingRequest;
 import ai.core.llm.domain.EmbeddingResponse;
 import ai.core.llm.domain.FinishReason;
@@ -140,6 +141,22 @@ class AgentPersistenceTest {
 
         agent.addMessage(Message.of(RoleType.USER, "real question"));
         assertTrue(agent.hasUserMessage());
+    }
+
+    @Test
+    void historySnapshotKeepsInlineImagesOutOfTheSnapshot() {
+        var agent = Agent.builder().llmProvider(new SummaryLLMProvider("summary")).build();
+        var image = Content.of(Content.ImageUrl.of("data:image/png;base64," + "A".repeat(4096), "image/png"));
+        agent.addMessage(Message.of(new Message.MessageRecord(RoleType.USER,
+                List.of(Content.of("look"), image), null, null, null, null)));
+
+        var data = persistence.serialization(agent);
+        var domain = JsonUtil.fromJson(AgentPersistence.AgentPersistenceDomain.class, data);
+
+        assertTrue(domain.history.stream().noneMatch(message -> message.content.stream()
+                .anyMatch(part -> part.type == Content.ContentType.IMAGE_URL)));
+        assertFalse(JsonUtil.toJson(domain.history).contains("data:"));
+        assertEquals("look", domain.history.getFirst().getTextContent());
     }
 
     private void addConversation(Agent agent) {

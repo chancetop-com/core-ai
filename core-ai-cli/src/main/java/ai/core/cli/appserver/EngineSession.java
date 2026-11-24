@@ -169,9 +169,8 @@ public class EngineSession {
         }
         int removed = messages.size() - index;
         var removedMessages = messages.subList(index, messages.size());
-        var history = agent.getHistory();
         for (var message : removedMessages) {
-            history.remove(message);
+            agent.removeHistory(message);
         }
         removedMessages.clear();
         boolean persisted = TurnPersistence.save(agent, id, LOGGER, "undo");

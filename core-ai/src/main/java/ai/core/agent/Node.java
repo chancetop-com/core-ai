@@ -165,6 +165,14 @@ public abstract class Node<T extends Node<T>> {
         return nodeMessages.history();
     }
 
+    /**
+     * Drops the history entry that corresponds to a working message (role + text, newest first).
+     * Undo mutates the working list directly, so it cannot rely on history sharing the same object.
+     */
+    public void removeHistory(Message message) {
+        nodeMessages.removeHistory(message);
+    }
+
     public LongQueryHandler getLongQueryHandler() {
         return this.longQueryHandler;
     }
