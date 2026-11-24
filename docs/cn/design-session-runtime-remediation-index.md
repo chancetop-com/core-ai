@@ -101,7 +101,7 @@ Q5 / Trace B0 ── 独立，可并行
 - 2026-11-24：用户授权按提案默认值实施。
   - Design A（A1）已实现并合入（`897522fe6`，2.0.365）：`Content.IMAGE_REF`、`MediaRef`、两端 store、请求边界水合、Server `kind=MEDIA` + media endpoint + TTL/预算。
   - Design B1 已实现并合入（`5c7845662`，2.0.366）：span 不再持有大图、8 MB/trace + 256 KB/span、详情 2 MB hydrate 上限、trace payload endpoint、CLI 上传本地图片。Trace B0 由简单修复轨道先行合入。
-  - Design C1/C2 已实现（C0-1/C0-2 已在简单修复轨道合入）：Old Gen 主信号 + 滞回准入、路由注册表、`_peak`/`_sum_peak` 语义、footprint v2（peaks + media refs）、Dashboard 文案/字段。
+  - Design C1/C2 已实现（C0-1/C0-2 已在简单修复轨道合入，2.0.368）：Old Gen 主信号 + 滞回准入、路由注册表、`_peak`/`_sum_peak` 语义、footprint v2（peaks + media refs）、Dashboard 文案/字段。
 - 剩余：
   1. A2：session close 清理 store、跨 pod 对账、URL 直传。
   2. B2：前端按需加载 trace 图片、payload TTL 对账；`TracePayloadSink` SPI 等到真实消费者再加。
