@@ -17,6 +17,7 @@ public class AgentHealthModule extends Module {
     @Override
     protected void initialize() {
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+            db().view(PgAgentReferenceIssueStore.IdRow.class);
             bind(AgentReferenceIssueStore.class, bind(PgAgentReferenceIssueStore.class));
         } else {
             bind(AgentReferenceIssueStore.class, bind(NoopAgentReferenceIssueStore.class));
