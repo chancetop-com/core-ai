@@ -20,7 +20,6 @@ import ai.core.server.user.UserStore;
 import ai.core.server.messaging.EventPublisher;
 import ai.core.server.messaging.SessionOwnershipRegistry;
 import ai.core.server.messaging.TurnStateRegistry;
-import ai.core.sandbox.Sandbox;
 import ai.core.server.sandbox.SandboxLifecycle;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.skill.MongoSkillProvider;
@@ -174,17 +173,10 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
-        // the sandbox factory reads the session row to resolve its workspace, so register before acquiring
         var registration = new SessionRegistry.SessionRegistration(
                 sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig);
-        sessionRegistry.create(registration);
-        Sandbox sandbox;
-        try {
-            sandbox = sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent);
-        } catch (RuntimeException | Error e) {
-            abortSessionCreation(sessionId);
-            throw e;
-        }
+        var sandbox = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortSessionCreation(sessionId),
+                () -> sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent));
         if (sandbox != null) context.sandbox(sandbox);
         initializeSession(session, registration);
         return sessionId;
@@ -212,17 +204,10 @@ public class AgentSessionManager {
         }
         var sessionId = UUID.randomUUID().toString();
         var datasetConfig = sessionAgentHelper.resolveDatasetConfig(executableDefinition, config, overrides);
-        // the sandbox factory reads the session row to resolve its workspace, so register before building
         var registration = new SessionRegistry.SessionRegistration(
                 sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig);
-        sessionRegistry.create(registration);
-        AgentBuildResult buildResult;
-        try {
-            buildResult = buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig);
-        } catch (RuntimeException | Error e) {
-            abortSessionCreation(sessionId);
-            throw e;
-        }
+        var buildResult = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortSessionCreation(sessionId),
+                () -> buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig));
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
@@ -279,7 +264,7 @@ public class AgentSessionManager {
         boolean claimed;
         try {
             touchActivity(sessionId);
-            claimed = claimOwnership(sessionId);
+            claimed = sessionAgentHelper.claimOwnership(sessionId);
         } catch (RuntimeException | Error e) {
             cleanupRuntime(sessionId);
             throw e;
@@ -295,15 +280,9 @@ public class AgentSessionManager {
             throw e;
         }
     }
-    private boolean claimOwnership(String sessionId) {
-        return sessionAgentHelper.claimOwnership(sessionId);
-    }
-    private void renewSessionOwnership(String sessionId) {
-        sessionAgentHelper.renewSessionOwnership(sessionId);
-    }
     // Called while idle and every few seconds during a turn: the activity touch keeps cleanupIdleSessions from closing a working session.
     void onSessionHeartbeat(String sessionId, InProcessAgentSession session) {
-        renewSessionOwnership(sessionId);
+        sessionAgentHelper.renewSessionOwnership(sessionId);
         if (session.isTurnRunning()) touchActivity(sessionId);
     }
     public InProcessAgentSession getSession(String sessionId) {
