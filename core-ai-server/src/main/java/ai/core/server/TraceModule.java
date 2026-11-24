@@ -96,7 +96,8 @@ public class TraceModule extends Module {
         // GET /api/traces/:traceId.
         http().route(HTTPMethod.POST, "/api/traces/ingest", ingestController::ingestAuthed);
         // On-demand image fetch for detail views whose payload exceeded the hydration budget.
-        http().route(HTTPMethod.GET, "/api/traces/:traceId/payloads/:sha256", bind(TracePayloadController.class));
+        // core-ng path variables must be letters only, hence ":hash" rather than ":sha256".
+        http().route(HTTPMethod.GET, "/api/traces/:traceId/payloads/:hash", bind(TracePayloadController.class));
     }
 
     /**

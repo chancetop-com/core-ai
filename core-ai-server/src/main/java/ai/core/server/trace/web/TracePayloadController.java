@@ -42,7 +42,7 @@ public class TracePayloadController implements Controller {
         if (trace == null || !traceAccessControl.canRead(trace, userId, traceVisibilityResolver.resolve(userId))) {
             throw new NotFoundException("trace not found");
         }
-        var payload = traceService.payload(traceId, request.pathParam("sha256"));
+        var payload = traceService.payload(traceId, request.pathParam("hash"));
         if (payload == null) throw new NotFoundException("payload not found");
         var contentType = payload.contentType() == null ? null : ContentType.parse(payload.contentType());
         return Response.bytes(payload.bytes())
