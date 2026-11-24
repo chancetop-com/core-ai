@@ -16,6 +16,10 @@ public class ReportSpec {
     public Integer specVersion;
     @Property(name = "source")
     public Source source;
+    @Property(name = "parameters")
+    public List<Parameter> parameters;
+    @Property(name = "components")
+    public List<Component> components;
     @Property(name = "query")
     public Query query;
     @Property(name = "display")
@@ -26,6 +30,28 @@ public class ReportSpec {
     public static class Source {
         @Property(name = "dataset_id")
         public String datasetId;
+    }
+
+    public static class Parameter {
+        @Property(name = "name")
+        public String name;
+        @Property(name = "type")
+        public String type;
+        @Property(name = "multiple")
+        public Boolean multiple;
+        @Property(name = "default")
+        public Object defaultValue;
+    }
+
+    public static class Component {
+        @Property(name = "id")
+        public String id;
+        @Property(name = "title")
+        public String title;
+        @Property(name = "query")
+        public Query query;
+        @Property(name = "display")
+        public Display display;
     }
 
     public static class Query {
@@ -60,6 +86,8 @@ public class ReportSpec {
         public String from;
         @Property(name = "to")
         public String to;
+        @Property(name = "param")
+        public String param;
     }
 
     public static class Filter {
@@ -69,6 +97,8 @@ public class ReportSpec {
         public String op;
         @Property(name = "value")
         public Object value;
+        @Property(name = "param")
+        public String param;
     }
 
     public static class Measure {

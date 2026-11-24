@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Pin, PinOff, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
@@ -12,6 +12,50 @@ const RANGES = [
   { label: '90 days', days: 90 },
 ];
 
+interface SpecParameter {
+  name: string;
+  type?: string;
+  multiple?: boolean;
+  default?: unknown;
+}
+
+interface SpecView {
+  parameters?: SpecParameter[];
+}
+
+function parseSpec(specJson?: string | null): SpecView {
+  try {
+    return specJson ? JSON.parse(specJson) as SpecView : {};
+  } catch {
+    return {};
+  }
+}
+
+function formatDefault(parameter: SpecParameter): string {
+  const value = parameter.default;
+  if (value === undefined || value === null) return '';
+  if (Array.isArray(value)) return value.map(item => String(item)).join(', ');
+  return String(value);
+}
+
+function buildBindings(spec: SpecView, inputs: Record<string, string>): Record<string, unknown> {
+  const bindings: Record<string, unknown> = {};
+  for (const parameter of spec.parameters ?? []) {
+    if (parameter.type === 'DATE_RANGE') continue;
+    const raw = inputs[parameter.name];
+    if (raw === undefined) continue;
+    if (parameter.multiple) {
+      bindings[parameter.name] = raw.split(',').map(value => value.trim()).filter(Boolean);
+    } else if (parameter.type === 'NUMBER') {
+      const number = Number(raw);
+      if (Number.isFinite(number)) bindings[parameter.name] = number;
+    } else {
+      bindings[parameter.name] = raw;
+    }
+  }
+  return bindings;
+}
+
 export default function ReportDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -22,19 +66,25 @@ export default function ReportDetail() {
   const [loading, setLoading] = useState(true);
   const [dataLoading, setDataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const specRef = useRef<SpecView>({});
+  const parameterInputs = useRef<Record<string, string>>({});
+  const loadedReportId = useRef<string | null>(null);
 
   const reportId = id ?? '';
+  const parameterList = useMemo(() => specRef.current.parameters ?? [], [report?.spec_json]);
 
   const loadLayout = useCallback(async () => {
-    const layout = await api.reports.pins.layout();
-    return layout;
+    return api.reports.pins.layout();
   }, []);
 
   const loadData = useCallback(async (refresh = false) => {
     if (!reportId) return;
     setDataLoading(true);
     try {
+      const bindings = buildBindings(specRef.current, parameterInputs.current);
+      const parameters_json = Object.keys(bindings).length ? JSON.stringify(bindings) : undefined;
       setData(await api.reports.data(reportId, {
+        parameters_json,
         range_kind: 'LAST_N_COMPLETE_DAYS',
         days,
         refresh,
@@ -53,6 +103,16 @@ export default function ReportDetail() {
     try {
       const [view] = await Promise.all([api.reports.get(reportId), loadLayout()]);
       setReport(view);
+      const spec = parseSpec(view.spec_json);
+      specRef.current = spec;
+      if (loadedReportId.current !== view.id) {
+        const inputs: Record<string, string> = {};
+        for (const parameter of spec.parameters ?? []) {
+          if (parameter.type !== 'DATE_RANGE') inputs[parameter.name] = formatDefault(parameter);
+        }
+        parameterInputs.current = inputs;
+        loadedReportId.current = view.id;
+      }
       await loadData();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load report');
@@ -67,7 +127,7 @@ export default function ReportDetail() {
     if (!report) return;
     try {
       const layout = await api.reports.pins.layout();
-        await api.reports.pins.pin({
+      await api.reports.pins.pin({
         report_id: report.id,
         width: 'HALF',
         expected_layout_revision: layout.layout_revision ?? 0,
@@ -160,7 +220,7 @@ export default function ReportDetail() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex flex-wrap items-end gap-3 mb-4">
             {RANGES.map(range => (
               <button key={range.days} onClick={() => setDays(range.days)}
                 className="px-3 py-1.5 rounded-full text-xs cursor-pointer"
@@ -172,6 +232,24 @@ export default function ReportDetail() {
                 Last {range.label}
               </button>
             ))}
+            {parameterList.filter(parameter => parameter.type !== 'DATE_RANGE').map(parameter => (
+              <label key={parameter.name} className="flex flex-col gap-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                <span>{parameter.name}{parameter.multiple ? ' (comma separated)' : ''}</span>
+                <input
+                  defaultValue={parameterInputs.current[parameter.name] ?? ''}
+                  onChange={event => { parameterInputs.current[parameter.name] = event.target.value; }}
+                  className="px-3 py-1.5 rounded-lg text-sm"
+                  style={{ border: '1px solid var(--color-border)', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
+                />
+              </label>
+            ))}
+            {parameterList.some(parameter => parameter.type !== 'DATE_RANGE') && (
+              <button onClick={() => loadData()} disabled={dataLoading}
+                className="px-3 py-1.5 rounded-full text-xs cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
+                Apply
+              </button>
+            )}
             <button onClick={() => loadData(true)} disabled={dataLoading}
               className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs cursor-pointer disabled:opacity-50"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
@@ -179,13 +257,23 @@ export default function ReportDetail() {
             </button>
           </div>
 
-          <div className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
-            {dataLoading ? (
-              <div className="h-64 flex items-center justify-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>Loading…</div>
-            ) : (
-              <ReportRenderer data={data} displayType={report.display_type} />
-            )}
-          </div>
+          {dataLoading ? (
+            <div className="rounded-xl border p-4 h-64 flex items-center justify-center text-sm" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+              Loading…
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {(data?.components?.length
+                ? data.components
+                : data ? [{ id: 'main', title: null, display_type: report.display_type, ...data }] : []
+              ).map(component => (
+                <div key={component.id} className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)' }}>
+                  {component.title && <div className="text-sm font-medium mb-2">{component.title}</div>}
+                  <ReportRenderer data={component} displayType={component.display_type} />
+                </div>
+              ))}
+            </div>
+          )}
 
           {data && (
             <div className="flex flex-wrap gap-3 mt-3 text-xs" style={{ color: 'var(--color-text-secondary)' }}>

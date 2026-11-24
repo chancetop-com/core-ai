@@ -6,6 +6,9 @@ import core.framework.api.web.service.QueryParam;
  * @author core-ai
  */
 public class ReportDataRequest {
+    @QueryParam(name = "parameters_json")
+    public String parametersJson;
+
     @QueryParam(name = "range_kind")
     public String rangeKind;
 

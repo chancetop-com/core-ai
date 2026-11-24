@@ -2,6 +2,8 @@ package ai.core.api.server.report;
 
 import core.framework.api.json.Property;
 
+import java.util.List;
+
 /**
  * @author core-ai
  */
@@ -14,6 +16,9 @@ public class ReportDataView {
 
     @Property(name = "spec_version")
     public Integer specVersion;
+
+    @Property(name = "components")
+    public List<ReportComponentDataView> components;
 
     @Property(name = "status")
     public String status;

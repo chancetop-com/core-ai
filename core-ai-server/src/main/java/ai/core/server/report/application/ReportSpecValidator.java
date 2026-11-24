@@ -10,13 +10,12 @@ import ai.core.utils.JsonUtil;
 import core.framework.api.http.HTTPStatus;
 
 import java.nio.charset.StandardCharsets;
-import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -36,6 +35,7 @@ public class ReportSpecValidator {
     public static final int MAX_QUERY_DAYS = 366;
     private static final Set<String> FILTER_OPS = Set.of(ReportConstants.FILTER_OP_EQ, ReportConstants.FILTER_OP_NE, ReportConstants.FILTER_OP_GT, ReportConstants.FILTER_OP_GTE,
             ReportConstants.FILTER_OP_LT, ReportConstants.FILTER_OP_LTE, ReportConstants.FILTER_OP_IN);
+    private static final ReportSpecStructureValidator STRUCTURE = ReportSpecStructureValidator.get();
 
     public ValidatedSpec validate(String title, String description, String specJson, Dataset dataset) {
         var issues = new ArrayList<Issue>();
@@ -64,29 +64,39 @@ public class ReportSpecValidator {
         if (spec.source == null || spec.source.datasetId == null || !spec.source.datasetId.equals(dataset.id)) {
             issues.add(new Issue("SOURCE_MISMATCH", "/source/dataset_id", dataset.id, "source 必须是当前 Dataset"));
         }
-        if (spec.query == null) {
-            issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query"));
-        } else {
-            validateQuery(spec.query, dataset, issues);
+        var parameters = STRUCTURE.parameters(spec, issues);
+        var components = STRUCTURE.components(spec, issues);
+        for (var component : components) {
+            if (component.query == null) {
+                issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query"));
+                continue;
+            }
+            if (component.display == null) {
+                issues.add(new Issue("DISPLAY_REQUIRED", "/display", "object", "补充 display"));
+                continue;
+            }
+            validateQuery(component.query, dataset, parameters, issues);
+            STRUCTURE.validateDisplay(component.query, component.display, issues);
         }
-        if (spec.display == null) {
-            issues.add(new Issue("DISPLAY_REQUIRED", "/display", "object", "补充 display"));
+        if (components.isEmpty() && spec.query == null) {
+            issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query 或 components"));
         }
-        if (spec.query != null && spec.display != null) {
-            validateDisplay(spec.query, spec.display, issues);
-        }
-        if (spec.freshness != null && spec.freshness.expectedIntervalHours != null
-                && (spec.freshness.expectedIntervalHours <= 0 || spec.freshness.expectedIntervalHours > 24 * 366)) {
-            issues.add(new Issue("INVALID_FRESHNESS_INTERVAL", "/freshness/expected_interval_hours", "1..8784", "给出合理的采集间隔"));
-        }
+        validateFreshness(spec, issues);
         if (!issues.isEmpty()) throw new ReportValidationException(issues);
 
-        var referenced = referencedFields(spec);
+        var referenced = referencedFields(components);
         var dependency = ReportDependency.of(dataset, referenced);
         return new ValidatedSpec(spec, JsonUtil.toJson(spec), dependency, referenced);
     }
 
-    private void validateQuery(ReportSpec.Query query, Dataset dataset, List<Issue> issues) {
+    private void validateFreshness(ReportSpec spec, List<Issue> issues) {
+        if (spec.freshness != null && spec.freshness.expectedIntervalHours != null
+                && (spec.freshness.expectedIntervalHours <= 0 || spec.freshness.expectedIntervalHours > 24 * 366)) {
+            issues.add(new Issue("INVALID_FRESHNESS_INTERVAL", "/freshness/expected_interval_hours", "1..8784", "给出合理的采集间隔"));
+        }
+    }
+
+    private void validateQuery(ReportSpec.Query query, Dataset dataset, Map<String, ReportSpec.Parameter> parameters, List<Issue> issues) {
         if (query.mode == null || !Set.of(ReportConstants.MODE_AGGREGATE, ReportConstants.MODE_RECORDS).contains(query.mode)) {
             issues.add(new Issue("INVALID_QUERY_MODE", "/query/mode", "AGGREGATE|RECORDS", "选择查询模式"));
         }
@@ -95,9 +105,9 @@ public class ReportSpecValidator {
         if (query.timeRange == null) {
             issues.add(new Issue("TIME_RANGE_REQUIRED", "/query/time_range", "object", "补充时间范围"));
         } else {
-            validateTimeRange(query.timeRange, issues);
+            STRUCTURE.validateTimeRange(query.timeRange, parameters, issues);
         }
-        validateTimezone(query.timezone, issues);
+        STRUCTURE.validateTimezone(query.timezone, issues);
         if (query.bucket != null && !Set.of(ReportConstants.BUCKET_NONE, ReportConstants.BUCKET_HOUR, ReportConstants.BUCKET_DAY,
                 ReportConstants.BUCKET_WEEK, ReportConstants.BUCKET_MONTH).contains(query.bucket)) {
             issues.add(new Issue("INVALID_BUCKET", "/query/bucket", "NONE|HOUR|DAY|WEEK|MONTH", "选择允许的粒度"));
@@ -112,7 +122,7 @@ public class ReportSpecValidator {
                 query.categoryField = field;
             }
         }
-        validateFilters(query, schema, issues);
+        validateFilters(query, schema, parameters, issues);
         if (ReportConstants.MODE_RECORDS.equals(query.mode)) {
             validateRecordFields(query, schema, issues);
         } else {
@@ -120,7 +130,7 @@ public class ReportSpecValidator {
         }
     }
 
-    private SchemaFieldType validateTimeField(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
+    private SchemaFieldType validateTimeField(ReportSpec.Query query, Map<String, SchemaFieldType> schema, List<Issue> issues) {
         var field = query.timeField;
         if (ReportConstants.TIME_FIELD_RUN_STARTED_AT.equals(field) || ReportConstants.TIME_FIELD_CREATED_AT.equals(field)) {
             return SchemaFieldType.DATETIME;
@@ -136,19 +146,8 @@ public class ReportSpecValidator {
         return type;
     }
 
-    private void validateTimezone(String timezone, List<Issue> issues) {
-        if (timezone == null || timezone.isBlank()) {
-            issues.add(new Issue("TIMEZONE_REQUIRED", "/query/timezone", "IANA zone", "指定报表时区"));
-            return;
-        }
-        try {
-            ZoneId.of(timezone);
-        } catch (RuntimeException e) {
-            issues.add(new Issue("INVALID_TIMEZONE", "/query/timezone", "IANA zone", "检查时区"));
-        }
-    }
-
-    private void validateFilters(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
+    private void validateFilters(ReportSpec.Query query, Map<String, SchemaFieldType> schema,
+                                 Map<String, ReportSpec.Parameter> parameters, List<Issue> issues) {
         if (query.filters == null) return;
         if (query.filters.size() > MAX_FILTERS) issues.add(new Issue("TOO_MANY_FILTERS", "/query/filters", "<= " + MAX_FILTERS, "减少过滤条件"));
         for (int i = 0; i < query.filters.size(); i++) {
@@ -171,7 +170,11 @@ public class ReportSpecValidator {
                 continue;
             }
             filter.op = op;
-            validateFilterValue(filter, schema.get(field), op, path, issues);
+            if (filter.param != null && !filter.param.isBlank()) {
+                STRUCTURE.validateFilterParameter(filter, schema.get(field), parameters, issues);
+            } else {
+                validateFilterValue(filter, schema.get(field), op, path, issues);
+            }
         }
     }
 
@@ -214,7 +217,7 @@ public class ReportSpecValidator {
         filter.value = ReportSpecFields.normalizeValue(type, filter.value);
     }
 
-    private void validateRecordFields(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
+    private void validateRecordFields(ReportSpec.Query query, Map<String, SchemaFieldType> schema, List<Issue> issues) {
         if (query.measures != null && !query.measures.isEmpty()) issues.add(new Issue("RECORDS_WITH_MEASURES", "/query/measures", "empty for RECORDS", "RECORDS 模式不要提交 measures"));
         if (query.derivedMeasures != null && !query.derivedMeasures.isEmpty()) issues.add(new Issue("RECORDS_WITH_DERIVED", "/query/derived_measures", "empty for RECORDS", "RECORDS 模式不要提交 derived_measures"));
         if (query.recordFields == null || query.recordFields.isEmpty()) {
@@ -237,7 +240,7 @@ public class ReportSpecValidator {
         query.recordFields = normalized;
     }
 
-    private void validateMeasures(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema, List<Issue> issues) {
+    private void validateMeasures(ReportSpec.Query query, Map<String, SchemaFieldType> schema, List<Issue> issues) {
         var ids = new HashSet<String>();
         int measureCount = query.measures != null ? query.measures.size() : 0;
         int derivedCount = query.derivedMeasures != null ? query.derivedMeasures.size() : 0;
@@ -249,7 +252,7 @@ public class ReportSpecValidator {
         validateDerivedMeasures(query, ids, issues);
     }
 
-    private void validateBaseMeasures(ReportSpec.Query query, java.util.Map<String, SchemaFieldType> schema,
+    private void validateBaseMeasures(ReportSpec.Query query, Map<String, SchemaFieldType> schema,
                                       Set<String> ids, List<Issue> issues) {
         if (query.measures == null) return;
         for (int i = 0; i < query.measures.size(); i++) {
@@ -303,103 +306,37 @@ public class ReportSpecValidator {
         }
     }
 
-    private void validateDisplay(ReportSpec.Query query, ReportSpec.Display display, List<Issue> issues) {
-        var type = display.type;
-        if (!Set.of(ReportConstants.DISPLAY_METRIC, ReportConstants.DISPLAY_LINE, ReportConstants.DISPLAY_BAR,
-                ReportConstants.DISPLAY_TABLE).contains(type)) {
-            issues.add(new Issue("INVALID_DISPLAY_TYPE", "/display/type", "METRIC|LINE|BAR|TABLE", "选择展示类型"));
-            return;
-        }
-        boolean hasBucket = query.bucket != null && !ReportConstants.BUCKET_NONE.equals(query.bucket);
-        boolean hasCategory = query.categoryField != null && !query.categoryField.isBlank();
-        if (ReportConstants.DISPLAY_METRIC.equals(type)) {
-            if (hasBucket || hasCategory) issues.add(new Issue("METRIC_SINGLE_VALUE", "/display/type", "bucket/category NONE", "METRIC 只能单值"));
-            int measures = (query.measures != null ? query.measures.size() : 0) + (query.derivedMeasures != null ? query.derivedMeasures.size() : 0);
-            if (measures != 1) issues.add(new Issue("METRIC_ONE_MEASURE", "/display/series", "exactly one measure", "METRIC 只展示一个指标"));
-        } else if (ReportConstants.DISPLAY_LINE.equals(type) || ReportConstants.DISPLAY_BAR.equals(type)) {
-            if (!hasBucket && !hasCategory) issues.add(new Issue("CHART_AXIS_REQUIRED", "/display/type", "bucket or category", "图表需要 x 轴"));
-            if (hasBucket && hasCategory) issues.add(new Issue("CHART_AXIS_AMBIGUOUS", "/display/type", "bucket XOR category", "首版不同时使用 bucket 和 category"));
-        } else if (ReportConstants.DISPLAY_TABLE.equals(type) && ReportConstants.MODE_RECORDS.equals(query.mode)) {
-            return;
-        }
-        if (display.series != null) {
-            var ids = new HashSet<>(baseMeasureIds(query));
-            addDerivedIds(query, ids);
-            if (display.series.size() > MAX_SERIES) issues.add(new Issue("TOO_MANY_SERIES", "/display/series", "<= " + MAX_SERIES, "减少 series"));
-            for (int i = 0; i < display.series.size(); i++) {
-                var series = display.series.get(i);
-                if (series == null || series.field == null || !ids.contains(series.field)) {
-                    issues.add(new Issue("UNKNOWN_SERIES_FIELD", "/display/series/" + i + "/field", "measure id", "引用已声明的 measure"));
-                }
-                if (series != null && series.format != null && !Set.of(ReportConstants.FORMAT_NUMBER, ReportConstants.FORMAT_PERCENT,
-                        ReportConstants.FORMAT_CURRENCY).contains(series.format)) {
-                    issues.add(new Issue("INVALID_FORMAT", "/display/series/" + i + "/format", "NUMBER|PERCENT|CURRENCY", "选择格式"));
-                }
-            }
-        }
-        if (display.precision != null && (display.precision < 0 || display.precision > 6)) {
-            issues.add(new Issue("INVALID_PRECISION", "/display/precision", "0..6", "调整精度"));
-        }
-    }
-
-    private void validateTimeRange(ReportSpec.TimeRange range, List<Issue> issues) {
-        if (!Set.of(ReportConstants.RANGE_TODAY, ReportConstants.RANGE_YESTERDAY, ReportConstants.RANGE_LAST_N_COMPLETE_DAYS,
-                ReportConstants.RANGE_ROLLING_DAYS, ReportConstants.RANGE_FIXED).contains(range.kind)) {
-            issues.add(new Issue("INVALID_TIME_RANGE", "/query/time_range/kind", "TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|ROLLING_DAYS|FIXED", "选择时间范围"));
-            return;
-        }
-        if ((ReportConstants.RANGE_LAST_N_COMPLETE_DAYS.equals(range.kind) || ReportConstants.RANGE_ROLLING_DAYS.equals(range.kind))
-                && (range.days == null || range.days < 1 || range.days > MAX_QUERY_DAYS)) {
-            issues.add(new Issue("INVALID_TIME_RANGE_DAYS", "/query/time_range/days", "1.." + MAX_QUERY_DAYS, "调整天数"));
-        }
-        if (ReportConstants.RANGE_FIXED.equals(range.kind)) {
-            if (range.from == null || range.to == null) {
-                issues.add(new Issue("FIXED_RANGE_REQUIRED", "/query/time_range", "from/to", "固定窗口需要 from/to"));
-            } else {
-                try {
-                    java.time.Instant.parse(range.from);
-                    java.time.Instant.parse(range.to);
-                } catch (DateTimeParseException e) {
-                    issues.add(new Issue("INVALID_FIXED_RANGE", "/query/time_range", "ISO instant", "使用 UTC instant"));
-                }
-            }
-        }
-    }
-
-    private Set<String> referencedFields(ReportSpec spec) {
+    private Set<String> referencedFields(List<ReportSpec.Component> components) {
         var fields = new LinkedHashSet<String>();
-        var timeField = ReportSpecFields.dataField(spec.query.timeField);
-        if (timeField != null) fields.add(timeField);
-        if (spec.query.categoryField != null) {
-            var field = ReportSpecFields.recordField(spec.query.categoryField);
-            if (field != null) fields.add(field);
-        }
-        if (spec.query.filters != null) {
-            for (var filter : spec.query.filters) {
-                var field = filter != null ? ReportSpecFields.recordField(filter.field) : null;
+        for (var component : components) {
+            if (component == null || component.query == null) continue;
+            var query = component.query;
+            var timeField = ReportSpecFields.dataField(query.timeField);
+            if (timeField != null) fields.add(timeField);
+            if (query.categoryField != null) {
+                var field = ReportSpecFields.recordField(query.categoryField);
                 if (field != null) fields.add(field);
             }
-        }
-        if (spec.query.recordFields != null) {
-            for (var raw : spec.query.recordFields) {
-                var field = ReportSpecFields.recordField(raw);
-                if (field != null) fields.add(field);
+            if (query.filters != null) {
+                for (var filter : query.filters) {
+                    var field = filter != null ? ReportSpecFields.recordField(filter.field) : null;
+                    if (field != null) fields.add(field);
+                }
             }
-        }
-        if (spec.query.measures != null) {
-            for (var measure : spec.query.measures) {
-                var field = ReportSpecFields.dataField(measure != null ? measure.field : null);
-                if (field != null) fields.add(field);
+            if (query.recordFields != null) {
+                for (var raw : query.recordFields) {
+                    var field = ReportSpecFields.recordField(raw);
+                    if (field != null) fields.add(field);
+                }
+            }
+            if (query.measures != null) {
+                for (var measure : query.measures) {
+                    var field = ReportSpecFields.dataField(measure != null ? measure.field : null);
+                    if (field != null) fields.add(field);
+                }
             }
         }
         return fields;
-    }
-
-    private void addDerivedIds(ReportSpec.Query query, Set<String> ids) {
-        if (query.derivedMeasures == null) return;
-        for (var derived : query.derivedMeasures) {
-            if (derived != null && derived.id != null) ids.add(derived.id);
-        }
     }
 
     private Set<String> baseMeasureIds(ReportSpec.Query query) {
@@ -408,7 +345,7 @@ public class ReportSpecValidator {
         return ids;
     }
 
-    private java.util.Map<String, SchemaFieldType> schema(Dataset dataset) {
+    private Map<String, SchemaFieldType> schema(Dataset dataset) {
         var schema = new java.util.LinkedHashMap<String, SchemaFieldType>();
         if (dataset.schema != null) {
             for (SchemaField field : dataset.schema) {
@@ -431,7 +368,7 @@ public class ReportSpecValidator {
         public ReportValidationException(List<Issue> issues) {
             super("REPORT_INVALID_SPEC", HTTPStatus.BAD_REQUEST,
                     issues.isEmpty() ? "invalid report spec" : issues.getFirst().code() + " at " + issues.getFirst().path(),
-                    JsonUtil.toJson(java.util.Map.of("issues", issues)));
+                    JsonUtil.toJson(Map.of("issues", issues)));
             this.issues = List.copyOf(issues);
         }
 
@@ -447,4 +384,5 @@ public class ReportSpecValidator {
         }
     }
 }
+
 

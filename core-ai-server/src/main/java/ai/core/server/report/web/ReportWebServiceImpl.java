@@ -13,6 +13,7 @@ import ai.core.server.report.application.ReportService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 import core.framework.web.exception.BadRequestException;
@@ -59,7 +60,14 @@ public class ReportWebServiceImpl implements ReportWebService {
                 : null;
         int pageSize = request != null && request.pageSize != null ? request.pageSize : 100;
         int offset = request != null && request.offset != null ? request.offset : 0;
-        return ReportViewMapper.data(reportService.data(userId, id, override, pageSize, offset));
+        java.util.Map<String, Object> parameters;
+        try {
+            parameters = request != null && request.parametersJson != null && !request.parametersJson.isBlank()
+                    ? JsonUtil.toMap(request.parametersJson) : java.util.Map.of();
+        } catch (RuntimeException e) {
+            throw new BadRequestException("invalid parameters_json", "BAD_REQUEST", e);
+        }
+        return ReportViewMapper.bundle(reportService.dataBundle(userId, id, override, parameters, pageSize, offset));
     }
 
     @Override

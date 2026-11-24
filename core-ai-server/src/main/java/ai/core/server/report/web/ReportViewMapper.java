@@ -1,11 +1,14 @@
 package ai.core.server.report.web;
 
+import ai.core.api.server.report.ReportComponentDataView;
 import ai.core.api.server.report.ReportDataView;
 import ai.core.api.server.report.ReportPinView;
 import ai.core.api.server.report.ReportView;
 import ai.core.server.report.application.HomeReportService;
+import ai.core.server.report.application.ReportService;
 import ai.core.server.report.domain.HomeReportPin;
 import ai.core.server.report.domain.ReportData;
+import ai.core.server.report.domain.ReportDataBundle;
 import ai.core.server.report.domain.ReportDefinition;
 import ai.core.server.report.domain.ReportSummary;
 import ai.core.utils.JsonUtil;
@@ -18,6 +21,31 @@ import java.time.ZonedDateTime;
 public final class ReportViewMapper {
     public static ReportDataView data(ReportData data) {
         var view = new ReportDataView();
+        fill(view, data);
+        return view;
+    }
+
+    public static ReportDataView bundle(ReportDataBundle bundle) {
+        var view = new ReportDataView();
+        view.reportId = bundle.reportId;
+        view.reportRevision = bundle.reportRevision;
+        view.specVersion = bundle.specVersion;
+        if (!bundle.components.isEmpty()) fill(view, bundle.components.get(0).data);
+        view.components = bundle.components.stream().map(ReportViewMapper::component).toList();
+        return view;
+    }
+
+    private static ReportComponentDataView component(ReportDataBundle.Component component) {
+        var view = new ReportComponentDataView();
+        view.id = component.id;
+        view.title = component.title;
+        view.displayType = component.displayType;
+        fill(view, component.data);
+        return view;
+    }
+
+    private static void fill(ReportDataView view, ReportData data) {
+        if (data == null) return;
         view.reportId = data.reportId;
         view.reportRevision = data.reportRevision;
         view.specVersion = data.specVersion;
@@ -34,7 +62,23 @@ public final class ReportViewMapper {
         view.evaluatedAt = data.evaluatedAt;
         view.freshnessStatus = data.freshnessStatus;
         view.hasMore = data.hasMore;
-        return view;
+    }
+
+    private static void fill(ReportComponentDataView view, ReportData data) {
+        if (data == null) return;
+        view.status = data.status;
+        view.fromInclusive = data.fromInclusive;
+        view.toExclusive = data.toExclusive;
+        view.timezone = data.timezone;
+        view.columnsJson = JsonUtil.toJson(data.columns);
+        view.rowsJson = JsonUtil.toJson(data.rows);
+        view.matchedRecordCount = data.matchedRecordCount;
+        view.invalidValueCount = data.invalidValueCount;
+        view.sourceTime = data.sourceTime;
+        view.sourceUpdatedAt = data.sourceUpdatedAt;
+        view.evaluatedAt = data.evaluatedAt;
+        view.freshnessStatus = data.freshnessStatus;
+        view.hasMore = data.hasMore;
     }
 
     public static ReportView report(ReportDefinition report, String datasetName, HomeReportPin pin) {
@@ -47,7 +91,7 @@ public final class ReportViewMapper {
         view.engineVersion = report.engineVersion;
         view.datasetId = report.datasetId;
         view.datasetName = datasetName;
-        view.displayType = report.spec != null && report.spec.display != null ? report.spec.display.type : null;
+        view.displayType = ReportService.displayType(report.spec);
         view.specJson = report.specJson;
         view.pinId = pin != null ? pin.id : null;
         view.pinWidth = pin != null ? pin.width : null;

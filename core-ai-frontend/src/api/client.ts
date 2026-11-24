@@ -2930,10 +2930,12 @@ export const api = {
     get: (id: string) =>
       request<ReportView>(`/api/reports/${encodeURIComponent(id)}`),
     data: (id: string, params?: {
+      parameters_json?: string;
       range_kind?: string; days?: number; from?: string; to?: string;
       page_size?: number; offset?: number; refresh?: boolean;
     }) => {
       const qs = new URLSearchParams();
+      if (params?.parameters_json) qs.set('parameters_json', params.parameters_json);
       if (params?.range_kind) qs.set('range_kind', params.range_kind);
       if (params?.days !== undefined) qs.set('days', String(params.days));
       if (params?.from) qs.set('from', params.from);
@@ -3301,6 +3303,26 @@ export interface ReportDataView {
   report_id?: string | null;
   report_revision?: number | null;
   spec_version?: number | null;
+  components?: ReportComponentDataView[] | null;
+  status: string;
+  from_inclusive?: string | null;
+  to_exclusive?: string | null;
+  timezone?: string | null;
+  columns_json: string;
+  rows_json: string;
+  matched_record_count?: number | null;
+  invalid_value_count?: number | null;
+  source_time?: string | null;
+  source_updated_at?: string | null;
+  evaluated_at?: string | null;
+  freshness_status?: string | null;
+  has_more?: boolean | null;
+}
+
+export interface ReportComponentDataView {
+  id: string;
+  title?: string | null;
+  display_type?: string | null;
   status: string;
   from_inclusive?: string | null;
   to_exclusive?: string | null;

@@ -37,9 +37,6 @@ public class HomeReportService {
     ReportService reportService;
 
     @Inject
-    ReportQueryService queryService;
-
-    @Inject
     ReportAccessPolicy accessPolicy;
 
     @Inject
@@ -185,8 +182,7 @@ public class HomeReportService {
                     item.errorCode = "SOURCE_ACCESS_DENIED";
                     item.errorMessage = "dataset is not accessible";
                 } else {
-                    item.data = queryService.query(new ReportQueryService.QueryRequest(report.id, report.revision, report.specVersion,
-                            report.spec, dataset, ZonedDateTime.now(), override, pageSize, offset));
+                    item.data = reportService.firstComponentData(report, dataset, override, java.util.Map.of(), pageSize, offset);
                 }
             } catch (ReportException e) {
                 item.errorCode = e.errorCode();

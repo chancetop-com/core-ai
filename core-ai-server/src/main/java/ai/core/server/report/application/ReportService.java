@@ -7,6 +7,7 @@ import ai.core.server.report.domain.HomeReportPin;
 import ai.core.server.report.domain.ReportAuditEntry;
 import ai.core.server.report.domain.ReportConstants;
 import ai.core.server.report.domain.ReportData;
+import ai.core.server.report.domain.ReportDataBundle;
 import ai.core.server.report.domain.ReportDefinition;
 import ai.core.server.report.domain.ReportSpec;
 import ai.core.server.report.domain.ReportSummary;
@@ -22,6 +23,7 @@ import core.framework.inject.Inject;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -31,6 +33,16 @@ import java.util.UUID;
  */
 public class ReportService {
     public static final int MAX_REPORTS_PER_USER = 100;
+
+    public static String displayType(ReportSpec spec) {
+        if (spec == null) return null;
+        if (spec.components != null && !spec.components.isEmpty()) {
+            if (spec.components.size() > 1) return "DASHBOARD";
+            var display = spec.components.get(0) != null ? spec.components.get(0).display : null;
+            return display != null ? display.type : null;
+        }
+        return spec.display != null ? spec.display.type : null;
+    }
 
     @Inject
     Database database;
@@ -63,7 +75,7 @@ public class ReportService {
         var dataset = requireDataset(draft.source.datasetId);
         var validated = validator.validate(title, description, specJson, dataset);
         var now = ZonedDateTime.now();
-        queryService.query(new ReportQueryService.QueryRequest(null, 1, ReportConstants.SPEC_VERSION, validated.spec(), dataset, now, null, 100, 0));
+        previewComponents(validated.spec(), dataset, now);
 
         try (Transaction transaction = database.beginTransaction()) {
             lockUserReportQuota(userId);
@@ -106,7 +118,7 @@ public class ReportService {
         var dataset = requireDataset(parsed.source.datasetId);
         var validated = validator.validate(draft.title(), draft.description(), draft.specJson(), dataset);
         var now = ZonedDateTime.now();
-        queryService.query(new ReportQueryService.QueryRequest(reportId, expectedRevision + 1, ReportConstants.SPEC_VERSION, validated.spec(), dataset, now, null, 100, 0));
+        previewComponents(validated.spec(), dataset, now);
 
         try (Transaction transaction = database.beginTransaction()) {
             var locked = reportStore.lockOwned(reportId, userId).orElseThrow(ReportException::notFound);
@@ -163,7 +175,9 @@ public class ReportService {
         var draft = draftDataset(specJson);
         var dataset = requireDataset(draft.source.datasetId);
         var validated = validator.validate(title, description, specJson, dataset);
-        return queryService.query(new ReportQueryService.QueryRequest(null, 0, ReportConstants.SPEC_VERSION, validated.spec(), dataset, ZonedDateTime.now(), null, 100, 0));
+        var components = components(validated.spec());
+        if (components.isEmpty()) throw ReportException.badRequest("REPORT_INVALID_SPEC", "report has no components");
+        return previewComponents(validated.spec(), dataset, ZonedDateTime.now()).get(0);
     }
 
     public ReportDefinition get(String userId, String reportId) {
@@ -176,13 +190,67 @@ public class ReportService {
         return layoutStore.pinByReport(userId, reportId).orElse(null);
     }
 
-    public ReportData data(String userId, String reportId, ReportQueryService.RangeOverride override, int pageSize, int offset) {
+    public ReportData data(String userId, String reportId, ReportQueryService.RangeOverride override,
+                           Map<String, Object> parameters, int pageSize, int offset) {
+        var bundle = dataBundle(userId, reportId, override, parameters, pageSize, offset);
+        return bundle.components.isEmpty() ? null : bundle.components.get(0).data;
+    }
+
+    public ReportDataBundle dataBundle(String userId, String reportId, ReportQueryService.RangeOverride override,
+                                       Map<String, Object> parameters, int pageSize, int offset) {
         accessPolicy.requireView(userId);
         var report = reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
         var dataset = datasetService.get(report.datasetId);
         if (dataset == null) throw ReportException.forbidden("SOURCE_ACCESS_DENIED", "dataset is not accessible");
-        return queryService.query(new ReportQueryService.QueryRequest(report.id, report.revision, report.specVersion, report.spec, dataset,
-                ZonedDateTime.now(), override, pageSize, offset));
+        var bindings = ReportParameters.bindings(report.spec, parameters);
+        var bundle = new ReportDataBundle();
+        bundle.reportId = report.id;
+        bundle.reportRevision = report.revision;
+        bundle.specVersion = report.specVersion;
+        var now = ZonedDateTime.now();
+        for (var component : components(report.spec)) {
+            var item = new ReportDataBundle.Component();
+            item.id = component.id;
+            item.title = component.title;
+            item.displayType = component.display != null ? component.display.type : null;
+            item.data = queryService.query(new ReportQueryService.QueryRequest(report.id, report.revision, report.specVersion,
+                    querySpec(report.spec, ReportParameters.resolve(component.query, bindings)), dataset, now, override, pageSize, offset));
+            bundle.components.add(item);
+        }
+        return bundle;
+    }
+
+    public ReportData firstComponentData(ReportDefinition report, Dataset dataset, ReportQueryService.RangeOverride override,
+                                         Map<String, Object> parameters, int pageSize, int offset) {
+        var bindings = ReportParameters.bindings(report.spec, parameters);
+        var components = components(report.spec);
+        if (components.isEmpty()) throw ReportException.badRequest("REPORT_INVALID_SPEC", "report has no components");
+        return queryService.query(new ReportQueryService.QueryRequest(report.id, report.revision, report.specVersion,
+                querySpec(report.spec, ReportParameters.resolve(components.get(0).query, bindings)), dataset, ZonedDateTime.now(), override, pageSize, offset));
+    }
+
+    private List<ReportData> previewComponents(ReportSpec spec, Dataset dataset, ZonedDateTime now) {
+        var parameters = ReportParameters.bindings(spec, Map.of());
+        var components = components(spec);
+        if (components.isEmpty()) throw ReportException.badRequest("REPORT_INVALID_SPEC", "report has no components");
+        var result = new ArrayList<ReportData>(components.size());
+        for (var component : components) {
+            result.add(queryService.query(new ReportQueryService.QueryRequest(null, 1, ReportConstants.SPEC_VERSION,
+                    querySpec(spec, ReportParameters.resolve(component.query, parameters)), dataset, now, null, 100, 0)));
+        }
+        return result;
+    }
+
+    private List<ReportSpec.Component> components(ReportSpec spec) {
+        return ReportSpecStructureValidator.get().components(spec, new ArrayList<>());
+    }
+
+    private ReportSpec querySpec(ReportSpec source, ReportSpec.Query query) {
+        var spec = new ReportSpec();
+        spec.specVersion = source.specVersion;
+        spec.source = source.source;
+        spec.query = query;
+        return spec;
     }
 
     public String datasetName(String datasetId) {
@@ -212,7 +280,7 @@ public class ReportService {
         summary.datasetId = report.datasetId;
         var dataset = datasetService.get(report.datasetId);
         summary.datasetName = dataset != null ? dataset.name : null;
-        summary.displayType = report.spec != null && report.spec.display != null ? report.spec.display.type : null;
+        summary.displayType = displayType(report.spec);
         summary.pinId = pin != null ? pin.id : null;
         summary.pinWidth = pin != null ? pin.width : null;
         summary.updatedAt = report.updatedAt;

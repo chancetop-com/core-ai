@@ -11,10 +11,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
-import type { ReportDataView } from '../../api/client';
+interface RenderableReportData {
+  status: string;
+  columns_json: string;
+  rows_json: string;
+}
 
 interface ReportRendererProps {
-  data: ReportDataView | null;
+  data: RenderableReportData | null;
   displayType?: string | null;
   height?: number;
 }

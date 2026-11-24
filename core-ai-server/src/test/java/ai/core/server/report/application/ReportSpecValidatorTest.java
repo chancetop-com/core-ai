@@ -212,6 +212,75 @@ class ReportSpecValidatorTest {
         assertTrue(error.issues().stream().anyMatch(issue -> "INVALID_FILTER_VALUE".equals(issue.code())));
     }
 
+    @Test
+    void acceptsParameterizedMultiComponentSpec() {
+        var result = validator.validate("dashboard", null, spec("""
+                {
+                  "spec_version": 1,
+                  "source": {"dataset_id": "ds-1"},
+                  "parameters": [
+                    {"name": "stores", "type": "STRING", "multiple": true, "default": ["web"]},
+                    {"name": "range", "type": "DATE_RANGE", "default": {"kind": "LAST_N_COMPLETE_DAYS", "days": 30}}
+                  ],
+                  "components": [
+                    {"id": "kpi", "title": "KPI",
+                     "query": {"mode": "AGGREGATE", "time_field": "data.business_date", "time_range": {"param": "range"},
+                               "timezone": "Asia/Shanghai", "bucket": "NONE",
+                               "filters": [{"field": "channel", "op": "IN", "param": "stores"}],
+                               "measures": [{"id": "total", "field": "data.total", "op": "SUM"}]},
+                     "display": {"type": "METRIC"}},
+                    {"id": "trend",
+                     "query": {"mode": "AGGREGATE", "time_field": "data.business_date", "time_range": {"param": "range"},
+                               "timezone": "Asia/Shanghai", "bucket": "DAY",
+                               "measures": [{"id": "total", "field": "data.total", "op": "SUM"}]},
+                     "display": {"type": "LINE", "x": "bucket", "series": [{"field": "total"}]}}
+                  ]
+                }
+                """), dataset());
+
+        assertEquals("data.business_date", result.spec().components.get(0).query.timeField);
+        assertTrue(result.dependency().fields.stream().anyMatch(field -> "business_date".equals(field.name)));
+        assertTrue(result.dependency().fields.stream().anyMatch(field -> "channel".equals(field.name)));
+    }
+
+    @Test
+    void rejectsUnknownParameterReference() {
+        var error = assertThrows(ReportSpecValidator.ReportValidationException.class,
+                () -> validator.validate("bad", null, spec("""
+                        {
+                          "spec_version": 1,
+                          "source": {"dataset_id": "ds-1"},
+                          "parameters": [{"name": "stores", "type": "STRING", "multiple": true, "default": ["web"]}],
+                          "components": [{"id": "kpi",
+                            "query": {"mode": "AGGREGATE", "time_field": "data.business_date",
+                                      "time_range": {"param": "missing"}, "timezone": "UTC", "bucket": "NONE",
+                                      "measures": [{"id": "total", "field": "data.total", "op": "SUM"}]},
+                            "display": {"type": "METRIC"}}]
+                        }
+                        """), dataset()));
+        assertTrue(error.issues().stream().anyMatch(issue -> "UNKNOWN_PARAMETER".equals(issue.code())));
+    }
+
+    @Test
+    void rejectsMultipleParameterForEqualsFilter() {
+        var error = assertThrows(ReportSpecValidator.ReportValidationException.class,
+                () -> validator.validate("bad", null, spec("""
+                        {
+                          "spec_version": 1,
+                          "source": {"dataset_id": "ds-1"},
+                          "parameters": [{"name": "stores", "type": "STRING", "multiple": true, "default": ["web"]}],
+                          "components": [{"id": "kpi",
+                            "query": {"mode": "AGGREGATE", "time_field": "meta.run_started_at",
+                                      "time_range": {"kind": "LAST_N_COMPLETE_DAYS", "days": 7}, "timezone": "UTC",
+                                      "bucket": "NONE",
+                                      "filters": [{"field": "channel", "op": "EQ", "param": "stores"}],
+                                      "measures": [{"id": "total", "field": "data.total", "op": "SUM"}]},
+                            "display": {"type": "METRIC"}}]
+                        }
+                        """), dataset()));
+        assertTrue(error.issues().stream().anyMatch(issue -> "PARAMETER_MULTIPLICITY_MISMATCH".equals(issue.code())));
+    }
+
     private Dataset dataset() {
         var dataset = new Dataset();
         dataset.id = "ds-1";
