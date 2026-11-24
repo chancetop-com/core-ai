@@ -173,12 +173,13 @@ public class AgentSessionManager {
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
+        claimForStartup(sessionId, userId);
         var registration = new SessionRegistry.SessionRegistration(
                 sessionId, userId, null, source, null, apiKeyId, sessionDatasetConfig);
-        var sandbox = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortSessionCreation(sessionId),
+        var sandbox = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortStartup(sessionId, userId),
                 () -> sandboxService.createSessionSandbox(null, sessionId, userId, session::dispatchEvent));
         if (sandbox != null) context.sandbox(sandbox);
-        initializeSession(session, registration);
+        exposeSession(session, sessionId);
         return sessionId;
     }
     public SessionCreationResult createSessionFromAgent(AgentDefinition definition, SessionConfig overrides, String userId) {
@@ -206,14 +207,15 @@ public class AgentSessionManager {
         var datasetConfig = sessionAgentHelper.resolveDatasetConfig(executableDefinition, config, overrides);
         var registration = new SessionRegistry.SessionRegistration(
                 sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig);
-        var buildResult = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortSessionCreation(sessionId),
+        claimForStartup(sessionId, userId);
+        var buildResult = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortStartup(sessionId, userId),
                 () -> buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig));
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
         session.setOnIdle(() -> onSessionHeartbeat(sessionId, session));
         SessionEventListenerWiring.attach(session, sessionId, userId, new SessionEventListenerWiring.Deps(turnStateRegistry, chatMessageService, sessionCompletionNotifier, eventPublisher));
-        initializeSession(session, registration);
+        exposeSession(session, sessionId);
         var executableConfig = executableDefinition.publishedConfig;
         var loadedSkillIds = executableConfig != null ? executableConfig.skillIds : executableDefinition.skillIds;
         var loadedSubAgentIds = executableConfig != null ? executableConfig.subAgentIds : executableDefinition.subAgentIds;
@@ -257,28 +259,26 @@ public class AgentSessionManager {
         return new AgentBuildResult(agent, sessionRef);
     }
 
-    private void initializeSession(InProcessAgentSession session, SessionRegistry.SessionRegistration registration) {
-        var sessionId = registration.sessionId();
-        var previous = sessions.put(sessionId, session);
-        if (previous == null) runtimeStats.onCreated(sessionId);
-        boolean claimed;
+    private void claimForStartup(String sessionId, String userId) {
         try {
             touchActivity(sessionId);
-            claimed = sessionAgentHelper.claimOwnership(sessionId);
+            if (sessionAgentHelper.claimOwnership(sessionId)) return;
         } catch (RuntimeException | Error e) {
-            cleanupRuntime(sessionId);
+            abortStartup(sessionId, userId);
             throw e;
         }
-        if (!claimed) {
-            cleanupRuntime(sessionId);
-            throw new IllegalStateException("failed to claim session ownership, sessionId=" + sessionId);
-        }
-        try {
-            sessionRegistry.create(registration);
-        } catch (RuntimeException | Error e) {
-            cleanupRuntime(sessionId);
-            throw e;
-        }
+        abortStartup(sessionId, userId);
+        throw new IllegalStateException("failed to claim session ownership, sessionId=" + sessionId);
+    }
+
+    private void exposeSession(InProcessAgentSession session, String sessionId) {
+        var previous = sessions.put(sessionId, session);
+        if (previous == null) runtimeStats.onCreated(sessionId);
+    }
+
+    private void abortStartup(String sessionId, String userId) {
+        if (userSessionBudget != null) userSessionBudget.release(userId);
+        abortSessionCreation(sessionId);
     }
     // Called while idle and every few seconds during a turn: the activity touch keeps cleanupIdleSessions from closing a working session.
     void onSessionHeartbeat(String sessionId, InProcessAgentSession session) {

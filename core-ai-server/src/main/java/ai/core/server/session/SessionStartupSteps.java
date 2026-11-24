@@ -13,8 +13,8 @@ final class SessionStartupSteps {
 
     static <T> T registerAndRun(SessionRegistry.SessionRegistration registration, SessionRegistry registry,
                                 Runnable abort, Supplier<T> action) {
-        registry.create(registration);
         try {
+            registry.create(registration);
             return action.get();
         } catch (RuntimeException | Error e) {
             abort.run();
