@@ -22,10 +22,10 @@ public class WorkspaceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceService.class);
 
     private final WorkspaceStore workspaces;
-    private final WorkspaceVolumeStore volumes;
     private final WorkspaceBindingStore bindings;
     private final WorkspaceEventStore events;
     private final WorkspaceProvisioner provisioner;
+    private final WorkspaceVolumeManager volumeManager;
     private final WorkspaceRuntimeManager runtimes;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
@@ -33,10 +33,10 @@ public class WorkspaceService {
     public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
         this.workspaces = stores.workspaces();
-        this.volumes = stores.volumes();
         this.bindings = stores.bindings();
         this.events = stores.events();
         this.provisioner = provisioner;
+        this.volumeManager = new WorkspaceVolumeManager(stores.volumes(), stores.workspaces(), provisioner);
         this.runtimes = runtimes;
         this.config = config;
         this.wakeExecutor = wakeExecutor;
@@ -69,7 +69,7 @@ public class WorkspaceService {
         }
         appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "profile", workspace.profile.id));
         try {
-            provisionVolume(workspace);
+            volumeManager.ensure(workspace);
         } catch (WorkspaceProvisioningException e) {
             // the workspace row stays: the name is reserved and the user can retry provisioning
             LOGGER.warn("workspace volume provisioning failed, workspace={}", workspace.id, e);
@@ -164,7 +164,7 @@ public class WorkspaceService {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
         try {
-            provisionVolume(workspace);
+            volumeManager.ensure(workspace);
         } catch (WorkspaceProvisioningException e) {
             throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
         }
@@ -203,15 +203,20 @@ public class WorkspaceService {
         ensureRuntimeSupported();
         WorkspaceVolumeRecord volume;
         try {
-            volume = provisionVolume(workspace);
+            volume = volumeManager.ensure(workspace);
         } catch (WorkspaceProvisioningException e) {
             throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
         }
 
         var existingBinding = bindings.get(id);
         if (workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && existingBinding.isPresent()) {
-            workspaces.touchLastUsed(id, ZonedDateTime.now());
-            return load(ownerUserId, id);
+            // a READY row is only a cache: the controller may already have shut the runtime down
+            if (runtimeExists(existingBinding.get().sandboxId)) {
+                workspaces.touchLastUsed(id, ZonedDateTime.now());
+                return load(ownerUserId, id);
+            }
+            LOGGER.info("workspace runtime is gone, provisioning a new one, workspace={}, runtime={}",
+                    id, existingBinding.get().sandboxId);
         }
         if (existingBinding.isPresent()) {
             // stale pointer (server crash, controller eviction): the CR is replaceable, the PVC is not
@@ -219,7 +224,11 @@ public class WorkspaceService {
             bindings.delete(id);
         }
         WorkspaceQuotas.checkRunning(config, workspaces.listByOwner(ownerUserId), id);
+        return startRuntime(workspace, ownerUserId, volume);
+    }
 
+    private WorkspaceRecord startRuntime(WorkspaceRecord workspace, String ownerUserId, WorkspaceVolumeRecord volume) {
+        var id = workspace.id;
         // wakeAsync already claimed the next generation; only a fresh call allocates one
         var runtimeGeneration = workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING
                 ? workspace.runtimeGeneration
@@ -267,37 +276,7 @@ public class WorkspaceService {
             throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "reset requires confirm_name to match the workspace name");
         }
         stopRuntime(workspace);
-
-        var oldGeneration = workspace.activeVolumeGeneration;
-        if (oldGeneration != null) {
-            var oldVolume = volumes.get(id, oldGeneration).orElse(null);
-            if (oldVolume != null) {
-                volumes.markDeleted(id, oldGeneration, WorkspaceVolumeStatus.DELETING);
-                try {
-                    provisioner.deleteVolume(oldVolume);
-                    volumes.markDeleted(id, oldGeneration, WorkspaceVolumeStatus.DELETED);
-                } catch (WorkspaceProvisioningException e) {
-                    throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE,
-                            "cannot delete the previous workspace volume, reset aborted", e);
-                }
-            }
-        }
-
-        var generation = oldGeneration == null ? 0 : oldGeneration + 1;
-        var volume = WorkspaceVolumeRecord.provisioning(workspace, generation,
-                provisioner.volumeName(id, generation), provisioner.provider());
-        if (!volumes.insertIfAbsent(volume)) {
-            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, "workspace volume generation already exists: " + generation);
-        }
-        try {
-            provisioner.ensureVolume(workspace, generation);
-            volumes.updateStatus(id, generation, WorkspaceVolumeStatus.READY);
-            workspaces.updateVolumeState(id, WorkspaceVolumeStatus.READY, generation, null, null);
-        } catch (WorkspaceProvisioningException e) {
-            volumes.updateStatus(id, generation, WorkspaceVolumeStatus.ERROR);
-            workspaces.updateVolumeState(id, WorkspaceVolumeStatus.ERROR, generation, e.errorCode, e.getMessage());
-            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
-        }
+        var generation = volumeManager.reset(workspace);
         appendEvent(id, "reset", ownerUserId, Map.of("volumeGeneration", generation));
         return load(ownerUserId, id);
     }
@@ -364,34 +343,6 @@ public class WorkspaceService {
         return runtime;
     }
 
-    private WorkspaceVolumeRecord provisionVolume(WorkspaceRecord workspace) {
-        var volume = volumes.active(workspace.id).orElse(null);
-        if (volume == null) {
-            var generation = workspace.activeVolumeGeneration != null ? workspace.activeVolumeGeneration : 0L;
-            var created = WorkspaceVolumeRecord.provisioning(workspace, generation,
-                    provisioner.volumeName(workspace.id, generation), provisioner.provider());
-            if (volumes.insertIfAbsent(created)) {
-                volume = created;
-            } else {
-                volume = volumes.active(workspace.id)
-                        .orElseThrow(() -> new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE,
-                                "workspace volume is already being provisioned elsewhere"));
-            }
-        }
-        try {
-            provisioner.ensureVolume(workspace, volume.volumeGeneration);
-            volumes.updateStatus(workspace.id, volume.volumeGeneration, WorkspaceVolumeStatus.READY);
-            workspaces.updateVolumeState(workspace.id, WorkspaceVolumeStatus.READY, volume.volumeGeneration, null, null);
-            volume.status = WorkspaceVolumeStatus.READY;
-            return volume;
-        } catch (WorkspaceProvisioningException e) {
-            volumes.updateStatus(workspace.id, volume.volumeGeneration, WorkspaceVolumeStatus.ERROR);
-            workspaces.updateVolumeState(workspace.id, WorkspaceVolumeStatus.ERROR, volume.volumeGeneration,
-                    e.errorCode, e.getMessage());
-            throw e;
-        }
-    }
-
     private void stopRuntime(WorkspaceRecord workspace) {
         var binding = bindings.get(workspace.id).orElse(null);
         if (binding != null) {
@@ -400,6 +351,16 @@ public class WorkspaceService {
         }
         if (workspace.runtimeStatus != WorkspaceRuntimeStatus.NONE) {
             workspaces.updateRuntimeState(workspace.id, WorkspaceRuntimeStatus.NONE, workspace.runtimeGeneration, null, null);
+        }
+    }
+
+    private boolean runtimeExists(String sandboxId) {
+        if (sandboxId == null || sandboxId.isBlank()) return false;
+        try {
+            return runtimes.get(sandboxId).isPresent();
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to read workspace runtime {}, treating it as gone", sandboxId, e);
+            return false;
         }
     }
 

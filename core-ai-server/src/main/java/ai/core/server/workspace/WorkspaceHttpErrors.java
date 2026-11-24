@@ -15,7 +15,7 @@ public final class WorkspaceHttpErrors {
     public static RuntimeException translate(WorkspaceException e) {
         String code = e.errorCode();
         return switch (code) {
-            case WorkspaceException.DELETED, "WORKSPACE_TASK_LOST" -> new Gone(code, e.getMessage(), e);
+            case WorkspaceException.DELETED, WorkspaceException.TASK_LOST -> new Gone(code, e.getMessage(), e);
             case WorkspaceException.QUOTA_EXCEEDED -> new QuotaExceeded(code, e.getMessage(), e);
             case WorkspaceException.UNSUPPORTED, WorkspaceException.VOLUME_UNAVAILABLE -> new Unavailable(code, e.getMessage(), e);
             case WorkspaceException.NOT_FOUND -> new NotFound(code, e.getMessage(), e);
