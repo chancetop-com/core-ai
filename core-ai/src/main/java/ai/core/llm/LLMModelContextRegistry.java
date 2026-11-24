@@ -211,7 +211,7 @@ public final class LLMModelContextRegistry {
     /** Max input tokens for the model, from the bundled registry, the live catalog, or a lower learned limit; 0 = unknown. */
     public int contextWindow(String modelName) {
         if (modelName == null) return 0;
-        int resolved = 0;
+        int resolved;
         var info = getModelInfo(modelName);
         if (info != null && info.contextWindow() > 0) {
             resolved = info.contextWindow();

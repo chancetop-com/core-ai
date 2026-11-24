@@ -31,7 +31,7 @@ final class CompressionSummaryInput {
         for (int i = messages.size() - 1; i >= 0; i--) {
             var message = messages.get(i);
             int messageTokens = MessageTokenCounterUtil.count(message);
-            if (!kept.isEmpty() && tokens + messageTokens > budget) {
+            if (tokens + messageTokens > budget && !kept.isEmpty()) {
                 break;
             }
             kept.add(0, message);

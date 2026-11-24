@@ -63,6 +63,7 @@ public class CompressionLifecycle extends AbstractLifecycle {
     }
 
     @Override
+    @SuppressWarnings("PMD.CompareObjectsWithEquals")
     public boolean onModelError(CompletionRequest request, RuntimeException error, ExecutionContext executionContext) {
         if (request == null || request.messages == null || !ContextWindowErrors.isContextWindowExceeded(error)) {
             return false;
@@ -94,7 +95,7 @@ public class CompressionLifecycle extends AbstractLifecycle {
     @Override
     public void afterTool(FunctionCall functionCall, ExecutionContext executionContext, ToolCallResult toolResult) {
         thrashGuard.onToolCall(functionCall);
-        if (toolResult != null && toolResult.isCompleted() && functionCall.function != null
+        if (functionCall.function != null && toolResult != null && toolResult.isCompleted()
                 && PROGRESS_TOOLS.contains(functionCall.function.name)) {
             thrashGuard.onProgress();
         }

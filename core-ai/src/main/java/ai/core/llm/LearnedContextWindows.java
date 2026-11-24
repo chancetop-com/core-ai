@@ -19,7 +19,7 @@ public final class LearnedContextWindows {
     private static final Map<String, Integer> WINDOWS = new ConcurrentHashMap<>();
 
     public static void record(String modelName, int maxInputTokens) {
-        if (modelName == null || modelName.isBlank() || maxInputTokens <= 0 || maxInputTokens > MAX_LEARNED_CONTEXT_WINDOW) {
+        if (maxInputTokens <= 0 || maxInputTokens > MAX_LEARNED_CONTEXT_WINDOW || modelName == null || modelName.isBlank()) {
             return;
         }
         WINDOWS.merge(modelName, maxInputTokens, Math::min);

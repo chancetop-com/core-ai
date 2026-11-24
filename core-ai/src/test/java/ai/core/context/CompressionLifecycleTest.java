@@ -45,8 +45,8 @@ class CompressionLifecycleTest {
 
         var error = assertThrows(CompressionThrashException.class,
                 () -> lifecycle.beforeModel(request(oversizedMessages()), null));
-        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("read_file"));
-        org.junit.jupiter.api.Assertions.assertTrue(error.getMessage().contains("doc.md"));
+        assertTrue(error.getMessage().contains("read_file"));
+        assertTrue(error.getMessage().contains("doc.md"));
     }
 
     @Test
