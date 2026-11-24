@@ -12,4 +12,6 @@ public class IngestRequest {
     // Client-declared trace origin; absent means the "cli" default. Desktop app-server engines declare "desktop".
     public String clientType;
     public List<IngestSpanRequest> spans;
+    /** Images the client uploaded instead of referencing a server media object. */
+    public List<IngestPayloadRequest> payloads;
 }

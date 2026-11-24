@@ -257,6 +257,11 @@ public class TraceService {
         return span;
     }
 
+    /** One deduplicated image blob of a trace, addressed by its sha256 (trace media endpoint). */
+    public TracePayloadStore.Payload payload(String traceId, String sha256) {
+        return payloadStore == null ? null : payloadStore.payload(traceId, sha256);
+    }
+
     public List<Span> generations(int offset, int limit, String model, List<String> userIds) {
         if (userIds != null && userIds.isEmpty()) return List.of();
         List<String> traceIds = userIds != null ? traceIdsForUsers(userIds) : List.of();

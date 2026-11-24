@@ -34,6 +34,10 @@ public class TracePayloadStore {
     private static final Pattern IMAGE_DATA_URL = Pattern.compile("data:image/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]++(?=[\"')\\s]|$)");
     private static final Pattern IMAGE_REF = Pattern.compile("coreai-image://([0-9a-f]{64})");
     private static final int MAX_DATA_URL_LENGTH = 12 * 1024 * 1024;
+    /** One trace may keep at most this many decoded image bytes; beyond it the span keeps a placeholder. */
+    private static final long MAX_TRACE_PAYLOAD_BYTES = 8L * 1024 * 1024;
+    /** A detail response hydrates at most this many bytes; the rest stay as refs for the media endpoint. */
+    private static final long MAX_HYDRATE_BYTES = 2L * 1024 * 1024;
 
     private static int mapCapacity(int expectedSize) {
         return expectedSize < 1 ? 1 : (int) (expectedSize / 0.75f) + 1;
@@ -53,11 +57,13 @@ public class TracePayloadStore {
         refsByTrace.computeIfAbsent(traceId, key -> new LinkedHashSet<>()).addAll(refs(payload));
     }
 
-    private static String replaceRefs(String payload, Map<String, String> originals, boolean strict, String traceId) {
+    private static String replaceRefs(String payload, Map<String, String> originals, boolean strict, String traceId,
+                                      long maxBytes) {
         if (payload == null || !payload.contains(REF_PREFIX)) return payload;
         var matcher = IMAGE_REF.matcher(payload);
         StringBuilder result = null;
         int lastEnd = 0;
+        long hydratedBytes = 0;
         while (matcher.find()) {
             var original = originals.get(matcher.group(1));
             if (original == null) {
@@ -66,9 +72,14 @@ public class TracePayloadStore {
                 }
                 continue;
             }
+            if (hydratedBytes + original.length() > maxBytes) {
+                // keep the stable ref and let the viewer fetch the bytes through the media endpoint
+                continue;
+            }
             if (result == null) result = new StringBuilder(payload.length());
             result.append(payload, lastEnd, matcher.start()).append(original);
             lastEnd = matcher.end();
+            hydratedBytes += original.length();
         }
         if (result == null) return payload;
         result.append(payload, lastEnd, payload.length());
@@ -112,18 +123,21 @@ public class TracePayloadStore {
 
     public void hydrate(Trace trace, boolean strict) {
         if (trace == null) return;
-        trace.input = hydrate(trace.traceId, trace.input, strict);
-        trace.output = hydrate(trace.traceId, trace.output, strict);
+        var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
+        trace.input = hydrate(trace.traceId, trace.input, strict, maxBytes);
+        trace.output = hydrate(trace.traceId, trace.output, strict, maxBytes);
     }
 
     public void hydrate(Span span, boolean strict) {
         if (span == null) return;
-        span.input = hydrate(span.traceId, span.input, strict);
-        span.output = hydrate(span.traceId, span.output, strict);
+        var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
+        span.input = hydrate(span.traceId, span.input, strict, maxBytes);
+        span.output = hydrate(span.traceId, span.output, strict, maxBytes);
     }
 
     public void hydrate(List<Span> spans, boolean strict) {
         if (spans == null || spans.isEmpty()) return;
+        var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
 
         Map<String, Set<String>> refsByTrace = new HashMap<>(mapCapacity(spans.size()));
         for (var span : spans) {
@@ -139,17 +153,41 @@ public class TracePayloadStore {
         for (var span : spans) {
             var originals = originalsByTrace.get(span.traceId);
             if (originals == null) continue;
-            span.input = replaceRefs(span.input, originals, strict, span.traceId);
-            span.output = replaceRefs(span.output, originals, strict, span.traceId);
+            span.input = replaceRefs(span.input, originals, strict, span.traceId, maxBytes);
+            span.output = replaceRefs(span.output, originals, strict, span.traceId, maxBytes);
         }
     }
 
-    private String hydrate(String traceId, String payload, boolean strict) {
+    private String hydrate(String traceId, String payload, boolean strict, long maxBytes) {
         if (payload == null || traceId == null || !payload.contains(REF_PREFIX)) return payload;
         var hashes = refs(payload);
         if (hashes.isEmpty()) return payload;
         var originals = load(traceId, hashes, strict);
-        return replaceRefs(payload, originals, strict, traceId);
+        return replaceRefs(payload, originals, strict, traceId, maxBytes);
+    }
+
+    /**
+     * Stores one data URL supplied by an uploading client (for example a CLI that still owns the
+     * image locally) under this trace, so the viewer can fetch it later.
+     *
+     * @return the sha256 the payload is addressed by, or null when it could not be stored
+     */
+    public String storePayload(String traceId, String dataUrl) {
+        if (traceId == null || dataUrl == null || !dataUrl.startsWith("data:")) return null;
+        if (dataUrl.length() > MAX_DATA_URL_LENGTH) return null;
+        var hash = sha256(dataUrl);
+        return store(traceId + ':' + hash, traceId, dataUrl) ? hash : null;
+    }
+
+    /** @return the decoded payload bytes, or null when the trace does not own that hash */
+    public Payload payload(String traceId, String sha256) {
+        if (traceId == null || sha256 == null) return null;
+        var blobs = payloadRepository.findByTrace(traceId, List.of(sha256));
+        if (blobs.isEmpty()) return null;
+        var dataUrl = blobs.getFirst().data;
+        var comma = dataUrl.indexOf(',');
+        if (comma < 0) return null;
+        return new Payload(java.util.Base64.getDecoder().decode(dataUrl.substring(comma + 1)), contentType(dataUrl));
     }
 
     public void deleteForTraces(List<String> traceIds) {
@@ -196,6 +234,7 @@ public class TracePayloadStore {
 
     public final class Compactor {
         private final Map<String, String> stored = new HashMap<>();
+        private final Map<String, Long> storedBytes = new HashMap<>();
 
         public String compact(String traceId, String payload) {
             if (payload == null || traceId == null || payload.length() < 32 || !payload.contains("data:image/")) return payload;
@@ -205,25 +244,33 @@ public class TracePayloadStore {
             int lastEnd = 0;
             while (matcher.find()) {
                 var dataUrl = matcher.group();
-                if (dataUrl.length() > MAX_DATA_URL_LENGTH) {
-                    LOGGER.debug("inline image too large to deduplicate, traceId={}, chars={}", traceId, dataUrl.length());
-                    continue;
-                }
-                var hash = sha256(dataUrl);
+                var bytes = decodedSize(dataUrl);
+                var omitted = dataUrl.length() > MAX_DATA_URL_LENGTH
+                        || storedBytes.getOrDefault(traceId, 0L) + bytes > MAX_TRACE_PAYLOAD_BYTES;
+                var hash = omitted ? null : sha256(dataUrl);
                 var key = traceId + ':' + hash;
-                var ref = stored.get(key);
-                if (ref == null) {
-                    if (!store(key, traceId, dataUrl)) continue;
-                    ref = REF_PREFIX + hash;
-                    stored.put(key, ref);
+                var ref = omitted ? null : stored.get(key);
+                if (!omitted && ref == null) {
+                    if (!store(key, traceId, dataUrl)) {
+                        omitted = true;
+                    } else {
+                        ref = REF_PREFIX + hash;
+                        stored.put(key, ref);
+                        storedBytes.merge(traceId, bytes, Long::sum);
+                    }
                 }
                 if (result == null) result = new StringBuilder(payload.length());
-                result.append(payload, lastEnd, matcher.start()).append(ref);
+                result.append(payload, lastEnd, matcher.start())
+                        .append(omitted ? "[image omitted from trace: " + bytes + " bytes]" : ref);
                 lastEnd = matcher.end();
             }
             if (result == null) return payload;
             result.append(payload, lastEnd, payload.length());
             return result.toString();
         }
+    }
+
+    /** One stored payload as the media endpoint serves it. */
+    public record Payload(byte[] bytes, String contentType) {
     }
 }

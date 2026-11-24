@@ -23,4 +23,14 @@ public class CliTraceRequest {
     public String clientType;
     @Property(name = "spans")
     public List<CliTraceSpan> spans;
+    @Property(name = "payloads")
+    public List<CliTracePayload> payloads;
+
+    /** An image the CLI still owns locally, uploaded so a server viewer can serve it on demand. */
+    public static class CliTracePayload {
+        @Property(name = "traceId")
+        public String traceId;
+        @Property(name = "dataUrl")
+        public String dataUrl;
+    }
 }

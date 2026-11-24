@@ -77,6 +77,15 @@ public class IngestService {
     public void ingest(IngestRequest request, String authUserId, String source) {
         if (request.spans == null || request.spans.isEmpty()) return;
 
+        if (payloadStore != null && request.payloads != null) {
+            for (var payload : request.payloads) {
+                if (payload == null || payload.traceId == null || payload.dataUrl == null) continue;
+                if (payloadStore.storePayload(payload.traceId, payload.dataUrl) == null) {
+                    LOGGER.warn("trace image payload rejected, traceId={}", payload.traceId);
+                }
+            }
+        }
+
         if (payloadStore != null) {
             var compactor = payloadStore.newCompactor();
             for (var spanReq : request.spans) {

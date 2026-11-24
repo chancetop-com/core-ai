@@ -12,6 +12,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -53,6 +54,10 @@ public class HttpTraceUploader implements TraceUploader {
 
     // Reflection-free conversion to the IngestRequest JSON shape (keys match server IngestSpanRequest fields).
     static Map<String, Object> toMap(CliTraceRequest request) {
+        return toMap(request, List.of());
+    }
+
+    static Map<String, Object> toMap(CliTraceRequest request, List<CliTraceRequest.CliTracePayload> payloads) {
         var spans = new ArrayList<Map<String, Object>>();
         if (request.spans != null) {
             for (var s : request.spans) {
@@ -65,7 +70,19 @@ public class HttpTraceUploader implements TraceUploader {
         m.put("environment", request.environment);
         m.put("clientType", request.clientType);
         m.put("spans", spans);
+        if (payloads != null && !payloads.isEmpty()) m.put("payloads", payloadsToMap(payloads));
         return m;
+    }
+
+    private static List<Map<String, Object>> payloadsToMap(List<CliTraceRequest.CliTracePayload> payloads) {
+        var mapped = new ArrayList<Map<String, Object>>(payloads.size());
+        for (var payload : payloads) {
+            var m = new LinkedHashMap<String, Object>();
+            m.put("traceId", payload.traceId);
+            m.put("dataUrl", payload.dataUrl);
+            mapped.add(m);
+        }
+        return mapped;
     }
 
     private static Map<String, Object> spanToMap(CliTraceSpan s) {
@@ -128,16 +145,26 @@ public class HttpTraceUploader implements TraceUploader {
     private final String endpoint;
     private final String apiKey;
     private final HttpClient httpClient;
+    private final java.nio.file.Path mediaRoot;
 
     public HttpTraceUploader(String serverUrl, String apiKey) {
-        this(serverUrl, apiKey, false);
+        this(serverUrl, apiKey, false, null);
     }
 
     /** {@code insecure} matches the login's TLS opt-in, so traces also reach a self-signed server. */
     public HttpTraceUploader(String serverUrl, String apiKey, boolean insecure) {
+        this(serverUrl, apiKey, insecure, null);
+    }
+
+    /**
+     * @param mediaRoot the session media directory; local image refs under it are uploaded with the
+     *                  trace so the server viewer can resolve them
+     */
+    public HttpTraceUploader(String serverUrl, String apiKey, boolean insecure, java.nio.file.Path mediaRoot) {
         this.endpoint = stripTrailingSlash(serverUrl) + PATH;
         this.apiKey = apiKey;
         this.httpClient = insecure ? Clients.INSECURE : Clients.SECURE;
+        this.mediaRoot = mediaRoot;
     }
 
     @Override
@@ -152,7 +179,8 @@ public class HttpTraceUploader implements TraceUploader {
             // Serialize via plain Map/List, not the typed DTO: in the GraalVM native image Jackson has no
             // reflection metadata for CliTraceRequest/CliTraceSpan and throws "No serializer found". Maps,
             // Lists and primitives use built-in serializers that need no per-class reflection.
-            var body = JsonUtil.toJson(toMap(request));
+            var payloads = CliTracePayloads.collect(request.spans, mediaRoot);
+            var body = JsonUtil.toJson(toMap(request, payloads));
             var httpRequest = HttpRequest.newBuilder()
                     .uri(URI.create(endpoint))
                     .timeout(Duration.ofSeconds(10))

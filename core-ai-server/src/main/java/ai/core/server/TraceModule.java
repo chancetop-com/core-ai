@@ -27,6 +27,7 @@ import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
 import ai.core.server.trace.web.prompt.PromptWebServiceImpl;
+import ai.core.server.trace.web.TracePayloadController;
 import ai.core.server.trace.web.trace.TraceWebServiceImpl;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -94,6 +95,8 @@ public class TraceModule extends Module {
         // (cli by default, desktop when the desktop app drives the engine). Distinct HTTP method from
         // GET /api/traces/:traceId.
         http().route(HTTPMethod.POST, "/api/traces/ingest", ingestController::ingestAuthed);
+        // On-demand image fetch for detail views whose payload exceeded the hydration budget.
+        http().route(HTTPMethod.GET, "/api/traces/:traceId/payloads/:sha256", bind(TracePayloadController.class));
     }
 
     /**

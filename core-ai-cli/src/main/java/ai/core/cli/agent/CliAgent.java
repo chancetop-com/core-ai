@@ -104,7 +104,10 @@ public class CliAgent {
         // Login-gated, best-effort trace upload. Not logged in -> not attached -> zero overhead.
         if (auth != null && auth.serverUrl() != null && auth.apiKey() != null) {
             agent.addLifecycle(new TraceCollectorLifecycle(
-                    new HttpTraceUploader(auth.serverUrl(), auth.apiKey(), auth.insecure()), config.clientType));
+                    new HttpTraceUploader(auth.serverUrl(), auth.apiKey(), auth.insecure(),
+                            config.workspace.resolve(".core-ai").resolve("media").resolve("sessions")
+                                    .resolve(config.sessionId == null ? "default" : config.sessionId)),
+                    config.clientType));
         }
         configureExecutionContext(agent, config, auth, decisionSupport, hookOutput);
         return agent;
