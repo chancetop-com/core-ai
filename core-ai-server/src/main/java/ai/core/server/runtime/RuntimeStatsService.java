@@ -93,7 +93,11 @@ public class RuntimeStatsService {
         var stats = new RuntimeStatsView.SpanIngestStats();
         stats.queueDepth = LocalSpanProcessor.ingestQueueDepth();
         stats.capacity = LocalSpanProcessor.ingestQueueCapacity();
+        stats.queueBytes = LocalSpanProcessor.queuedBytes();
+        stats.capacityBytes = LocalSpanProcessor.ingestQueueMaxBytes();
         stats.droppedTotal = LocalSpanProcessor.droppedSpans();
+        stats.droppedBytes = LocalSpanProcessor.droppedSpanBytes();
+        stats.droppedOversize = LocalSpanProcessor.droppedOversizeSpans();
         return stats;
     }
 

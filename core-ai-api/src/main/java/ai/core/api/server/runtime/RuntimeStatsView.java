@@ -228,8 +228,20 @@ public class RuntimeStatsView {
         @Property(name = "capacity")
         public Integer capacity;
 
+        @Property(name = "queue_bytes")
+        public Long queueBytes;
+
+        @Property(name = "capacity_bytes")
+        public Long capacityBytes;
+
         @Property(name = "dropped_total")
         public Long droppedTotal;
+
+        @Property(name = "dropped_bytes")
+        public Long droppedBytes;
+
+        @Property(name = "dropped_oversize")
+        public Long droppedOversize;
     }
 
     public static class SseStats {

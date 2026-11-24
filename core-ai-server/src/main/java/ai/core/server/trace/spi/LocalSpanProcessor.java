@@ -39,23 +39,41 @@ import java.util.concurrent.atomic.AtomicLong;
 public class LocalSpanProcessor implements SpanProcessor {
     private static final Logger LOGGER = LoggerFactory.getLogger(LocalSpanProcessor.class);
     // Bounded on purpose: span ingest is a public endpoint, and an unbounded queue lets a burst (or a
-    // client bug) grow the heap of the pod that is also serving traffic. Dropped spans are counted so
-    // the loss is visible instead of silent. Capacity is fixed at class load — changing it needs a restart.
+    // client bug) grow the heap of the pod that is also serving traffic. A count bound alone is not a
+    // memory bound — one LLM span can carry megabytes of attributes — so the queue also has a byte
+    // budget and a per-span ceiling. Dropped spans are counted and the byte total is kept so the loss
+    // is visible instead of silent. Capacity is fixed at class load — changing it needs a restart.
     private static final int INGEST_QUEUE_CAPACITY = 10000;
+    private static final long INGEST_QUEUE_MAX_BYTES = 64L * 1024 * 1024;
+    private static final long MAX_SPAN_BYTES = 1024 * 1024;
     // Trace creation is one small insert per trace and it is the anchor the trace UI needs: it must not
     // queue behind (or be dropped with) a span backlog, so it runs on its own lane with its own bound.
     private static final int TRACE_QUEUE_CAPACITY = 2000;
     private static final AtomicLong DROPPED_SPANS = new AtomicLong();
+    private static final AtomicLong DROPPED_SPAN_BYTES = new AtomicLong();
+    private static final AtomicLong DROPPED_OVERSIZE_SPANS = new AtomicLong();
+    private static final AtomicLong QUEUED_BYTES = new AtomicLong();
     private static final ThreadPoolExecutor EXECUTOR = createExecutor("local-span-processor", 2, INGEST_QUEUE_CAPACITY);
     private static final ThreadPoolExecutor TRACE_EXECUTOR = createExecutor("local-trace-processor", 1, TRACE_QUEUE_CAPACITY);
     // configured limit, applied once at startup: the pool queue is already built by then
     private static volatile int configuredCapacity;
+    private static volatile long configuredMaxBytes;
+    private static volatile long configuredMaxSpanBytes;
     private static final Set<String> IDENTITY_ATTRIBUTES = Set.of(
         "user.id", "session.id", "gen_ai.agent.id", "gen_ai.agent.name");
 
     /** Applied at startup; the queue that backs the executor cannot be resized afterwards. */
     public static void configureCapacity(int capacity) {
         if (capacity > 0) configuredCapacity = Math.min(capacity, INGEST_QUEUE_CAPACITY);
+    }
+
+    /**
+     * Applied at startup, next to {@link #configureCapacity}. Non-positive values restore the shipped
+     * defaults; the queue's byte budget cannot be raised above the default.
+     */
+    public static void configureBudget(long maxQueueBytes, long maxSpanBytes) {
+        configuredMaxBytes = maxQueueBytes > 0 ? Math.min(maxQueueBytes, INGEST_QUEUE_MAX_BYTES) : 0;
+        configuredMaxSpanBytes = maxSpanBytes > 0 ? Math.min(maxSpanBytes, MAX_SPAN_BYTES) : 0;
     }
 
     private static boolean accepts(ThreadPoolExecutor executor, int capacity) {
@@ -66,10 +84,35 @@ public class LocalSpanProcessor implements SpanProcessor {
         return configuredCapacity > 0 ? configuredCapacity : INGEST_QUEUE_CAPACITY;
     }
 
-    private static void dropSpan(String stage, String spanName) {
+    private static long effectiveMaxBytes() {
+        return configuredMaxBytes > 0 ? configuredMaxBytes : INGEST_QUEUE_MAX_BYTES;
+    }
+
+    private static long effectiveMaxSpanBytes() {
+        return configuredMaxSpanBytes > 0 ? configuredMaxSpanBytes : MAX_SPAN_BYTES;
+    }
+
+    /**
+     * Reserves room for one span in the byte budget. The queue could still reject the task when
+     * submitting (a race with another producer), in which case the caller releases the reservation.
+     */
+    private static boolean reserve(long bytes) {
+        if (EXECUTOR.getQueue().size() >= effectiveCapacity()) return false;
+        if (QUEUED_BYTES.addAndGet(bytes) <= effectiveMaxBytes()) return true;
+        QUEUED_BYTES.addAndGet(-bytes);
+        return false;
+    }
+
+    private static void release(long bytes) {
+        QUEUED_BYTES.addAndGet(-bytes);
+    }
+
+    private static void dropSpan(String stage, String spanName, long bytes) {
         var dropped = DROPPED_SPANS.incrementAndGet();
+        DROPPED_SPAN_BYTES.addAndGet(bytes);
         if ((dropped & 0x3F) == 1) {
-            LOGGER.warn("ingest queue is full, dropping span, stage={}, span={}, droppedTotal={}", stage, spanName, dropped);
+            LOGGER.warn("dropping span, stage={}, span={}, bytes={}, droppedTotal={}, droppedBytes={}, queuedBytes={}",
+                    stage, spanName, bytes, dropped, DROPPED_SPAN_BYTES.get(), QUEUED_BYTES.get());
         }
     }
 
@@ -81,17 +124,53 @@ public class LocalSpanProcessor implements SpanProcessor {
                 var t = new Thread(r, threadName + "-" + counter.getAndIncrement());
                 t.setDaemon(true);
                 return t;
-            },
-            (task, executor) -> {
-                var dropped = DROPPED_SPANS.incrementAndGet();
-                if ((dropped & 0x3F) == 1) {
-                    LOGGER.warn("ingest queue is full, dropping spans, thread={}, droppedTotal={}, capacity={}", threadName, dropped, capacity);
-                }
             });
+    }
+
+    /**
+     * Approximate heap held by one span while it waits in the queue: the name, the attribute keys and
+     * the string values, plus a fixed per-entry overhead. Deliberately not a protobuf serialization —
+     * that would allocate the very copy the budget exists to avoid.
+     */
+    private static long estimateSpanBytes(ReadableSpan span) {
+        long bytes = 256 + length(span.getName());
+        var attributes = span.getAttributes();
+        if (attributes != null && !attributes.isEmpty()) {
+            for (var entry : attributes.asMap().entrySet()) {
+                bytes += length(entry.getKey().getKey()) + 32;
+                var value = entry.getValue();
+                if (value instanceof String text) {
+                    bytes += text.length();
+                } else if (value instanceof List<?> values) {
+                    for (var item : values) {
+                        if (item instanceof String text) bytes += text.length();
+                    }
+                } else {
+                    bytes += 8;
+                }
+            }
+        }
+        return bytes;
+    }
+
+    private static int length(String value) {
+        return value == null ? 0 : value.length();
     }
 
     public static long droppedSpans() {
         return DROPPED_SPANS.get();
+    }
+
+    public static long droppedSpanBytes() {
+        return DROPPED_SPAN_BYTES.get();
+    }
+
+    public static long droppedOversizeSpans() {
+        return DROPPED_OVERSIZE_SPANS.get();
+    }
+
+    public static long queuedBytes() {
+        return QUEUED_BYTES.get();
     }
 
     public static int ingestQueueDepth() {
@@ -101,6 +180,16 @@ public class LocalSpanProcessor implements SpanProcessor {
     /** Effective queue bound (the configured one, capped by what the pool was built with). */
     public static int ingestQueueCapacity() {
         return effectiveCapacity();
+    }
+
+    /** Effective byte budget for the ingest queue. */
+    public static long ingestQueueMaxBytes() {
+        return effectiveMaxBytes();
+    }
+
+    /** Effective per-span ceiling; a larger span is dropped before it enters the queue. */
+    public static long maxSpanBytes() {
+        return effectiveMaxSpanBytes();
     }
 
     private static boolean hasIdentity(Attributes attributes) {
@@ -148,19 +237,23 @@ public class LocalSpanProcessor implements SpanProcessor {
         var traceId = span.getSpanContext().getTraceId();
         var spanName = span.getName();
         if (!accepts(TRACE_EXECUTOR, TRACE_QUEUE_CAPACITY)) {
-            dropSpan("traceStarted", spanName);
+            dropSpan("traceStarted", spanName, 0);
             return;
         }
         var startEpochMs = TimeUnit.NANOSECONDS.toMillis(span.toSpanData().getStartEpochNanos());
         var attrs = toAttributeMap(attributes);
         var resourceAttrs = resourceAttributes();
-        CompletableFuture.runAsync(() -> {
-            try {
-                ingestService.traceStarted(traceId, spanName, startEpochMs, attrs, resourceAttrs);
-            } catch (Exception e) {
-                LOGGER.warn("Failed to create trace for started span: {}", spanName, e);
-            }
-        }, TRACE_EXECUTOR);
+        try {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    ingestService.traceStarted(traceId, spanName, startEpochMs, attrs, resourceAttrs);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to create trace for started span: {}", spanName, e);
+                }
+            }, TRACE_EXECUTOR);
+        } catch (RuntimeException e) {
+            dropSpan("traceStarted", spanName, 0);
+        }
     }
 
     @Override
@@ -174,21 +267,35 @@ public class LocalSpanProcessor implements SpanProcessor {
         }
 
         var spanName = span.getName();
-        if (!accepts(EXECUTOR, effectiveCapacity())) {
-            dropSpan("spanEnded", spanName);
+        var bytes = estimateSpanBytes(span);
+        if (bytes > effectiveMaxSpanBytes()) {
+            DROPPED_OVERSIZE_SPANS.incrementAndGet();
+            dropSpan("spanOversize", spanName, bytes);
             return;
         }
-        CompletableFuture.runAsync(() -> {
-            try {
-                long startTime = System.nanoTime();
-                var request = convertToExportRequest(span);
-                ingestService.ingest(request);
-                long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
-                LOGGER.debug("ingest completed, span={}, elapsed={}ms", spanName, elapsedMs);
-            } catch (Exception e) {
-                LOGGER.warn("Failed to write span locally: {}", spanName, e);
-            }
-        }, EXECUTOR);
+        if (!reserve(bytes)) {
+            dropSpan("spanEnded", spanName, bytes);
+            return;
+        }
+        try {
+            CompletableFuture.runAsync(() -> {
+                try {
+                    long startTime = System.nanoTime();
+                    var request = convertToExportRequest(span);
+                    ingestService.ingest(request);
+                    long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
+                    LOGGER.debug("ingest completed, span={}, elapsed={}ms", spanName, elapsedMs);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to write span locally: {}", spanName, e);
+                } finally {
+                    release(bytes);
+                }
+            }, EXECUTOR);
+        } catch (RuntimeException e) {
+            // the pool rejected the task between the reservation and the submit
+            release(bytes);
+            dropSpan("spanEnded", spanName, bytes);
+        }
     }
 
     @Override

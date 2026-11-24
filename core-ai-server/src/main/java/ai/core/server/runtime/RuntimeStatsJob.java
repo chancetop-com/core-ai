@@ -64,7 +64,11 @@ public class RuntimeStatsJob implements Job {
         stat("runtime.sandbox_direct_crs_live", stats.sandboxFleet.directCrsLive);
         stat("runtime.sandbox_creates_failed_total", stats.sandboxFleet.createsFailedTotal);
         stat("runtime.span_ingest_depth", stats.spanIngest.queueDepth);
+        stat("runtime.span_ingest_queue_bytes", stats.spanIngest.queueBytes);
+        stat("runtime.span_ingest_capacity_bytes", stats.spanIngest.capacityBytes);
         stat("runtime.span_ingest_dropped_total", stats.spanIngest.droppedTotal);
+        stat("runtime.span_ingest_dropped_bytes_total", stats.spanIngest.droppedBytes);
+        stat("runtime.span_ingest_oversize_total", stats.spanIngest.droppedOversize);
         stat("runtime.sse_buffer_bytes", stats.sse.bufferedBytes);
         stat("runtime.sse_buffer_events", stats.sse.bufferedEvents);
         stat("runtime.sse_buffer_dropped_total", stats.sse.droppedTotal);

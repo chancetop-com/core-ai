@@ -8,13 +8,16 @@ import io.opentelemetry.api.trace.TraceState;
 import io.opentelemetry.context.Context;
 import io.opentelemetry.sdk.trace.ReadWriteSpan;
 import io.opentelemetry.sdk.trace.data.SpanData;
+import io.opentelemetry.sdk.trace.data.StatusData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import ai.core.server.trace.service.OTLPIngestService;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.mock;
@@ -39,6 +42,7 @@ class LocalSpanProcessorTest {
     @AfterEach
     void clearIngestService() {
         LocalSpanProcessorRegistry.clear();
+        LocalSpanProcessor.configureBudget(0, 0);
     }
 
     @Test
@@ -92,6 +96,51 @@ class LocalSpanProcessorTest {
         verifyNoInteractions(ingestService);
     }
 
+    @Test
+    void dropsASpanLargerThanThePerSpanCeiling() {
+        LocalSpanProcessor.configureBudget(0, 1024);
+        var processor = new LocalSpanProcessor("core-ai-server", "1", "uat");
+        var span = span("agent.run", Attributes.builder().put("langfuse.observation.input", "x".repeat(4096)).build(), 1_000L);
+        long oversizeBefore = LocalSpanProcessor.droppedOversizeSpans();
+
+        processor.onEnd(span);
+
+        assertEquals(oversizeBefore + 1, LocalSpanProcessor.droppedOversizeSpans());
+        assertEquals(0, LocalSpanProcessor.queuedBytes());
+        verifyNoInteractions(ingestService);
+    }
+
+    @Test
+    void dropsSpansWhenTheByteBudgetIsExhausted() {
+        LocalSpanProcessor.configureBudget(1, 0);
+        var processor = new LocalSpanProcessor("core-ai-server", "1", "uat");
+        var span = span("agent.run", Attributes.builder().put("k", "v").build(), 1_000L);
+        long droppedBefore = LocalSpanProcessor.droppedSpans();
+        long droppedBytesBefore = LocalSpanProcessor.droppedSpanBytes();
+
+        processor.onEnd(span);
+
+        assertEquals(droppedBefore + 1, LocalSpanProcessor.droppedSpans());
+        assertTrue(LocalSpanProcessor.droppedSpanBytes() > droppedBytesBefore);
+        assertEquals(0, LocalSpanProcessor.queuedBytes());
+        verifyNoInteractions(ingestService);
+    }
+
+    @Test
+    void releasesQueuedBytesAfterIngest() throws InterruptedException {
+        var processor = new LocalSpanProcessor("core-ai-server", "1", "uat");
+        var span = span("agent.run", Attributes.builder().put("k", "v").build(), 1_000L);
+
+        processor.onEnd(span);
+
+        verify(ingestService, timeout(2_000)).ingest(any());
+        var deadline = System.currentTimeMillis() + 2_000;
+        while (LocalSpanProcessor.queuedBytes() > 0 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(10);
+        }
+        assertEquals(0, LocalSpanProcessor.queuedBytes());
+    }
+
     private ReadWriteSpan span(String name, Attributes attributes, long startNanos) {
         var span = mock(ReadWriteSpan.class);
         var spanData = mock(SpanData.class);
@@ -99,7 +148,14 @@ class LocalSpanProcessorTest {
         when(span.getName()).thenReturn(name);
         when(span.getAttributes()).thenReturn(attributes);
         when(span.toSpanData()).thenReturn(spanData);
+        when(spanData.getAttributes()).thenReturn(attributes);
+        when(spanData.getTraceId()).thenReturn(TRACE_ID);
+        when(spanData.getSpanId()).thenReturn("0011223344556677");
+        when(spanData.getName()).thenReturn(name);
         when(spanData.getStartEpochNanos()).thenReturn(startNanos);
+        when(spanData.getEndEpochNanos()).thenReturn(startNanos + 1);
+        when(spanData.getStatus()).thenReturn(StatusData.unset());
+        when(spanData.getParentSpanContext()).thenReturn(SpanContext.getInvalid());
         return span;
     }
 
