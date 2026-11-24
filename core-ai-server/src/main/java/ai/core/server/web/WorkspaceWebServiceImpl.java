@@ -6,6 +6,8 @@ import ai.core.api.server.workspace.WorkspaceResetRequest;
 import ai.core.api.server.workspace.WorkspaceUpdateRequest;
 import ai.core.api.server.workspace.WorkspaceView;
 import ai.core.api.server.workspace.WorkspaceWebService;
+import ai.core.server.rbac.PermissionCodes;
+import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
 import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
@@ -19,6 +21,7 @@ import java.util.function.Supplier;
 /**
  * @author stephen
  */
+@PermissionsRequired(PermissionCodes.CHAT_USE)
 public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     @Inject
     WebContext webContext;
