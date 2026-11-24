@@ -21,14 +21,30 @@ final class SandboxAttachmentPath {
     }
 
     static String targetPath(String root, String fileName) {
+        return targetPath(root, null, fileName);
+    }
+
+    /**
+     * Attachments live in a per-session directory on the durable workspace so two sessions sharing one
+     * workspace cannot overwrite each other's files; the scratch dir keeps the flat legacy layout.
+     */
+    static String targetPath(String root, String sessionId, String fileName) {
         if (!valid(fileName)) throw new IllegalArgumentException("invalid sandbox attachment file name");
+        if (WORKSPACE_ROOT.equals(root) && valid(sessionId)) {
+            return root + "/" + sessionId + "/" + fileName;
+        }
         return root + "/" + fileName;
     }
 
     static boolean isSafeTarget(String fileName, String targetPath) {
         if (targetPath == null || !valid(fileName)) return false;
         var suffix = "/" + fileName;
-        return KNOWN_ROOTS.stream().anyMatch(known -> (known + suffix).equals(targetPath));
+        if (KNOWN_ROOTS.stream().anyMatch(known -> (known + suffix).equals(targetPath))) return true;
+        // restore may also point at a per-session workspace directory written by an earlier build
+        if (!targetPath.startsWith(WORKSPACE_ROOT + "/")) return false;
+        var relative = targetPath.substring(WORKSPACE_ROOT.length() + 1);
+        var index = relative.lastIndexOf('/');
+        return index > 0 && valid(relative.substring(0, index)) && relative.substring(index).equals(suffix);
     }
 
     static boolean valid(String fileName) {

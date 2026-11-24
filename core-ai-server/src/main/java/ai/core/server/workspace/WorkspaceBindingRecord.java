@@ -9,17 +9,6 @@ import java.time.ZonedDateTime;
  * @author stephen
  */
 public class WorkspaceBindingRecord {
-    public String workspaceId;
-    public String sandboxId;
-    public String provider;
-    public long runtimeGeneration;
-    public String podId;
-    // null means the runtime exists but no session is bound yet
-    public String boundSessionId;
-    public ZonedDateTime runtimeStartedAt;
-    public ZonedDateTime boundAt;
-    public ZonedDateTime updatedAt;
-
     public static WorkspaceBindingRecord create(String workspaceId, String sandboxId, String provider, long runtimeGeneration) {
         var now = ZonedDateTime.now();
         var binding = new WorkspaceBindingRecord();
@@ -31,4 +20,16 @@ public class WorkspaceBindingRecord {
         binding.updatedAt = now;
         return binding;
     }
+
+    public String workspaceId;
+    public String sandboxId;
+    public String provider;
+    public long runtimeGeneration;
+    public String podId;
+    // null means the runtime exists but no session is bound yet
+    public String boundSessionId;
+    public ZonedDateTime runtimeStartedAt;
+    public ZonedDateTime boundAt;
+    public ZonedDateTime updatedAt;
+
 }

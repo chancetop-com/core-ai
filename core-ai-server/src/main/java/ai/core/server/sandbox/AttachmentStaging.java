@@ -100,8 +100,8 @@ final class AttachmentStaging {
     /** Uploads when the sandbox is live; otherwise the recorded reference materializes on the next acquire. */
     private String upload(String fileName, PendingFile file) {
         var root = SandboxAttachmentPath.root(sandboxService.workspaceWritable());
-        if (sandbox == null) return SandboxAttachmentPath.targetPath(root, fileName);
-        var targetPath = SandboxAttachmentPath.targetPath(root, fileName);
+        var targetPath = SandboxAttachmentPath.targetPath(root, sessionId, fileName);
+        if (sandbox == null) return targetPath;
         var tempFile = createTempFile();
         try {
             storage.downloadObjectToFile(file.container(), file.blobName(), tempFile);
@@ -116,7 +116,7 @@ final class AttachmentStaging {
             sandbox.uploadFile(targetPath, tempFile);
             return targetPath;
         } catch (RuntimeException e) {
-            var fallback = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.ATTACHMENT_TMP_ROOT, fileName);
+            var fallback = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.ATTACHMENT_TMP_ROOT, sessionId, fileName);
             LOGGER.warn("staging into {} failed, falling back to {}: session={}, error={}",
                     root, fallback, sessionId, e.getMessage());
             sandbox.uploadFile(fallback, tempFile);
@@ -171,8 +171,8 @@ final class AttachmentStaging {
     private String uniqueFileName(String fileName) {
         var candidate = fileName;
         for (var attempt = 2; attempt < 100; attempt++) {
-            var taken = SandboxAttachmentPath.WORKSPACE_ROOT + "/" + candidate;
-            var takenTmp = SandboxAttachmentPath.ATTACHMENT_TMP_ROOT + "/" + candidate;
+            var taken = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.WORKSPACE_ROOT, sessionId, candidate);
+            var takenTmp = SandboxAttachmentPath.targetPath(SandboxAttachmentPath.ATTACHMENT_TMP_ROOT, sessionId, candidate);
             if (!usedTargets.contains(taken) && !usedTargets.contains(takenTmp)) return candidate;
             candidate = suffixed(fileName, attempt);
         }

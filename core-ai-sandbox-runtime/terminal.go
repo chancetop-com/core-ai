@@ -42,8 +42,14 @@ type Terminal struct {
 }
 
 func startTerminal(clientID string, rows, cols uint16) (*Terminal, error) {
-	// --norc/--noprofile keep the prompt deterministic; PS1 comes from env.
-	cmd := exec.Command("bash", "--norc", "--noprofile", "-i")
+	// --noprofile/--norc keep the prompt deterministic unless the workspace ships its own rcfile.
+	args := []string{"--noprofile", "--norc", "-i"}
+	if rc := os.Getenv("WORKSPACE_TERMINAL_RC"); rc != "" {
+		if _, err := os.Stat(rc); err == nil {
+			args = []string{"--noprofile", "--rcfile", rc, "-i"}
+		}
+	}
+	cmd := exec.Command("bash", args...)
 	cmd.Dir = workspaceDir
 	cmd.Env = append(minimalEnv(), "TERM=xterm-256color", `PS1=\w $ `)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

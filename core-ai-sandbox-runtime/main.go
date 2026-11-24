@@ -221,6 +221,7 @@ func main() {
 	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		log.Printf("warning: failed to create workspace dir %s: %v", workspaceDir, err)
 	}
+	ensureWorkspaceDirectories()
 
 	http.HandleFunc("/health", handleHealth)
 	http.HandleFunc("/bind", handleBind)
@@ -676,7 +677,7 @@ func executeBash(args string) (string, string) {
 	ctx, cancel := context.WithTimeout(context.Background(), bashTimeout(parsed.Timeout))
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", parsed.Command)
+	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--norc", "-c", bashWrapper, "core-ai-bash", parsed.Command)
 	cmd.Dir = sanitizePath(parsed.WorkspaceDir, workspaceDir)
 	cmd.Env = minimalEnv()
 
@@ -1202,9 +1203,20 @@ func minimalEnv() []string {
 	// Start from the parent process environment so container-level env vars
 	// (API_KEY, K8s service vars, etc.) are inherited by child processes.
 	parent := os.Environ()
+	home := workspaceHome()
+	searchPath := "/usr/local/bin:/usr/bin:/bin"
+	values := workspaceEnvValues()
+	if prepend := values[pathPrependKey]; prepend != "" {
+		searchPath = prepend + ":" + searchPath
+	}
+	if home != defaultHomeDir {
+		searchPath = filepath.Join(home, ".local", "bin") + ":" +
+			filepath.Join(workspaceDir, ".npm-global", "bin") + ":" +
+			filepath.Join(workspaceDir, "bin") + ":" + searchPath
+	}
 	overrides := map[string]string{
-		"PATH":                    "/usr/local/bin:/usr/bin:/bin",
-		"HOME":                    "/tmp",
+		"PATH":                    searchPath,
+		"HOME":                    home,
 		"LANG":                    "en_US.UTF-8",
 		"PYTHONIOENCODING":        "utf-8",
 		"PYTHONDONTWRITEBYTECODE": "1",
@@ -1217,9 +1229,21 @@ func minimalEnv() []string {
 		overrides["CORE_AI_SESSION_ID"] = b.SessionID
 		overrides["CORE_AI_AGENT_NAME"] = b.AgentName
 	}
+	// The workspace env file is the durable layer; protected keys stay owned by the runtime,
+	// and PATH can only be extended through PATH_PREPEND (already folded in above).
+	for key, value := range values {
+		if key == pathPrependKey || isProtectedEnvKey(key) {
+			continue
+		}
+		overrides[key] = value
+	}
+
 	result := make([]string, 0, len(parent)+len(overrides))
 	for _, e := range parent {
 		key, _, found := strings.Cut(e, "=")
+		if key == "BASH_ENV" {
+			continue // non-interactive bash would source it before any wrapper can unset it
+		}
 		if found && overrides[key] != "" {
 			continue // will be overridden below
 		}

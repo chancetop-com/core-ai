@@ -115,9 +115,13 @@ public class WorkspaceSandboxCRBuilder {
 
     private List<Map<String, String>> buildEnv() {
         var env = new ArrayList<Map<String, String>>();
+        var coreAiDir = WorkspaceDefaults.MOUNT_PATH + "/.core-ai";
         env.add(Map.of("name", "WORKSPACE_DIR", "value", WorkspaceDefaults.MOUNT_PATH));
         env.add(Map.of("name", "HOME", "value", WorkspaceDefaults.MOUNT_PATH + "/home"));
-        env.add(Map.of("name", "WORKSPACE_ENV_FILE", "value", WorkspaceDefaults.MOUNT_PATH + "/.core-ai/env"));
+        env.add(Map.of("name", "WORKSPACE_ENV_FILE", "value", coreAiDir + "/env"));
+        env.add(Map.of("name", "WORKSPACE_PROFILE_FILE", "value", coreAiDir + "/profile.sh"));
+        env.add(Map.of("name", "WORKSPACE_TERMINAL_RC", "value", coreAiDir + "/terminal-rc.sh"));
+        env.add(Map.of("name", "WORKSPACE_LOG_DIR", "value", coreAiDir + "/logs"));
         env.add(Map.of("name", "MAX_ASYNC_TASKS", "value", "10"));
         env.add(Map.of("name", "ASYNC_MAX_TIMEOUT_MS", "value", "7200000"));
         env.add(Map.of("name", "ASYNC_TASK_RETENTION_MS", "value", "7200000"));

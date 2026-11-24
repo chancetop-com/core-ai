@@ -11,8 +11,6 @@ import core.framework.log.Severity;
  * @author stephen
  */
 public final class WorkspaceHttpErrors {
-    private WorkspaceHttpErrors() {
-    }
 
     public static RuntimeException translate(WorkspaceException e) {
         String code = e.errorCode();
@@ -24,6 +22,9 @@ public final class WorkspaceHttpErrors {
             case WorkspaceException.INVALID_REQUEST -> new Invalid(code, e.getMessage(), e);
             default -> new Conflict(code, e.getMessage(), e);
         };
+    }
+
+    private WorkspaceHttpErrors() {
     }
 
     @ResponseStatus(HTTPStatus.GONE)

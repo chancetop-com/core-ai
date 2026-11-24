@@ -22,8 +22,8 @@ import java.util.function.Consumer;
 public class PgChatSessionStore implements ChatSessionStore {
     private static final String TABLE = "app.chat_sessions";
     private static final String SELECT = "SELECT id, user_id, agent_id, source, comparison_id, comparison_pair_id, "
-            + "comparison_variant, title, message_count, created_at, last_message_at, notify_on_complete, deleted_at, "
-            + "data::text AS data FROM " + TABLE;
+            + "comparison_variant, title, message_count, created_at, last_message_at, notify_on_complete, "
+            + "workspace_id, workspace_generation, deleted_at, data::text AS data FROM " + TABLE;
 
     private static ChatSession toSession(PgChatSessionRow row) {
         return JsonUtil.fromJson(ChatSession.class, row.data);
@@ -41,30 +41,31 @@ public class PgChatSessionStore implements ChatSessionStore {
     public boolean insertIfAbsent(ChatSession session) {
         return database.execute("INSERT INTO " + TABLE + " (id, user_id, agent_id, source, comparison_id, "
                         + "comparison_pair_id, comparison_variant, title, message_count, created_at, last_message_at, "
-                        + "notify_on_complete, deleted_at, data, updated_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now()) ON CONFLICT (id) DO NOTHING",
+                        + "notify_on_complete, workspace_id, workspace_generation, deleted_at, data, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now()) ON CONFLICT (id) DO NOTHING",
                 session.id, session.userId, session.agentId, session.source, session.comparisonId,
                 session.comparisonPairId, session.comparisonVariant, session.title, session.messageCount,
-                session.createdAt, session.lastMessageAt, session.notifyOnComplete, session.deletedAt,
-                JsonUtil.toJson(session)) > 0;
+                session.createdAt, session.lastMessageAt, session.notifyOnComplete, session.workspaceId,
+                session.workspaceGeneration, session.deletedAt, JsonUtil.toJson(session)) > 0;
     }
 
     @Override
     public void upsert(ChatSession session) {
         database.execute("INSERT INTO " + TABLE + " (id, user_id, agent_id, source, comparison_id, "
                         + "comparison_pair_id, comparison_variant, title, message_count, created_at, last_message_at, "
-                        + "notify_on_complete, deleted_at, data, updated_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now()) "
+                        + "notify_on_complete, workspace_id, workspace_generation, deleted_at, data, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, now()) "
                         + "ON CONFLICT (id) DO UPDATE SET user_id = EXCLUDED.user_id, agent_id = EXCLUDED.agent_id, "
                         + "source = EXCLUDED.source, comparison_id = EXCLUDED.comparison_id, "
                         + "comparison_pair_id = EXCLUDED.comparison_pair_id, comparison_variant = EXCLUDED.comparison_variant, "
                         + "title = EXCLUDED.title, message_count = EXCLUDED.message_count, created_at = EXCLUDED.created_at, "
                         + "last_message_at = EXCLUDED.last_message_at, notify_on_complete = EXCLUDED.notify_on_complete, "
+                        + "workspace_id = EXCLUDED.workspace_id, workspace_generation = EXCLUDED.workspace_generation, "
                         + "deleted_at = EXCLUDED.deleted_at, data = EXCLUDED.data, updated_at = now()",
                 session.id, session.userId, session.agentId, session.source, session.comparisonId,
                 session.comparisonPairId, session.comparisonVariant, session.title, session.messageCount,
-                session.createdAt, session.lastMessageAt, session.notifyOnComplete, session.deletedAt,
-                JsonUtil.toJson(session));
+                session.createdAt, session.lastMessageAt, session.notifyOnComplete, session.workspaceId,
+                session.workspaceGeneration, session.deletedAt, JsonUtil.toJson(session));
     }
 
     @Override

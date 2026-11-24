@@ -2,11 +2,13 @@ package ai.core.server;
 
 import ai.core.api.server.workspace.WorkspaceWebService;
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.sandbox.WorkspaceSandboxFactory;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxApiVersion;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxClient;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.agentsandbox.SandboxPodPlacement;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
+import ai.core.server.session.ChatSessionStore;
 import ai.core.server.workspace.KubernetesWorkspaceProvisioner;
 import ai.core.server.workspace.PgWorkspaceBindingStore;
 import ai.core.server.workspace.PgWorkspaceEventStore;
@@ -16,6 +18,8 @@ import ai.core.server.workspace.WorkspaceConfig;
 import ai.core.server.workspace.WorkspaceDefaults;
 import ai.core.server.workspace.WorkspaceRuntimeManager;
 import ai.core.server.workspace.WorkspaceService;
+import ai.core.server.workspace.WorkspaceSessionBinder;
+import ai.core.server.workspace.WorkspaceStores;
 import ai.core.server.web.WorkspaceWebServiceImpl;
 import core.framework.module.Module;
 import org.slf4j.Logger;
@@ -60,7 +64,12 @@ public class WorkspaceModule extends Module {
             thread.setDaemon(true);
             return thread;
         });
-        bind(new WorkspaceService(workspaces, volumes, bindings, events, provisioner, runtimes, config, wakeExecutor));
+        bind(new WorkspaceService(new WorkspaceStores(workspaces, volumes, bindings, events),
+                provisioner, runtimes, config, wakeExecutor));
+        bind(new WorkspaceSessionBinder(bean(WorkspaceService.class)));
+        var sandboxService = bean(SandboxService.class);
+        bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
+        sandboxService.workspaceSandboxFactory(bean(WorkspaceSandboxFactory.class));
         api().service(WorkspaceWebService.class, bind(WorkspaceWebServiceImpl.class));
         LOGGER.info("workspace module loaded, enabled={}, provider={}, runtimeAvailable={}",
                 config.enabled, config.provider, runtimes.available());

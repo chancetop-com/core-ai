@@ -7,7 +7,7 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.Executor;
 
 /**
@@ -30,13 +30,12 @@ public class WorkspaceService {
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
 
-    public WorkspaceService(WorkspaceStore workspaces, WorkspaceVolumeStore volumes, WorkspaceBindingStore bindings,
-                            WorkspaceEventStore events, WorkspaceProvisioner provisioner,
+    public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
-        this.workspaces = workspaces;
-        this.volumes = volumes;
-        this.bindings = bindings;
-        this.events = events;
+        this.workspaces = stores.workspaces();
+        this.volumes = stores.volumes();
+        this.bindings = stores.bindings();
+        this.events = stores.events();
         this.provisioner = provisioner;
         this.runtimes = runtimes;
         this.config = config;
@@ -53,7 +52,7 @@ public class WorkspaceService {
         if (size <= 0 || size > config.maxSizeGb) {
             throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED, "workspace size must be between 1 and " + config.maxSizeGb + " GB");
         }
-        checkCreateQuota(ownerUserId, size);
+        WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
 
         var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, agentId);
         workspace.sizeGb = size;
@@ -63,7 +62,7 @@ public class WorkspaceService {
         try {
             workspace.profile = WorkspaceProfile.of(profileId);
         } catch (IllegalArgumentException e) {
-            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, e.getMessage());
+            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, e.getMessage(), e);
         }
         if (!workspaces.insertIfAbsent(workspace)) {
             throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + workspaceName);
@@ -88,21 +87,54 @@ public class WorkspaceService {
         return workspaces.listByOwner(ownerUserId);
     }
 
+    public boolean enabled() {
+        return config.enabled;
+    }
+
+    /**
+     * Resolves the default workspace of (user, agent), creating it when absent. The name is not user
+     * input, so a conflict moves to the next candidate instead of failing the session.
+     */
+    public WorkspaceRecord resolveDefault(String ownerUserId, String agentId) {
+        requireEnabled();
+        if (agentId == null || agentId.isBlank()) {
+            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "agent id is required for a default workspace");
+        }
+        var existing = workspaces.findDefault(ownerUserId, agentId);
+        if (existing.isPresent() && !existing.get().deleted()) return existing.get();
+
+        var size = config.defaultSizeGb;
+        WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
+        for (var name : defaultNames(agentId)) {
+            var workspace = WorkspaceRecord.create(ownerUserId, name, agentId);
+            workspace.isDefault = true;
+            workspace.sizeGb = size;
+            workspace.storageClass = config.storageClass;
+            workspace.image = config.image;
+            workspace.idleSleepMinutes = config.idleSleepMinutes;
+            if (workspaces.insertIfAbsent(workspace)) {
+                appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", true));
+                return load(ownerUserId, workspace.id);
+            }
+            // another request may have created the default first, or the name belongs to a detached workspace
+            var concurrent = workspaces.findDefault(ownerUserId, agentId);
+            if (concurrent.isPresent() && !concurrent.get().deleted()) return concurrent.get();
+        }
+        throw new WorkspaceException(WorkspaceException.NAME_CONFLICT,
+                "cannot allocate a default workspace name for agent: " + agentId);
+    }
+
+    private List<String> defaultNames(String agentId) {
+        var slug = agentId.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
+        if (slug.length() > 24) slug = slug.substring(0, 24);
+        return List.of("default", "default-" + (slug.isEmpty() ? "agent" : slug),
+                "default-" + UUID.randomUUID().toString().substring(0, 8));
+    }
+
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes) {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
-        if (name != null) {
-            var trimmed = name.trim();
-            if (trimmed.isEmpty() || trimmed.length() > 64) {
-                throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
-            }
-            if (!trimmed.equals(workspace.name)) {
-                if (workspaces.findByName(ownerUserId, trimmed).isPresent()) {
-                    throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + trimmed);
-                }
-                workspace.name = trimmed;
-            }
-        }
+        if (name != null) rename(ownerUserId, workspace, name);
         if (idleSleepMinutes != null) {
             if (idleSleepMinutes < 1 || idleSleepMinutes > 1440) {
                 throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "idle sleep minutes must be between 1 and 1440");
@@ -113,6 +145,18 @@ public class WorkspaceService {
         workspaces.update(workspace);
         appendEvent(id, "updated", ownerUserId, Map.of());
         return load(ownerUserId, id);
+    }
+
+    private void rename(String ownerUserId, WorkspaceRecord workspace, String name) {
+        var trimmed = name.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 64) {
+            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
+        }
+        if (trimmed.equals(workspace.name)) return;
+        if (workspaces.findByName(ownerUserId, trimmed).isPresent()) {
+            throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + trimmed);
+        }
+        workspace.name = trimmed;
     }
 
     /** explicit retry of a failed volume; idempotent for a healthy one */
@@ -174,20 +218,15 @@ public class WorkspaceService {
             deleteRuntimeQuietly(existingBinding.get().sandboxId);
             bindings.delete(id);
         }
-        checkRunningQuota(ownerUserId, id);
+        WorkspaceQuotas.checkRunning(config, workspaces.listByOwner(ownerUserId), id);
 
-        var runtimeGeneration = workspace.runtimeGeneration + 1;
+        // wakeAsync already claimed the next generation; only a fresh call allocates one
+        var runtimeGeneration = workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING
+                ? workspace.runtimeGeneration
+                : workspace.runtimeGeneration + 1;
         workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.PROVISIONING, runtimeGeneration, null, null);
 
-        var runtime = new WorkspaceRuntimeSpec();
-        runtime.workspaceId = id;
-        runtime.ownerUserId = ownerUserId;
-        runtime.image = workspace.image != null ? workspace.image : config.image;
-        runtime.pvcName = volume.pvcName;
-        runtime.runtimeGeneration = runtimeGeneration;
-        runtime.profile = workspace.profile;
-        runtime.maxRuntimeSeconds = WorkspaceDefaults.MAX_RUNTIME_SECONDS;
-
+        var runtime = runtimeSpec(workspace, ownerUserId, volume, runtimeGeneration);
         var sandboxName = runtimes.name(runtime);
         try {
             runtimes.create(runtime);
@@ -313,6 +352,18 @@ public class WorkspaceService {
         bindings.clearSessionIfBound(id, sessionId, ZonedDateTime.now());
     }
 
+    private WorkspaceRuntimeSpec runtimeSpec(WorkspaceRecord workspace, String ownerUserId, WorkspaceVolumeRecord volume, long runtimeGeneration) {
+        var runtime = new WorkspaceRuntimeSpec();
+        runtime.workspaceId = workspace.id;
+        runtime.ownerUserId = ownerUserId;
+        runtime.image = workspace.image != null ? workspace.image : config.image;
+        runtime.pvcName = volume.pvcName;
+        runtime.runtimeGeneration = runtimeGeneration;
+        runtime.profile = workspace.profile;
+        runtime.maxRuntimeSeconds = WorkspaceDefaults.MAX_RUNTIME_SECONDS;
+        return runtime;
+    }
+
     private WorkspaceVolumeRecord provisionVolume(WorkspaceRecord workspace) {
         var volume = volumes.active(workspace.id).orElse(null);
         if (volume == null) {
@@ -359,30 +410,6 @@ public class WorkspaceService {
         } catch (RuntimeException e) {
             // the controller's own shutdown policy will remove it; the volume was never owned by the CR
             LOGGER.warn("failed to delete workspace sandbox {}, leaving it to the controller", sandboxName, e);
-        }
-    }
-
-    private void checkCreateQuota(String ownerUserId, int sizeGb) {
-        var owned = workspaces.listByOwner(ownerUserId);
-        if (owned.size() >= config.maxWorkspacesPerUser) {
-            throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED,
-                    "workspace limit reached (" + config.maxWorkspacesPerUser + ")");
-        }
-        var totalGb = owned.stream().mapToInt(w -> w.sizeGb).sum() + sizeGb;
-        if (totalGb > config.maxTotalGbPerUser) {
-            throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED,
-                    "total workspace storage limit reached (" + config.maxTotalGbPerUser + " GB)");
-        }
-    }
-
-    private void checkRunningQuota(String ownerUserId, String excludeId) {
-        var running = workspaces.listByOwner(ownerUserId).stream()
-                .filter(w -> !Objects.equals(w.id, excludeId))
-                .filter(w -> w.runtimeStatus == WorkspaceRuntimeStatus.READY || w.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING)
-                .count();
-        if (running >= config.maxRunningPerUser) {
-            throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED,
-                    "running workspace limit reached (" + config.maxRunningPerUser + ")");
         }
     }
 

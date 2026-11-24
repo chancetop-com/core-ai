@@ -10,8 +10,6 @@ import java.util.Locale;
  * @author stephen
  */
 public final class WorkspaceIds {
-    private WorkspaceIds() {
-    }
 
     /** lowercase alphanumeric only, 32 chars max; stable for the same input */
     public static String compact(String id) {
@@ -26,5 +24,8 @@ public final class WorkspaceIds {
         sanitized = sanitized.replaceAll("^[^A-Za-z0-9]+", "");
         sanitized = sanitized.replaceAll("[^A-Za-z0-9]+$", "");
         return sanitized.isEmpty() ? "unknown" : sanitized;
+    }
+
+    private WorkspaceIds() {
     }
 }

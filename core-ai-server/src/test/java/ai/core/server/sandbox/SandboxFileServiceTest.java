@@ -175,14 +175,14 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "IMG_0001.JPG", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/IMG_0001.JPG"), staged);
-        assertArrayEquals(bytes, fixture.uploads.get("/workspace/attachments/IMG_0001.JPG"));
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/session-1/IMG_0001.JPG"), staged);
+        assertArrayEquals(bytes, fixture.uploads.get("/workspace/attachments/session-1/IMG_0001.JPG"));
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
         var reference = captor.getValue();
         assertEquals("session-1", reference.sessionId);
         assertEquals(SessionAttachmentRef.KIND_SANDBOX, reference.kind);
-        assertEquals("/workspace/attachments/IMG_0001.JPG", reference.targetPath);
+        assertEquals("/workspace/attachments/session-1/IMG_0001.JPG", reference.targetPath);
         assertEquals("IMG_0001.JPG", reference.fileName);
         assertEquals("uploads", reference.container);
         assertEquals("ai/uploads/photo.jpg", reference.blobName);
@@ -198,12 +198,12 @@ class SandboxFileServiceTest {
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/photo.jpg"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/session-1/photo.jpg"), staged);
         verify(fixture.provider, never()).acquire(any(), any(), any());
         verify(fixture.sandbox, never()).uploadFile(any(), any(Path.class));
         var captor = ArgumentCaptor.forClass(SessionAttachmentRef.class);
         verify(fixture.repository).insert(captor.capture());
-        assertEquals("/workspace/attachments/photo.jpg", captor.getValue().targetPath);
+        assertEquals("/workspace/attachments/session-1/photo.jpg", captor.getValue().targetPath);
     }
 
     @Test
@@ -242,14 +242,14 @@ class SandboxFileServiceTest {
     @Test
     void stagesEachBlobOnlyOnce() {
         var fixture = fixture();
-        var existing = reference("staged", "photo.jpg", "/workspace/attachments/photo.jpg", "ai/uploads/photo.jpg", 1);
+        var existing = reference("staged", "photo.jpg", "/workspace/attachments/session-1/photo.jpg", "ai/uploads/photo.jpg", 1);
         existing.container = "uploads";
         when(fixture.repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of(existing));
 
         var staged = service.stageAttachments("session-1", "user-1", List.of(new PendingFile(
                 "photo.jpg", "uploads", "ai/uploads/photo.jpg", "image/jpeg")));
 
-        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/photo.jpg"), staged);
+        assertEquals(Map.of("ai/uploads/photo.jpg", "/workspace/attachments/session-1/photo.jpg"), staged);
         verify(fixture.storage, never()).headObject(any(), any());
         verify(fixture.repository, never()).insert(any());
     }
@@ -281,7 +281,7 @@ class SandboxFileServiceTest {
     @Test
     void restoresStagedAttachmentFromItsRecordedPath() {
         var fixture = fixture();
-        var reference = reference("staged", "photo.jpg", "/workspace/attachments/photo.jpg", "ai/uploads/photo.jpg", 1);
+        var reference = reference("staged", "photo.jpg", "/workspace/attachments/session-1/photo.jpg", "ai/uploads/photo.jpg", 1);
         reference.container = "uploads";
         when(fixture.repository.findSandboxAttachments("session-1", "user-1")).thenReturn(List.of(reference));
         var bytes = "img".getBytes(StandardCharsets.UTF_8);
@@ -291,7 +291,7 @@ class SandboxFileServiceTest {
 
         service.ensureSandboxReady("session-1");
 
-        assertEquals("img", new String(fixture.uploads.get("/workspace/attachments/photo.jpg"), StandardCharsets.UTF_8));
+        assertEquals("img", new String(fixture.uploads.get("/workspace/attachments/session-1/photo.jpg"), StandardCharsets.UTF_8));
     }
 
     private Fixture fixture() {

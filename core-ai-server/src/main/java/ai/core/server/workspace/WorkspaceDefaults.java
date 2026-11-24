@@ -1,5 +1,7 @@
 package ai.core.server.workspace;
 
+import ai.core.sandbox.SandboxConstants;
+
 /**
  * Product defaults for the persistent workspace feature. Deployment-level overrides land in
  * {@code sys.workspace.*} properties; values here are the safe fallbacks used when a Property is
@@ -24,7 +26,7 @@ public final class WorkspaceDefaults {
     public static final String STORAGE_CLASS = "managed-csi";
     public static final String MOUNT_PATH = "/workspace";
     public static final String NETWORK_PROFILE = "public-egress";
-    public static final String IMAGE = "ghcr.io/chancetop/core-ai-sandbox:latest";
+    public static final String IMAGE = SandboxConstants.DEFAULT_IMAGE;
 
     private WorkspaceDefaults() {
     }

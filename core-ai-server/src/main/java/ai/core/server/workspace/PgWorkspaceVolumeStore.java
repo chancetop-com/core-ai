@@ -15,9 +15,6 @@ public class PgWorkspaceVolumeStore implements WorkspaceVolumeStore {
     private static final String SELECT = "SELECT workspace_id, volume_generation, pvc_name, provider, size_gb, "
             + "storage_class, status, node_name, zone, bound_at, deleted_at, created_at, updated_at FROM " + TABLE;
 
-    @Inject
-    Database database;
-
     private static WorkspaceVolumeRecord toVolume(PgWorkspaceVolumeRow row) {
         var volume = new WorkspaceVolumeRecord();
         volume.workspaceId = row.workspaceId;
@@ -35,6 +32,9 @@ public class PgWorkspaceVolumeStore implements WorkspaceVolumeStore {
         volume.updatedAt = row.updatedAt;
         return volume;
     }
+
+    @Inject
+    Database database;
 
     @Override
     public Optional<WorkspaceVolumeRecord> get(String workspaceId, long volumeGeneration) {

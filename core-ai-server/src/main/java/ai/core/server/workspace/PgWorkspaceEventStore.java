@@ -11,9 +11,6 @@ import java.util.List;
 public class PgWorkspaceEventStore implements WorkspaceEventStore {
     private static final String TABLE = "app.workspace_events";
 
-    @Inject
-    Database database;
-
     private static WorkspaceEventRecord toEvent(PgWorkspaceEventRow row) {
         var event = new WorkspaceEventRecord();
         event.id = row.id;
@@ -24,6 +21,9 @@ public class PgWorkspaceEventStore implements WorkspaceEventStore {
         event.createdAt = row.createdAt;
         return event;
     }
+
+    @Inject
+    Database database;
 
     @Override
     public void append(WorkspaceEventRecord event) {

@@ -9,20 +9,6 @@ import java.time.ZonedDateTime;
  * @author stephen
  */
 public class WorkspaceVolumeRecord {
-    public String workspaceId;
-    public long volumeGeneration;
-    public String pvcName;
-    public String provider;
-    public int sizeGb;
-    public String storageClass;
-    public WorkspaceVolumeStatus status;
-    public String nodeName;
-    public String zone;
-    public ZonedDateTime boundAt;
-    public ZonedDateTime deletedAt;
-    public ZonedDateTime createdAt;
-    public ZonedDateTime updatedAt;
-
     public static WorkspaceVolumeRecord provisioning(WorkspaceRecord workspace, long generation, String pvcName, String provider) {
         var now = ZonedDateTime.now();
         var volume = new WorkspaceVolumeRecord();
@@ -37,4 +23,19 @@ public class WorkspaceVolumeRecord {
         volume.updatedAt = now;
         return volume;
     }
+
+    public String workspaceId;
+    public long volumeGeneration;
+    public String pvcName;
+    public String provider;
+    public int sizeGb;
+    public String storageClass;
+    public WorkspaceVolumeStatus status;
+    public String nodeName;
+    public String zone;
+    public ZonedDateTime boundAt;
+    public ZonedDateTime deletedAt;
+    public ZonedDateTime createdAt;
+    public ZonedDateTime updatedAt;
+
 }

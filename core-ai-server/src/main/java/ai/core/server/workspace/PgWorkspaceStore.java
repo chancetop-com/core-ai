@@ -21,11 +21,7 @@ public class PgWorkspaceStore implements WorkspaceStore {
             + "runtime_version, env_json::text AS env_json, bootstrap_script, start_script, network_enabled, "
             + "network_profile, idle_sleep_minutes, runtime_generation, last_used_at, last_provisioned_at, "
             + "error_code, error_message, deleted_at, created_at, updated_at FROM " + TABLE;
-    private static final TypeReference<Map<String, String>> ENV_TYPE = new TypeReference<>() {
-    };
 
-    @Inject
-    Database database;
 
     private static WorkspaceRecord toWorkspace(PgWorkspaceRow row) {
         var workspace = new WorkspaceRecord();
@@ -61,6 +57,12 @@ public class PgWorkspaceStore implements WorkspaceStore {
         workspace.updatedAt = row.updatedAt;
         return workspace;
     }
+
+    private static final TypeReference<Map<String, String>> ENV_TYPE = new TypeReference<>() {
+    };
+
+    @Inject
+    Database database;
 
     @Override
     public Optional<WorkspaceRecord> get(String id) {

@@ -12,6 +12,28 @@ import java.util.UUID;
  * @author stephen
  */
 public class WorkspaceRecord {
+    public static WorkspaceRecord create(String ownerUserId, String name, String agentId) {
+        var now = ZonedDateTime.now();
+        var workspace = new WorkspaceRecord();
+        workspace.id = UUID.randomUUID().toString();
+        workspace.ownerUserId = ownerUserId;
+        workspace.name = name;
+        workspace.agentId = agentId;
+        workspace.volumeStatus = WorkspaceVolumeStatus.PROVISIONING;
+        workspace.runtimeStatus = WorkspaceRuntimeStatus.NONE;
+        workspace.sizeGb = WorkspaceDefaults.SIZE_GB;
+        workspace.storageClass = WorkspaceDefaults.STORAGE_CLASS;
+        workspace.profile = WorkspaceProfile.DEFAULT;
+        workspace.mountPath = WorkspaceDefaults.MOUNT_PATH;
+        workspace.image = WorkspaceDefaults.IMAGE;
+        workspace.networkEnabled = true;
+        workspace.networkProfile = WorkspaceDefaults.NETWORK_PROFILE;
+        workspace.idleSleepMinutes = WorkspaceDefaults.IDLE_SLEEP_MINUTES;
+        workspace.createdAt = now;
+        workspace.updatedAt = now;
+        return workspace;
+    }
+
     public String id;
     public String ownerUserId;
     public String name;
@@ -41,28 +63,6 @@ public class WorkspaceRecord {
     public ZonedDateTime deletedAt;
     public ZonedDateTime createdAt;
     public ZonedDateTime updatedAt;
-
-    public static WorkspaceRecord create(String ownerUserId, String name, String agentId) {
-        var now = ZonedDateTime.now();
-        var workspace = new WorkspaceRecord();
-        workspace.id = UUID.randomUUID().toString();
-        workspace.ownerUserId = ownerUserId;
-        workspace.name = name;
-        workspace.agentId = agentId;
-        workspace.volumeStatus = WorkspaceVolumeStatus.PROVISIONING;
-        workspace.runtimeStatus = WorkspaceRuntimeStatus.NONE;
-        workspace.sizeGb = WorkspaceDefaults.SIZE_GB;
-        workspace.storageClass = WorkspaceDefaults.STORAGE_CLASS;
-        workspace.profile = WorkspaceProfile.DEFAULT;
-        workspace.mountPath = WorkspaceDefaults.MOUNT_PATH;
-        workspace.image = WorkspaceDefaults.IMAGE;
-        workspace.networkEnabled = true;
-        workspace.networkProfile = WorkspaceDefaults.NETWORK_PROFILE;
-        workspace.idleSleepMinutes = WorkspaceDefaults.IDLE_SLEEP_MINUTES;
-        workspace.createdAt = now;
-        workspace.updatedAt = now;
-        return workspace;
-    }
 
     public boolean deleted() {
         return deletedAt != null;

@@ -44,6 +44,12 @@ public class PgChatSessionRow {
     @Column(name = "notify_on_complete")
     public Boolean notifyOnComplete;
 
+    @Column(name = "workspace_id")
+    public String workspaceId;
+
+    @Column(name = "workspace_generation")
+    public Long workspaceGeneration;
+
     @Column(name = "deleted_at")
     public ZonedDateTime deletedAt;
 

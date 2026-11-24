@@ -10,13 +10,6 @@ import java.util.UUID;
  * @author stephen
  */
 public class WorkspaceEventRecord {
-    public String id;
-    public String workspaceId;
-    public String eventType;
-    public String actor;
-    public String payloadJson;
-    public ZonedDateTime createdAt;
-
     public static WorkspaceEventRecord of(String workspaceId, String eventType, String actor, String payloadJson) {
         var event = new WorkspaceEventRecord();
         event.id = UUID.randomUUID().toString();
@@ -27,4 +20,12 @@ public class WorkspaceEventRecord {
         event.createdAt = ZonedDateTime.now();
         return event;
     }
+
+    public String id;
+    public String workspaceId;
+    public String eventType;
+    public String actor;
+    public String payloadJson;
+    public ZonedDateTime createdAt;
+
 }

@@ -51,6 +51,7 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
     private final AgentSandboxApiVersion apiVersion;
     private final AgentSandboxFleetReader fleetReader;
     private final AgentSandboxCleanupService cleanupService;
+    private final AgentSandboxStatusReader statusReader;
 
     public AgentSandboxProvider(AgentSandboxProviderConfig config) {
         this.client = config.client;
@@ -64,6 +65,7 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
         this.apiVersion = config.apiVersion != null ? config.apiVersion : AgentSandboxApiVersion.V1_ALPHA1;
         this.fleetReader = new AgentSandboxFleetReader(client, extensionsClient);
         this.cleanupService = new AgentSandboxCleanupService(client, extensionsClient, kubernetesClient);
+        this.statusReader = new AgentSandboxStatusReader(client, extensionsClient);
     }
 
     private boolean warmPoolConfigured() {
@@ -396,64 +398,16 @@ public class AgentSandboxProvider implements SandboxProvider, SandboxFleetAware 
             LOGGER.warn("failed to renew agent sandbox lifetime: name={}", id, e);
         }
     }
-
     @Override
     public SandboxStatus getStatus(Sandbox sandbox) {
         if (sandbox == null) return SandboxStatus.TERMINATED;
         if (!(sandbox instanceof AgentSandbox agentSandbox)) return sandbox.getStatus();
         try {
-            return agentSandbox.kind() == AgentSandboxKind.CLAIM ? getClaimStatus(agentSandbox) : getDirectStatus(agentSandbox);
+            return statusReader.status(agentSandbox);
         } catch (Exception e) {
             LOGGER.warn("failed to get agent sandbox status: name={}", sandbox.getId(), e);
             return sandbox.getStatus();
         }
-    }
-
-    private SandboxStatus getClaimStatus(AgentSandbox sandbox) {
-        if (extensionsClient == null) {
-            // Cannot verify: reporting a terminal state here would destroy a sandbox that is still alive.
-            LOGGER.warn("no extensions client configured, keeping local sandbox status: name={}", sandbox.getId());
-            return sandbox.getStatus();
-        }
-        var opt = extensionsClient.getClaim(sandbox.getId());
-        if (opt.isEmpty()) return SandboxStatus.TERMINATED;
-        var claim = opt.get();
-        if (claim.status == null) return SandboxStatus.CREATING;
-        if (claim.status.conditions != null) {
-            for (var c : claim.status.conditions) {
-                if ("Ready".equals(c.type) && "True".equals(c.status)) {
-                    return sandbox.getStatus() == SandboxStatus.EXECUTING ? SandboxStatus.EXECUTING : SandboxStatus.READY;
-                }
-                if ("Failed".equals(c.type) && "True".equals(c.status)) {
-                    return SandboxStatus.ERROR;
-                }
-            }
-        }
-        if (claim.status.sandbox != null && claim.status.sandbox.podIPs != null && claim.status.sandbox.podIPs.length > 0) {
-            return SandboxStatus.READY;
-        }
-        return SandboxStatus.CREATING;
-    }
-
-    private SandboxStatus getDirectStatus(AgentSandbox sandbox) {
-        var opt = client.getSandbox(sandbox.getId());
-        if (opt.isEmpty()) return SandboxStatus.TERMINATED;
-        var cr = opt.get();
-        if (cr.status == null) return SandboxStatus.CREATING;
-        if (cr.status.conditions != null) {
-            for (var c : cr.status.conditions) {
-                if ("Ready".equals(c.type) && "True".equals(c.status)) {
-                    return sandbox.getStatus() == SandboxStatus.EXECUTING ? SandboxStatus.EXECUTING : SandboxStatus.READY;
-                }
-                if ("Failed".equals(c.type) && "True".equals(c.status)) {
-                    return SandboxStatus.ERROR;
-                }
-            }
-        }
-        if (cr.status.podIPs != null && cr.status.podIPs.length > 0) {
-            return SandboxStatus.READY;
-        }
-        return SandboxStatus.CREATING;
     }
 
     // --- Cleanup ---

@@ -45,7 +45,8 @@ final class SandboxReleaseSupport {
 
     static void close(SandboxService service, Sandbox sandbox) {
         try {
-            if (sandbox instanceof LazySandbox) {
+            if (sandbox instanceof WorkspaceSandbox || sandbox instanceof LazySandbox) {
+                // releasing a workspace handle only detaches the session; the runtime and volume stay
                 sandbox.close();
             } else {
                 service.sandboxManager().release(sandbox);

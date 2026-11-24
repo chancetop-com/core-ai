@@ -66,6 +66,7 @@ public class SandboxService {
     final SandboxSnapshotService snapshotService;
     private SandboxBindingStore bindingStore;
     private volatile SandboxHubBinding hubBinding;
+    private final SessionSandboxBuilder sessionSandboxBuilder;
 
     public SandboxService() {
         this((SandboxSnapshotService) null, null, null, null, null);
@@ -91,6 +92,7 @@ public class SandboxService {
         this.attachmentRepository = attachmentRepository;
         this.snapshotService = snapshotService;
         this.bindingStore = bindingStore;
+        this.sessionSandboxBuilder = null;
     }
 
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig) {
@@ -113,6 +115,7 @@ public class SandboxService {
     SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox,
                    SandboxServiceDependencies dependencies, ScheduledExecutorService cleanupScheduler) {
         this.sandboxManager = new SandboxManager(provider);
+        this.sessionSandboxBuilder = new SessionSandboxBuilder(sandboxManager);
         this.discoverySandbox = new DiscoverySandbox(sandboxManager);
         this.defaultConfig = defaultConfig != null ? defaultConfig : createDefaultConfig();
         this.serverUrlFromSandbox = serverUrlFromSandbox;
@@ -136,7 +139,11 @@ public class SandboxService {
     }
 
     public SandboxProvider provider() {
-        return sandboxManager.provider();
+        return sandboxManager != null ? sandboxManager.provider() : null;
+    }
+
+    public void workspaceSandboxFactory(WorkspaceSandboxFactory factory) {
+        if (sessionSandboxBuilder != null) sessionSandboxBuilder.workspaceFactory(factory);
     }
 
     public Sandbox createSandbox(SandboxConfig config, String sessionId, String userId) {
@@ -160,11 +167,9 @@ public class SandboxService {
             return null;
         }
         return sessionSandboxes.computeIfAbsent(sessionId, sid -> {
-            LOGGER.info("sandbox created (shared) for session: {}, config={}", sid, effectiveConfig);
             rememberUser(sid, userId);
-            return new LazySandbox(effectiveConfig, sandboxManager, null, new LazySandbox.SessionIdentity(sid, userId),
-                    () -> onSandboxReady(sid, userId, new SandboxSnapshotService.RestoreResult(
-                            SandboxSnapshotService.RestoreOutcome.NONE, null)));
+            return sessionSandboxBuilder.create(effectiveConfig, sid, userId, null, null,
+                    outcome -> onSandboxReady(sid, userId, outcome));
         });
     }
 
@@ -187,15 +192,14 @@ public class SandboxService {
             return null;
         }
         rememberUser(sessionId, userId);
-        var lazySandbox = new LazySandbox(effectiveConfig, sandboxManager, eventDispatcher, new LazySandbox.SessionIdentity(sessionId, userId),
-                outcome -> onSandboxReady(sessionId, userId, outcome), snapshot);
-        installSandbox(sessionId, lazySandbox);
+        var sandbox = sessionSandboxBuilder.create(effectiveConfig, sessionId, userId, eventDispatcher, snapshot,
+                outcome -> onSandboxReady(sessionId, userId, outcome));
+        installSandbox(sessionId, sandbox);
         LOGGER.info("sandbox created for session: {}, config={}", sessionId, effectiveConfig);
-        return lazySandbox;
+        return sandbox;
     }
 
-    // Registers the sandbox as the session's current one. Replacing a live sandbox (session rebuild,
-    // re-created ffmpeg lease) must release the previous instance instead of orphaning it.
+    // Registers the sandbox as the session's current one; replacing a live one releases the previous instance.
     private void installSandbox(String sessionId, Sandbox sandbox) {
         var previous = sessionSandboxes.put(sessionId, sandbox);
         if (previous == null || Objects.equals(previous.getId(), sandbox.getId())) return;

@@ -80,6 +80,14 @@ public class ChatSession {
     @Field(name = "comparison_pair_id")
     public String comparisonPairId;
 
+    // durable environment this session writes to; fixed at creation, never re-resolved from the
+    // agent's current default workspace
+    @Field(name = "workspace_id")
+    public String workspaceId;
+
+    @Field(name = "workspace_generation")
+    public Long workspaceGeneration;
+
     @Field(name = "deleted_at")
     public ZonedDateTime deletedAt;
 }

@@ -14,9 +14,6 @@ public class PgWorkspaceBindingStore implements WorkspaceBindingStore {
     private static final String SELECT = "SELECT workspace_id, sandbox_id, provider, runtime_generation, pod_id, "
             + "bound_session_id, runtime_started_at, bound_at, updated_at FROM " + TABLE;
 
-    @Inject
-    Database database;
-
     private static WorkspaceBindingRecord toBinding(PgWorkspaceBindingRow row) {
         var binding = new WorkspaceBindingRecord();
         binding.workspaceId = row.workspaceId;
@@ -30,6 +27,9 @@ public class PgWorkspaceBindingStore implements WorkspaceBindingStore {
         binding.updatedAt = row.updatedAt;
         return binding;
     }
+
+    @Inject
+    Database database;
 
     @Override
     public Optional<WorkspaceBindingRecord> get(String workspaceId) {
