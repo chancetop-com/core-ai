@@ -52,6 +52,11 @@ describe('parseFrontmatter', () => {
     expect(values['allowed-tools']).toBe('tool-a tool-b');
   });
 
+  it('unquotes quoted block sequence items for allowed-tools', () => {
+    const values = valuesOf(['---', 'name: demo', 'allowed-tools:', '  - "mcp:MongoDB/aggregate"', '  - tool-b', '---', 'body'].join('\n'));
+    expect(values['allowed-tools']).toBe('mcp:MongoDB/aggregate tool-b');
+  });
+
   it('keeps the whole content as body when there is no frontmatter', () => {
     const parsed = parseFrontmatter('# Just a body');
 
@@ -67,6 +72,49 @@ describe('parseFrontmatter', () => {
 });
 
 describe('buildSkillMdContent', () => {
+  const WITH_METADATA = ['---', 'name: demo', 'metadata:', '  version: "1.3.1"', '  author: core-ai', '---', 'body'].join('\n');
+
+  it('writes an edited version into metadata.version, not a new top-level key', () => {
+    const parsed = parseFrontmatter(WITH_METADATA);
+
+    const rebuilt = buildSkillMdContent(parsed.keys, {
+      name: 'demo',
+      description: '',
+      allowedTools: [],
+      version: '1.3.2',
+    }, parsed.body);
+
+    expect(rebuilt).toContain('metadata:\n  version: "1.3.2"\n  author: core-ai');
+    expect(rebuilt).not.toMatch(/^version:/m);
+  });
+
+  it('keeps an untouched metadata version byte-identical', () => {
+    const parsed = parseFrontmatter(WITH_METADATA);
+
+    const rebuilt = buildSkillMdContent(parsed.keys, {
+      name: 'demo',
+      description: '',
+      allowedTools: [],
+      version: '1.3.1',
+    }, parsed.body);
+
+    expect(rebuilt).toBe(WITH_METADATA);
+  });
+
+  it('inserts a version into metadata that has none', () => {
+    const content = ['---', 'name: demo', 'metadata:', '  author: core-ai', '---', 'body'].join('\n');
+    const parsed = parseFrontmatter(content);
+
+    const rebuilt = buildSkillMdContent(parsed.keys, {
+      name: 'demo',
+      description: '',
+      allowedTools: [],
+      version: '2.0.0',
+    }, parsed.body);
+
+    expect(rebuilt).toContain('metadata:\n  version: "2.0.0"\n  author: core-ai');
+  });
+
   it('round-trips an untouched folded description byte-identically', () => {
     const parsed = parseFrontmatter(FOLDED);
     const values = valuesOf(FOLDED);
@@ -110,6 +158,22 @@ describe('buildSkillMdContent', () => {
     expect(rebuilt).toContain('license: MIT');
     expect(rebuilt).toContain('version: 2');
     expect(rebuilt.indexOf('license: MIT')).toBeLessThan(rebuilt.indexOf('version: 2'));
+  });
+
+  it('round-trips a quoted allowed-tools item byte-identically', () => {
+    const content = ['---', 'name: demo', 'allowed-tools:', '  - "mcp:MongoDB/aggregate"', '---', 'body'].join('\n');
+    const parsed = parseFrontmatter(content);
+    const tools = valuesOf(content)['allowed-tools'].split(/\s+/).filter(Boolean);
+
+    const rebuilt = buildSkillMdContent(parsed.keys, {
+      name: 'demo',
+      description: '',
+      allowedTools: tools,
+      version: '',
+    }, parsed.body);
+
+    expect(tools).toEqual(['mcp:MongoDB/aggregate']);
+    expect(rebuilt).toBe(content);
   });
 
   it('quotes a changed value that would not parse as a plain scalar', () => {

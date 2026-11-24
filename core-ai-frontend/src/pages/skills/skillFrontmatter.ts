@@ -64,7 +64,8 @@ export function parseFrontmatter(content: string): { keys: FrontmatterKey[]; bod
     } else if (continuation.some(entry => entry.trim() !== '')) {
       const first = continuation.find(entry => entry.trim() !== '') ?? '';
       if (/^\s*-\s/.test(first)) {
-        value = continuation.filter(entry => entry.trim() !== '').map(entry => entry.trim().replace(/^-\s+/, '')).join(' ');
+        value = continuation.filter(entry => entry.trim() !== '')
+          .map(entry => unquote(entry.trim().replace(/^-\s+/, ''))).join(' ');
       } else {
         value = foldLines([`  ${inline}`, ...continuation]);
       }
@@ -94,6 +95,35 @@ function renderScalar(key: string, value: string): string {
 
 const EDITABLE_KEYS = ['name', 'description', 'allowed-tools', 'version'];
 
+/** The server publishes metadata.version; a top-level version is only a fallback for skills without metadata. */
+function metadataVersion(raw: string): string | null {
+  const line = raw.split('\n').find(entry => /^\s+version\s*:/.test(entry));
+  if (!line) return null;
+  return unquote(line.replace(/^\s+version\s*:\s*/, '').trim());
+}
+
+function renderVersion(value: string): string {
+  // Always quote: YAML would turn 1.10 into the float 1.1
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function withMetadataVersion(raw: string, version: string): string {
+  if (raw.includes('{')) {
+    return raw.replace(/(\bversion\s*:\s*)("[^"]*"|'[^']*'|[^,}]+)/, (_match, prefix: string) =>
+      `${prefix}${renderVersion(version)}`);
+  }
+  const lines = raw.split('\n');
+  const index = lines.findIndex(entry => /^\s+version\s*:/.test(entry));
+  if (index >= 0) {
+    const indent = lines[index].match(/^\s*/)?.[0] ?? '  ';
+    lines[index] = `${indent}version: ${renderVersion(version)}`;
+    return lines.join('\n');
+  }
+  const indent = lines.slice(1).find(entry => /^\s+\S/.test(entry))?.match(/^\s*/)?.[0] ?? '  ';
+  lines.splice(1, 0, `${indent}version: ${renderVersion(version)}`);
+  return lines.join('\n');
+}
+
 /**
  * Rebuilds SKILL.md with edited fields applied. Values that still match the loaded frontmatter
  * reuse their original source text (block scalars stay block scalars), other keys are preserved
@@ -105,6 +135,7 @@ export function buildSkillMdContent(
   fields: { name: string; description: string; allowedTools: string[]; version: string },
   body: string,
 ): string {
+  const metadata = original.find(item => item.key === 'metadata');
   const current: Record<string, string> = {
     name: fields.name,
     description: fields.description,
@@ -121,11 +152,15 @@ export function buildSkillMdContent(
   const seen = new Set<string>();
   for (const item of original) {
     seen.add(item.key);
-    if (item.key in current) emit(item.key);
+    if (item.key === 'metadata' && fields.version && metadataVersion(item.raw) !== fields.version) {
+      lines.push(withMetadataVersion(item.raw, fields.version));
+    } else if (item.key in current) emit(item.key);
     else lines.push(item.raw);
   }
   for (const key of EDITABLE_KEYS) {
-    if (!seen.has(key)) emit(key);
+    if (seen.has(key)) continue;
+    if (key === 'version' && metadata) continue;
+    emit(key);
   }
   return '---\n' + lines.join('\n') + '\n---\n' + body;
 }
