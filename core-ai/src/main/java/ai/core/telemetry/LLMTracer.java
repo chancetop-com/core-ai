@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
@@ -281,26 +282,19 @@ public class LLMTracer extends Tracer {
      */
     private List<ai.core.llm.domain.Message> traceMessages(List<ai.core.llm.domain.Message> messages) {
         if (messages == null || messages.isEmpty()) return messages;
-        List<ai.core.llm.domain.Message> sanitized = null;
-        for (var i = 0; i < messages.size(); i++) {
-            var message = messages.get(i);
-            var copy = traceMessage(message);
-            if (copy == message) continue;
-            if (sanitized == null) sanitized = new ArrayList<>(messages);
-            sanitized.set(i, copy);
+        var sanitized = new ArrayList<ai.core.llm.domain.Message>(messages.size());
+        for (var message : messages) {
+            sanitized.add(traceMessage(message));
         }
-        return sanitized == null ? messages : sanitized;
+        return sanitized;
     }
 
     private ai.core.llm.domain.Message traceMessage(ai.core.llm.domain.Message message) {
         if (message == null) return null;
-        var content = traceContent(message.content);
-        var reasoning = truncateForTrace(message.reasoningContent, MAX_TRACE_TEXT_CHARS);
-        if (content == message.content && reasoning == message.reasoningContent) return message;
         var copy = new ai.core.llm.domain.Message();
         copy.role = message.role;
-        copy.content = content;
-        copy.reasoningContent = reasoning;
+        copy.content = traceContent(message.content);
+        copy.reasoningContent = truncateForTrace(message.reasoningContent, MAX_TRACE_TEXT_CHARS);
         copy.name = message.name;
         copy.toolCallId = message.toolCallId;
         copy.toolCalls = message.toolCalls;
@@ -309,15 +303,11 @@ public class LLMTracer extends Tracer {
 
     private List<Content> traceContent(List<Content> content) {
         if (content == null || content.isEmpty()) return content;
-        List<Content> sanitized = null;
-        for (var i = 0; i < content.size(); i++) {
-            var part = content.get(i);
-            var copy = traceContent(part);
-            if (copy == part) continue;
-            if (sanitized == null) sanitized = new ArrayList<>(content);
-            sanitized.set(i, copy);
+        var sanitized = new ArrayList<Content>(content.size());
+        for (var part : content) {
+            sanitized.add(traceContent(part));
         }
-        return sanitized == null ? content : sanitized;
+        return sanitized;
     }
 
     private Content traceContent(Content part) {
@@ -334,9 +324,8 @@ public class LLMTracer extends Tracer {
                 && part.file.fileData.startsWith("data:") && part.file.fileData.length() > MAX_INLINE_TRACE_IMAGE_BYTES) {
             return Content.of(String.format("[file omitted from trace: %d bytes]", decodedBytes(part.file.fileData)));
         }
-        if (part.type == Content.ContentType.TEXT) {
-            var text = truncateForTrace(part.text, MAX_TRACE_TEXT_CHARS);
-            if (text != part.text) return Content.of(text);
+        if (part.type == Content.ContentType.TEXT && part.text != null && part.text.length() > MAX_TRACE_TEXT_CHARS) {
+            return Content.of(truncateForTrace(part.text, MAX_TRACE_TEXT_CHARS));
         }
         return part;
     }
@@ -346,7 +335,7 @@ public class LLMTracer extends Tracer {
      */
     private String serializeSummary(CompletionRequest request, List<ai.core.llm.domain.Message> messages) {
         var input = new LinkedHashMap<String, Object>();
-        var summaries = new ArrayList<LinkedHashMap<String, Object>>();
+        var summaries = new ArrayList<Map<String, Object>>();
         if (messages != null) {
             for (var message : messages) {
                 var entry = new LinkedHashMap<String, Object>();
@@ -396,7 +385,7 @@ public class LLMTracer extends Tracer {
         return JsonUtil.toJson(input);
     }
 
-    private static String truncateForTrace(String text, int maxChars) {
+    private String truncateForTrace(String text, int maxChars) {
         if (text == null || text.length() <= maxChars) return text;
         var head = maxChars * 2 / 3;
         var tail = maxChars - head;
@@ -404,32 +393,21 @@ public class LLMTracer extends Tracer {
                 + text.substring(text.length() - tail);
     }
 
-    private static long decodedBytes(String dataUri) {
+    private long decodedBytes(String dataUri) {
         var comma = dataUri.indexOf(',');
         if (comma < 0) return 0;
         return (dataUri.length() - comma - 1L) / 4 * 3;
     }
 
-    private static int utf8Length(CharSequence value) {
+    private int utf8Length(CharSequence value) {
         var bytes = 0;
-        for (var i = 0; i < value.length(); i++) {
-            var ch = value.charAt(i);
-            if (ch < 0x80) {
-                bytes += 1;
-            } else if (ch < 0x800) {
-                bytes += 2;
-            } else if (Character.isHighSurrogate(ch) && i + 1 < value.length()
-                    && Character.isLowSurrogate(value.charAt(i + 1))) {
-                bytes += 4;
-                i++;
-            } else {
-                bytes += 3;
-            }
+        var index = 0;
+        while (index < value.length()) {
+            var codePoint = Character.codePointAt(value, index);
+            bytes += codePoint < 0x80 ? 1 : codePoint < 0x800 ? 2 : codePoint < 0x10000 ? 3 : 4;
+            index += Character.charCount(codePoint);
         }
         return bytes;
-    }
-
-    private record TraceInput(String json, boolean truncated, int bytes) {
     }
 
     /**
@@ -454,5 +432,8 @@ public class LLMTracer extends Tracer {
         } catch (RuntimeException e) {
             return "{}";
         }
+    }
+
+    private record TraceInput(String json, boolean truncated, int bytes) {
     }
 }

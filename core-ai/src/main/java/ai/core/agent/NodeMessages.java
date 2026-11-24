@@ -23,6 +23,11 @@ final class NodeMessages {
     private static final Pattern LEGACY_INLINE_MEDIA = Pattern.compile("data:[\\w.+-]+/[\\w.+-]+;base64,[A-Za-z0-9+/=\\s]+");
     private static final String OMITTED_MEDIA = "[inline image omitted]";
 
+    private static String sanitize(String text) {
+        if (text == null || !text.contains("data:")) return text;
+        return LEGACY_INLINE_MEDIA.matcher(text).replaceAll(OMITTED_MEDIA);
+    }
+
     private final List<Message> messages = Lists.newArrayList();
     private final List<Message> history = Lists.newArrayList();
 
@@ -101,10 +106,5 @@ final class NodeMessages {
         var text = sanitize(message.getTextContent());
         if (text == null || text.isBlank()) return;
         history.add(Message.of(message.role, text));
-    }
-
-    private static String sanitize(String text) {
-        if (text == null || !text.contains("data:")) return text;
-        return LEGACY_INLINE_MEDIA.matcher(text).replaceAll(OMITTED_MEDIA);
     }
 }
