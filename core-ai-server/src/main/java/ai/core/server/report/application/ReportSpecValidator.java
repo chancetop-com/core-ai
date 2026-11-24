@@ -101,7 +101,7 @@ public class ReportSpecValidator {
         if (query.bucket != null && !Set.of(ReportConstants.BUCKET_NONE, ReportConstants.BUCKET_HOUR, ReportConstants.BUCKET_DAY,
                 ReportConstants.BUCKET_WEEK, ReportConstants.BUCKET_MONTH).contains(query.bucket)) {
             issues.add(new Issue("INVALID_BUCKET", "/query/bucket", "NONE|HOUR|DAY|WEEK|MONTH", "选择允许的粒度"));
-        } else if (ReportConstants.BUCKET_HOUR.equals(query.bucket) && timeType == SchemaFieldType.DATE) {
+        } else if (timeType == SchemaFieldType.DATE && ReportConstants.BUCKET_HOUR.equals(query.bucket)) {
             issues.add(new Issue("INVALID_BUCKET", "/query/bucket", "NONE|DAY|WEEK|MONTH", "DATE 时间字段不支持 HOUR"));
         }
         if (query.categoryField != null && !query.categoryField.isBlank()) {
@@ -202,8 +202,8 @@ public class ReportSpecValidator {
             issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "string|number|boolean|null", "只支持标量"));
             return;
         }
-        if (!ReportConstants.FILTER_OP_EQ.equals(op) && !ReportConstants.FILTER_OP_NE.equals(op)
-                && type == SchemaFieldType.BOOLEAN) {
+        if (type == SchemaFieldType.BOOLEAN && !ReportConstants.FILTER_OP_EQ.equals(op)
+                && !ReportConstants.FILTER_OP_NE.equals(op)) {
             issues.add(new Issue("INVALID_FILTER_VALUE", path + "/value", "EQ|NE", "BOOLEAN 只支持等值比较"));
             return;
         }
