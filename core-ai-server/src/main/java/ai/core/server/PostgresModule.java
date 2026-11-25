@@ -157,6 +157,7 @@ public class PostgresModule extends Module {
 
     private void registerSpanViews() {
         db().view(ai.core.server.trace.PgSpanRow.class);
+        db().view(ai.core.server.trace.PgSpanTokenTotalsRow.class);
         db().view(ai.core.server.trace.PgTraceCountRow.class);
         db().view(ai.core.server.trace.PgTraceIdRow.class);
         db().view(ai.core.server.trace.PgLlmThroughputRow.class);
