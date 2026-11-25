@@ -37,8 +37,11 @@ final class ModelGateway {
         req.setMediaStore(mediaStore);
         req.setMediaKey(mediaKey);
         agent.lastLLMSpanContext = null;
-        return aroundLLM(agent, r -> agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()),
-                sc -> agent.lastLLMSpanContext = sc, true, context.getFirstTokenListener()), req);
+        var firstTokenListener = context.getFirstTokenListener();
+        return aroundLLM(agent, r -> firstTokenListener == null
+                ? agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc)
+                : agent.llmProvider.completionStream(r, AgentHelper.elseDefaultCallback(agent.getStreamingCallback()), sc -> agent.lastLLMSpanContext = sc,
+                        true, firstTokenListener), req);
     }
 
     static String resolveEffectiveModel(Agent agent) {
