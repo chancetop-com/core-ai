@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -164,20 +165,19 @@ class SkillResourceWriter {
             for (var resource : existing) byPath.put(resource.path, resource);
         }
         var seen = new HashSet<String>();
-        var merged = new java.util.LinkedHashMap<String, byte[]>();
+        var merged = new LinkedHashMap<String, byte[]>();
         for (var update : updates) {
+            if (update.path() == null || update.path().isBlank()) {
+                throw new BadRequestException("resource path is required");
+            }
             if (!seen.add(update.path())) throw new BadRequestException("duplicate resource path: " + update.path());
-            var bytes = update.keep()
-                ? bytesOf(byPath.get(update.path()), update.path())
-                : update.content() == null ? null : update.content().getBytes(StandardCharsets.UTF_8);
-            if (bytes == null) throw new BadRequestException("resource does not exist and cannot be kept: " + update.path());
-            merged.put(update.path(), bytes);
+            merged.put(update.path(), updateBytes(byPath, update));
         }
         return merged;
     }
 
     Map<String, byte[]> bytesOf(List<SkillResource> resources) {
-        var result = new java.util.LinkedHashMap<String, byte[]>();
+        var result = new LinkedHashMap<String, byte[]>();
         if (resources == null) return result;
         for (var resource : resources) {
             var bytes = resource.storagePath != null ? blobStore.fetch(resource.storagePath)
@@ -191,6 +191,18 @@ class SkillResourceWriter {
         if (resource == null) throw new BadRequestException("resource does not exist and cannot be kept: " + path);
         if (resource.storagePath != null) return blobStore.fetch(resource.storagePath);
         return resource.content == null ? null : resource.content.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private byte[] updateBytes(Map<String, SkillResource> byPath, SkillResourceUpdate update) {
+        if (update.keep()) {
+            var bytes = bytesOf(byPath.get(update.path()), update.path());
+            if (bytes == null) throw new BadRequestException("resource does not exist and cannot be kept: " + update.path());
+            return bytes;
+        }
+        if (update.content() == null) {
+            throw new BadRequestException("resource content is required: " + update.path());
+        }
+        return update.content().getBytes(StandardCharsets.UTF_8);
     }
 
     /** Moves inline resources to object storage when the inline part exceeds the document budget. */

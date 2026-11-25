@@ -8,6 +8,9 @@ import ai.core.agent.ExecutionContext;
 import ai.core.server.project.ProjectAttributionRepository;
 import ai.core.server.project.ProjectStore;
 import ai.core.server.project.ProjectSubjectStore;
+import ai.core.server.quality.QualityGateException;
+import ai.core.server.skill.quality.SkillQualityGateException;
+import ai.core.server.skill.quality.SkillQualityReportMapper;
 import ai.core.server.user.UserStore;
 import core.framework.inject.Inject;
 import core.framework.json.JSON;
@@ -63,8 +66,24 @@ public class SelfHarnessApiCaller {
             return JSON.toJSON(result);
         } catch (Exception e) {
             LOGGER.error("self-harness call failed, name={}, args={}", name, args, e);
-            return JSON.toJSON(Map.of("error", e.getMessage()));
+            return JSON.toJSON(errorPayload(e));
         }
+    }
+
+    private Map<String, Object> errorPayload(Exception e) {
+        var message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        if (e instanceof SkillQualityGateException quality) {
+            return quality.report() != null
+                ? Map.of("error", message, "errorCode", quality.errorCode(),
+                    "quality_report", SkillQualityReportMapper.toView(quality.report()))
+                : Map.of("error", message, "errorCode", quality.errorCode());
+        }
+        if (e instanceof QualityGateException quality) {
+            return quality.report() != null
+                ? Map.of("error", message, "errorCode", quality.errorCode(), "quality_report", quality.report())
+                : Map.of("error", message, "errorCode", quality.errorCode());
+        }
+        return Map.of("error", message);
     }
 
     // ---- caller-scoped project material queries (used by the builtin project agent; scoped to the run's caller) ----

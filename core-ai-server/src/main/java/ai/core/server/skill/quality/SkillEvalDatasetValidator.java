@@ -21,12 +21,16 @@ import java.util.regex.Pattern;
  */
 public final class SkillEvalDatasetValidator {
     public static final String DATASET_PATH = "eval/eval.json";
-    private static final Set<String> DIMENSIONS = Set.of(
+    private static final List<String> DIMENSION_LIST = List.of(
         "trigger_accuracy", "scope_accuracy", "tool_accuracy", "parameter_accuracy",
         "instruction_following", "output_quality", "robustness");
-    private static final Set<String> ASSERTIONS = Set.of(
+    private static final Set<String> DIMENSIONS = Set.copyOf(DIMENSION_LIST);
+    private static final String DIMENSION_NAMES = String.join(", ", DIMENSION_LIST);
+    private static final List<String> ASSERTION_LIST = List.of(
         "skill_invoked", "tool_called", "tool_not_called", "tool_args", "output_contains",
         "output_not_contains", "file_exists", "file_not_exists", "exit_code", "rubric", "no_crash");
+    private static final Set<String> ASSERTIONS = Set.copyOf(ASSERTION_LIST);
+    private static final String ASSERTION_NAMES = String.join(", ", ASSERTION_LIST);
     private static final Pattern CASE_ID = Pattern.compile("^[a-z0-9][a-z0-9-]{1,63}$");
     private static final Pattern PLACEHOLDER = Pattern.compile("^(todo|tbd|example|lorem ipsum|\\.{3,}|<[^>]+>)$",
         Pattern.CASE_INSENSITIVE);
@@ -39,7 +43,11 @@ public final class SkillEvalDatasetValidator {
         var bytes = candidate.resource(DATASET_PATH);
         if (bytes == null) {
             fatal.add(new Problem("EVAL_DATASET_NOT_PACKAGED", "/eval/eval.json",
-                "eval/eval.json is missing or was not packaged.", "Create eval/eval.json and add it to the skill directory."));
+                "eval/eval.json is missing or was not packaged.",
+                "Package eval/eval.json with {\"schema_version\":1,\"skill\":\"" + candidate.name
+                    + "\",\"cases\":[...]} covering all 7 dimensions (" + DIMENSION_NAMES
+                    + "); each case needs id, dimension, input.user_request, expected, and assertions with kind in ["
+                    + ASSERTION_NAMES + "]."));
             return new Validation(fatal, warnings, Map.of(), 0, null);
         }
         JsonNode root;
@@ -64,7 +72,7 @@ public final class SkillEvalDatasetValidator {
         var skill = root.path("skill").asText(null);
         if (skill == null || !skill.equals(candidate.name)) {
             fatal.add(problem("EVAL_SKILL_MISMATCH", "/eval/eval.json/skill",
-                "eval.json skill does not match the frontmatter name.", "Set skill to \"" + candidate.name + "\"。"));
+                "eval.json skill does not match the frontmatter name.", "Set skill to \"" + candidate.name + "\"."));
         }
     }
 
@@ -106,7 +114,8 @@ public final class SkillEvalDatasetValidator {
         var dimension = node.path("dimension").asText("");
         if (!DIMENSIONS.contains(dimension)) {
             context.fatal().add(problem("EVAL_DIMENSION_UNKNOWN", path + "/dimension",
-                "Unknown test dimension: " + dimension, "Use one of the 7 canonical dimensions."));
+                "Unknown test dimension: " + dimension,
+                "Use one of the 7 canonical dimensions: " + DIMENSION_NAMES + "."));
             return;
         }
         counts.merge(dimension, 1, Integer::sum);
@@ -133,14 +142,16 @@ public final class SkillEvalDatasetValidator {
 
     private void validateExpected(String dimension, JsonNode expected, String path, List<Problem> fatal) {
         if (!expected.isObject() || expected.isEmpty()) {
-            fatal.add(problem("EVAL_EXPECTED_INVALID", path, "expected must not be empty.", "Fill in the expected result for this dimension."));
+            var required = missingExpectedKeys(dimension, expected);
+            fatal.add(problem("EVAL_EXPECTED_INVALID", path, "expected must not be empty.",
+                "Provide an expected object for " + dimension + " with required keys: " + String.join(", ", required) + "."));
             return;
         }
         var missing = missingExpectedKeys(dimension, expected);
         if (!missing.isEmpty()) {
             fatal.add(problem("EVAL_EXPECTED_INVALID", path,
                 "expected is missing required keys for this dimension: " + String.join(", ", missing),
-                "Add expected values per the eval dimension table."));
+                "Add required expected keys for " + dimension + ": " + String.join(", ", missing) + "."));
         }
     }
 
@@ -186,14 +197,15 @@ public final class SkillEvalDatasetValidator {
 
     private void validateAssertions(JsonNode assertions, String path, List<Problem> fatal) {
         if (!assertions.isArray() || assertions.isEmpty() || assertions.size() > 20) {
-            fatal.add(problem("EVAL_ASSERTIONS_INVALID", path, "assertions must contain 1-20 assertions.", "Add structured assertions."));
+            fatal.add(problem("EVAL_ASSERTIONS_INVALID", path, "assertions must contain 1-20 assertions.",
+                "Add 1-20 assertions such as {\"kind\":\"no_crash\"} using kind in [" + ASSERTION_NAMES + "]."));
             return;
         }
         for (var assertion : assertions) {
             var kind = assertion.path("kind").asText("");
             if (!ASSERTIONS.contains(kind)) {
                 fatal.add(problem("EVAL_ASSERTION_UNKNOWN", path, "Unknown assertion kind: " + kind,
-                    "Use a kind from the eval assertion allowlist."));
+                    "Use one of the allowed assertion kinds: " + ASSERTION_NAMES + "."));
             }
         }
     }
@@ -226,7 +238,7 @@ public final class SkillEvalDatasetValidator {
     }
 
     private void validateCoverage(Map<String, Integer> counts, List<Problem> fatal, List<Problem> warnings) {
-        for (var dimension : DIMENSIONS) {
+        for (var dimension : DIMENSION_LIST) {
             if (!counts.containsKey(dimension)) {
                 fatal.add(problem("EVAL_DIMENSION_MISSING", "/eval/eval.json/cases",
                     "Missing dimension: " + dimension, "Add at least one case for this dimension."));

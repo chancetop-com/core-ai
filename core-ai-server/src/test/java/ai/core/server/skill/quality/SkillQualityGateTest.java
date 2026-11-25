@@ -29,7 +29,50 @@ class SkillQualityGateTest {
         var result = new SkillQualityGate().evaluate(candidate(false));
 
         assertEquals(QualityGateResult.REJECTED, result.gateResult());
-        assertTrue(result.issues().stream().anyMatch(issue -> "EVAL_DATASET_NOT_PACKAGED".equals(issue.issueReason)));
+        var issue = result.issues().stream()
+            .filter(item -> "EVAL_DATASET_NOT_PACKAGED".equals(item.issueReason))
+            .findFirst().orElseThrow();
+        assertTrue(issue.suggestion.contains("\"schema_version\":1"));
+        assertTrue(issue.suggestion.contains("trigger_accuracy"));
+        assertTrue(issue.suggestion.contains("no_crash"));
+    }
+
+    @Test
+    void invalidEvalDatasetListsAllowedDimensionsExpectedKeysAndAssertionKinds() {
+        var resources = new LinkedHashMap<String, byte[]>();
+        resources.put("eval/eval.json", """
+            {
+              "schema_version": 1,
+              "skill": "demo-skill",
+              "cases": [
+                {
+                  "id": "bad-dim",
+                  "dimension": "unknown_dim",
+                  "input": {"user_request": "run demo"},
+                  "expected": {},
+                  "assertions": [{"kind": "no_crash"}]
+                },
+                {
+                  "id": "bad-assert",
+                  "dimension": "parameter_accuracy",
+                  "input": {"user_request": "run demo"},
+                  "expected": {},
+                  "assertions": [{"kind": "made_up_kind"}]
+                }
+              ]
+            }
+            """.getBytes(StandardCharsets.UTF_8));
+        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", skillContent(), resources, null);
+
+        var result = new SkillQualityGate().evaluate(candidate);
+
+        assertEquals(QualityGateResult.REJECTED, result.gateResult());
+        assertTrue(result.issues().stream().anyMatch(issue -> "EVAL_DIMENSION_UNKNOWN".equals(issue.issueReason)
+            && issue.suggestion.contains("trigger_accuracy") && issue.suggestion.contains("robustness")));
+        assertTrue(result.issues().stream().anyMatch(issue -> "EVAL_EXPECTED_INVALID".equals(issue.issueReason)
+            && issue.suggestion.contains("tool:string") && issue.suggestion.contains("match:string")));
+        assertTrue(result.issues().stream().anyMatch(issue -> "EVAL_ASSERTION_UNKNOWN".equals(issue.issueReason)
+            && issue.suggestion.contains("skill_invoked") && issue.suggestion.contains("no_crash")));
     }
 
     @Test

@@ -104,7 +104,7 @@ public class SkillWebServiceImpl implements SkillWebService {
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillDefinitionView update(String id, UpdateSkillRequest request) {
         var outcome = skillService.updateOutcome(id, request.description, request.content, request.allowedTools,
-            resourceUpdates(request));
+            SkillResourceUpdate.fromRequests(request.resources));
         ai.core.server.skill.quality.SkillQualityHeaders.put(webContext, outcome.report());
         return toView(outcome.entity());
     }
@@ -113,15 +113,8 @@ public class SkillWebServiceImpl implements SkillWebService {
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public SkillQualityReportView checkQuality(String id, UpdateSkillRequest request) {
         var report = skillService.checkQuality(id, request.description, request.content, request.allowedTools,
-            resourceUpdates(request));
+            SkillResourceUpdate.fromRequests(request.resources));
         return ai.core.server.skill.quality.SkillQualityReportMapper.toView(report);
-    }
-
-    private List<SkillResourceUpdate> resourceUpdates(UpdateSkillRequest request) {
-        if (request.resources == null) return null;
-        return request.resources.stream()
-            .map(r -> new SkillResourceUpdate(r.path, Boolean.TRUE.equals(r.keep), r.content))
-            .toList();
     }
 
     @Override

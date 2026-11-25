@@ -93,19 +93,34 @@ public class SelfHarnessTools {
                         + "Creating a good skill is a complex workflow — do NOT write SKILL.md directly. "
                         + "Delegate the research and drafting to a sub-agent via the `task` tool first: launch subagent_type=general-purpose-agent (or deep-research-agent for broader research) with a prompt that requires it to "
                         + "use web_search/web_fetch to research how well-crafted skills of this kind are structured — collect SOPs, best practices and common pitfalls from public skill collections (e.g. skills.sh, awesome-claude-skills, GitHub) and from existing skills in this catalog (list_skills/get_skill) — "
-                        + "then design the skill and return the final SKILL.md content (YAML frontmatter with name and description, then step-by-step instructions) plus any resource files. "
+                        + "then design the skill and return the final SKILL.md content plus any resource files. "
                         + "Review the sub-agent's output, then call this tool with the produced content. "
-                        + "content must be markdown with YAML frontmatter containing name and description (e.g. ---\\nname: my-skill\\ndescription: what it does\\n---\\ninstructions); qualified name becomes namespace/name. "
-                        + "After creating, attach the returned id via skill_ids in create_agent/update_agent so agents can use it.",
+                        + "content must be markdown with YAML frontmatter containing name, description (with a 'Use when ...' trigger and explicit scope/not-for boundary), "
+                        + "nested metadata (version, author, tags), and optional space-separated allowed-tools (no commas); "
+                        + "the body or linked packaged references must cover Workflow, Decision logic, Output specification, Error handling, and Quality assurance; "
+                        + "resources must include eval/eval.json covering all 7 dimensions. Qualified name becomes namespace/name. "
+                        + "Follow quality_report.issues on rejection. After creating, attach the returned id via skill_ids in create_agent/update_agent so agents can use it.",
                 List.of(
                         ToolCallParameter.builder().name("namespace").description("Skill namespace (e.g. org/team name)").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
-                        ToolCallParameter.builder().name("content").description("Full SKILL.md content with YAML frontmatter (name, description required)").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
-                        ToolCallParameter.builder().name("resources").description("Optional resource files referenced by the skill, each {path, content}").type(ToolCallParameterType.LIST).itemType(Map.class).build()
+                        ToolCallParameter.builder().name("content").description("Full SKILL.md content with YAML frontmatter (name, description, nested metadata)").type(ToolCallParameterType.STRING).required(Boolean.TRUE).build(),
+                        ToolCallParameter.builder().name("resources").description("Packaged resource files (including eval/eval.json), each {path, content}").type(ToolCallParameterType.LIST).items(List.of(
+                                string("path", "Relative file path under the skill directory (e.g. eval/eval.json, scripts/run.py)", Boolean.TRUE),
+                                string("content", "UTF-8 text content of the file", Boolean.TRUE)
+                        )).build()
                 )));
         tools.add(builder.buildWithPathParamOnly("get_skill", "Get skill detail by ID.",
                 "id", "Skill ID"));
-        tools.add(builder.build("update_skill", "Update a skill's description, content, or allowed tools.",
-                UpdateSkillRequest.class, true));
+        var updateParams = builder.buildParameters(UpdateSkillRequest.class, false);
+        updateParams.addFirst(string("id", "Skill ID", Boolean.TRUE));
+        updateParams.add(bool("check_only", "Set true to evaluate the stored skill or a proposed update without saving.", null));
+        tools.add(builder.buildCustom("update_skill",
+                "Update a skill's SKILL.md and packaged files. First call with id and check_only=true to see existing quality issues. "
+                    + "Edit description, allowed-tools (space-separated, no commas), and nested metadata directly inside content's YAML frontmatter and omit the top-level description and allowed_tools arguments "
+                    + "(if supplied, they must exactly match the parsed frontmatter or the call fails with SKILL_METADATA_MISMATCH). Bump metadata.version above the previous version when content or files change. "
+                    + "Use get_skill to inspect the current file list. Omit resources to keep all files. A supplied resources array replaces the entire list: "
+                    + "use {path, keep:true} for every unchanged file and {path, content} for each new or edited text file. Unlisted files are removed. "
+                    + "Check the draft with check_only=true, address quality_report.issues, then omit check_only or set it to false to save. "
+                    + "Use get_skill to verify the saved revision and resource hashes.", updateParams));
         tools.add(builder.buildWithPathParamOnly("delete_skill", "Delete a skill by ID.",
                 "id", "Skill ID"));
         tools.add(builder.buildWithPathParamOnly("download_skill", "Download skill content including all resources.",

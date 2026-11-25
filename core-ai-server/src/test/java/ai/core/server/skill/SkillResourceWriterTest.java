@@ -135,6 +135,20 @@ class SkillResourceWriterTest {
     }
 
     @Test
+    void mergeBytesReportsMissingContentAndBlankPath() {
+        var writer = new SkillResourceWriter(blobStore(false));
+        var stored = inlineResource(RUN_SH, "#!/bin/sh");
+
+        var missingContent = assertThrows(BadRequestException.class, () -> writer.mergeBytes(List.of(stored),
+                List.of(new SkillResourceUpdate("eval/eval.json", false, null))));
+        var blankPath = assertThrows(BadRequestException.class, () -> writer.mergeBytes(List.of(stored),
+                List.of(new SkillResourceUpdate(" ", false, "x"))));
+
+        assertTrue(missingContent.getMessage().contains("resource content is required"));
+        assertTrue(blankPath.getMessage().contains("resource path is required"));
+    }
+
+    @Test
     void unchangedDetectsByteIdenticalResourceSets() {
         var stored = inlineResource(RUN_SH, "#!/bin/sh");
 

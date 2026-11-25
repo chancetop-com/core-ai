@@ -138,7 +138,7 @@ public class SelfHarnessToolBuilder {
 
     // ---- parameter derivation from annotations ----
 
-    private List<ToolCallParameter> buildParameters(Class<?> requestType, boolean hasPathParamId) {
+    List<ToolCallParameter> buildParameters(Class<?> requestType, boolean hasPathParamId) {
         var params = new ArrayList<ToolCallParameter>();
         if (hasPathParamId) {
             params.add(ToolCallParameter.builder()

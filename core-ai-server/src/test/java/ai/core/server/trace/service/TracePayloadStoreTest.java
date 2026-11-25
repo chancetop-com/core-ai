@@ -161,7 +161,7 @@ class TracePayloadStoreTest {
         store.configure("object", "trace-container", "dev", true);
         when(repository.deleteByTraceIdsReturningStorageKeys(List.of("trace-1")))
             .thenReturn(List.of("key-unreferenced", "key-shared"));
-        when(repository.hasStorageKey("key-shared")).thenReturn(true);
+        when(repository.hasStorageKey("key-shared")).thenReturn(Boolean.TRUE);
 
         var keys = store.deleteForTraces(List.of("trace-1"));
         store.deleteObjects(keys);

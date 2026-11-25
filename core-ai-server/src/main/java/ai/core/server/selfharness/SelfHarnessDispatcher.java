@@ -22,6 +22,8 @@ import ai.core.server.domain.SchemaFieldType;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.session.ChatMessageService;
 import ai.core.server.skill.SkillFilter;
+import ai.core.server.skill.SkillResourceUpdate;
+import ai.core.server.skill.quality.SkillQualityReportMapper;
 import ai.core.server.skill.SkillService;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.trace.domain.Trace;
@@ -98,8 +100,9 @@ public class SelfHarnessDispatcher {
         return switch (name) {
             case "list_agents", "create_agent", "get_agent", "update_agent", "publish_agent" ->
                 dispatchAgent(name, args, userId);
-            case "list_skills", "get_skill", "create_skill", "update_skill", "delete_skill", "download_skill" ->
+            case "list_skills", "get_skill", "create_skill", "delete_skill", "download_skill" ->
                 dispatchSkill(name, args, userId);
+            case "update_skill" -> dispatchSkillUpdate(args, context);
             case "list_datasets", "get_dataset", "list_dataset_records", "create_dataset" ->
                 dispatchDataset(name, args, userId);
             case "list_report_sources", "list_dataset_reports", "get_dataset_report", "preview_dataset_report", "create_dataset_report", "update_dataset_report" ->
@@ -169,11 +172,6 @@ public class SelfHarnessDispatcher {
                 yield skillService.upload(userId, namespace, skillDir, content.getBytes(StandardCharsets.UTF_8),
                     toResourceBytes(params.get("resources")));
             }
-            case "update_skill" -> {
-                var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
-                var req = SelfHarnessRequestBinder.bind(UpdateSkillRequest.class, args);
-                yield skillService.update((String) params.get("id"), req.description, req.content, req.allowedTools, null);
-            }
             case "delete_skill" -> {
                 var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
                 skillService.delete((String) params.get("id"));
@@ -185,6 +183,26 @@ public class SelfHarnessDispatcher {
             }
             default -> throw new IllegalArgumentException("Unknown skill operation: " + name);
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object dispatchSkillUpdate(String args, ExecutionContext context) {
+        var params = (Map<String, Object>) JSON.fromJSON(Map.class, args);
+        var checkOnly = params.get("check_only");
+        if (params.containsKey("check_only") && !(checkOnly instanceof Boolean)) {
+            throw new IllegalArgumentException("check_only must be a boolean");
+        }
+        var id = (String) params.get("id");
+        var req = SelfHarnessRequestBinder.bind(UpdateSkillRequest.class, args);
+        var updates = SkillResourceUpdate.fromRequests(req.resources);
+        if (Boolean.TRUE.equals(checkOnly)) {
+            var report = skillService.checkQuality(id, req.description, req.content, req.allowedTools, updates);
+            return Map.of("quality_report", SkillQualityReportMapper.toView(report));
+        }
+        if (context != null && Boolean.FALSE.equals(context.getCustomVariable("check_only"))) {
+            throw new IllegalArgumentException("Cannot publish with a check_only=false context variable overriding the tool argument.");
+        }
+        return skillService.update(id, req.description, req.content, req.allowedTools, updates);
     }
 
     @SuppressWarnings("unchecked")
@@ -237,19 +255,28 @@ public class SelfHarnessDispatcher {
         }).toList();
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, byte[]> toResourceBytes(Object raw) {
-        if (!(raw instanceof List<?> list) || list.isEmpty()) return null;
+        if (raw == null) return null;
+        if (!(raw instanceof List<?> list)) {
+            throw new IllegalArgumentException("resources must be a list of {path, content} objects");
+        }
+        if (list.isEmpty()) return null;
         var result = new LinkedHashMap<String, byte[]>();
         for (var item : list) {
-            if (!(item instanceof Map<?, ?> map)) continue;
-            var path = String.valueOf(map.get("path"));
-            if (!path.isBlank()) {
-                var content = String.valueOf(map.get("content"));
-                result.put(path, content.getBytes(StandardCharsets.UTF_8));
+            if (!(item instanceof Map<?, ?> map)) {
+                throw new IllegalArgumentException("each resource must be an object with path and content");
             }
+            var rawPath = map.get("path");
+            if (!(rawPath instanceof String path) || path.isBlank()) {
+                throw new IllegalArgumentException("resource path is required");
+            }
+            var rawContent = map.get("content");
+            if (!(rawContent instanceof String content)) {
+                throw new IllegalArgumentException("resource content is required: " + path);
+            }
+            result.put(path, content.getBytes(StandardCharsets.UTF_8));
         }
-        return result.isEmpty() ? null : result;
+        return result;
     }
 
     /**

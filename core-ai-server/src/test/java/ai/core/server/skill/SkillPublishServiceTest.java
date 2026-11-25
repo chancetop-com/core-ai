@@ -1,10 +1,18 @@
 package ai.core.server.skill;
 
+import ai.core.agent.ExecutionContext;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.quality.QualityExemptions;
 import ai.core.server.quality.domain.QualityGateResult;
+import ai.core.server.selfharness.SelfHarnessApiCaller;
+import ai.core.server.selfharness.SelfHarnessDispatcher;
+import ai.core.server.selfharness.SelfHarnessTools;
 import ai.core.server.skill.quality.SkillQualityGateException;
+import ai.core.server.tool.ToolRegistryService;
+import ai.core.utils.JsonUtil;
+import com.fasterxml.jackson.databind.JsonNode;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +20,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -146,6 +157,137 @@ class SkillPublishServiceTest {
 
         assertEquals(SkillQualityGateException.STALE, error.errorCode());
         verify(store, never()).insertIfAbsent(any());
+    }
+
+    @Test
+    void builderReturnsTheFailedRuleAndLeavesTheDownloadedPackageIntact() throws Exception {
+        var tools = builderToolsForLegacySkill();
+        var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
+
+        var failed = call(tools, "update_skill", Map.of("id", "legacy-id", "content", content(),
+            "resources", List.of(Map.of("path", "scripts/enrich.py", "content", "draft change"))));
+
+        assertEquals(before, call(tools, "download_skill", Map.of("id", "legacy-id")));
+        assertEquals("SKILL_QUALITY_REJECTED", failed.path("errorCode").textValue());
+        var issues = failed.at("/quality_report/issues");
+        assertTrue(issues.isArray());
+        assertTrue(issues.findValuesAsText("rule_id").contains("SKILL.EVAL_DATASET"));
+        assertTrue(issues.findValuesAsText("field_path").contains("/eval/eval.json"));
+    }
+
+    @Test
+    void builderPublishesAnUpdatedLegacySkillAndDownloadsTheExactResourceBytes() throws Exception {
+        var tools = builderToolsForLegacySkill();
+        var script = "print('café')\r\n";
+        var rows = List.of(
+            Map.of("path", "README.txt", "keep", true),
+            Map.of("path", "scripts/enrich.py", "content", script),
+            Map.of("path", "eval/eval.json", "content", evalDataset()));
+
+        var published = call(tools, "update_skill", Map.of("id", "legacy-id", "content", content(), "resources", rows));
+
+        assertEquals(1, published.path("revision").asInt(), published::toString);
+        var downloaded = call(tools, "download_skill", Map.of("id", "legacy-id"));
+        assertEquals(1, downloaded.path("revision").asInt());
+        assertEquals(content(), downloaded.path("content").textValue());
+        var files = new LinkedHashMap<String, byte[]>();
+        for (var resource : downloaded.path("resources")) {
+            files.put(resource.path("path").textValue(), resource.path("content").textValue().getBytes(StandardCharsets.UTF_8));
+        }
+        assertEquals(3, files.size());
+        assertArrayEquals("original readme\n".getBytes(StandardCharsets.UTF_8), files.get("README.txt"));
+        assertArrayEquals(script.getBytes(StandardCharsets.UTF_8), files.get("scripts/enrich.py"));
+        assertArrayEquals(evalDataset().getBytes(StandardCharsets.UTF_8), files.get("eval/eval.json"));
+    }
+
+    @Test
+    void builderCanCheckTheStoredSkillAndAValidDraftWithoutSaving() throws Exception {
+        var tools = builderToolsForLegacySkill();
+        assertTrue(tools.findBuiltinTool("update_skill").toJsonSchema().properties.containsKey("check_only"));
+        var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
+        var baseline = call(tools, "update_skill", Map.of("id", "legacy-id", "check_only", true));
+        var draft = call(tools, "update_skill", Map.of("id", "legacy-id", "check_only", true,
+            "content", content(), "resources", List.of(Map.of("path", "eval/eval.json", "content", evalDataset()))));
+
+        assertEquals("REJECTED", baseline.at("/quality_report/gate_result").textValue());
+        assertEquals("PASSED", draft.at("/quality_report/gate_result").textValue());
+        assertEquals(before, call(tools, "download_skill", Map.of("id", "legacy-id")));
+    }
+
+    @Test
+    void malformedCheckOnlyCannotPublishAValidDraft() throws Exception {
+        var tools = builderToolsForLegacySkill();
+        var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
+        var response = call(tools, "update_skill", Map.of("id", "legacy-id", "check_only", "true",
+            "content", content(), "resources", List.of(Map.of("path", "eval/eval.json", "content", evalDataset()))));
+
+        assertTrue(response.hasNonNull("error"));
+        assertEquals(before, call(tools, "download_skill", Map.of("id", "legacy-id")));
+    }
+
+    @Test
+    void contextVariablesCannotTurnAPrecheckIntoAPublish() throws Exception {
+        var tools = builderToolsForLegacySkill();
+        var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
+        var args = JsonUtil.toJson(Map.of("id", "legacy-id", "check_only", true, "content", content(),
+            "resources", List.of(Map.of("path", "eval/eval.json", "content", evalDataset()))));
+        for (var override : List.of(false, "false", "true")) {
+            var context = ExecutionContext.builder().customVariable("check_only", override).build();
+            var result = tools.findBuiltinTool("update_skill").execute(args, context);
+
+            assertEquals(before, call(tools, "download_skill", Map.of("id", "legacy-id")));
+            assertTrue(JsonUtil.OBJECT_MAPPER.readTree(result.getResult()).hasNonNull("error"));
+        }
+    }
+
+    private ToolRegistryService builderToolsForLegacySkill() throws ReflectiveOperationException {
+        var legacy = new SkillDefinition();
+        legacy.id = "legacy-id";
+        legacy.namespace = "fbradmin";
+        legacy.name = "demo-skill";
+        legacy.qualifiedName = "fbradmin/demo-skill";
+        legacy.userId = "u1";
+        legacy.sourceType = SkillSourceType.UPLOAD;
+        legacy.content = "---\nname: demo-skill\ndescription: Old draft.\n---\n# Draft";
+        var readme = new SkillResource();
+        readme.path = "README.txt";
+        readme.content = "original readme\n";
+        var script = new SkillResource();
+        script.path = "scripts/enrich.py";
+        script.content = "print('old')";
+        legacy.resources = List.of(readme, script);
+        var persisted = new AtomicReference<>(JsonUtil.toJson(legacy));
+        var store = mock(SkillStore.class);
+        when(store.get(legacy.id)).thenAnswer(call -> Optional.of(JsonUtil.fromJson(SkillDefinition.class, persisted.get())));
+        when(store.replaceIfRevision(any(), eq(0))).thenAnswer(call -> {
+            persisted.set(JsonUtil.toJson(call.getArgument(0, SkillDefinition.class)));
+            return true;
+        });
+
+        var skills = new SkillService();
+        skills.skillStore = store;
+        skills.publishService = service(store, new SkillBlobStore());
+        var dispatcher = new SelfHarnessDispatcher();
+        inject(dispatcher, "skillService", skills);
+        var caller = new SelfHarnessApiCaller();
+        inject(caller, "dispatcher", dispatcher);
+        var registry = new ToolRegistryService();
+        var tools = new SelfHarnessTools();
+        inject(tools, "caller", caller);
+        inject(tools, "toolRegistryService", registry);
+        tools.initialize();
+        return registry;
+    }
+
+    private void inject(Object target, String name, Object value) throws ReflectiveOperationException {
+        var field = target.getClass().getDeclaredField(name);
+        assertTrue(field.trySetAccessible(), name);
+        field.set(target, value);
+    }
+
+    private JsonNode call(ToolRegistryService registry, String name, Map<String, ?> args) throws Exception {
+        var result = registry.findBuiltinTool(name).execute(JsonUtil.toJson(args));
+        return JsonUtil.OBJECT_MAPPER.readTree(result.getResult());
     }
 
     private SkillPublishService service(SkillStore store, SkillBlobStore blobStore) {
