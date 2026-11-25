@@ -66,11 +66,15 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         return sb.toString();
     }
 
-    /** SESSION datasets hold per-session state and must only be reached through the state tools; the hub shares this
-     * check so a script and the agent get the same dispatch error. */
-    public static String sessionDatasetAccessError(DatasetService datasetService, String datasetId) {
+    /** SESSION datasets hold per-session state and must only be reached through the state tools; a dataset deleted
+     * after the session binding was taken must fail instead of writing orphan rows. The hub shares this check so a
+     * script and an agent get the same dispatch error. */
+    public static String datasetRecordAccessError(DatasetService datasetService, String datasetId) {
         var dataset = datasetService.get(datasetId);
-        if (dataset != null && DatasetService.resolveType(dataset) == DatasetType.SESSION) {
+        if (dataset == null) {
+            return "dataset not found: " + datasetId;
+        }
+        if (DatasetService.resolveType(dataset) == DatasetType.SESSION) {
             return "session dataset is not accessible via dataset record tools, use get_session_state/set_session_state instead: " + datasetId;
         }
         return null;
@@ -123,9 +127,9 @@ public final class QueryDatasetRecordsTool extends ToolCall {
         if (datasetId == null) {
             return ToolCallResult.failed("access denied to dataset: " + datasetRef);
         }
-        var sessionError = sessionDatasetAccessError(datasetService, datasetId);
-        if (sessionError != null) {
-            return ToolCallResult.failed(sessionError);
+        var accessError = datasetRecordAccessError(datasetService, datasetId);
+        if (accessError != null) {
+            return ToolCallResult.failed(accessError);
         }
 
         var fieldsStr = getStringValue(args, "fields");

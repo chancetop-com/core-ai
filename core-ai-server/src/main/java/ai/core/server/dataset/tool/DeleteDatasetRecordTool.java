@@ -71,9 +71,9 @@ public final class DeleteDatasetRecordTool extends ToolCall {
         if (!registry.isDeletable(datasetRef)) {
             return ToolCallResult.failed("delete access denied to dataset: " + datasetRef);
         }
-        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
-        if (sessionError != null) {
-            return ToolCallResult.failed(sessionError);
+        var accessError = QueryDatasetRecordsTool.datasetRecordAccessError(datasetService, datasetId);
+        if (accessError != null) {
+            return ToolCallResult.failed(accessError);
         }
 
         var recordId = getStringValue(args, "record_id");

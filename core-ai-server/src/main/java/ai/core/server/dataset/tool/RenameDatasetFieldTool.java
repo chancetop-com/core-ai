@@ -73,9 +73,9 @@ public final class RenameDatasetFieldTool extends ToolCall {
         if (!registry.isWritable(datasetRef)) {
             return ToolCallResult.failed("write access denied to dataset: " + datasetRef);
         }
-        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
-        if (sessionError != null) {
-            return ToolCallResult.failed(sessionError);
+        var accessError = QueryDatasetRecordsTool.datasetRecordAccessError(datasetService, datasetId);
+        if (accessError != null) {
+            return ToolCallResult.failed(accessError);
         }
 
         var from = getStringValue(args, "from");

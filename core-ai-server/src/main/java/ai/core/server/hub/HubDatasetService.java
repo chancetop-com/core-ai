@@ -242,8 +242,8 @@ public class HubDatasetService {
     }
 
     private void requireRecordDataset(Resolved resolved) {
-        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, resolved.datasetId);
-        if (sessionError != null) throw new BadRequestException(sessionError);
+        var accessError = QueryDatasetRecordsTool.datasetRecordAccessError(datasetService, resolved.datasetId);
+        if (accessError != null) throw new BadRequestException(accessError);
     }
 
     private Map<String, Object> normalize(Resolved resolved, Map<String, Object> data, boolean patch) {

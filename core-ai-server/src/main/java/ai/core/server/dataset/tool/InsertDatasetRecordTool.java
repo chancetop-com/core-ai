@@ -81,9 +81,9 @@ public final class InsertDatasetRecordTool extends ToolCall {
         if (!registry.isWritable(datasetRef)) {
             return ToolCallResult.failed("write access denied to dataset: " + datasetRef);
         }
-        var sessionError = QueryDatasetRecordsTool.sessionDatasetAccessError(datasetService, datasetId);
-        if (sessionError != null) {
-            return ToolCallResult.failed(sessionError);
+        var accessError = QueryDatasetRecordsTool.datasetRecordAccessError(datasetService, datasetId);
+        if (accessError != null) {
+            return ToolCallResult.failed(accessError);
         }
 
         @SuppressWarnings("unchecked")
@@ -93,6 +93,9 @@ public final class InsertDatasetRecordTool extends ToolCall {
         }
 
         var dataset = datasetService.get(datasetId);
+        if (dataset == null) {
+            return ToolCallResult.failed("dataset not found: " + datasetRef);
+        }
         Map<String, Object> filtered;
         try {
             filtered = DatasetRecordWriteRules.normalize(dataset, data);
