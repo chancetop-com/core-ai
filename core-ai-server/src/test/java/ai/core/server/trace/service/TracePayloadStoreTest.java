@@ -11,6 +11,7 @@ import org.mockito.ArgumentCaptor;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -149,6 +150,50 @@ class TracePayloadStoreTest {
         var payload = store.payload("trace-1", stored.id.substring("trace-1:".length()));
         assertEquals(expectedBytes.length, payload.bytes().length);
         assertEquals("image/png", payload.contentType());
+    }
+
+    @Test
+    void deletesOnlyUnreferencedObjects() {
+        var objectStorage = mock(ObjectStorageService.class);
+        var resolver = mock(ObjectStorageServiceResolver.class);
+        when(resolver.resolve()).thenReturn(objectStorage);
+        store.objectStorageResolver = resolver;
+        store.configure("object", "trace-container", "dev", true);
+        when(repository.deleteByTraceIdsReturningStorageKeys(List.of("trace-1")))
+            .thenReturn(List.of("key-unreferenced", "key-shared"));
+        when(repository.hasStorageKey("key-shared")).thenReturn(true);
+
+        var keys = store.deleteForTraces(List.of("trace-1"));
+        store.deleteObjects(keys);
+
+        verify(objectStorage).deleteObject("trace-container", "key-unreferenced");
+        verify(objectStorage, times(0)).deleteObject("trace-container", "key-shared");
+    }
+
+    @Test
+    void backfillsLegacyInlineRowsToObjectStorage() {
+        var objectStorage = mock(ObjectStorageService.class);
+        var resolver = mock(ObjectStorageServiceResolver.class);
+        when(resolver.resolve()).thenReturn(objectStorage);
+        store.objectStorageResolver = resolver;
+        store.configure("object", "trace-container", "dev", true);
+        store.configureBackfill(true, 500);
+
+        var dataUrl = "data:image/png;base64," + "A".repeat(64);
+        var legacy = new TracePayloadBlob();
+        legacy.traceId = "trace-1";
+        legacy.id = "trace-1:" + "b".repeat(64);
+        legacy.data = dataUrl;
+        when(repository.findBackfillCandidates(500)).thenReturn(List.of(legacy));
+        when(repository.updateBackfillReference(legacy)).thenReturn(1);
+
+        assertEquals(1, store.backfillBatch(0));
+        assertNull(legacy.data);
+        assertTrue(legacy.storageKey.startsWith("dev/trace-blobs/"));
+        assertEquals(48L, legacy.sizeBytes);
+        verify(objectStorage).uploadObject(eq("trace-container"), eq(legacy.storageKey),
+            argThat((byte[] bytes) -> bytes.length == 48), eq("image/png"));
+        verify(repository).updateBackfillReference(legacy);
     }
 
     @Test

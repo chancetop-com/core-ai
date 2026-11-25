@@ -147,6 +147,8 @@ public class TracePayloadStore {
     private String configuredContainer;
     private String objectPrefix;
     private boolean objectStorageAllowed;
+    private boolean backfillEnabled;
+    private int backfillBatchSize = 500;
 
     /**
      * Configures the storage mode selected by {@code sys.trace.payload.storage}. {@code auto} still
@@ -160,6 +162,31 @@ public class TracePayloadStore {
         objectStorageAllowed = pgTraceStore;
         configuredContainer = container == null || container.isBlank() ? null : container;
         objectPrefix = prefix == null || prefix.isBlank() ? null : prefix;
+    }
+
+    public void configureBackfill(boolean enabled, int batchSize) {
+        backfillEnabled = enabled;
+        if (batchSize > 0) backfillBatchSize = batchSize;
+    }
+
+    public boolean backfillEnabled() {
+        return backfillEnabled;
+    }
+
+    public int backfillBatch(int limit) {
+        var service = objectStorage();
+        if (service == null) return 0;
+        int updated = 0;
+        for (var blob : payloadRepository.findBackfillCandidates(limit > 0 ? limit : backfillBatchSize)) {
+            if (blob.data == null || blob.storageKey != null) continue;
+            blob.contentType = contentType(blob.data);
+            uploadObject(blob, blob.data, service);
+            if (payloadRepository.updateBackfillReference(blob) > 0) {
+                blob.data = null;
+                updated++;
+            }
+        }
+        return updated;
     }
 
     private ObjectStorageService objectStorage() {
@@ -330,6 +357,17 @@ public class TracePayloadStore {
         return originals;
     }
 
+    private void uploadObject(TracePayloadBlob blob, String dataUrl, ObjectStorageService service) {
+        var bytes = decodeDataUrl(dataUrl);
+        blob.objectHash = sha256(bytes);
+        blob.storageKey = storageKey(blob.objectHash);
+        blob.sizeBytes = (long) bytes.length;
+        if (!uploaded(blob.storageKey)) {
+            service.uploadObject(storageContainer(), blob.storageKey, bytes, blob.contentType);
+            markUploaded(blob.storageKey);
+        }
+    }
+
     private boolean store(String key, String traceId, String dataUrl) {
         var blob = new TracePayloadBlob();
         blob.id = key;
@@ -337,14 +375,7 @@ public class TracePayloadStore {
         blob.contentType = contentType(dataUrl);
         var service = objectStorage();
         if (service != null) {
-            var bytes = decodeDataUrl(dataUrl);
-            blob.objectHash = sha256(bytes);
-            blob.storageKey = storageKey(blob.objectHash);
-            blob.sizeBytes = (long) bytes.length;
-            if (!uploaded(blob.storageKey)) {
-                service.uploadObject(storageContainer(), blob.storageKey, bytes, blob.contentType);
-                markUploaded(blob.storageKey);
-            }
+            uploadObject(blob, dataUrl, service);
         } else {
             blob.data = dataUrl;
             blob.sizeBytes = decodedSize(dataUrl);

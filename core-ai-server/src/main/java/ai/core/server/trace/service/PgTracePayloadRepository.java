@@ -21,6 +21,18 @@ public class PgTracePayloadRepository implements TracePayloadRepository {
         return blob.id.substring(blob.traceId.length() + 1);
     }
 
+    private static TracePayloadBlob toBlob(PgTracePayloadRow row) {
+        var blob = new TracePayloadBlob();
+        blob.traceId = row.traceId;
+        blob.id = row.traceId + ':' + row.blobHash;
+        blob.data = row.content;
+        blob.objectHash = row.objectHash;
+        blob.storageKey = row.storageKey;
+        blob.contentType = row.contentType;
+        blob.sizeBytes = row.sizeBytes;
+        return blob;
+    }
+
     @Inject
     Database database;
 
@@ -44,18 +56,25 @@ public class PgTracePayloadRepository implements TracePayloadRepository {
             + " WHERE trace_id = ? AND blob_hash IN ("
             + String.join(", ", java.util.Collections.nCopies(blobHashes.size(), "?")) + ")";
         return database.select(sql, PgTracePayloadRow.class, params.toArray()).stream()
-            .map(row -> {
-                var blob = new TracePayloadBlob();
-                blob.traceId = row.traceId;
-                blob.id = row.traceId + ':' + row.blobHash;
-                blob.data = row.content;
-                blob.objectHash = row.objectHash;
-                blob.storageKey = row.storageKey;
-                blob.contentType = row.contentType;
-                blob.sizeBytes = row.sizeBytes;
-                return blob;
-            })
+            .map(PgTracePayloadRepository::toBlob)
             .toList();
+    }
+
+    @Override
+    public List<TracePayloadBlob> findBackfillCandidates(int limit) {
+        var sql = "SELECT trace_id, blob_hash, content, object_hash, storage_key, content_type, size_bytes FROM " + TABLE
+            + " WHERE content IS NOT NULL AND storage_key IS NULL ORDER BY created_at, trace_id, blob_hash LIMIT ?";
+        return database.select(sql, PgTracePayloadRow.class, limit).stream()
+            .map(PgTracePayloadRepository::toBlob)
+            .toList();
+    }
+
+    @Override
+    public int updateBackfillReference(TracePayloadBlob blob) {
+        return database.execute("UPDATE " + TABLE
+                + " SET content = NULL, object_hash = ?, storage_key = ?, content_type = ?, size_bytes = ?"
+                + " WHERE trace_id = ? AND blob_hash = ? AND storage_key IS NULL",
+            blob.objectHash, blob.storageKey, blob.contentType, blob.sizeBytes, blob.traceId, hash(blob));
     }
 
     @Override

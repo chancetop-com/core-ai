@@ -35,4 +35,14 @@ public interface TracePayloadRepository {
     default boolean hasStorageKey(String storageKey) {
         return false;
     }
+
+    /** Legacy inline rows that can be moved to object storage. */
+    default List<TracePayloadBlob> findBackfillCandidates(int limit) {
+        return List.of();
+    }
+
+    /** @return 1 when the row was still inline and was updated, otherwise 0 */
+    default int updateBackfillReference(TracePayloadBlob blob) {
+        return 0;
+    }
 }

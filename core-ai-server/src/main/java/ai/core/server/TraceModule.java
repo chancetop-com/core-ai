@@ -11,6 +11,8 @@ import ai.core.server.trace.maintenance.TraceArchivingTask;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceJob;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceService;
 import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
+import ai.core.server.trace.maintenance.TracePayloadBackfillJob;
+import ai.core.server.trace.maintenance.TracePayloadBackfillTask;
 import ai.core.server.trace.maintenance.StaleRunCleanupJob;
 import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.service.IngestService;
@@ -58,6 +60,10 @@ public class TraceModule extends Module {
         payloadStore.configure(property("sys.trace.payload.storage").orElse("auto"),
             payloadContainer == null || payloadContainer.isBlank() ? configuredContainer : payloadContainer,
             archivePrefix, tracePostgres);
+        var backfillMode = property("sys.trace.payload.backfill.enabled").orElse("auto");
+        var backfillEnabled = "true".equals(backfillMode) || "auto".equals(backfillMode) && tracePostgres;
+        payloadStore.configureBackfill(backfillEnabled,
+            intProperty("sys.trace.payload.backfill.batch.size", 500));
         bind(TraceDailyMaintenanceService.class);
         var archiveService = new TraceArchiveService(bean(ObjectStorageServiceResolver.class), configuredContainer, archivePrefix);
         bind(archiveService);
@@ -68,6 +74,12 @@ public class TraceModule extends Module {
         var traceArchivingTask = bind(TraceArchivingTask.class);
         onStartup(() -> taskRunner.register(traceArchivingTask));
         schedule().fixedRate("trace-archive", bind(TraceArchivingJob.class), Duration.ofMinutes(TraceArchivingJob.TICK_MINUTES));
+        var backfillTask = bind(TracePayloadBackfillTask.class);
+        onStartup(() -> taskRunner.register(backfillTask));
+        if (backfillEnabled) {
+            schedule().fixedRate("trace-payload-backfill", bind(TracePayloadBackfillJob.class),
+                Duration.ofMinutes(TracePayloadBackfillJob.TICK_MINUTES));
+        }
         bind(StaleRunCleanupService.class);
         schedule().fixedRate("stale-run-cleanup", bind(StaleRunCleanupJob.class), Duration.ofMinutes(10));
         registerTrace();
