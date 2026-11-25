@@ -76,7 +76,7 @@ class LlmFirstTokenDispatchTest {
 
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
-            return doCompletionStream(request, null);
+            throw new UnsupportedOperationException("not used in tests");
         }
 
         @Override

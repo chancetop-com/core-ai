@@ -5,6 +5,7 @@ import ai.core.agent.internal.AgentHelper;
 import ai.core.llm.streaming.AsyncStreamingCallback;
 import ai.core.llm.streaming.BufferedStreamingCallback;
 import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.FirstTokenListener;
 import ai.core.llm.streaming.FirstTokenProbe;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.llm.domain.CaptionImageRequest;
@@ -54,6 +55,10 @@ public abstract class LLMProvider {
 
     private static boolean isRequestTooLarge(RuntimeException e) {
         return e.getMessage() != null && REQUEST_TOO_LARGE_PATTERN.matcher(e.getMessage()).find();
+    }
+
+    private static void applyTtft(CompletionResponse response, FirstTokenProbe probe) {
+        if (response != null) response.ttftMs = probe.ttftMillis();
     }
 
     protected LLMTracer tracer;
@@ -147,11 +152,6 @@ public abstract class LLMProvider {
     }
 
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
-        return completionStream(request, callback, llmSpanContextSink, withTracing, null);
-    }
-
-    public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink,
-                                                     boolean withTracing, LongConsumer firstTokenSink) {
         request.model = getModel(request);
         enforceModalities(request);
         preprocess(request);
@@ -162,6 +162,7 @@ public abstract class LLMProvider {
                     request.getExtraBody(), config.resolveExtraBody(request.model));
         }
         var wrappedCallback = wrapCallback(callback);
+        LongConsumer firstTokenSink = callback instanceof FirstTokenListener listener ? listener::onFirstToken : null;
         // measured outside the buffering/async wrappers: this is the transport's latency to the first
         // token, which is what TTFT means for an LLM call
         var probe = firstTokenSink == null ? new FirstTokenProbe(wrappedCallback) : new FirstTokenProbe(wrappedCallback, firstTokenSink);
@@ -202,14 +203,14 @@ public abstract class LLMProvider {
         if (tracer != null && withTracing) {
             // TTFT is assigned inside the traced operation: the span records the response before the
             // call returns, so setting it afterwards would leave every engine span without a TTFT
-            return tracer.traceLLMCompletion(name(), request, () -> withTtft(doCompletionStream(wireRequest, probe), probe),
-                    llmSpanContextSink, probe::isCancelled);
+            return tracer.traceLLMCompletion(name(), request, () -> {
+                var response = doCompletionStream(wireRequest, probe);
+                applyTtft(response, probe);
+                return response;
+            }, llmSpanContextSink, probe::isCancelled);
         }
-        return withTtft(doCompletionStream(wireRequest, probe), probe);
-    }
-
-    private static CompletionResponse withTtft(CompletionResponse response, FirstTokenProbe probe) {
-        if (response != null) response.ttftMs = probe.ttftMillis();
+        var response = doCompletionStream(wireRequest, probe);
+        applyTtft(response, probe);
         return response;
     }
 

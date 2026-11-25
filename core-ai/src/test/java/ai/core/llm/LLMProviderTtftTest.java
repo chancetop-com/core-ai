@@ -12,7 +12,7 @@ import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RerankingRequest;
 import ai.core.llm.domain.RerankingResponse;
 import ai.core.llm.domain.RoleType;
-import ai.core.llm.streaming.DefaultStreamingCallback;
+import ai.core.llm.streaming.FirstTokenListener;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.telemetry.LLMTracer;
 import ai.core.telemetry.RecordingSpanProcessor;
@@ -41,16 +41,29 @@ class LLMProviderTtftTest {
         var tracer = new LLMTracer(OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build(), true);
         var provider = new StreamingProvider();
         provider.setTracer(tracer);
-        var sinkValues = new ArrayList<Long>();
+        var callback = new ObservingCallback();
         var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, "hi")), List.of(), 0.0, "test-model", "ttft-test");
 
-        var response = provider.completionStream(request, new DefaultStreamingCallback(), null, true, sinkValues::add);
+        var response = provider.completionStream(request, callback, null, true);
 
         assertNotNull(response.ttftMs);
-        assertEquals(response.ttftMs, sinkValues.getFirst());
+        assertEquals(response.ttftMs, callback.firstTokens.getFirst());
         var span = processor.find("ttft-test").orElseThrow();
         assertEquals(response.ttftMs, span.getAttributes().get(AttributeKey.longKey("gen_ai.response.time_to_first_token_ms")));
         tracerProvider.close();
+    }
+
+    private static final class ObservingCallback implements StreamingCallback, FirstTokenListener {
+        private final List<Long> firstTokens = new ArrayList<>();
+
+        @Override
+        public void onChunk(String chunk) {
+        }
+
+        @Override
+        public void onFirstToken(long ttftMs) {
+            firstTokens.add(ttftMs);
+        }
     }
 
     private static final class StreamingProvider extends LLMProvider {
@@ -60,7 +73,7 @@ class LLMProviderTtftTest {
 
         @Override
         protected CompletionResponse doCompletion(CompletionRequest request) {
-            return doCompletionStream(request, null);
+            throw new UnsupportedOperationException("not used in tests");
         }
 
         @Override

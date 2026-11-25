@@ -1,6 +1,7 @@
 package ai.core.session;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.llm.streaming.FirstTokenListener;
 import ai.core.llm.streaming.StreamingCallback;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
@@ -15,22 +16,35 @@ import core.framework.util.Strings;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /**
  * @author stephen
  */
-public class SessionStreamingCallback implements StreamingCallback {
+public class SessionStreamingCallback implements StreamingCallback, FirstTokenListener {
 
     private final String sessionId;
     private final Consumer<AgentEvent> dispatcher;
     private final ExecutionContext context;
+    private final LongConsumer firstTokenListener;
     private Long reasoningStartedAtNanos;
     private Long reasoningLastChunkAtNanos;
 
     public SessionStreamingCallback(String sessionId, Consumer<AgentEvent> dispatcher, ExecutionContext context) {
+        this(sessionId, dispatcher, context, null);
+    }
+
+    public SessionStreamingCallback(String sessionId, Consumer<AgentEvent> dispatcher, ExecutionContext context,
+                                    LongConsumer firstTokenListener) {
         this.sessionId = sessionId;
         this.dispatcher = dispatcher;
         this.context = context;
+        this.firstTokenListener = firstTokenListener;
+    }
+
+    @Override
+    public void onFirstToken(long ttftMs) {
+        if (firstTokenListener != null) firstTokenListener.accept(ttftMs);
     }
 
     @Override

@@ -123,14 +123,10 @@ public class InProcessAgentSession implements AgentSession {
         this.taskRuns.setPendingWorkProbe(this::hasDeferredWork);
         var context = agent.getExecutionContext();
         context.setWaitEventListener(this::dispatch);
-        context.setFirstTokenListener(ttftMs -> {
-            turnWaitingMs.addAndGet(ttftMs);
-            dispatch(LlmFirstTokenEvent.of(sessionId, ttftMs));
-        });
         if (context.getSubagentOutputSinkFactory() != null) {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch, taskRuns));
         }
-        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context));
+        agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context, this::onLlmFirstToken));
         var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());
         agent.addLifecycle(permissionLifecycle);
         agent.addLifecycle(new PlanUpdateLifecycle(this::dispatch));
@@ -718,6 +714,11 @@ public class InProcessAgentSession implements AgentSession {
         watchingVideoJobs.remove(videoId);
         taskRuns.taskSettled(videoId, 0L, completed ? TaskRunOutcome.RETURNED : TaskRunOutcome.FAILED, false,
                 completed ? "completed" : "video generation failed");
+    }
+
+    private void onLlmFirstToken(long ttftMs) {
+        turnWaitingMs.addAndGet(ttftMs);
+        dispatch(LlmFirstTokenEvent.of(sessionId, ttftMs));
     }
 
     private void dispatch(AgentEvent event) {
