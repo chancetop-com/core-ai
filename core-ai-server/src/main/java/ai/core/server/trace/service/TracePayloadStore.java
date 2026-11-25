@@ -1,5 +1,7 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TracePayloadBlob;
@@ -10,10 +12,15 @@ import org.slf4j.LoggerFactory;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +45,7 @@ public class TracePayloadStore {
     private static final long MAX_TRACE_PAYLOAD_BYTES = 8L * 1024 * 1024;
     /** A detail response hydrates at most this many bytes; the rest stay as refs for the media endpoint. */
     private static final long MAX_HYDRATE_BYTES = 2L * 1024 * 1024;
+    private static final int MAX_DEDUP_ENTRIES = 4096;
 
     private static int mapCapacity(int expectedSize) {
         return expectedSize < 1 ? 1 : (int) (expectedSize / 0.75f) + 1;
@@ -114,8 +122,92 @@ public class TracePayloadStore {
         }
     }
 
+    private static String sha256(byte[] value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256").digest(value);
+            return HexFormat.of().formatHex(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is not available", e);
+        }
+    }
+
+    private static byte[] decodeDataUrl(String dataUrl) {
+        int comma = dataUrl.indexOf(',');
+        if (comma < 0) throw new IllegalArgumentException("invalid data URL");
+        return Base64.getMimeDecoder().decode(dataUrl.substring(comma + 1));
+    }
+
+    @Inject
+    ObjectStorageServiceResolver objectStorageResolver;
     @Inject
     TracePayloadRepository payloadRepository;
+
+    private final Map<String, Boolean> uploadedObjects = new LinkedHashMap<>();
+    private String storageMode = "db";
+    private String configuredContainer;
+    private String objectPrefix;
+    private boolean objectStorageAllowed;
+
+    /**
+     * Configures the storage mode selected by {@code sys.trace.payload.storage}. {@code auto} still
+     * falls back to inline data when no object storage is configured; {@code object} requires it.
+     */
+    public void configure(String mode, String container, String prefix, boolean pgTraceStore) {
+        storageMode = mode == null || mode.isBlank() ? "db" : mode;
+        if (!pgTraceStore && "object".equals(storageMode)) {
+            throw new IllegalArgumentException("sys.trace.payload.storage=object requires the pg trace store");
+        }
+        objectStorageAllowed = pgTraceStore;
+        configuredContainer = container == null || container.isBlank() ? null : container;
+        objectPrefix = prefix == null || prefix.isBlank() ? null : prefix;
+    }
+
+    private ObjectStorageService objectStorage() {
+        if (!objectStorageAllowed || "db".equals(storageMode)) return null;
+        var service = objectStorageResolver != null ? objectStorageResolver.resolve() : null;
+        if (service == null && "object".equals(storageMode)) {
+            throw new IllegalStateException("sys.trace.payload.storage=object but object storage is not configured");
+        }
+        return service;
+    }
+
+    private String storageContainer() {
+        return configuredContainer != null ? configuredContainer : objectStorageResolver.artifactContainer();
+    }
+
+    private String storageKey(String objectHash) {
+        var month = YearMonth.now(ZoneOffset.UTC);
+        var key = "trace-blobs/" + month + "/" + objectHash.substring(0, 2) + "/" + objectHash;
+        return objectPrefix == null ? key : objectPrefix + "/" + key;
+    }
+
+    private boolean uploaded(String key) {
+        synchronized (uploadedObjects) {
+            return uploadedObjects.containsKey(key);
+        }
+    }
+
+    private void markUploaded(String key) {
+        synchronized (uploadedObjects) {
+            if (uploadedObjects.size() >= MAX_DEDUP_ENTRIES) {
+                Iterator<String> iterator = uploadedObjects.keySet().iterator();
+                if (iterator.hasNext()) {
+                    iterator.next();
+                    iterator.remove();
+                }
+            }
+            uploadedObjects.put(key, Boolean.TRUE);
+        }
+    }
+
+    private String loadPayload(TracePayloadBlob blob) {
+        if (blob.storageKey == null) return blob.data;
+        var service = objectStorage();
+        if (service == null) throw new IllegalStateException("object storage is not configured");
+        byte[] bytes = service.downloadObject(storageContainer(), blob.storageKey);
+        var contentType = blob.contentType != null ? blob.contentType : "application/octet-stream";
+        return "data:" + contentType + ";base64," + Base64.getEncoder().encodeToString(bytes);
+    }
 
     public Compactor newCompactor() {
         return new Compactor();
@@ -184,24 +276,46 @@ public class TracePayloadStore {
         if (traceId == null || sha256 == null) return null;
         var blobs = payloadRepository.findByTrace(traceId, List.of(sha256));
         if (blobs.isEmpty()) return null;
-        var dataUrl = blobs.getFirst().data;
+        var blob = blobs.getFirst();
+        if (blob.storageKey != null) {
+            var service = objectStorage();
+            if (service == null) throw new IllegalStateException("object storage is not configured");
+            return new Payload(service.downloadObject(storageContainer(), blob.storageKey), blob.contentType);
+        }
+        var dataUrl = blob.data;
         var comma = dataUrl.indexOf(',');
         if (comma < 0) return null;
-        return new Payload(java.util.Base64.getDecoder().decode(dataUrl.substring(comma + 1)), contentType(dataUrl));
+        return new Payload(Base64.getDecoder().decode(dataUrl.substring(comma + 1)), contentType(dataUrl));
     }
 
-    public void deleteForTraces(List<String> traceIds) {
-        if (traceIds == null || traceIds.isEmpty()) return;
-        long deleted = payloadRepository.deleteByTraceIds(traceIds);
-        if (deleted > 0) {
-            LOGGER.info("deleted {} trace payload blobs for {} traces", deleted, traceIds.size());
+    public List<String> deleteForTraces(List<String> traceIds) {
+        if (traceIds == null || traceIds.isEmpty()) return List.of();
+        var keys = payloadRepository.deleteByTraceIdsReturningStorageKeys(traceIds);
+        if (!keys.isEmpty()) {
+            LOGGER.info("deleted trace payload rows for {} traces, storage keys={}", traceIds.size(), keys.size());
+        }
+        return keys;
+    }
+
+    /** Deletes shared CAS objects only when no remaining trace payload row references them. */
+    public void deleteObjects(List<String> storageKeys) {
+        if (storageKeys == null || storageKeys.isEmpty()) return;
+        var service = objectStorage();
+        if (service == null) return;
+        for (var key : storageKeys) {
+            if (payloadRepository.hasStorageKey(key)) continue;
+            try {
+                service.deleteObject(storageContainer(), key);
+            } catch (RuntimeException e) {
+                LOGGER.warn("failed to delete trace payload object, key={}", key, e);
+            }
         }
     }
 
     private Map<String, String> load(String traceId, Set<String> hashes, boolean strict) {
         Map<String, String> originals = new HashMap<>(mapCapacity(hashes.size()));
         for (var blob : payloadRepository.findByTrace(traceId, new ArrayList<>(hashes))) {
-            originals.put(blob.id.substring(traceId.length() + 1), blob.data);
+            originals.put(blob.id.substring(traceId.length() + 1), loadPayload(blob));
         }
         if (strict) {
             for (var hash : hashes) {
@@ -220,9 +334,21 @@ public class TracePayloadStore {
         var blob = new TracePayloadBlob();
         blob.id = key;
         blob.traceId = traceId;
-        blob.data = dataUrl;
         blob.contentType = contentType(dataUrl);
-        blob.sizeBytes = decodedSize(dataUrl);
+        var service = objectStorage();
+        if (service != null) {
+            var bytes = decodeDataUrl(dataUrl);
+            blob.objectHash = sha256(bytes);
+            blob.storageKey = storageKey(blob.objectHash);
+            blob.sizeBytes = (long) bytes.length;
+            if (!uploaded(blob.storageKey)) {
+                service.uploadObject(storageContainer(), blob.storageKey, bytes, blob.contentType);
+                markUploaded(blob.storageKey);
+            }
+        } else {
+            blob.data = dataUrl;
+            blob.sizeBytes = decodedSize(dataUrl);
+        }
         blob.createdAt = ZonedDateTime.now();
         return payloadRepository.store(blob);
     }

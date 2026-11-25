@@ -175,6 +175,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.trace.PgTraceDimensionTrendRow.class);
         db().view(ai.core.server.trace.PgTraceDailyUsageRow.class);
         db().view(ai.core.server.trace.service.PgTracePayloadRow.class);
+        db().view(ai.core.server.trace.service.PgTraceStorageKeyRow.class);
         db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
     }
 

@@ -1,19 +1,26 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.blob.ObjectStorageService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.TracePayloadBlob;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -115,6 +122,33 @@ class TracePayloadStoreTest {
         store.hydrate(span, false);
 
         assertEquals(compacted, span.input);
+    }
+
+    @Test
+    void storesObjectReferenceAndServesBytesFromObjectStorage() {
+        var objectStorage = mock(ObjectStorageService.class);
+        var resolver = mock(ObjectStorageServiceResolver.class);
+        when(resolver.resolve()).thenReturn(objectStorage);
+        store.objectStorageResolver = resolver;
+        store.configure("object", "trace-container", "dev", true);
+
+        var dataUrl = "data:image/png;base64," + "A".repeat(64);
+        var compacted = store.newCompactor().compact("trace-1", "{\"image\":\"" + dataUrl + "\"}");
+        var expectedBytes = java.util.Base64.getDecoder().decode("A".repeat(64));
+
+        var keyCaptor = ArgumentCaptor.forClass(String.class);
+        verify(objectStorage).uploadObject(eq("trace-container"), keyCaptor.capture(),
+            argThat((byte[] bytes) -> Arrays.equals(bytes, expectedBytes)), eq("image/png"));
+        var stored = blobs.values().iterator().next();
+        assertNull(stored.data);
+        assertTrue(stored.storageKey.startsWith("dev/trace-blobs/"));
+        assertEquals(stored.storageKey, keyCaptor.getValue());
+        assertFalse(compacted.contains("data:image/"));
+
+        when(objectStorage.downloadObject("trace-container", stored.storageKey)).thenReturn(expectedBytes);
+        var payload = store.payload("trace-1", stored.id.substring("trace-1:".length()));
+        assertEquals(expectedBytes.length, payload.bytes().length);
+        assertEquals("image/png", payload.contentType());
     }
 
     @Test

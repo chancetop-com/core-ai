@@ -3,6 +3,7 @@ package ai.core.server;
 import ai.core.api.server.prompt.PromptWebService;
 import ai.core.api.server.trace.TraceWebService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.pg.StoreMode;
 import ai.core.server.task.TaskRunner;
 import ai.core.server.trace.maintenance.TraceArchiveService;
 import ai.core.server.trace.maintenance.TraceArchivingJob;
@@ -48,10 +49,17 @@ public class TraceModule extends Module {
 
     @Override
     protected void initialize() {
-        bind(TracePayloadStore.class);
-        bind(TraceDailyMaintenanceService.class);
+        var archivePrefix = resolveArchivePrefix();
         var configuredContainer = property("trace.archive.container").orElse(null);
-        var archiveService = new TraceArchiveService(bean(ObjectStorageServiceResolver.class), configuredContainer, resolveArchivePrefix());
+        var payloadContainer = property("sys.trace.payload.container").orElse(null);
+        var payloadStore = bind(TracePayloadStore.class);
+        var tracePostgres = StoreMode.postgres(property("sys.trace.store.mode").orElse("auto"),
+            property("sys.store.mode").orElse("mongo"), "sys.trace.store.mode");
+        payloadStore.configure(property("sys.trace.payload.storage").orElse("auto"),
+            payloadContainer == null || payloadContainer.isBlank() ? configuredContainer : payloadContainer,
+            archivePrefix, tracePostgres);
+        bind(TraceDailyMaintenanceService.class);
+        var archiveService = new TraceArchiveService(bean(ObjectStorageServiceResolver.class), configuredContainer, archivePrefix);
         bind(archiveService);
         var traceDailyMaintenanceTask = bind(TraceDailyMaintenanceTask.class);
         var taskRunner = bean(TaskRunner.class);

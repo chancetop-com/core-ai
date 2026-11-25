@@ -26,6 +26,13 @@ public class TracePayloadBlob {
     @Field(name = "content_type")
     public String contentType;
 
+    // object storage reference; data stays null for rows written in object mode
+    @Field(name = "object_hash")
+    public String objectHash;
+
+    @Field(name = "storage_key")
+    public String storageKey;
+
     @Field(name = "size_bytes")
     public Long sizeBytes;
 

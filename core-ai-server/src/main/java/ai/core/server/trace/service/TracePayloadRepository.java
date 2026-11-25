@@ -21,4 +21,18 @@ public interface TracePayloadRepository {
     List<TracePayloadBlob> findByTrace(String traceId, List<String> blobHashes);
 
     long deleteByTraceIds(List<String> traceIds);
+
+    /**
+     * Deletes the rows and returns the distinct storage keys that are no longer referenced by any
+     * remaining row. Implementations without object storage return an empty list.
+     */
+    default List<String> deleteByTraceIdsReturningStorageKeys(List<String> traceIds) {
+        deleteByTraceIds(traceIds);
+        return List.of();
+    }
+
+    /** Whether any remaining payload row still points at the object key. */
+    default boolean hasStorageKey(String storageKey) {
+        return false;
+    }
 }

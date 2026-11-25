@@ -177,7 +177,10 @@ public class TraceArchiveService {
             if (ids.isEmpty()) break;
 
             totalSpansDeleted += deleteSpans(traceIds);
-            if (payloadStore != null) payloadStore.deleteForTraces(traceIds);
+            if (payloadStore != null) {
+                var storageKeys = payloadStore.deleteForTraces(traceIds);
+                payloadStore.deleteObjects(storageKeys);
+            }
 
             long deleted = traceStore.deleteByIds(ids);
             totalTracesDeleted += deleted;
