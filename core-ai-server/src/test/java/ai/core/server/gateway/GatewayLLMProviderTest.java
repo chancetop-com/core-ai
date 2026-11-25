@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
@@ -649,6 +650,22 @@ class GatewayLLMProviderTest {
         model.enabled = Boolean.TRUE;
         model.priority = 100L;
         return model;
+    }
+
+    @Test
+    void propagatesHttp1OnlySettingToUpstreamProvider() {
+        var provider = provider("10086", "deepseek", "https://vip.moma.cmecloud.cn/v1");
+        var protector = new GatewaySecretProtector("test-secret");
+        var routingEngine = new GatewayRoutingEngine();
+
+        var defaultConfig = new LLMProviderConfig(null, null, null);
+        var defaultGateway = new GatewayLLMProvider(defaultConfig, routingEngine, protector, null);
+        assertTrue(defaultGateway.createUpstreamProvider(provider, "deepseek-v4.1-flash-1017", null).config.isHttp1Only());
+
+        var autoConfig = new LLMProviderConfig(null, null, null);
+        autoConfig.setHttp1Only(false);
+        var autoGateway = new GatewayLLMProvider(autoConfig, routingEngine, protector, null);
+        assertFalse(autoGateway.createUpstreamProvider(provider, "deepseek-v4.1-flash-1017", null).config.isHttp1Only());
     }
 
     private static final class TestGatewayLLMProvider extends GatewayLLMProvider {

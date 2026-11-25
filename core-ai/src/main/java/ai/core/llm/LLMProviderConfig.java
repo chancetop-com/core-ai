@@ -43,6 +43,7 @@ public class LLMProviderConfig {
     private int streamBufferSize = 0;
     private int maxInlineImages = InlineImagePruner.DEFAULT_MAX_IMAGES;
     private long maxInlineImageBytes = InlineImagePruner.DEFAULT_MAX_BYTES;
+    private boolean http1Only = true;
 
     public LLMProviderConfig(String model, Double temperature, String embeddingModel) {
         this.model = model;
@@ -63,6 +64,7 @@ public class LLMProviderConfig {
         this.streamBufferSize = other.streamBufferSize;
         this.maxInlineImages = other.maxInlineImages;
         this.maxInlineImageBytes = other.maxInlineImageBytes;
+        this.http1Only = other.http1Only;
     }
 
     public Duration getConnectTimeout() {
@@ -192,5 +194,13 @@ public class LLMProviderConfig {
 
     public void setMaxInlineImageBytes(long maxInlineImageBytes) {
         this.maxInlineImageBytes = maxInlineImageBytes;
+    }
+
+    public boolean isHttp1Only() {
+        return http1Only;
+    }
+
+    public void setHttp1Only(boolean http1Only) {
+        this.http1Only = http1Only;
     }
 }

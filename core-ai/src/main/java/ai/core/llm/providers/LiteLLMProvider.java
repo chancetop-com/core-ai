@@ -68,6 +68,7 @@ public class LiteLLMProvider extends LLMProvider {
         this.client = new PatchedHTTPClientBuilder()
                 .connectTimeout(config.getConnectTimeout())
                 .timeout(config.getTimeout())
+                .http1Only(config.isHttp1Only())
                 .trustAll()
                 .build();
     }

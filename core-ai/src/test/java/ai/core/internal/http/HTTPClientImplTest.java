@@ -141,4 +141,17 @@ class HTTPClientImplTest {
             }
         }
     }
+
+    @Test
+    void patchedBuilderConfiguresHttp1OnlyProtocol() {
+        var http1Client = (CustomHTTPClientImpl) new PatchedHTTPClientBuilder().http1Only(true).build();
+        var autoClient = (CustomHTTPClientImpl) new PatchedHTTPClientBuilder().http1Only(false).build();
+        try {
+            assertThat(http1Client.okHttpClient().protocols()).containsExactly(Protocol.HTTP_1_1);
+            assertThat(autoClient.okHttpClient().protocols()).containsExactly(Protocol.HTTP_2, Protocol.HTTP_1_1);
+        } finally {
+            http1Client.close();
+            autoClient.close();
+        }
+    }
 }

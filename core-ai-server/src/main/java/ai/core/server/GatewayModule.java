@@ -101,7 +101,10 @@ public class GatewayModule extends Module {
         bind(MediaJobArtifactStore.class);
         bind(MediaPosterService.class);
         var mediaJobService = bind(MediaJobService.class);
-        bind(GatewayProxyService.class);
+        var upstreamHttp1Only = !"false".equalsIgnoreCase(property("sys.gateway.upstream.http1").orElse("true"));
+        LOGGER.info("gateway upstream http1Only={}", upstreamHttp1Only);
+        var gatewayProxyService = bind(GatewayProxyService.class);
+        gatewayProxyService.configureUpstreamHttp1Only(upstreamHttp1Only);
         bindGatewayMediaProvider(gatewayRoutingEngine, gatewaySecretProtector, mediaJobService, costSettler);
         bindGatewayDecisionProvider(gatewayRoutingEngine, gatewaySecretProtector);
         bind(MediaArtifactService.class);
@@ -109,16 +112,17 @@ public class GatewayModule extends Module {
         registerGatewayProviderRoutes();
         registerGatewayModelRoutes();
         registerGatewayProxyRoutes();
-        bindGatewayLLMProvider(gatewayRoutingEngine, gatewaySecretProtector);
+        bindGatewayLLMProvider(gatewayRoutingEngine, gatewaySecretProtector, upstreamHttp1Only);
         bind(ImageModelCompareService.class);
         api().service(MediaJobWebService.class, bind(MediaJobWebServiceImpl.class));
         http().route(HTTPMethod.GET, "/api/media-jobs/:id/content", bind(MediaJobContentController.class)::content);
     }
 
-    private void bindGatewayLLMProvider(GatewayRoutingEngine gatewayRoutingEngine, GatewaySecretProtector gatewaySecretProtector) {
+    private void bindGatewayLLMProvider(GatewayRoutingEngine gatewayRoutingEngine, GatewaySecretProtector gatewaySecretProtector, boolean upstreamHttp1Only) {
         var llmProviders = bean(LLMProviders.class);
         var fallbackLLMProvider = llmProviders.getProviderTypes().isEmpty() ? null : llmProviders.getProvider();
         var gatewayLLMConfig = fallbackLLMProvider == null ? new LLMProviderConfig(null, null, null) : new LLMProviderConfig(fallbackLLMProvider.config);
+        gatewayLLMConfig.setHttp1Only(upstreamHttp1Only);
         var gatewayLLMProvider = new GatewayLLMProvider(gatewayLLMConfig, gatewayRoutingEngine, gatewaySecretProtector, fallbackLLMProvider);
         gatewayLLMProvider.setModalityRegistry(new GatewayModalityRegistry(gatewayRoutingEngine));
         if (fallbackLLMProvider != null) {

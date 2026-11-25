@@ -12,6 +12,7 @@ import core.framework.internal.http.TimeoutInterceptor;
 import core.framework.util.StopWatch;
 import okhttp3.ConnectionPool;
 import okhttp3.OkHttpClient;
+import okhttp3.Protocol;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,7 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -79,6 +81,7 @@ public final class PatchedHTTPClientBuilder {
     private boolean enableFallbackDNSCache = false;
     private String userAgent = "core-ai";
     private boolean trustAll = false;
+    private boolean http1Only = false;
     @Nullable
     private KeyStore trustStore;
     private KeyManager @Nullable [] keyManagers;   // for client auth
@@ -108,6 +111,7 @@ public final class PatchedHTTPClientBuilder {
                     .followSslRedirects(false);
 
             configureHTTPS(builder);
+            if (http1Only) builder.protocols(List.of(Protocol.HTTP_1_1));
 
             builder.addInterceptor(new TimeoutInterceptor());
             if (maxRetries != null) {
@@ -194,6 +198,11 @@ public final class PatchedHTTPClientBuilder {
 
     public PatchedHTTPClientBuilder trustAll() {
         trustAll = true;
+        return this;
+    }
+
+    public PatchedHTTPClientBuilder http1Only(boolean http1Only) {
+        this.http1Only = http1Only;
         return this;
     }
 

@@ -28,7 +28,9 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -806,6 +808,19 @@ class GatewayProxyServiceTest {
         routingEngine.providerStore = GatewayStoreTestSupport.providerStore(providers);
         routingEngine.modelStore = GatewayStoreTestSupport.modelStore(models);
         return routingEngine;
+    }
+
+    @Test
+    void defaultsUpstreamClientToHttp1AndAllowsSwitching() {
+        var service = new GatewayProxyService();
+        var defaultClient = service.upstreamClient();
+
+        service.configureUpstreamHttp1Only(false);
+        var autoClient = service.upstreamClient();
+        assertNotSame(defaultClient, autoClient);
+
+        service.configureUpstreamHttp1Only(true);
+        assertSame(defaultClient, service.upstreamClient());
     }
 
     private GatewayProviderConfig provider(String name, String type, String baseUrl, String prefix, String defaultModel) {

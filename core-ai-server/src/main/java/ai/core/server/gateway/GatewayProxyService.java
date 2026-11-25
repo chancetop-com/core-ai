@@ -1,5 +1,6 @@
 package ai.core.server.gateway;
 
+import ai.core.internal.http.PatchedHTTPClientBuilder;
 import ai.core.media.domain.VideoStatusResponse;
 import ai.core.server.domain.GatewayProviderConfig;
 import ai.core.server.domain.MediaJob;
@@ -34,11 +35,18 @@ import static ai.core.server.gateway.GatewaySupport.valueOrDefault;
 public class GatewayProxyService {
     private static final Logger LOGGER = LoggerFactory.getLogger(GatewayProxyService.class);
     private static final ContentType EVENT_STREAM = ContentType.create("text/event-stream", StandardCharsets.UTF_8);
-    // shared client with a high ceiling; effective limits come from per-request timeouts set in applyTimeouts
-    private static final HTTPClient CLIENT = HTTPClient.builder()
+    private static final HTTPClient HTTP1_CLIENT = new PatchedHTTPClientBuilder()
             .connectTimeout(Duration.ofSeconds(10))
             .timeout(Duration.ofMinutes(10))
+            .http1Only(true)
             .build();
+    private static final HTTPClient AUTO_CLIENT = new PatchedHTTPClientBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .timeout(Duration.ofMinutes(10))
+            .http1Only(false)
+            .build();
+
+    private volatile boolean upstreamHttp1Only = true;
 
     @Inject
     GatewayRoutingEngine routingEngine;
@@ -333,12 +341,20 @@ public class GatewayProxyService {
         builder.append('\n');
     }
 
+    public void configureUpstreamHttp1Only(boolean upstreamHttp1Only) {
+        this.upstreamHttp1Only = upstreamHttp1Only;
+    }
+
+    HTTPClient upstreamClient() {
+        return upstreamHttp1Only ? HTTP1_CLIENT : AUTO_CLIENT;
+    }
+
     HTTPResponse execute(HTTPRequest request, GatewayProviderConfig provider) {
-        return CLIENT.execute(request);
+        return upstreamClient().execute(request);
     }
 
     EventSource sse(HTTPRequest request, GatewayProviderConfig provider) {
-        return CLIENT.sse(request);
+        return upstreamClient().sse(request);
     }
 
     private void updateVideoJobStatus(MediaJob job, HTTPResponse upstream) {
