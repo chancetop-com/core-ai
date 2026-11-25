@@ -82,10 +82,10 @@ public class TraceModule extends Module {
                 intProperty("sys.trace.ingest.queue.capacity", 10000),
                 longProperty("sys.trace.ingest.handoff.bytes", 64L * 1024 * 1024),
                 longProperty("sys.trace.ingest.max.record.bytes", 9L * 1024 * 1024));
+        var shutdownTimeout = Duration.ofSeconds(longProperty("sys.trace.ingest.shutdown.timeout.seconds", 10L));
         bind(traceBuffer);
         onStartup(traceBuffer::start);
-        onShutdown(() -> traceBuffer.shutdown(Duration.ofSeconds(
-                longProperty("sys.trace.ingest.shutdown.timeout.seconds", 10L))));
+        onShutdown(() -> traceBuffer.shutdown(shutdownTimeout));
 
         // Register the shared hand-off buffer and the trace-created hook for local span ingestion (SPI bridge).
         onStartup(() -> {
