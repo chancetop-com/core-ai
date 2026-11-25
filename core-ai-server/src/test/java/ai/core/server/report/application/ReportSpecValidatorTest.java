@@ -4,6 +4,7 @@ import ai.core.server.domain.Dataset;
 import ai.core.server.domain.DatasetType;
 import ai.core.server.domain.SchemaField;
 import ai.core.server.domain.SchemaFieldType;
+import ai.core.server.report.domain.ReportConstants;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -279,6 +280,117 @@ class ReportSpecValidatorTest {
                         }
                         """), dataset()));
         assertTrue(error.issues().stream().anyMatch(issue -> "PARAMETER_MULTIPLICITY_MISMATCH".equals(issue.code())));
+    }
+
+    @Test
+    void acceptsCompositeMeasuresAndRatioKpi() {
+        var result = validator.validate("kpi", null, spec("""
+                {
+                  "spec_version": 1,
+                  "source": {"dataset_id": "ds-1"},
+                  "parameters": [
+                    {"name": "stores", "type": "STRING", "multiple": true, "default": ["web"], "options_field": "channel"},
+                    {"name": "range", "type": "DATE_RANGE", "default": {"kind": "LAST_N_DAYS_OF_DATA", "days": 30}}
+                  ],
+                  "components": [{
+                    "id": "kpi",
+                    "query": {
+                      "mode": "AGGREGATE", "time_field": "data.business_date", "time_range": {"param": "range"},
+                      "timezone": "Asia/Shanghai", "bucket": "NONE",
+                      "filters": [{"field": "channel", "op": "IN", "param": "stores"}],
+                      "measures": [
+                        {"id": "positive", "field": "data.positive_count", "op": "SUM"},
+                        {"id": "total", "field": "data.total", "op": "SUM"}
+                      ],
+                      "derived_measures": [
+                        {"id": "summed", "op": "ADD", "inputs": ["positive", "total"]},
+                        {"id": "share", "op": "RATIO", "numerator": "summed", "denominator": "total"}
+                      ]
+                    },
+                    "display": {"type": "METRIC", "series": [{"field": "share", "format": "PERCENT"}]}
+                  }]
+                }
+                """), dataset());
+
+        assertEquals("channel", result.spec().parameters.get(0).optionsField);
+        assertEquals(ReportConstants.OP_ADD, result.spec().components.get(0).query.derivedMeasures.get(0).op);
+        assertTrue(result.dependency().fields.stream().anyMatch(field -> "channel".equals(field.name)));
+    }
+
+    @Test
+    void acceptsRankingCompositionAndMovingAverage() {
+        var result = validator.validate("dashboard", null, spec("""
+                {
+                  "spec_version": 1,
+                  "source": {"dataset_id": "ds-1"},
+                  "components": [
+                    {"id": "ranking",
+                     "query": {"mode": "AGGREGATE", "time_field": "data.business_date",
+                       "time_range": {"kind": "SOURCE_RANGE"}, "timezone": "Asia/Shanghai", "bucket": "NONE",
+                       "category_field": "channel",
+                       "measures": [{"id": "total", "field": "data.total", "op": "SUM"}],
+                       "order_by": {"measure": "total", "direction": "DESC"}, "limit": 5},
+                     "display": {"type": "BAR", "orientation": "HORIZONTAL", "series": [{"field": "total"}]}},
+                    {"id": "composition",
+                     "query": {"mode": "AGGREGATE", "time_field": "data.business_date",
+                       "time_range": {"kind": "LAST_N_DAYS_OF_DATA", "days": 30}, "timezone": "Asia/Shanghai", "bucket": "NONE",
+                       "measures": [
+                         {"id": "positive", "field": "data.positive_count", "op": "SUM"},
+                         {"id": "total", "field": "data.total", "op": "SUM"}
+                       ]},
+                     "display": {"type": "MEASURE_BAR", "series": [{"field": "positive"}, {"field": "total"}]}},
+                    {"id": "trend",
+                     "query": {"mode": "AGGREGATE", "time_field": "data.business_date",
+                       "time_range": {"kind": "LAST_N_DAYS_OF_DATA", "days": 30}, "timezone": "Asia/Shanghai", "bucket": "DAY",
+                       "measures": [{"id": "total", "field": "data.total", "op": "SUM"}],
+                       "derived_measures": [{"id": "total_ma7", "op": "MOVING_AVG", "input": "total", "window": 7}]},
+                     "display": {"type": "LINE", "series": [{"field": "total"}, {"field": "total_ma7"}]}}
+                  ]
+                }
+                """), dataset());
+
+        assertEquals("DESC", result.spec().components.get(0).query.orderBy.direction);
+        assertEquals(7, result.spec().components.get(2).query.derivedMeasures.get(0).window);
+    }
+
+    @Test
+    void rejectsSelfReferencingDerivedMeasure() {
+        var error = assertThrows(ReportSpecValidator.ReportValidationException.class,
+                () -> validator.validate("bad", null, spec("""
+                        {
+                          "spec_version": 1,
+                          "source": {"dataset_id": "ds-1"},
+                          "query": {
+                            "mode": "AGGREGATE", "time_field": "data.business_date",
+                            "time_range": {"kind": "LAST_N_DAYS_OF_DATA", "days": 7}, "timezone": "UTC", "bucket": "DAY",
+                            "measures": [{"id": "total", "field": "data.total", "op": "SUM"}],
+                            "derived_measures": [{"id": "double", "op": "ADD", "inputs": ["double", "total"]}]
+                          },
+                          "display": {"type": "LINE", "series": [{"field": "total"}, {"field": "double"}]}
+                        }
+                        """), dataset()));
+        assertTrue(error.issues().stream().anyMatch(issue -> "ADD_REFERENCES_UNKNOWN".equals(issue.code())));
+    }
+
+    @Test
+    void rejectsMetricWithTwoOutputMeasures() {
+        var error = assertThrows(ReportSpecValidator.ReportValidationException.class,
+                () -> validator.validate("bad", null, spec("""
+                        {
+                          "spec_version": 1,
+                          "source": {"dataset_id": "ds-1"},
+                          "query": {
+                            "mode": "AGGREGATE", "time_field": "data.business_date",
+                            "time_range": {"kind": "LAST_N_DAYS_OF_DATA", "days": 7}, "timezone": "UTC", "bucket": "NONE",
+                            "measures": [
+                              {"id": "positive", "field": "data.positive_count", "op": "SUM"},
+                              {"id": "total", "field": "data.total", "op": "SUM"}
+                            ]
+                          },
+                          "display": {"type": "METRIC"}
+                        }
+                        """), dataset()));
+        assertTrue(error.issues().stream().anyMatch(issue -> "METRIC_ONE_MEASURE".equals(issue.code())));
     }
 
     private Dataset dataset() {

@@ -36,6 +36,9 @@ public class ReportView {
     @Property(name = "spec_json")
     public String specJson;
 
+    @Property(name = "parameter_options_json")
+    public String parameterOptionsJson;
+
     @Property(name = "pin_id")
     public String pinId;
 

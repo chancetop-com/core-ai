@@ -28,6 +28,22 @@ class ReportQueryServiceTest {
     }
 
     @Test
+    void resolvesFixedLocalDatesInReportTimezone() {
+        var spec = new ReportSpec();
+        spec.query = new ReportSpec.Query();
+        spec.query.timeRange = new ReportSpec.TimeRange();
+        spec.query.timeRange.kind = ReportConstants.RANGE_FIXED;
+        spec.query.timeRange.from = "2026-10-22";
+        spec.query.timeRange.to = "2026-11-21";
+        spec.query.timezone = "Asia/Shanghai";
+
+        var range = service.resolveRange(spec, ZonedDateTime.parse("2026-11-25T01:00:00Z"), null);
+
+        assertEquals(ZonedDateTime.parse("2026-10-21T16:00:00Z"), range.from().withZoneSameInstant(ZoneOffset.UTC));
+        assertEquals(ZonedDateTime.parse("2026-11-20T16:00:00Z"), range.to().withZoneSameInstant(ZoneOffset.UTC));
+    }
+
+    @Test
     void resolvesRollingHoursWithoutLocalCalendar() {
         var spec = new ReportSpec();
         spec.query = new ReportSpec.Query();

@@ -84,6 +84,7 @@ final class ReportQuerySql {
             return "(array_agg(" + column + " ORDER BY " + time.expression() + " DESC, "
                     + quote("created_at") + " DESC, " + quote("id") + " DESC))[1]";
         }
+        if (ReportConstants.OP_COUNT_DISTINCT.equals(op)) return "count(distinct " + column + ")";
         return op.toLowerCase(Locale.ROOT) + "(" + column + ")";
     }
 

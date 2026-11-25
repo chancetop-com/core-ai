@@ -48,7 +48,9 @@ public class ReportWebServiceImpl implements ReportWebService {
         var userId = userId();
         var report = reportService.get(userId, id);
         var dataset = reportService.datasetName(report.datasetId);
-        return ReportViewMapper.report(report, dataset, reportService.pinFor(userId, id));
+        var view = ReportViewMapper.report(report, dataset, reportService.pinFor(userId, id));
+        view.parameterOptionsJson = reportService.parameterOptionsJson(userId, id);
+        return view;
     }
 
     @Override

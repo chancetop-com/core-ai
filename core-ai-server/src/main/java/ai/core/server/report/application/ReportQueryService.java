@@ -8,6 +8,7 @@ import ai.core.server.report.domain.ReportConstants;
 import ai.core.server.report.domain.ReportData;
 import ai.core.server.report.domain.ReportSpec;
 import ai.core.server.report.store.PgReportInvalidCountRow;
+import ai.core.server.report.store.PgReportOptionRow;
 import ai.core.server.report.store.PgReportRangeRow;
 import ai.core.server.report.store.PgReportRecordRow;
 import ai.core.utils.JsonUtil;
@@ -15,13 +16,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
 
-import java.math.MathContext;
 import java.time.Duration;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -53,8 +50,9 @@ public class ReportQueryService {
 
     public ReportData query(QueryRequest request) {
         var layout = ReportQuerySql.layout(viewManager, request.dataset());
-        var range = resolveRange(request.spec(), request.evaluatedAt(), request.override());
         var time = ReportQuerySql.timeColumn(request.spec(), layout);
+        var range = ReportRangeResolver.resolve(new ReportRangeResolver.Context(request.spec(), request.dataset(),
+                request.evaluatedAt(), request.override(), layout, time, database));
         var data = ReportConstants.MODE_RECORDS.equals(request.spec().query.mode)
                 ? records(request, range, layout, time)
                 : aggregate(request, range, layout, time);
@@ -66,45 +64,7 @@ public class ReportQueryService {
     }
 
     public ResolvedRange resolveRange(ReportSpec spec, ZonedDateTime evaluatedAt, RangeOverride override) {
-        var kind = override != null && override.kind() != null ? override.kind() : spec.query.timeRange.kind;
-        var days = override != null && override.days() != null ? override.days() : spec.query.timeRange.days;
-        var zone = ZoneId.of(spec.query.timezone);
-        var local = evaluatedAt.withZoneSameInstant(zone);
-        var today = local.toLocalDate();
-        ZonedDateTime from;
-        ZonedDateTime to;
-        switch (kind) {
-            case ReportConstants.RANGE_TODAY -> {
-                from = today.atStartOfDay(zone);
-                to = evaluatedAt;
-            }
-            case ReportConstants.RANGE_YESTERDAY -> {
-                from = today.minusDays(1).atStartOfDay(zone);
-                to = today.atStartOfDay(zone);
-            }
-            case ReportConstants.RANGE_LAST_N_COMPLETE_DAYS -> {
-                if (days == null || days < 1 || days > 366) throw new ReportQueryException("INVALID_TIME_RANGE", "days must be 1..366");
-                from = today.minusDays(days).atStartOfDay(zone);
-                to = today.atStartOfDay(zone);
-            }
-            case ReportConstants.RANGE_ROLLING_DAYS -> {
-                if (days == null || days < 1 || days > 366) throw new ReportQueryException("INVALID_TIME_RANGE", "days must be 1..366");
-                from = evaluatedAt.minusHours(24L * days);
-                to = evaluatedAt;
-            }
-            case ReportConstants.RANGE_FIXED -> {
-                var fromText = override != null && override.from() != null ? override.from() : spec.query.timeRange.from;
-                var toText = override != null && override.to() != null ? override.to() : spec.query.timeRange.to;
-                from = parseInstant(fromText);
-                to = parseInstant(toText);
-            }
-            default -> throw new ReportQueryException("INVALID_TIME_RANGE", "unsupported range: " + kind);
-        }
-        if (!from.isBefore(to)) throw new ReportQueryException("INVALID_TIME_RANGE", "from must be before to");
-        if (Duration.between(from.toInstant(), to.toInstant()).toDays() > 366) {
-            throw new ReportQueryException("INVALID_TIME_RANGE", "range must not exceed 366 days");
-        }
-        return new ResolvedRange(from, to, evaluatedAt);
+        return ReportRangeResolver.resolve(new ReportRangeResolver.Context(spec, null, evaluatedAt, override, null, null, database));
     }
 
     private ReportData aggregate(QueryRequest request, ResolvedRange range, ReportQuerySql.ViewLayout layout, ReportQuerySql.TimeColumn time) {
@@ -136,14 +96,13 @@ public class ReportQueryService {
         if (rawRows.size() > MAX_AGGREGATE_ROWS) {
             throw new ReportQueryException("RESULT_LIMIT_EXCEEDED", "aggregate rows exceed " + MAX_AGGREGATE_ROWS);
         }
-        if (hasCategory(spec) && rawRows.size() > MAX_CATEGORIES) {
+        if (spec.query.limit == null && hasCategory(spec) && rawRows.size() > MAX_CATEGORIES) {
             throw new ReportQueryException("RESULT_LIMIT_EXCEEDED", "categories exceed " + MAX_CATEGORIES);
         }
-        var rows = new ArrayList<List<String>>(rawRows.size());
-        for (var rowJson : rawRows) {
-            rows.add(aggregateRow(spec, aggregate.columns(), aggregate.measureIndex(), JsonUtil.fromJson(ROW_TYPE, rowJson.payload)));
-        }
-        return new AggregateResult(aggregate.columns(), rows);
+        var parsed = new ArrayList<List<Object>>(rawRows.size());
+        for (var rowJson : rawRows) parsed.add(JsonUtil.fromJson(ROW_TYPE, rowJson.payload));
+        return new AggregateResult(aggregate.columns(),
+                ReportValueAggregator.values(spec, aggregate.measureIndex(), parsed, hasBucket(spec), hasCategory(spec)));
     }
 
     private AggregateSql aggregateSql(ReportSpec spec, ResolvedRange range, ReportQuerySql.ViewLayout layout, ReportQuerySql.TimeColumn time) {
@@ -163,8 +122,18 @@ public class ReportQueryService {
         }
         sql.append(" FROM ").append(layout.view()).append(" WHERE ").append(where.sql());
         if (!select.groupBy().isEmpty()) sql.append(" GROUP BY ").append(String.join(", ", select.groupBy()));
-        if (!select.groupBy().isEmpty()) sql.append(" ORDER BY ").append(String.join(", ", select.groupBy()));
-        sql.append(" LIMIT ").append(MAX_AGGREGATE_ROWS + 1).append(") t");
+        if (!select.groupBy().isEmpty()) {
+            var orderBy = spec.query.orderBy;
+            var orderIndex = orderBy != null ? select.measureIndex().get(orderBy.measure) : null;
+            if (orderIndex != null && hasCategory(spec)) {
+                var direction = orderBy.direction == null || orderBy.direction.isBlank() ? "DESC" : orderBy.direction;
+                sql.append(" ORDER BY c").append(orderIndex).append(' ').append(direction);
+            } else {
+                sql.append(" ORDER BY ").append(String.join(", ", select.groupBy()));
+            }
+        }
+        int limit = spec.query.limit != null && hasCategory(spec) ? spec.query.limit : MAX_AGGREGATE_ROWS + 1;
+        sql.append(" LIMIT ").append(limit).append(") t");
         return new AggregateSql(sql.toString(), params, select.columns(), select.measureIndex());
     }
 
@@ -187,31 +156,17 @@ public class ReportQueryService {
         for (var measure : spec.query.measures) {
             selects.add(ReportQuerySql.measureExpression(measure, time, layout));
             measureIndex.put(measure.id, selects.size() - 1);
-            columns.add(new ReportData.Column(measure.id, ReportConstants.OP_LAST.equalsIgnoreCase(measure.op) ? "STRING" : "DECIMAL"));
+            columns.add(new ReportData.Column(measure.id, measureType(measure), measure.label));
         }
         for (var derived : nullSafe(spec.query.derivedMeasures)) {
-            columns.add(new ReportData.Column(derived.id, "DECIMAL"));
+            columns.add(new ReportData.Column(derived.id, "DECIMAL", derived.label));
         }
         return new SelectParts(columns, selects, params, groupBy, measureIndex);
     }
 
-    private List<String> aggregateRow(ReportSpec spec, List<ReportData.Column> columns,
-                                      Map<String, Integer> measureIndex, List<Object> raw) {
-        var row = new ArrayList<String>(columns.size());
-        int index = 0;
-        for (var column : columns) {
-            if (measureIndex.containsKey(column.name)) {
-                var measure = measureById(spec.query.measures, column.name);
-                row.add(ReportValueFormatter.value(raw.get(index), measure != null ? measure.op : null));
-            } else if (!isDerived(spec, column.name)) {
-                row.add(ReportValueFormatter.value(raw.get(index), null));
-            }
-            index++;
-        }
-        for (var derived : nullSafe(spec.query.derivedMeasures)) {
-            row.add(ratio(derived, raw, measureIndex));
-        }
-        return row;
+    private String measureType(ReportSpec.Measure measure) {
+        if (ReportConstants.OP_LAST.equalsIgnoreCase(measure.op)) return "STRING";
+        return "DECIMAL";
     }
 
     private ReportData records(QueryRequest request, ResolvedRange range, ReportQuerySql.ViewLayout layout, ReportQuerySql.TimeColumn time) {
@@ -278,6 +233,7 @@ public class ReportQueryService {
         var fields = new LinkedHashSet<String>();
         for (var measure : nullSafe(spec.query.measures)) {
             if (measure != null && !ReportConstants.OP_COUNT.equalsIgnoreCase(measure.op)
+                    && !ReportConstants.OP_COUNT_DISTINCT.equalsIgnoreCase(measure.op)
                     && !ReportConstants.OP_LAST.equalsIgnoreCase(measure.op)) {
                 var field = ReportSpecFields.dataField(measure.field);
                 if (field != null) fields.add(field);
@@ -300,35 +256,22 @@ public class ReportQueryService {
         return row.map(value -> value.invalid != null ? value.invalid : 0L).orElse(0L);
     }
 
-    private String ratio(ReportSpec.DerivedMeasure derived, List<Object> raw, Map<String, Integer> index) {
-        var numerator = index.get(derived.numerator);
-        var denominator = index.get(derived.denominator);
-        if (numerator == null || denominator == null) return null;
-        var a = ReportValueFormatter.decimal(raw.get(numerator));
-        var b = ReportValueFormatter.decimal(raw.get(denominator));
-        if (a == null || b == null || b.signum() == 0) return null;
-        return a.divide(b, MathContext.DECIMAL64).stripTrailingZeros().toPlainString();
-    }
-
-    private ZonedDateTime parseInstant(String value) {
-        if (value == null) {
-            throw new ReportQueryException("INVALID_TIME_RANGE", "fixed range requires ISO from/to");
+    public Map<String, List<String>> parameterOptions(ReportSpec spec, Dataset dataset) {
+        var options = new LinkedHashMap<String, List<String>>();
+        if (spec.parameters == null || spec.parameters.isEmpty() || dataset == null) return options;
+        var layout = ReportQuerySql.layout(viewManager, dataset);
+        for (var parameter : spec.parameters) {
+            if (parameter == null || parameter.name == null || parameter.optionsField == null || parameter.optionsField.isBlank()) continue;
+            var column = layout.columns().get(parameter.optionsField);
+            if (column == null) continue;
+            var ref = DatasetViewManager.quoteIdentifier(column.columnName());
+            var rows = database.select("SELECT DISTINCT " + ref + "::text AS option_value FROM " + layout.view()
+                            + " WHERE dataset_id = ? AND " + ref + " IS NOT NULL ORDER BY option_value LIMIT 200",
+                    PgReportOptionRow.class, spec.source.datasetId);
+            var values = rows.stream().map(row -> row.value).filter(value -> value != null).toList();
+            if (!values.isEmpty()) options.put(parameter.name, values);
         }
-        try {
-            return Instant.parse(value).atZone(ZoneOffset.UTC);
-        } catch (DateTimeParseException e) {
-            throw new ReportQueryException("INVALID_TIME_RANGE", "fixed range requires ISO from/to", e);
-        }
-    }
-
-    private ReportSpec.Measure measureById(List<ReportSpec.Measure> measures, String id) {
-        for (var measure : nullSafe(measures)) if (measure != null && id.equals(measure.id)) return measure;
-        return null;
-    }
-
-    private boolean isDerived(ReportSpec spec, String id) {
-        for (var derived : nullSafe(spec.query.derivedMeasures)) if (derived != null && id.equals(derived.id)) return true;
-        return false;
+        return options;
     }
 
     private boolean hasBucket(ReportSpec spec) {
@@ -380,6 +323,8 @@ public class ReportQueryService {
 
     private record ReportMetadata(long matched, ZonedDateTime sourceTime, ZonedDateTime sourceUpdatedAt) {
     }
+
+
 
     private record AggregateResult(List<ReportData.Column> columns, List<List<String>> rows) {
     }

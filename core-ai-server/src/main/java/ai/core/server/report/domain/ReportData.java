@@ -29,13 +29,19 @@ public class ReportData {
     public static class Column {
         public String name;
         public String type;
+        public String label;
 
         public Column() {
         }
 
         public Column(String name, String type) {
+            this(name, type, null);
+        }
+
+        public Column(String name, String type, String label) {
             this.name = name;
             this.type = type;
+            this.label = label;
         }
     }
 }

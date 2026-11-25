@@ -9,8 +9,10 @@ import ai.core.server.domain.SchemaFieldType;
 import ai.core.server.report.domain.ReportConstants;
 import ai.core.server.report.domain.ReportSpec;
 import ai.core.server.report.store.PgReportInvalidCountRow;
+import ai.core.server.report.store.PgReportOptionRow;
 import ai.core.server.report.store.PgReportRangeRow;
 import ai.core.server.report.store.PgReportRecordRow;
+import ai.core.server.report.store.PgReportSourceRangeRow;
 import ai.core.utils.JsonUtil;
 import core.framework.internal.db.DatabaseImpl;
 import org.junit.jupiter.api.AfterAll;
@@ -26,6 +28,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -45,8 +48,10 @@ class ReportQueryServicePgTest {
         database.password = System.getenv().getOrDefault("CORE_AI_PG_TEST_PASSWORD", "core_ai");
         database.view(PgJsonRow.class);
         database.view(PgReportRangeRow.class);
+        database.view(PgReportSourceRangeRow.class);
         database.view(PgReportInvalidCountRow.class);
         database.view(PgReportRecordRow.class);
+        database.view(PgReportOptionRow.class);
         createSchema();
         return database;
     }
@@ -196,6 +201,97 @@ class ReportQueryServicePgTest {
         assertEquals(2, data.matchedRecordCount);
         assertTrue(data.hasMore);
         assertEquals("8", data.rows.get(0).get(0));
+    }
+
+    @Test
+    void aggregatesCompositeMeasuresAndMovingAverageAnchoredToData() {
+        insertDataset();
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-14", "web", 1, 10);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-15", "web", 2, 20);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-16", "web", 3, 30);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "web", 4, 40);
+
+        var spec = spec();
+        spec.query.timeField = "data.business_date";
+        spec.query.timeRange.kind = ReportConstants.RANGE_LAST_N_DAYS_OF_DATA;
+        spec.query.timeRange.days = 3;
+        spec.query.measures = List.of(
+                measure("positive", "data.positive_count", ReportConstants.OP_SUM),
+                measure("total", "data.total", ReportConstants.OP_SUM));
+        var summed = new ReportSpec.DerivedMeasure();
+        summed.id = "summed";
+        summed.op = ReportConstants.OP_ADD;
+        summed.inputs = List.of("positive", "total");
+        var moving = new ReportSpec.DerivedMeasure();
+        moving.id = "positive_ma2";
+        moving.op = ReportConstants.OP_MOVING_AVG;
+        moving.input = "positive";
+        moving.window = 2;
+        spec.query.derivedMeasures = List.of(summed, moving);
+        spec.display.series = null;
+
+        var data = service.query(new ReportQueryService.QueryRequest("report-1", 1, 1, spec, dataset(),
+                ZonedDateTime.parse("2026-11-25T01:00:00Z"), null, 100, 0));
+
+        assertEquals(3, data.rows.size());
+        assertEquals("2026-11-14T16:00:00Z", data.rows.get(0).get(0));
+        assertEquals("2", data.rows.get(0).get(1));
+        assertEquals("22", data.rows.get(0).get(3));
+        assertNull(data.rows.get(0).get(4));
+        assertEquals("2.5", data.rows.get(1).get(4));
+        assertEquals("4", data.rows.get(2).get(1));
+        assertEquals("44", data.rows.get(2).get(3));
+        assertEquals("3.5", data.rows.get(2).get(4));
+        assertEquals("2026-11-14T16:00:00Z", data.fromInclusive);
+        assertEquals("2026-11-17T16:00:00Z", data.toExclusive);
+    }
+
+    @Test
+    void ordersCategoriesByMeasureAndAppliesLimit() {
+        insertDataset();
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "web", 2, 10);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "app", 8, 30);
+
+        var spec = spec();
+        spec.query.timeField = "data.business_date";
+        spec.query.timeRange.kind = ReportConstants.RANGE_SOURCE_RANGE;
+        spec.query.timeRange.days = null;
+        spec.query.bucket = ReportConstants.BUCKET_NONE;
+        spec.query.categoryField = "channel";
+        spec.query.measures = List.of(measure("total", "data.total", ReportConstants.OP_SUM));
+        spec.query.derivedMeasures = null;
+        spec.query.orderBy = new ReportSpec.OrderBy();
+        spec.query.orderBy.measure = "total";
+        spec.query.orderBy.direction = "DESC";
+        spec.query.limit = 1;
+        spec.display.type = ReportConstants.DISPLAY_BAR;
+        spec.display.series = null;
+
+        var data = service.query(new ReportQueryService.QueryRequest("report-1", 1, 1, spec, dataset(),
+                ZonedDateTime.parse("2026-11-25T01:00:00Z"), null, 100, 0));
+
+        assertEquals(1, data.rows.size());
+        assertEquals("app", data.rows.get(0).get(0));
+        assertEquals("30", data.rows.get(0).get(1));
+    }
+
+    @Test
+    void returnsDistinctParameterOptions() {
+        insertDataset();
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "web", 2, 10);
+        insertRecord("2026-11-23T08:00:00Z", "2026-11-17", "app", 8, 30);
+
+        var spec = spec();
+        var parameter = new ReportSpec.Parameter();
+        parameter.name = "channels";
+        parameter.type = "STRING";
+        parameter.multiple = Boolean.TRUE;
+        parameter.optionsField = "channel";
+        spec.parameters = List.of(parameter);
+
+        var options = service.parameterOptions(spec, dataset());
+
+        assertEquals(List.of("app", "web"), options.get("channels"));
     }
 
     private ReportSpec spec() {

@@ -149,15 +149,22 @@ final class ReportSpecStructureValidator {
             return;
         }
         if (!Set.of(ReportConstants.RANGE_TODAY, ReportConstants.RANGE_YESTERDAY, ReportConstants.RANGE_LAST_N_COMPLETE_DAYS,
+                ReportConstants.RANGE_LAST_N_DAYS_OF_DATA, ReportConstants.RANGE_SOURCE_RANGE,
                 ReportConstants.RANGE_ROLLING_DAYS, ReportConstants.RANGE_FIXED).contains(range.kind)) {
             issues.add(new ReportSpecValidator.Issue("INVALID_TIME_RANGE", "/query/time_range/kind",
-                    "TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|ROLLING_DAYS|FIXED", "选择时间范围"));
+                    "TODAY|YESTERDAY|LAST_N_COMPLETE_DAYS|LAST_N_DAYS_OF_DATA|SOURCE_RANGE|ROLLING_DAYS|FIXED", "选择时间范围"));
             return;
         }
-        if ((ReportConstants.RANGE_LAST_N_COMPLETE_DAYS.equals(range.kind) || ReportConstants.RANGE_ROLLING_DAYS.equals(range.kind))
+        if ((ReportConstants.RANGE_LAST_N_COMPLETE_DAYS.equals(range.kind)
+                || ReportConstants.RANGE_LAST_N_DAYS_OF_DATA.equals(range.kind)
+                || ReportConstants.RANGE_ROLLING_DAYS.equals(range.kind))
                 && (range.days == null || range.days < 1 || range.days > ReportSpecValidator.MAX_QUERY_DAYS)) {
             issues.add(new ReportSpecValidator.Issue("INVALID_TIME_RANGE_DAYS", "/query/time_range/days",
                     "1.." + ReportSpecValidator.MAX_QUERY_DAYS, "调整天数"));
+        }
+        if (range.days != null && ReportConstants.RANGE_SOURCE_RANGE.equals(range.kind)) {
+            issues.add(new ReportSpecValidator.Issue("INVALID_TIME_RANGE_DAYS", "/query/time_range/days",
+                    "null for SOURCE_RANGE", "SOURCE_RANGE 不带 days"));
         }
         if (ReportConstants.RANGE_FIXED.equals(range.kind)) {
             if (range.from == null || range.to == null) {
@@ -217,20 +224,35 @@ final class ReportSpecStructureValidator {
 
     void validateDisplay(ReportSpec.Query query, ReportSpec.Display display, List<ReportSpecValidator.Issue> issues) {
         var type = display.type;
-        if (!Set.of(ReportConstants.DISPLAY_METRIC, ReportConstants.DISPLAY_LINE, ReportConstants.DISPLAY_BAR,
-                ReportConstants.DISPLAY_TABLE).contains(type)) {
-            issues.add(new ReportSpecValidator.Issue("INVALID_DISPLAY_TYPE", "/display/type", "METRIC|LINE|BAR|TABLE", "选择展示类型"));
+        if (!Set.of(ReportConstants.DISPLAY_METRIC, ReportConstants.DISPLAY_METRIC_GROUP, ReportConstants.DISPLAY_LINE,
+                ReportConstants.DISPLAY_BAR, ReportConstants.DISPLAY_MEASURE_BAR, ReportConstants.DISPLAY_TABLE).contains(type)) {
+            issues.add(new ReportSpecValidator.Issue("INVALID_DISPLAY_TYPE", "/display/type",
+                    "METRIC|METRIC_GROUP|LINE|BAR|MEASURE_BAR|TABLE", "选择展示类型"));
             return;
         }
         boolean hasBucket = query.bucket != null && !ReportConstants.BUCKET_NONE.equals(query.bucket);
         boolean hasCategory = query.categoryField != null && !query.categoryField.isBlank();
+        var outputIds = outputMeasureIds(query, display);
         if (ReportConstants.DISPLAY_METRIC.equals(type)) {
             if (hasBucket || hasCategory) {
                 issues.add(new ReportSpecValidator.Issue("METRIC_SINGLE_VALUE", "/display/type", "bucket/category NONE", "METRIC 只能单值"));
             }
-            int measures = (query.measures != null ? query.measures.size() : 0) + (query.derivedMeasures != null ? query.derivedMeasures.size() : 0);
-            if (measures != 1) {
+            if (outputIds.size() != 1) {
                 issues.add(new ReportSpecValidator.Issue("METRIC_ONE_MEASURE", "/display/series", "exactly one measure", "METRIC 只展示一个指标"));
+            }
+        } else if (ReportConstants.DISPLAY_METRIC_GROUP.equals(type)) {
+            if (hasBucket || hasCategory) {
+                issues.add(new ReportSpecValidator.Issue("METRIC_GROUP_SINGLE_VALUE", "/display/type", "bucket/category NONE", "METRIC_GROUP 只能展示未分组指标"));
+            }
+            if (outputIds.isEmpty()) {
+                issues.add(new ReportSpecValidator.Issue("METRIC_GROUP_MEASURE_REQUIRED", "/display/series", "at least one measure", "至少展示一个指标"));
+            }
+        } else if (ReportConstants.DISPLAY_MEASURE_BAR.equals(type)) {
+            if (hasBucket || hasCategory) {
+                issues.add(new ReportSpecValidator.Issue("MEASURE_BAR_SINGLE_VALUE", "/display/type", "bucket/category NONE", "MEASURE_BAR 只展示未分组指标"));
+            }
+            if (outputIds.isEmpty()) {
+                issues.add(new ReportSpecValidator.Issue("MEASURE_BAR_MEASURE_REQUIRED", "/display/series", "at least one measure", "至少展示一个指标"));
             }
         } else if (ReportConstants.DISPLAY_LINE.equals(type) || ReportConstants.DISPLAY_BAR.equals(type)) {
             if (!hasBucket && !hasCategory) {
@@ -239,13 +261,41 @@ final class ReportSpecStructureValidator {
             if (hasBucket && hasCategory) {
                 issues.add(new ReportSpecValidator.Issue("CHART_AXIS_AMBIGUOUS", "/display/type", "bucket XOR category", "首版不同时使用 bucket 和 category"));
             }
-        } else if (ReportConstants.DISPLAY_TABLE.equals(type) && ReportConstants.MODE_RECORDS.equals(query.mode)) {
-            return;
+            if (outputIds.isEmpty()) {
+                issues.add(new ReportSpecValidator.Issue("CHART_MEASURE_REQUIRED", "/display/series", "at least one measure", "图表至少一个指标"));
+            }
+        }
+        validateDisplayOptions(type, query, display, issues);
+    }
+
+    private void validateDisplayOptions(String type, ReportSpec.Query query, ReportSpec.Display display,
+                                        List<ReportSpecValidator.Issue> issues) {
+        if (display.orientation != null && !ReportConstants.DISPLAY_BAR.equals(type)) {
+            issues.add(new ReportSpecValidator.Issue("ORIENTATION_NOT_SUPPORTED", "/display/orientation", "BAR only", "只有 BAR 支持 orientation"));
+        } else if (display.orientation != null && !Set.of(ReportConstants.ORIENTATION_VERTICAL, ReportConstants.ORIENTATION_HORIZONTAL)
+                .contains(display.orientation)) {
+            issues.add(new ReportSpecValidator.Issue("INVALID_ORIENTATION", "/display/orientation", "VERTICAL|HORIZONTAL", "选择方向"));
+        }
+        if (display.width != null && !Set.of(ReportConstants.WIDTH_HALF, ReportConstants.WIDTH_FULL).contains(display.width)) {
+            issues.add(new ReportSpecValidator.Issue("INVALID_WIDTH", "/display/width", "HALF|FULL", "选择宽度"));
         }
         if (display.series != null) validateSeries(query, display, issues);
         if (display.precision != null && (display.precision < 0 || display.precision > 6)) {
             issues.add(new ReportSpecValidator.Issue("INVALID_PRECISION", "/display/precision", "0..6", "调整精度"));
         }
+    }
+
+    private Set<String> outputMeasureIds(ReportSpec.Query query, ReportSpec.Display display) {
+        var ids = new java.util.LinkedHashSet<String>();
+        if (display.series != null && !display.series.isEmpty()) {
+            for (var series : display.series) {
+                if (series != null && series.field != null) ids.add(series.field);
+            }
+        } else {
+            addMeasureIds(ids, query.measures);
+            addDerivedIds(ids, query.derivedMeasures);
+        }
+        return ids;
     }
 
     private void validateSeries(ReportSpec.Query query, ReportSpec.Display display, List<ReportSpecValidator.Issue> issues) {
@@ -255,11 +305,15 @@ final class ReportSpecStructureValidator {
         if (display.series.size() > ReportSpecValidator.MAX_SERIES) {
             issues.add(new ReportSpecValidator.Issue("TOO_MANY_SERIES", "/display/series", "<= " + ReportSpecValidator.MAX_SERIES, "减少 series"));
         }
+        var seen = new HashSet<String>();
         for (int i = 0; i < display.series.size(); i++) {
             var series = display.series.get(i);
             if (series == null || series.field == null || !ids.contains(series.field)) {
                 issues.add(new ReportSpecValidator.Issue("UNKNOWN_SERIES_FIELD", "/display/series/" + i + "/field",
                         "measure id", "引用已声明的 measure"));
+            } else if (!seen.add(series.field)) {
+                issues.add(new ReportSpecValidator.Issue("DUPLICATE_SERIES_FIELD", "/display/series/" + i + "/field",
+                        "unique measure id", "series 不能重复"));
             }
             if (series != null && series.format != null && !Set.of(ReportConstants.FORMAT_NUMBER, ReportConstants.FORMAT_PERCENT,
                     ReportConstants.FORMAT_CURRENCY).contains(series.format)) {

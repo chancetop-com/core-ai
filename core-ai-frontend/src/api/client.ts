@@ -3300,6 +3300,7 @@ export interface ReportView {
   dataset_name?: string | null;
   display_type?: string | null;
   spec_json?: string | null;
+  parameter_options_json?: string | null;
   pin_id?: string | null;
   pin_width?: string | null;
   created_at?: string | null;
@@ -3314,6 +3315,7 @@ export interface ListReportsResponse {
 export interface ReportColumnView {
   name: string;
   type: string;
+  label?: string | null;
 }
 
 export interface ReportDataView {

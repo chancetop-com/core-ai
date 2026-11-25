@@ -16,9 +16,11 @@ import ai.core.server.report.store.PgReportAuditRow;
 import ai.core.server.report.store.PgReportAuditStore;
 import ai.core.server.report.store.PgReportInvalidCountRow;
 import ai.core.server.report.store.PgReportLockRow;
+import ai.core.server.report.store.PgReportOptionRow;
 import ai.core.server.report.store.PgReportPositionRow;
 import ai.core.server.report.store.PgReportRangeRow;
 import ai.core.server.report.store.PgReportRecordRow;
+import ai.core.server.report.store.PgReportSourceRangeRow;
 import ai.core.server.report.web.HomeReportWebServiceImpl;
 import ai.core.server.report.web.ReportWebServiceImpl;
 import core.framework.module.Module;
@@ -44,8 +46,10 @@ public class ReportModule extends Module {
         db().view(PgHomeReportPinRow.class);
         db().view(PgReportAuditRow.class);
         db().view(PgReportRangeRow.class);
+        db().view(PgReportSourceRangeRow.class);
         db().view(PgReportInvalidCountRow.class);
         db().view(PgReportRecordRow.class);
+        db().view(PgReportOptionRow.class);
         db().view(PgReportLockRow.class);
         db().view(PgReportPositionRow.class);
 

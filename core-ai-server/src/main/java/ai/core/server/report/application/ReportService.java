@@ -258,6 +258,15 @@ public class ReportService {
         return dataset != null ? dataset.name : null;
     }
 
+    public String parameterOptionsJson(String userId, String reportId) {
+        accessPolicy.requireView(userId);
+        var report = reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
+        var dataset = datasetService.get(report.datasetId);
+        if (dataset == null) return null;
+        var options = queryService.parameterOptions(report.spec, dataset);
+        return options.isEmpty() ? null : JsonUtil.toJson(options);
+    }
+
     public List<ReportSummary> list(String userId, int offset, int limit) {
         accessPolicy.requireView(userId);
         var reports = reportStore.listOwned(userId, Math.max(offset, 0), clamp(limit));

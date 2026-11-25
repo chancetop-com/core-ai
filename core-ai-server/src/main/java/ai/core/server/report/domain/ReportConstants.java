@@ -6,6 +6,7 @@ package ai.core.server.report.domain;
 public final class ReportConstants {
     public static final int SPEC_VERSION = 1;
     public static final int ENGINE_VERSION = 1;
+    public static final int MAX_SOURCE_RANGE_DAYS = 1830;
 
     public static final String MODE_AGGREGATE = "AGGREGATE";
     public static final String MODE_RECORDS = "RECORDS";
@@ -25,6 +26,8 @@ public final class ReportConstants {
     public static final String RANGE_TODAY = "TODAY";
     public static final String RANGE_YESTERDAY = "YESTERDAY";
     public static final String RANGE_LAST_N_COMPLETE_DAYS = "LAST_N_COMPLETE_DAYS";
+    public static final String RANGE_LAST_N_DAYS_OF_DATA = "LAST_N_DAYS_OF_DATA";
+    public static final String RANGE_SOURCE_RANGE = "SOURCE_RANGE";
     public static final String RANGE_ROLLING_DAYS = "ROLLING_DAYS";
     public static final String RANGE_FIXED = "FIXED";
 
@@ -39,13 +42,21 @@ public final class ReportConstants {
     public static final String OP_MIN = "MIN";
     public static final String OP_MAX = "MAX";
     public static final String OP_COUNT = "COUNT";
+    public static final String OP_COUNT_DISTINCT = "COUNT_DISTINCT";
     public static final String OP_LAST = "LAST";
     public static final String OP_RATIO = "RATIO";
+    public static final String OP_ADD = "ADD";
+    public static final String OP_MOVING_AVG = "MOVING_AVG";
 
     public static final String DISPLAY_METRIC = "METRIC";
+    public static final String DISPLAY_METRIC_GROUP = "METRIC_GROUP";
     public static final String DISPLAY_LINE = "LINE";
     public static final String DISPLAY_BAR = "BAR";
+    public static final String DISPLAY_MEASURE_BAR = "MEASURE_BAR";
     public static final String DISPLAY_TABLE = "TABLE";
+
+    public static final String ORIENTATION_VERTICAL = "VERTICAL";
+    public static final String ORIENTATION_HORIZONTAL = "HORIZONTAL";
 
     public static final String FORMAT_NUMBER = "NUMBER";
     public static final String FORMAT_PERCENT = "PERCENT";

@@ -29,6 +29,7 @@ public class ReportSpecValidator {
     public static final int MAX_FILTERS = 20;
     public static final int MAX_MEASURES = 8;
     public static final int MAX_SERIES = 8;
+    public static final int MAX_TOP_N = 50;
     public static final int MAX_RECORD_FIELDS = 20;
     public static final int MAX_TITLE_LENGTH = 120;
     public static final int MAX_DESCRIPTION_LENGTH = 2000;
@@ -65,7 +66,24 @@ public class ReportSpecValidator {
             issues.add(new Issue("SOURCE_MISMATCH", "/source/dataset_id", dataset.id, "source 必须是当前 Dataset"));
         }
         var parameters = STRUCTURE.parameters(spec, issues);
+        var schema = schema(dataset);
+        validateParameterOptions(spec, schema, issues);
         var components = STRUCTURE.components(spec, issues);
+        validateComponents(components, dataset, parameters, issues);
+        if (components.isEmpty() && spec.query == null) {
+            issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query 或 components"));
+        }
+        validateFreshness(spec, issues);
+        if (!issues.isEmpty()) throw new ReportValidationException(issues);
+
+        var referenced = referencedFields(components);
+        addParameterOptionFields(spec, referenced);
+        var dependency = ReportDependency.of(dataset, referenced);
+        return new ValidatedSpec(spec, JsonUtil.toJson(spec), dependency, referenced);
+    }
+
+    private void validateComponents(List<ReportSpec.Component> components, Dataset dataset,
+                                    Map<String, ReportSpec.Parameter> parameters, List<Issue> issues) {
         for (var component : components) {
             if (component.query == null) {
                 issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query"));
@@ -78,15 +96,30 @@ public class ReportSpecValidator {
             validateQuery(component.query, dataset, parameters, issues);
             STRUCTURE.validateDisplay(component.query, component.display, issues);
         }
-        if (components.isEmpty() && spec.query == null) {
-            issues.add(new Issue("QUERY_REQUIRED", "/query", "object", "补充 query 或 components"));
-        }
-        validateFreshness(spec, issues);
-        if (!issues.isEmpty()) throw new ReportValidationException(issues);
+    }
 
-        var referenced = referencedFields(components);
-        var dependency = ReportDependency.of(dataset, referenced);
-        return new ValidatedSpec(spec, JsonUtil.toJson(spec), dependency, referenced);
+    private void validateParameterOptions(ReportSpec spec, Map<String, SchemaFieldType> schema, List<Issue> issues) {
+        if (spec.parameters == null) return;
+        for (int i = 0; i < spec.parameters.size(); i++) {
+            var parameter = spec.parameters.get(i);
+            if (parameter == null || parameter.optionsField == null || parameter.optionsField.isBlank()) continue;
+            var field = ReportSpecFields.recordField(parameter.optionsField);
+            if (field == null || !schema.containsKey(field)) {
+                issues.add(new Issue("UNKNOWN_PARAMETER_OPTIONS_FIELD", "/parameters/" + i + "/options_field",
+                        "top-level schema field", "使用已声明的字段"));
+            } else {
+                parameter.optionsField = field;
+            }
+        }
+    }
+
+    private void addParameterOptionFields(ReportSpec spec, Set<String> fields) {
+        if (spec.parameters == null) return;
+        for (var parameter : spec.parameters) {
+            if (parameter != null && parameter.optionsField != null && !parameter.optionsField.isBlank()) {
+                fields.add(parameter.optionsField);
+            }
+        }
     }
 
     private void validateFreshness(ReportSpec spec, List<Issue> issues) {
@@ -127,6 +160,33 @@ public class ReportSpecValidator {
             validateRecordFields(query, schema, issues);
         } else {
             validateMeasures(query, schema, issues);
+            validateOrderAndLimit(query, issues);
+        }
+    }
+
+    private void validateOrderAndLimit(ReportSpec.Query query, List<Issue> issues) {
+        boolean hasCategory = query.categoryField != null && !query.categoryField.isBlank();
+        if (query.orderBy != null) {
+            if (!hasCategory || query.bucket != null && !ReportConstants.BUCKET_NONE.equals(query.bucket)) {
+                issues.add(new Issue("ORDER_BY_REQUIRES_CATEGORY", "/query/order_by", "category only", "排序只用于 category 维度"));
+            }
+            if (query.orderBy.measure == null || !baseMeasureIds(query).contains(query.orderBy.measure)) {
+                issues.add(new Issue("ORDER_BY_UNKNOWN_MEASURE", "/query/order_by/measure", "base measure id", "排序 measure 必须是基础指标"));
+            }
+            var direction = query.orderBy.direction == null || query.orderBy.direction.isBlank()
+                    ? "DESC" : query.orderBy.direction.toUpperCase(Locale.ROOT);
+            if (!Set.of("ASC", "DESC").contains(direction)) {
+                issues.add(new Issue("INVALID_ORDER_DIRECTION", "/query/order_by/direction", "ASC|DESC", "选择排序方向"));
+            }
+            query.orderBy.direction = direction;
+        }
+        if (query.limit != null) {
+            if (!hasCategory) {
+                issues.add(new Issue("LIMIT_REQUIRES_CATEGORY", "/query/limit", "category only", "limit 只用于 category 维度"));
+            }
+            if (query.limit < 1 || query.limit > MAX_TOP_N) {
+                issues.add(new Issue("INVALID_LIMIT", "/query/limit", "1.." + MAX_TOP_N, "调整 limit"));
+            }
         }
     }
 
@@ -249,7 +309,7 @@ public class ReportSpecValidator {
             issues.add(new Issue("TOO_MANY_MEASURES", "/query/measures", "total <= " + MAX_MEASURES, "减少 measure/派生"));
         }
         validateBaseMeasures(query, schema, ids, issues);
-        validateDerivedMeasures(query, ids, issues);
+        ReportDerivedMeasureValidator.validate(query, ids, issues);
     }
 
     private void validateBaseMeasures(ReportSpec.Query query, Map<String, SchemaFieldType> schema,
@@ -265,8 +325,8 @@ public class ReportSpecValidator {
             if (!ids.add(measure.id)) issues.add(new Issue("DUPLICATE_MEASURE_ID", path + "/id", "unique", "id 不能重复"));
             var op = measure.op == null ? "" : measure.op.toUpperCase(Locale.ROOT);
             if (!Set.of(ReportConstants.OP_SUM, ReportConstants.OP_AVG, ReportConstants.OP_MIN, ReportConstants.OP_MAX,
-                    ReportConstants.OP_COUNT, ReportConstants.OP_LAST).contains(op)) {
-                issues.add(new Issue("INVALID_MEASURE_OP", path + "/op", "SUM|AVG|MIN|MAX|COUNT|LAST", "选择支持的聚合"));
+                    ReportConstants.OP_COUNT, ReportConstants.OP_COUNT_DISTINCT, ReportConstants.OP_LAST).contains(op)) {
+                issues.add(new Issue("INVALID_MEASURE_OP", path + "/op", "SUM|AVG|MIN|MAX|COUNT|COUNT_DISTINCT|LAST", "选择支持的聚合"));
                 continue;
             }
             if (ReportConstants.OP_COUNT.equals(op)) continue;
@@ -278,30 +338,10 @@ public class ReportSpecValidator {
             var type = schema.get(field);
             if (type == null) {
                 issues.add(new Issue("UNKNOWN_MEASURE_FIELD", path + "/field", "schema field", "使用已声明的字段"));
-            } else if (type != SchemaFieldType.NUMBER && !ReportConstants.OP_LAST.equals(op)) {
+            } else if (type != SchemaFieldType.NUMBER
+                    && !ReportConstants.OP_LAST.equals(op)
+                    && !ReportConstants.OP_COUNT_DISTINCT.equals(op)) {
                 issues.add(new Issue("MEASURE_REQUIRES_NUMBER", path + "/field", "NUMBER", op + " 需要数值字段"));
-            }
-        }
-    }
-
-    private void validateDerivedMeasures(ReportSpec.Query query, Set<String> ids, List<Issue> issues) {
-        if (query.derivedMeasures == null) return;
-        for (int i = 0; i < query.derivedMeasures.size(); i++) {
-            var derived = query.derivedMeasures.get(i);
-            var path = "/query/derived_measures/" + i;
-            if (derived == null || derived.id == null || derived.id.isBlank()) {
-                issues.add(new Issue("DERIVED_ID_REQUIRED", path + "/id", "unique id", "补充 id"));
-                continue;
-            }
-            if (!ids.add(derived.id)) issues.add(new Issue("DUPLICATE_MEASURE_ID", path + "/id", "unique", "id 不能重复"));
-            if (!ReportConstants.OP_RATIO.equalsIgnoreCase(derived.op)) {
-                issues.add(new Issue("INVALID_DERIVED_OP", path + "/op", "RATIO", "首版只支持 RATIO"));
-                continue;
-            }
-            if (derived.numerator == null || derived.denominator == null || derived.numerator.equals(derived.denominator)) {
-                issues.add(new Issue("INVALID_RATIO", path, "two different base measure ids", "指定分子/分母"));
-            } else if (!baseMeasureIds(query).contains(derived.numerator) || !baseMeasureIds(query).contains(derived.denominator)) {
-                issues.add(new Issue("RATIO_REFERENCES_UNKNOWN", path, "base measure ids", "分子/分母必须是基础 measure"));
             }
         }
     }

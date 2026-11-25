@@ -42,6 +42,8 @@ public class ReportSpec {
         public Boolean multiple;
         @Property(name = "default")
         public Object defaultValue;
+        @Property(name = "options_field")
+        public String optionsField;
     }
 
     public static class Component {
@@ -76,6 +78,17 @@ public class ReportSpec {
         public List<DerivedMeasure> derivedMeasures;
         @Property(name = "record_fields")
         public List<String> recordFields;
+        @Property(name = "order_by")
+        public OrderBy orderBy;
+        @Property(name = "limit")
+        public Integer limit;
+    }
+
+    public static class OrderBy {
+        @Property(name = "measure")
+        public String measure;
+        @Property(name = "direction")
+        public String direction;
     }
 
     public static class TimeRange {
@@ -125,6 +138,12 @@ public class ReportSpec {
         public String numerator;
         @Property(name = "denominator")
         public String denominator;
+        @Property(name = "inputs")
+        public List<String> inputs;
+        @Property(name = "input")
+        public String input;
+        @Property(name = "window")
+        public Integer window;
     }
 
     public static class Display {
@@ -138,6 +157,10 @@ public class ReportSpec {
         public List<String> columns;
         @Property(name = "precision")
         public Integer precision;
+        @Property(name = "orientation")
+        public String orientation;
+        @Property(name = "width")
+        public String width;
     }
 
     public static class Series {
@@ -147,6 +170,8 @@ public class ReportSpec {
         public String axis;
         @Property(name = "format")
         public String format;
+        @Property(name = "label")
+        public String label;
     }
 
     public static class Freshness {
