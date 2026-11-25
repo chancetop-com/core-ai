@@ -25,24 +25,6 @@ public final class PresentChoicesTool extends ToolCall {
     private static final int MIN_OPTIONS = 2;
     private static final int MAX_OPTIONS = 6;
     private static final String INVALID_OPTION = "each option must be a JSON object with a non-blank \"label\"";
-    private static final List<ToolCallParameter> OPTION_FIELDS = List.of(
-        ToolCallParameter.builder()
-            .name("label")
-            .description("Button text.")
-            .classType(String.class)
-            .required(Boolean.TRUE)
-            .build(),
-        ToolCallParameter.builder()
-            .name("value")
-            .description("Message sent when the option is clicked; defaults to label.")
-            .classType(String.class)
-            .build(),
-        ToolCallParameter.builder()
-            .name("description")
-            .description("Secondary line under the label.")
-            .classType(String.class)
-            .build()
-    );
 
     private static final String TOOL_DESC = """
             Present the user with interactive choice buttons (2-6 options) when the conversation reaches a point
@@ -131,6 +113,24 @@ public final class PresentChoicesTool extends ToolCall {
         public PresentChoicesTool build() {
             this.name(TOOL_NAME);
             this.description(TOOL_DESC);
+            var optionFields = List.of(
+                ToolCallParameter.builder()
+                    .name("label")
+                    .description("Button text.")
+                    .classType(String.class)
+                    .required(Boolean.TRUE)
+                    .build(),
+                ToolCallParameter.builder()
+                    .name("value")
+                    .description("Message sent when the option is clicked; defaults to label.")
+                    .classType(String.class)
+                    .build(),
+                ToolCallParameter.builder()
+                    .name("description")
+                    .description("Secondary line under the label.")
+                    .classType(String.class)
+                    .build()
+            );
             this.parameters(ToolCallParameters.of(
                 ToolCallParameters.ParamSpec.of(String.class, "question",
                     "Optional short question shown above the choices, e.g. \"Would you like to continue?\".").optional(),
@@ -140,7 +140,7 @@ public final class PresentChoicesTool extends ToolCall {
                     (a secondary line under the label).
                     Correct example: [{"label":"Yes"},{"label":"No","value":"no thanks","description":"skip this step"}]
                     """).required()
-                    .items(OPTION_FIELDS)
+                    .items(optionFields)
             ));
             this.needAuth(Boolean.FALSE);
             this.directReturn(Boolean.FALSE);
