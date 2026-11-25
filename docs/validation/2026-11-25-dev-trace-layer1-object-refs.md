@@ -4,9 +4,9 @@
 |---|---|
 | 日期 | 2026-11-25 |
 | 环境 | dev（namespace `dev-ai`，`FBRDevAKSCluster`） |
-| 镜像 | `chancetop/core-ai-server:2.0.375` |
-| 索引 digest | `sha256:818fb74d156b4ef6a47f13f74754d11044d53695b4d39fa60e42b4b9f3f95f40` |
-| 数据库 | `app.trace_payloads` 手工应用 V55（nullable content + object_hash/storage_key/content_type/size_bytes + 两个索引） |
+| 镜像 | `chancetop/core-ai-server:2.0.381` |
+| 索引 digest | `sha256:4649cbff6ca138c8dda4645cf98bdfa972b42f6a27572943586d0914e108736a` |
+| 数据库 | `app.trace_payloads` 手工应用 V55/V56（nullable content + object_hash/storage_key/content_type/size_bytes + 两个索引 + backfill_error/backfill_attempted_at） |
 | 对象存储 | dev Azure Blob（`fbrdevbostorage`，私有 `artifacts` 容器） |
 | 脚本 | `.core-ai/tasks/dev-trace-layer1-e2e.py` |
 | 结果 | PASS |
@@ -34,9 +34,18 @@
   `deleteObjects` 在 `hasStorageKey` 为零引用时调用 `deleteObject`（本次未构造 30 天归档窗口，GC 只有单测覆盖）。
 - `PgTraceStorageKeyRow` 已在 `PostgresModule` 注册；`PgSpanTokenTotalsRow`、V55 均已在 dev 验证。
 
-## 3. 运维边界
+## 3. 历史回填（2.0.381）
 
-- V55 必须先于 2.0.375 部署到目标环境；否则 payload 读写会因缺少新列失败。
+- `TRACE_PAYLOAD_BACKFILL` 每 5 分钟执行一个有界任务（默认 500 行）；dev 实测一次
+  `backfilled 23 trace payload rows`，任务状态 `SUCCESS`。
+- 有 5 行历史 `content` 的 Base64 尾单元损坏（`Last unit does not have enough valid bits`）；
+  V56 的 `backfill_error` 将其标记并跳过，原 `content` 保留，不再阻塞后续批次。
+- 回填后的行仍使用 `ref_hash=blob_hash`，对象键按当前 UTC 月生成；旧行内容清空后由
+  `storage_key` 读取。
+
+## 4. 运维边界
+
+- V55/V56 必须先于对应镜像部署到目标环境；否则 payload 读写或回填会因缺少新列失败。
 - UAT / prod 仍是旧镜像与 V54；本次只部署 dev，未改 UAT/prod。
 - 对象存储 Lifecycle（68d）和引用感知 GC 的完整归档 E2E 尚未在 dev 构造；当前只有单元测试/代码路径。
 - Layer 2（>16 KiB span body gzip 外置）和 P1 命名 trace pool 尚未实施。
