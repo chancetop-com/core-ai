@@ -27,7 +27,7 @@ import java.util.Set;
 public class ReportSpecValidator {
     public static final int MAX_SPEC_BYTES = 32 * 1024;
     public static final int MAX_FILTERS = 20;
-    public static final int MAX_MEASURES = 8;
+    public static final int MAX_MEASURES = 12;
     public static final int MAX_SERIES = 8;
     public static final int MAX_TOP_N = 50;
     public static final int MAX_RECORD_FIELDS = 20;
