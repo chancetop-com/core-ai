@@ -436,7 +436,7 @@ export default function ReportDetail() {
               );
             })}
 
-            {parameterList.some(parameter => parameter.type !== 'DATE_RANGE') && (
+            {parameterList.length > 0 && (
               <button onClick={() => void loadData()} disabled={dataLoading || isFixedIncomplete}
                 className="px-3 py-1.5 rounded-full text-xs cursor-pointer disabled:opacity-50"
                 style={{ background: 'var(--color-primary)', color: '#fff', border: '1px solid var(--color-primary)' }}>
@@ -461,7 +461,8 @@ export default function ReportDetail() {
                 : data ? [{ id: 'main', title: null, display_type: report.display_type, ...data }] : []
               ).map(component => {
                 const display = displayByComponent.get(component.id) ?? null;
-                const full = !display?.width || display.width === 'FULL' || display?.type === 'METRIC_GROUP';
+                const wideChart = display?.orientation === 'HORIZONTAL' || display?.type === 'MEASURE_BAR';
+                const full = wideChart || !display?.width || display.width === 'FULL' || display?.type === 'METRIC_GROUP';
                 return (
                   <div key={component.id} className={full ? 'md:col-span-2' : ''}>
                     <div className="rounded-xl border p-4 h-full" style={{ borderColor: 'var(--color-border)' }}>

@@ -183,7 +183,7 @@ export default function ReportRenderer({ data, displayType, display, height = 26
     return (
       <div className="grid gap-2.5 py-2">
         {items.map(item => (
-          <div key={item.name} className="grid grid-cols-[120px_1fr_82px] items-center gap-2 text-xs">
+          <div key={item.name} className="grid grid-cols-[96px_1fr_72px] items-center gap-2 text-xs">
             <div className="truncate text-right" style={{ color: 'var(--color-text-secondary)' }}>{item.name}</div>
             <div className="h-3 rounded" style={{ background: 'var(--color-bg-secondary)' }}>
               <div className="h-3 rounded" style={{ width: `${Math.max(2, item.value / max * 100)}%`, background: '#f97316' }} />
@@ -245,7 +245,8 @@ export default function ReportRenderer({ data, displayType, display, height = 26
         {horizontal ? (
           <>
             <XAxis type="number" tick={{ fontSize: 11 }} />
-            <YAxis type="category" dataKey="__axis" width={150} tick={{ fontSize: 11 }} />
+            <YAxis type="category" dataKey="__axis" width={120} interval={0} tick={{ fontSize: 11 }}
+              tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 14)}…` : value} />
           </>
         ) : (
           <>
@@ -254,7 +255,7 @@ export default function ReportRenderer({ data, displayType, display, height = 26
           </>
         )}
         <Tooltip />
-        <Legend />
+        {fields.length > 1 && <Legend />}
         {fields.map((field, index) => (
           <Bar key={field.field} dataKey={field.field} name={seriesLabel(field)} fill={COLORS[index % COLORS.length]}
             radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]} />
