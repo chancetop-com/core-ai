@@ -224,7 +224,7 @@ class TracePayloadStoreTest {
         });
         when(repository.findByTrace(any(), any())).thenAnswer(invocation -> {
             String traceId = invocation.getArgument(0);
-            var hashes = invocation.getArgument(1, java.util.List.class);
+            var hashes = invocation.getArgument(1, List.class);
             var result = new ArrayList<TracePayloadBlob>();
             for (var hash : hashes) {
                 var blob = blobs.get(traceId + ':' + hash);
