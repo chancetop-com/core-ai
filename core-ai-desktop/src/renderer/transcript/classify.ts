@@ -27,18 +27,26 @@ export function skillNameFrom(argumentsText: unknown): string | null {
 }
 
 export function subagentTypeFrom(argumentsText: unknown): string | null {
-  const parsed = parseArguments(argumentsText);
-  const rawType = parsed?.subagent_type;
-  return typeof rawType === 'string' && rawType.trim() ? rawType.trim() : null;
+  return textField(parseArguments(argumentsText), 'subagent_type');
+}
+
+/** The model the call pinned for the subagent; an omitted model means the run inherits the default. */
+export function subagentModelFrom(argumentsText: unknown): string {
+  return textField(parseArguments(argumentsText), 'model') ?? 'default';
 }
 
 export function subagentLabelFrom(argumentsText: unknown): string | null {
   const parsed = parseArguments(argumentsText);
-  const rawDescription = parsed?.description;
-  const type = subagentTypeFrom(argumentsText);
-  const description = typeof rawDescription === 'string' && rawDescription.trim() ? rawDescription.trim() : null;
-  if (type && description) return `${type} · ${description}`;
-  return type;
+  const type = textField(parsed, 'subagent_type');
+  if (!type) return null;
+  const label = `${type} · ${textField(parsed, 'model') ?? 'default'}`;
+  const description = textField(parsed, 'description');
+  return description ? `${label} · ${description}` : label;
+}
+
+function textField(parsed: Record<string, unknown> | null, key: string): string | null {
+  const value = parsed?.[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 export function toolUseKind(toolName: string, toolType: unknown): ToolUseKind | null {

@@ -47,7 +47,9 @@ test('a self reference never becomes a child of itself', () => {
 });
 
 test('only subagent calls carry an origin tag', () => {
-  assert.equal(view.toolOriginTag('task', '{"subagent_type":"explore"}', 'subagent'), 'subagent · explore');
-  assert.equal(view.toolOriginTag('task', '{}'), 'subagent');
+  assert.equal(view.toolOriginTag('task', '{"subagent_type":"explore"}', 'subagent'), 'subagent · explore · default');
+  assert.equal(view.toolOriginTag('task', '{"subagent_type":"explore","model":"deepseek-flash"}', 'subagent'),
+    'subagent · explore · deepseek-flash');
+  assert.equal(view.toolOriginTag('task', '{}'), 'subagent · default');
   assert.equal(view.toolOriginTag('read_file', '{}', 'builtin'), null);
 });

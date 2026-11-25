@@ -20,3 +20,14 @@ test('web rows show the query or the URL', () => {
 test('a web call without parseable arguments falls back to its tool name', () => {
   assert.equal(toolUseLabel('web', 'web_search', 'not json'), 'web_search');
 });
+
+test('subagent rows show the model, defaulting to default', () => {
+  assert.equal(toolUseLabel('subagent', 'task', JSON.stringify({ subagent_type: 'explore', description: 'Find tokens' })),
+    'explore · default · Find tokens');
+  assert.equal(toolUseLabel('subagent', 'task', JSON.stringify({ subagent_type: 'explore', description: 'Find tokens', model: 'deepseek-flash' })),
+    'explore · deepseek-flash · Find tokens');
+});
+
+test('a subagent row keeps the type when the description is missing', () => {
+  assert.equal(toolUseLabel('subagent', 'task', JSON.stringify({ subagent_type: 'explore' })), 'explore · default');
+});

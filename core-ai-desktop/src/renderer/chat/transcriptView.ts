@@ -1,7 +1,7 @@
 // Shared transcript primitives used by both the local engine transcript and the remote
 // server conversation. Keeping the chip/panel/tool/plan markup here is what makes the two
 // backends look and behave the same; the state machines above them stay backend-specific.
-import { subagentTypeFrom, toolUseKind, toolUseLabel, type ToolUseKind } from '../transcript/classify';
+import { subagentModelFrom, subagentTypeFrom, toolUseKind, toolUseLabel, type ToolUseKind } from '../transcript/classify';
 import type { ToolItem } from '../transcript/reducer';
 
 export interface AssistToggle {
@@ -200,11 +200,12 @@ export function liveToolEntryView(name: string, argumentsText: string | undefine
   };
 }
 
-/** A subagent call is tagged with its agent type so a `task` row reads as the origin of a nested list. */
+/** A subagent call is tagged with its agent type and model so a `task` row reads as the origin of a nested list. */
 export function toolOriginTag(name: string, argumentsText: unknown, toolType?: unknown): string | null {
   if (toolUseKind(name, toolType ?? null) !== 'subagent') return null;
   const type = subagentTypeFrom(argumentsText);
-  return type ? `subagent · ${type}` : 'subagent';
+  const model = subagentModelFrom(argumentsText);
+  return type ? `subagent · ${type} · ${model}` : `subagent · ${model}`;
 }
 
 export interface ReasoningBlockView {
