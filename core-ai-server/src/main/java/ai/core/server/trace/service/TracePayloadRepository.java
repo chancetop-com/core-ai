@@ -45,4 +45,9 @@ public interface TracePayloadRepository {
     default int updateBackfillReference(TracePayloadBlob blob) {
         return 0;
     }
+
+    /** Marks a legacy row that cannot be decoded/uploaded so later batches do not block on it. */
+    default int markBackfillFailure(TracePayloadBlob blob, String error) {
+        return 0;
+    }
 }

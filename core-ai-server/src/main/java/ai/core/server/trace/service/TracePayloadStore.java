@@ -179,11 +179,16 @@ public class TracePayloadStore {
         int updated = 0;
         for (var blob : payloadRepository.findBackfillCandidates(limit > 0 ? limit : backfillBatchSize)) {
             if (blob.data == null || blob.storageKey != null) continue;
-            blob.contentType = contentType(blob.data);
-            uploadObject(blob, blob.data, service);
-            if (payloadRepository.updateBackfillReference(blob) > 0) {
-                blob.data = null;
-                updated++;
+            try {
+                blob.contentType = contentType(blob.data);
+                uploadObject(blob, blob.data, service);
+                if (payloadRepository.updateBackfillReference(blob) > 0) {
+                    blob.data = null;
+                    updated++;
+                }
+            } catch (RuntimeException e) {
+                LOGGER.warn("trace payload backfill failed, traceId={}, blob={}", blob.traceId, blob.id, e);
+                payloadRepository.markBackfillFailure(blob, e.getMessage());
             }
         }
         return updated;

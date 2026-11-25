@@ -63,7 +63,8 @@ public class PgTracePayloadRepository implements TracePayloadRepository {
     @Override
     public List<TracePayloadBlob> findBackfillCandidates(int limit) {
         var sql = "SELECT trace_id, blob_hash, content, object_hash, storage_key, content_type, size_bytes FROM " + TABLE
-            + " WHERE content IS NOT NULL AND storage_key IS NULL ORDER BY trace_id, blob_hash LIMIT ?";
+            + " WHERE content IS NOT NULL AND storage_key IS NULL AND backfill_error IS NULL"
+            + " ORDER BY trace_id, blob_hash LIMIT ?";
         return database.select(sql, PgTracePayloadRow.class, limit).stream()
             .map(PgTracePayloadRepository::toBlob)
             .toList();
@@ -75,6 +76,14 @@ public class PgTracePayloadRepository implements TracePayloadRepository {
                 + " SET content = NULL, object_hash = ?, storage_key = ?, content_type = ?, size_bytes = ?"
                 + " WHERE trace_id = ? AND blob_hash = ? AND storage_key IS NULL",
             blob.objectHash, blob.storageKey, blob.contentType, blob.sizeBytes, blob.traceId, hash(blob));
+    }
+
+    @Override
+    public int markBackfillFailure(TracePayloadBlob blob, String error) {
+        return database.execute("UPDATE " + TABLE
+                + " SET backfill_error = ?, backfill_attempted_at = now()"
+                + " WHERE trace_id = ? AND blob_hash = ? AND storage_key IS NULL",
+            error, blob.traceId, hash(blob));
     }
 
     @Override
