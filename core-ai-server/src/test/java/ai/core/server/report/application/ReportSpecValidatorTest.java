@@ -354,6 +354,38 @@ class ReportSpecValidatorTest {
     }
 
     @Test
+    void acceptsCompositeMetricGroupBeyondTheOldEightMeasureBudget() {
+        var result = validator.validate("kpi", null, spec("""
+                {
+                  "spec_version": 1,
+                  "source": {"dataset_id": "ds-1"},
+                  "query": {
+                    "mode": "AGGREGATE", "time_field": "data.business_date",
+                    "time_range": {"kind": "LAST_N_DAYS_OF_DATA", "days": 7}, "timezone": "UTC", "bucket": "NONE",
+                    "measures": [
+                      {"id": "a", "field": "data.positive_count", "op": "SUM"},
+                      {"id": "b", "field": "data.total", "op": "SUM"},
+                      {"id": "c", "field": "data.f1", "op": "SUM"},
+                      {"id": "d", "field": "data.f2", "op": "SUM"},
+                      {"id": "e", "field": "data.f3", "op": "SUM"},
+                      {"id": "f", "field": "data.f4", "op": "SUM"},
+                      {"id": "g", "field": "data.f5", "op": "SUM"}
+                    ],
+                    "derived_measures": [
+                      {"id": "summed", "op": "ADD", "inputs": ["a", "b"]},
+                      {"id": "share", "op": "RATIO", "numerator": "summed", "denominator": "b"}
+                    ]
+                  },
+                  "display": {"type": "METRIC_GROUP", "series": [
+                    {"field": "a"}, {"field": "b"}, {"field": "c"}, {"field": "d"}, {"field": "e"},
+                    {"field": "summed"}, {"field": "share"}
+                  ]}
+                }
+                """), dataset());
+        assertEquals(9, result.spec().query.measures.size() + result.spec().query.derivedMeasures.size());
+    }
+
+    @Test
     void rejectsSelfReferencingDerivedMeasure() {
         var error = assertThrows(ReportSpecValidator.ReportValidationException.class,
                 () -> validator.validate("bad", null, spec("""
@@ -400,7 +432,9 @@ class ReportSpecValidatorTest {
         dataset.type = DatasetType.GENERAL;
         dataset.schema = List.of(field("positive_count", SchemaFieldType.NUMBER),
                 field("total", SchemaFieldType.NUMBER), field("channel", SchemaFieldType.STRING),
-                field("business_date", SchemaFieldType.DATE));
+                field("business_date", SchemaFieldType.DATE), field("f1", SchemaFieldType.NUMBER),
+                field("f2", SchemaFieldType.NUMBER), field("f3", SchemaFieldType.NUMBER),
+                field("f4", SchemaFieldType.NUMBER), field("f5", SchemaFieldType.NUMBER));
         return dataset;
     }
 

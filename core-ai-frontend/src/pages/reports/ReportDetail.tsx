@@ -43,6 +43,8 @@ interface RangeState {
   to: string;
 }
 
+const NONE_VALUE = '__none__';
+
 function parseSpec(specJson?: string | null): SpecView {
   try {
     return specJson ? JSON.parse(specJson) as SpecView : {};
@@ -240,11 +242,12 @@ export default function ReportDetail() {
   };
 
   const toggleOption = (parameter: SpecParameter, option: string) => {
-    const values = inputsRef.current[parameter.name];
-    const selected = Array.isArray(values) && values.length ? values : (options[parameter.name] ?? []);
     const all = options[parameter.name] ?? [];
+    const values = inputsRef.current[parameter.name];
+    const raw = Array.isArray(values) ? values : [];
+    const selected = raw.length === 0 ? all : raw.includes(NONE_VALUE) ? [] : raw;
     const next = selected.includes(option) ? selected.filter(item => item !== option) : [...selected, option];
-    updateInput(parameter.name, next.length === all.length ? [] : next);
+    updateInput(parameter.name, next.length === 0 ? [NONE_VALUE] : next.length === all.length ? [] : next);
   };
 
   const pin = async () => {
@@ -398,25 +401,38 @@ export default function ReportDetail() {
               const values = options[parameter.name] ?? [];
               const configured = inputs[parameter.name];
               if (parameter.multiple && values.length > 0) {
-                const selected = Array.isArray(configured) && configured.length ? configured : values;
+                const raw = Array.isArray(configured) ? configured : [];
+                const selected = raw.length === 0 ? values : raw.includes(NONE_VALUE) ? [] : raw;
                 return (
                   <details key={parameter.name} className="relative">
                     <summary className="list-none px-3 py-1.5 rounded-full text-xs cursor-pointer select-none"
                       style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
                       {parameter.name}: {selected.length === values.length ? 'All' : `${selected.length} / ${values.length}`} ▾
                     </summary>
-                    <div className="absolute z-30 mt-1 w-64 max-h-72 overflow-auto rounded-lg border p-2 shadow-lg"
+                    <div className="absolute z-30 mt-1 w-72 max-h-72 overflow-auto rounded-lg border p-2 shadow-lg"
                       style={{ background: 'var(--color-bg)', borderColor: 'var(--color-border)' }}>
-                      <button className="text-xs px-2 py-1 cursor-pointer"
-                        onClick={() => updateInput(parameter.name, [])}
-                        style={{ color: 'var(--color-primary)' }}>
-                        Select all
-                      </button>
+                      <div className="flex gap-3 px-2 py-1">
+                        <button className="text-xs cursor-pointer" onClick={() => updateInput(parameter.name, [])}
+                          style={{ color: 'var(--color-primary)' }}>
+                          Select all
+                        </button>
+                        <button className="text-xs cursor-pointer" onClick={() => updateInput(parameter.name, [NONE_VALUE])}
+                          style={{ color: 'var(--color-text-secondary)' }}>
+                          Clear
+                        </button>
+                      </div>
                       {values.map(value => (
-                        <label key={value} className="flex items-center gap-2 px-2 py-1 text-xs cursor-pointer rounded hover:bg-[var(--color-bg-secondary)]">
-                          <input type="checkbox" checked={selected.includes(value)} onChange={() => toggleOption(parameter, value)} />
-                          <span className="truncate">{value}</span>
-                        </label>
+                        <div key={value} className="flex items-center gap-1 rounded hover:bg-[var(--color-bg-secondary)]">
+                          <label className="flex items-center gap-2 px-2 py-1 text-xs cursor-pointer min-w-0 flex-1">
+                            <input type="checkbox" checked={selected.includes(value)} onChange={() => toggleOption(parameter, value)} />
+                            <span className="truncate">{value}</span>
+                          </label>
+                          <button className="text-[10px] px-1.5 py-0.5 mr-1 cursor-pointer shrink-0"
+                            onClick={() => updateInput(parameter.name, [value])}
+                            style={{ color: 'var(--color-primary)' }}>
+                            only
+                          </button>
+                        </div>
                       ))}
                     </div>
                   </details>
