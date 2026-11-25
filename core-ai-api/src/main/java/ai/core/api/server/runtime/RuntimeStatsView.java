@@ -267,6 +267,18 @@ public class RuntimeStatsView {
 
         @Property(name = "dropped_oversize")
         public Long droppedOversize;
+
+        @Property(name = "buffer_depth")
+        public Integer bufferDepth;
+
+        @Property(name = "buffer_bytes")
+        public Long bufferBytes;
+
+        @Property(name = "buffer_rejected_total")
+        public Long bufferRejectedTotal;
+
+        @Property(name = "buffer_failed_total")
+        public Long bufferFailedTotal;
     }
 
     public static class SseStats {

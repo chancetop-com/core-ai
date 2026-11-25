@@ -8,6 +8,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandbox;
 import ai.core.server.session.AgentSessionManager;
 import ai.core.server.session.SessionSnapshot;
 import ai.core.server.trace.spi.LocalSpanProcessor;
+import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import core.framework.inject.Inject;
 
@@ -98,6 +99,13 @@ public class RuntimeStatsService {
         stats.droppedTotal = LocalSpanProcessor.droppedSpans();
         stats.droppedBytes = LocalSpanProcessor.droppedSpanBytes();
         stats.droppedOversize = LocalSpanProcessor.droppedOversizeSpans();
+        var buffer = LocalSpanProcessorRegistry.getBuffer();
+        if (buffer != null) {
+            stats.bufferDepth = buffer.depth();
+            stats.bufferBytes = buffer.queuedBytes();
+            stats.bufferRejectedTotal = buffer.rejected();
+            stats.bufferFailedTotal = buffer.failed();
+        }
         return stats;
     }
 
