@@ -147,6 +147,25 @@ class ToolCallParametersTest {
     }
 
     @Test
+    void testParamSpecWithNestedItems() {
+        var item = ToolCallParameter.builder()
+            .name("label")
+            .classType(String.class)
+            .required(Boolean.TRUE)
+            .build();
+
+        var parameters = ToolCallParameters.of(
+            ToolCallParameters.ParamSpec.of(List.class, "options", "Options").required().items(List.of(item))
+        );
+
+        var optionsParam = parameters.getFirst();
+        assertNotNull(optionsParam.getItems());
+        assertEquals(1, optionsParam.getItems().size());
+        assertEquals("label", optionsParam.getItems().getFirst().getName());
+        assertTrue(optionsParam.getItems().getFirst().isRequired());
+    }
+
+    @Test
     void testParamSpecWithEnums() {
         var parameters = ToolCallParameters.of(
             ToolCallParameters.ParamSpec.of(String.class, "status", "User status")

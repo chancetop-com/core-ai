@@ -47,6 +47,8 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             parameter.setEnums(spec.getEnums());
             // Set defaultValue if provided
             parameter.setDefaultValue(spec.getDefaultValue());
+            // Set nested item fields if provided
+            parameter.setItems(spec.getItems());
             parameters.add(parameter);
         }
         return parameters;
@@ -63,6 +65,7 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
         private final String description;
         private Boolean required;
         private List<String> enums;
+        private List<ToolCallParameter> items;
         private Supplier<Object> defaultValue;
 
         private ParamSpec(Class<?> type, String name, String description) {
@@ -94,6 +97,11 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
             return this;
         }
 
+        public ParamSpec items(List<ToolCallParameter> items) {
+            this.items = items;
+            return this;
+        }
+
         Class<?> getType() {
             return this.type;
         }
@@ -112,6 +120,10 @@ public class ToolCallParameters extends ArrayList<ToolCallParameter> {
 
         List<String> getEnums() {
             return this.enums;
+        }
+
+        List<ToolCallParameter> getItems() {
+            return this.items;
         }
 
         Supplier<Object> getDefaultValue() {

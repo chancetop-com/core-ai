@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
+import ai.core.tool.ToolCallParameter;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.utils.JsonUtil;
@@ -24,6 +25,24 @@ public final class PresentChoicesTool extends ToolCall {
     private static final int MIN_OPTIONS = 2;
     private static final int MAX_OPTIONS = 6;
     private static final String INVALID_OPTION = "each option must be a JSON object with a non-blank \"label\"";
+    private static final List<ToolCallParameter> OPTION_FIELDS = List.of(
+        ToolCallParameter.builder()
+            .name("label")
+            .description("Button text.")
+            .classType(String.class)
+            .required(Boolean.TRUE)
+            .build(),
+        ToolCallParameter.builder()
+            .name("value")
+            .description("Message sent when the option is clicked; defaults to label.")
+            .classType(String.class)
+            .build(),
+        ToolCallParameter.builder()
+            .name("description")
+            .description("Secondary line under the label.")
+            .classType(String.class)
+            .build()
+    );
 
     private static final String TOOL_DESC = """
             Present the user with interactive choice buttons (2-6 options) when the conversation reaches a point
@@ -121,6 +140,7 @@ public final class PresentChoicesTool extends ToolCall {
                     (a secondary line under the label).
                     Correct example: [{"label":"Yes"},{"label":"No","value":"no thanks","description":"skip this step"}]
                     """).required()
+                    .items(OPTION_FIELDS)
             ));
             this.needAuth(Boolean.FALSE);
             this.directReturn(Boolean.FALSE);

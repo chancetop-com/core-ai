@@ -1,6 +1,7 @@
 package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
+import ai.core.api.jsonschema.JsonSchema;
 import ai.core.api.server.session.AgentEvent;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.session.CustomEventEmitter;
@@ -14,6 +15,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -26,6 +28,21 @@ class PresentChoicesToolTest {
     private final ExecutionContext context = ExecutionContext.builder()
         .customVariable(CustomEventEmitter.CONTEXT_KEY, new SessionCustomEventEmitter("s-1", dispatched::add, () -> true))
         .build();
+
+    @Test
+    void declaresOptionObjectsInTheToolSchema() {
+        var options = tool.toJsonSchema().properties.get("options");
+
+        assertNotNull(options);
+        assertEquals(JsonSchema.PropertyType.ARRAY, options.type);
+        assertNotNull(options.items);
+        assertEquals(JsonSchema.PropertyType.OBJECT, options.items.type);
+        assertEquals(List.of("label"), options.items.required);
+        assertNotNull(options.items.properties);
+        assertEquals(JsonSchema.PropertyType.STRING, options.items.properties.get("label").type);
+        assertEquals(JsonSchema.PropertyType.STRING, options.items.properties.get("value").type);
+        assertEquals(JsonSchema.PropertyType.STRING, options.items.properties.get("description").type);
+    }
 
     @Test
     @SuppressWarnings("unchecked")
