@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Ban, CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, Power, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
 import { api, type GatewayDiscoveredModel, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
+import { useListState } from '../../hooks/useListState';
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI', baseUrl: 'https://api.openai.com/v1', prefix: 'openai/' },
@@ -55,6 +56,16 @@ const ENDPOINT_TYPES = [
 ];
 
 type Tab = 'providers' | 'models';
+
+type ModelSort = 'default' | 'provider_asc' | 'provider_desc' | 'official_asc' | 'official_desc';
+
+const MODEL_SORT_OPTIONS: { value: ModelSort; label: string }[] = [
+  { value: 'default', label: 'Sort: Default' },
+  { value: 'provider_asc', label: 'Sort: Provider A→Z' },
+  { value: 'provider_desc', label: 'Sort: Provider Z→A' },
+  { value: 'official_asc', label: 'Sort: Official Model A→Z' },
+  { value: 'official_desc', label: 'Sort: Official Model Z→A' },
+];
 
 type ProviderFormState = {
   id?: string;
@@ -208,6 +219,7 @@ export default function GatewayProviders() {
   const [providerForm, setProviderForm] = useState<ProviderFormState>(emptyProviderForm);
   const [modelForm, setModelForm] = useState<ModelFormState>(emptyModelForm);
   const [modalityBaseline, setModalityBaseline] = useState<{ supportsVision: string; supportsFile: string; supportsReasoningEffort: string } | null>(null);
+  const [modelSort, setModelSort] = useListState<ModelSort>('gateway.modelSort', 'default');
 
   const selectedType = useMemo(
     () => PROVIDER_TYPES.find(type => type.value === providerForm.type) || PROVIDER_TYPES[0],
@@ -219,6 +231,11 @@ export default function GatewayProviders() {
     providers.forEach(provider => map.set(provider.id, provider));
     return map;
   }, [providers]);
+
+  const sortedModels = useMemo(
+    () => sortGatewayModels(models, modelSort, providerById),
+    [models, modelSort, providerById],
+  );
 
   const load = async () => {
     setLoading(true);
@@ -620,6 +637,16 @@ export default function GatewayProviders() {
               </button>
             ) : (
               <>
+                <select
+                  aria-label="Sort models"
+                  value={modelSort}
+                  onChange={e => setModelSort(e.target.value as ModelSort)}
+                  className="px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
+                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
+                  {MODEL_SORT_OPTIONS.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
                 <button
                   onClick={openCreateModel}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
@@ -656,7 +683,7 @@ export default function GatewayProviders() {
           openEditProvider,
           removeProvider,
         }) : renderModelsTable({
-          models,
+          models: sortedModels,
           loading,
           providerById,
           openEditModel,
@@ -1566,6 +1593,23 @@ function isVertexMediaProtocol(protocol: string) {
 
 function usesGoogleCloudFields(protocol: string) {
   return isVertexMediaProtocol(protocol) || protocol === 'GOOGLE_SPEECH';
+}
+
+function providerDisplayName(model: GatewayModel, providerById: Map<string, GatewayProvider>) {
+  return model.providerName || providerById.get(model.providerId)?.name || model.providerId || '';
+}
+
+function sortGatewayModels(models: GatewayModel[], sort: ModelSort, providerById: Map<string, GatewayProvider>): GatewayModel[] {
+  if (sort === 'default') return models;
+  const byProvider = sort.startsWith('provider');
+  const direction = sort.endsWith('_desc') ? -1 : 1;
+  const sortKey = (model: GatewayModel) => byProvider
+    ? providerDisplayName(model, providerById)
+    : (model.upstreamModel || '');
+  return [...models].sort((a, b) => {
+    const compared = sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base', numeric: true });
+    return compared !== 0 ? compared * direction : a.modelId.localeCompare(b.modelId);
+  });
 }
 
 function labelEndpoint(value: string) {
