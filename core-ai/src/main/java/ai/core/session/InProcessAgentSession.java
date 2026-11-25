@@ -12,6 +12,7 @@ import ai.core.api.server.session.AgentSession;
 import ai.core.api.server.session.ApprovalDecision;
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.LlmFirstTokenEvent;
 import ai.core.api.server.session.SessionStatus;
 import ai.core.api.server.session.StatusChangeEvent;
 import ai.core.api.server.session.TaskStatusEvent;
@@ -37,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Function;
 
 /**
@@ -88,6 +90,7 @@ public class InProcessAgentSession implements AgentSession {
     private volatile String currentExecutionId;
     private volatile TaskRunCoordinator.ExecutionKind currentExecutionKind;
     private volatile long turnStartedAtMs;
+    private final AtomicLong turnWaitingMs = new AtomicLong();
     private final SessionCustomEventEmitter customEventEmitter;
     private final TranscriptRecorder recorder;
     private final TaskRunCoordinator taskRuns;
@@ -120,6 +123,10 @@ public class InProcessAgentSession implements AgentSession {
         this.taskRuns.setPendingWorkProbe(this::hasDeferredWork);
         var context = agent.getExecutionContext();
         context.setWaitEventListener(this::dispatch);
+        context.setFirstTokenListener(ttftMs -> {
+            turnWaitingMs.addAndGet(ttftMs);
+            dispatch(LlmFirstTokenEvent.of(sessionId, ttftMs));
+        });
         if (context.getSubagentOutputSinkFactory() != null) {
             context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch, taskRuns));
         }
@@ -216,6 +223,7 @@ public class InProcessAgentSession implements AgentSession {
         beginExecution(batch, turnId);
         turnActive.set(true);
         turnStartedAtMs = System.currentTimeMillis();
+        turnWaitingMs.set(0);
         var turnDeadline = SessionTurnWatchdog.schedule(turnToken, sessionId, turnActive::get);
         customEventEmitter.resetTurn();
         dispatch(StatusChangeEvent.of(sessionId, SessionStatus.RUNNING));
@@ -592,6 +600,8 @@ public class InProcessAgentSession implements AgentSession {
         if (!turnActive.compareAndSet(true, false)) return;
         if (turnEnd instanceof TurnCompleteEvent turnComplete) {
             turnComplete.durationMs = System.currentTimeMillis() - turnStartedAtMs;
+            var waitingMs = turnWaitingMs.get();
+            if (waitingMs > 0) turnComplete.waitingMs = waitingMs;
             if (recorder != null) {
                 try {
                     recorder.completeTurn(turnComplete);

@@ -6,6 +6,7 @@ import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
 import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseLlmFirstTokenEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseSandboxEvent;
@@ -31,6 +32,7 @@ public class SseEventHelper {
     static {
         TYPE_MAP.put(SseTextChunkEvent.class, EventType.TEXT_CHUNK);
         TYPE_MAP.put(SseReasoningChunkEvent.class, EventType.REASONING_CHUNK);
+        TYPE_MAP.put(SseLlmFirstTokenEvent.class, EventType.LLM_FIRST_TOKEN);
         TYPE_MAP.put(SseToolStartEvent.class, EventType.TOOL_START);
         TYPE_MAP.put(SseToolResultEvent.class, EventType.TOOL_RESULT);
         TYPE_MAP.put(SseToolApprovalRequestEvent.class, EventType.TOOL_APPROVAL_REQUEST);
@@ -53,6 +55,7 @@ public class SseEventHelper {
             Map.entry(EventType.TEXT_CHUNK, SseTextChunkEvent.class),
             Map.entry(EventType.REASONING_CHUNK, SseReasoningChunkEvent.class),
             Map.entry(EventType.REASONING_COMPLETE, SseReasoningChunkEvent.class),
+            Map.entry(EventType.LLM_FIRST_TOKEN, SseLlmFirstTokenEvent.class),
             Map.entry(EventType.TOOL_START, SseToolStartEvent.class),
             Map.entry(EventType.TOOL_RESULT, SseToolResultEvent.class),
             Map.entry(EventType.TOOL_APPROVAL_REQUEST, SseToolApprovalRequestEvent.class),

@@ -8,6 +8,7 @@ import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.LlmFirstTokenEvent;
 import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
@@ -56,6 +57,11 @@ public class EventBridge implements AgentEventListener {
     @Override
     public void onReasoningComplete(ReasoningCompleteEvent event) {
         forward("reasoning_complete", event);
+    }
+
+    @Override
+    public void onLlmFirstToken(LlmFirstTokenEvent event) {
+        forward("llm_first_token", event);
     }
 
     @Override

@@ -5,6 +5,7 @@ import ai.core.api.server.session.BatchToolStartEvent;
 import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.LlmFirstTokenEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
 import ai.core.api.server.session.ReasoningCompleteEvent;
@@ -21,6 +22,7 @@ import ai.core.api.server.session.sse.SseBatchToolStartEvent;
 import ai.core.api.server.session.sse.SseCompressionEvent;
 import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseLlmFirstTokenEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseSandboxEvent;
@@ -76,6 +78,13 @@ public class SseEventBridge implements AgentEventListener {
     }
 
     @Override
+    public void onLlmFirstToken(LlmFirstTokenEvent event) {
+        var sse = new SseLlmFirstTokenEvent();
+        sse.ttftMs = event.ttftMs;
+        eventPublisher.publish(sessionId, sse);
+    }
+
+    @Override
     @SuppressWarnings("unchecked")
     public void onToolStart(ToolStartEvent event) {
         var sse = new SseToolStartEvent();
@@ -127,6 +136,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.outputTokens = event.outputTokens;
         sse.costUsd = event.costUsd;
         sse.durationMs = event.durationMs;
+        sse.waitingMs = event.waitingMs;
         eventPublisher.publish(sessionId, sse);
     }
 

@@ -35,6 +35,7 @@ export function summaryText(summary: TurnSummary | null): string[] {
   if (summary.maxTurnsReached) parts.push('max turns reached');
   const bits: string[] = [];
   if (summary.durationMs !== undefined) bits.push(formatElapsed(summary.durationMs));
+  if (summary.waitingMs) bits.push(`Waiting · ${formatElapsed(summary.waitingMs)}`);
   if (summary.inputTokens || summary.outputTokens) {
     const input = summary.inputTokens ?? 0;
     const output = summary.outputTokens ?? 0;

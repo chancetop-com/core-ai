@@ -324,7 +324,7 @@ export function addTranscriptTools(chips: HTMLElement, panels: HTMLElement, tool
     const orphan = Boolean(tool.parentCallId) && !tree.callIds.has(tool.parentCallId!);
     body.append(buildToolRecord(tool, tree.childrenOf, onLoadFull, new Set(), orphan).node);
   }
-  const total = tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
+  const total = tree.roots.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
   const nested = tree.nestedCount ? ` · ${tree.nestedCount} nested` : '';
   addTranscriptToggle(chips, panels, `Tool use (${tree.roots.length}${nested})${total > 0 ? ` · ${formatSpan(total)}` : ''}`, body);
 }

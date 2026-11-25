@@ -8,6 +8,7 @@ import ai.core.api.server.session.CompressionEvent;
 import ai.core.api.server.session.CustomEvent;
 import ai.core.api.server.session.EnvironmentOutputChunkEvent;
 import ai.core.api.server.session.ErrorEvent;
+import ai.core.api.server.session.LlmFirstTokenEvent;
 import ai.core.api.server.session.OnToolEvent;
 import ai.core.api.server.session.PlanUpdateEvent;
 import ai.core.api.server.session.ReasoningChunkEvent;
@@ -31,6 +32,7 @@ final class SessionEventDispatcher {
             case TextChunkEvent e -> listener.onTextChunk(e);
             case ReasoningChunkEvent e -> listener.onReasoningChunk(e);
             case ReasoningCompleteEvent e -> listener.onReasoningComplete(e);
+            case LlmFirstTokenEvent e -> listener.onLlmFirstToken(e);
             case ToolStartEvent e -> listener.onToolStart(e);
             case ToolResultEvent e -> listener.onToolResult(e);
             case ToolApprovalRequestEvent e -> listener.onToolApprovalRequest(e);

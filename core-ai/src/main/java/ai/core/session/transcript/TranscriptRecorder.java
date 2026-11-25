@@ -156,6 +156,7 @@ public class TranscriptRecorder implements AgentEventListener {
         record.put("cancelled", event.cancelled);
         record.put("max_turns_reached", event.maxTurnsReached);
         record.put("duration_ms", event.durationMs);
+        record.put("waiting_ms", event.waitingMs);
         record.put("input_tokens", event.inputTokens);
         record.put("output_tokens", event.outputTokens);
         record.put("cached_tokens", event.cachedTokens);

@@ -12,6 +12,8 @@ public enum EventType {
     REASONING_CHUNK,
     @Property(name = "reasoning_complete")
     REASONING_COMPLETE,
+    @Property(name = "llm_first_token")
+    LLM_FIRST_TOKEN,
     @Property(name = "tool_start")
     TOOL_START,
     @Property(name = "tool_result")

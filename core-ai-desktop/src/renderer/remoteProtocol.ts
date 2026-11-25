@@ -17,6 +17,8 @@ export interface RemoteEvent {
   result?: string;
   reasoning?: string;
   durationMs?: number;
+  /** Transport time to the first token of one LLM call (TTFT). */
+  ttftMs?: number;
   /** The server marks the last reasoning chunk instead of sending a typed complete event. */
   final?: boolean;
   todos?: unknown[];
@@ -98,6 +100,9 @@ export function normalizeRemoteEvent(raw: unknown): RemoteEvent | null {
       base.reasoning = text(event.reasoning);
       base.final = true;
       base.durationMs = milliseconds(event.duration_ms ?? event.durationMs);
+      break;
+    case 'llm_first_token':
+      base.ttftMs = milliseconds(event.ttft_ms ?? event.ttftMs);
       break;
     case 'tool_start':
       base.callId = text(event.callId ?? event.call_id);

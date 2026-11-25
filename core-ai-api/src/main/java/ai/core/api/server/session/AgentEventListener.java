@@ -13,6 +13,9 @@ public interface AgentEventListener {
     default void onReasoningComplete(ReasoningCompleteEvent event) {
     }
 
+    default void onLlmFirstToken(LlmFirstTokenEvent event) {
+    }
+
     default void onToolStart(ToolStartEvent event) {
     }
 

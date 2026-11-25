@@ -3,6 +3,7 @@ package ai.core.llm.streaming;
 import ai.core.llm.domain.FunctionCall;
 
 import java.util.List;
+import java.util.function.LongConsumer;
 
 /**
  * Wraps the callback handed to the provider transport and records when the first content or reasoning
@@ -14,15 +15,25 @@ import java.util.List;
 public class FirstTokenProbe implements StreamingCallback {
     private final StreamingCallback delegate;
     private final long startNanos;
+    private final LongConsumer firstTokenSink;
     private volatile long firstTokenNanos;
 
     public FirstTokenProbe(StreamingCallback delegate) {
-        this(delegate, System.nanoTime());
+        this(delegate, System.nanoTime(), null);
+    }
+
+    public FirstTokenProbe(StreamingCallback delegate, LongConsumer firstTokenSink) {
+        this(delegate, System.nanoTime(), firstTokenSink);
     }
 
     public FirstTokenProbe(StreamingCallback delegate, long startNanos) {
+        this(delegate, startNanos, null);
+    }
+
+    public FirstTokenProbe(StreamingCallback delegate, long startNanos, LongConsumer firstTokenSink) {
         this.delegate = delegate;
         this.startNanos = startNanos;
+        this.firstTokenSink = firstTokenSink;
     }
 
     /**
@@ -36,7 +47,15 @@ public class FirstTokenProbe implements StreamingCallback {
     }
 
     private void markFirstToken() {
-        if (firstTokenNanos == 0) firstTokenNanos = System.nanoTime();
+        if (firstTokenNanos != 0) return;
+        long first = System.nanoTime();
+        synchronized (this) {
+            if (firstTokenNanos != 0) return;
+            firstTokenNanos = first;
+        }
+        if (firstTokenSink != null) {
+            firstTokenSink.accept(Math.max(0, (first - startNanos) / 1_000_000));
+        }
     }
 
     @Override

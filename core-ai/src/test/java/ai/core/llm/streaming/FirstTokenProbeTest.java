@@ -59,6 +59,19 @@ class FirstTokenProbeTest {
         assertNull(probe.ttftMillis());
     }
 
+    @Test
+    void notifiesTheFirstTokenSinkOnceWithTheMeasuredLatency() {
+        var sinkValues = new ArrayList<Long>();
+        var probe = new FirstTokenProbe(new RecordingCallback(), System.nanoTime() - TimeUnit.SECONDS.toNanos(2), sinkValues::add);
+
+        probe.onChunk("a");
+        probe.onChunk("b");
+
+        assertEquals(1, sinkValues.size());
+        assertEquals(probe.ttftMillis(), sinkValues.getFirst());
+        assertTrue(sinkValues.getFirst() >= 2000, "unexpected ttft: " + sinkValues.getFirst());
+    }
+
     private static final class RecordingCallback implements StreamingCallback {
         private final List<String> chunks = new ArrayList<>();
         private final List<String> reasoningChunks = new ArrayList<>();

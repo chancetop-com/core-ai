@@ -29,6 +29,8 @@ export interface TurnSummary {
   cancelled?: boolean;
   maxTurnsReached?: boolean;
   durationMs?: number;
+  /** Sum of the turn's LLM first-token latencies (TTFT), when the engine measured them. */
+  waitingMs?: number;
   inputTokens?: number;
   outputTokens?: number;
   cachedTokens?: number;
@@ -680,6 +682,7 @@ function applyTurnComplete(model: TranscriptModel, record: TranscriptRecord): vo
     cancelled: recordBool(record, 'cancelled'),
     maxTurnsReached: recordBool(record, 'max_turns_reached'),
     durationMs: recordNumber(record, 'duration_ms'),
+    waitingMs: recordNumber(record, 'waiting_ms'),
     inputTokens: recordNumber(record, 'input_tokens'),
     outputTokens: recordNumber(record, 'output_tokens'),
     cachedTokens: recordNumber(record, 'cached_tokens'),

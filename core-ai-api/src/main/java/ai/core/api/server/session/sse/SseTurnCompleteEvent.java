@@ -26,4 +26,7 @@ public class SseTurnCompleteEvent extends SseBaseEvent {
 
     @Property(name = "duration_ms")
     public Long durationMs;
+
+    @Property(name = "waiting_ms")
+    public Long waitingMs;
 }

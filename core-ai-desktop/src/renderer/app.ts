@@ -532,6 +532,8 @@ interface UiTool {
   callId: string;
   name: string;
   status: string;
+  /** Local start time; drives the live duration while the call is still running. */
+  startedAt?: number;
   durationMs?: number;
   /** Set when this call ran inside a subagent; names the `task` call that spawned it. */
   parentCallId?: string | null;
@@ -1109,20 +1111,30 @@ interface TurnClock {
   startedAt: number;
   tick: ReturnType<typeof setInterval> | null;
   chip: HTMLElement | null;
+  /** Sum of the first-token latencies measured for this turn's LLM calls. */
+  waitingMs: number;
 }
 
 function activeTurnClock(view: SessionView): TurnClock {
-  if (!view.turnClock) view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
+  if (!view.turnClock) view.turnClock = { startedAt: Date.now(), tick: null, chip: null, waitingMs: 0 };
   return view.turnClock;
 }
 
-function startTurnTick(chip: HTMLElement, clock: TurnClock): void {
+function startTurnTick(view: SessionView, clock: TurnClock): void {
   if (clock.tick != null) return;
   const render = () => {
-    chip.textContent = `Running · ${formatElapsed(Date.now() - clock.startedAt)}`;
+    renderTurnStatus(view);
+    updateToolsLabel(view);
   };
   render();
   clock.tick = setInterval(render, 1000);
+}
+
+function renderTurnStatus(view: SessionView): void {
+  const clock = view.turnClock;
+  if (!clock?.chip) return;
+  const waiting = clock.waitingMs > 0 ? ` · Waiting · ${formatElapsed(clock.waitingMs)}` : '';
+  clock.chip.textContent = `Running · ${formatElapsed(Date.now() - clock.startedAt)}${waiting}`;
 }
 
 /** Freezes the chip on the same total the turn summary reports. */
@@ -1131,8 +1143,10 @@ function finishTurnStatus(view: SessionView, event: any): void {
   stopTurnClock(view);
   if (!clock?.chip) return;
   const elapsed = typeof event?.duration_ms === 'number' ? event.duration_ms : Date.now() - clock.startedAt;
+  const reported = typeof event?.waiting_ms === 'number' && event.waiting_ms > 0 ? event.waiting_ms : clock.waitingMs;
+  const waiting = reported > 0 ? ` · Waiting · ${formatElapsed(reported)}` : '';
   const cancelled = Boolean(event?.cancelled);
-  clock.chip.textContent = `${cancelled ? 'Cancelled' : 'Done'} · ${formatElapsed(elapsed)}`;
+  clock.chip.textContent = `${cancelled ? 'Cancelled' : 'Done'} · ${formatElapsed(elapsed)}${waiting}`;
   clock.chip.classList.remove('busy');
   clock.chip.classList.add(cancelled ? 'cancelled' : 'done');
 }
@@ -5158,13 +5172,14 @@ async function sendCurrent(override?: { text: string }): Promise<void> {
   // in a new one below the user message, but keep the turn's original start time.
   const steering = view.status === 'running' || state.status === 'running';
   const startedAt = steering && view.turnClock ? view.turnClock.startedAt : sentAt;
+  const waitingMs = steering && view.turnClock ? view.turnClock.waitingMs : 0;
   if (steering && view.turnClock?.chip) {
     view.turnClock.chip.textContent = `Steered · ${formatElapsed(Date.now() - startedAt)}`;
     view.turnClock.chip.classList.remove('busy');
   }
   resetStreaming(view);
   stopTurnClock(view);
-  view.turnClock = { startedAt, tick: null, chip: null };
+  view.turnClock = { startedAt, tick: null, chip: null, waitingMs };
   // Open the turn bubble right away: the first engine event can be a full model round trip away, and
   // until then the ticking "Running · Ns" chip is the only sign of life (the CLI spinner works the same way).
   ensureStreaming(view);
@@ -5283,7 +5298,7 @@ function ensureTurnStatusChip(current: StreamingState): void {
   const chip = el('span', 'assist-chip turn-status busy');
   clock.chip = chip;
   current.chips?.prepend(chip);
-  startTurnTick(chip, clock);
+  startTurnTick(current.view, clock);
 }
 
 /**
@@ -5319,15 +5334,25 @@ function followPanelScroll(panel: HTMLElement | null): void {
   panel.scrollTop = panel.scrollHeight;
 }
 
-/** "Tool use (n · k nested) · 12m" — top-level rows are what the panel lists; nested calls ride under their subagent. */
+/** "Tool use (n · k nested) · 12m" — roots are the time axis; nested calls ride inside their parent's duration. */
 function updateToolsLabel(view: SessionView): void {
   const current = view.streaming;
   if (!current?.toolsToggle) return;
   const callIds = new Set(current.tools.map((tool) => tool.callId));
-  const nested = current.tools.filter((tool) => tool.parentCallId && callIds.has(tool.parentCallId)).length;
-  const total = current.tools.reduce((sum, tool) => sum + (tool.durationMs ?? 0), 0);
+  const roots = current.tools.filter((tool) => !tool.parentCallId || !callIds.has(tool.parentCallId));
+  const nested = current.tools.length - roots.length;
+  const now = Date.now();
+  let total = 0;
+  for (const tool of roots) {
+    total += tool.durationMs ?? (tool.status === 'running' && tool.startedAt ? now - tool.startedAt : 0);
+  }
+  for (const tool of current.tools) {
+    if (tool.status === 'running' && tool.startedAt && tool.durationNode) {
+      tool.durationNode.textContent = formatSpan(now - tool.startedAt);
+    }
+  }
   const nestedLabel = nested ? ` · ${nested} nested` : '';
-  current.toolsToggle.setLabel(`Tool use (${current.tools.length - nested}${nestedLabel})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
+  current.toolsToggle.setLabel(`Tool use (${roots.length}${nestedLabel})${total > 0 ? ` · ${formatSpan(total)}` : ''}`);
 }
 
 function appendToolStart(view: SessionView, event: any): void {
@@ -5338,6 +5363,7 @@ function appendToolStart(view: SessionView, event: any): void {
     callId: event.callId,
     name: event.toolName ?? 'tool',
     status: 'running',
+    startedAt: Date.now(),
     parentCallId,
   };
   const entry = liveToolEntryView(tool.name, event.arguments, event.toolType);
@@ -5952,6 +5978,14 @@ function applySessionEvent(view: SessionView, event: any): void {
       scrollTranscript(view);
       break;
     }
+    case 'llm_first_token': {
+      const clock = view.turnClock;
+      const ttft = Number(event.ttft_ms ?? event.ttftMs);
+      if (!clock || !Number.isFinite(ttft) || ttft <= 0) break;
+      clock.waitingMs += ttft;
+      renderTurnStatus(view);
+      break;
+    }
     case 'tool_start':
       if (view.pendingApproval) removeApprovalBar(view);
       if (view.backend === 'local') {
@@ -5984,6 +6018,7 @@ function applySessionEvent(view: SessionView, event: any): void {
       if (event.max_turns_reached) parts.push('max turns reached');
       const bits: string[] = [];
       if (typeof event.duration_ms === 'number') bits.push(formatElapsed(event.duration_ms));
+      if (typeof event.waiting_ms === 'number' && event.waiting_ms > 0) bits.push(`Waiting · ${formatElapsed(event.waiting_ms)}`);
       if (event.input_tokens || event.output_tokens) {
         const input = Number(event.input_tokens ?? 0);
         const output = Number(event.output_tokens ?? 0);
@@ -10057,7 +10092,7 @@ async function bootstrap(): Promise<void> {
         applyEvent: (event) => applySessionEvent(view, event),
         beginTurn: () => {
           if (view.streaming) return;
-          view.turnClock = { startedAt: Date.now(), tick: null, chip: null };
+          view.turnClock = { startedAt: Date.now(), tick: null, chip: null, waitingMs: 0 };
           ensureStreaming(view);
         },
         scrollToBottom: (force = false) => scrollTranscript(view, force),

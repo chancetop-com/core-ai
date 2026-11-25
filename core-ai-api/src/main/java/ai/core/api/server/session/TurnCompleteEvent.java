@@ -64,6 +64,10 @@ public class TurnCompleteEvent implements AgentEvent {
     @Property(name = "duration_ms")
     public Long durationMs;
 
+    /** Sum of the turn's LLM first-token latencies (TTFT), null when no call was measured. */
+    @Property(name = "waiting_ms")
+    public Long waitingMs;
+
     @Property(name = "input_tokens")
     public Long inputTokens;
 

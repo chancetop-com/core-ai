@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 import java.util.regex.Pattern;
 
 /**
@@ -146,18 +147,24 @@ public abstract class LLMProvider {
     }
 
     public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
+        return completionStream(request, callback, llmSpanContextSink, withTracing, null);
+    }
+
+    public final CompletionResponse completionStream(CompletionRequest request, StreamingCallback callback, Consumer<SpanContext> llmSpanContextSink,
+                                                     boolean withTracing, LongConsumer firstTokenSink) {
         request.model = getModel(request);
         enforceModalities(request);
         preprocess(request);
         request.stream = Boolean.TRUE;
         request.streamOptions = new StreamOptions();
         if (request.getExtraBody() != null && config.resolveExtraBody(request.model) != null) {
-            LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}", request.getExtraBody(), config.resolveExtraBody(request.model));
+            LOGGER.warn("both request and provider config set extra body, provider config extra body will be ignored, request extra body={}, config extra body={}",
+                    request.getExtraBody(), config.resolveExtraBody(request.model));
         }
         var wrappedCallback = wrapCallback(callback);
         // measured outside the buffering/async wrappers: this is the transport's latency to the first
         // token, which is what TTFT means for an LLM call
-        var probe = new FirstTokenProbe(wrappedCallback);
+        var probe = firstTokenSink == null ? new FirstTokenProbe(wrappedCallback) : new FirstTokenProbe(wrappedCallback, firstTokenSink);
         CompletionResponse response;
         try {
             response = invokeCompletionStream(request, probe, llmSpanContextSink, withTracing);
@@ -168,7 +175,6 @@ public abstract class LLMProvider {
             // match the pattern checks in healRequest
             response = invokeCompletionStream(request, probe, llmSpanContextSink, withTracing);
         }
-        response.ttftMs = probe.ttftMillis();
         postprocess(request, response);
         return response;
     }
@@ -189,14 +195,22 @@ public abstract class LLMProvider {
         return true;
     }
 
-    private CompletionResponse invokeCompletionStream(CompletionRequest request, StreamingCallback wrappedCallback, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
+    private CompletionResponse invokeCompletionStream(CompletionRequest request, FirstTokenProbe probe, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
         // the tracer must see the refs, not the bytes: hydrate only inside the operation, so the span
         // keeps a small, stable payload and the wire copy lives for exactly one HTTP call
         var wireRequest = MediaHydrator.hydrate(request);
         if (tracer != null && withTracing) {
-            return tracer.traceLLMCompletion(name(), request, () -> doCompletionStream(wireRequest, wrappedCallback), llmSpanContextSink, wrappedCallback::isCancelled);
+            // TTFT is assigned inside the traced operation: the span records the response before the
+            // call returns, so setting it afterwards would leave every engine span without a TTFT
+            return tracer.traceLLMCompletion(name(), request, () -> withTtft(doCompletionStream(wireRequest, probe), probe),
+                    llmSpanContextSink, probe::isCancelled);
         }
-        return doCompletionStream(wireRequest, wrappedCallback);
+        return withTtft(doCompletionStream(wireRequest, probe), probe);
+    }
+
+    private static CompletionResponse withTtft(CompletionResponse response, FirstTokenProbe probe) {
+        if (response != null) response.ttftMs = probe.ttftMillis();
+        return response;
     }
 
     private void enforceModalities(CompletionRequest request) {

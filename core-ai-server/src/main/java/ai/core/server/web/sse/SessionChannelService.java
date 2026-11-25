@@ -8,6 +8,7 @@ import ai.core.api.server.session.sse.SseCompressionEvent;
 import ai.core.api.server.session.sse.SseCustomEvent;
 import ai.core.api.server.session.sse.SseEnvironmentOutputChunkEvent;
 import ai.core.api.server.session.sse.SseErrorEvent;
+import ai.core.api.server.session.sse.SseLlmFirstTokenEvent;
 import ai.core.api.server.session.sse.SsePlanUpdateEvent;
 import ai.core.api.server.session.sse.SseReasoningChunkEvent;
 import ai.core.api.server.session.sse.SseSandboxEvent;
@@ -329,6 +330,8 @@ public class SessionChannelService {
             sseEvent.type = EventType.TEXT_CHUNK;
         } else if (sseEvent instanceof SseReasoningChunkEvent) {
             sseEvent.type = EventType.REASONING_CHUNK;
+        } else if (sseEvent instanceof SseLlmFirstTokenEvent) {
+            sseEvent.type = EventType.LLM_FIRST_TOKEN;
         } else if (sseEvent instanceof SseToolStartEvent) {
             sseEvent.type = EventType.TOOL_START;
         } else if (sseEvent instanceof SseToolResultEvent) {

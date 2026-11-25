@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /**
  * @author stephen
@@ -70,6 +71,8 @@ public final class ExecutionContext {
     private String multiModalModel;
     private boolean visionNative = true;
     private StreamingCallback streamingCallback;
+    /** Host observer of a main-loop LLM call's TTFT; null in hosts that do not display it. */
+    private LongConsumer firstTokenListener;
     private final ThreadLocal<String> currentToolCallId = new ThreadLocal<>();
     private List<AbstractLifecycle> lifecycles;
     private Consumer<Usage> tokenCostCallback;
@@ -303,6 +306,14 @@ public final class ExecutionContext {
 
     public void setStreamingCallback(StreamingCallback streamingCallback) {
         this.streamingCallback = streamingCallback;
+    }
+
+    public LongConsumer getFirstTokenListener() {
+        return firstTokenListener;
+    }
+
+    public void setFirstTokenListener(LongConsumer firstTokenListener) {
+        this.firstTokenListener = firstTokenListener;
     }
 
     public void setCurrentToolCallId(String toolCallId) {

@@ -40,7 +40,7 @@ test('groups a turn with text, tool, approval and summary', () => {
     { seq: 5, turn_id: 't2', kind: 'tool_approval', callId: 'c1', toolName: 'grep' },
     { seq: 6, turn_id: 't2', kind: 'tool_approval', callId: 'c1', decision: 'APPROVE' },
     { seq: 7, turn_id: 't2', kind: 'tool_result', callId: 'c1', toolName: 'grep', status: 'success', result: 'found' },
-    { seq: 8, turn_id: 't2', kind: 'turn_complete', output: 'done', input_tokens: 10, output_tokens: 2, cost_usd: 0.01, message_count: 4 },
+    { seq: 8, turn_id: 't2', kind: 'turn_complete', output: 'done', input_tokens: 10, output_tokens: 2, cost_usd: 0.01, duration_ms: 9000, waiting_ms: 4500, message_count: 4 },
   ]);
   assert.equal(model.turns.length, 1);
   const turn = model.turns[0];
@@ -58,6 +58,7 @@ test('groups a turn with text, tool, approval and summary', () => {
   assert.equal(tool.approval, 'APPROVE');
   assert.equal(turn.summary.inputTokens, 10);
   assert.equal(turn.summary.costUsd, 0.01);
+  assert.equal(turn.summary.waitingMs, 4500);
 });
 
 test('seals unresolved tools when the turn ends', () => {

@@ -20,6 +20,11 @@ test('a final reasoning chunk closes the section and carries its duration', () =
   assert.equal(event.durationMs, 1200);
 });
 
+test('a first-token event carries the measured TTFT', () => {
+  assert.equal(normalizeRemoteEvent({ type: 'llm_first_token', ttft_ms: 1840 }).ttftMs, 1840);
+  assert.equal(normalizeRemoteEvent({ type: 'llm_first_token', ttftMs: 900 }).ttftMs, 900);
+});
+
 test('tool events normalize snake_case fields and argument objects', () => {
   const start = normalizeRemoteEvent({
     type: 'tool_start', call_id: 'c1', tool_name: 'web_search', tool_args: { query: 'x' }, tool_notes: 'diff', tool_type: 'mcp',
