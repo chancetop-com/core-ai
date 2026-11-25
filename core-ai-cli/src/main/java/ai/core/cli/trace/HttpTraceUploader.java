@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public class HttpTraceUploader implements TraceUploader {
     private static final String PATH = "/api/traces/ingest";
+    private static final int MAX_ATTEMPTS = 3;
+    private static final Duration RETRY_BASE_DELAY = Duration.ofMillis(200);
     // One-shot prompts exit right after the turn, so this wait is bounded rather than unbounded:
     // it leaves the 10s request timeout room to finish while an unreachable server cannot hang exit.
     private static final Duration FLUSH_TIMEOUT = Duration.ofSeconds(15);
@@ -115,6 +117,10 @@ public class HttpTraceUploader implements TraceUploader {
         return u;
     }
 
+    static boolean retryable(int status) {
+        return status == 408 || status == 429 || status >= 500;
+    }
+
     /**
      * Waits for every upload submitted before this call to finish. The single-thread executor runs
      * tasks in submission order, so a barrier task that has run proves the queue ahead of it drained.
@@ -188,12 +194,40 @@ public class HttpTraceUploader implements TraceUploader {
                     .header("Authorization", "Bearer " + apiKey)
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            var response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() != 200) {
-                DebugLog.log("trace upload failed: status=" + response.statusCode() + " body=" + response.body());
-            }
+            uploadWithRetry(httpRequest);
         } catch (Exception e) {
             DebugLog.log("trace upload error", e);
+        }
+    }
+
+    private void uploadWithRetry(HttpRequest httpRequest) {
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            try {
+                var response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() == 200) return;
+                if (!retryable(response.statusCode()) || attempt == MAX_ATTEMPTS) {
+                    DebugLog.log("trace upload failed: status=" + response.statusCode() + " body=" + response.body());
+                    return;
+                }
+                DebugLog.log("trace upload busy: status=" + response.statusCode() + ", attempt=" + attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                DebugLog.log("trace upload interrupted", e);
+                return;
+            } catch (Exception e) {
+                if (attempt == MAX_ATTEMPTS) {
+                    DebugLog.log("trace upload error", e);
+                    return;
+                }
+                DebugLog.log("trace upload error, retrying: " + e.getMessage());
+            }
+            try {
+                Thread.sleep(RETRY_BASE_DELAY.toMillis() * attempt);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                DebugLog.log("trace upload interrupted", e);
+                return;
+            }
         }
     }
 

@@ -14,7 +14,17 @@ import java.util.List;
 public interface SpanStore {
     void insert(Span span);
 
+    /**
+     * Inserts a span unless its (trace_id, span_id) already exists.
+     *
+     * @return true when this call inserted the row; false when it was a replay
+     */
+    boolean insertIfAbsent(Span span);
+
     void bulkInsert(List<Span> spans);
+
+    /** Summed token/cost columns for the supplied traces, used to repair counters after retries. */
+    List<TokenTotals> tokenTotals(List<String> traceIds);
 
     Span find(String traceId, String spanId);
 
@@ -43,4 +53,7 @@ public interface SpanStore {
     long deleteByTraceIds(List<String> traceIds);
 
     long deleteByIds(List<String> ids);
+
+    record TokenTotals(String traceId, long inputTokens, long outputTokens, long cachedTokens, double costUsd) {
+    }
 }

@@ -128,34 +128,6 @@ public class LocalSpanProcessor implements SpanProcessor {
             });
     }
 
-    /**
-     * Approximate heap held by one span while it waits in the queue: the name, attribute keys and
-     * string values plus a fixed overhead. Deliberately not a protobuf serialization.
-     */
-    private static long estimateSpanBytes(ReadableSpan span) {
-        long bytes = 256 + length(span.getName());
-        var attributes = span.getAttributes();
-        if (attributes != null && !attributes.isEmpty()) {
-            for (var entry : attributes.asMap().entrySet()) {
-                bytes += length(entry.getKey().getKey()) + 32;
-                var value = entry.getValue();
-                if (value instanceof String text) {
-                    bytes += text.length();
-                } else if (value instanceof List<?> values) {
-                    bytes += values.stream().filter(String.class::isInstance)
-                            .mapToLong(item -> ((String) item).length()).sum();
-                } else {
-                    bytes += 8;
-                }
-            }
-        }
-        return bytes;
-    }
-
-    private static int length(String value) {
-        return value == null ? 0 : value.length();
-    }
-
     public static long droppedSpans() {
         return DROPPED_SPANS.get();
     }
@@ -264,7 +236,7 @@ public class LocalSpanProcessor implements SpanProcessor {
         }
 
         var spanName = span.getName();
-        var bytes = estimateSpanBytes(span);
+        var bytes = SpanSizeEstimator.estimate(span);
         if (bytes > effectiveMaxSpanBytes()) {
             DROPPED_OVERSIZE_SPANS.incrementAndGet();
             dropSpan("spanOversize", spanName, bytes);
@@ -278,7 +250,14 @@ public class LocalSpanProcessor implements SpanProcessor {
             try {
                 long startTime = System.nanoTime();
                 var request = convertToExportRequest(span);
-                ingestService.ingest(request);
+                var buffer = LocalSpanProcessorRegistry.getBuffer();
+                if (buffer != null) {
+                    if (!buffer.offerOtlp(request, bytes)) {
+                        dropSpan("bufferFull", spanName, bytes);
+                    }
+                } else {
+                    ingestService.ingest(request);
+                }
                 long elapsedMs = (System.nanoTime() - startTime) / 1_000_000;
                 LOGGER.debug("ingest completed, span={}, elapsed={}ms", spanName, elapsedMs);
             } catch (Exception e) {

@@ -224,12 +224,7 @@ public class TracePayloadStore {
         blob.contentType = contentType(dataUrl);
         blob.sizeBytes = decodedSize(dataUrl);
         blob.createdAt = ZonedDateTime.now();
-        try {
-            return payloadRepository.store(blob);
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to store trace payload blob, keeping payload inline, traceId={}", traceId, e);
-            return false;
-        }
+        return payloadRepository.store(blob);
     }
 
     public final class Compactor {

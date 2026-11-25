@@ -117,6 +117,14 @@ class TracePayloadStoreTest {
         assertEquals(compacted, span.input);
     }
 
+    @Test
+    void propagatesStorageFailureInsteadOfKeepingAPlaceholder() {
+        when(repository.store(any(TracePayloadBlob.class))).thenThrow(new IllegalStateException("db down"));
+        var payload = "{\"image\":\"data:image/png;base64," + "A".repeat(64) + "\"}";
+
+        assertThrows(IllegalStateException.class, () -> store.newCompactor().compact("trace-1", payload));
+    }
+
     private int occurrences(String value) {
         int count = 0;
         int index = value.indexOf(TracePayloadStore.REF_PREFIX);

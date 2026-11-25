@@ -53,6 +53,14 @@ public class TraceUpdate {
     public Long cachedTokensDelta;
     public Double costUsdDelta;
 
+    // absolute totals produced by recomputing from spans; applied with max semantics so a stale
+    // concurrent recompute can never lower a newer value
+    public Long inputTokens;
+    public Long outputTokens;
+    public Long totalTokens;
+    public Long cachedTokens;
+    public Double costUsd;
+
     public enum EmptyGuard {
         AGENT_NAME, AGENT_ID, MODEL, NAME, PROVIDER_ID
     }

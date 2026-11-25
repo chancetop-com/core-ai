@@ -24,6 +24,7 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -51,20 +52,22 @@ public class OTLPIngestService {
 
     public void ingest(ExportTraceServiceRequest request) {
         var compactor = payloadStore != null ? payloadStore.newCompactor() : null;
+        var touchedTraces = new LinkedHashSet<String>();
         int spanCount = 0;
         for (ResourceSpans resourceSpans : request.getResourceSpansList()) {
             var resourceAttrs = OTLPParseHelper.extractAttributes(resourceSpans.getResource().getAttributesList());
-            spanCount += processResourceSpans(resourceSpans, resourceAttrs, compactor);
+            spanCount += processResourceSpans(resourceSpans, resourceAttrs, compactor, touchedTraces);
         }
+        TraceTotalsReconciler.recompute(spanStore, traceStore, touchedTraces);
         LOGGER.debug("ingested {} spans via OTLP", spanCount);
     }
 
     private int processResourceSpans(ResourceSpans resourceSpans, Map<String, String> resourceAttrs,
-                                     TracePayloadStore.Compactor compactor) {
+                                     TracePayloadStore.Compactor compactor, Set<String> touchedTraces) {
         int count = 0;
         for (ScopeSpans scopeSpans : resourceSpans.getScopeSpansList()) {
             for (io.opentelemetry.proto.trace.v1.Span protoSpan : scopeSpans.getSpansList()) {
-                processSpan(protoSpan, resourceAttrs, compactor);
+                processSpan(protoSpan, resourceAttrs, compactor, touchedTraces);
                 count++;
             }
         }
@@ -72,11 +75,12 @@ public class OTLPIngestService {
     }
 
     private void processSpan(io.opentelemetry.proto.trace.v1.Span protoSpan, Map<String, String> resourceAttrs,
-                             TracePayloadStore.Compactor compactor) {
+                             TracePayloadStore.Compactor compactor, Set<String> touchedTraces) {
         var spanId = OTLPParseHelper.bytesToHex(protoSpan.getSpanId().toByteArray());
         var parentSpanId = protoSpan.getParentSpanId().isEmpty() ? null : OTLPParseHelper.bytesToHex(protoSpan.getParentSpanId().toByteArray());
         var attrs = OTLPParseHelper.extractAttributes(protoSpan.getAttributesList());
         var traceId = OTLPParseHelper.resolveTraceId(protoSpan, attrs);
+        touchedTraces.add(traceId);
         linkAgentRun(traceId, attrs);
         ensureTraceExists(traceId, protoSpan.getName(), TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano()), attrs, resourceAttrs);
         saveSpan(protoSpan, traceId, spanId, parentSpanId, attrs, compactor);
@@ -188,7 +192,7 @@ public class OTLPIngestService {
         // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         compactPayload(span, compactor, traceId);
-        spanStore.insert(span);
+        if (!spanStore.insertIfAbsent(span)) return;
         // Back-fill model onto trace if not yet set
         if (span.model != null && !span.model.isEmpty()) {
             backfillTraceModel(traceId, span.model);

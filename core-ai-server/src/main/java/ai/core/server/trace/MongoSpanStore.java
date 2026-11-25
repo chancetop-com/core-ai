@@ -3,12 +3,17 @@ package ai.core.server.trace;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
 import ai.core.server.trace.domain.SpanType;
+import ai.core.server.util.MigrationErrors;
+import com.mongodb.client.model.Accumulators;
+import com.mongodb.client.model.Aggregates;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import com.mongodb.client.model.Sorts;
 import core.framework.inject.Inject;
+import core.framework.mongo.Aggregate;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
+import org.bson.Document;
 import org.bson.conversions.Bson;
 
 import java.time.Instant;
@@ -43,6 +48,16 @@ public class MongoSpanStore implements SpanStore {
         return (double) sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
     }
 
+    private static long number(Document document, String key) {
+        var value = document.get(key);
+        return value instanceof Number number ? number.longValue() : 0L;
+    }
+
+    private static double decimal(Document document, String key) {
+        var value = document.get(key);
+        return value instanceof Number number ? number.doubleValue() : 0.0;
+    }
+
     @Inject
     MongoCollection<Span> spanCollection;
 
@@ -52,8 +67,40 @@ public class MongoSpanStore implements SpanStore {
     }
 
     @Override
+    public boolean insertIfAbsent(Span span) {
+        try {
+            spanCollection.insert(span);
+            return true;
+        } catch (RuntimeException e) {
+            if (MigrationErrors.isDuplicateKey(e)) return false;
+            throw e;
+        }
+    }
+
+    @Override
     public void bulkInsert(List<Span> spans) {
         if (!spans.isEmpty()) spanCollection.bulkInsert(spans);
+    }
+
+    @Override
+    public List<TokenTotals> tokenTotals(List<String> traceIds) {
+        if (traceIds == null || traceIds.isEmpty()) return List.of();
+        var aggregate = new Aggregate<Document>();
+        aggregate.resultClass = Document.class;
+        aggregate.pipeline = List.of(
+            Aggregates.match(Filters.in("trace_id", traceIds)),
+            Aggregates.group("$trace_id",
+                Accumulators.sum("inputTokens", "$input_tokens"),
+                Accumulators.sum("outputTokens", "$output_tokens"),
+                Accumulators.sum("cachedTokens", "$cached_tokens"),
+                Accumulators.sum("costUsd", "$cost_usd")));
+        return spanCollection.aggregate(aggregate).stream()
+            .map(document -> new TokenTotals(document.getString("_id"),
+                number(document, "inputTokens"),
+                number(document, "outputTokens"),
+                number(document, "cachedTokens"),
+                decimal(document, "costUsd")))
+            .toList();
     }
 
     @Override

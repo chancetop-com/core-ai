@@ -8,7 +8,7 @@ import core.framework.web.Response;
 import core.framework.web.WebContext;
 
 import ai.core.server.rbac.PermissionsBypass;
-import ai.core.server.trace.service.IngestService;
+import ai.core.server.trace.service.MemoryTraceSpanBuffer;
 import ai.core.server.web.auth.AuthContext;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 
@@ -29,21 +29,25 @@ public class IngestController {
     }
 
     @Inject
-    IngestService ingestService;
+    MemoryTraceSpanBuffer traceBuffer;
     @Inject
     WebContext webContext;
 
     // Anonymous legacy path: trusts client-supplied user.id, no source stamp.
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     public Response ingestSpans(Request request) {
+        IngestRequest ingestRequest;
+        byte[] body;
         try {
-            byte[] body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));
-            var ingestRequest = MAPPER.readValue(body, IngestRequest.class);
-            ingestService.ingest(ingestRequest);
-            return Response.text("ok");
+            body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));
+            ingestRequest = MAPPER.readValue(body, IngestRequest.class);
         } catch (Exception e) {
             return Response.text("bad request: " + e.getMessage()).status(core.framework.api.http.HTTPStatus.BAD_REQUEST);
         }
+        if (!traceBuffer.offerIngest(ingestRequest, null, null, body.length)) {
+            return Response.text("trace ingest busy").status(core.framework.api.http.HTTPStatus.SERVICE_UNAVAILABLE);
+        }
+        return Response.text("ok");
     }
 
     // Authenticated CLI/SDK path: userId resolved from Bearer by AuthInterceptor; source from the client type
@@ -55,13 +59,17 @@ public class IngestController {
         // a null userId must never silently become an anonymous, mis-attributed trace.
         var userId = AuthContext.userId(webContext);
         if (userId == null) throw new IllegalStateException("authenticated ingest requires a userId");
+        IngestRequest ingestRequest;
+        byte[] body;
         try {
-            byte[] body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));
-            var ingestRequest = MAPPER.readValue(body, IngestRequest.class);
-            ingestService.ingest(ingestRequest, userId, traceSource(ingestRequest.clientType));
-            return Response.text("ok");
+            body = request.body().orElseThrow(() -> new IllegalArgumentException("empty body"));
+            ingestRequest = MAPPER.readValue(body, IngestRequest.class);
         } catch (Exception e) {
             return Response.text("bad request: " + e.getMessage()).status(core.framework.api.http.HTTPStatus.BAD_REQUEST);
         }
+        if (!traceBuffer.offerIngest(ingestRequest, userId, traceSource(ingestRequest.clientType), body.length)) {
+            return Response.text("trace ingest busy").status(core.framework.api.http.HTTPStatus.SERVICE_UNAVAILABLE);
+        }
+        return Response.text("ok");
     }
 }

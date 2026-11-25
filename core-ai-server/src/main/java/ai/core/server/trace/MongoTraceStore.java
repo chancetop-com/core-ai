@@ -114,6 +114,7 @@ public class MongoTraceStore implements TraceStore {
         if (update.costUsdDelta != null && update.costUsdDelta != 0) {
             updates.add(Updates.inc("cost_usd", update.costUsdDelta));
         }
+        absoluteTotals(updates, update);
         if (update.updatedAt != null) updates.add(Updates.set("updated_at", update.updatedAt));
         if (updates.isEmpty()) return;
 
@@ -122,6 +123,14 @@ public class MongoTraceStore implements TraceStore {
         if (update.requireStatus != null) filters.add(Filters.eq("status", update.requireStatus));
         if (update.setOnlyWhenEmpty != null) filters.add(emptyOrPlaceholder(update));
         traceCollection.update(Filters.and(filters), Updates.combine(updates));
+    }
+
+    private void absoluteTotals(List<Bson> updates, TraceUpdate update) {
+        if (update.inputTokens != null) updates.add(Updates.max("input_tokens", update.inputTokens));
+        if (update.outputTokens != null) updates.add(Updates.max("output_tokens", update.outputTokens));
+        if (update.totalTokens != null) updates.add(Updates.max("total_tokens", update.totalTokens));
+        if (update.cachedTokens != null) updates.add(Updates.max("cached_tokens", update.cachedTokens));
+        if (update.costUsd != null) updates.add(Updates.max("cost_usd", update.costUsd));
     }
 
     @Override

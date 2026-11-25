@@ -525,6 +525,7 @@ class OTLPIngestServiceTest {
         service.modelPricingService.gatewayModelStore = ai.core.server.gateway.MongoGatewayModelStore.of(gatewayModelCollection);
         when(traceCollection.find(any(Query.class))).thenReturn(List.of());
         when(spanCollection.find(any(Query.class))).thenReturn(List.of());
+        when(spanCollection.aggregate(any())).thenReturn(List.of());
         return service;
     }
 

@@ -108,6 +108,11 @@ public class PgSpanStore implements SpanStore {
     }
 
     @Override
+    public boolean insertIfAbsent(Span span) {
+        return database.execute(INSERT + INSERT_VALUES + " ON CONFLICT DO NOTHING", params(span)) > 0;
+    }
+
+    @Override
     public void bulkInsert(List<Span> spans) {
         // A span may carry megabytes of tool output; batching purely by row count made one
         // statement large enough to exhaust the database's memory during the legacy backfill.
@@ -124,6 +129,24 @@ public class PgSpanStore implements SpanStore {
             batchBytes += bytes;
         }
         if (!batch.isEmpty()) flush(batch);
+    }
+
+    @Override
+    public List<TokenTotals> tokenTotals(List<String> traceIds) {
+        if (traceIds == null || traceIds.isEmpty()) return List.of();
+        var sql = "SELECT trace_id, COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens"
+            + ", COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens"
+            + ", COALESCE(SUM(cached_tokens), 0)::bigint AS cached_tokens"
+            + ", COALESCE(SUM(cost_usd), 0) AS cost_usd"
+            + " FROM " + TABLE + " WHERE trace_id IN (" + placeholders(traceIds.size()) + ")"
+            + " GROUP BY trace_id";
+        return database.select(sql, PgSpanTokenTotalsRow.class, traceIds.toArray()).stream()
+            .map(row -> new TokenTotals(row.traceId,
+                row.inputTokens != null ? row.inputTokens : 0L,
+                row.outputTokens != null ? row.outputTokens : 0L,
+                row.cachedTokens != null ? row.cachedTokens : 0L,
+                row.costUsd != null ? row.costUsd : 0.0))
+            .toList();
     }
 
     private void flush(List<Object[]> batch) {

@@ -11,11 +11,20 @@ import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-
 /**
  * @author stephen
  */
 class HttpTraceUploaderTest {
+
+    @Test
+    void retriesTransientServerFailuresOnly() {
+        assertTrue(HttpTraceUploader.retryable(503));
+        assertTrue(HttpTraceUploader.retryable(429));
+        assertTrue(HttpTraceUploader.retryable(500));
+        assertFalse(HttpTraceUploader.retryable(400));
+        assertFalse(HttpTraceUploader.retryable(413));
+        assertFalse(HttpTraceUploader.retryable(200));
+    }
 
     @Test
     @edu.umd.cs.findbugs.annotations.SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")

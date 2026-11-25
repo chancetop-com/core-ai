@@ -13,6 +13,7 @@ import ai.core.server.trace.maintenance.TraceDailyMaintenanceTask;
 import ai.core.server.trace.maintenance.StaleRunCleanupJob;
 import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.service.IngestService;
+import ai.core.server.trace.service.MemoryTraceSpanBuffer;
 import ai.core.server.trace.service.ModelPricingService;
 import ai.core.server.trace.service.OTLPIngestService;
 import ai.core.server.trace.service.MongoPromptTemplateStore;
@@ -76,10 +77,21 @@ public class TraceModule extends Module {
         bind(PromptService.class);
         bind(ModelPricingService.class);
         var otlpIngestService = bind(OTLPIngestService.class);
-        bind(IngestService.class);
+        var ingestService = bind(IngestService.class);
+        var traceBuffer = new MemoryTraceSpanBuffer(otlpIngestService, ingestService,
+                intProperty("sys.trace.ingest.queue.capacity", 10000),
+                longProperty("sys.trace.ingest.handoff.bytes", 64L * 1024 * 1024),
+                longProperty("sys.trace.ingest.max.record.bytes", 9L * 1024 * 1024));
+        bind(traceBuffer);
+        onStartup(traceBuffer::start);
+        onShutdown(() -> traceBuffer.shutdown(Duration.ofSeconds(
+                longProperty("sys.trace.ingest.shutdown.timeout.seconds", 10L))));
 
-        // Register OTLPIngestService for LocalSpanProcessor (SPI bridge)
-        onStartup(() -> LocalSpanProcessorRegistry.register(otlpIngestService));
+        // Register the shared hand-off buffer and the trace-created hook for local span ingestion (SPI bridge).
+        onStartup(() -> {
+            LocalSpanProcessorRegistry.register(otlpIngestService);
+            LocalSpanProcessorRegistry.registerBuffer(traceBuffer);
+        });
 
         var otlpController = bind(OTLPController.class);
         var ingestController = bind(IngestController.class);
@@ -123,5 +135,27 @@ public class TraceModule extends Module {
         }
         LOGGER.info("no trace archive prefix configured, blobs stored at root");
         return null;
+    }
+
+    private int intProperty(String key, int defaultValue) {
+        var value = property(key).orElse(null);
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            LOGGER.warn("invalid int property {}, using {}", key, defaultValue);
+            return defaultValue;
+        }
+    }
+
+    private long longProperty(String key, long defaultValue) {
+        var value = property(key).orElse(null);
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            LOGGER.warn("invalid long property {}, using {}", key, defaultValue);
+            return defaultValue;
+        }
     }
 }

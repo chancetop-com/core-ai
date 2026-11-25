@@ -146,6 +146,11 @@ public class PgTraceStore implements TraceStore {
         increment(sets, params, "total_tokens", update.totalTokensDelta);
         increment(sets, params, "cached_tokens", update.cachedTokensDelta);
         increment(sets, params, "cost_usd", update.costUsdDelta);
+        atLeast(sets, params, "input_tokens", update.inputTokens);
+        atLeast(sets, params, "output_tokens", update.outputTokens);
+        atLeast(sets, params, "total_tokens", update.totalTokens);
+        atLeast(sets, params, "cached_tokens", update.cachedTokens);
+        atLeast(sets, params, "cost_usd", update.costUsd);
         if (update.updatedAt != null) set(sets, params, "updated_at", update.updatedAt);
         if (sets.isEmpty()) return;
 
@@ -184,6 +189,12 @@ public class PgTraceStore implements TraceStore {
         if (delta == null || delta.doubleValue() == 0) return;
         sets.add(column + " = COALESCE(" + column + ", 0) + ?");
         params.add(delta);
+    }
+
+    private void atLeast(List<String> sets, List<Object> params, String column, Number value) {
+        if (value == null) return;
+        sets.add(column + " = GREATEST(COALESCE(" + column + ", 0), ?)");
+        params.add(value);
     }
 
     private String column(TraceUpdate.EmptyGuard guard) {

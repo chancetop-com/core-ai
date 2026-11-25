@@ -16,7 +16,6 @@ import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import ai.core.server.trace.web.ingest.IngestRequest;
 import ai.core.server.trace.web.ingest.IngestSpanRequest;
-import ai.core.server.util.MigrationErrors;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -116,7 +115,13 @@ public class IngestService {
             saveSpan(spanReq, authUserId);
         }
 
+        recomputeTotals(ensuredTraces);
+
         LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), ensuredTraces.size());
+    }
+
+    private void recomputeTotals(Set<String> traceIds) {
+        TraceTotalsReconciler.recompute(spanStore, traceStore, traceIds);
     }
 
     private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
@@ -233,16 +238,11 @@ public class IngestService {
         span.createdAt = ZonedDateTime.now();
 
         // Race-free dedup: rely on the unique index on spans.span_id (see SchemaMigrationVTraceIndexes).
-        // Only the first concurrent inserter succeeds; the rest catch duplicate-key and skip the $inc,
-        // so trace counters cannot be double-counted under OTLP retries or multi-instance ingest.
-        try {
-            spanStore.insert(span);
-        } catch (RuntimeException e) {
-            if (MigrationErrors.isDuplicateKey(e)) {
-                LOGGER.debug("span {} already ingested, skipping", spanReq.spanId);
-                return;
-            }
-            throw e;
+        // Only the first concurrent inserter succeeds; the rest skip the $inc, so trace counters cannot
+        // be double-counted under OTLP retries or multi-instance ingest.
+        if (!spanStore.insertIfAbsent(span)) {
+            LOGGER.debug("span {} already ingested, skipping", spanReq.spanId);
+            return;
         }
 
         if (spanReq.model != null && !spanReq.model.isEmpty()) {
