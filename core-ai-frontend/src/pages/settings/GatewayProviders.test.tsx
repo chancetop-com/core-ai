@@ -13,7 +13,7 @@ const providers: GatewayProvider[] = [
 // server order deliberately matches neither provider nor official-model order
 const models: GatewayModel[] = [
   { id: 'm1', modelId: 'model-beta', providerId: 'p-beta', providerName: 'Beta', upstreamModel: 'aaa-official' },
-  { id: 'm2', modelId: 'model-gamma', providerId: 'p-gamma', providerName: 'Gamma', upstreamModel: 'mmm-official' },
+  { id: 'm2', modelId: 'model-gamma', providerId: 'p-gamma', providerName: 'Gamma', upstreamModel: 'mmm-official', contextWindow: 922_000 },
   { id: 'm3', modelId: 'model-alpha', providerId: 'p-alpha', providerName: 'Alpha', upstreamModel: 'zzz-official' },
 ];
 
@@ -76,5 +76,37 @@ describe('Gateway models sorting', () => {
 
     expect(await screen.findByRole('combobox', { name: 'Sort models' })).toHaveProperty('value', 'official_desc');
     expect(renderedModelIds()).toEqual(['model-alpha', 'model-gamma', 'model-beta']);
+  });
+});
+
+describe('Gateway model context window', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+    mockLoad();
+  });
+
+  it('saves an edited context window', async () => {
+    const update = vi.spyOn(api.gateway, 'updateModel').mockResolvedValue({} as GatewayModel);
+    await openModelsTab();
+
+    await userEvent.click(screen.getAllByTitle('Edit')[0]);
+    const input = screen.getByPlaceholderText('e.g. 1000000');
+    expect(input).toHaveProperty('value', '');
+    await userEvent.type(input, '1000000');
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(update).toHaveBeenCalledWith('m1', expect.objectContaining({ contextWindow: 1_000_000 }));
+  });
+
+  it('clears a context window when the field is emptied', async () => {
+    const update = vi.spyOn(api.gateway, 'updateModel').mockResolvedValue({} as GatewayModel);
+    await openModelsTab();
+
+    await userEvent.click(screen.getAllByTitle('Edit')[1]);
+    const input = screen.getByDisplayValue('922000');
+    await userEvent.clear(input);
+    await userEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(update).toHaveBeenCalledWith('m2', expect.objectContaining({ contextWindow: null }));
   });
 });

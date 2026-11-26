@@ -484,6 +484,8 @@ export default function GatewayProviders() {
       else if (modelForm.id) payload.reasoningEfforts = [];
       if (modelForm.responseFormat) payload.responseFormat = modelForm.responseFormat;
       else if (modelForm.id) payload.responseFormat = null;
+      if (modelForm.contextWindow !== '') payload.contextWindow = optionalNumber(modelForm.contextWindow, 'Context window');
+      else if (modelForm.id) payload.contextWindow = null;
       if (modelForm.temperature !== '') payload.temperature = optionalNumber(modelForm.temperature, 'Temperature');
       else if (modelForm.id) payload.temperature = null;
       if (modelForm.inputPricePer1MTokens !== '') payload.inputPricePer1MTokens = optionalNumber(modelForm.inputPricePer1MTokens, 'Input price per 1M');
@@ -1130,6 +1132,19 @@ function renderModelPanel(props: {
             <input className={inputClass} style={inputStyle} type="number" min={0} value={form.priority} onChange={e => setForm({ ...form, priority: e.target.value })} />
           </Field>
         </div>
+
+        <Field label="Context Window" hint="Input-token budget the agent uses to size context compression. Discovery fills it when the provider reports one; set it manually for a model the provider does not describe (e.g. 1000000 for a 1M-token context). Leave empty to fall back to the built-in catalog.">
+          <input
+            className={inputClass}
+            style={inputStyle}
+            type="number"
+            min={1}
+            step={1}
+            placeholder="e.g. 1000000"
+            value={form.contextWindow}
+            onChange={e => setForm({ ...form, contextWindow: e.target.value })}
+          />
+        </Field>
 
         <Field label="Failover Models" hint="Gateway model aliases tried in this order when this model fails before producing output (network error, timeout, 5xx/429). Leave empty to disable failover. A model used as the default for agents should list at least one fallback.">
           <input
