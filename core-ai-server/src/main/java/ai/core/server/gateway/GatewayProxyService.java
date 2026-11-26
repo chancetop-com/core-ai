@@ -256,6 +256,7 @@ public class GatewayProxyService {
         var upstreamEndpoint = AnthropicMessagesBridge.upstreamEndpoint(provider, endpoint);
         var outgoingBody = AnthropicMessagesBridge.requestBody(requestBody, endpoint, provider, upstreamEndpoint,
                 selection.upstreamModel(), selection.model());
+        if (upstreamEndpoint == GatewayEndpointType.CHAT_COMPLETIONS) GatewayPayloadSanitizer.stripHistoricalReasoningContent(outgoingBody);
 
         var url = endpointUrl(provider, upstreamEndpoint, selection.upstreamModel());
         GatewayNetworkGuard.validateOutboundUrl(url, Boolean.TRUE.equals(provider.allowPrivateNetwork));

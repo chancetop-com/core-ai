@@ -27,10 +27,11 @@ public class Compression {
     private static final Logger LOGGER = LoggerFactory.getLogger(Compression.class);
 
     private static final double DEFAULT_TRIGGER_THRESHOLD = 0.8;
+    private static final int DEFAULT_MAX_AUTO_COMPRESS_TOKENS = 160_000;
     private static final double DEFAULT_TOOL_RESULT_RATIO = 0.1;
-    private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 16000;
+    private static final int FALLBACK_MAX_TOOL_RESULT_TOKENS = 12000;
     /** One tool result must never take a large share of the window, however large the window is. */
-    private static final int MAX_TOOL_RESULT_TOKENS = 32000;
+    private static final int MAX_TOOL_RESULT_TOKENS = 12000;
     // Unknown models default large: a wrong-small window compresses a healthy turn into thrash,
     // while a wrong-large one costs a single rejected request that the agent recovers from.
     private static final int FALLBACK_MAX_CONTEXT_TOKENS = 1_000_000;
@@ -119,7 +120,6 @@ public class Compression {
         if (agentModel == null || agentModel.isBlank()) return;
         this.summaryModel = agentModel;
         this.contextModel = agentModel;
-        this.contextWindowOverride = null;
         this.maxContextTokens = resolveContextWindow();
         this.summaryMaxContextTokens = resolveSummaryWindow();
         this.maxToolResultTokens = calculateMaxToolResultTokens();
@@ -160,8 +160,17 @@ public class Compression {
         if (llmProvider == null) {
             return false;
         }
-        return currentTokens >= (int) (maxContextTokens * triggerThreshold);
+        return currentTokens >= effectiveTriggerTokens();
     }
+
+    int effectiveTriggerTokens() {
+        int raw = (int) (maxContextTokens * triggerThreshold);
+        if (contextWindowOverride != null) {
+            return raw;
+        }
+        return Math.min(raw, DEFAULT_MAX_AUTO_COMPRESS_TOKENS);
+    }
+
     public List<Message> compress(List<Message> messages) {
         if (messages == null || messages.isEmpty() || llmProvider == null) {
             return messages;
@@ -172,7 +181,7 @@ public class Compression {
             return messages;
         }
 
-        LOGGER.debug("Compressing messages: currentTokens={}, threshold={}", currentTokens, (int) (maxContextTokens * triggerThreshold));
+        LOGGER.debug("Compressing messages: currentTokens={}, threshold={}", currentTokens, effectiveTriggerTokens());
         return doCompress(messages, false);
     }
     public List<Message> forceCompress(List<Message> messages) {
@@ -316,7 +325,7 @@ public class Compression {
     private int calculateKeepFromIndex(List<Message> conversationMsgs, int lastUserIndex) {
         var keepFromIndex = findKeepFromIndexByTurnsAndTokens(conversationMsgs, lastUserIndex);
         var tokensFromKeep = MessageTokenCounterUtil.countFrom(conversationMsgs, keepFromIndex);
-        var threshold = (int) (maxContextTokens * triggerThreshold);
+        var threshold = effectiveTriggerTokens();
         if (tokensFromKeep >= threshold) {
             return Math.max(keepFromIndex, conversationMsgs.size() - 1);
         }
@@ -428,7 +437,8 @@ public class Compression {
     }
     private CompressionReport report(CompressionReport.Phase phase, int beforeCount, int afterCount,
                                      int contextTokens, String reason) {
-        return new CompressionReport(phase, beforeCount, afterCount, contextTokens, maxContextTokens, triggerThreshold, reason);
+        double threshold = maxContextTokens > 0 ? (double) effectiveTriggerTokens() / maxContextTokens : triggerThreshold;
+        return new CompressionReport(phase, beforeCount, afterCount, contextTokens, maxContextTokens, threshold, reason);
     }
 
     private void notifyListeners(CompressionReport report) {

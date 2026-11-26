@@ -431,9 +431,43 @@ class CompressionTest {
         Compression target = new Compression(config, provider, "unknown-model-xyz");
 
         assertEquals(1_000_000, target.getMaxContextTokens());
-        assertEquals(32000, target.getMaxToolResultTokens());
+        assertEquals(12000, target.getMaxToolResultTokens());
 
         LOGGER.info("Tool result budget cap test passed");
+    }
+
+    @Test
+    void defaultAutoCompressTriggerIsCappedForMillionTokenWindow() {
+        Compression target = new Compression(createMockProvider(), "unknown-model-xyz");
+        assertEquals(1_000_000, target.getMaxContextTokens());
+        assertFalse(target.shouldCompress(159_999));
+        assertTrue(target.shouldCompress(160_000));
+    }
+
+    @Test
+    void compressionReportShowsTheEffectiveTriggerThreshold() {
+        Compression target = new Compression(new CompressionConfig(null, null, null, null, null, null),
+            createMockProviderWithSummary("Summary"), "unknown-model-xyz");
+        var reports = new ArrayList<CompressionReport>();
+        target.addListener(reports::add);
+
+        target.forceCompress(createTestMessages(10));
+
+        var started = reports.getFirst();
+        assertEquals(1_000_000, started.maxContextTokens());
+        assertEquals(16, started.thresholdPercent());
+    }
+
+    @Test
+    void explicitContextWindowOverrideSurvivesUpdateModel() {
+        var config = new CompressionConfig(Boolean.TRUE, 0.8, 5, 15000, 100_000, null);
+        Compression target = new Compression(config, createMockProvider(), "unknown-model-xyz");
+        assertEquals(100_000, target.getMaxContextTokens());
+
+        target.updateModel(createMockProvider(), "gpt-3.5-turbo");
+        assertEquals(100_000, target.getMaxContextTokens());
+        assertFalse(target.shouldCompress(79_999));
+        assertTrue(target.shouldCompress(80_000));
     }
 
     @Test
@@ -451,7 +485,7 @@ class CompressionTest {
             LearnedContextWindows.record("learned-model-xyz", 200_000);
             Compression target = new Compression(createMockProvider(), "learned-model-xyz");
             assertEquals(200_000, target.getMaxContextTokens());
-            assertEquals(20_000, target.getMaxToolResultTokens());
+            assertEquals(12_000, target.getMaxToolResultTokens());
 
             target.learnContextWindow("learned-model-xyz", 120_000);
             assertEquals(120_000, target.getMaxContextTokens());

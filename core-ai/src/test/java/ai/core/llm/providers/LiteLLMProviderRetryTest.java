@@ -12,6 +12,7 @@ import core.framework.http.HTTPClientException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -20,6 +21,8 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -56,6 +59,14 @@ class LiteLLMProviderRetryTest {
         try (OutputStream out = exchange.getResponseBody()) {
             out.write(("data: " + partial).getBytes(StandardCharsets.UTF_8));
             out.flush();
+        }
+    }
+
+    private static String gunzip(byte[] body) {
+        try (var gz = new GZIPInputStream(new ByteArrayInputStream(body))) {
+            return new String(gz.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
         }
     }
 
@@ -244,6 +255,29 @@ class LiteLLMProviderRetryTest {
         assertEquals(10000, LLMRetrySupport.retryDelayMillis(5, 0));
         assertEquals(10000, LLMRetrySupport.retryDelayMillis(20, 0));
         assertEquals(1200, LLMRetrySupport.retryDelayMillis(1, 0.2));
+    }
+
+    @Test
+    void gzipsLargeRequestsToTheCoreAiServerProxy() {
+        var encoding = new AtomicReference<String>();
+        var received = new AtomicReference<byte[]>();
+        var provider = provider((exchange, attempt) -> {
+            encoding.set(exchange.getRequestHeaders().getFirst("Content-Encoding"));
+            try (var in = exchange.getRequestBody()) {
+                received.set(in.readAllBytes());
+            }
+            sse(exchange,
+                    "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}",
+                    "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}",
+                    "[DONE]");
+        }, 5);
+        var content = "large-message ".repeat(500);
+        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, content)), List.of(), 0.0, "test-model", "test");
+
+        provider.completionStream(request, new DefaultStreamingCallback());
+
+        assertEquals("gzip", encoding.get());
+        assertTrue(gunzip(received.get()).contains(content));
     }
 
     @Test

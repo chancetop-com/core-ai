@@ -32,6 +32,8 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -41,12 +43,24 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * @author stephen
  */
 public class LiteLLMProvider extends LLMProvider {
     private static final Logger LOGGER = LoggerFactory.getLogger(LiteLLMProvider.class);
+    private static final int GZIP_MIN_BYTES = 4096;
+
+    static byte[] gzip(byte[] raw) {
+        var out = new ByteArrayOutputStream(raw.length / 4);
+        try (var gz = new GZIPOutputStream(out)) {
+            gz.write(raw);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        return out.toByteArray();
+    }
 
     /**
      * Whether this model name selects the /responses transport instead of /chat/completions.
@@ -195,7 +209,18 @@ public class LiteLLMProvider extends LLMProvider {
         if (extraBody instanceof Map<?, ?> extraMap) {
             bodyMap.putAll((Map<String, Object>) extraMap);
         }
-        req.body(JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8), ContentType.APPLICATION_JSON);
+        var rawBody = JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8);
+        if (rawBody.length >= GZIP_MIN_BYTES && LLMRetrySupport.isServerProxyEndpoint(reqUrl)) {
+            var compressed = gzip(rawBody);
+            if (compressed.length < rawBody.length) {
+                req.headers.put("Content-Encoding", "gzip");
+                req.body(compressed, ContentType.APPLICATION_JSON);
+            } else {
+                req.body(rawBody, ContentType.APPLICATION_JSON);
+            }
+        } else {
+            req.body(rawBody, ContentType.APPLICATION_JSON);
+        }
 
         return executeSSERequest(req, callback, request.isPassthrough());
     }

@@ -15,9 +15,13 @@ import core.framework.web.sse.ChannelListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.zip.GZIPInputStream;
 
 /**
  * OpenAI-compatible chat completions endpoint for the core-ai CLI (and ACP runner):
@@ -32,6 +36,30 @@ public class CliProxyChannelListener implements ChannelListener<Object> {
 
     public static final String PATH = "/api/cli/v1/chat/completions";
     public static final String LEGACY_PATH = "/api/litellm/v1/chat/completions";
+    private static final int MAX_DECOMPRESSED_BYTES = 20 * 1024 * 1024;
+
+    static byte[] decodeBody(byte[] body, String contentEncoding) {
+        if (contentEncoding == null || !"gzip".equalsIgnoreCase(contentEncoding.trim())) {
+            return body;
+        }
+        try (var gz = new GZIPInputStream(new ByteArrayInputStream(body));
+             var out = new ByteArrayOutputStream(Math.min(body.length * 4, MAX_DECOMPRESSED_BYTES))) {
+            var buffer = new byte[8192];
+            int total = 0;
+            int read = gz.read(buffer);
+            while (read != -1) {
+                total += read;
+                if (total > MAX_DECOMPRESSED_BYTES) {
+                    throw new BadRequestException("decompressed request body exceeds limit");
+                }
+                out.write(buffer, 0, read);
+                read = gz.read(buffer);
+            }
+            return out.toByteArray();
+        } catch (IOException e) {
+            throw new BadRequestException("invalid gzip request body", "INVALID_REQUEST", e);
+        }
+    }
 
     @Inject
     LLMProviders llmProviders;
@@ -45,7 +73,8 @@ public class CliProxyChannelListener implements ChannelListener<Object> {
             LOGGER.warn("deprecated endpoint {} used, migrate to {}", LEGACY_PATH, PATH);
         }
         var body = request.body().orElseThrow(() -> new BadRequestException("body is required"));
-        var completionRequest = parseRequest(body);
+        var contentEncoding = request.header("Content-Encoding").orElse(null);
+        var completionRequest = parseRequest(decodeBody(body, contentEncoding));
         // OpenAI-compatible proxy surface: forward the client's payload verbatim, upstream errors included
         completionRequest.setPassthrough(true);
         var model = completionRequest.model;

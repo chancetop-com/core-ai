@@ -30,6 +30,7 @@ import io.opentelemetry.api.trace.SpanContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,6 +62,43 @@ public abstract class LLMProvider {
         if (response == null) return;
         response.ttftMs = probe.ttftMillis();
         response.firstContentMs = probe.firstContentMillis();
+    }
+
+    public static CompletionRequest stripHistoricalReasoningContent(CompletionRequest request) {
+        if (request == null || request.messages == null || request.messages.isEmpty()) {
+            return request;
+        }
+        int lastUserIndex = -1;
+        for (int i = request.messages.size() - 1; i >= 0; i--) {
+            if (request.messages.get(i).role == RoleType.USER) {
+                lastUserIndex = i;
+                break;
+            }
+        }
+        boolean modified = false;
+        var projected = new ArrayList<Message>(request.messages.size());
+        for (int i = 0; i < request.messages.size(); i++) {
+            var message = request.messages.get(i);
+            boolean strip = message.reasoningContent != null
+                    && (i < lastUserIndex || message.reasoningContent.isEmpty());
+            if (strip) {
+                projected.add(copyWithoutReasoningContent(message));
+                modified = true;
+            } else {
+                projected.add(message);
+            }
+        }
+        return modified ? request.withMessages(projected) : request;
+    }
+
+    private static Message copyWithoutReasoningContent(Message source) {
+        var copy = new Message();
+        copy.role = source.role;
+        copy.content = source.content;
+        copy.name = source.name;
+        copy.toolCallId = source.toolCallId;
+        copy.toolCalls = source.toolCalls;
+        return copy;
     }
 
     protected LLMTracer tracer;
@@ -201,7 +239,7 @@ public abstract class LLMProvider {
     private CompletionResponse invokeCompletionStream(CompletionRequest request, FirstTokenProbe probe, Consumer<SpanContext> llmSpanContextSink, boolean withTracing) {
         // the tracer must see the refs, not the bytes: hydrate only inside the operation, so the span
         // keeps a small, stable payload and the wire copy lives for exactly one HTTP call
-        var wireRequest = MediaHydrator.hydrate(request);
+        var wireRequest = stripHistoricalReasoningContent(MediaHydrator.hydrate(request));
         if (tracer != null && withTracing) {
             // TTFT is assigned inside the traced operation: the span records the response before the
             // call returns, so setting it afterwards would leave every engine span without a TTFT

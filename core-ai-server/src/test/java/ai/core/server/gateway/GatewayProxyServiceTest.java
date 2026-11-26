@@ -472,6 +472,28 @@ class GatewayProxyServiceTest {
     }
 
     @Test
+    void stripsHistoricalReasoningContentFromChatUpstream() throws Exception {
+        var provider = provider("DeepSeek", "deepseek", "https://api.deepseek.com/v1", "deepseek/", "deepseek-chat");
+        var service = service(provider);
+        var messages = List.of(
+                Map.of("role", "user", "content", "turn 1"),
+                Map.of("role", "assistant", "content", "answer 1", "reasoning_content", "old reasoning"),
+                Map.of("role", "user", "content", "turn 2"),
+                Map.of("role", "assistant", "content", "", "reasoning_content", "live reasoning"),
+                Map.of("role", "assistant", "content", "done", "reasoning_content", "")
+        );
+
+        service.proxyChatCompletions(json(Map.of("model", "deepseek/deepseek-chat", "messages", messages)), "user-1", null, null);
+
+        var body = MAPPER.readValue(service.captured.body, MAP_TYPE);
+        @SuppressWarnings("unchecked")
+        var sent = (List<Map<String, Object>>) body.get("messages");
+        assertFalse(sent.get(1).containsKey("reasoning_content"));
+        assertEquals("live reasoning", sent.get(3).get("reasoning_content"));
+        assertFalse(sent.get(4).containsKey("reasoning_content"));
+    }
+
+    @Test
     void fillsMissingToolResultsForInterruptedAssistantCalls() throws Exception {
         var provider = provider("OpenAI", "openai", "https://api.openai.com/v1", "openai/", "gpt-4o");
         var service = service(provider, model("gpt-chat", provider.id, "gpt-4o", List.of("chat.completions")));
