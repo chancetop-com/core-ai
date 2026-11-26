@@ -4,7 +4,6 @@ import ai.core.utils.JsonUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -16,10 +15,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
-import java.util.zip.GZIPInputStream;
 
 /**
  * @author stephen
@@ -27,6 +24,7 @@ import java.util.zip.GZIPInputStream;
 public class RemoteApiClient {
     private static final Logger LOGGER = LoggerFactory.getLogger(RemoteApiClient.class);
     private static final String GZIP = "gzip";
+    private static final String CONTENT_ENCODING = "Content-Encoding";
 
     private final String serverUrl;
     private final String apiKey;
@@ -298,12 +296,15 @@ public class RemoteApiClient {
     private String send(HttpRequest request) {
         try {
             var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            var body = bodyText(response);
+            var body = bodyOrErrorMessage(request, response);
             if (response.statusCode() >= 400) {
                 LOGGER.warn("API error: {} {}", response.statusCode(), body);
                 throw new RemoteApiException(response.statusCode(), parseErrorMessage(response.statusCode(), body));
             }
             return body;
+        } catch (ResponseBodyException e) {
+            LOGGER.warn("API response body rejected: {}", e.getMessage());
+            throw e;
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
@@ -315,12 +316,15 @@ public class RemoteApiClient {
     private String sendRequired(HttpRequest request) {
         try {
             var response = apiClient.send(request, HttpResponse.BodyHandlers.ofByteArray());
-            var body = bodyText(response);
+            var body = bodyOrErrorMessage(request, response);
             if (response.statusCode() >= 400) {
                 LOGGER.warn("API error: {} {}", response.statusCode(), body);
                 throw new RemoteApiException(response.statusCode(), parseErrorMessage(response.statusCode(), body));
             }
             return body;
+        } catch (ResponseBodyException e) {
+            LOGGER.warn("API response body rejected: {}", e.getMessage());
+            throw e;
         } catch (RemoteApiException e) {
             throw e;
         } catch (Exception e) {
@@ -329,14 +333,27 @@ public class RemoteApiClient {
         }
     }
 
-    /** The response as text, inflated when the server compressed it (error bodies are compressed too). */
-    private String bodyText(HttpResponse<byte[]> response) throws IOException {
-        var body = response.body() == null ? new byte[0] : response.body();
-        var encoding = response.headers().firstValue("Content-Encoding").orElse("");
-        if (!encoding.toLowerCase(Locale.ROOT).contains(GZIP)) return new String(body, StandardCharsets.UTF_8);
-        try (var input = new GZIPInputStream(new ByteArrayInputStream(body))) {
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
+    /**
+     * The body of a successful response; an error body only decorates the message, so an unreadable
+     * one must not replace the status code with a body error.
+     */
+    private String bodyOrErrorMessage(HttpRequest request, HttpResponse<byte[]> response) {
+        if (response.statusCode() < 400) {
+            return bodyText(request, response);
         }
+        try {
+            return bodyText(request, response);
+        } catch (ResponseBodyException e) {
+            LOGGER.debug("unreadable error body, uri={}, error={}", request.uri(), e.getMessage());
+            return null;
+        }
+    }
+
+    /** The response as text; gzip is resolved on the payload bytes, see {@link ResponseBodyDecoder}. */
+    private String bodyText(HttpRequest request, HttpResponse<byte[]> response) {
+        var body = response.body() == null ? new byte[0] : response.body();
+        var encoding = response.headers().firstValue(CONTENT_ENCODING).orElse("");
+        return ResponseBodyDecoder.text(request.uri(), body, encoding);
     }
 
     private String parseErrorMessage(int statusCode, String body) {

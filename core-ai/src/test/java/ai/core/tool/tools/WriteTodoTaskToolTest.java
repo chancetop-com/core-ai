@@ -2,6 +2,7 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.function.Functions;
+import ai.core.utils.JsonUtil;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -240,6 +241,18 @@ class WriteTodoTaskToolTest {
 
         assertTrue(result.contains("\"tasks\": []"));
         assertTrue(result.contains("No tasks found"));
+    }
+
+    // the summary is JSON handed to the model: a control character copied out of a log line must be
+    // escaped, not spliced raw into the payload
+    @Test
+    void listTasksShouldEscapeControlCharacters() throws Exception {
+        store.setup(makeTask("1", "pending", "line\u001fseparator\u001eend"));
+
+        String result = tool.listTasks(context);
+
+        var tasks = JsonUtil.OBJECT_MAPPER.readTree(result).path("tasks");
+        assertEquals("line\u001fseparator\u001eend", tasks.get(0).path("subject").asText());
     }
 
     @Test

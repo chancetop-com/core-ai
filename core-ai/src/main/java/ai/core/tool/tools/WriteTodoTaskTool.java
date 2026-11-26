@@ -5,6 +5,7 @@ import ai.core.api.tool.function.CoreAiMethod;
 import ai.core.api.tool.function.CoreAiParameter;
 import ai.core.tool.ToolCall;
 import ai.core.tool.function.Functions;
+import ai.core.utils.JsonUtil;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -173,14 +174,15 @@ public class WriteTodoTaskTool {
             
             """;
 
-    static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
     @SuppressWarnings({"unchecked", "rawtypes"})
     public static List<ToolCall> self() {
         return (List) Functions.from(new WriteTodoTaskTool());
+    }
+
+    // task text comes from the model and the user: it must be serialized by Jackson, never by hand,
+    // or a raw control character (0x1F in a copied log line) makes the payload invalid JSON
+    private static String text(String value) {
+        return value == null ? "" : value;
     }
 
     @CoreAiMethod(name = TOOL_NAME_CREATE, description = TASK_CREATE_DESC, concurrencyGroup = PLAN_GROUP_C)
@@ -341,24 +343,22 @@ public class WriteTodoTaskTool {
     }
 
     private String summaryJson(TaskEntity task, List<String> activeBlockers) {
-        var sb = new StringBuilder(128);
-        sb.append("{\"id\":\"").append(escapeJson(task.id)).append("\",\"subject\":\"")
-          .append(escapeJson(task.subject)).append("\",\"status\":\"")
-          .append(escapeJson(task.status)).append('"');
+        var node = JsonUtil.OBJECT_MAPPER.createObjectNode();
+        node.put("id", text(task.id));
+        node.put("subject", text(task.subject));
+        node.put("status", text(task.status));
         if (task.owner != null && !task.owner.isEmpty()) {
-            sb.append(",\"owner\":\"").append(escapeJson(task.owner)).append('"');
+            node.put("owner", task.owner);
         }
         if (!activeBlockers.isEmpty()) {
-            sb.append(",\"blockedBy\":[")
-                .append(activeBlockers.stream().map(id -> '"' + id + '"').collect(Collectors.joining(",")))
-                .append(']');
+            var blockers = node.putArray("blockedBy");
+            activeBlockers.forEach(blockers::add);
         }
-        sb.append('}');
-        return sb.toString();
+        return node.toString();
     }
 
     private String errorJson(String message) {
-        return "{\"error\": \"" + escapeJson(message) + "\"}";
+        return JsonUtil.OBJECT_MAPPER.createObjectNode().put("error", text(message)).toString();
     }
 
     // ---- parameter types ----

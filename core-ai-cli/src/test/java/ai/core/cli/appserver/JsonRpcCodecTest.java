@@ -42,6 +42,21 @@ class JsonRpcCodecTest {
         assertEquals(RpcException.PARSE_ERROR, error.code());
     }
 
+    // a control character between tokens cannot be accepted silently; the transport reports it as a
+    // parse error frame instead of letting Jackson's exception escape the read loop
+    @Test
+    void rejectsRawControlCharacterAsParseError() {
+        var line = "{\"jsonrpc\":\"2.0\"," + (char) 0x1F + "\"method\":\"session/send\"}";
+        var error = assertThrows(RpcException.class, () -> JsonRpcCodec.parse(line));
+        assertEquals(RpcException.PARSE_ERROR, error.code());
+    }
+
+    @Test
+    void parsesEscapedControlCharacterInString() {
+        var request = JsonRpcCodec.parse("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"session/send\",\"params\":{\"text\":\"a\\u001fb\"}}");
+        assertEquals("a\u001fb", request.params().path("text").asText());
+    }
+
     @Test
     void rejectsNonObjectRequest() {
         var error = assertThrows(RpcException.class, () -> JsonRpcCodec.parse("[1,2]"));

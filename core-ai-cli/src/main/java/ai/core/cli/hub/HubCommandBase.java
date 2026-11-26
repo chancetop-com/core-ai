@@ -4,18 +4,23 @@ import ai.core.cli.ConsoleWriter;
 import ai.core.cli.http.RemoteApiException;
 import ai.core.cli.hub.apitool.ApiToolHubClient;
 import ai.core.cli.hub.skill.SkillHubClient;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import picocli.CommandLine.Mixin;
 
+import java.io.UncheckedIOException;
 import java.util.concurrent.Callable;
 
 /**
- * Base class of every {@code core-ai-cli mcp} leaf subcommand: parses credentials,
- * routes rendering by mode and maps failures to the stable exit codes and (in JSON
- * mode) the stdout error envelope {@code {"error":{"code","message","status"}}}.
+ * Base class of every {@code core-ai-cli mcp} leaf subcommand: parses credentials, routes
+ * rendering by mode and maps failures to the stable exit codes and (in JSON mode) the stdout
+ * error envelope {@code {"error":{"code","message","status"}}}.
  *
  * @author stephen
  */
 public abstract class HubCommandBase implements Callable<Integer> {
+    private static final int MAX_ERROR_DETAIL = 300;
+
+
     @Mixin
     HubGlobalOptions options;
 
@@ -32,6 +37,8 @@ public abstract class HubCommandBase implements Callable<Integer> {
             return fail(e.exitCode, codeFor(e.exitCode), httpStatusFor(e.exitCode), e.getMessage());
         } catch (RemoteApiException e) {
             return fail(exitCodeFor(e), apiCodeFor(e.statusCode), e.statusCode, e.getMessage());
+        } catch (UncheckedIOException e) {
+            return fail(HubExitCodes.TOOL_ERROR, "invalid_response", 0, invalidResponse(e));
         } catch (IllegalStateException e) {
             var exitCode = HubExitCodes.forException(e);
             String message = e.getMessage() == null ? "request failed" : e.getMessage();
@@ -41,6 +48,18 @@ public abstract class HubCommandBase implements Callable<Integer> {
             return fail(HubExitCodes.USAGE, "bad_request", 400,
                     e.getMessage() == null ? "invalid arguments" : e.getMessage());
         }
+    }
+
+    /** A 2xx body that Jackson could not read: name the cause instead of printing a parser stack. */
+    private String invalidResponse(UncheckedIOException error) {
+        var cause = error.getCause();
+        String detail = cause instanceof JsonProcessingException jsonError
+                ? jsonError.getOriginalMessage() : cause != null ? cause.getMessage() : error.getMessage();
+        if (detail == null || detail.isBlank()) detail = "the body is not JSON";
+        int newline = detail.indexOf('\n');
+        if (newline > 0) detail = detail.substring(0, newline);
+        if (detail.length() > MAX_ERROR_DETAIL) detail = detail.substring(0, MAX_ERROR_DETAIL - 3) + "...";
+        return "invalid JSON response from the server: " + detail;
     }
 
     protected abstract Integer execute();

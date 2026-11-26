@@ -10,6 +10,7 @@ import ai.core.llm.domain.FunctionCall;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
 import ai.core.llm.domain.Tool;
+import ai.core.utils.JsonUtil;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -37,9 +38,13 @@ final class SyntheticMessageFactory {
                     "Error: Unknown agent. Use /agents to list available agents.", "assistant", null, null, ""));
         }
         AtMentionResult mention = result.get();
-        String taskArgs = "{\"subagent_type\":\"" + mention.agentName()
-                + "\",\"prompt\":\"" + escapeJson(mention.prompt())
-                + "\",\"description\":\"" + escapeJson(truncateDescription(mention.prompt())) + "\"}";
+        // the prompt is raw user text: serialize the arguments with Jackson so a control character
+        // in it cannot produce an unparseable tool-call payload
+        var taskArgs = JsonUtil.OBJECT_MAPPER.createObjectNode()
+                .put("subagent_type", mention.agentName())
+                .put("prompt", mention.prompt())
+                .put("description", truncateDescription(mention.prompt()))
+                .toString();
         var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", "task", taskArgs);
         return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
     }
@@ -54,11 +59,6 @@ final class SyntheticMessageFactory {
             var functionCall = FunctionCall.of(AgentHelper.generateToolCallId(), "function", command.getToolName(), command.hasArguments() ? command.getArguments() : "{}");
             return Choice.of(FinishReason.TOOL_CALLS, Message.of(RoleType.ASSISTANT, "", "assistant", null, List.of(functionCall), ""));
         }
-    }
-
-    static String escapeJson(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
     }
 
     static String truncateDescription(String prompt) {
