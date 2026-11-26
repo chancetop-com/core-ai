@@ -97,6 +97,9 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
         }
         var manager = context.getAsyncTaskManager();
         var background = context.getTaskManager();
+        LOGGER.info("async wait state: taskId={}, sessionId={}, manager={}, data={}, background={}, backgroundHas={}",
+                taskId, context.getSessionId(), manager != null, manager != null && manager.hasTaskData(taskId),
+                background != null, background != null && background.hasTask(taskId));
         // Managed tasks (renders and sandbox async work) live in the poll-only store; wait on them here
         // before the coordinator, whose wait registry cannot see them.
         if (manager != null && manager.hasTaskData(taskId)) {
