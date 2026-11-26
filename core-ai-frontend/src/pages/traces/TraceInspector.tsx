@@ -44,6 +44,7 @@ import {
   getSpanTiming,
   getTimelineBounds,
   isReplayableRequest,
+  isTruncatedPayload,
   prettyContent,
   resolveTraceSource,
   resolveTraceType,
@@ -52,6 +53,7 @@ import {
   traceDisplayName,
   type ExtractedAssistantOutput,
   type ExtractedMessage,
+  type ExtractedToolCall,
   type SpanNode,
 } from './traceViewModel';
 
@@ -507,6 +509,7 @@ function SpanInspector({ span, parentSpan, loading, readOnly }: { span: Span; pa
   const tab = tabState.spanId === span.spanId ? tabState.tab : 'summary';
   const messages = useMemo(() => extractMessages(span.input), [span.input]);
   const output = useMemo(() => extractAssistantContent(span.output), [span.output]);
+  const payloadTruncated = useMemo(() => isTruncatedPayload(span.input), [span.input]);
   const hasMessages = messages.length > 0 || output;
   const attributeCount = span.attributes ? Object.keys(span.attributes).length : 0;
   const color = SPAN_COLORS[span.type] || '#64748b';
@@ -609,7 +612,17 @@ function SpanInspector({ span, parentSpan, loading, readOnly }: { span: Span; pa
           </div>
         )}
         {tab === 'summary' && <SpanSummary span={span} parentSpan={parentSpan} />}
-        {tab === 'messages' && <MessagesView messages={messages} output={output} inputRaw={span.input} outputRaw={span.output} />}
+        {tab === 'messages' && (
+          <>
+            {payloadTruncated && (
+              <div className="mb-3 rounded-md px-2.5 py-1.5 text-xs"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                This payload was summarized to fit the trace size limit — long text and tool arguments are omitted.
+              </div>
+            )}
+            <MessagesView messages={messages} output={output} inputRaw={span.input} outputRaw={span.output} />
+          </>
+        )}
         {tab === 'attributes' && <AttributesView attributes={span.attributes} />}
         {tab === 'raw' && <CodeBlock content={JSON.stringify(span, null, 2)} />}
       </div>
@@ -716,7 +729,7 @@ function AssistantOutputCard({ output }: { output: ExtractedAssistantOutput }) {
   );
 }
 
-function ToolCallList({ calls }: { calls: { id: string; function: { name: string; arguments: string } }[] }) {
+function ToolCallList({ calls }: { calls: ExtractedToolCall[] }) {
   return (
     <div className="space-y-1.5 mt-2">
       {calls.map((call, index) => (
@@ -727,10 +740,19 @@ function ToolCallList({ calls }: { calls: { id: string; function: { name: string
             <Wrench size={11} /> {call.function.name}
             {call.id && <span className="font-mono text-[10px] opacity-70 ml-auto">{call.id}</span>}
           </div>
-          <pre className="px-2.5 py-1.5 text-[11px] whitespace-pre-wrap overflow-auto"
-            style={{ background: 'var(--color-bg-tertiary)', maxHeight: '160px' }}>
-            {prettyContent(call.function.arguments)}
-          </pre>
+          {call.function.arguments
+            ? (
+              <pre className="px-2.5 py-1.5 text-[11px] whitespace-pre-wrap overflow-auto"
+                style={{ background: 'var(--color-bg-tertiary)', maxHeight: '160px' }}>
+                {prettyContent(call.function.arguments)}
+              </pre>
+            )
+            : (
+              <div className="px-2.5 py-1.5 text-[11px]"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
+                arguments not recorded
+              </div>
+            )}
         </div>
       ))}
     </div>

@@ -4,6 +4,7 @@ import {
   extractMessages,
   extractTracePreview,
   isReplayableRequest,
+  isTruncatedPayload,
 } from './traceViewModel';
 
 describe('trace span payload extraction', () => {
@@ -162,5 +163,64 @@ describe('trace span payload extraction', () => {
     expect(isReplayableRequest(JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }))).toBe(true);
     expect(isReplayableRequest(JSON.stringify({ instructions: 'x', input: [{ type: 'message', role: 'user' }] }))).toBe(false);
     expect(isReplayableRequest(null)).toBe(false);
+  });
+
+  it('normalizes summarized tool_calls that keep only the tool name', () => {
+    const messages = extractMessages(JSON.stringify({
+      truncated: true,
+      messages: [
+        { role: 'assistant', tool_calls: ['Jonathan_Meta_Datasets_Agent'] },
+        { role: 'assistant', content: 'done', tool_calls: ['read_file', ''] },
+      ],
+    }));
+
+    expect(messages).toEqual([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ id: '', function: { name: 'Jonathan_Meta_Datasets_Agent', arguments: '' } }],
+      },
+      {
+        role: 'assistant',
+        content: 'done',
+        tool_calls: [{ id: '', function: { name: 'read_file', arguments: '' } }],
+      },
+    ]);
+  });
+
+  it('normalizes summarized assistant output tool_calls', () => {
+    const output = extractAssistantContent(JSON.stringify({
+      role: 'assistant',
+      content: 'calling the agent',
+      tool_calls: ['Jonathan_Meta_Campaign_Execution_Agent_MCP'],
+    }));
+
+    expect(output).toEqual({
+      content: 'calling the agent',
+      tool_calls: [{ id: '', function: { name: 'Jonathan_Meta_Campaign_Execution_Agent_MCP', arguments: '' } }],
+    });
+  });
+
+  it('fills missing tool call ids and arguments from mixed shapes', () => {
+    const messages = extractMessages(JSON.stringify({
+      messages: [{
+        role: 'assistant',
+        content: '',
+        tool_calls: [{ function: { name: 'grep_file' } }, { id: 'call_2', name: 'read_file', arguments: { path: 'a.txt' } }],
+      }],
+    }));
+
+    expect(messages[0].tool_calls).toEqual([
+      { id: '', function: { name: 'grep_file', arguments: '' } },
+      { id: 'call_2', function: { name: 'read_file', arguments: '{"path":"a.txt"}' } },
+    ]);
+  });
+
+  it('detects summarized trace payloads', () => {
+    expect(isTruncatedPayload(JSON.stringify({ messages: [], truncated: true }))).toBe(true);
+    expect(isTruncatedPayload(JSON.stringify({ summary: '...', truncated: true }))).toBe(true);
+    expect(isTruncatedPayload(JSON.stringify({ messages: [] }))).toBe(false);
+    expect(isTruncatedPayload('not json')).toBe(false);
+    expect(isTruncatedPayload(null)).toBe(false);
   });
 });

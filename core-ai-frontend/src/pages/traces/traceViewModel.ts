@@ -14,10 +14,15 @@ export interface SpanNode extends Span {
   turnIndex?: number;
 }
 
+export interface ExtractedToolCall {
+  id: string;
+  function: { name: string; arguments: string };
+}
+
 export interface ExtractedMessage {
   role: string;
   content: string;
-  tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+  tool_calls?: ExtractedToolCall[];
   tool_call_id?: string;
   name?: string;
 }
@@ -25,7 +30,7 @@ export interface ExtractedMessage {
 export interface ExtractedAssistantOutput {
   content: string;
   reasoning?: string;
-  tool_calls?: { id: string; function: { name: string; arguments: string } }[];
+  tool_calls?: ExtractedToolCall[];
 }
 
 export interface TimelineBounds {
@@ -373,6 +378,13 @@ export function isReplayableRequest(input?: string | null): boolean {
   return Array.isArray((parsed as { messages?: unknown }).messages);
 }
 
+// Oversized payloads are stored as a summary (LLMTracer#serializeSummary / #compactSummary).
+export function isTruncatedPayload(input?: string | null): boolean {
+  if (!input) return false;
+  const parsed = tryParseJson(input);
+  return !!parsed && typeof parsed === 'object' && (parsed as { truncated?: unknown }).truncated === true;
+}
+
 export function extractAssistantContent(output?: string | null): ExtractedAssistantOutput | null {
   if (!output) return null;
   const parsed = tryParseJson(output);
@@ -385,7 +397,8 @@ export function extractAssistantContent(output?: string | null): ExtractedAssist
       reasoning: typeof obj.reasoning_content === 'string' ? obj.reasoning_content : undefined,
     };
     if (Array.isArray(obj.tool_calls) && obj.tool_calls.length > 0) {
-      result.tool_calls = obj.tool_calls as ExtractedAssistantOutput['tool_calls'];
+      const toolCalls = normalizeToolCalls(obj.tool_calls);
+      if (toolCalls) result.tool_calls = toolCalls;
     }
     return result;
   }
@@ -462,12 +475,39 @@ function chatMessages(messages: unknown[]): ExtractedMessage[] {
       content: extractMessageContent(msg.content),
     };
     if (Array.isArray(msg.tool_calls) && msg.tool_calls.length > 0) {
-      result.tool_calls = msg.tool_calls as ExtractedMessage['tool_calls'];
+      const toolCalls = normalizeToolCalls(msg.tool_calls);
+      if (toolCalls) result.tool_calls = toolCalls;
     }
     if (msg.tool_call_id) result.tool_call_id = String(msg.tool_call_id);
     if (msg.name) result.name = String(msg.name);
     return result;
   });
+}
+
+// Oversized trace inputs are stored as a summary that keeps only tool names, so tool_calls entries
+// are plain strings there; normalize both shapes into the object form the messages view renders.
+function normalizeToolCalls(value: unknown[]): ExtractedToolCall[] | undefined {
+  const calls: ExtractedToolCall[] = [];
+  for (const entry of value) {
+    if (typeof entry === 'string') {
+      if (entry.trim()) calls.push({ id: '', function: { name: entry, arguments: '' } });
+      continue;
+    }
+    if (!entry || typeof entry !== 'object') continue;
+    const obj = entry as Record<string, unknown>;
+    const fn = obj.function && typeof obj.function === 'object' ? obj.function as Record<string, unknown> : null;
+    const name = String(fn?.name ?? obj.name ?? '');
+    if (!name) continue;
+    const args = fn?.arguments ?? obj.arguments;
+    calls.push({
+      id: String(obj.id ?? ''),
+      function: {
+        name,
+        arguments: typeof args === 'string' ? args : args == null ? '' : JSON.stringify(args),
+      },
+    });
+  }
+  return calls.length > 0 ? calls : undefined;
 }
 
 function responsesMessages(body: { instructions?: unknown; input?: unknown }): ExtractedMessage[] {
