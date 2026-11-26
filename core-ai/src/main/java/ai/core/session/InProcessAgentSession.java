@@ -489,7 +489,7 @@ public class InProcessAgentSession implements AgentSession {
      * Deferred work only: the driver's own running turn is already represented by the coordinator's
      * active execution and must not keep a run open after that execution has ended.
      */
-    private boolean hasDeferredWork() {
+    public boolean hasDeferredWork() {
         var taskManager = agent.getExecutionContext().getTaskManager();
         return turnInput.hasPending() || taskManager != null && taskManager.hasRunningTasks();
     }

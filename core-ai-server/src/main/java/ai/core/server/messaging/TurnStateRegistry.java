@@ -1,9 +1,6 @@
 package ai.core.server.messaging;
 
 import ai.core.api.server.session.AgentEventListener;
-import ai.core.api.server.session.SessionStatus;
-import ai.core.api.server.session.StatusChangeEvent;
-import ai.core.api.server.session.TurnCompleteEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,21 +89,17 @@ public class TurnStateRegistry {
     }
 
     public AgentEventListener listener(String sessionId, String userId, BooleanSupplier turnLiveness) {
-        return new AgentEventListener() {
-            @Override
-            public void onStatusChange(StatusChangeEvent event) {
-                if (event.status == SessionStatus.RUNNING) {
-                    markRunning(sessionId, userId, turnLiveness);
-                } else {
-                    clear(sessionId);
-                }
-            }
+        return listener(sessionId, userId, turnLiveness, null);
+    }
 
-            @Override
-            public void onTurnComplete(TurnCompleteEvent event) {
-                clear(sessionId);
-            }
-        };
+    /**
+     * @param pendingWork answers "does this session still have background work queued or running".
+     *                    A turn whose deferred work outlives it keeps the state (and its renewals) alive,
+     *                    so the workspace lease and the idle sleeper see the session as busy.
+     */
+    public AgentEventListener listener(String sessionId, String userId, BooleanSupplier turnLiveness,
+                                       BooleanSupplier pendingWork) {
+        return new TurnStateListener(this, sessionId, userId, turnLiveness, pendingWork);
     }
 
     void renewAll() {

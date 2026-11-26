@@ -359,11 +359,11 @@ public class SessionRebuildManager {
         var session = new InProcessAgentSession(params.sessionId, agent, true, new InMemoryToolPermissionStore());
         sandbox.sessionRef[0] = session;
         session.setOnIdle(() -> renewSessionOwnership(params.sessionId));
-        // Turn-state listener goes first so the Redis turn key is written before the
-        // RUNNING event is published to other pods. The liveness probe lets the registry's
-        // heartbeat drop the key once the turn stops executing, even if no terminal event arrived.
+        // Turn-state first: the key exists before RUNNING reaches other pods, and the heartbeat drops
+        // it once the turn and any deferred background work stop (no terminal event required).
         if (turnStateRegistry != null) {
-            session.onEvent(turnStateRegistry.listener(params.sessionId, params.userId, session::isTurnRunning));
+            session.onEvent(turnStateRegistry.listener(params.sessionId, params.userId,
+                    () -> session.isTurnRunning() || session.hasDeferredWork(), session::hasDeferredWork));
         }
         session.onEvent(chatMessageService.listener(params.sessionId));
         if (sessionCompletionNotifier != null) {

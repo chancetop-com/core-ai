@@ -19,7 +19,8 @@ public final class SessionEventListenerWiring {
         // RUNNING event is published to other pods. The liveness probe lets the registry's
         // heartbeat drop the key once the turn stops executing, even if no terminal event arrived.
         if (deps.turnStateRegistry() != null) {
-            session.onEvent(deps.turnStateRegistry().listener(sessionId, userId, session::isTurnRunning));
+            session.onEvent(deps.turnStateRegistry().listener(sessionId, userId,
+                    () -> session.isTurnRunning() || session.hasDeferredWork(), session::hasDeferredWork));
         }
         session.onEvent(deps.chatMessageService().listener(sessionId));
         // Long-running turns may be walked away from: notify the owner on their own channel when one ends.
