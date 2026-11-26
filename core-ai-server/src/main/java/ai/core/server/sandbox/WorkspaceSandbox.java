@@ -10,6 +10,7 @@ import ai.core.sandbox.SandboxProvider;
 import ai.core.sandbox.SandboxStatus;
 import ai.core.server.workspace.WorkspaceBindingRecord;
 import ai.core.server.workspace.WorkspaceException;
+import ai.core.server.workspace.WorkspaceLeaseHeartbeat;
 import ai.core.server.workspace.WorkspaceService;
 import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
@@ -21,10 +22,11 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 /**
- * A session's handle on its durable workspace. The runtime behind it is replaceable: the first sandbox
- * operation wakes the workspace and attaches to whatever runtime the workspace currently owns. Releasing
- * this handle detaches the session and never deletes the workspace's runtime or volume; sleep is the only
- * operation that stops it.
+ * A session's handle on its durable workspace. The runtime behind it is replaceable: an operation wakes
+ * the workspace when needed and attaches to whatever runtime the workspace currently owns. Tool and file
+ * operations take the workspace's turn lease, so two sessions never write the same volume at once; the
+ * lease of an idle session is released, and a runtime that was slept (or replaced) is re-attached on the
+ * next operation. Releasing this handle detaches the session and never deletes the runtime or volume.
  *
  * @author stephen
  */
@@ -45,6 +47,8 @@ public class WorkspaceSandbox implements Sandbox {
     private Sandbox delegate;
     private String sandboxId = PENDING_ID;
     private SandboxBinding pendingBinding;
+    private String leaseToken;
+    private WorkspaceLeaseHeartbeat heartbeat;
     private boolean closed;
 
     public WorkspaceSandbox(SandboxConfig config, SessionRef session, WorkspaceService workspaces,
@@ -61,12 +65,25 @@ public class WorkspaceSandbox implements Sandbox {
 
     @Override
     public boolean shouldIntercept(String toolName) {
-        return sandbox().shouldIntercept(toolName);
+        return runtime().shouldIntercept(toolName);
     }
 
     @Override
     public ToolCallResult execute(String toolName, String arguments, ExecutionContext context) {
-        return sandbox().execute(toolName, arguments, context);
+        WorkspaceLeaseHeartbeat active;
+        Sandbox sandbox;
+        synchronized (lock) {
+            ensureTurn();
+            active = heartbeat;
+            sandbox = delegate;
+        }
+        var result = sandbox.execute(toolName, arguments, context);
+        if (active != null && active.lost()) {
+            // another session took the lease while this tool ran: its writes must not be reported as ours
+            throw new WorkspaceException(WorkspaceException.REPLACED,
+                    "workspace lease was lost during tool execution, workspace=" + workspaceId);
+        }
+        return result;
     }
 
     @Override
@@ -93,22 +110,22 @@ public class WorkspaceSandbox implements Sandbox {
 
     @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
-        sandbox().materializeSkill(name, version, tarBytes);
+        turnSandbox().materializeSkill(name, version, tarBytes);
     }
 
     @Override
     public SandboxFile downloadFile(String path) {
-        return sandbox().downloadFile(path);
+        return turnSandbox().downloadFile(path);
     }
 
     @Override
     public void uploadFile(String path, byte[] content) {
-        sandbox().uploadFile(path, content);
+        turnSandbox().uploadFile(path, content);
     }
 
     @Override
     public void uploadFile(String path, Path file) {
-        sandbox().uploadFile(path, file);
+        turnSandbox().uploadFile(path, file);
     }
 
     @Override
@@ -134,17 +151,19 @@ public class WorkspaceSandbox implements Sandbox {
 
     @Override
     public String startMcpServer(String id, String command, List<String> args, Map<String, String> env, int timeoutSeconds) {
-        return sandbox().startMcpServer(scopedMcpId(id), command, args, env, timeoutSeconds);
+        // MCP lifecycle is not an agent turn: it may start while another session holds the lease, and
+        // its process ids are scoped by session so two sessions cannot replace each other's servers
+        return runtime().startMcpServer(scopedMcpId(id), command, args, env, timeoutSeconds);
     }
 
     @Override
     public void stopMcpServer(String id) {
-        sandbox().stopMcpServer(scopedMcpId(id));
+        runtime().stopMcpServer(scopedMcpId(id));
     }
 
     @Override
     public String getMcpEndpoint() {
-        return sandbox().getMcpEndpoint();
+        return runtime().getMcpEndpoint();
     }
 
     @Override
@@ -177,13 +196,18 @@ public class WorkspaceSandbox implements Sandbox {
     @Override
     public void close() {
         Sandbox current;
+        String token;
         synchronized (lock) {
             if (closed) return;
             closed = true;
             current = delegate;
             delegate = null;
             pendingBinding = null;
+            stopHeartbeat();
+            token = leaseToken;
+            leaseToken = null;
         }
+        workspaces.releaseLease(workspaceId, token);
         if (current != null) {
             try {
                 current.unbind();
@@ -200,26 +224,55 @@ public class WorkspaceSandbox implements Sandbox {
         LOGGER.info("workspace sandbox detached, session={}, workspace={}, runtime={}", sessionId, workspaceId, sandboxId);
     }
 
-    private Sandbox sandbox() {
+    /** A workspace operation inside a turn: the runtime must be attached and this session must hold the lease. */
+    private Sandbox turnSandbox() {
         synchronized (lock) {
             if (closed) throw new IllegalStateException("workspace sandbox is closed, session=" + sessionId);
-            if (delegate == null) materialize();
+            ensureTurn();
             return delegate;
         }
     }
 
-    private void materialize() {
+    /** Runtime access outside a turn (MCP, readiness): no lease, but the attachment must be current. */
+    private Sandbox runtime() {
+        synchronized (lock) {
+            if (closed) throw new IllegalStateException("workspace sandbox is closed, session=" + sessionId);
+            ensureRuntime();
+            return delegate;
+        }
+    }
+
+    private void ensureTurn() {
+        // verify the runtime only when this handle has nothing attached yet: an attached runtime is
+        // trusted until the workspace row says it was slept (runtime_status becomes NONE)
+        var turn = workspaces.beginTurn(userId, workspaceId, sessionId, delegate == null);
+        var binding = turn.binding();
+        if (delegate == null || !binding.sandboxId.equals(sandboxId)) {
+            detachDelegate();
+            attach(binding);
+        } else if (postAttach != null && turn.rebound()) {
+            // the hub's single binding belonged to another session; it must name this one before tools call back
+            postAttach.run();
+        }
+        if (heartbeat == null || heartbeat.lost() || !turn.leaseToken().equals(leaseToken)) {
+            stopHeartbeat();
+            leaseToken = turn.leaseToken();
+            heartbeat = workspaces.heartbeat(workspaceId, leaseToken);
+        }
+    }
+
+    private void ensureRuntime() {
+        var binding = workspaces.ensureRuntime(userId, workspaceId);
+        if (delegate == null || !binding.sandboxId.equals(sandboxId)) {
+            detachDelegate();
+            attach(binding);
+        }
+    }
+
+    private void attach(WorkspaceBindingRecord binding) {
         var startedAt = System.nanoTime();
         dispatch(SandboxEvent.creating(sessionId, PENDING_ID));
-        WorkspaceBindingRecord binding;
-        try {
-            workspaces.wake(userId, workspaceId);
-            binding = workspaces.bind(userId, workspaceId, sessionId);
-        } catch (RuntimeException e) {
-            dispatch(SandboxEvent.error(sessionId, PENDING_ID, "Workspace runtime failed to start"));
-            throw e;
-        }
-        var attached = findRuntime(binding);
+        var attached = provider.attach(binding.sandboxId, config, sessionId, userId).orElse(null);
         if (attached == null) {
             dispatch(SandboxEvent.error(sessionId, PENDING_ID, "Workspace runtime failed to start"));
             throw new WorkspaceException(WorkspaceException.WAKE_FAILED,
@@ -238,9 +291,28 @@ public class WorkspaceSandbox implements Sandbox {
                 attached.hostname(), attached.ip(), attached.image()));
     }
 
-    private Sandbox findRuntime(WorkspaceBindingRecord binding) {
-        var attached = provider.attach(binding.sandboxId, config, sessionId, userId);
-        return attached.orElse(null);
+    private void detachDelegate() {
+        var current = delegate;
+        delegate = null;
+        sandboxId = PENDING_ID;
+        if (current == null) return;
+        try {
+            current.unbind();
+        } catch (RuntimeException e) {
+            LOGGER.debug("failed to unbind the replaced workspace runtime, session={}", sessionId, e);
+        }
+        try {
+            current.close();
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to close the replaced workspace runtime client, session={}", sessionId, e);
+        }
+    }
+
+    private void stopHeartbeat() {
+        if (heartbeat != null) {
+            heartbeat.close();
+            heartbeat = null;
+        }
     }
 
     private String scopedMcpId(String id) {

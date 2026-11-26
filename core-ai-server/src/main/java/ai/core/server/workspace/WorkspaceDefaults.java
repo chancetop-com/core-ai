@@ -16,6 +16,8 @@ public final class WorkspaceDefaults {
     public static final int MAX_TOTAL_GB_PER_USER = 96;
     public static final int MAX_RUNNING_PER_USER = 2;
     public static final int IDLE_SLEEP_MINUTES = 15;
+    public static final int LEASE_TTL_SECONDS = 600;
+    public static final int LEASE_WAIT_SECONDS = 30;
     public static final int MIN_RUNTIME_SECONDS = 300;
     public static final int MAX_RUNTIME_SECONDS = 8 * 3600;
     public static final int PROVISION_TIMEOUT_SECONDS = 300;

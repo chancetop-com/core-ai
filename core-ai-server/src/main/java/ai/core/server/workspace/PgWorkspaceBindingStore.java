@@ -52,17 +52,16 @@ public class PgWorkspaceBindingStore implements WorkspaceBindingStore {
     }
 
     @Override
-    public boolean bindSession(String workspaceId, String sandboxId, long runtimeGeneration, String sessionId, ZonedDateTime at) {
-        return database.execute("UPDATE " + TABLE + " SET bound_session_id = ?, updated_at = ? "
-                        + "WHERE workspace_id = ? AND sandbox_id = ? AND runtime_generation = ? "
-                        + "AND (bound_session_id IS NULL OR bound_session_id = ?)",
-                sessionId, at, workspaceId, sandboxId, runtimeGeneration, sessionId) > 0;
-    }
-
-    @Override
     public boolean clearSessionIfBound(String workspaceId, String sessionId, ZonedDateTime at) {
         return database.execute("UPDATE " + TABLE + " SET bound_session_id = NULL, updated_at = ? "
                 + "WHERE workspace_id = ? AND bound_session_id = ?", at, workspaceId, sessionId) > 0;
+    }
+
+    @Override
+    public boolean rebindSession(String workspaceId, String sandboxId, long runtimeGeneration, String sessionId, ZonedDateTime at) {
+        return database.execute("UPDATE " + TABLE + " SET bound_session_id = ?, bound_at = ?, updated_at = ? "
+                        + "WHERE workspace_id = ? AND sandbox_id = ? AND runtime_generation = ?",
+                sessionId, at, at, workspaceId, sandboxId, runtimeGeneration) > 0;
     }
 
     @Override

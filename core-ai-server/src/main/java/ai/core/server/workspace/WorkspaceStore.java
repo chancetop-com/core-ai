@@ -39,6 +39,9 @@ public interface WorkspaceStore {
     /** @return false when the row is not deleted (or missing); a name conflict throws */
     boolean restore(String id);
 
+    /** removes a soft-deleted row for good; @return false when the row was restored or already purged */
+    boolean purge(String id);
+
     /** clears the previous default of the same (owner, agent) and marks this row default */
     void makeDefault(String ownerUserId, String agentId, String id);
 }

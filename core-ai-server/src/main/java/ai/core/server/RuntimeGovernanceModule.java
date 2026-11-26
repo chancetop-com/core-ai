@@ -52,6 +52,10 @@ public class RuntimeGovernanceModule extends Module {
         var turnStates = bean(TurnStateRegistry.class);
         bean(SandboxService.class).sessionBusy = sessionId ->
                 turnStates.liveness(sessionId) != TurnStateRegistry.TurnLiveness.NOT_RUNNING;
+        // the workspace lease and the sleeper read the same global turn state: a lease whose session is
+        // no longer running a turn is stealable, and an idle runtime is never slept mid-turn
+        bean(ai.core.server.workspace.WorkspaceService.class).sessionBusy = sessionId ->
+                turnStates.liveness(sessionId) != TurnStateRegistry.TurnLiveness.NOT_RUNNING;
         // run admission reads the same limits; assigned after AgentRunnerModule is bound
         bean(AgentRunner.class).admission.limitsSupplier = limitsProvider::get;
         // session budgets are read live by the session layer itself (queue cap) and by the turn

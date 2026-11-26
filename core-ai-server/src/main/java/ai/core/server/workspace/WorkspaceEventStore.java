@@ -9,4 +9,6 @@ public interface WorkspaceEventStore {
     void append(WorkspaceEventRecord event);
 
     List<WorkspaceEventRecord> list(String workspaceId, int limit);
+
+    int deleteByWorkspace(String workspaceId);
 }

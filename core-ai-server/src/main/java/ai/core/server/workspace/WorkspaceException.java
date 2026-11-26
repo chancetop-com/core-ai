@@ -19,6 +19,7 @@ public class WorkspaceException extends RuntimeException implements ErrorCode {
     public static final String NAME_CONFLICT = "WORKSPACE_NAME_CONFLICT";
     public static final String QUOTA_EXCEEDED = "WORKSPACE_QUOTA_EXCEEDED";
     public static final String BUSY = "WORKSPACE_BUSY";
+    public static final String REPLACED = "WORKSPACE_REPLACED";
     public static final String WAKING = "WORKSPACE_WAKING";
     public static final String WAKE_FAILED = "WORKSPACE_WAKE_FAILED";
     public static final String TASK_LOST = "WORKSPACE_TASK_LOST";

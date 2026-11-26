@@ -169,6 +169,11 @@ public class PgWorkspaceStore implements WorkspaceStore {
     }
 
     @Override
+    public boolean purge(String id) {
+        return database.execute("DELETE FROM " + TABLE + " WHERE id = ? AND deleted_at IS NOT NULL", id) > 0;
+    }
+
+    @Override
     public void makeDefault(String ownerUserId, String agentId, String id) {
         try (var transaction = database.beginTransaction()) {
             database.execute("UPDATE " + TABLE + " SET is_default = FALSE, updated_at = now() "

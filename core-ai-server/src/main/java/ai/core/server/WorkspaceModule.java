@@ -14,12 +14,16 @@ import ai.core.server.workspace.PgWorkspaceBindingRow;
 import ai.core.server.workspace.PgWorkspaceBindingStore;
 import ai.core.server.workspace.PgWorkspaceEventRow;
 import ai.core.server.workspace.PgWorkspaceEventStore;
+import ai.core.server.workspace.PgWorkspaceJobLeaseStore;
+import ai.core.server.workspace.PgWorkspaceLeaseRow;
+import ai.core.server.workspace.PgWorkspaceLeaseStore;
 import ai.core.server.workspace.PgWorkspaceRow;
 import ai.core.server.workspace.PgWorkspaceStore;
 import ai.core.server.workspace.PgWorkspaceVolumeRow;
 import ai.core.server.workspace.PgWorkspaceVolumeStore;
 import ai.core.server.workspace.WorkspaceConfig;
 import ai.core.server.workspace.WorkspaceDefaults;
+import ai.core.server.workspace.WorkspaceLifecycleJob;
 import ai.core.server.workspace.WorkspaceRuntimeManager;
 import ai.core.server.workspace.WorkspaceService;
 import ai.core.server.workspace.WorkspaceSessionBinder;
@@ -30,6 +34,7 @@ import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Duration;
 import java.util.concurrent.Executors;
 
 /**
@@ -54,10 +59,11 @@ public class WorkspaceModule extends Module {
             db().view(PgWorkspaceVolumeRow.class);
             db().view(PgWorkspaceBindingRow.class);
             db().view(PgWorkspaceEventRow.class);
+            db().view(PgWorkspaceLeaseRow.class);
             stores = new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
-                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()));
+                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()), bind(new PgWorkspaceLeaseStore()));
         } else {
-            stores = new WorkspaceStores(null, null, null, null);
+            stores = new WorkspaceStores(null, null, null, null, null);
         }
 
         KubernetesClient kubernetesClient = null;
@@ -85,6 +91,10 @@ public class WorkspaceModule extends Module {
         bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
         sandboxService.workspaceSandboxFactory(bean(WorkspaceSandboxFactory.class));
         api().service(WorkspaceWebService.class, bind(WorkspaceWebServiceImpl.class));
+        if (config.enabled) {
+            bind(PgWorkspaceJobLeaseStore.class);
+            schedule().fixedRate("workspace-lifecycle", bind(WorkspaceLifecycleJob.class), Duration.ofMinutes(1));
+        }
         LOGGER.info("workspace module loaded, enabled={}, provider={}, runtimeAvailable={}",
                 config.enabled, config.provider, runtimes.available());
     }
@@ -102,6 +112,10 @@ public class WorkspaceModule extends Module {
         config.maxRunningPerUser = intProperty("sys.workspace.maxRunningPerUser", WorkspaceDefaults.MAX_RUNNING_PER_USER);
         config.idleSleepMinutes = intProperty("sys.workspace.idleSleepMinutes", WorkspaceDefaults.IDLE_SLEEP_MINUTES);
         config.wakeTimeoutSeconds = intProperty("sys.workspace.wakeTimeoutSeconds", WorkspaceDefaults.WAKE_TIMEOUT_SECONDS);
+        config.leaseTtlSeconds = intProperty("sys.workspace.leaseTtlSeconds", WorkspaceDefaults.LEASE_TTL_SECONDS);
+        config.leaseWaitSeconds = intProperty("sys.workspace.leaseWaitSeconds", WorkspaceDefaults.LEASE_WAIT_SECONDS);
+        config.minRuntimeSeconds = intProperty("sys.workspace.minRuntimeSeconds", WorkspaceDefaults.MIN_RUNTIME_SECONDS);
+        config.purgeAfterDays = intProperty("sys.workspace.purgeAfterDays", WorkspaceDefaults.PURGE_AFTER_DAYS);
         return config;
     }
 

@@ -38,4 +38,9 @@ public class PgWorkspaceEventStore implements WorkspaceEventStore {
                         + "FROM " + TABLE + " WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?",
                 PgWorkspaceEventRow.class, workspaceId, limit).stream().map(PgWorkspaceEventStore::toEvent).toList();
     }
+
+    @Override
+    public int deleteByWorkspace(String workspaceId) {
+        return database.execute("DELETE FROM " + TABLE + " WHERE workspace_id = ?", workspaceId);
+    }
 }

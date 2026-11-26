@@ -1,5 +1,10 @@
 package ai.core.server.workspace;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+
 /**
  * Volume lifecycle of a workspace: make the active generation usable, replace it on reset, and keep the
  * workspace row's volume cache in sync. PVCs are owned here, never by a Sandbox.
@@ -7,6 +12,8 @@ package ai.core.server.workspace;
  * @author stephen
  */
 class WorkspaceVolumeManager {
+    private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceVolumeManager.class);
+
     private final WorkspaceVolumeStore volumes;
     private final WorkspaceStore workspaces;
     private final WorkspaceProvisioner provisioner;
@@ -45,7 +52,9 @@ class WorkspaceVolumeManager {
         }
     }
 
-    /** Replaces the durable environment; the caller has already stopped the runtime. */
+    /**
+     * Replaces the durable environment; the caller has already stopped the runtime.
+     */
     long reset(WorkspaceRecord workspace) {
         var id = workspace.id;
         var oldGeneration = workspace.activeVolumeGeneration;
@@ -79,6 +88,42 @@ class WorkspaceVolumeManager {
             volumes.updateStatus(id, generation, WorkspaceVolumeStatus.ERROR);
             workspaces.updateVolumeState(id, WorkspaceVolumeStatus.ERROR, generation, e.errorCode, e.getMessage());
             throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
+        }
+    }
+
+    WorkspaceVolumeRecord active(String workspaceId) {
+        return volumes.active(workspaceId).orElse(null);
+    }
+
+    List<WorkspaceVolumeRecord> list(String workspaceId) {
+        return volumes.listByWorkspace(workspaceId);
+    }
+
+    List<WorkspaceVolumeRecord> listByStatus(WorkspaceVolumeStatus status) {
+        return volumes.listByStatus(status);
+    }
+
+    void markDeleting(WorkspaceVolumeRecord volume) {
+        volumes.markDeleted(volume.workspaceId, volume.volumeGeneration, WorkspaceVolumeStatus.DELETING);
+        volume.status = WorkspaceVolumeStatus.DELETING;
+    }
+
+    void restoreStatus(WorkspaceVolumeRecord volume, WorkspaceVolumeStatus status) {
+        volumes.updateStatus(volume.workspaceId, volume.volumeGeneration, status);
+        volume.status = status;
+    }
+
+    /** @return true when the PVC is gone and the row is marked DELETED; false leaves it for the next sweep */
+    boolean deleteNow(WorkspaceVolumeRecord volume) {
+        try {
+            provisioner.deleteVolume(volume);
+            volumes.markDeleted(volume.workspaceId, volume.volumeGeneration, WorkspaceVolumeStatus.DELETED);
+            volume.status = WorkspaceVolumeStatus.DELETED;
+            return true;
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to delete workspace volume, retry next sweep, workspace={}, pvc={}",
+                    volume.workspaceId, volume.pvcName, e);
+            return false;
         }
     }
 }

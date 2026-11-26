@@ -1,6 +1,5 @@
 package ai.core.server.workspace;
 
-import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,12 +9,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 
 /**
  * Workspace lifecycle: the durable volume is provisioned once and survives every runtime, while
  * the runtime (Sandbox CR) is created on wake and deleted on sleep. Volume faults mark
  * {@code volume_status=ERROR} and stop there; runtime faults mark {@code runtime_status=ERROR} and
  * keep the already-provisioned volume, so a scheduling failure never looks like data loss.
+ * <p>
+ * A turn owns the workspace through a persisted lease, so two sessions never write the same volume
+ * at once. The lease of an active turn is renewed while that turn runs; a lease whose holder is no
+ * longer running a turn is stealable, and a lease whose pod died expires by TTL.
  *
  * @author stephen
  */
@@ -24,21 +29,30 @@ public class WorkspaceService {
 
     private final WorkspaceStore workspaces;
     private final WorkspaceBindingStore bindings;
-    private final WorkspaceEventStore events;
     private final WorkspaceProvisioner provisioner;
     private final WorkspaceVolumeManager volumeManager;
     private final WorkspaceRuntimeManager runtimes;
+    private final WorkspaceRuntimeLifecycle runtimeLifecycle;
+    private final WorkspaceLeaseManager leases;
+    private final WorkspaceAudit audit;
+    private final WorkspaceSweeper sweeper;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
+    /** Answers "is this session executing a turn"; assigned by RuntimeGovernanceModule. */
+    public volatile Predicate<String> sessionBusy;
 
     public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
         this.workspaces = stores.workspaces();
         this.bindings = stores.bindings();
-        this.events = stores.events();
         this.provisioner = provisioner;
         this.volumeManager = new WorkspaceVolumeManager(stores.volumes(), stores.workspaces(), provisioner);
         this.runtimes = runtimes;
+        this.runtimeLifecycle = new WorkspaceRuntimeLifecycle(stores.workspaces(), stores.bindings(), runtimes);
+        this.leases = new WorkspaceLeaseManager(stores.leases(), config);
+        this.audit = new WorkspaceAudit(stores.events());
+        this.sweeper = new WorkspaceSweeper(new WorkspaceSweeper.Deps(stores.workspaces(), stores.bindings(),
+                leases, volumeManager, runtimeLifecycle, audit));
         this.config = config;
         this.wakeExecutor = wakeExecutor;
     }
@@ -54,7 +68,6 @@ public class WorkspaceService {
             throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED, "workspace size must be between 1 and " + config.maxSizeGb + " GB");
         }
         WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
-
         var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, agentId);
         workspace.sizeGb = size;
         workspace.storageClass = config.storageClass;
@@ -68,7 +81,7 @@ public class WorkspaceService {
         if (!workspaces.insertIfAbsent(workspace)) {
             throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + workspaceName);
         }
-        appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "profile", workspace.profile.id));
+        audit.append(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "profile", workspace.profile.id));
         try {
             volumeManager.ensure(workspace);
         } catch (WorkspaceProvisioningException e) {
@@ -103,7 +116,6 @@ public class WorkspaceService {
         }
         var existing = workspaces.findDefault(ownerUserId, agentId);
         if (existing.isPresent() && !existing.get().deleted()) return existing.get();
-
         var size = config.defaultSizeGb;
         WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
         for (var name : defaultNames(agentId)) {
@@ -114,7 +126,7 @@ public class WorkspaceService {
             workspace.image = config.image;
             workspace.idleSleepMinutes = config.idleSleepMinutes;
             if (workspaces.insertIfAbsent(workspace)) {
-                appendEvent(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", Boolean.TRUE));
+                audit.append(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", Boolean.TRUE));
                 return load(ownerUserId, workspace.id);
             }
             // another request may have created the default first, or the name belongs to a detached workspace
@@ -144,7 +156,7 @@ public class WorkspaceService {
         }
         workspace.updatedAt = ZonedDateTime.now();
         workspaces.update(workspace);
-        appendEvent(id, "updated", ownerUserId, Map.of());
+        audit.append(id, "updated", ownerUserId, Map.of());
         return load(ownerUserId, id);
     }
 
@@ -208,11 +220,10 @@ public class WorkspaceService {
         } catch (WorkspaceProvisioningException e) {
             throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
         }
-
         var existingBinding = bindings.get(id);
         if (workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && existingBinding.isPresent()) {
             // a READY row is only a cache: the controller may already have shut the runtime down
-            if (runtimeExists(existingBinding.get().sandboxId)) {
+            if (runtimeLifecycle.exists(existingBinding.get().sandboxId)) {
                 workspaces.touchLastUsed(id, ZonedDateTime.now());
                 return load(ownerUserId, id);
             }
@@ -221,7 +232,7 @@ public class WorkspaceService {
         }
         if (existingBinding.isPresent()) {
             // stale pointer (server crash, controller eviction): the CR is replaceable, the PVC is not
-            deleteRuntimeQuietly(existingBinding.get().sandboxId);
+            runtimeLifecycle.deleteQuietly(existingBinding.get().sandboxId);
             bindings.delete(id);
         }
         WorkspaceQuotas.checkRunning(config, workspaces.listByOwner(ownerUserId), id);
@@ -235,34 +246,95 @@ public class WorkspaceService {
                 ? workspace.runtimeGeneration
                 : workspace.runtimeGeneration + 1;
         workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.PROVISIONING, runtimeGeneration, null, null);
-
         var runtime = runtimeSpec(workspace, ownerUserId, volume, runtimeGeneration);
         var sandboxName = runtimes.name(runtime);
         try {
             runtimes.create(runtime);
             runtimes.waitReady(sandboxName, config.wakeTimeoutSeconds);
         } catch (RuntimeException e) {
-            deleteRuntimeQuietly(sandboxName);
+            runtimeLifecycle.deleteQuietly(sandboxName);
             workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.ERROR, runtimeGeneration,
                     WorkspaceException.WAKE_FAILED, e.getMessage());
             throw new WorkspaceException(WorkspaceException.WAKE_FAILED, "workspace runtime failed to start: " + e.getMessage(), e);
         }
-
         var now = ZonedDateTime.now();
         var binding = WorkspaceBindingRecord.create(id, sandboxName, provisioner.provider(), runtimeGeneration);
         binding.runtimeStartedAt = now;
         bindings.upsert(binding);
         workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.READY, runtimeGeneration, null, null);
         workspaces.touchLastUsed(id, now);
-        appendEvent(id, "woken", ownerUserId, Map.of("sandboxId", sandboxName, "runtimeGeneration", runtimeGeneration));
+        audit.append(id, "woken", ownerUserId, Map.of("sandboxId", sandboxName, "runtimeGeneration", runtimeGeneration));
         return load(ownerUserId, id);
+    }
+
+    /** Start of a turn's tool execution: wake/attach, then take the workspace lease (waits, then WORKSPACE_BUSY). */
+    public WorkspaceTurn beginTurn(String ownerUserId, String id, String sessionId, boolean verifyRuntime) {
+        requireEnabled();
+        ensureRuntimeSupported();
+        var deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(Math.max(1, config.leaseWaitSeconds));
+        while (true) {
+            var binding = readyBinding(ownerUserId, id, verifyRuntime);
+            var lease = binding != null ? leases.acquireTurn(id, sessionId, binding.runtimeGeneration, sessionBusy) : null;
+            if (binding != null && lease != null) {
+                var rebound = !sessionId.equals(binding.boundSessionId);
+                if (rebound) {
+                    bindings.rebindSession(id, binding.sandboxId, binding.runtimeGeneration, sessionId, ZonedDateTime.now());
+                }
+                workspaces.touchLastUsed(id, ZonedDateTime.now());
+                return new WorkspaceTurn(binding, lease.leaseToken, rebound);
+            }
+            if (System.nanoTime() >= deadline) throw busy();
+            WorkspaceLeaseManager.sleepUntilRetry();
+        }
+    }
+
+    private WorkspaceBindingRecord readyBinding(String ownerUserId, String id, boolean verifyRuntime) {
+        var workspace = loadActive(ownerUserId, id);
+        var binding = bindings.get(id).orElse(null);
+        var usable = workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null
+                && (!verifyRuntime || runtimeLifecycle.exists(binding.sandboxId));
+        if (usable) return binding;
+        wake(ownerUserId, id);
+        var refreshed = loadActive(ownerUserId, id);
+        if (refreshed.runtimeStatus != WorkspaceRuntimeStatus.READY) return null;
+        return bindings.get(id).orElse(null);
+    }
+
+    private WorkspaceException busy() {
+        return new WorkspaceException(WorkspaceException.BUSY, "workspace is used by another session");
+    }
+
+    /** Runtime access for operations that are not an agent turn (MCP start, status): no lease. */
+    public WorkspaceBindingRecord ensureRuntime(String ownerUserId, String id) {
+        requireEnabled();
+        ensureRuntimeSupported();
+        var workspace = loadActive(ownerUserId, id);
+        var binding = bindings.get(id).orElse(null);
+        if (workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null
+                && runtimeLifecycle.exists(binding.sandboxId)) {
+            workspaces.touchLastUsed(id, ZonedDateTime.now());
+            return binding;
+        }
+        wake(ownerUserId, id);
+        return bindings.get(id)
+                .orElseThrow(() -> new WorkspaceException(WorkspaceException.WAKING, "workspace runtime is not ready"));
+    }
+
+    public WorkspaceLeaseHeartbeat heartbeat(String workspaceId, String leaseToken) {
+        return leases.heartbeat(workspaceId, leaseToken, sessionBusy);
+    }
+
+    public void releaseLease(String workspaceId, String leaseToken) {
+        leases.release(workspaceId, leaseToken);
     }
 
     public void sleep(String ownerUserId, String id) {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
-        stopRuntime(workspace);
-        appendEvent(id, "slept", ownerUserId, Map.of());
+        refuseWhenTurnRunning(workspace);
+        leases.releaseByWorkspace(id);
+        runtimeLifecycle.stop(workspace);
+        audit.append(id, "slept", ownerUserId, Map.of());
     }
 
     /**
@@ -276,20 +348,24 @@ public class WorkspaceService {
         if (confirmName == null || !confirmName.equals(workspace.name)) {
             throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "reset requires confirm_name to match the workspace name");
         }
-        stopRuntime(workspace);
+        refuseWhenTurnRunning(workspace);
+        leases.releaseByWorkspace(id);
+        runtimeLifecycle.stop(workspace);
         var generation = volumeManager.reset(workspace);
-        appendEvent(id, "reset", ownerUserId, Map.of("volumeGeneration", generation));
+        audit.append(id, "reset", ownerUserId, Map.of("volumeGeneration", generation));
         return load(ownerUserId, id);
     }
 
     public void delete(String ownerUserId, String id) {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
-        stopRuntime(workspace);
+        refuseWhenTurnRunning(workspace);
+        leases.releaseByWorkspace(id);
+        runtimeLifecycle.stop(workspace);
         if (!workspaces.softDelete(id, ZonedDateTime.now())) {
             throw new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace not found: " + id);
         }
-        appendEvent(id, "deleted", ownerUserId, Map.of());
+        audit.append(id, "deleted", ownerUserId, Map.of());
     }
 
     public WorkspaceRecord restore(String ownerUserId, String id) {
@@ -298,6 +374,9 @@ public class WorkspaceService {
                 .filter(w -> w.ownerUserId.equals(ownerUserId))
                 .orElseThrow(() -> new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace not found: " + id));
         if (!workspace.deleted()) return workspace;
+        if (volumeManager.active(id) == null) {
+            throw new WorkspaceException(WorkspaceException.DELETED, "workspace volume has been purged");
+        }
         try {
             if (!workspaces.restore(id)) {
                 throw new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace not found: " + id);
@@ -307,29 +386,24 @@ public class WorkspaceService {
         } catch (RuntimeException e) {
             throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name is already in use", e);
         }
-        appendEvent(id, "restored", ownerUserId, Map.of());
+        audit.append(id, "restored", ownerUserId, Map.of());
         return load(ownerUserId, id);
     }
 
-    /** single-session binding of a READY runtime; a different active session gets WORKSPACE_BUSY */
-    public WorkspaceBindingRecord bind(String ownerUserId, String id, String sessionId) {
-        requireEnabled();
-        var workspace = loadActive(ownerUserId, id);
-        if (workspace.runtimeStatus != WorkspaceRuntimeStatus.READY) {
-            throw new WorkspaceException(WorkspaceException.WAKING, "workspace runtime is not ready");
+    private void refuseWhenTurnRunning(WorkspaceRecord workspace) {
+        var binding = bindings.get(workspace.id).orElse(null);
+        if (binding != null && WorkspaceLeaseManager.active(sessionBusy, binding.boundSessionId)) {
+            throw new WorkspaceException(WorkspaceException.BUSY, "workspace is executing a turn");
         }
-        var binding = bindings.get(id)
-                .orElseThrow(() -> new WorkspaceException(WorkspaceException.WAKING, "workspace runtime is not ready"));
-        if (!bindings.bindSession(id, binding.sandboxId, binding.runtimeGeneration, sessionId, ZonedDateTime.now())) {
-            throw new WorkspaceException(WorkspaceException.BUSY, "workspace is used by another session");
-        }
-        workspaces.touchLastUsed(id, ZonedDateTime.now());
-        appendEvent(id, "bound", sessionId, Map.of("runtimeGeneration", binding.runtimeGeneration));
-        return bindings.get(id).orElse(binding);
     }
 
     public void detach(String id, String sessionId) {
         bindings.clearSessionIfBound(id, sessionId, ZonedDateTime.now());
+    }
+
+    WorkspaceSweeper.SweepResult runLifecycleSweep() {
+        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0);
+        return sweeper.run(config, sessionBusy);
     }
 
     private WorkspaceRuntimeSpec runtimeSpec(WorkspaceRecord workspace, String ownerUserId, WorkspaceVolumeRecord volume, long runtimeGeneration) {
@@ -342,37 +416,6 @@ public class WorkspaceService {
         runtime.profile = workspace.profile;
         runtime.maxRuntimeSeconds = WorkspaceDefaults.MAX_RUNTIME_SECONDS;
         return runtime;
-    }
-
-    private void stopRuntime(WorkspaceRecord workspace) {
-        var binding = bindings.get(workspace.id).orElse(null);
-        if (binding != null) {
-            deleteRuntimeQuietly(binding.sandboxId);
-            bindings.delete(workspace.id);
-        }
-        if (workspace.runtimeStatus != WorkspaceRuntimeStatus.NONE) {
-            workspaces.updateRuntimeState(workspace.id, WorkspaceRuntimeStatus.NONE, workspace.runtimeGeneration, null, null);
-        }
-    }
-
-    private boolean runtimeExists(String sandboxId) {
-        if (sandboxId == null || sandboxId.isBlank()) return false;
-        try {
-            return runtimes.get(sandboxId).isPresent();
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to read workspace runtime {}, treating it as gone", sandboxId, e);
-            return false;
-        }
-    }
-
-    private void deleteRuntimeQuietly(String sandboxName) {
-        if (sandboxName == null || sandboxName.isBlank()) return;
-        try {
-            runtimes.delete(sandboxName);
-        } catch (RuntimeException e) {
-            // the controller's own shutdown policy will remove it; the volume was never owned by the CR
-            LOGGER.warn("failed to delete workspace sandbox {}, leaving it to the controller", sandboxName, e);
-        }
     }
 
     private WorkspaceRecord load(String ownerUserId, String id) {
@@ -401,12 +444,7 @@ public class WorkspaceService {
         }
     }
 
-    private void appendEvent(String workspaceId, String type, String actor, Map<String, Object> payload) {
-        try {
-            events.append(WorkspaceEventRecord.of(workspaceId, type, actor, JSON.toJSON(payload)));
-        } catch (RuntimeException e) {
-            // audit is best-effort: a failed event insert must not fail the lifecycle operation
-            LOGGER.warn("failed to append workspace event, workspace={}, type={}", workspaceId, type, e);
-        }
+    /** One turn's claim on the workspace: the runtime it may write to and the lease that proves it. */
+    public record WorkspaceTurn(WorkspaceBindingRecord binding, String leaseToken, boolean rebound) {
     }
 }
