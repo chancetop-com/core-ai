@@ -9,6 +9,8 @@ import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.wait.RuntimeWaitTool;
 import ai.core.tool.wait.TaskAwaitCoordinator;
 import ai.core.tool.wait.WaitRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -18,6 +20,7 @@ import java.util.Map;
  */
 public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
     public static final String TOOL_NAME = "async_task_output";
+    private static final Logger LOGGER = LoggerFactory.getLogger(AsyncTaskOutputTool.class);
 
     private static final String TOOL_DESC = """
             Query the status and output of async tasks: long-running tool calls that returned a task id
@@ -94,14 +97,26 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
         }
         var manager = context.getAsyncTaskManager();
         var background = context.getTaskManager();
-        // Background tasks and executor tasks have their own wait registries; managed tasks (renders and
-        // sandbox async work) are poll-only, so wait on them by polling the host store here.
-        if ((background == null || !background.hasTask(taskId)) && manager != null && manager.hasTaskData(taskId)) {
+        // Managed tasks (renders and sandbox async work) live in the poll-only store; wait on them here
+        // before the coordinator, whose wait registry cannot see them.
+        if (manager != null && manager.hasTaskData(taskId)) {
+            LOGGER.info("async wait routed to the managed task store, taskId={}, sessionId={}",
+                    taskId, context.getSessionId());
             return waitManagedTask(manager, taskId, timeoutMs, context).withToolName(TOOL_NAME).withManagedTask();
         }
-        return TaskAwaitCoordinator.getInstance()
-                .await(WaitRequest.of(taskId, timeoutMs), null, context)
-                .withToolName(TOOL_NAME);
+        if (background != null && background.hasTask(taskId)) {
+            return TaskAwaitCoordinator.getInstance()
+                    .await(WaitRequest.of(taskId, timeoutMs), null, context)
+                    .withToolName(TOOL_NAME);
+        }
+        LOGGER.info("async wait found no task record, taskId={}, sessionId={}, manager={}, background={}",
+                taskId, context.getSessionId(), manager != null, background != null);
+        if (manager == null) {
+            return ToolCallResult.failed("WAIT_UNSUPPORTED: no async task store is attached to this session; "
+                    + "use action='poll'");
+        }
+        return ToolCallResult.failed("WAIT_UNAVAILABLE: task " + taskId
+                + " is not tracked by this session (it may have been pruned)");
     }
 
     private ToolCallResult waitManagedTask(ToolCallAsyncTaskManager manager, String taskId, long timeoutMs,
