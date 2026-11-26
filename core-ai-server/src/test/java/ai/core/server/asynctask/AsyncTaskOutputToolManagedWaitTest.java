@@ -47,6 +47,23 @@ class AsyncTaskOutputToolManagedWaitTest {
     }
 
     @Test
+    void waitRoutesByTaskRecordEvenWhenTheToolCannotBeResolved() {
+        var manager = new ToolCallAsyncTaskManager(new MapPersistence());
+        var tool = mock(ToolCall.class);
+        when(tool.getName()).thenReturn("run_bash_command");
+        // deliberately not registered: loadTask() would be empty, the task record is what routing needs
+        manager.storeTask(sandboxTask(tool), "s1");
+        manager.sandboxTaskPoller = (sessionId, sandboxTaskId) -> ToolCallResult.completed("OK");
+        var context = ExecutionContext.builder().asyncTaskManager(manager).build();
+
+        var result = AsyncTaskOutputTool.builder().build()
+                .execute("{\"action\":\"wait\",\"task_id\":\"st-1\",\"timeout_ms\":3000}", context);
+
+        assertTrue(result.isCompleted());
+        assertEquals("OK", result.getResult());
+    }
+
+    @Test
     void waitTimesOutWithoutKillingTheTask() {
         var manager = new ToolCallAsyncTaskManager(new MapPersistence());
         var tool = mock(ToolCall.class);

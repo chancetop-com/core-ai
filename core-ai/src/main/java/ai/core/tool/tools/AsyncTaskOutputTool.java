@@ -96,7 +96,7 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
         var background = context.getTaskManager();
         // Background tasks and executor tasks have their own wait registries; managed tasks (renders and
         // sandbox async work) are poll-only, so wait on them by polling the host store here.
-        if ((background == null || !background.hasTask(taskId)) && manager != null && manager.loadTask(taskId).isPresent()) {
+        if ((background == null || !background.hasTask(taskId)) && manager != null && manager.hasTaskData(taskId)) {
             return waitManagedTask(manager, taskId, timeoutMs, context).withToolName(TOOL_NAME).withManagedTask();
         }
         return TaskAwaitCoordinator.getInstance()
@@ -155,7 +155,7 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
             return result;
         }
         var manager = context != null ? context.getAsyncTaskManager() : null;
-        if (manager != null && manager.loadTask(taskId).isPresent()) {
+        if (manager != null && manager.hasTaskData(taskId)) {
             var result = manager.pollTask(taskId);
             if (manager.isTaskTerminal(taskId)) manager.markNotificationDelivered(taskId);
             return result.withManagedTask();
@@ -174,7 +174,7 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
         var taskManager = context != null ? context.getTaskManager() : null;
         if (taskManager != null && taskManager.hasTask(taskId)) return taskManager.cancelTask(taskId);
         var manager = context != null ? context.getAsyncTaskManager() : null;
-        if (manager != null && manager.loadTask(taskId).isPresent()) return manager.cancelTask(taskId);
+        if (manager != null && manager.hasTaskData(taskId)) return manager.cancelTask(taskId);
         return executor.cancel(taskId);
     }
 

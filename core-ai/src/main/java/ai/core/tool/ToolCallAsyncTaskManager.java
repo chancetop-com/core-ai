@@ -79,6 +79,11 @@ public class ToolCallAsyncTaskManager {
         save(data);
     }
 
+    /** Task record presence without resolving the (possibly unavailable) tool, used by poll/wait routing. */
+    public boolean hasTaskData(String taskId) {
+        return loadData(taskId).isPresent();
+    }
+
     public Optional<ToolCallAsyncTask> loadTask(String taskId) {
         return loadData(taskId).flatMap(data -> {
             var tool = resolveTool(data.toolName);
