@@ -3,7 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { PinOff, RefreshCw } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ReportDataView, ReportPinView } from '../../api/client';
-import ReportRenderer from './ReportRenderer';
+import ReportRenderer, { type ReportDisplay } from './ReportRenderer';
+
+function parseDisplay(value: string | null | undefined): ReportDisplay | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as ReportDisplay;
+  } catch {
+    return null;
+  }
+}
 
 export default function PinnedReportsSection() {
   const navigate = useNavigate();
@@ -122,7 +131,7 @@ export default function PinnedReportsSection() {
               {error ? (
                 <div className="text-xs py-4" style={{ color: '#dc2626' }}>{error}</div>
               ) : (
-                <ReportRenderer data={data} displayType={pin.display_type} height={180} />
+                <ReportRenderer data={data} displayType={pin.display_type} display={parseDisplay(pin.display_json)} height={180} />
               )}
             </div>
           );

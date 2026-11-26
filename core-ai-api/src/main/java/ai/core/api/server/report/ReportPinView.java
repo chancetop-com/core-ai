@@ -24,6 +24,9 @@ public class ReportPinView {
     @Property(name = "display_type")
     public String displayType;
 
+    @Property(name = "display_json")
+    public String displayJson;
+
     @Property(name = "dataset_id")
     public String datasetId;
 

@@ -14,6 +14,7 @@ public class ReportSummary {
     public String datasetName;
     public String displayType;
     public String firstDisplayType;
+    public String displayJson;
     public String pinId;
     public String pinWidth;
     public ZonedDateTime updatedAt;

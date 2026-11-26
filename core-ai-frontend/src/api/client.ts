@@ -3370,6 +3370,7 @@ export interface ReportPinView {
   width: string;
   title?: string | null;
   display_type?: string | null;
+  display_json?: string | null;
   dataset_id?: string | null;
   report_revision?: number | null;
   updated_at?: string | null;
