@@ -197,12 +197,12 @@ export default function Workspaces() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-                  <th className="py-2 pr-4 font-medium">Name</th>
-                  <th className="py-2 pr-4 font-medium">Agent</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Size</th>
-                  <th className="py-2 pr-4 font-medium">Idle sleep</th>
-                  <th className="py-2 pr-4 font-medium">Last used</th>
+                  <th className="py-2 pr-3 font-medium">Name</th>
+                  <th className="py-2 pr-3 font-medium">Agent</th>
+                  <th className="py-2 pr-3 font-medium">Status</th>
+                  <th className="py-2 pr-3 font-medium">Size</th>
+                  <th className="py-2 pr-3 font-medium">Idle</th>
+                  <th className="py-2 pr-3 font-medium">Used</th>
                   <th className="py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -212,7 +212,7 @@ export default function Workspaces() {
                   const busy = busyId === workspace.id;
                   return (
                     <tr key={workspace.id} className="border-t align-top" style={{ borderColor: 'var(--color-border)' }}>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-3">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{workspace.name}</span>
                           {workspace.is_default && (
@@ -226,10 +226,10 @@ export default function Workspaces() {
                           {workspace.mount_path} · generation {workspace.active_volume_generation ?? 0}
                         </div>
                       </td>
-                      <td className="py-3 pr-4 max-w-[16rem] truncate" title={workspace.agent_id ?? ''}>
+                      <td className="py-3 pr-3 max-w-[12rem] truncate" title={workspace.agent_id ?? ''}>
                         {workspace.agent_id || '—'}
                       </td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-3">
                         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                           style={{ background: TONE_STYLES[status.tone].bg, color: TONE_STYLES[status.tone].text }}>
                           {status.label}
@@ -241,7 +241,7 @@ export default function Workspaces() {
                         )}
                       </td>
                       <td className="py-3 pr-4 whitespace-nowrap">{workspace.size_gb} GB</td>
-                      <td className="py-3 pr-4">
+                      <td className="py-3 pr-3">
                         <select
                           value={workspace.idle_sleep_minutes}
                           disabled={busy}
@@ -261,7 +261,7 @@ export default function Workspaces() {
                         {relativeTime(workspace.last_used_at)}
                       </td>
                       <td className="py-3 text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1">
+                        <div className="inline-flex items-center gap-0.5">
                           {workspace.runtime_status === 'READY' ? (
                             <button
                               onClick={() => run(workspace, () => api.workspaces.sleep(workspace.id),
@@ -269,7 +269,7 @@ export default function Workspaces() {
                               disabled={busy}
                               title="Sleep runtime (volume stays)"
                               aria-label={`Sleep ${workspace.name}`}
-                              className="p-2 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
+                              className="p-1.5 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
                               style={{ background: 'var(--color-bg-tertiary)' }}>
                               <Moon size={15} />
                             </button>
@@ -280,7 +280,7 @@ export default function Workspaces() {
                               disabled={busy || workspace.runtime_status === 'PROVISIONING' || workspace.volume_status === 'PROVISIONING'}
                               title="Wake runtime"
                               aria-label={`Wake ${workspace.name}`}
-                              className="p-2 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
+                              className="p-1.5 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
                               style={{ background: 'var(--color-bg-tertiary)' }}>
                               <Play size={15} />
                             </button>
@@ -293,7 +293,7 @@ export default function Workspaces() {
                             disabled={busy}
                             title="Reset workspace (deletes all files)"
                             aria-label={`Reset ${workspace.name}`}
-                            className="p-2 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
+                            className="p-1.5 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
                             style={{ background: 'var(--color-bg-tertiary)' }}>
                             <RotateCcw size={15} />
                           </button>
@@ -305,7 +305,7 @@ export default function Workspaces() {
                             disabled={busy}
                             title="Delete workspace (soft delete, kept 7 days)"
                             aria-label={`Delete ${workspace.name}`}
-                            className="p-2 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
+                            className="p-1.5 rounded-lg cursor-pointer disabled:opacity-40 hover:opacity-80"
                             style={{ background: 'var(--color-bg-tertiary)', color: '#dc2626' }}>
                             <Trash2 size={15} />
                           </button>
