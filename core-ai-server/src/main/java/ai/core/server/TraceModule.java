@@ -24,6 +24,7 @@ import ai.core.server.trace.service.PgPromptTemplateStore;
 import ai.core.server.trace.service.PromptService;
 import ai.core.server.trace.service.PromptTemplateStore;
 import ai.core.server.trace.service.TraceAccessControl;
+import ai.core.server.trace.service.TraceBodyStore;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.server.trace.service.TraceService;
 import ai.core.server.trace.service.TraceVisibilityResolver;
@@ -31,6 +32,7 @@ import ai.core.server.trace.spi.LocalSpanProcessorRegistry;
 import ai.core.server.trace.web.ingest.IngestController;
 import ai.core.server.trace.web.otlp.OTLPController;
 import ai.core.server.trace.web.prompt.PromptWebServiceImpl;
+import ai.core.server.trace.web.TraceBodyController;
 import ai.core.server.trace.web.TracePayloadController;
 import ai.core.server.trace.web.trace.TraceWebServiceImpl;
 import core.framework.http.HTTPMethod;
@@ -54,12 +56,16 @@ public class TraceModule extends Module {
         var archivePrefix = resolveArchivePrefix();
         var configuredContainer = property("trace.archive.container").orElse(null);
         var payloadContainer = property("sys.trace.payload.container").orElse(null);
-        var payloadStore = bind(TracePayloadStore.class);
+        var payloadStorageContainer = payloadContainer == null || payloadContainer.isBlank() ? configuredContainer : payloadContainer;
         var tracePostgres = StoreMode.postgres(property("sys.trace.store.mode").orElse("auto"),
             property("sys.store.mode").orElse("mongo"), "sys.trace.store.mode");
+        var bodyStore = bind(TraceBodyStore.class);
+        bodyStore.configure(property("sys.trace.body.offload.enabled").orElse("auto"),
+            longProperty("sys.trace.body.inline.max.bytes", 16L * 1024),
+            payloadStorageContainer, archivePrefix, tracePostgres);
+        var payloadStore = bind(TracePayloadStore.class);
         payloadStore.configure(property("sys.trace.payload.storage").orElse("auto"),
-            payloadContainer == null || payloadContainer.isBlank() ? configuredContainer : payloadContainer,
-            archivePrefix, tracePostgres);
+            payloadStorageContainer, archivePrefix, tracePostgres);
         var backfillMode = property("sys.trace.payload.backfill.enabled").orElse("auto");
         var backfillEnabled = "true".equals(backfillMode) || "auto".equals(backfillMode) && tracePostgres;
         payloadStore.configureBackfill(backfillEnabled,
@@ -130,6 +136,8 @@ public class TraceModule extends Module {
         // On-demand image fetch for detail views whose payload exceeded the hydration budget.
         // core-ng path variables must be letters only, hence ":hash" rather than ":sha256".
         http().route(HTTPMethod.GET, "/api/traces/:traceId/payloads/:hash", bind(TracePayloadController.class));
+        // Full span body for detail views whose payload exceeded the hydration budget.
+        http().route(HTTPMethod.GET, "/api/traces/:traceId/spans/:spanId/body", bind(TraceBodyController.class));
     }
 
     /**

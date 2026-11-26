@@ -3,6 +3,7 @@ package ai.core.server.trace;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
+import ai.core.server.trace.service.TraceBodyStore;
 import ai.core.server.util.JsonSanitizer;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -288,6 +289,26 @@ public class PgTraceStore implements TraceStore {
                 batch.toArray());
         }
         return deleted;
+    }
+
+    @Override
+    public List<String> findBodyRefs(List<String> traceIds) {
+        if (traceIds == null || traceIds.isEmpty()) return List.of();
+        var result = new ArrayList<String>();
+        var pattern = "%" + TraceBodyStore.REF_KEY + "%";
+        for (int i = 0; i < traceIds.size(); i += DELETE_BATCH_SIZE) {
+            var batch = traceIds.subList(i, Math.min(i + DELETE_BATCH_SIZE, traceIds.size()));
+            var params = new ArrayList<Object>(batch);
+            params.add(pattern);
+            params.add(pattern);
+            var sql = "SELECT input, output FROM " + TABLE + " WHERE trace_id IN (" + placeholders(batch.size())
+                + ") AND (input LIKE ? OR output LIKE ?)";
+            for (var row : database.select(sql, PgTraceRow.class, params.toArray())) {
+                if (row.input != null) result.add(row.input);
+                if (row.output != null) result.add(row.output);
+            }
+        }
+        return result;
     }
 
     @Override

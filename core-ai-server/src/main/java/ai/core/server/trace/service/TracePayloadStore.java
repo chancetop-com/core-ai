@@ -141,6 +141,8 @@ public class TracePayloadStore {
     ObjectStorageServiceResolver objectStorageResolver;
     @Inject
     TracePayloadRepository payloadRepository;
+    @Inject
+    TraceBodyStore bodyStore;
 
     private final Map<String, Boolean> uploadedObjects = new LinkedHashMap<>();
     private String storageMode = "db";
@@ -248,6 +250,8 @@ public class TracePayloadStore {
     public void hydrate(Trace trace, boolean strict) {
         if (trace == null) return;
         var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
+        trace.input = hydrateBody(trace.input, strict, maxBytes);
+        trace.output = hydrateBody(trace.output, strict, maxBytes);
         trace.input = hydrate(trace.traceId, trace.input, strict, maxBytes);
         trace.output = hydrate(trace.traceId, trace.output, strict, maxBytes);
     }
@@ -255,6 +259,8 @@ public class TracePayloadStore {
     public void hydrate(Span span, boolean strict) {
         if (span == null) return;
         var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
+        span.input = hydrateBody(span.input, strict, maxBytes);
+        span.output = hydrateBody(span.output, strict, maxBytes);
         span.input = hydrate(span.traceId, span.input, strict, maxBytes);
         span.output = hydrate(span.traceId, span.output, strict, maxBytes);
     }
@@ -262,6 +268,10 @@ public class TracePayloadStore {
     public void hydrate(List<Span> spans, boolean strict) {
         if (spans == null || spans.isEmpty()) return;
         var maxBytes = strict ? Long.MAX_VALUE : MAX_HYDRATE_BYTES;
+        for (var span : spans) {
+            span.input = hydrateBody(span.input, strict, maxBytes);
+            span.output = hydrateBody(span.output, strict, maxBytes);
+        }
 
         Map<String, Set<String>> refsByTrace = new HashMap<>(mapCapacity(spans.size()));
         for (var span : spans) {
@@ -288,6 +298,19 @@ public class TracePayloadStore {
         if (hashes.isEmpty()) return payload;
         var originals = load(traceId, hashes, strict);
         return replaceRefs(payload, originals, strict, traceId, maxBytes);
+    }
+
+    private String hydrateBody(String body, boolean strict, long maxBytes) {
+        return bodyStore == null ? body : bodyStore.hydrate(body, strict, maxBytes);
+    }
+
+    /** Full span/trace body from the object store, for the detail endpoint's lazy fetch. */
+    public String body(String value) {
+        return bodyStore == null ? value : bodyStore.body(value);
+    }
+
+    public void deleteBodyObjects(List<String> references) {
+        if (bodyStore != null) bodyStore.deleteObjects(references);
     }
 
     /**

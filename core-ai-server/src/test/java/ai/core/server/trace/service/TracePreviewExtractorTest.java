@@ -90,6 +90,15 @@ class TracePreviewExtractorTest {
     }
 
     @Test
+    void extractPreviewFromBodyReference() {
+        var reference = "{\"$coreai_blob_ref\":\"coreai-blob://dev/trace-bodies/2026-11/t/s.in.json.gz\","
+            + "\"encoding\":\"gzip\",\"rawBytes\":65536,\"compressedBytes\":2048,\"sha256\":\"abc\","
+            + "\"preview\":\"last user question inside the oversized body\"}";
+
+        assertThat(TracePreviewExtractor.extract(reference)).isEqualTo("last user question inside the oversized body");
+    }
+
+    @Test
     void returnNullForBlankInput() {
         assertThat(TracePreviewExtractor.extract(null)).isNull();
         assertThat(TracePreviewExtractor.extract("  ")).isNull();

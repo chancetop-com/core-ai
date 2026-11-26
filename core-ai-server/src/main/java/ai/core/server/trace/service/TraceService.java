@@ -262,6 +262,15 @@ public class TraceService {
         return payloadStore == null ? null : payloadStore.payload(traceId, sha256);
     }
 
+    /** Full input/output body of one span; oversized bodies are fetched from the object store on demand. */
+    public String spanBody(String traceId, String spanId, String field) {
+        var span = spanStore.find(traceId, spanId);
+        if (span == null) return null;
+        var value = "output".equals(field) ? span.output : span.input;
+        if (value == null) return null;
+        return payloadStore == null ? value : payloadStore.body(value);
+    }
+
     public List<Span> generations(int offset, int limit, String model, List<String> userIds) {
         if (userIds != null && userIds.isEmpty()) return List.of();
         List<String> traceIds = userIds != null ? traceIdsForUsers(userIds) : List.of();

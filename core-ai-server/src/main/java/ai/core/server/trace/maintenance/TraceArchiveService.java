@@ -23,6 +23,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
@@ -176,6 +177,10 @@ public class TraceArchiveService {
             var ids = batch.stream().map(t -> t.id).filter(id -> id != null).toList();
             if (ids.isEmpty()) break;
 
+            var bodyRefs = new ArrayList<String>();
+            bodyRefs.addAll(spanStore.findBodyRefs(traceIds));
+            bodyRefs.addAll(traceStore.findBodyRefs(traceIds));
+
             totalSpansDeleted += deleteSpans(traceIds);
             if (payloadStore != null) {
                 var storageKeys = payloadStore.deleteForTraces(traceIds);
@@ -183,6 +188,7 @@ public class TraceArchiveService {
             }
 
             long deleted = traceStore.deleteByIds(ids);
+            if (payloadStore != null) payloadStore.deleteBodyObjects(bodyRefs);
             totalTracesDeleted += deleted;
             if (deleted == 0) break;
             if (totalTracesDeleted % (TRACE_DELETE_BATCH_SIZE * 50) == 0) {

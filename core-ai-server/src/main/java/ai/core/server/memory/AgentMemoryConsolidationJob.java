@@ -14,6 +14,7 @@ import ai.core.server.trace.TraceQuery;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
+import ai.core.server.trace.service.TracePayloadStore;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import core.framework.inject.Inject;
@@ -68,6 +69,8 @@ public class AgentMemoryConsolidationJob implements Job {
     ai.core.server.session.ChatMessageStore chatMessageStore;
     @Inject
     SpanStore spanStore;
+    @Inject
+    TracePayloadStore payloadStore;
     @Inject
     AgentDefinitionStore agentDefinitionStore;
     @Inject
@@ -219,6 +222,7 @@ public class AgentMemoryConsolidationJob implements Job {
     private String extractSystemPrompt(List<Trace> traces) {
         var traceIds = traces.stream().map(t -> t.traceId).toList();
         var spans = spanStore.llmSpansByTraces(traceIds, 5);
+        if (payloadStore != null) payloadStore.hydrate(spans, true);
         for (var span : spans) {
             if (span.input == null || span.input.isBlank()) continue;
             JsonNode node;

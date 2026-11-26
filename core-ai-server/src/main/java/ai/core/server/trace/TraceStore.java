@@ -84,4 +84,12 @@ public interface TraceStore {
     long countStartedBefore(ZonedDateTime cutoff);
 
     long deleteByIds(List<String> ids);
+
+    /**
+     * Raw input/output values of the supplied traces that carry an externalized body reference.
+     * Collected before the rows are deleted so the archive can remove the backing objects.
+     */
+    default List<String> findBodyRefs(List<String> traceIds) {
+        return List.of();
+    }
 }

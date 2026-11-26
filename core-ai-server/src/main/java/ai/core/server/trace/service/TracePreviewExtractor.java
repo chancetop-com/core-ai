@@ -12,9 +12,12 @@ import ai.core.utils.JsonUtil;
  */
 public final class TracePreviewExtractor {
     private static final int MAX_LENGTH = 200;
+    private static final String BODY_REF_KEY = "$coreai_blob_ref";
 
     public static String extract(String input) {
         if (input == null || input.isBlank()) return null;
+        var bodyPreview = bodyPreview(input);
+        if (bodyPreview != null) return compact(bodyPreview);
         JsonNode root = parse(input);
         if (root != null) {
             var userText = lastUserMessage(root);
@@ -25,6 +28,14 @@ public final class TracePreviewExtractor {
             if (firstString != null) return compact(firstString);
         }
         return compact(input);
+    }
+
+    private static String bodyPreview(String input) {
+        if (!input.startsWith("{") || !input.contains(BODY_REF_KEY)) return null;
+        var root = parse(input);
+        if (root == null || !root.hasNonNull(BODY_REF_KEY)) return null;
+        var preview = root.get("preview");
+        return preview != null && preview.isTextual() ? preview.asText() : null;
     }
 
     private static JsonNode parse(String input) {

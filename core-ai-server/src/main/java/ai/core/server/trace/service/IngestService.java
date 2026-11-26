@@ -66,6 +66,8 @@ public class IngestService {
     ModelPricingService modelPricingService;
     @Inject
     TracePayloadStore payloadStore;
+    @Inject
+    TraceBodyStore bodyStore;
 
     public void ingest(IngestRequest request) {
         ingest(request, null, null);
@@ -151,8 +153,8 @@ public class IngestService {
         if (trace.status == TraceStatus.ERROR && rootSpan.output != null) {
             trace.errorMessage = rootSpan.output;
         }
-        trace.input = rootSpan.input;
-        trace.output = rootSpan.output;
+        trace.input = offloadTraceBody(trace.traceId, "in", rootSpan.input);
+        trace.output = offloadTraceBody(trace.traceId, "out", rootSpan.output);
         trace.metadata = Map.of("service", request.serviceName != null ? request.serviceName : "unknown",
             "version", request.serviceVersion != null ? request.serviceVersion : "unknown",
             "environment", request.environment != null ? request.environment : "unknown");
@@ -190,8 +192,8 @@ public class IngestService {
         // error_message so the trace detail/list surfaces the real error instead of a blank field.
         if (status == TraceStatus.ERROR && rootSpan.output != null) update.errorMessage = rootSpan.output;
         update.updatedAt = ZonedDateTime.now();
-        if (rootSpan.output != null) update.output = rootSpan.output;
-        if (rootSpan.input != null) update.input = rootSpan.input;
+        if (rootSpan.output != null) update.output = offloadTraceBody(traceId, "out", rootSpan.output);
+        if (rootSpan.input != null) update.input = offloadTraceBody(traceId, "in", rootSpan.input);
         if (rootSpan.durationMs > 0) update.durationMs = rootSpan.durationMs;
         var completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
         if (completedAt != null) update.completedAt = completedAt;
@@ -237,6 +239,7 @@ public class IngestService {
         // Defensive: drop attribute copies that duplicate the payload fields (clients may mirror
         // the OTLP tracer convention and send both); keeps spans small.
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
+        offloadSpanBody(span);
         span.startedAt = toZonedDateTime(spanReq.startedAtEpochMs);
         span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
         span.createdAt = ZonedDateTime.now();
@@ -262,6 +265,16 @@ public class IngestService {
         // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
         // (LLM spans carry the tokens but no user.id), so usage is metered synchronously via the
         // ExecutionContext tokenCostCallback wired in SessionContextBuilder / AgentRunBuilder instead.
+    }
+
+    private void offloadSpanBody(Span span) {
+        if (bodyStore == null) return;
+        span.input = bodyStore.offload(span.traceId, span.spanId, "in", span.input);
+        span.output = bodyStore.offload(span.traceId, span.spanId, "out", span.output);
+    }
+
+    private String offloadTraceBody(String traceId, String field, String body) {
+        return bodyStore == null ? body : bodyStore.offload(traceId, null, field, body);
     }
 
     private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {
