@@ -2268,7 +2268,48 @@ function buildAnalyticsParams(params: AnalyticsParams): string {
   return p.toString();
 }
 
+export interface WorkspaceView {
+  id: string;
+  name: string;
+  agent_id?: string;
+  is_default: boolean;
+  volume_status: string;
+  runtime_status: string;
+  active_volume_generation?: number;
+  runtime_generation: number;
+  size_gb: number;
+  storage_class: string;
+  profile: string;
+  mount_path: string;
+  network_enabled: boolean;
+  network_profile?: string;
+  idle_sleep_minutes: number;
+  last_used_at?: string;
+  last_provisioned_at?: string;
+  error_code?: string;
+  error_message?: string;
+  deleted_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export const api = {
+  workspaces: {
+    list: async () => (await request<{ items: WorkspaceView[] }>('/api/workspaces')).items,
+    get: (id: string) => request<WorkspaceView>(`/api/workspaces/${id}`),
+    update: (id: string, data: { name?: string; idle_sleep_minutes?: number }) =>
+      request<WorkspaceView>(`/api/workspaces/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    wake: (id: string) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/wake`, { method: 'POST' }),
+    sleep: (id: string) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/sleep`, { method: 'POST' }),
+    reset: (id: string, data: { confirm_name: string }) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/reset`, { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id: string) =>
+      request<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
+    undelete: (id: string) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/undelete`, { method: 'POST' }),
+  },
   user: {
     // self-service session-completion notification target (no admin permission involved)
     notificationSettings: () =>

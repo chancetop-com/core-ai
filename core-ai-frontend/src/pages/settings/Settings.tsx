@@ -1,4 +1,5 @@
 import ApiKeys from './ApiKeys';
+import Workspaces from './Workspaces';
 
 export default function Settings() {
   return (
@@ -7,6 +8,9 @@ export default function Settings() {
         <h1 className="text-lg font-semibold">Settings</h1>
       </div>
       <ApiKeys />
+      <div className="px-6 pb-8">
+        <Workspaces />
+      </div>
     </div>
   );
 }
