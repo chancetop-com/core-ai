@@ -96,6 +96,24 @@ class OTLPIngestServiceTest {
     }
 
     @Test
+    void recordsTheModelThatServedAfterGatewayFailover() {
+        var service = service();
+        when(gatewayModelCollection.find(any(Bson.class))).thenReturn(List.of());
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "deepseek-flash"),
+            attr("gen_ai.resolved_model", "gpt-6-luna"),
+            attr("gen_ai.usage.input_tokens", "1000"),
+            attr("gen_ai.usage.output_tokens", "100"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(spanCollection).insert(inserted.capture());
+        assertEquals("deepseek-flash", inserted.getValue().model);
+        assertEquals("gpt-6-luna", inserted.getValue().resolvedModel);
+    }
+
+    @Test
     void gatewayModelPriceSplitsCachedInputAndAppliesPeakMultiplier() {
         var service = service();
         var model = new GatewayModelConfig();
@@ -417,6 +435,25 @@ class OTLPIngestServiceTest {
         var inserted = ArgumentCaptor.forClass(Span.class);
         verify(spanCollection).insert(inserted.capture());
         assertEquals(1840L, inserted.getValue().ttftMs);
+    }
+
+    @Test
+    void recordsFirstContentAndReasoningTokensFromGenAiAttributes() {
+        var service = service();
+        when(traceCollection.find(any(Bson.class))).thenReturn(List.of(new Trace()));
+
+        service.ingest(request(span("chat",
+            attr("gen_ai.request.model", "gpt-6-luna"),
+            attr("gen_ai.response.time_to_first_token_ms", "1200"),
+            attr("gen_ai.response.first_content_ms", "240000"),
+            attr("gen_ai.usage.output_tokens", "14893"),
+            attr("gen_ai.usage.reasoning_tokens", "14500"))));
+
+        var inserted = ArgumentCaptor.forClass(Span.class);
+        verify(spanCollection).insert(inserted.capture());
+        assertEquals(1200L, inserted.getValue().ttftMs);
+        assertEquals(240000L, inserted.getValue().firstContentMs);
+        assertEquals(14500L, inserted.getValue().reasoningTokens);
     }
 
     @Test

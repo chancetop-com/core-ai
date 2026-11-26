@@ -137,6 +137,7 @@ public class IngestService {
         trace.agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
         trace.name = friendlyTraceName(rootSpan.name, trace.agentName);
         trace.model = rootSpan.model;
+        trace.resolvedModel = resolveResolvedModel(rootSpan);
         trace.providerId = attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
         trace.userId = resolveUserId(authUserId, rootSpan.attributes);
@@ -214,14 +215,17 @@ public class IngestService {
         span.name = spanReq.name;
         span.type = mapSpanType(spanReq.type);
         span.model = spanReq.model;
+        span.resolvedModel = resolveResolvedModel(spanReq);
         span.providerId = attr(spanReq.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
         span.input = spanReq.input;
         span.output = spanReq.output;
         span.inputTokens = spanReq.inputTokens;
         span.outputTokens = spanReq.outputTokens;
         span.cachedTokens = resolveCachedTokens(spanReq);
+        span.reasoningTokens = TraceServiceHelper.resolveReasoningTokens(spanReq);
         applyCost(span, spanReq.costUsd, spanReq.attributes);
         span.ttftMs = resolveTtftMs(spanReq);
+        span.firstContentMs = TraceServiceHelper.resolveFirstContentMs(spanReq);
         span.durationMs = spanReq.durationMs;
         span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
         // CLI spans carry the failure text in output (no OTLP status message); mirror it into
@@ -249,6 +253,7 @@ public class IngestService {
             backfillTraceModel(spanReq.traceId, spanReq.model);
         }
         TraceIdentity.backfillProvider(traceStore, spanReq.traceId, span.providerId);
+        TraceIdentity.backfillResolvedModel(traceStore, spanReq.traceId, span.resolvedModel);
         backfillTraceIdentity(spanReq.traceId, spanReq.name, spanReq.attributes);
 
         // Incrementally roll up this span's tokens/cost onto the parent trace doc.
@@ -321,6 +326,14 @@ public class IngestService {
         traceStore.update(update);
     }
 
+    // Clients that know the server-side routing (CLI/desktop) send it explicitly; OTLP producers
+    // (the server gateway) put the same fact in the span attribute.
+    private String resolveResolvedModel(IngestSpanRequest spanReq) {
+        var resolved = nonBlank(spanReq.resolvedModel);
+        if (resolved != null) return resolved;
+        return attr(spanReq.attributes, TraceAttribute.GEN_AI_RESOLVED_MODEL);
+    }
+
     private Long resolveCachedTokens(IngestSpanRequest spanReq) {
         if (spanReq.cachedTokens != null) return spanReq.cachedTokens;
         return parseLongAttr(spanReq.attributes,
@@ -346,7 +359,8 @@ public class IngestService {
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
-        var price = modelPricingService.resolve(span.model, span.providerId, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
+        var price = modelPricingService.resolve(span.model, span.resolvedModel, span.providerId,
+            span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();
         span.pricingModelId = price.modelId();

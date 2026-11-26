@@ -21,6 +21,9 @@ public class TraceView {
     @Property(name = "model")
     public String model;
 
+    @Property(name = "resolvedModel")
+    public String resolvedModel;
+
     @Property(name = "type")
     public String type;
 

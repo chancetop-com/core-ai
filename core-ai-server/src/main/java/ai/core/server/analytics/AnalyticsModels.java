@@ -101,7 +101,9 @@ public final class AnalyticsModels {
         Long avgDurationMs,
         Long p50DurationMs,
         Long p95DurationMs,
-        Double avgOutputTokensPerSecond
+        Double avgOutputTokensPerSecond,
+        Double p50OutputTokensPerSecond,
+        Double p95OutputTokensPerSecond
     ) {
     }
 

@@ -36,6 +36,11 @@ public class Span {
     @Field(name = "model")
     public String model;
 
+    // model that actually answered when it differs from the requested alias (gateway fallback or a
+    // renamed upstream); null for spans ingested before the gateway recorded it
+    @Field(name = "resolved_model")
+    public String resolvedModel;
+
     @Field(name = "provider_id")
     public String providerId;
 
@@ -53,6 +58,11 @@ public class Span {
 
     @Field(name = "cached_tokens")
     public Long cachedTokens;
+
+    // Reasoning/thinking tokens included in output_tokens. They are generated before the answer starts,
+    // so a decode rate that divides output_tokens by the answer window has to subtract them.
+    @Field(name = "reasoning_tokens")
+    public Long reasoningTokens;
 
     @Field(name = "cost_usd")
     public Double costUsd;
@@ -74,6 +84,11 @@ public class Span {
 
     @Field(name = "ttft_ms")
     public Long ttftMs;
+
+    // Time to the first answer-content token; ttft_ms covers reasoning tokens too, this one starts the
+    // answer's decode window.
+    @Field(name = "first_content_ms")
+    public Long firstContentMs;
 
     @Field(name = "status")
     public SpanStatus status;

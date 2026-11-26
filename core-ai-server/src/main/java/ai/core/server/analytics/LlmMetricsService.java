@@ -77,7 +77,7 @@ public class LlmMetricsService {
                 value(row.inputTokens), value(row.outputTokens), value(row.cachedTokens), value(row.costUsd),
                 round(row.avgTtftMs), round(row.p50TtftMs), round(row.p95TtftMs),
                 round(row.avgDurationMs), round(row.p50DurationMs), round(row.p95DurationMs),
-                row.avgOutputTokensPerSecond));
+                row.avgOutputTokensPerSecond, row.p50OutputTokensPerSecond, row.p95OutputTokensPerSecond));
         }
         return models;
     }

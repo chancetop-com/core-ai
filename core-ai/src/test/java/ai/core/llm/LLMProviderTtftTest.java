@@ -47,9 +47,11 @@ class LLMProviderTtftTest {
         var response = provider.completionStream(request, callback, null, true);
 
         assertNotNull(response.ttftMs);
+        assertNotNull(response.firstContentMs);
         assertEquals(response.ttftMs, callback.firstTokens.getFirst());
         var span = processor.find("ttft-test").orElseThrow();
         assertEquals(response.ttftMs, span.getAttributes().get(AttributeKey.longKey("gen_ai.response.time_to_first_token_ms")));
+        assertEquals(response.firstContentMs, span.getAttributes().get(AttributeKey.longKey("gen_ai.response.first_content_ms")));
         tracerProvider.close();
     }
 

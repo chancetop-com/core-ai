@@ -29,6 +29,8 @@ import java.util.TreeMap;
  */
 public class MongoSpanStore implements SpanStore {
     private static final int DELETE_BATCH_SIZE = 500;
+    // Same floor as the PG store: a shorter answer window measures chunk arrival, not model speed.
+    private static final long MIN_DECODE_WINDOW_MS = 200;
 
     public static MongoSpanStore of(MongoCollection<Span> collection) {
         var store = new MongoSpanStore();
@@ -40,12 +42,13 @@ public class MongoSpanStore implements SpanStore {
         return value != null ? value : 0L;
     }
 
-    private static Double percentile(List<Long> values, double percentile) {
+    private static Double percentile(List<? extends Number> values, double percentile) {
         if (values.isEmpty()) return null;
-        var sorted = new ArrayList<>(values);
+        var sorted = new ArrayList<Double>(values.size());
+        for (var value : values) sorted.add(value.doubleValue());
         Collections.sort(sorted);
         int index = (int) Math.ceil(percentile * sorted.size()) - 1;
-        return (double) sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
+        return sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
     }
 
     private static long number(Document document, String key) {
@@ -213,7 +216,7 @@ public class MongoSpanStore implements SpanStore {
         var query = new Query();
         query.filter = Filters.and(Filters.eq("type", SpanType.LLM), Filters.gte("started_at", from), Filters.lt("started_at", to));
         query.projection = Projections.include("model", "status", "input_tokens", "output_tokens", "cached_tokens",
-            "cost_usd", "duration_ms", "ttft_ms", "started_at");
+            "reasoning_tokens", "cost_usd", "duration_ms", "ttft_ms", "first_content_ms", "started_at");
         return query;
     }
 
@@ -280,10 +283,11 @@ public class MongoSpanStore implements SpanStore {
         private double costUsd;
         private long durationSum;
         private long ttftSum;
-        private long decodeSpeedSamples;
-        private double decodeSpeedSum;
+        private long decodeTokens;
+        private long decodeWindowMs;
         private final List<Long> ttfts = new ArrayList<>();
         private final List<Long> durations = new ArrayList<>();
+        private final List<Double> decodeSpeeds = new ArrayList<>();
 
         void accept(Span span) {
             calls++;
@@ -299,11 +303,14 @@ public class MongoSpanStore implements SpanStore {
             if (span.durationMs != null) {
                 durationSum += span.durationMs;
                 if (durations.size() < MAX_PERCENTILE_SAMPLES) durations.add(span.durationMs);
-                if (span.ttftMs != null && span.outputTokens != null && span.outputTokens > 0 && span.durationMs > span.ttftMs) {
-                    decodeSpeedSum += span.outputTokens * 1000.0 / (span.durationMs - span.ttftMs);
-                    decodeSpeedSamples++;
-                }
             }
+            long answerTokens = Math.max(0, safe(span.outputTokens) - safe(span.reasoningTokens));
+            if (span.firstContentMs == null || span.durationMs == null) return;
+            long windowMs = span.durationMs - span.firstContentMs;
+            if (windowMs <= MIN_DECODE_WINDOW_MS || answerTokens == 0) return;
+            decodeTokens += answerTokens;
+            decodeWindowMs += windowMs;
+            if (decodeSpeeds.size() < MAX_PERCENTILE_SAMPLES) decodeSpeeds.add(answerTokens * 1000.0 / windowMs);
         }
 
         LlmModelMetricsRow toRow() {
@@ -321,7 +328,9 @@ public class MongoSpanStore implements SpanStore {
             row.avgDurationMs = calls == 0 ? null : (double) durationSum / calls;
             row.p50DurationMs = percentile(durations, 0.5);
             row.p95DurationMs = percentile(durations, 0.95);
-            row.avgOutputTokensPerSecond = decodeSpeedSamples == 0 ? null : decodeSpeedSum / decodeSpeedSamples;
+            row.avgOutputTokensPerSecond = decodeWindowMs == 0 ? null : decodeTokens * 1000.0 / decodeWindowMs;
+            row.p50OutputTokensPerSecond = percentile(decodeSpeeds, 0.5);
+            row.p95OutputTokensPerSecond = percentile(decodeSpeeds, 0.95);
             return row;
         }
     }

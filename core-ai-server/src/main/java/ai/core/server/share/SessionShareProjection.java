@@ -107,6 +107,7 @@ public class SessionShareProjection {
         view.traceId = trace.traceId;
         view.name = text(trace.name, share);
         view.model = text(trace.model, share);
+        view.resolvedModel = text(trace.resolvedModel, share);
         view.type = text(trace.type, share);
         view.source = text(trace.source, share);
         view.agentName = text(trace.agentName, share);
@@ -137,6 +138,7 @@ public class SessionShareProjection {
         view.name = text(span.name, share);
         view.type = span.type == null ? null : SpanTypeView.valueOf(span.type.name());
         view.model = text(span.model, share);
+        view.resolvedModel = text(span.resolvedModel, share);
         view.input = text(span.input, share);
         view.output = text(span.output, share);
         view.inputTokens = span.inputTokens;

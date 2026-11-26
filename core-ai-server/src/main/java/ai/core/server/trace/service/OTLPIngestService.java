@@ -124,6 +124,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
+        trace.resolvedModel = attrs.get(TraceAttribute.GEN_AI_RESOLVED_MODEL);
         trace.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
@@ -163,13 +164,13 @@ public class OTLPIngestService {
         span.name = protoSpan.getName();
         span.type = resolveSpanType(attrs);
         span.model = attrs.get("gen_ai.request.model");
+        span.resolvedModel = attrs.get(TraceAttribute.GEN_AI_RESOLVED_MODEL);
         span.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         span.input = OTLPParseHelper.resolveInput(attrs);
         span.output = OTLPParseHelper.resolveOutput(attrs);
         span.durationMs = endMs - startMs;
-        span.ttftMs = OTLPParseHelper.parseLongAttr(attrs,
-            TraceServiceHelper.GEN_AI_TTFT_MS,
-            TraceServiceHelper.LEGACY_TTFT_MS);
+        span.ttftMs = OTLPParseHelper.parseLongAttr(attrs, TraceServiceHelper.GEN_AI_TTFT_MS, TraceServiceHelper.LEGACY_TTFT_MS);
+        span.firstContentMs = OTLPParseHelper.parseLongAttr(attrs, TraceServiceHelper.GEN_AI_FIRST_CONTENT_MS);
         span.status = OTLPParseHelper.mapSpanStatus(protoSpan.getStatus().getCode(), attrs);
         span.errorMessage = span.status == SpanStatus.ERROR ? OTLPParseHelper.nonEmpty(protoSpan.getStatus().getMessage()) : null;
         span.toolCallId = toolCallId;
@@ -181,12 +182,11 @@ public class OTLPIngestService {
         span.createdAt = ZonedDateTime.now();
         span.inputTokens = OTLPParseHelper.parseLongAttr(attrs, "gen_ai.usage.input_tokens");
         span.outputTokens = OTLPParseHelper.parseLongAttr(attrs, "gen_ai.usage.output_tokens");
-        span.cachedTokens = OTLPParseHelper.parseLongAttr(attrs,
-            "gen_ai.usage.cached_tokens",
-            "gen_ai.usage.prompt_tokens_details.cached_tokens",
-            "gen_ai.usage.input_tokens_details.cached_tokens",
-            "usage.prompt_tokens_details.cached_tokens",
-            "prompt_tokens_details.cached_tokens");
+        span.cachedTokens = OTLPParseHelper.parseLongAttr(attrs, "gen_ai.usage.cached_tokens",
+            "gen_ai.usage.prompt_tokens_details.cached_tokens", "gen_ai.usage.input_tokens_details.cached_tokens",
+            "usage.prompt_tokens_details.cached_tokens", "prompt_tokens_details.cached_tokens");
+        span.reasoningTokens = OTLPParseHelper.parseLongAttr(attrs, TraceServiceHelper.GEN_AI_REASONING_TOKENS,
+            "gen_ai.usage.completion_tokens_details.reasoning_tokens", "usage.completion_tokens_details.reasoning_tokens");
         applyCost(span, attrs);
         // The langfuse/gen_ai payload attributes were copied to span.input/output above; drop the
         // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
@@ -198,6 +198,7 @@ public class OTLPIngestService {
             backfillTraceModel(traceId, span.model);
         }
         TraceIdentity.backfillProvider(traceStore, traceId, span.providerId);
+        TraceIdentity.backfillResolvedModel(traceStore, traceId, span.resolvedModel);
         // Increment trace token/cost totals atomically instead of reloading all spans
         incrementTraceTokens(traceId, span);
         // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
@@ -307,6 +308,7 @@ public class OTLPIngestService {
         trace.agentName = attrs.get("gen_ai.agent.name");
         trace.agentId = attrs.get("gen_ai.agent.id");
         trace.model = attrs.get("gen_ai.request.model");
+        trace.resolvedModel = attrs.get(TraceAttribute.GEN_AI_RESOLVED_MODEL);
         trace.providerId = attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID);
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
@@ -433,7 +435,8 @@ public class OTLPIngestService {
             span.pricingModelId = attrs.get("gen_ai.usage.pricing_model_id");
             return;
         }
-        var price = modelPricingService.resolve(span.model, span.providerId, span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
+        var price = modelPricingService.resolve(span.model, span.resolvedModel, span.providerId,
+            span.inputTokens, span.outputTokens, span.cachedTokens, span.startedAt, attrCost);
         span.costUsd = price.costUsd();
         span.costSource = price.source();
         span.pricingModelId = price.modelId();

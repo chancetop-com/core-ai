@@ -39,6 +39,18 @@ public class ModelPricingService {
         return resolve(model, null, inputTokens, outputTokens, cachedTokens, startedAt, upstreamCost);
     }
 
+    // A request that failed over to another gateway model is priced by the model that actually served
+    // it; the requested alias is only the fallback when the resolved model has no gateway price.
+    @SuppressWarnings("checkstyle:ParameterNumber")
+    public Price resolve(String model, String resolvedModel, String providerId, Long inputTokens, Long outputTokens,
+                         Long cachedTokens, ZonedDateTime startedAt, Double upstreamCost) {
+        if (resolvedModel != null && !resolvedModel.isBlank() && !resolvedModel.equals(model)) {
+            var resolvedPrice = resolveGatewayModel(resolvedModel, providerId, inputTokens, outputTokens, cachedTokens, startedAt);
+            if (resolvedPrice != null) return resolvedPrice;
+        }
+        return resolve(model, providerId, inputTokens, outputTokens, cachedTokens, startedAt, upstreamCost);
+    }
+
     @SuppressWarnings("checkstyle:ParameterNumber")
     public Price resolve(String model, String providerId, Long inputTokens, Long outputTokens, Long cachedTokens,
                          ZonedDateTime startedAt, Double upstreamCost) {

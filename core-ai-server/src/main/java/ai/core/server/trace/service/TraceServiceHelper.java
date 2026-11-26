@@ -9,6 +9,7 @@ import core.framework.mongo.Query;
 import ai.core.server.trace.SpanStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.web.ingest.IngestSpanRequest;
 
 import org.bson.conversions.Bson;
 
@@ -34,10 +35,26 @@ final class TraceServiceHelper {
     static final String LANGFUSE_OBSERVATION_OUTPUT = "langfuse.observation.output";
     static final String GEN_AI_PROMPT = "gen_ai.prompt";
     static final String GEN_AI_COMPLETION = "gen_ai.completion";
-    /** Provider-side time to the first content token; recorded by the LLM provider template. */
+    /** Provider-side time to the first content/reasoning token; recorded by the LLM provider template. */
     static final String GEN_AI_TTFT_MS = "gen_ai.response.time_to_first_token_ms";
     /** Same measurement under its pre-convention name, accepted for older clients. */
     static final String LEGACY_TTFT_MS = "core_ai.ttft_ms";
+    /** Provider-side time to the first answer-content token (excludes reasoning and tool-call deltas). */
+    static final String GEN_AI_FIRST_CONTENT_MS = "gen_ai.response.first_content_ms";
+    /** Reasoning tokens included in output_tokens; needed to keep a decode rate on the answer window. */
+    static final String GEN_AI_REASONING_TOKENS = "gen_ai.usage.reasoning_tokens";
+
+    static Long resolveFirstContentMs(IngestSpanRequest request) {
+        if (request.firstContentMs != null) return request.firstContentMs;
+        return request.attributes == null ? null : OTLPParseHelper.parseLongAttr(request.attributes, GEN_AI_FIRST_CONTENT_MS);
+    }
+
+    static Long resolveReasoningTokens(IngestSpanRequest request) {
+        if (request.reasoningTokens != null) return request.reasoningTokens;
+        return request.attributes == null ? null : OTLPParseHelper.parseLongAttr(request.attributes, GEN_AI_REASONING_TOKENS,
+            "gen_ai.usage.completion_tokens_details.reasoning_tokens",
+            "usage.completion_tokens_details.reasoning_tokens");
+    }
 
     /** Existence check that never fetches the (potentially megabyte-sized) document body. */
     static boolean exists(MongoCollection<?> collection, Bson filter) {

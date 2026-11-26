@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -501,12 +502,14 @@ class GatewayProxyServiceTest {
                 "usage", Map.of(
                         "prompt_tokens", 12,
                         "completion_tokens", 34,
-                        "prompt_tokens_details", Map.of("cached_tokens", 5)
+                        "prompt_tokens_details", Map.of("cached_tokens", 5),
+                        "completion_tokens_details", Map.of("reasoning_tokens", 7)
                 )));
 
         assertEquals(12, usage.inputTokens());
         assertEquals(34, usage.outputTokens());
         assertEquals(5, usage.cachedTokens());
+        assertEquals(7, usage.reasoningTokens());
     }
 
     @Test
@@ -515,12 +518,14 @@ class GatewayProxyServiceTest {
                 "usage", Map.of(
                         "input_tokens", 12,
                         "output_tokens", 34,
-                        "input_tokens_details", Map.of("cached_tokens", 5)
+                        "input_tokens_details", Map.of("cached_tokens", 5),
+                        "output_tokens_details", Map.of("reasoning_tokens", 9)
                 )));
 
         assertEquals(12, usage.inputTokens());
         assertEquals(34, usage.outputTokens());
         assertEquals(5, usage.cachedTokens());
+        assertEquals(9, usage.reasoningTokens());
     }
 
     @Test
@@ -696,6 +701,7 @@ class GatewayProxyServiceTest {
         service.telemetryConfig = TELEMETRY;
         var source = mock(EventSource.class);
         when(source.iterator()).thenReturn(List.of(
+                new EventSource.Event(null, null, "{\"choices\":[{\"delta\":{\"reasoning_content\":\"thinking\"}}]}"),
                 new EventSource.Event(null, null, "{\"choices\":[{\"delta\":{\"content\":\"hello \"}}]}"),
                 new EventSource.Event(null, null, "{\"choices\":[{\"delta\":{\"content\":\"world\"}}]}"),
                 new EventSource.Event(null, null, "[DONE]")
@@ -711,6 +717,9 @@ class GatewayProxyServiceTest {
             assertTrue(latch.await(15, TimeUnit.SECONDS), "span export timed out");
             var recorded = spanAttributes(protoSpan(exportRequest.get()));
             assertEquals("hello world", recorded.get("langfuse.observation.output"));
+            // the reasoning delta counts as the first streamed token even though it is not span output
+            assertNotNull(recorded.get("gen_ai.response.time_to_first_token_ms"));
+            assertNotNull(recorded.get("gen_ai.response.first_content_ms"));
         } finally {
             LocalSpanProcessorRegistry.clear();
         }

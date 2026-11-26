@@ -32,6 +32,24 @@ class ModelPricingServiceTest {
         assertEquals("gateway_model", price.source());
     }
 
+    @Test
+    void pricesTheModelThatActuallyServedAfterFailover() {
+        var store = mock(GatewayModelStore.class);
+        var primary = model("provider-1", 0.15D, 0.6D);
+        var fallback = model("azure", 2.5D, 10D);
+        fallback.modelId = "gpt-6-luna";
+        when(store.listByModelId("deepseek-flash")).thenReturn(List.of(primary));
+        when(store.listByProviderId("provider-1")).thenReturn(List.of(primary));
+        when(store.listByModelId("gpt-6-luna")).thenReturn(List.of(fallback));
+        var service = new ModelPricingService();
+        service.gatewayModelStore = store;
+
+        var price = service.resolve("deepseek-flash", "gpt-6-luna", "azure", 1_000_000L, 1_000_000L, 0L, null, null);
+
+        assertEquals(12.5D, price.costUsd(), 1e-9);
+        assertEquals("gpt-6-luna", price.modelId());
+    }
+
     private ModelPricingService service(GatewayModelConfig... models) {
         var store = mock(GatewayModelStore.class);
         when(store.listByModelId("deepseek-flash")).thenReturn(List.of(models[1], models[0]));

@@ -12,13 +12,16 @@ public class IngestSpanRequest {
     public String name;
     public String type;
     public String model;
+    public String resolvedModel;
     public String input;
     public String output;
     public Long inputTokens;
     public Long outputTokens;
     public Long cachedTokens;
+    public Long reasoningTokens;
     public Double costUsd;
     public Long ttftMs;
+    public Long firstContentMs;
     public Long durationMs;
     public String status;
     public Map<String, String> attributes;

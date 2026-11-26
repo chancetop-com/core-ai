@@ -40,9 +40,11 @@ public class LLMTracer extends Tracer {
     private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
+    private static final AttributeKey<Long> GEN_AI_USAGE_REASONING_TOKENS = AttributeKey.longKey("gen_ai.usage.reasoning_tokens");
     private static final AttributeKey<Double> GEN_AI_USAGE_COST_USD = AttributeKey.doubleKey("gen_ai.usage.cost_usd");
     private static final AttributeKey<String> GEN_AI_RESPONSE_FINISH_REASON = AttributeKey.stringKey("gen_ai.response.finish_reasons");
     private static final AttributeKey<Long> GEN_AI_RESPONSE_TTFT_MS = AttributeKey.longKey("gen_ai.response.time_to_first_token_ms");
+    private static final AttributeKey<Long> GEN_AI_RESPONSE_FIRST_CONTENT_MS = AttributeKey.longKey("gen_ai.response.first_content_ms");
     private static final AttributeKey<Boolean> CORE_AI_RESPONSE_NULL = AttributeKey.booleanKey("core_ai.response.null");
 
     // Trace is a diagnostic side channel: it must never become a second copy of the request. The input
@@ -193,9 +195,15 @@ public class LLMTracer extends Tracer {
             var cachedTokens = response.usage.getPromptTokensDetails() != null
                 ? (long) response.usage.getPromptTokensDetails().cachedTokens
                 : 0L;
+            var reasoningTokens = response.usage.getCompletionTokensDetails() != null
+                ? (long) response.usage.getCompletionTokensDetails().reasoningTokens
+                : 0L;
             span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, inputTokens);
             span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, outputTokens);
             span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, cachedTokens);
+            if (reasoningTokens > 0) {
+                span.setAttribute(GEN_AI_USAGE_REASONING_TOKENS, reasoningTokens);
+            }
             var cost = LLMModelContextRegistry.getInstance().estimateCostUsd(
                 request.model, inputTokens, outputTokens, cachedTokens, Instant.now());
             if (cost != null) {
@@ -209,6 +217,9 @@ public class LLMTracer extends Tracer {
         }
         if (response.ttftMs != null) {
             span.setAttribute(GEN_AI_RESPONSE_TTFT_MS, response.ttftMs);
+        }
+        if (response.firstContentMs != null) {
+            span.setAttribute(GEN_AI_RESPONSE_FIRST_CONTENT_MS, response.firstContentMs);
         }
     }
 

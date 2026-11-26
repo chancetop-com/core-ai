@@ -36,6 +36,7 @@ import static ai.core.server.gateway.GatewaySupport.hasText;
 import static ai.core.server.gateway.GatewaySupport.stripTrailingSlash;
 import static ai.core.server.gateway.GatewaySupport.urlEncode;
 import static ai.core.server.trace.TraceAttribute.GATEWAY_PROVIDER_ID;
+import static ai.core.server.trace.TraceAttribute.GEN_AI_RESOLVED_MODEL;
 
 /**
  * Bridges the agent runtime {@link LLMProvider} interface onto gateway-managed providers:
@@ -160,6 +161,10 @@ public class GatewayLLMProvider extends LLMProvider {
                 // Persist the provider that actually serves this attempt on the LLM span, so trace
                 // analytics and pricing do not have to guess it from the (possibly duplicated) alias.
                 if (hasText(provider.id)) Span.current().setAttribute(GATEWAY_PROVIDER_ID, provider.id);
+                // the span's gen_ai.request.model keeps the caller's alias (frozen before failover);
+                // this attribute is the model that really answered once an attempt succeeded
+                var servedModel = modelId(attempt);
+                if (hasText(servedModel)) Span.current().setAttribute(GEN_AI_RESOLVED_MODEL, servedModel);
                 var upstream = upstreamProvider(provider, upstreamModel, attemptEndpoint);
                 request.setEndpoint(attemptEndpoint);
                 if ("gemini".equals(provider.type) && GatewaySupport.isVertexGeminiBaseUrl(provider.baseUrl)) {

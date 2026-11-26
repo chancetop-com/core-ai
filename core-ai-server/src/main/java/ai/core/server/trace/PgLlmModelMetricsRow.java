@@ -50,4 +50,10 @@ public class PgLlmModelMetricsRow {
 
     @Column(name = "avg_output_tokens_per_second")
     public Double avgOutputTokensPerSecond;
+
+    @Column(name = "p50_output_tokens_per_second")
+    public Double p50OutputTokensPerSecond;
+
+    @Column(name = "p95_output_tokens_per_second")
+    public Double p95OutputTokensPerSecond;
 }

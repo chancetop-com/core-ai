@@ -545,6 +545,8 @@ function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }:
   // List responses carry a server-computed preview; fall back to client extraction for older servers
   const preview = trace.preview || extractTracePreview(trace);
   const model = trace.model || trace.metadata?.model || '';
+  // the gateway may have failed over to another model; show what actually answered
+  const servedModel = trace.resolvedModel && trace.resolvedModel !== model ? trace.resolvedModel : '';
   const title = traceDisplayName(trace);
 
   return (
@@ -607,7 +609,7 @@ function TraceRow({ trace, selected, onSelect, onOpenSession, onFilterSession }:
 
         <div className="shrink-0 min-w-[310px] flex flex-col items-end gap-1">
           <div className="flex items-center gap-2 flex-wrap justify-end">
-            {model && <NeutralChip mono>{model}</NeutralChip>}
+            {model && <NeutralChip mono>{model}{servedModel ? ` → ${servedModel}` : ''}</NeutralChip>}
             <StatusBadge status={trace.status} />
           </div>
           <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--color-text-secondary)' }}>

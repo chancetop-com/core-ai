@@ -22,6 +22,7 @@ final class TraceIdentity {
         putIfPresent(values, TraceIdentityField.AGENT_ID, attrs.get("gen_ai.agent.id"));
         putIfPresent(values, TraceIdentityField.AGENT_NAME, attrs.get("gen_ai.agent.name"));
         putIfPresent(values, TraceIdentityField.PROVIDER_ID, attrs.get(TraceAttribute.GATEWAY_PROVIDER_ID));
+        putIfPresent(values, TraceIdentityField.RESOLVED_MODEL, attrs.get(TraceAttribute.GEN_AI_RESOLVED_MODEL));
         if (values.isEmpty()) return;
         traceStore.backfillIdentity(traceId, values);
     }
@@ -30,6 +31,13 @@ final class TraceIdentity {
         if (providerId == null || providerId.isBlank()) return;
         var values = new EnumMap<TraceIdentityField, String>(TraceIdentityField.class);
         values.put(TraceIdentityField.PROVIDER_ID, providerId);
+        traceStore.backfillIdentity(traceId, values);
+    }
+
+    static void backfillResolvedModel(TraceStore traceStore, String traceId, String resolvedModel) {
+        if (resolvedModel == null || resolvedModel.isBlank()) return;
+        var values = new EnumMap<TraceIdentityField, String>(TraceIdentityField.class);
+        values.put(TraceIdentityField.RESOLVED_MODEL, resolvedModel);
         traceStore.backfillIdentity(traceId, values);
     }
 

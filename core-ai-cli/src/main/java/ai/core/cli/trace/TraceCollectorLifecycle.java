@@ -104,9 +104,13 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             span.name = "llm";
             span.type = "LLM";
             span.model = req != null ? req.model : null;
+            // the upstream reports the model that actually answered; it differs from the alias when
+            // the server-side gateway failed over to another model
+            span.resolvedModel = resp != null ? resp.model : null;
             span.input = req != null && req.messages != null ? truncate(JsonUtil.toJson(req.messages)) : null;
             span.output = resp != null && resp.choices != null ? truncate(JsonUtil.toJson(resp.choices)) : null;
             span.ttftMs = resp != null ? resp.ttftMs : null;
+            span.firstContentMs = resp != null ? resp.firstContentMs : null;
             applyUsage(span, resp != null ? resp.usage : null);
             span.status = "OK";
             var start = state.llmStartMs > 0 ? state.llmStartMs : now;
@@ -199,6 +203,8 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         span.outputTokens = (long) usage.getCompletionTokens();
         var details = usage.getPromptTokensDetails();
         span.cachedTokens = details != null ? (long) details.cachedTokens : 0L;
+        var completionDetails = usage.getCompletionTokensDetails();
+        span.reasoningTokens = completionDetails != null ? (long) completionDetails.reasoningTokens : 0L;
     }
 
     // Mutable per-turn state. Each thread (main agent or sub-agent) has an independent turn via

@@ -185,7 +185,7 @@ public class GatewayProxyService {
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
+                GatewayProxyTrace.recordStreamText(ttft, span, output, event.data());
                 for (var translated : translator.onEvent(event.type(), event.data())) {
                     channel.sendRawEvent(translated.event(), translated.data());
                 }
@@ -205,7 +205,7 @@ public class GatewayProxyService {
             for (var event : source) {
                 channel.sendRawEvent(event.type(), event.data());
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
+                GatewayProxyTrace.recordStreamText(ttft, span, output, event.data());
                 if ("[DONE]".equals(event.data())) break;
             }
         }
@@ -310,7 +310,7 @@ public class GatewayProxyService {
         try (var source = sse(call.request(), call.provider())) {
             for (var event : source) {
                 GatewayProxyTrace.recordStreamUsage(span, event.data());
-                if (GatewayProxyTrace.appendStreamOutput(output, event.data())) ttft.record(span);
+                GatewayProxyTrace.recordStreamText(ttft, span, output, event.data());
                 if (translator == null) {
                     appendEvent(builder, event.id(), event.type(), event.data());
                 } else {

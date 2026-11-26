@@ -101,6 +101,8 @@ class LlmMetricsServiceTest {
         row.p50DurationMs = 2000.2;
         row.p95DurationMs = null;
         row.avgOutputTokensPerSecond = 42.5;
+        row.p50OutputTokensPerSecond = 40.1;
+        row.p95OutputTokensPerSecond = 77.0;
         when(spanStore.llmModelMetrics(any(), any())).thenReturn(List.of(row));
 
         var metrics = service.metrics(60, 1);
@@ -113,6 +115,8 @@ class LlmMetricsServiceTest {
         assertEquals(2346L, model.avgDurationMs());
         assertNull(model.p95DurationMs());
         assertEquals(42.5, model.avgOutputTokensPerSecond());
+        assertEquals(40.1, model.p50OutputTokensPerSecond());
+        assertEquals(77.0, model.p95OutputTokensPerSecond());
         assertEquals(8L, model.callsWithTtft());
     }
 

@@ -154,6 +154,7 @@ public class MongoTraceStore implements TraceStore {
             case AGENT_ID -> "agent_id";
             case AGENT_NAME -> "agent_name";
             case PROVIDER_ID -> "provider_id";
+            case RESOLVED_MODEL -> "resolved_model";
         };
     }
 

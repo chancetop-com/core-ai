@@ -103,6 +103,27 @@ class TraceCollectorLifecycleTest {
     }
 
     @Test
+    void llmSpanRecordsTheModelTheUpstreamReported() {
+        var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
+        lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
+
+        var request = CompletionRequest.of(new ArrayList<>(), null, 0.8, "deepseek-flash", "agent");
+        var response = CompletionResponse.of(List.of(), new Usage(10, 5, 15));
+        // the server-side gateway failed over and the upstream answered with the fallback model
+        response.model = "gpt-6-luna";
+        lifecycle.afterModel(request, response, null);
+        lifecycle.afterAgentRun("hi", new AtomicReference<>("done"), null);
+
+        var llm = captured.spans.stream().filter(s -> "LLM".equals(s.type)).findFirst().orElseThrow();
+        assertEquals("deepseek-flash", llm.model);
+        assertEquals("gpt-6-luna", llm.resolvedModel);
+
+        var map = HttpTraceUploader.toMap(captured);
+        var spanMap = (java.util.Map<?, ?>) ((List<?>) map.get("spans")).get(1);
+        assertEquals("gpt-6-luna", spanMap.get("resolvedModel"));
+    }
+
+    @Test
     void marksRootErrorOnFailure() {
         var lifecycle = new TraceCollectorLifecycle(req -> this.captured = req, "cli");
         lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);

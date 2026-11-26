@@ -19,20 +19,30 @@ import java.util.Map;
  */
 public class PgSpanStore implements SpanStore {
     private static final String TABLE = "app.spans";
-    private static final String COLUMNS = "id, trace_id, user_id, span_id, parent_span_id, name, type, model, provider_id, status, "
-        + "tool_call_id, input_tokens, output_tokens, cached_tokens, cost_usd, cost_source, pricing_model_id, "
-        + "input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, ttft_ms, error_message, attributes::text AS attributes, "
-        + "started_at, completed_at, created_at";
+    private static final String COLUMNS = "id, trace_id, user_id, span_id, parent_span_id, name, type, model, resolved_model, provider_id, status, "
+        + "tool_call_id, input_tokens, output_tokens, cached_tokens, reasoning_tokens, cost_usd, cost_source, pricing_model_id, "
+        + "input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, ttft_ms, first_content_ms, error_message, "
+        + "attributes::text AS attributes, started_at, completed_at, created_at";
     private static final String SELECT = "SELECT " + COLUMNS + " FROM " + TABLE;
     private static final String SELECT_WITH_PAYLOAD = "SELECT " + COLUMNS + ", input, output FROM " + TABLE;
     private static final String INSERT = "INSERT INTO " + TABLE + " (id, trace_id, user_id, span_id, parent_span_id, name, "
-        + "type, model, provider_id, status, tool_call_id, input, output, input_tokens, output_tokens, cached_tokens, cost_usd, "
-        + "cost_source, pricing_model_id, input_price_per_1m_tokens, output_price_per_1m_tokens, duration_ms, ttft_ms, "
-        + "error_message, attributes, started_at, completed_at, created_at) ";
-    private static final String INSERT_VALUES = "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)";
+        + "type, model, resolved_model, provider_id, status, tool_call_id, input, output, input_tokens, output_tokens, cached_tokens, "
+        + "reasoning_tokens, cost_usd, cost_source, pricing_model_id, input_price_per_1m_tokens, output_price_per_1m_tokens, "
+        + "duration_ms, ttft_ms, first_content_ms, error_message, attributes, started_at, completed_at, created_at) ";
+    private static final String INSERT_VALUES = "VALUES (" + placeholders(27) + ", ?::jsonb, " + placeholders(3) + ")";
     private static final int DELETE_BATCH_SIZE = 500;
     private static final int BULK_SIZE = 200;
     private static final long BULK_PAYLOAD_BYTES = 8L * 1024 * 1024;
+
+    // A decode rate needs a real window: a span whose answer arrived within a couple of chunks measures
+    // the transport's chunk granularity, not the model's speed, and would otherwise produce thousands of
+    // tokens per second.
+    private static final long MIN_DECODE_WINDOW_MS = 200;
+    private static final String DECODE_TOKENS = "GREATEST(output_tokens - COALESCE(reasoning_tokens, 0), 0)";
+    private static final String DECODE_WINDOW_MS = "(duration_ms - first_content_ms)";
+    private static final String DECODE_SAMPLE = "first_content_ms IS NOT NULL AND duration_ms > first_content_ms + "
+        + MIN_DECODE_WINDOW_MS + " AND output_tokens > COALESCE(reasoning_tokens, 0)";
+    private static final String DECODE_RATE = DECODE_TOKENS + " * 1000.0 / " + DECODE_WINDOW_MS;
 
     private static Span toSpan(PgSpanRow row) {
         var span = new Span();
@@ -44,6 +54,7 @@ public class PgSpanStore implements SpanStore {
         span.name = row.name;
         span.type = row.type != null ? SpanType.valueOf(row.type) : null;
         span.model = row.model;
+        span.resolvedModel = row.resolvedModel;
         span.providerId = row.providerId;
         span.status = row.status != null ? SpanStatus.valueOf(row.status) : null;
         span.toolCallId = row.toolCallId;
@@ -52,6 +63,7 @@ public class PgSpanStore implements SpanStore {
         span.inputTokens = row.inputTokens;
         span.outputTokens = row.outputTokens;
         span.cachedTokens = row.cachedTokens;
+        span.reasoningTokens = row.reasoningTokens;
         span.costUsd = row.costUsd;
         span.costSource = row.costSource;
         span.pricingModelId = row.pricingModelId;
@@ -59,6 +71,7 @@ public class PgSpanStore implements SpanStore {
         span.outputPricePer1MTokens = row.outputPricePer1MTokens;
         span.durationMs = row.durationMs;
         span.ttftMs = row.ttftMs;
+        span.firstContentMs = row.firstContentMs;
         span.errorMessage = row.errorMessage;
         span.attributes = row.attributes != null ? JsonUtil.fromJson(ATTRIBUTES_TYPE, row.attributes) : null;
         span.startedAt = row.startedAt;
@@ -77,11 +90,12 @@ public class PgSpanStore implements SpanStore {
 
     private static Object[] params(Span span) {
         return new Object[]{
-            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model, span.providerId,
+            span.id, span.traceId, span.userId, span.spanId, span.parentSpanId, span.name, type(span.type), span.model, span.resolvedModel, span.providerId,
             span.status != null ? span.status.name() : null, span.toolCallId, JsonSanitizer.text(span.input),
-            JsonSanitizer.text(span.output), span.inputTokens, span.outputTokens, span.cachedTokens, span.costUsd,
+            JsonSanitizer.text(span.output), span.inputTokens, span.outputTokens, span.cachedTokens,
+            span.reasoningTokens, span.costUsd,
             span.costSource, span.pricingModelId, span.inputPricePer1MTokens, span.outputPricePer1MTokens,
-            span.durationMs, span.ttftMs, JsonSanitizer.text(span.errorMessage),
+            span.durationMs, span.ttftMs, span.firstContentMs, JsonSanitizer.text(span.errorMessage),
             span.attributes != null ? JsonUtil.toJson(span.attributes) : null,
             span.startedAt, span.completedAt, span.createdAt
         };
@@ -268,8 +282,14 @@ public class PgSpanStore implements SpanStore {
             + ", AVG(duration_ms)::float8 AS avg_duration_ms"
             + ", percentile_disc(0.5) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p50_duration_ms"
             + ", percentile_disc(0.95) WITHIN GROUP (ORDER BY duration_ms)::float8 AS p95_duration_ms"
-            + ", AVG(CASE WHEN ttft_ms IS NOT NULL AND output_tokens > 0 AND duration_ms > ttft_ms"
-            + " THEN output_tokens * 1000.0 / (duration_ms - ttft_ms) END)::float8 AS avg_output_tokens_per_second"
+            // overall answer throughput: answer tokens over the time actually spent producing them
+            + ", (CASE WHEN SUM(CASE WHEN " + DECODE_SAMPLE + " THEN " + DECODE_WINDOW_MS + " END) > 0"
+            + " THEN SUM(CASE WHEN " + DECODE_SAMPLE + " THEN " + DECODE_TOKENS + " END) * 1000.0"
+            + " / SUM(CASE WHEN " + DECODE_SAMPLE + " THEN " + DECODE_WINDOW_MS + " END) END)::float8 AS avg_output_tokens_per_second"
+            + ", percentile_disc(0.5) WITHIN GROUP (ORDER BY CASE WHEN " + DECODE_SAMPLE + " THEN " + DECODE_RATE + " END)::float8"
+            + " AS p50_output_tokens_per_second"
+            + ", percentile_disc(0.95) WITHIN GROUP (ORDER BY CASE WHEN " + DECODE_SAMPLE + " THEN " + DECODE_RATE + " END)::float8"
+            + " AS p95_output_tokens_per_second"
             + " FROM " + TABLE + " WHERE type = ? AND started_at >= ? AND started_at < ?"
             + " GROUP BY 1 ORDER BY calls DESC";
         return database.select(sql, PgLlmModelMetricsRow.class,
@@ -291,6 +311,8 @@ public class PgSpanStore implements SpanStore {
                 value.p50DurationMs = row.p50DurationMs;
                 value.p95DurationMs = row.p95DurationMs;
                 value.avgOutputTokensPerSecond = row.avgOutputTokensPerSecond;
+                value.p50OutputTokensPerSecond = row.p50OutputTokensPerSecond;
+                value.p95OutputTokensPerSecond = row.p95OutputTokensPerSecond;
                 return value;
             }).toList();
     }

@@ -35,7 +35,40 @@ class FirstTokenProbeTest {
         probe.onReasoningChunk("thinking");
 
         assertTrue(probe.ttftMillis() != null && probe.ttftMillis() >= 150);
+        assertNull(probe.firstContentMillis());
         assertEquals(List.of("thinking"), delegate.reasoningChunks);
+    }
+
+    @Test
+    void firstContentIsMeasuredAfterTheReasoningPhase() {
+        var probe = new FirstTokenProbe(new RecordingCallback(), System.nanoTime() - TimeUnit.SECONDS.toNanos(2));
+
+        probe.onReasoningChunk("thinking");
+        probe.onChunk("answer");
+
+        assertTrue(probe.firstContentMillis() != null && probe.firstContentMillis() >= 2000);
+        assertTrue(probe.ttftMillis() != null && probe.ttftMillis() >= 2000);
+    }
+
+    @Test
+    void contentChunkIsBothFirstTokenAndFirstContent() {
+        var probe = new FirstTokenProbe(new RecordingCallback());
+
+        probe.onChunk("answer");
+
+        assertNotNull(probe.ttftMillis());
+        assertNotNull(probe.firstContentMillis());
+    }
+
+    @Test
+    void resetClearsBothMeasurements() {
+        var probe = new FirstTokenProbe(new RecordingCallback());
+
+        probe.onChunk("answer");
+        probe.reset();
+
+        assertNull(probe.ttftMillis());
+        assertNull(probe.firstContentMillis());
     }
 
     @Test

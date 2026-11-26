@@ -52,16 +52,20 @@ class PgSpanStoreTest {
             statement.execute("CREATE SCHEMA IF NOT EXISTS app");
             statement.execute("CREATE TABLE IF NOT EXISTS app.spans ("
                 + "id text PRIMARY KEY, trace_id text NOT NULL, user_id text, span_id text NOT NULL, "
-                + "parent_span_id text, name text, type text, model text, provider_id text, status text, tool_call_id text, "
+                + "parent_span_id text, name text, type text, model text, resolved_model text, provider_id text, status text, tool_call_id text, "
                 + "input text, output text, input_tokens bigint, output_tokens bigint, cached_tokens bigint, "
+                + "reasoning_tokens bigint, "
                 + "cost_usd double precision, cost_source text, pricing_model_id text, "
                 + "input_price_per_1m_tokens double precision, output_price_per_1m_tokens double precision, "
-                + "duration_ms bigint, ttft_ms bigint, error_message text, attributes jsonb, started_at timestamptz, "
-                + "completed_at timestamptz, created_at timestamptz)");
+                + "duration_ms bigint, ttft_ms bigint, first_content_ms bigint, error_message text, attributes jsonb, "
+                + "started_at timestamptz, completed_at timestamptz, created_at timestamptz)");
             statement.execute("CREATE UNIQUE INDEX IF NOT EXISTS spans_span_id_uidx ON app.spans (span_id)");
-            // the shared dev database may hold the pre-TTFT table; the migration adds the column there
+            // the shared dev database may hold an older table; the migrations add the columns there
             statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS ttft_ms bigint");
             statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS provider_id text");
+            statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS resolved_model text");
+            statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS reasoning_tokens bigint");
+            statement.execute("ALTER TABLE app.spans ADD COLUMN IF NOT EXISTS first_content_ms bigint");
         } catch (Exception e) {
             throw new IllegalStateException("failed to initialize span test schema", e);
         }
@@ -233,42 +237,69 @@ class PgSpanStoreTest {
     void llmModelMetricsAggregatesLatencyTtftAndErrors() {
         var store = store();
         var base = ZonedDateTime.parse("2026-11-23T11:00:00Z");
-        var fast = span("s1", "t1", "l1", SpanType.LLM, base);
-        fast.ttftMs = 100L;
-        fast.durationMs = 1100L;
-        fast.outputTokens = 100L;
-        var slow = span("s2", "t2", "l2", SpanType.LLM, base.plusSeconds(1));
-        slow.ttftMs = 300L;
-        slow.durationMs = 3300L;
-        slow.outputTokens = 200L;
-        var unmeasured = span("s3", "t3", "l3", SpanType.LLM, base.plusSeconds(2));
-        unmeasured.ttftMs = null;
-        unmeasured.durationMs = 500L;
-        unmeasured.status = SpanStatus.ERROR;
-        var other = span("s4", "t4", "l4", SpanType.LLM, base.plusSeconds(3));
-        other.model = "m2";
-        store.insert(fast);
-        store.insert(slow);
-        store.insert(unmeasured);
-        store.insert(other);
+        insertModelMetricFixtures(store, base);
 
         var models = store.llmModelMetrics(base, base.plusMinutes(10));
 
         assertEquals(2, models.size());
         var m1 = models.getFirst();
         assertEquals("m1", m1.model);
-        assertEquals(3L, m1.calls);
+        assertEquals(5L, m1.calls);
         assertEquals(1L, m1.errors);
-        assertEquals(2L, m1.callsWithTtft);
-        assertEquals(200.0, m1.avgTtftMs, 1e-9);
-        assertEquals(100.0, m1.p50TtftMs, 1e-9);
-        assertEquals(300.0, m1.p95TtftMs, 1e-9);
-        // (100*1000/1000 + 200*1000/3000) / 2 = (100 + 66.67) / 2
-        assertEquals(83.33, m1.avgOutputTokensPerSecond, 0.01);
+        assertEquals(4L, m1.callsWithTtft);
+        assertEquals(400.0, m1.avgTtftMs, 1e-9);
+        assertEquals(200.0, m1.p50TtftMs, 1e-9);
+        assertEquals(1000.0, m1.p95TtftMs, 1e-9);
+        // answer speeds: 100 tokens/1s, (200-50)/3s = 50, (400-380)/2s = 10; weighted (100+150+20)/6s
+        assertEquals(45.0, m1.avgOutputTokensPerSecond, 0.01);
+        assertEquals(50.0, m1.p50OutputTokensPerSecond, 0.01);
+        assertEquals(100.0, m1.p95OutputTokensPerSecond, 0.01);
         assertEquals("m2", models.get(1).model);
         assertEquals(1L, models.get(1).calls);
         assertEquals(0L, models.get(1).callsWithTtft);
         assertNull(models.get(1).p50TtftMs);
+        assertNull(models.get(1).p50OutputTokensPerSecond);
+    }
+
+    private void insertModelMetricFixtures(PgSpanStore store, ZonedDateTime base) {
+        var fast = span("s1", "t1", "l1", SpanType.LLM, base);
+        fast.ttftMs = 100L;
+        fast.firstContentMs = 100L;
+        fast.durationMs = 1100L;
+        fast.outputTokens = 100L;
+        fast.reasoningTokens = 0L;
+        var slow = span("s2", "t2", "l2", SpanType.LLM, base.plusSeconds(1));
+        slow.ttftMs = 300L;
+        slow.firstContentMs = 300L;
+        slow.durationMs = 3300L;
+        slow.outputTokens = 200L;
+        slow.reasoningTokens = 50L;
+        // a reasoning-heavy call: most output tokens were spent before the answer started
+        var reasoningHeavy = span("s3", "t3", "l3", SpanType.LLM, base.plusSeconds(2));
+        reasoningHeavy.ttftMs = 200L;
+        reasoningHeavy.firstContentMs = 500L;
+        reasoningHeavy.durationMs = 2500L;
+        reasoningHeavy.outputTokens = 400L;
+        reasoningHeavy.reasoningTokens = 380L;
+        var unmeasured = span("s4", "t4", "l4", SpanType.LLM, base.plusSeconds(3));
+        unmeasured.ttftMs = null;
+        unmeasured.durationMs = 500L;
+        unmeasured.status = SpanStatus.ERROR;
+        // the answer arrived as one burst inside 100 ms: a chunk-granularity artifact, not a decode rate
+        var bursty = span("s5", "t5", "l5", SpanType.LLM, base.plusSeconds(4));
+        bursty.ttftMs = 1000L;
+        bursty.firstContentMs = 1000L;
+        bursty.durationMs = 1100L;
+        bursty.outputTokens = 500L;
+        bursty.reasoningTokens = 0L;
+        var other = span("s6", "t6", "l6", SpanType.LLM, base.plusSeconds(5));
+        other.model = "m2";
+        store.insert(fast);
+        store.insert(slow);
+        store.insert(reasoningHeavy);
+        store.insert(unmeasured);
+        store.insert(bursty);
+        store.insert(other);
     }
 
     private PgSpanStore store() {

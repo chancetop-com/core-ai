@@ -32,6 +32,9 @@ public class PgSpanRow {
     @Column(name = "model")
     public String model;
 
+    @Column(name = "resolved_model")
+    public String resolvedModel;
+
     @Column(name = "provider_id")
     public String providerId;
 
@@ -56,6 +59,9 @@ public class PgSpanRow {
     @Column(name = "cached_tokens")
     public Long cachedTokens;
 
+    @Column(name = "reasoning_tokens")
+    public Long reasoningTokens;
+
     @Column(name = "cost_usd")
     public Double costUsd;
 
@@ -76,6 +82,9 @@ public class PgSpanRow {
 
     @Column(name = "ttft_ms")
     public Long ttftMs;
+
+    @Column(name = "first_content_ms")
+    public Long firstContentMs;
 
     @Column(name = "error_message")
     public String errorMessage;

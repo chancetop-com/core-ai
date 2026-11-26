@@ -33,6 +33,9 @@ public class SpanView {
     @Property(name = "model")
     public String model;
 
+    @Property(name = "resolvedModel")
+    public String resolvedModel;
+
     @Property(name = "input")
     public String input;
 

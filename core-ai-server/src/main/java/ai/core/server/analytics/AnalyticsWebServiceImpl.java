@@ -170,6 +170,8 @@ public class AnalyticsWebServiceImpl implements AnalyticsWebService {
             modelView.p50DurationMs = model.p50DurationMs();
             modelView.p95DurationMs = model.p95DurationMs();
             modelView.avgOutputTokensPerSecond = model.avgOutputTokensPerSecond();
+            modelView.p50OutputTokensPerSecond = model.p50OutputTokensPerSecond();
+            modelView.p95OutputTokensPerSecond = model.p95OutputTokensPerSecond();
             return modelView;
         }).toList();
         return view;

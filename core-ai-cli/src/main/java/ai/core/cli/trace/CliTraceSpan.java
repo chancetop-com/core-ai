@@ -25,6 +25,8 @@ public class CliTraceSpan {
     public String type;            // AGENT | LLM | TOOL
     @Property(name = "model")
     public String model;
+    @Property(name = "resolvedModel")
+    public String resolvedModel;
     @Property(name = "input")
     public String input;
     @Property(name = "output")
@@ -35,8 +37,12 @@ public class CliTraceSpan {
     public Long outputTokens;
     @Property(name = "cachedTokens")
     public Long cachedTokens;
+    @Property(name = "reasoningTokens")
+    public Long reasoningTokens;
     @Property(name = "ttftMs")
     public Long ttftMs;
+    @Property(name = "firstContentMs")
+    public Long firstContentMs;
     @Property(name = "durationMs")
     public Long durationMs;
     @Property(name = "status")

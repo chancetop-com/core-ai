@@ -294,6 +294,8 @@ export interface Trace {
   source?: string;   // chat | test | api | a2a | scheduled | workflow | llm_test | llm_api | gateway | external
   agentName?: string;
   model?: string;
+  // model that actually answered when it differs from `model` (gateway failed over to another model)
+  resolvedModel?: string;
   sessionId: string;
   // true when the server derived the session id itself (the client sent none)
   sessionIdDerived?: boolean;
@@ -326,6 +328,8 @@ export interface Span {
   name: string;
   type: 'LLM' | 'AGENT' | 'TOOL' | 'FLOW' | 'GROUP';
   model: string;
+  // model that actually answered when it differs from `model` (gateway failed over to another model)
+  resolvedModel?: string;
   // The list endpoint returns metadata only; full payloads come from the per-span detail endpoint.
   input?: string | null;
   output?: string | null;
@@ -3481,6 +3485,8 @@ export interface LlmModelMetrics {
   p50DurationMs: number | null;
   p95DurationMs: number | null;
   avgOutputTokensPerSecond: number | null;
+  p50OutputTokensPerSecond: number | null;
+  p95OutputTokensPerSecond: number | null;
 }
 
 export interface LlmMetrics {

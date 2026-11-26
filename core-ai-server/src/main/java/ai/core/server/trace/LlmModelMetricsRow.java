@@ -22,6 +22,8 @@ public class LlmModelMetricsRow {
     public Double avgDurationMs;
     public Double p50DurationMs;
     public Double p95DurationMs;
-    /** Output tokens per second after the first token; null when neither TTFT nor output tokens exist. */
+    /** Answer tokens per second in the decode window, token-weighted across the window's calls. */
     public Double avgOutputTokensPerSecond;
+    public Double p50OutputTokensPerSecond;
+    public Double p95OutputTokensPerSecond;
 }

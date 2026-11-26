@@ -395,7 +395,11 @@ final class GatewaySupport {
         if (cached == null) cached = usage.get("cached_tokens");
         if (cached == null) cached = detailValue(usage, "prompt_tokens_details");
         if (cached == null) cached = detailValue(usage, "input_tokens_details");
-        return new GatewayUsage(input, output, number(cached, null));
+        // reasoning tokens are part of output_tokens; chat reports completion_tokens_details,
+        // the responses surface reports output_tokens_details
+        Object reasoning = detailValue(usage, "completion_tokens_details", "reasoning_tokens");
+        if (reasoning == null) reasoning = detailValue(usage, "output_tokens_details", "reasoning_tokens");
+        return new GatewayUsage(input, output, number(cached, null), number(reasoning, null));
     }
 
     private static Map<?, ?> nestedUsage(Map<String, Object> body) {
@@ -417,7 +421,11 @@ final class GatewaySupport {
     }
 
     private static Object detailValue(Map<?, ?> usage, String detailsKey) {
-        return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get("cached_tokens") : null;
+        return detailValue(usage, detailsKey, "cached_tokens");
+    }
+
+    private static Object detailValue(Map<?, ?> usage, String detailsKey, String valueKey) {
+        return usage.get(detailsKey) instanceof Map<?, ?> details ? details.get(valueKey) : null;
     }
 
     static void mergeExtraBody(Map<String, Object> body, String extraBody) {

@@ -215,7 +215,11 @@ function TraceHeader({ trace, spans, mode, onClose, readOnly }: {
 
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
             {trace.agentName && <NeutralChip>{trace.agentName}</NeutralChip>}
-            {trace.model && <NeutralChip mono>{trace.model}</NeutralChip>}
+            {trace.model && (
+              <NeutralChip mono>
+                {trace.model}{trace.resolvedModel && trace.resolvedModel !== trace.model ? ` → ${trace.resolvedModel}` : ''}
+              </NeutralChip>
+            )}
             {workflowRunId && <NeutralChip mono>workflow run {workflowRunId.slice(0, 8)}</NeutralChip>}
             {workflowNodeId && <NeutralChip mono>node {workflowNodeId}</NeutralChip>}
             {trace.userId && (
@@ -572,7 +576,11 @@ function SpanInspector({ span, parentSpan, loading, readOnly }: { span: Span; pa
           <div className="mt-2 text-xs" style={{ color: '#dc2626' }}>{replayError}</div>
         )}
         <div className="flex flex-wrap gap-2 mt-3">
-          {span.model && <NeutralChip mono>{span.model}</NeutralChip>}
+          {span.model && (
+            <NeutralChip mono>
+              {span.model}{span.resolvedModel && span.resolvedModel !== span.model ? ` → ${span.resolvedModel}` : ''}
+            </NeutralChip>
+          )}
           <NeutralChip><Clock size={11} /> {formatDuration(span.durationMs)}</NeutralChip>
           {(span.inputTokens || span.outputTokens) ? (
             <NeutralChip><Zap size={11} /> {formatTokenPair(span.inputTokens, span.outputTokens)}</NeutralChip>

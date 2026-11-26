@@ -9,6 +9,10 @@ import java.util.function.LongConsumer;
  * Wraps the callback handed to the provider transport and records when the first content or reasoning
  * token arrived. It sits outside the buffering/async wrappers, so the measurement is the transport's own
  * latency rather than the time the UI happened to receive a batch.
+ * <p>
+ * Two timestamps are kept: the first token of any kind (what the user waits for, and what the live
+ * session view shows) and the first answer-content token. Reasoning models can stream thinking for a
+ * long time before the answer starts, so the decode window of the answer only begins at the second one.
  *
  * @author stephen
  */
@@ -17,6 +21,7 @@ public class FirstTokenProbe implements StreamingCallback {
     private final long startNanos;
     private final LongConsumer firstTokenSink;
     private volatile long firstTokenNanos;
+    private volatile long firstContentNanos;
 
     public FirstTokenProbe(StreamingCallback delegate) {
         this(delegate, System.nanoTime(), null);
@@ -41,9 +46,20 @@ public class FirstTokenProbe implements StreamingCallback {
      * call produced no token at all (tool-only reply, cancelled before output, transport failure)
      */
     public Long ttftMillis() {
-        long first = firstTokenNanos;
-        if (first == 0) return null;
-        return Math.max(0, (first - startNanos) / 1_000_000);
+        return millisSince(firstTokenNanos);
+    }
+
+    /**
+     * @return milliseconds from the request start to the first answer-content token, null when the
+     * reply carried no answer text (reasoning-only or tool-only reply)
+     */
+    public Long firstContentMillis() {
+        return millisSince(firstContentNanos);
+    }
+
+    private Long millisSince(long nanos) {
+        if (nanos == 0) return null;
+        return Math.max(0, (nanos - startNanos) / 1_000_000);
     }
 
     private void markFirstToken() {
@@ -58,9 +74,17 @@ public class FirstTokenProbe implements StreamingCallback {
         }
     }
 
+    private void markFirstContent() {
+        if (firstContentNanos != 0) return;
+        synchronized (this) {
+            if (firstContentNanos == 0) firstContentNanos = System.nanoTime();
+        }
+    }
+
     @Override
     public void onChunk(String chunk) {
         markFirstToken();
+        markFirstContent();
         delegate.onChunk(chunk);
     }
 
@@ -123,6 +147,7 @@ public class FirstTokenProbe implements StreamingCallback {
     @Override
     public void reset() {
         firstTokenNanos = 0;
+        firstContentNanos = 0;
         delegate.reset();
     }
 }

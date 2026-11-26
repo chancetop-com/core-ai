@@ -7,6 +7,7 @@ import ai.core.llm.domain.Content;
 import ai.core.llm.domain.FinishReason;
 import ai.core.llm.domain.Message;
 import ai.core.llm.domain.RoleType;
+import ai.core.llm.domain.Usage;
 import ai.core.utils.JsonUtil;
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
@@ -63,13 +64,20 @@ class LLMTracerTest {
         var openTelemetry = OpenTelemetrySdk.builder().setTracerProvider(tracerProvider).build();
         var tracer = new LLMTracer(openTelemetry, true);
         var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, "hi")), null, null, "test-model", "test");
-        var completion = CompletionResponse.of(List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "ok"))), null);
+        var completion = CompletionResponse.of(List.of(Choice.of(FinishReason.STOP, Message.of(RoleType.ASSISTANT, "ok"))),
+            new Usage(10, 20, 30));
         completion.ttftMs = 1234L;
+        completion.firstContentMs = 2345L;
+        var details = new Usage.CompletionTokensDetails();
+        details.reasoningTokens = 15;
+        completion.usage.setCompletionTokensDetails(details);
 
         tracer.traceLLMCompletion("litellm", request, () -> completion);
 
         var span = processor.find("test").orElseThrow();
         assertEquals(1234L, span.getAttributes().get(AttributeKey.longKey("gen_ai.response.time_to_first_token_ms")));
+        assertEquals(2345L, span.getAttributes().get(AttributeKey.longKey("gen_ai.response.first_content_ms")));
+        assertEquals(15L, span.getAttributes().get(AttributeKey.longKey("gen_ai.usage.reasoning_tokens")));
         tracerProvider.close();
     }
 

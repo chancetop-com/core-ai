@@ -186,7 +186,9 @@ export default function LlmOps() {
         <div className="p-4 border-b" style={{ borderColor: 'var(--color-border)' }}>
           <h3 className="font-semibold text-sm">Per-model metrics</h3>
           <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-            TTFT is measured from the provider request to the first content token; calls recorded before this metric existed show “—”
+            TTFT is measured from the provider request to the first content/reasoning token; Out tok/s is the median answer
+            speed (reasoning tokens and thinking time excluded, answer windows under 200 ms ignored). Hover a value for the
+            weighted average and p95.
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -219,7 +221,7 @@ export default function LlmOps() {
                   <Td>{formatModelTtft(model, model.p95TtftMs)}</Td>
                   <Td>{formatMsOrDash(model.p50DurationMs)}</Td>
                   <Td>{formatMsOrDash(model.p95DurationMs)}</Td>
-                  <Td>{model.avgOutputTokensPerSecond != null ? model.avgOutputTokensPerSecond.toFixed(1) : '—'}</Td>
+                  <Td><span title={outputSpeedTitle(model)}>{formatTps(model.p50OutputTokensPerSecond)}</span></Td>
                   <Td>{formatCompact(model.inputTokens)} / {formatCompact(model.outputTokens)}</Td>
                   <Td>${model.costUsd.toFixed(2)}</Td>
                 </tr>
@@ -285,6 +287,19 @@ function formatModelTtft(model: LlmModelMetrics, value: number | null) {
 
 function formatMsOrDash(value: number | null) {
   return value != null ? formatMs(value) : '—';
+}
+
+function formatTps(value: number | null) {
+  return value != null ? value.toFixed(1) : '—';
+}
+
+function outputSpeedTitle(model: LlmModelMetrics) {
+  if (model.p50OutputTokensPerSecond == null) {
+    return 'no call in this window streamed an answer for at least 200 ms';
+  }
+  return `answer tokens/s · p50 ${formatTps(model.p50OutputTokensPerSecond)}`
+    + ` · weighted avg ${formatTps(model.avgOutputTokensPerSecond)}`
+    + ` · p95 ${formatTps(model.p95OutputTokensPerSecond)}`;
 }
 
 function formatMs(value: number) {

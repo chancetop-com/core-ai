@@ -58,7 +58,9 @@ public abstract class LLMProvider {
     }
 
     private static void applyTtft(CompletionResponse response, FirstTokenProbe probe) {
-        if (response != null) response.ttftMs = probe.ttftMillis();
+        if (response == null) return;
+        response.ttftMs = probe.ttftMillis();
+        response.firstContentMs = probe.firstContentMillis();
     }
 
     protected LLMTracer tracer;

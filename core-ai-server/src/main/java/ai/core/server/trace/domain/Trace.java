@@ -29,6 +29,11 @@ public class Trace {
     @Field(name = "provider_id")
     public String providerId;
 
+    // model that actually answered the first LLM call when it differs from the requested alias;
+    // null when the request was served by the alias itself or the producer did not report it
+    @Field(name = "resolved_model")
+    public String resolvedModel;
+
     @Field(name = "type")
     public String type;       // agent | llm_call | external
 

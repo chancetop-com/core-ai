@@ -55,6 +55,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         view.name = span.name;
         view.type = span.type != null ? SpanTypeView.valueOf(span.type.name()) : null;
         view.model = span.model;
+        view.resolvedModel = span.resolvedModel;
         view.input = span.input;
         view.output = span.output;
         view.inputTokens = span.inputTokens;
@@ -303,6 +304,7 @@ public class TraceWebServiceImpl implements TraceWebService {
         view.traceId = trace.traceId;
         view.name = trace.name;
         view.model = trace.model;
+        view.resolvedModel = trace.resolvedModel;
         view.type = trace.type;
         view.source = trace.source;
         view.agentName = trace.agentName;

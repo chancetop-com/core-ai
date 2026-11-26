@@ -20,14 +20,14 @@ import java.util.Map;
  */
 public class PgTraceStore implements TraceStore {
     private static final String TABLE = "app.traces";
-    private static final String COLUMNS = "id, trace_id, name, model, provider_id, type, source, agent_name, agent_id, session_id, "
+    private static final String COLUMNS = "id, trace_id, name, model, resolved_model, provider_id, type, source, agent_name, agent_id, session_id, "
         + "user_id, status, error_message, input, output, metadata::text AS metadata, input_tokens, output_tokens, "
         + "total_tokens, cached_tokens, cost_usd, duration_ms, started_at, completed_at, created_at, updated_at";
     private static final String SELECT = "SELECT " + COLUMNS + " FROM " + TABLE;
-    private static final String INSERT_COLUMNS = " (id, trace_id, name, model, provider_id, type, source, agent_name, agent_id, "
+    private static final String INSERT_COLUMNS = " (id, trace_id, name, model, resolved_model, provider_id, type, source, agent_name, agent_id, "
         + "session_id, user_id, status, error_message, input, output, metadata, input_tokens, output_tokens, "
         + "total_tokens, cached_tokens, cost_usd, duration_ms, started_at, completed_at, created_at, updated_at) ";
-    private static final String INSERT_VALUES = " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, "
+    private static final String INSERT_VALUES = " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, "
         + "?, ?, ?, ?, ?, ?)";
     private static final String INSERT = "INSERT INTO " + TABLE + INSERT_COLUMNS + INSERT_VALUES;
     private static final String INSERT_IF_ABSENT = INSERT + " ON CONFLICT DO NOTHING";
@@ -39,6 +39,7 @@ public class PgTraceStore implements TraceStore {
         trace.traceId = row.traceId;
         trace.name = row.name;
         trace.model = row.model;
+        trace.resolvedModel = row.resolvedModel;
         trace.providerId = row.providerId;
         trace.type = row.type;
         trace.source = row.source;
@@ -74,7 +75,7 @@ public class PgTraceStore implements TraceStore {
 
     private static Object[] params(Trace trace) {
         return new Object[]{
-            trace.id, trace.traceId, trace.name, trace.model, trace.providerId, trace.type, trace.source, trace.agentName, trace.agentId,
+            trace.id, trace.traceId, trace.name, trace.model, trace.resolvedModel, trace.providerId, trace.type, trace.source, trace.agentName, trace.agentId,
             trace.sessionId, trace.userId, status(trace.status), JsonSanitizer.text(trace.errorMessage),
             JsonSanitizer.text(trace.input), JsonSanitizer.text(trace.output),
             trace.metadata != null ? JsonUtil.toJson(trace.metadata) : null,
@@ -315,6 +316,7 @@ public class PgTraceStore implements TraceStore {
             case AGENT_ID -> "agent_id";
             case AGENT_NAME -> "agent_name";
             case PROVIDER_ID -> "provider_id";
+            case RESOLVED_MODEL -> "resolved_model";
         };
     }
 

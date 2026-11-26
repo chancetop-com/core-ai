@@ -3,8 +3,12 @@ package ai.core.api.server.analytics;
 import core.framework.api.json.Property;
 
 /**
- * One model's LLM call metrics over the requested window. Latency and TTFT are milliseconds;
- * {@code avgOutputTokensPerSecond} is the decode speed after the first token.
+ * One model's LLM call metrics over the requested window. Latency and TTFT are milliseconds.
+ * <p>
+ * The output speeds cover answer tokens only: reasoning/thinking tokens and the time spent on them are
+ * excluded, and calls whose answer window is shorter than 200 ms are left out because they measure
+ * chunk arrival rather than model speed. {@code avgOutputTokensPerSecond} is the token-weighted overall
+ * rate, {@code p50OutputTokensPerSecond} the typical call.
  *
  * @author stephen
  */
@@ -54,5 +58,11 @@ public class LlmModelMetricsView {
 
     @Property(name = "avgOutputTokensPerSecond")
     public Double avgOutputTokensPerSecond;
+
+    @Property(name = "p50OutputTokensPerSecond")
+    public Double p50OutputTokensPerSecond;
+
+    @Property(name = "p95OutputTokensPerSecond")
+    public Double p95OutputTokensPerSecond;
 }
 

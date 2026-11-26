@@ -20,7 +20,9 @@ final class GatewayProxyTrace {
     private static final AttributeKey<Long> GEN_AI_USAGE_INPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.input_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_OUTPUT_TOKENS = AttributeKey.longKey("gen_ai.usage.output_tokens");
     private static final AttributeKey<Long> GEN_AI_USAGE_CACHED_TOKENS = AttributeKey.longKey("gen_ai.usage.cached_tokens");
+    private static final AttributeKey<Long> GEN_AI_USAGE_REASONING_TOKENS = AttributeKey.longKey("gen_ai.usage.reasoning_tokens");
     private static final AttributeKey<Long> GEN_AI_RESPONSE_TTFT_MS = AttributeKey.longKey("gen_ai.response.time_to_first_token_ms");
+    private static final AttributeKey<Long> GEN_AI_RESPONSE_FIRST_CONTENT_MS = AttributeKey.longKey("gen_ai.response.first_content_ms");
     // cap the span output so a very long streaming response cannot inflate the stored span
     private static final int MAX_SPAN_OUTPUT_LENGTH = 200_000;
 
@@ -54,21 +56,45 @@ final class GatewayProxyTrace {
     // Streaming chat chunks carry the assistant text in choices[].delta.content (or choices[].message.content),
     // the responses endpoint streams it as response.output_text.delta events and anthropic as
     // content_block_delta/text_delta; concatenate every shape so the span output holds the final answer.
-    /**
-     * @return true when this event carried assistant text, i.e. the caller can now record the TTFT
-     */
-    static boolean appendStreamOutput(StringBuilder output, String data) {
-        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return false;
+    static StreamText appendStreamOutput(StringBuilder output, String data) {
+        if (data == null || "[DONE]".equals(data) || output.length() >= MAX_SPAN_OUTPUT_LENGTH) return StreamText.NONE;
         var body = parseStreamChunk(data);
-        if (body == null) return false;
+        if (body == null) return StreamText.NONE;
         var content = chatChunkContent(body);
         if (content == null) content = responsesDeltaText(body);
         if (content == null) content = anthropicDeltaText(body);
         if (content != null && !content.isBlank()) {
             output.append(content);
+            return StreamText.CONTENT;
+        }
+        return hasReasoningText(body) ? StreamText.REASONING : StreamText.NONE;
+    }
+
+    static void recordStreamText(TimeToFirstToken ttft, Span span, StringBuilder output, String data) {
+        var text = appendStreamOutput(output, data);
+        if (text != StreamText.NONE) ttft.recordToken(span);
+        if (text == StreamText.CONTENT) ttft.recordContent(span);
+    }
+
+    private static boolean hasReasoningText(Map<String, Object> body) {
+        if (body.get("choices") instanceof List<?> choices && !choices.isEmpty()
+                && choices.getFirst() instanceof Map<?, ?> choice
+                && (hasReasoningText(choice.get("delta")) || hasReasoningText(choice.get("message")))) {
             return true;
         }
-        return false;
+        var type = body.get("type");
+        if ("response.reasoning_summary_text.delta".equals(type) || "response.reasoning_text.delta".equals(type)) {
+            return true;
+        }
+        return "content_block_delta".equals(type) && body.get("delta") instanceof Map<?, ?> delta
+                && "thinking_delta".equals(delta.get("type"));
+    }
+
+    private static boolean hasReasoningText(Object value) {
+        if (!(value instanceof Map<?, ?> map)) return false;
+        var reasoning = map.get("reasoning_content");
+        if (reasoning == null) reasoning = map.get("reasoning");
+        return reasoning instanceof String text && !text.isBlank();
     }
 
     private static void applyUsage(Span span, GatewayUsage usage) {
@@ -78,6 +104,7 @@ final class GatewayProxyTrace {
         if (usage.inputTokens() > 0) span.setAttribute(GEN_AI_USAGE_INPUT_TOKENS, usage.inputTokens());
         if (usage.outputTokens() > 0) span.setAttribute(GEN_AI_USAGE_OUTPUT_TOKENS, usage.outputTokens());
         if (usage.cachedTokens() > 0) span.setAttribute(GEN_AI_USAGE_CACHED_TOKENS, usage.cachedTokens());
+        if (usage.reasoningTokens() > 0) span.setAttribute(GEN_AI_USAGE_REASONING_TOKENS, usage.reasoningTokens());
     }
 
     private static Map<String, Object> parseStreamChunk(String data) {
@@ -117,18 +144,39 @@ final class GatewayProxyTrace {
     }
 
     /**
-     * Wall clock since the upstream request was issued, recorded on the span at the first content event.
-     * Non-streaming calls have no separate first token, so callers only use this on streamed responses.
+     * What a streamed event carried: answer text is appended to the span output, reasoning text only
+     * matters for the first-token measurement (reasoning models can think for minutes before answering).
+     */
+    enum StreamText {
+        NONE, REASONING, CONTENT
+    }
+
+    /**
+     * Wall clock since the upstream request was issued. Two milestones are recorded: the first streamed
+     * token of any kind (what a user waits for) and the first answer-content token, after which the
+     * answer itself is generated. Non-streaming calls have neither, so callers only use this on
+     * streamed responses.
      */
     static final class TimeToFirstToken {
         private final long startNanos = System.nanoTime();
-        private boolean recorded;
+        private boolean tokenRecorded;
+        private boolean contentRecorded;
 
-        void record(Span span) {
-            if (recorded) return;
-            recorded = true;
+        void recordToken(Span span) {
+            if (tokenRecorded) return;
+            tokenRecorded = true;
+            record(span, GEN_AI_RESPONSE_TTFT_MS);
+        }
+
+        void recordContent(Span span) {
+            if (contentRecorded) return;
+            contentRecorded = true;
+            record(span, GEN_AI_RESPONSE_FIRST_CONTENT_MS);
+        }
+
+        private void record(Span span, AttributeKey<Long> key) {
             if (!span.getSpanContext().isValid()) return;
-            span.setAttribute(GEN_AI_RESPONSE_TTFT_MS, Math.max(0, (System.nanoTime() - startNanos) / 1_000_000));
+            span.setAttribute(key, Math.max(0, (System.nanoTime() - startNanos) / 1_000_000));
         }
     }
 }
