@@ -97,6 +97,32 @@ class ReportStorePgTest {
     }
 
     @Test
+    void sharedReportCanBeReadAndPinnedByAnotherUser() {
+        var owner = "owner-" + UUID.randomUUID();
+        var reader = "reader-" + UUID.randomUUID();
+        var report = report(owner);
+        reports.insert(report);
+        try {
+            assertTrue(reports.get(report.id).isPresent());
+            assertTrue(reports.listAll(0, 100).stream().anyMatch(item -> item.id.equals(report.id)));
+
+            layouts.ensure(reader);
+            var pin = pin(reader, report.id, 0);
+            layouts.insertPin(pin);
+            assertEquals(1, layouts.pinsByReport(report.id).size());
+
+            // The same report may be pinned by its owner and another user.
+            layouts.ensure(owner);
+            layouts.insertPin(pin(owner, report.id, 0));
+            assertEquals(2, layouts.pinsByReport(report.id).size());
+        } finally {
+            DATABASE.execute("DELETE FROM app.home_report_pins WHERE report_id = ?", report.id);
+            DATABASE.execute("DELETE FROM app.home_report_layouts WHERE user_id IN (?, ?)", owner, reader);
+            DATABASE.execute("DELETE FROM app.dataset_reports WHERE id = ?", report.id);
+        }
+    }
+
+    @Test
     void layoutPinsIncrementRevisionAndUseNextPosition() {
         layouts.ensure(userId);
         var layout = layouts.lock(userId).orElseThrow();
@@ -130,9 +156,13 @@ class ReportStorePgTest {
     }
 
     private ReportDefinition report() {
+        return report(userId);
+    }
+
+    private ReportDefinition report(String ownerId) {
         var report = new ReportDefinition();
         report.id = UUID.randomUUID().toString();
-        report.userId = userId;
+        report.userId = ownerId;
         report.title = "report";
         report.revision = 1;
         report.specVersion = 1;

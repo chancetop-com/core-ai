@@ -44,15 +44,31 @@ public class PgDatasetReportStore {
                 PgDatasetReportRow.class, id, userId).map(this::toDomain);
     }
 
+    public Optional<ReportDefinition> get(String id) {
+        return database.selectOne("SELECT " + COLUMNS + " FROM " + TABLE + " WHERE id = ?",
+                PgDatasetReportRow.class, id).map(this::toDomain);
+    }
+
     public List<ReportDefinition> listOwned(String userId, int offset, int limit) {
         return database.select("SELECT " + COLUMNS + " FROM " + TABLE
                         + " WHERE user_id = ? ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
                 PgDatasetReportRow.class, userId, limit, offset).stream().map(this::toDomain).toList();
     }
 
+    public List<ReportDefinition> listAll(int offset, int limit) {
+        return database.select("SELECT " + COLUMNS + " FROM " + TABLE
+                        + " ORDER BY updated_at DESC, id LIMIT ? OFFSET ?",
+                PgDatasetReportRow.class, limit, offset).stream().map(this::toDomain).toList();
+    }
+
     public long countOwned(String userId) {
         return database.selectOne("SELECT count(*) AS total FROM " + TABLE + " WHERE user_id = ?",
                 PgCountRow.class, userId).map(row -> row.total).orElse(0L);
+    }
+
+    public long countAll() {
+        return database.selectOne("SELECT count(*) AS total FROM " + TABLE,
+                PgCountRow.class).map(row -> row.total).orElse(0L);
     }
 
     public boolean update(ReportDefinition report, long expectedRevision) {

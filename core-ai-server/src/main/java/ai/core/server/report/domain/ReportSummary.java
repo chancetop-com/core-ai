@@ -7,6 +7,7 @@ import java.time.ZonedDateTime;
  */
 public class ReportSummary {
     public String id;
+    public String userId;
     public String title;
     public long revision;
     public String datasetId;

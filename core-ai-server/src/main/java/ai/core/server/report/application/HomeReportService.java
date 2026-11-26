@@ -48,7 +48,7 @@ public class HomeReportService {
         var layout = layoutStore.get(userId).orElseThrow(ReportException::notFound);
         var result = new LayoutData(layout.revision, new ArrayList<>());
         for (var pin : layoutStore.pins(userId)) {
-            var report = reportStore.getOwned(pin.reportId, userId).orElse(null);
+            var report = reportStore.get(pin.reportId).orElse(null);
             if (report == null) continue;
             var item = new PinData();
             item.pin = pin;
@@ -67,7 +67,7 @@ public class HomeReportService {
             if (layout.revision != expectedLayoutRevision) {
                 throw ReportException.conflict("LAYOUT_REVISION_CONFLICT", "layout revision changed: " + layout.revision);
             }
-            var report = reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
+            var report = reportStore.get(reportId).orElseThrow(ReportException::notFound);
             var existing = layoutStore.pinByReport(userId, reportId).orElse(null);
             if (existing != null) {
                 transaction.commit();
@@ -87,7 +87,7 @@ public class HomeReportService {
             pin.updatedAt = now;
             layoutStore.insertPin(pin);
             layoutStore.bumpRevision(userId, layout.revision);
-            reportService.audit(report, ReportConstants.ACTION_PINNED, null, null, report.revision, report.specJson);
+            reportService.audit(report, userId, ReportConstants.ACTION_PINNED);
             transaction.commit();
             return pin;
         }
@@ -102,11 +102,11 @@ public class HomeReportService {
                 throw ReportException.conflict("LAYOUT_REVISION_CONFLICT", "layout revision changed: " + layout.revision);
             }
             var pin = layoutStore.pin(userId, pinId).orElseThrow(ReportException::notFound);
-            var report = reportStore.getOwned(pin.reportId, userId).orElse(null);
+            var report = reportStore.get(pin.reportId).orElse(null);
             layoutStore.deletePin(userId, pinId);
             layoutStore.bumpRevision(userId, layout.revision);
             if (report != null) {
-                reportService.audit(report, ReportConstants.ACTION_UNPINNED, null, null, report.revision, report.specJson);
+                reportService.audit(report, userId, ReportConstants.ACTION_UNPINNED);
             }
             transaction.commit();
         }
@@ -142,9 +142,9 @@ public class HomeReportService {
                 if (item.width != null) layoutStore.updateWidth(userId, item.pinId, normalizeWidth(item.width));
                 var pin = layoutStore.pin(userId, item.pinId).orElse(null);
                 if (pin != null) {
-                    var report = reportStore.getOwned(pin.reportId, userId).orElse(null);
+                    var report = reportStore.get(pin.reportId).orElse(null);
                     if (report != null) {
-                        reportService.audit(report, ReportConstants.ACTION_REORDERED, null, null, report.revision, report.specJson);
+                        reportService.audit(report, userId, ReportConstants.ACTION_REORDERED);
                     }
                 }
             }
@@ -168,7 +168,7 @@ public class HomeReportService {
                 continue;
             }
             item.pin = pin;
-            var report = reportStore.getOwned(pin.reportId, userId).orElse(null);
+            var report = reportStore.get(pin.reportId).orElse(null);
             if (report == null) {
                 item.errorCode = "REPORT_NOT_FOUND";
                 item.errorMessage = "report not found";

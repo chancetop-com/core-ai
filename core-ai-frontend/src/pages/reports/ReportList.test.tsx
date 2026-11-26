@@ -9,6 +9,8 @@ const REPORTS: ReportView[] = Array.from({ length: 25 }, (_, index) => ({
   id: `report-${index}`,
   title: `Report ${index}`,
   description: index === 0 ? 'Daily collection' : '',
+  created_by: 'Tester',
+  owned: true,
   revision: 1,
   spec_version: 1,
   engine_version: 1,

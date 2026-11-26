@@ -48,7 +48,7 @@ public class HomeReportWebServiceImpl implements HomeReportWebService {
         if (request.expectedLayoutRevision == null) throw new BadRequestException("expected_layout_revision is required");
         var userId = userId();
         var pin = homeReportService.pin(userId, request.reportId, request.width, request.expectedLayoutRevision);
-        var report = reportService.get(userId, request.reportId);
+        var report = reportService.getShared(userId, request.reportId);
         return ReportViewMapper.pin(pin, reportService.summary(report, pin));
     }
 

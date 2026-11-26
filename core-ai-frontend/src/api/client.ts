@@ -3293,6 +3293,8 @@ export interface ReportView {
   id: string;
   title: string;
   description?: string | null;
+  created_by?: string | null;
+  owned?: boolean;
   revision: number;
   spec_version: number;
   engine_version: number;

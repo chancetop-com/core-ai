@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { BarChart3, Pin, PinOff, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { api } from '../../api/client';
 import type { ReportView } from '../../api/client';
-import { useAuth } from '../../api/auth';
 import { useCapabilities } from '../../api/capabilities';
 import { usePermission } from '../../api/permissions';
 import { useListState } from '../../hooks/useListState';
@@ -14,7 +13,6 @@ const FORMAT_NOW = Date.now();
 
 export default function ReportList() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const caps = useCapabilities();
   const canManage = usePermission('report.manage');
   const [reports, setReports] = useState<ReportView[]>([]);
@@ -25,8 +23,6 @@ export default function ReportList() {
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<string | null>(null);
   const reqIdRef = useRef(0);
-
-  const creator = user?.name || user?.userId || 'You';
 
   const load = useCallback(() => {
     const requestId = ++reqIdRef.current;
@@ -198,7 +194,7 @@ export default function ReportList() {
                 <td className="px-4 py-3 max-w-[220px] truncate" title={report.dataset_name || report.dataset_id}>
                   {report.dataset_name || report.dataset_id}
                 </td>
-                <td className="px-4 py-3 whitespace-nowrap">{creator}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{report.created_by || '—'}</td>
                 <td className="px-4 py-3 whitespace-nowrap" style={{ color: 'var(--color-text-secondary)' }}>
                   <span title={report.updated_at || undefined}>{formatTime(report.updated_at)}</span>
                 </td>
@@ -226,7 +222,7 @@ export default function ReportList() {
                         {report.pin_id ? 'Unpin' : 'Pin'}
                       </button>
                     )}
-                    {canManage && (
+                    {canManage && report.owned !== false && (
                       <button onClick={e => remove(report, e)} disabled={actionId === report.id}
                         className="inline-flex items-center gap-1 px-2 py-1 rounded border text-xs cursor-pointer disabled:opacity-50"
                         style={{ ...actionButtonStyle, color: '#dc2626' }}>

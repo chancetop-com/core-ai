@@ -288,6 +288,7 @@ export default function ReportDetail() {
   };
 
   const isFixedIncomplete = range.kind === 'FIXED' && (!range.from || !range.to);
+  const owned = report?.owned !== false;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -317,6 +318,8 @@ export default function ReportDetail() {
               <h1 className="text-2xl font-semibold truncate">{report.title}</h1>
               <div className="text-xs mt-1" style={{ color: 'var(--color-text-secondary)' }}>
                 {report.dataset_name || report.dataset_id} · {report.display_type || 'TABLE'} · revision {report.revision}
+                {report.created_by ? ` · by ${report.created_by}` : ''}
+                {!owned ? ' · read-only' : ''}
                 {data?.source_time ? ` · source ${new Date(data.source_time).toLocaleString()}` : ''}
               </div>
             </div>
@@ -334,12 +337,14 @@ export default function ReportDetail() {
                   <Pin size={14} /> Pin to home
                 </button>
               ))}
-              <button onClick={() => navigate('/chat')}
-                className="px-3 py-2 rounded-lg text-sm cursor-pointer"
-                style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
-                Modify in chat
-              </button>
-              {canManage && (
+              {owned && (
+                <button onClick={() => navigate('/chat')}
+                  className="px-3 py-2 rounded-lg text-sm cursor-pointer"
+                  style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>
+                  Modify in chat
+                </button>
+              )}
+              {canManage && owned && (
                 <button onClick={remove}
                   className="w-9 h-9 rounded-lg flex items-center justify-center cursor-pointer"
                   style={{ color: '#dc2626', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}>

@@ -86,6 +86,7 @@ public final class ReportViewMapper {
         view.id = report.id;
         view.title = report.title;
         view.description = report.description;
+        view.createdBy = report.userId;
         view.revision = report.revision;
         view.specVersion = report.specVersion;
         view.engineVersion = report.engineVersion;
@@ -104,6 +105,7 @@ public final class ReportViewMapper {
         var view = new ReportView();
         view.id = summary.id;
         view.title = summary.title;
+        view.createdBy = summary.userId;
         view.revision = summary.revision;
         view.datasetId = summary.datasetId;
         view.datasetName = summary.datasetName;

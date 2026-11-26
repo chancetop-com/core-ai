@@ -151,15 +151,15 @@ public class ReportService {
             if (report.revision != expectedRevision) {
                 throw ReportException.conflict("REPORT_REVISION_CONFLICT", "report revision changed: " + report.revision);
             }
-            var pin = layoutStore.pinByReport(userId, reportId).orElse(null);
-            if (pin != null) {
-                layoutStore.ensure(userId);
-                var layout = layoutStore.lock(userId).orElseThrow(ReportException::notFound);
-                if (expectedLayoutRevision != null && layout.revision != expectedLayoutRevision) {
+            var pins = layoutStore.pinsByReport(reportId);
+            for (var pin : pins) {
+                layoutStore.ensure(pin.userId);
+                var layout = layoutStore.lock(pin.userId).orElseThrow(ReportException::notFound);
+                if (expectedLayoutRevision != null && pin.userId.equals(userId) && layout.revision != expectedLayoutRevision) {
                     throw ReportException.conflict("LAYOUT_REVISION_CONFLICT", "layout revision changed: " + layout.revision);
                 }
-                layoutStore.deletePinsByReport(userId, reportId);
-                layoutStore.bumpRevision(userId, layout.revision);
+                layoutStore.deletePinsByReport(pin.userId, reportId);
+                layoutStore.bumpRevision(pin.userId, layout.revision);
             }
             if (!reportStore.delete(reportId, userId, expectedRevision)) {
                 throw ReportException.conflict("REPORT_REVISION_CONFLICT", "report revision changed");
@@ -185,6 +185,11 @@ public class ReportService {
         return reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
     }
 
+    public ReportDefinition getShared(String userId, String reportId) {
+        accessPolicy.requireView(userId);
+        return reportStore.get(reportId).orElseThrow(ReportException::notFound);
+    }
+
     public HomeReportPin pinFor(String userId, String reportId) {
         accessPolicy.requireView(userId);
         return layoutStore.pinByReport(userId, reportId).orElse(null);
@@ -200,6 +205,18 @@ public class ReportService {
                                        Map<String, Object> parameters, int pageSize, int offset) {
         accessPolicy.requireView(userId);
         var report = reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
+        return buildDataBundle(report, override, parameters, pageSize, offset);
+    }
+
+    public ReportDataBundle dataBundleShared(String userId, String reportId, ReportQueryService.RangeOverride override,
+                                             Map<String, Object> parameters, int pageSize, int offset) {
+        accessPolicy.requireView(userId);
+        var report = reportStore.get(reportId).orElseThrow(ReportException::notFound);
+        return buildDataBundle(report, override, parameters, pageSize, offset);
+    }
+
+    private ReportDataBundle buildDataBundle(ReportDefinition report, ReportQueryService.RangeOverride override,
+                                             Map<String, Object> parameters, int pageSize, int offset) {
         var dataset = datasetService.get(report.datasetId);
         if (dataset == null) throw ReportException.forbidden("SOURCE_ACCESS_DENIED", "dataset is not accessible");
         var bindings = ReportParameters.bindings(report.spec, parameters);
@@ -260,7 +277,7 @@ public class ReportService {
 
     public String parameterOptionsJson(String userId, String reportId) {
         accessPolicy.requireView(userId);
-        var report = reportStore.getOwned(reportId, userId).orElseThrow(ReportException::notFound);
+        var report = reportStore.get(reportId).orElseThrow(ReportException::notFound);
         var dataset = datasetService.get(report.datasetId);
         if (dataset == null) return null;
         var options = queryService.parameterOptions(report.spec, dataset);
@@ -281,9 +298,24 @@ public class ReportService {
         return reportStore.countOwned(userId);
     }
 
+    public List<ReportSummary> listAll(String userId, int offset, int limit) {
+        accessPolicy.requireView(userId);
+        var reports = reportStore.listAll(Math.max(offset, 0), clamp(limit));
+        var pins = layoutStore.pins(userId).stream().collect(java.util.stream.Collectors.toMap(p -> p.reportId, p -> p, (a, b) -> a));
+        var summaries = new ArrayList<ReportSummary>(reports.size());
+        for (var report : reports) summaries.add(summary(report, pins.get(report.id)));
+        return summaries;
+    }
+
+    public long countAll(String userId) {
+        accessPolicy.requireView(userId);
+        return reportStore.countAll();
+    }
+
     public ReportSummary summary(ReportDefinition report, HomeReportPin pin) {
         var summary = new ReportSummary();
         summary.id = report.id;
+        summary.userId = report.userId;
         summary.title = report.title;
         summary.revision = report.revision;
         summary.datasetId = report.datasetId;
@@ -297,16 +329,25 @@ public class ReportService {
     }
 
     public void audit(ReportDefinition report, String action, String sessionId, String agentId, long revision, String specJson) {
+        audit(report, report.userId, action, new AuditContext(sessionId, agentId, revision, specJson));
+    }
+
+    public void audit(ReportDefinition report, String actorUserId, String action) {
+        audit(report, actorUserId, action, new AuditContext(null, null, report.revision, report.specJson));
+    }
+
+    public void audit(ReportDefinition report, String actorUserId, String action, AuditContext context) {
         var entry = new ReportAuditEntry();
         entry.id = UUID.randomUUID().toString();
         entry.userId = report.userId;
         entry.reportId = report.id;
         entry.action = action;
-        entry.actorUserId = report.userId;
-        entry.originSessionId = sessionId;
-        entry.originAgentId = agentId;
-        entry.revision = revision;
-        entry.specHash = specJson != null ? ai.core.server.report.domain.ReportDependency.sha256(specJson) : null;
+        entry.actorUserId = actorUserId != null ? actorUserId : report.userId;
+        entry.originSessionId = context.sessionId();
+        entry.originAgentId = context.agentId();
+        entry.revision = context.revision();
+        entry.specHash = context.specJson() != null
+                ? ai.core.server.report.domain.ReportDependency.sha256(context.specJson()) : null;
         entry.detailsJson = "{}";
         entry.createdAt = ZonedDateTime.now();
         auditStore.append(entry);
@@ -346,5 +387,8 @@ public class ReportService {
     }
 
     public record ReportDraft(String title, String description, String specJson) {
+    }
+
+    public record AuditContext(String sessionId, String agentId, long revision, String specJson) {
     }
 }

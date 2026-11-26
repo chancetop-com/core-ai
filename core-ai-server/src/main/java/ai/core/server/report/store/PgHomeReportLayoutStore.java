@@ -84,6 +84,12 @@ public class PgHomeReportLayoutStore {
         return database.execute("DELETE FROM " + PIN_TABLE + " WHERE user_id = ? AND report_id = ?", userId, reportId);
     }
 
+    public List<HomeReportPin> pinsByReport(String reportId) {
+        return database.select("SELECT " + PIN_COLUMNS + " FROM " + PIN_TABLE
+                        + " WHERE report_id = ? ORDER BY user_id, id", PgHomeReportPinRow.class, reportId)
+                .stream().map(this::toPin).toList();
+    }
+
     public boolean updatePosition(String userId, String pinId, int position) {
         return database.execute("UPDATE " + PIN_TABLE + " SET position = ?, updated_at = now() WHERE user_id = ? AND id = ?",
                 position, userId, pinId) > 0;

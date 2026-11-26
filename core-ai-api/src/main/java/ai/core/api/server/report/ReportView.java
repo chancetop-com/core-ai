@@ -15,6 +15,12 @@ public class ReportView {
     @Property(name = "description")
     public String description;
 
+    @Property(name = "created_by")
+    public String createdBy;
+
+    @Property(name = "owned")
+    public Boolean owned;
+
     @Property(name = "revision")
     public Long revision;
 
