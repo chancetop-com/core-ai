@@ -264,7 +264,8 @@ public class ToolCallAsyncTaskManager {
         var dataOpt = loadData(taskId);
         if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
         if (Boolean.TRUE.equals(dataOpt.get().sandboxTask)) {
-            return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: sandbox tasks cannot be cancelled");
+            return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: the sandbox runtime has no cancel "
+                    + "endpoint; the command will keep running (use action='poll' for its result)");
         }
         var taskOpt = loadTask(taskId);
         if (taskOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);

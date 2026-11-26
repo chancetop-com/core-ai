@@ -103,6 +103,8 @@ class SandboxModule extends Module {
         service.backgroundTasksEnabled = "true".equalsIgnoreCase(property("sys.tasks.background.enabled").orElse("false"));
         service.backgroundOutputMaxBytes = longProperty("sys.tasks.background.outputMaxBytes", 1024 * 1024);
         ai.core.session.BackgroundTaskManager.configureMaxTasks(intProperty("sys.tasks.background.maxPerSession", 5));
+        ai.core.server.workspace.WorkspaceTaskOutputs.retentionDays(
+                intProperty("sys.tasks.background.outputRetentionDays", 7));
     }
 
     private int intProperty(String key, int defaultValue) {

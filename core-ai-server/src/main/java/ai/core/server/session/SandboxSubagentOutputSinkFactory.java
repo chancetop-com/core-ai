@@ -1,6 +1,7 @@
 package ai.core.server.session;
 
 import ai.core.server.sandbox.SandboxService;
+import ai.core.server.workspace.WorkspaceTaskOutputs;
 import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import org.slf4j.Logger;
@@ -17,7 +18,6 @@ import java.nio.charset.StandardCharsets;
  */
 class SandboxSubagentOutputSinkFactory implements SubagentOutputSinkFactory {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxSubagentOutputSinkFactory.class);
-    static final String TASK_DIR = "/workspace/.core-ai/tasks";
 
     /** The deployment-level factory for one session; null keeps the tools on their synchronous path. */
     static SubagentOutputSinkFactory of(SandboxService sandboxes, String sessionId) {
@@ -37,7 +37,7 @@ class SandboxSubagentOutputSinkFactory implements SubagentOutputSinkFactory {
 
     @Override
     public SubagentOutputSink create(String taskId) {
-        return new Sink(TASK_DIR + "/" + taskId + ".out", maxBytes);
+        return new Sink(WorkspaceTaskOutputs.DIR + "/" + taskId + ".out", maxBytes);
     }
 
     private final class Sink implements SubagentOutputSink {

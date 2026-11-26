@@ -12,6 +12,7 @@ import ai.core.server.workspace.WorkspaceBindingRecord;
 import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceLeaseHeartbeat;
 import ai.core.server.workspace.WorkspaceService;
+import ai.core.server.workspace.WorkspaceTaskOutputs;
 import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -291,6 +292,7 @@ public class WorkspaceSandbox implements Sandbox {
             pendingBinding = null;
         }
         if (postAttach != null) postAttach.run();
+        WorkspaceTaskOutputs.cleanup(attached);
         LOGGER.info("workspace runtime attached, session={}, workspace={}, runtime={}",
                 sessionId, workspaceId, binding.sandboxId);
         dispatch(SandboxEvent.ready(sessionId, binding.sandboxId, (System.nanoTime() - startedAt) / 1_000_000,
