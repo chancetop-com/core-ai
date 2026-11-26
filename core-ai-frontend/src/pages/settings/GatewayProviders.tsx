@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { Ban, CheckCircle2, CircleAlert, KeyRound, Pencil, PlugZap, Plus, Power, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
+import { ArrowUpDown, Ban, CheckCircle2, ChevronDown, ChevronUp, CircleAlert, KeyRound, Pencil, PlugZap, Plus, Power, RefreshCw, Save, Star, Trash2, X } from 'lucide-react';
 import { api, type GatewayDiscoveredModel, type GatewayModel, type GatewayModelRequest, type GatewayProvider, type GatewayProviderRequest } from '../../api/client';
 import { useListState } from '../../hooks/useListState';
 
@@ -57,15 +57,8 @@ const ENDPOINT_TYPES = [
 
 type Tab = 'providers' | 'models';
 
-type ModelSort = 'default' | 'provider_asc' | 'provider_desc' | 'official_asc' | 'official_desc';
-
-const MODEL_SORT_OPTIONS: { value: ModelSort; label: string }[] = [
-  { value: 'default', label: 'Sort: Default' },
-  { value: 'provider_asc', label: 'Sort: Provider A→Z' },
-  { value: 'provider_desc', label: 'Sort: Provider Z→A' },
-  { value: 'official_asc', label: 'Sort: Official Model A→Z' },
-  { value: 'official_desc', label: 'Sort: Official Model Z→A' },
-];
+type ModelSortField = 'alias' | 'provider' | 'official';
+type ModelSort = 'default' | `${ModelSortField}_asc` | `${ModelSortField}_desc`;
 
 type ProviderFormState = {
   id?: string;
@@ -236,6 +229,12 @@ export default function GatewayProviders() {
     () => sortGatewayModels(models, modelSort, providerById),
     [models, modelSort, providerById],
   );
+
+  const toggleModelSort = (field: ModelSortField) => {
+    const asc: ModelSort = `${field}_asc`;
+    const desc: ModelSort = `${field}_desc`;
+    setModelSort(modelSort === asc ? desc : modelSort === desc ? 'default' : asc);
+  };
 
   const load = async () => {
     setLoading(true);
@@ -639,16 +638,6 @@ export default function GatewayProviders() {
               </button>
             ) : (
               <>
-                <select
-                  aria-label="Sort models"
-                  value={modelSort}
-                  onChange={e => setModelSort(e.target.value as ModelSort)}
-                  className="px-3 py-2 rounded-lg border text-sm outline-none cursor-pointer"
-                  style={{ background: 'var(--color-bg-tertiary)', borderColor: 'var(--color-border)', color: 'var(--color-text)' }}>
-                  {MODEL_SORT_OPTIONS.map(option => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
                 <button
                   onClick={openCreateModel}
                   className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
@@ -687,6 +676,8 @@ export default function GatewayProviders() {
         }) : renderModelsTable({
           models: sortedModels,
           loading,
+          sort: modelSort,
+          onSort: toggleModelSort,
           providerById,
           openEditModel,
           removeModel,
@@ -819,22 +810,24 @@ function renderProvidersTable(props: {
 function renderModelsTable(props: {
   models: GatewayModel[];
   loading: boolean;
+  sort: ModelSort;
+  onSort: (field: ModelSortField) => void;
   providerById: Map<string, GatewayProvider>;
   openEditModel: (model: GatewayModel) => void;
   removeModel: (model: GatewayModel) => void;
   setDefaultModel: (model: GatewayModel) => void;
   toggleModel: (model: GatewayModel) => void;
 }) {
-  const { models, loading, providerById, openEditModel, removeModel, setDefaultModel, toggleModel } = props;
+  const { models, loading, sort, onSort, providerById, openEditModel, removeModel, setDefaultModel, toggleModel } = props;
   return (
     <div className="rounded-lg border overflow-x-auto" style={{ borderColor: 'var(--color-border)' }}>
       <table className="w-full text-sm">
         <thead style={{ background: 'var(--color-bg-secondary)' }}>
           <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
-            <th className="px-3 py-3 font-medium">Alias</th>
+            <SortableHeader label="Alias" field="alias" sort={sort} onSort={onSort} />
             <th className="px-3 py-3 font-medium hidden min-[1536px]:table-cell">Display Name</th>
-            <th className="px-3 py-3 font-medium">Provider</th>
-            <th className="px-3 py-3 font-medium">Official Model</th>
+            <SortableHeader label="Provider" field="provider" sort={sort} onSort={onSort} />
+            <SortableHeader label="Official Model" field="official" sort={sort} onSort={onSort} />
             <th className="px-3 py-3 font-medium">Endpoints</th>
             <th className="px-3 py-3 font-medium hidden min-[1650px]:table-cell">Priority</th>
             <th className="px-3 py-3 font-medium">Capabilities</th>
@@ -1614,13 +1607,43 @@ function providerDisplayName(model: GatewayModel, providerById: Map<string, Gate
   return model.providerName || providerById.get(model.providerId)?.name || model.providerId || '';
 }
 
+function SortableHeader({ label, field, sort, onSort }: {
+  label: string;
+  field: ModelSortField;
+  sort: ModelSort;
+  onSort: (field: ModelSortField) => void;
+}) {
+  const direction = sort === `${field}_asc` ? 'asc' : sort === `${field}_desc` ? 'desc' : null;
+  const next = direction === 'asc' ? 'descending' : direction === 'desc' ? 'server order' : 'ascending';
+  return (
+    <th
+      className="px-3 py-3 font-medium"
+      aria-sort={direction === 'asc' ? 'ascending' : direction === 'desc' ? 'descending' : 'none'}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-1 cursor-pointer text-inherit"
+        title={`Sort by ${label.toLowerCase()} — next: ${next}`}
+        onClick={() => onSort(field)}>
+        {label}
+        {direction === 'asc'
+          ? <ChevronUp size={13} />
+          : direction === 'desc'
+            ? <ChevronDown size={13} />
+            : <ArrowUpDown size={13} style={{ opacity: 0.35 }} />}
+      </button>
+    </th>
+  );
+}
+
 function sortGatewayModels(models: GatewayModel[], sort: ModelSort, providerById: Map<string, GatewayProvider>): GatewayModel[] {
   if (sort === 'default') return models;
-  const byProvider = sort.startsWith('provider');
   const direction = sort.endsWith('_desc') ? -1 : 1;
-  const sortKey = (model: GatewayModel) => byProvider
-    ? providerDisplayName(model, providerById)
-    : (model.upstreamModel || '');
+  const field = sort.slice(0, sort.lastIndexOf('_')) as ModelSortField;
+  const sortKey = field === 'provider'
+    ? (model: GatewayModel) => providerDisplayName(model, providerById)
+    : field === 'alias'
+      ? (model: GatewayModel) => model.modelId || ''
+      : (model: GatewayModel) => model.upstreamModel || '';
   return [...models].sort((a, b) => {
     const compared = sortKey(a).localeCompare(sortKey(b), undefined, { sensitivity: 'base', numeric: true });
     return compared !== 0 ? compared * direction : a.modelId.localeCompare(b.modelId);

@@ -31,7 +31,7 @@ function renderedModelIds() {
 async function openModelsTab() {
   render(<GatewayProviders />);
   await userEvent.click(screen.getByRole('button', { name: 'Models' }));
-  return screen.findByRole('combobox', { name: 'Sort models' });
+  return screen.findByRole('button', { name: 'Alias' });
 }
 
 describe('Gateway models sorting', () => {
@@ -46,35 +46,58 @@ describe('Gateway models sorting', () => {
     expect(renderedModelIds()).toEqual(['model-beta', 'model-gamma', 'model-alpha']);
   });
 
-  it('sorts by provider name in both directions', async () => {
-    const sort = await openModelsTab();
+  it('sorts by alias in both directions', async () => {
+    await openModelsTab();
 
-    await userEvent.selectOptions(sort, 'provider_asc');
+    await userEvent.click(screen.getByRole('button', { name: 'Alias' }));
     expect(renderedModelIds()).toEqual(['model-alpha', 'model-beta', 'model-gamma']);
 
-    await userEvent.selectOptions(sort, 'provider_desc');
+    await userEvent.click(screen.getByRole('button', { name: 'Alias' }));
+    expect(renderedModelIds()).toEqual(['model-gamma', 'model-beta', 'model-alpha']);
+  });
+
+  it('sorts by provider name in both directions', async () => {
+    await openModelsTab();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Provider' }));
+    expect(renderedModelIds()).toEqual(['model-alpha', 'model-beta', 'model-gamma']);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Provider' }));
     expect(renderedModelIds()).toEqual(['model-gamma', 'model-beta', 'model-alpha']);
   });
 
   it('sorts by official model name in both directions', async () => {
-    const sort = await openModelsTab();
+    await openModelsTab();
 
-    await userEvent.selectOptions(sort, 'official_asc');
+    await userEvent.click(screen.getByRole('button', { name: 'Official Model' }));
     expect(renderedModelIds()).toEqual(['model-beta', 'model-gamma', 'model-alpha']);
 
-    await userEvent.selectOptions(sort, 'official_desc');
+    await userEvent.click(screen.getByRole('button', { name: 'Official Model' }));
     expect(renderedModelIds()).toEqual(['model-alpha', 'model-gamma', 'model-beta']);
   });
 
+  it('cycles a sorted column back to the server order', async () => {
+    await openModelsTab();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Alias' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Alias' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Alias' }));
+
+    expect(renderedModelIds()).toEqual(['model-beta', 'model-gamma', 'model-alpha']);
+    expect(screen.getByRole('columnheader', { name: 'Alias' }).getAttribute('aria-sort')).toBe('none');
+  });
+
   it('restores the selected sort after remounting', async () => {
-    const sort = await openModelsTab();
-    await userEvent.selectOptions(sort, 'official_desc');
+    await openModelsTab();
+    await userEvent.click(screen.getByRole('button', { name: 'Official Model' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Official Model' }));
 
     cleanup();
     render(<GatewayProviders />);
     await userEvent.click(screen.getByRole('button', { name: 'Models' }));
 
-    expect(await screen.findByRole('combobox', { name: 'Sort models' })).toHaveProperty('value', 'official_desc');
+    expect(await screen.findByRole('columnheader', { name: 'Official Model' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Official Model' }).getAttribute('aria-sort')).toBe('descending');
     expect(renderedModelIds()).toEqual(['model-alpha', 'model-gamma', 'model-beta']);
   });
 });
