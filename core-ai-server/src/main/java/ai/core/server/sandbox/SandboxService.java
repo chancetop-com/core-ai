@@ -63,6 +63,8 @@ public class SandboxService {
     public volatile long attachmentMaxBytes = 32L * 1024 * 1024;   // attachments over this stay URL-only
     /** Reads the System Configuration override on every call, so a changed limit applies without a restart. */
     public volatile LongSupplier attachmentMaxBytesSupplier;
+    public volatile boolean backgroundTasksEnabled;
+    public volatile long backgroundOutputMaxBytes = 1024 * 1024;
     final SandboxSnapshotService snapshotService;
     private SandboxBindingStore bindingStore;
     private volatile SandboxHubBinding hubBinding;
@@ -102,7 +104,6 @@ public class SandboxService {
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox) {
         this(provider, defaultConfig, serverUrlFromSandbox, new SandboxServiceDependencies(null, null, null, null));
     }
-
     public SandboxService(SandboxProvider provider, SandboxConfig defaultConfig, String serverUrlFromSandbox, SandboxServiceDependencies dependencies) {
         this(provider, defaultConfig, serverUrlFromSandbox, dependencies, new ScheduledThreadPoolExecutor(1, r -> {
             var t = new Thread(r, "sandbox-cleanup");

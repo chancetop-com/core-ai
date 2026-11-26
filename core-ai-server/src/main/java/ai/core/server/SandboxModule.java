@@ -93,9 +93,26 @@ class SandboxModule extends Module {
     private void bindSandboxService(SandboxService service, SessionTokenService sessionTokenService) {
         sandboxService = service;
         configureAttachmentLimit(service);
+        configureBackgroundTasks(service);
         bind(service);
         bindSandboxManager(service);
         service.sessionTokens(sessionTokenService);
+    }
+
+    private void configureBackgroundTasks(SandboxService service) {
+        service.backgroundTasksEnabled = "true".equalsIgnoreCase(property("sys.tasks.background.enabled").orElse("false"));
+        service.backgroundOutputMaxBytes = longProperty("sys.tasks.background.outputMaxBytes", 1024 * 1024);
+        ai.core.session.BackgroundTaskManager.configureMaxTasks(intProperty("sys.tasks.background.maxPerSession", 5));
+    }
+
+    private int intProperty(String key, int defaultValue) {
+        var value = property(key).orElse(null);
+        return value == null ? defaultValue : Integer.parseInt(value.trim());
+    }
+
+    private long longProperty(String key, long defaultValue) {
+        var value = property(key).orElse(null);
+        return value == null ? defaultValue : Long.parseLong(value.trim());
     }
 
     /**

@@ -161,7 +161,7 @@ public class AgentSessionManager {
         if (userSessionBudget != null) userSessionBudget.acquire(userId);
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
         CallerContexts.attach(context, userStore, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
@@ -244,7 +244,7 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = datasetHelper().buildExtraVars(config, datasetConfig);
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId);
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
         var caller = CallerContexts.attach(context, userStore, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         UserIdentityPrompt.attach(context, definition, caller);

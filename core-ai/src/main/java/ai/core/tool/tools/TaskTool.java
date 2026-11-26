@@ -197,7 +197,12 @@ public class TaskTool extends ToolCall {
             if (taskManager != null && run.call().runInBackground()) {
                 return launchBackground(run, agent, taskManager);
             }
-            return runSync(run, agent);
+            var sync = runSync(run, agent);
+            if (run.call().runInBackground()) {
+                return sync.withResult((sync.getResult() == null ? "" : sync.getResult()) + "\n\n"
+                        + "[background execution is unavailable for this session; the subagent ran synchronously]");
+            }
+            return sync;
         } catch (SubagentThreadUnavailableException e) {
             return ToolCallResult.failed("Cannot continue subagent " + run.call().taskId() + ": " + e.getMessage());
         } finally {

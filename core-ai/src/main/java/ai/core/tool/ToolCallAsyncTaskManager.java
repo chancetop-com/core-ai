@@ -45,6 +45,10 @@ public class ToolCallAsyncTaskManager {
     private final PersistenceProvider persistenceProvider;
     private final Map<String, ToolCall> toolRegistry = new HashMap<>();
     private final List<TerminalListener> listeners = new CopyOnWriteArrayList<>();
+    /** Resolves a sandbox task; null means the host has no sandbox relay (tests / non-server hosts). */
+    public volatile SandboxTaskPoller sandboxTaskPoller;
+    /** Consecutive unreachable polls before a sandbox task is terminated as lost. */
+    public volatile int sandboxLostPolls = 3;
 
     public ToolCallAsyncTaskManager(PersistenceProvider persistenceProvider) {
         this.persistenceProvider = persistenceProvider;
@@ -117,7 +121,8 @@ public class ToolCallAsyncTaskManager {
             if (json.isEmpty()) continue;
             var data = JSON.fromJSON(AsyncTaskData.class, json.get());
             snapshots.add(new TaskSnapshot(data.taskId, data.sessionId, data.status, isOpen(data),
-                isNotificationPending(data), data.notifyAttempts, data.lastNotifyAttemptAtMs));
+                isNotificationPending(data), data.notifyAttempts, data.lastNotifyAttemptAtMs,
+                Boolean.TRUE.equals(data.sandboxTask)));
         }
         return snapshots;
     }
@@ -148,6 +153,7 @@ public class ToolCallAsyncTaskManager {
         if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
         var data = dataOpt.get();
         if (data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED) return data.restoredResult();
+        if (Boolean.TRUE.equals(data.sandboxTask)) return pollSandboxTask(data);
         var tool = resolveTool(data.toolName);
         if (tool == null) return ToolCallResult.failed("Tool not available for task " + taskId + ": " + data.toolName);
         if (tool instanceof AsyncTaskOutputTool) {
@@ -185,7 +191,59 @@ public class ToolCallAsyncTaskManager {
         }
     }
 
+    /** Sandbox tasks are refreshed through the runtime; their stored tool is only used for the notification. */
+    private ToolCallResult pollSandboxTask(AsyncTaskData data) {
+        var poller = sandboxTaskPoller;
+        var result = poller == null ? null : poller.poll(data.sessionId, data.sandboxTaskId);
+        if (result == null) {
+            data.pollCount++;
+            data.lastPolledAtMs = System.currentTimeMillis();
+            if (data.pollCount >= sandboxLostPolls) return loseSandboxTask(data, "sandbox task is no longer reachable");
+            save(data);
+            return ToolCallResult.pending(data.taskId, "Sandbox task is not reachable right now");
+        }
+        var text = result.getResult() == null ? "" : result.getResult();
+        if (result.isFailed() && text.toLowerCase(java.util.Locale.ROOT).startsWith("task not found")) {
+            return loseSandboxTask(data, text);
+        }
+        data.status = result.getStatus();
+        data.lastMessage = result.getResult();
+        data.lastPolledAtMs = System.currentTimeMillis();
+        data.pollCount++;
+        save(data);
+        if (!result.isTerminal()) return result.withToolName(data.toolName);
+        announceSandboxTerminal(data, result);
+        return result.withToolName(data.toolName);
+    }
+
+    private ToolCallResult loseSandboxTask(AsyncTaskData data, String detail) {
+        data.status = ToolCallResult.Status.FAILED;
+        data.lastMessage = "SANDBOX_TASK_LOST: " + detail;
+        data.lastPolledAtMs = System.currentTimeMillis();
+        data.pollCount++;
+        save(data);
+        var result = ToolCallResult.failed(data.lastMessage);
+        announceSandboxTerminal(data, result);
+        return result;
+    }
+
+    private void announceSandboxTerminal(AsyncTaskData data, ToolCallResult result) {
+        var tool = resolveTool(data.toolName);
+        if (tool == null || data.sessionId == null) {
+            LOGGER.warn("cannot announce sandbox task {}, tool={}, session={}", data.taskId, data.toolName, data.sessionId);
+            data.notifiedAtMs = System.currentTimeMillis();
+            save(data);
+            return;
+        }
+        announce(data, data.toTask(tool), result);
+    }
+
     public ToolCallResult submitInput(String taskId, String input) {
+        var dataOpt = loadData(taskId);
+        if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
+        if (Boolean.TRUE.equals(dataOpt.get().sandboxTask)) {
+            return ToolCallResult.failed("SANDBOX_TASK_INPUT_UNSUPPORTED: sandbox tasks do not accept input");
+        }
         var taskOpt = loadTask(taskId);
         if (taskOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
         var task = taskOpt.get();
@@ -203,6 +261,11 @@ public class ToolCallAsyncTaskManager {
     }
 
     public ToolCallResult cancelTask(String taskId) {
+        var dataOpt = loadData(taskId);
+        if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
+        if (Boolean.TRUE.equals(dataOpt.get().sandboxTask)) {
+            return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: sandbox tasks cannot be cancelled");
+        }
         var taskOpt = loadTask(taskId);
         if (taskOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
         var task = taskOpt.get();
@@ -313,7 +376,14 @@ public class ToolCallAsyncTaskManager {
 
     /** What one stored task looks like to a server-side driver, without materialising its tool. */
     public record TaskSnapshot(String taskId, String sessionId, ToolCallResult.Status status, boolean open,
-                               boolean notificationPending, int notifyAttempts, Long lastNotifyAttemptAtMs) {
+                               boolean notificationPending, int notifyAttempts, Long lastNotifyAttemptAtMs,
+                               boolean sandboxTask) {
+    }
+
+    /** Host hook that polls a sandbox runtime task; null means "not reachable right now". */
+    @FunctionalInterface
+    public interface SandboxTaskPoller {
+        ToolCallResult poll(String sessionId, String sandboxTaskId);
     }
 
     public static class AsyncTaskData {
@@ -327,6 +397,10 @@ public class ToolCallAsyncTaskManager {
             data.lastPolledAtMs = task.lastPolledAt() != null ? task.lastPolledAt().toEpochMilli() : null;
             data.pollCount = task.pollCount();
             data.lastMessage = task.lastResult() != null ? task.lastResult().getResult() : null;
+            var stats = task.lastResult() != null ? task.lastResult().getStats() : null;
+            data.sandboxTask = stats != null && Boolean.parseBoolean(String.valueOf(stats.get("sandboxTask")));
+            data.sandboxTaskId = stats != null && stats.get("sandboxTaskId") != null
+                    ? String.valueOf(stats.get("sandboxTaskId")) : null;
             return data;
         }
 
@@ -340,6 +414,10 @@ public class ToolCallAsyncTaskManager {
         public int pollCount;
         /** text of the last result; ToolCallResult itself is not JSON-friendly, so status + text are what survive the store */
         public String lastMessage;
+        /** true when this task runs inside a sandbox runtime and must be polled through Sandbox.pollTask */
+        public Boolean sandboxTask;
+        /** runtime's own task id (only meaningful with sandboxTask); never shown to the agent */
+        public String sandboxTaskId;
         /** set once the owning session has accepted the terminal notification; null means still owed */
         public Long notifiedAtMs;
         public int notifyAttempts;
@@ -351,6 +429,8 @@ public class ToolCallAsyncTaskManager {
             notifiedAtMs = previous.notifiedAtMs;
             notifyAttempts = previous.notifyAttempts;
             lastNotifyAttemptAtMs = previous.lastNotifyAttemptAtMs;
+            sandboxTask = previous.sandboxTask;
+            sandboxTaskId = previous.sandboxTaskId;
         }
 
         public ToolCallAsyncTask toTask(ToolCall tool) {

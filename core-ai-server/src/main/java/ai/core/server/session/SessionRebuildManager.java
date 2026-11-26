@@ -280,7 +280,7 @@ public class SessionRebuildManager {
     }
     private SandboxSetup setupSandboxContext(String sessionId, String userId, SandboxConfig sandboxConfig,
                                              String agentName, boolean allowSandboxReattach, String agentId) {
-        var context = userId != null ? contextBuilder.build(sessionId, userId) : null;
+        var context = userId != null ? contextBuilder.build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId)) : null;
         if (context != null) {
             var user = userStore.get(userId).orElse(null);
             context.setCaller(CallerContexts.fromUser(user));

@@ -109,6 +109,12 @@ public class WorkspaceSandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult pollTask(String taskId) {
+        // polling reads runtime state only: no turn lease, but attach to the current runtime first
+        return runtime().pollTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         turnSandbox().materializeSkill(name, version, tarBytes);
     }

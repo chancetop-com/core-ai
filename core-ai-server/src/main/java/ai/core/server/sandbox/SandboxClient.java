@@ -28,6 +28,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.UUID;
 import java.util.List;
 import java.util.Map;
 
@@ -133,7 +134,7 @@ public class SandboxClient {
             req.body(requestJson, ContentType.APPLICATION_JSON);
 
             var response = httpClient.execute(req);
-            return parseResponse(response.text(), System.currentTimeMillis() - startTime);
+            return parseResponse(response.text(), System.currentTimeMillis() - startTime, true);
         } catch (Exception e) {
             LOGGER.error("sandbox runtime request failed: url={}, tool={}", baseUrl, toolName, e);
             throw e;
@@ -169,7 +170,7 @@ public class SandboxClient {
             var url = baseUrl + "/tasks/" + taskId;
             var req = new HTTPRequest(HTTPMethod.GET, url);
             var response = httpClient.execute(req);
-            return parseResponse(response.text(), System.currentTimeMillis() - startTime);
+            return parseResponse(response.text(), System.currentTimeMillis() - startTime, false);
         } catch (Exception e) {
             LOGGER.error("sandbox task poll failed: url={}, taskId={}", baseUrl, taskId, e);
             return ToolCallResult.hardFailed("Failed to poll task: " + e.getMessage(), e)
@@ -246,7 +247,7 @@ public class SandboxClient {
     }
 
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
-    private ToolCallResult parseResponse(String responseBody, long durationMs) {
+    private ToolCallResult parseResponse(String responseBody, long durationMs, boolean namespacePendingTask) {
         try {
             var response = JSON.fromJSON(ExecuteResponse.class, responseBody);
             return switch (response.status) {
@@ -259,10 +260,7 @@ public class SandboxClient {
                 case "timeout" -> ToolCallResult.hardFailed("Sandbox execution timeout: " + response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "timeout");
-                case "pending" -> ToolCallResult.pending(response.taskId, "Async task submitted: " + response.taskId)
-                        .withDuration(durationMs)
-                        .withStats("sandboxStatus", "pending")
-                        .withStats("taskId", response.taskId);
+                case "pending" -> pendingResult(response.taskId, durationMs, namespacePendingTask);
                 default -> ToolCallResult.hardFailed("Unknown sandbox response: " + response.status)
                         .withDuration(durationMs);
             };
@@ -270,6 +268,19 @@ public class SandboxClient {
             return ToolCallResult.hardFailed("Failed to parse sandbox response: " + e.getMessage(), e)
                     .withDuration(durationMs);
         }
+    }
+
+    /** A runtime task id is only runtime-local; give the agent a server id and keep the raw one for the relay. */
+    private ToolCallResult pendingResult(String runtimeTaskId, long durationMs, boolean namespacePendingTask) {
+        var agentTaskId = namespacePendingTask ? "st-" + UUID.randomUUID() : runtimeTaskId;
+        var result = ToolCallResult.pending(agentTaskId, "Async task submitted: " + agentTaskId)
+                .withDuration(durationMs)
+                .withStats("sandboxStatus", "pending")
+                .withStats("taskId", agentTaskId);
+        if (namespacePendingTask) {
+            result.withStats("sandboxTask", "true").withStats("sandboxTaskId", runtimeTaskId);
+        }
+        return result;
     }
 
     public void close() {

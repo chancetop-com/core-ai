@@ -91,6 +91,12 @@ public class LazySandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult pollTask(String taskId) {
+        ensureReady();
+        return delegate.pollTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         ensureReady();
         delegate.materializeSkill(name, version, tarBytes);

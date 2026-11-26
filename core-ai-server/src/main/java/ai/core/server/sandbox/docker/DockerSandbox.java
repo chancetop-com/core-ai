@@ -65,6 +65,11 @@ public class DockerSandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult pollTask(String taskId) {
+        return runtimeClient.pollTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         runtimeClient.materializeSkill(name, version, tarBytes);
     }

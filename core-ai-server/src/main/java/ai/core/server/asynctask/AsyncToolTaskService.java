@@ -42,6 +42,8 @@ public class AsyncToolTaskService {
     ToolRegistryService toolRegistryService;
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
+    @Inject
+    ai.core.server.sandbox.SandboxService sandboxService;
 
     private volatile ToolCallAsyncTaskManager manager;
     private volatile TaskNotificationDispatcher dispatcher =
@@ -54,6 +56,10 @@ public class AsyncToolTaskService {
                 if (manager == null) {
                     var created = new ServerAsyncTaskManager(persistence, toolRegistryService);
                     created.addTerminalListener(this::notifySession);
+                    created.sandboxTaskPoller = (sessionId, sandboxTaskId) -> {
+                        ai.core.sandbox.Sandbox sandbox = sandboxService == null ? null : sandboxService.getSandbox(sessionId);
+                        return sandbox == null ? null : sandbox.pollTask(sandboxTaskId);
+                    };
                     manager = created;
                 }
                 current = manager;
@@ -86,6 +92,13 @@ public class AsyncToolTaskService {
             }
         }
         current.purgeTerminalOlderThan(TERMINAL_RETENTION);
+    }
+
+    /** True while this session has an open sandbox async task; drives workspace activity/lease checks. */
+    public boolean hasOpenSandboxTask(String sessionId) {
+        if (sessionId == null) return false;
+        return manager().listTasks().stream()
+                .anyMatch(task -> task.open() && task.sandboxTask() && sessionId.equals(task.sessionId()));
     }
 
     /** Called by the command handler once the owning session has taken the notification. */

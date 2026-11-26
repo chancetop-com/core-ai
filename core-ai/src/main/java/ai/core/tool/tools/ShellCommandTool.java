@@ -370,10 +370,15 @@ public class ShellCommandTool extends ToolCall {
                                 buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
                         .withDuration(System.currentTimeMillis() - startTime), requestedTimeout, timeMilliseconds);
             } else {
-                return withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk, processEnvironment))
+                var result = withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk, processEnvironment))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null),
                         requestedTimeout, timeMilliseconds);
+                if (runInBackground) {
+                    return result.withResult((result.getResult() == null ? "" : result.getResult()) + "\n\n"
+                            + "[background execution is unavailable for this session; the command ran synchronously]");
+                }
+                return result;
             }
         } catch (RuntimeException e) {
             var error = "Failed to parse shell command arguments: " + e.getMessage();

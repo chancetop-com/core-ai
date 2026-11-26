@@ -13,6 +13,7 @@ import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.MediaJobOwner;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
@@ -68,8 +69,16 @@ public final class SessionContextBuilder {
     }
 
     public ExecutionContext build(String sessionId, String userId) {
+        return build(sessionId, userId, null);
+    }
+
+    /**
+     * @param subagentOutputSinkFactory non-null enables server-side background tasks for this session
+     *                                   (the session creates a BackgroundTaskManager only when set)
+     */
+    public ExecutionContext build(String sessionId, String userId, SubagentOutputSinkFactory subagentOutputSinkFactory) {
         // pending tool results are registered against this session; the server drives and notifies them
-        var context = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
+        var builder = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
@@ -77,8 +86,9 @@ public final class SessionContextBuilder {
                 .customVariable(GetVideoStatusTool.VIDEO_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
                                 artifactSetup.createChatSessionSink(sessionId), publicUrlConfiguration))
-                .customVariables(mediaModelVariables())
-                .build();
+                .customVariables(mediaModelVariables());
+        if (subagentOutputSinkFactory != null) builder.subagentOutputSinkFactory(subagentOutputSinkFactory);
+        var context = builder.build();
         if (mediaStore != null) {
             context.getCustomVariables().put(ai.core.media.SessionMediaStore.CONTEXT_KEY, mediaStore);
             context.getCustomVariables().put(ai.core.media.SessionMediaStore.KEY_CONTEXT_KEY,

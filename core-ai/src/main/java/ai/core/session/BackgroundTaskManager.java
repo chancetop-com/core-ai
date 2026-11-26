@@ -41,6 +41,28 @@ public class BackgroundTaskManager {
 
     private static final int MAX_TERMINAL_NOTE_LENGTH = 4000;
 
+    private static volatile int maxTasksPerSession = 5;
+
+    public static void configureMaxTasks(int max) {
+        maxTasksPerSession = max > 0 ? max : 5;
+    }
+
+    private static void safeWrite(SubagentOutputSink sink, String content) {
+        try {
+            sink.write(content);
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to write background task output, falling back to the notification result: {}", e.getMessage());
+        }
+    }
+
+    private static void safeClose(SubagentOutputSink sink) {
+        try {
+            sink.close();
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to close background task output sink: {}", e.getMessage());
+        }
+    }
+
     private static TaskRunOutcome outcomeOfStatus(String status) {
         if ("completed".equals(status)) return TaskRunOutcome.RETURNED;
         if ("cancelled".equals(status)) return TaskRunOutcome.CANCELLED;
@@ -53,7 +75,7 @@ public class BackgroundTaskManager {
         String error = null;
         try {
             result = agentRunner.get();
-            sink.write(result != null ? result : "");
+            safeWrite(sink, result != null ? result : "");
             status = "completed";
         } catch (Exception e) {
             if (Thread.currentThread().isInterrupted()) {
@@ -67,7 +89,7 @@ public class BackgroundTaskManager {
             }
             writeTerminalNote(sink, status, error);
         } finally {
-            sink.close();
+            safeClose(sink);
         }
         return new TaskRunResult(status, result, error);
     }
@@ -150,6 +172,9 @@ public class BackgroundTaskManager {
     @SuppressWarnings("PMD.UseTryWithResources")
     public TaskHandle submit(String taskId, Supplier<String> agentRunner, CancellationToken token, Runnable onNeverStarted, boolean notify) {
         LOGGER.debug("submitting background task, taskId={}", taskId);
+        if (activeTaskCount.get() >= maxTasksPerSession) {
+            throw new IllegalStateException("background task limit reached (" + maxTasksPerSession + ")");
+        }
         // A reused id must not answer with the previous run's result while the new one starts.
         terminalTasks.remove(taskId);
         var sink = sinkFactory.create(taskId);

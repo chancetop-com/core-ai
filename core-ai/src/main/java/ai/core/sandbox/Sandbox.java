@@ -25,6 +25,15 @@ public interface Sandbox extends AutoCloseable {
 
     ToolCallResult execute(String toolName, String arguments, ExecutionContext context);
 
+    /**
+     * Polls an async task that this sandbox runtime executed. Ids are the runtime's own ids, not the
+     * server's namespaced task ids; sandbox implementations that do not support async tasks keep the
+     * default.
+     */
+    default ToolCallResult pollTask(String taskId) {
+        throw new UnsupportedOperationException("poll is not supported by " + getClass().getSimpleName());
+    }
+
     SandboxStatus getStatus();
 
     String getId();
