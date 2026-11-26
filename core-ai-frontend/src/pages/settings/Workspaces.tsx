@@ -194,7 +194,16 @@ export default function Workspaces() {
         )}
         {workspaces && workspaces.length > 0 && (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm table-fixed">
+              <colgroup>
+                <col style={{ width: '21%' }} />
+                <col style={{ width: '19%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '13%' }} />
+                <col style={{ width: '10%' }} />
+                <col style={{ width: '17%' }} />
+              </colgroup>
               <thead>
                 <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
                   <th className="py-2 pr-3 font-medium">Name</th>
@@ -213,8 +222,8 @@ export default function Workspaces() {
                   return (
                     <tr key={workspace.id} className="border-t align-top" style={{ borderColor: 'var(--color-border)' }}>
                       <td className="py-3 pr-3">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium">{workspace.name}</span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-medium truncate" title={workspace.name}>{workspace.name}</span>
                           {workspace.is_default && (
                             <span className="px-1.5 py-0.5 rounded text-xs"
                               style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -222,8 +231,9 @@ export default function Workspaces() {
                             </span>
                           )}
                         </div>
-                        <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-secondary)' }}>
-                          {workspace.mount_path} · generation {workspace.active_volume_generation ?? 0}
+                        <div className="text-xs mt-0.5 truncate" style={{ color: 'var(--color-text-secondary)' }}
+                          title={`${workspace.mount_path} · generation ${workspace.active_volume_generation ?? 0}`}>
+                          {workspace.mount_path} · gen {workspace.active_volume_generation ?? 0}
                         </div>
                       </td>
                       <td className="py-3 pr-3 max-w-[12rem] truncate" title={workspace.agent_id ?? ''}>
