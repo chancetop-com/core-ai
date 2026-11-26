@@ -2,6 +2,8 @@ package ai.core.server.trace.service;
 
 import ai.core.server.blob.ObjectStorageService;
 import ai.core.server.blob.ObjectStorageServiceResolver;
+import ai.core.server.trace.domain.Span;
+import ai.core.server.trace.domain.Trace;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import core.framework.inject.Inject;
@@ -44,10 +46,6 @@ public class TraceBodyStore {
     private static final long MAX_DECOMPRESSED_BYTES = 64L * 1024 * 1024;
     private static final Pattern UNSAFE_KEY = Pattern.compile("[^A-Za-z0-9._-]");
 
-    private static long utf8Bytes(String value) {
-        return value.getBytes(StandardCharsets.UTF_8).length;
-    }
-
     private static String sha256(byte[] value) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));
@@ -72,13 +70,14 @@ public class TraceBodyStore {
              var out = new ByteArrayOutputStream(Math.max(64, compressed.length * 4))) {
             var buffer = new byte[8192];
             long total = 0;
-            int read;
-            while ((read = gzip.read(buffer)) > 0) {
+            int read = gzip.read(buffer);
+            while (read > 0) {
                 total += read;
                 if (total > MAX_DECOMPRESSED_BYTES) {
                     throw new IllegalStateException("trace body exceeds " + MAX_DECOMPRESSED_BYTES + " bytes");
                 }
                 out.write(buffer, 0, read);
+                read = gzip.read(buffer);
             }
             return out.toByteArray();
         } catch (IOException e) {
@@ -128,13 +127,25 @@ public class TraceBodyStore {
             var compressed = gzip(raw);
             var key = objectKey(traceId, spanId, field);
             storage.uploadObject(container(), key, compressed, "application/json");
-            return reference(key, raw.length, compressed.length, sha256(raw), preview(field, body));
+            return reference(key, raw.length, compressed.length, sha256(raw), previewOf(field, body));
         } catch (RuntimeException e) {
             // Keeping the body inline costs space but never loses the trace; the next span retries.
             LOGGER.error("failed to offload trace body, keeping it inline, traceId={}, spanId={}, field={}, bytes={}",
                 traceId, spanId, field, raw.length, e);
             return body;
         }
+    }
+
+    public void offload(Span span) {
+        if (span == null) return;
+        span.input = offload(span.traceId, span.spanId, "in", span.input);
+        span.output = offload(span.traceId, span.spanId, "out", span.output);
+    }
+
+    public void offload(Trace trace) {
+        if (trace == null) return;
+        trace.input = offload(trace.traceId, null, "in", trace.input);
+        trace.output = offload(trace.traceId, null, "out", trace.output);
     }
 
     public boolean isRef(String value) {
@@ -164,7 +175,7 @@ public class TraceBodyStore {
         }
 
         var storage = objectStorage();
-        var key = objectKey(node);
+        var key = referencedKey(node);
         if (storage == null) {
             if (strict) throw new IllegalStateException("trace body reference cannot be hydrated: object storage is not configured");
             return value;
@@ -190,7 +201,7 @@ public class TraceBodyStore {
         if (storage == null) return;
         var currentMonth = YearMonth.now(ZoneOffset.UTC).toString();
         for (var value : references) {
-            var key = objectKey(ref(value));
+            var key = referencedKey(ref(value));
             if (key == null) continue;
             var month = monthOf(key);
             if (month != null && month.compareTo(currentMonth) >= 0) continue;
@@ -217,7 +228,7 @@ public class TraceBodyStore {
 
     private String objectKey(String traceId, String spanId, String field) {
         var month = YearMonth.now(ZoneOffset.UTC);
-        var name = ("output".equals(field) ? "out" : "in");
+        var name = "output".equals(field) ? "out" : "in";
         // trace-level bodies are re-written by every root span of a merged session, so each write needs
         // its own object; span-level bodies are keyed by the stable span id and overwrite idempotently
         var owner = spanId == null || spanId.isBlank() ? "trace-" + UUID.randomUUID() : sanitize(spanId);
@@ -236,7 +247,7 @@ public class TraceBodyStore {
         return JsonUtil.toJson(ref);
     }
 
-    private String preview(String field, String body) {
+    private String previewOf(String field, String body) {
         String preview;
         if (!"output".equals(field) && !"out".equals(field)) {
             preview = TracePreviewExtractor.extract(body);
@@ -247,7 +258,7 @@ public class TraceBodyStore {
         return preview == null || preview.isBlank() ? null : preview;
     }
 
-    private String objectKey(JsonNode node) {
+    private String referencedKey(JsonNode node) {
         if (node == null) return null;
         var value = node.get(REF_KEY);
         if (value == null || !value.isTextual()) return null;
@@ -262,7 +273,7 @@ public class TraceBodyStore {
         try {
             var node = JsonUtil.OBJECT_MAPPER.readTree(value);
             if (node == null || !node.hasNonNull(REF_KEY)) return null;
-            return objectKey(node) == null ? null : node;
+            return referencedKey(node) == null ? null : node;
         } catch (IOException e) {
             return null;
         }

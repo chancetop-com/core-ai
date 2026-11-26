@@ -11,9 +11,7 @@ import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 
-
 import core.framework.inject.Inject;
-
 
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import io.opentelemetry.proto.trace.v1.ResourceSpans;
@@ -131,19 +129,16 @@ public class OTLPIngestService {
         trace.source = resolveSource(attrs, trace.sessionId);
         trace.type = resolveType(trace.source, attrs, resourceAttrs);
         trace.status = TraceStatus.RUNNING;
-        trace.input = offloadTraceBody(traceId, "in", OTLPParseHelper.resolveInput(attrs));
+        trace.input = OTLPParseHelper.resolveInput(attrs);
         trace.metadata = OTLPTraceMetadata.traceMetadata(attrs, resourceAttrs);
         trace.durationMs = 0L;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
         trace.createdAt = ZonedDateTime.now();
         trace.updatedAt = ZonedDateTime.now();
-        trace.inputTokens = 0L;
-        trace.outputTokens = 0L;
-        trace.totalTokens = 0L;
-        trace.cachedTokens = 0L;
-        trace.costUsd = 0.0;
+        TraceServiceHelper.initializeTotals(trace);
         // race-safe: the unique trace id index means a concurrent ingest (likely another request of
         // the same merged gateway session) already created the trace
+        bodyStore.offload(trace);
         return traceStore.insertIfAbsent(trace);
     }
 
@@ -194,7 +189,6 @@ public class OTLPIngestService {
         // duplicate copies so spans stay small (a single long trace can otherwise reach 60MB+).
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         compactPayload(span, compactor, traceId);
-        offloadSpanBody(span);
         if (!spanStore.insertIfAbsent(span)) return;
         // Back-fill model onto trace if not yet set
         if (span.model != null && !span.model.isEmpty()) {
@@ -210,19 +204,11 @@ public class OTLPIngestService {
     }
 
     private void compactPayload(Span span, TracePayloadStore.Compactor compactor, String traceId) {
-        if (compactor == null) return;
-        span.input = compactor.compact(traceId, span.input);
-        span.output = compactor.compact(traceId, span.output);
-    }
-
-    private void offloadSpanBody(Span span) {
-        if (bodyStore == null) return;
-        span.input = bodyStore.offload(span.traceId, span.spanId, "in", span.input);
-        span.output = bodyStore.offload(span.traceId, span.spanId, "out", span.output);
-    }
-
-    private String offloadTraceBody(String traceId, String field, String body) {
-        return bodyStore == null ? body : bodyStore.offload(traceId, null, field, body);
+        if (compactor != null) {
+            span.input = compactor.compact(traceId, span.input);
+            span.output = compactor.compact(traceId, span.output);
+        }
+        bodyStore.offload(span);
     }
 
     private void upsertTrace(io.opentelemetry.proto.trace.v1.Span protoSpan,
@@ -255,7 +241,7 @@ public class OTLPIngestService {
         }
         var output = OTLPParseHelper.resolveOutput(attrs);
         if (compactor != null && output != null) output = compactor.compact(trace.traceId, output);
-        if (output != null) update.output = offloadTraceBody(trace.traceId, "out", output);
+        if (output != null) update.output = bodyStore.offload(trace.traceId, null, "out", output);
         update.durationMs = endMs - TimeUnit.NANOSECONDS.toMillis(protoSpan.getStartTimeUnixNano());
         update.completedAt = OTLPParseHelper.toZonedDateTime(endMs);
         update.updatedAt = ZonedDateTime.now();
@@ -333,8 +319,7 @@ public class OTLPIngestService {
             trace.input = compactor.compact(traceId, trace.input);
             trace.output = compactor.compact(traceId, trace.output);
         }
-        trace.input = offloadTraceBody(traceId, "in", trace.input);
-        trace.output = offloadTraceBody(traceId, "out", trace.output);
+        bodyStore.offload(trace);
         trace.metadata = OTLPTraceMetadata.traceMetadata(attrs, resourceAttrs);
         trace.durationMs = endMs - startMs;
         trace.startedAt = OTLPParseHelper.toZonedDateTime(startMs);
@@ -460,5 +445,3 @@ public class OTLPIngestService {
     }
 
 }
-
-

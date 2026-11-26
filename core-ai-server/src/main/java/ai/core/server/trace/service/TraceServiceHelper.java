@@ -111,6 +111,14 @@ final class TraceServiceHelper {
         return namePattern == null || trace.name != null && namePattern.matcher(trace.name).find();
     }
 
+    static void initializeTotals(Trace trace) {
+        trace.inputTokens = 0L;
+        trace.outputTokens = 0L;
+        trace.totalTokens = 0L;
+        trace.cachedTokens = 0L;
+        trace.costUsd = 0.0;
+    }
+
     static void putTrace(Map<String, Trace> matches, Trace trace) {
         var key = hasText(trace.id) ? trace.id : trace.traceId;
         if (!hasText(key)) key = Integer.toHexString(System.identityHashCode(trace));

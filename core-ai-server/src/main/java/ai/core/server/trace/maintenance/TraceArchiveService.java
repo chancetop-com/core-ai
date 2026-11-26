@@ -8,6 +8,7 @@ import ai.core.server.trace.TraceQuery;
 import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.Trace;
+import ai.core.server.trace.service.TraceBodyStore;
 import ai.core.server.trace.service.TracePayloadStore;
 import ai.core.utils.JsonUtil;
 import core.framework.inject.Inject;
@@ -55,6 +56,8 @@ public class TraceArchiveService {
     SpanStore spanStore;
     @Inject
     TracePayloadStore payloadStore;
+    @Inject
+    TraceBodyStore bodyStore;
 
     private final ObjectStorageServiceResolver objectStorageResolver;
     private final String configuredContainer;
@@ -188,7 +191,7 @@ public class TraceArchiveService {
             }
 
             long deleted = traceStore.deleteByIds(ids);
-            if (payloadStore != null) payloadStore.deleteBodyObjects(bodyRefs);
+            if (bodyStore != null) bodyStore.deleteObjects(bodyRefs);
             totalTracesDeleted += deleted;
             if (deleted == 0) break;
             if (totalTracesDeleted % (TRACE_DELETE_BATCH_SIZE * 50) == 0) {

@@ -304,15 +304,6 @@ public class TracePayloadStore {
         return bodyStore == null ? body : bodyStore.hydrate(body, strict, maxBytes);
     }
 
-    /** Full span/trace body from the object store, for the detail endpoint's lazy fetch. */
-    public String body(String value) {
-        return bodyStore == null ? value : bodyStore.body(value);
-    }
-
-    public void deleteBodyObjects(List<String> references) {
-        if (bodyStore != null) bodyStore.deleteObjects(references);
-    }
-
     /**
      * Stores one data URL supplied by an uploading client (for example a CLI that still owns the
      * image locally) under this trace, so the viewer can fetch it later.

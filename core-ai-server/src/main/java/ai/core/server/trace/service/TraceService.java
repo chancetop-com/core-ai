@@ -44,6 +44,8 @@ public class TraceService {
     ai.core.server.user.UserStore userStore;
     @Inject
     TracePayloadStore payloadStore;
+    @Inject
+    TraceBodyStore bodyStore;
 
     public List<Trace> list(TraceListFilter filter) {
         if (requiresSearch(filter)) {
@@ -268,7 +270,7 @@ public class TraceService {
         if (span == null) return null;
         var value = "output".equals(field) ? span.output : span.input;
         if (value == null) return null;
-        return payloadStore == null ? value : payloadStore.body(value);
+        return bodyStore == null ? value : bodyStore.body(value);
     }
 
     public List<Span> generations(int offset, int limit, String model, List<String> userIds) {
