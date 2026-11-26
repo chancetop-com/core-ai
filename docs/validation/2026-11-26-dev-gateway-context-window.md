@@ -42,12 +42,33 @@ resolution.
   `context_window=1000000`. Restored to `922000` afterwards and the list shows `922000 ctx`.
 - Screenshot: `docs/validation/2026-11-26-dev-gateway-context-window.png`.
 
+## UAT release and model setting
+
+- UAT is on the same AKS cluster (`FBRDevAKSCluster`, namespace `uat-ai`). The deployment was
+  rolled with `kubectl set image` to 2.0.391; env manifest
+  `azure/uat/kube/resource/app/ai/20-core-ai-server.yaml` was committed as
+  `fbr-env-project` **`cf93b444`** (`uat: release core-ai-server 2.0.391`).
+- UAT revision **308**, deployment **2/2 Ready**, both pods
+  `sha256:cfaaa2c93477e0f7de05de711000c77ef94edb70b527860dc7b3142861532a7d`, 0 restarts;
+  `/api/capabilities` returns 200. Startup logs show only the pre-existing MCP auth/404 warnings.
+- `deepseek-flash-3p-promax` (`id=fb6748ff-17ba-46e1-8fbe-2351dd7ebd12`) had
+  `contextWindow=null`. It was set to **1000000** through
+  `PUT /api/gateway/models/{id} {"contextWindow":1000000}`; reads then returned 1,000,000 from
+  both `GET /api/gateway/models` and `GET /api/hub/models` (`contextWindow`), and the published
+  `/api/gateway/v1/models` reports `context_window=1000000`.
+- UAT UI check: the Models row shows `vision, 1000000 ctx`; the editor's **Context Window**
+  field reads `1000000`. Screenshot: `docs/validation/2026-11-26-uat-gateway-context-window.png`.
+- Rollback: `kubectl --context FBRDevAKSCluster -n uat-ai rollout undo deploy/core-ai-server`
+  returns to the 2.0.390 revision; the context-window value is data and can be cleared with an
+  explicit JSON `null`.
+
 ## UAT follow-up
 
-UAT still runs the previous image, so the field is missing there until 2.0.391 (or later) is
-deployed with explicit authorization. Immediate workaround for the UAT model:
+UAT now runs 2.0.391. The previous image lacked the field; the API workaround below remains
+useful for any older environment:
 
 ```http
 PUT /api/gateway/models/{id}
 {"contextWindow": 1000000}
 ```
+
