@@ -15,7 +15,6 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -60,7 +59,7 @@ class TraceBodyStoreTest {
     void keepsSmallBodyInline() {
         var body = "x".repeat(16 * 1024);
 
-        assertSame(body, store.offload("trace-1", "span-1", "in", body));
+        assertEquals(body, store.offload("trace-1", "span-1", "in", body));
         assertTrue(objects.isEmpty());
     }
 
@@ -118,7 +117,7 @@ class TraceBodyStoreTest {
         store.objectStorageResolver = resolver;
 
         var body = "x".repeat(64 * 1024);
-        assertSame(body, store.offload("trace-1", "span-1", "in", body));
+        assertEquals(body, store.offload("trace-1", "span-1", "in", body));
     }
 
     @Test
@@ -126,11 +125,11 @@ class TraceBodyStoreTest {
         var body = "{\"normal\":\"payload\"}";
         assertFalse(store.isRef(body));
         assertNull(store.preview(body));
-        assertSame(body, store.hydrate(body, true, Long.MAX_VALUE));
+        assertEquals(body, store.hydrate(body, true, Long.MAX_VALUE));
 
         var foreignRef = "{\"$coreai_blob_ref\":\"https://example.com/not-ours\"}";
         assertFalse(store.isRef(foreignRef));
-        assertSame(foreignRef, store.hydrate(foreignRef, true, Long.MAX_VALUE));
+        assertEquals(foreignRef, store.hydrate(foreignRef, true, Long.MAX_VALUE));
     }
 
     @Test
@@ -138,7 +137,7 @@ class TraceBodyStoreTest {
         store.configure("false", 16 * 1024, "trace-container", "dev-ai", true);
         var body = "x".repeat(64 * 1024);
 
-        assertSame(body, store.offload("trace-1", "span-1", "in", body));
+        assertEquals(body, store.offload("trace-1", "span-1", "in", body));
         assertTrue(objects.isEmpty());
     }
 

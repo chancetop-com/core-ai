@@ -12,6 +12,7 @@ import ai.core.server.trace.domain.TracePayloadBlob;
 import ai.core.server.trace.domain.TraceDailyStats;
 import ai.core.server.trace.maintenance.StaleRunCleanupService;
 import ai.core.server.trace.maintenance.TraceArchiveService;
+import ai.core.server.trace.service.TraceBodyStore;
 import ai.core.server.trace.service.TracePayloadStore;
 import core.framework.async.Task;
 import core.framework.internal.log.LogManager;
@@ -92,6 +93,7 @@ class TraceStoreModuleTest {
             } else if (module instanceof TraceModule) {
                 context.bind(SpanStore.class, null, mock(SpanStore.class));
                 context.bind(TracePayloadStore.class, null, mock(TracePayloadStore.class));
+                context.bind(TraceBodyStore.class, null, mock(TraceBodyStore.class));
                 context.bind(AgentRunStore.class, null, mock(AgentRunStore.class));
                 archive = bind(new TraceArchiveService(mock(ObjectStorageServiceResolver.class), null, null));
                 cleanup = bind(StaleRunCleanupService.class);
