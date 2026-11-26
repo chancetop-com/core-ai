@@ -22,7 +22,7 @@ class TaskRunCoordinatorTest {
         var coordinator = new TaskRunCoordinator("session-1", "inc-1");
         var first = coordinator.openRoot("request-1", "turn-1");
         coordinator.requestQueued("turn-1");
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, List.of("turn-1"));
 
         var second = coordinator.openRoot("request-2", "turn-2");
         assertEquals(TaskRunState.QUEUED, second.state());
@@ -42,7 +42,7 @@ class TaskRunCoordinatorTest {
         var claimed = coordinator.claimQueued(List.of("turn-2"));
         assertEquals(second.taskRunId(), claimed.taskRunId());
         assertEquals(TaskRunState.REGISTERED, coordinator.activeSnapshot().state());
-        coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.ROOT, List.of("turn-2"));
         coordinator.executionEnded("turn-2", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
         assertEquals(TaskRunOutcome.RETURNED, coordinator.lastEndedSnapshot().outcome());
     }
@@ -51,7 +51,7 @@ class TaskRunCoordinatorTest {
     void aDiscardedQueuedRunNeverBecomesActive() {
         var coordinator = new TaskRunCoordinator("session-1", "inc-1");
         var active = coordinator.openRoot("request-1", "turn-1");
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, List.of());
         var queued = coordinator.openRoot("request-2", "turn-2");
 
         coordinator.discardQueued("turn-2", "steered_into_active_run");
@@ -84,7 +84,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
 
         assertEquals(1, recorder.registered.size());
@@ -107,7 +107,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.taskLaunched("task-1", 7L);
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
 
@@ -119,7 +119,7 @@ class TaskRunCoordinatorTest {
         assertTrue(recorder.ended.isEmpty());
         assertEquals(1, coordinator.snapshot().queuedContinuations());
 
-        coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, 0);
+        coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, List.of());
         assertEquals(0, coordinator.snapshot().queuedContinuations());
         coordinator.executionEnded("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, TaskRunOutcome.RETURNED, null);
 
@@ -135,7 +135,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.taskLaunched("task-1", 1L);
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
         coordinator.taskSettled("task-1", 1L, TaskRunOutcome.FAILED, false, "command failed");
@@ -153,7 +153,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.taskLaunched("task-1", 1L);
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
         coordinator.taskSettled("task-1", 1L, TaskRunOutcome.RETURNED, true, "completed");
@@ -172,7 +172,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.markUntrackable("async_tool_executor_not_wired");
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
 
@@ -188,7 +188,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.taskLaunched("task-1", 1L);
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
         coordinator.cancelRun("user requested stop");
@@ -221,7 +221,7 @@ class TaskRunCoordinatorTest {
 
         coordinator.openRoot("request-1");
         coordinator.requestQueued();
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
         coordinator.taskLaunched("task-1", 1L);
         coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
         coordinator.taskSettled("task-1", 1L, TaskRunOutcome.RETURNED, true, "completed");
@@ -256,7 +256,72 @@ class TaskRunCoordinatorTest {
         assertEquals(run.taskRunId(), coordinator.snapshot().taskRunId());
 
         assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-1")));
-        assertTrue(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+    }
+
+    @Test
+    void aQueuedRequestThatCannotBeInTheBatchIsReleasedInsteadOfFencingTheDriver() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        coordinator.openRoot("request-1", "turn-1");
+        coordinator.requestQueued("turn-1");
+        assertEquals(TaskRunState.AWAITING_ASYNC, coordinator.snapshot().state());
+
+        assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+        assertEquals(TaskRunState.REGISTERED, coordinator.snapshot().state());
+        assertEquals(0, coordinator.snapshot().queuedRequests());
+    }
+
+    @Test
+    void markingTheRequestQueuedAfterTheExecutionStartedMustNotFenceTheRun() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var run = coordinator.openRoot("request-1", "turn-1");
+        // the driver can reach the message between the enqueue and this marking
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, List.of("turn-1"));
+        coordinator.requestQueued("request-1", "turn-1");
+        assertEquals(TaskRunState.RUNNING, coordinator.snapshot().state());
+        assertEquals(0, coordinator.snapshot().queuedRequests());
+
+        coordinator.cancelRun("user requested stop");
+        coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.CANCELLED, "user_cancelled");
+
+        assertNull(coordinator.activeSnapshot(), "a cancelled run with no outstanding work must end");
+        assertEquals(TaskRunOutcome.CANCELLED, coordinator.lastEndedSnapshot().outcome());
+        assertEquals(run.taskRunId(), coordinator.lastEndedSnapshot().taskRunId());
+        assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+    }
+
+    @Test
+    void aFollowUpAcceptedAfterTheRootBatchStartedBecomesItsOwnQueuedRun() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        coordinator.openRoot("request-1", "turn-1");
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, List.of("turn-1"));
+
+        coordinator.requestQueued("request-2", "turn-2");
+
+        var queued = coordinator.queuedSnapshots();
+        assertEquals(1, queued.size());
+        assertEquals(TaskRunState.QUEUED, queued.getFirst().state());
+        assertEquals("request-2", queued.getFirst().requestId());
+
+        coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
+        assertNull(coordinator.activeSnapshot());
+        assertFalse(coordinator.shouldDeferUserBatch(List.of("turn-2")));
+        var claimed = coordinator.claimQueued(List.of("turn-2"));
+        assertNotNull(claimed);
+        assertEquals("request-2", claimed.requestId());
+    }
+
+    @Test
+    void cancelRunReleasesAnAcceptedInputThatNeverStarted() {
+        var coordinator = new TaskRunCoordinator("session-1", "inc-1");
+        var run = coordinator.openRoot("request-1", "turn-1");
+        coordinator.requestQueued("turn-1");
+
+        var released = coordinator.cancelRun("user requested stop");
+
+        assertEquals(List.of("turn-1"), released);
+        assertNull(coordinator.activeSnapshot());
+        assertEquals(TaskRunOutcome.CANCELLED, coordinator.lastEndedSnapshot().outcome());
+        assertEquals(run.taskRunId(), coordinator.lastEndedSnapshot().taskRunId());
     }
 
     private static final class Recorder implements TaskRunObserver {

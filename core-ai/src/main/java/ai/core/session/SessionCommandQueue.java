@@ -229,6 +229,31 @@ public class SessionCommandQueue {
         return filter.test(taskId.group(1), parsedGeneration);
     }
 
+    /**
+     * Removes accepted user inputs that never started, by turn id. A cancelled Task Run drops the
+     * inputs it had accepted but not yet handed to an execution, so a stop does not fire them later.
+     */
+    public int dropUserInputs(java.util.Collection<String> turnIds) {
+        if (turnIds == null || turnIds.isEmpty()) return 0;
+        int dropped = 0;
+        lock.lock();
+        try {
+            var iterator = queue.iterator();
+            while (iterator.hasNext()) {
+                var command = iterator.next();
+                if (command.mode() != CommandMode.USER_INPUT) continue;
+                var turnId = command.value().turnId();
+                if (turnId != null && turnIds.contains(turnId)) {
+                    iterator.remove();
+                    dropped++;
+                }
+            }
+        } finally {
+            lock.unlock();
+        }
+        return dropped;
+    }
+
     public enum CommandMode {
         TASK_NOTIFICATION(0),
         USER_INPUT(1);

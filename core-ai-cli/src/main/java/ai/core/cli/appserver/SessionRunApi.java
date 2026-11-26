@@ -44,7 +44,7 @@ final class SessionRunApi {
         List<AttachedContent> attachments = parsed.attachments().isEmpty() ? null : parsed.attachments();
         var disposition = session.inProcess().sendTrackedMessage(parsed.text(), null, attachments, turnId);
         if (disposition == InProcessAgentSession.SendDisposition.QUEUED) {
-            taskRuns.requestQueued(turnId);
+            taskRuns.requestQueued(requestId, turnId);
         } else if (disposition == InProcessAgentSession.SendDisposition.STEERED) {
             if (opened) taskRuns.interrupt("steered_into_existing_execution");
             else taskRuns.discardQueued(turnId, "steered_into_active_run");
@@ -77,7 +77,8 @@ final class SessionRunApi {
         var session = registry.requireSession(params);
         session.inProcess().cancelTurn();
         session.inProcess().cancelBackgroundTasks();
-        session.inProcess().taskRuns().cancelRun("user_cancelled");
+        var releasedInputs = session.inProcess().taskRuns().cancelRun("user_cancelled");
+        session.inProcess().discardQueuedInputs(releasedInputs);
         var node = Params.object();
         node.put("sessionId", session.id());
         node.put("cancelRequested", true);

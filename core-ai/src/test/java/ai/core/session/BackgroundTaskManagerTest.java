@@ -268,7 +268,7 @@ class BackgroundTaskManagerTest {
         var queue = new SessionCommandQueue();
         var coordinator = new TaskRunCoordinator("test-session", "inc-1");
         coordinator.openRoot("request-1");
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.List.of());
         var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session",
                 event -> { }, coordinator);
 
@@ -287,7 +287,7 @@ class BackgroundTaskManagerTest {
         var queue = new SessionCommandQueue();
         var coordinator = new TaskRunCoordinator("test-session", "inc-1");
         coordinator.openRoot("request-1");
-        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 0);
+        coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.List.of());
         var manager = new BackgroundTaskManager(queue, taskId -> new InMemorySink(taskId), "test-session",
                 event -> { }, coordinator);
 

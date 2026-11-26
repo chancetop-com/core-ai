@@ -113,7 +113,7 @@ class TaskRunLifecycleIntegrationTest {
         });
         try {
             var first = session.taskRuns().openRoot("request-1", "turn-1");
-            session.taskRuns().executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+            session.taskRuns().executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, List.of("turn-1"));
             session.taskRuns().taskLaunched("job-1", 1L);
             session.taskRuns().executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
             var queued = session.taskRuns().openRoot("request-2", "turn-2");
@@ -152,6 +152,122 @@ class TaskRunLifecycleIntegrationTest {
             assertEquals(TaskRunOutcome.INTERRUPTED, recorder.ended.get().outcome());
         } finally {
             release.countDown();
+        }
+    }
+
+    @Test
+    void aQueuedMarkingRacingTheDriverMustNotFenceTheRun() throws InterruptedException {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var agent = Agent.builder().llmProvider(new GatedProvider(entered, release)).build();
+        var session = new InProcessAgentSession("s-task-run-race", agent, true, new InMemoryToolPermissionStore());
+        var recorder = new Recorder();
+        session.taskRuns().setObserver(recorder);
+        try {
+            session.taskRuns().openRoot("request-1", "turn-1");
+            session.sendMessage("hello", null, null, "turn-1");
+            assertTrue(entered.await(10, TimeUnit.SECONDS), "the turn should be in flight");
+
+            // the app-server marks the request queued after enqueueing it; the driver can start in between
+            session.taskRuns().requestQueued("request-1", "turn-1");
+            assertEquals(TaskRunState.RUNNING, session.taskRuns().activeSnapshot().state());
+            assertEquals(0, session.taskRuns().activeSnapshot().queuedRequests());
+
+            release.countDown();
+            assertTrue(recorder.done.await(10, TimeUnit.SECONDS), "the late marking must not keep the run open");
+            assertEquals(TaskRunOutcome.RETURNED, recorder.ended.get().outcome());
+        } finally {
+            release.countDown();
+            session.close();
+        }
+    }
+
+    @Test
+    void aStopAfterTheQueuedMarkingRacedTheDriverLeavesTheSessionResponsive() throws InterruptedException {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var agent = Agent.builder().llmProvider(new GatedProvider(entered, release)).build();
+        var session = new InProcessAgentSession("s-task-run-stop", agent, true, new InMemoryToolPermissionStore());
+        var recorder = new Recorder();
+        session.taskRuns().setObserver(recorder);
+        var nextTurnDone = new CountDownLatch(1);
+        session.onEvent(new AgentEventListener() {
+            @Override
+            public void onTurnComplete(TurnCompleteEvent event) {
+                if ("turn-2".equals(event.turnId)) nextTurnDone.countDown();
+            }
+        });
+        try {
+            var first = session.taskRuns().openRoot("request-1", "turn-1");
+            session.sendMessage("hello", null, null, "turn-1");
+            assertTrue(entered.await(10, TimeUnit.SECONDS));
+            session.taskRuns().requestQueued("request-1", "turn-1");
+
+            session.cancelTurn();
+            session.discardQueuedInputs(session.taskRuns().cancelRun("user_cancelled"));
+            release.countDown();
+
+            assertTrue(recorder.done.await(10, TimeUnit.SECONDS), "stop must terminalize the run");
+            assertEquals(TaskRunOutcome.CANCELLED, recorder.ended.get().outcome());
+            assertEquals(first.taskRunId(), recorder.ended.get().taskRunId());
+
+            session.taskRuns().openRoot("request-2", "turn-2");
+            session.sendMessage("继续", null, null, "turn-2");
+            session.taskRuns().requestQueued("request-2", "turn-2");
+            assertTrue(nextTurnDone.await(10, TimeUnit.SECONDS), "the next message must run after the stop");
+        } finally {
+            release.countDown();
+            session.close();
+        }
+    }
+
+    private static final class GatedProvider extends LLMProvider {
+        private final CountDownLatch entered;
+        private final CountDownLatch release;
+        private final java.util.concurrent.atomic.AtomicBoolean gated = new java.util.concurrent.atomic.AtomicBoolean(true);
+
+        private GatedProvider(CountDownLatch entered, CountDownLatch release) {
+            super(new LLMProviderConfig("gated-mock", 0.7, "mock-embedding-model"));
+            this.entered = entered;
+            this.release = release;
+        }
+
+        @Override
+        protected CompletionResponse doCompletion(CompletionRequest request) {
+            if (gated.compareAndSet(true, false)) {
+                entered.countDown();
+                try {
+                    release.await(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+            return response("done");
+        }
+
+        @Override
+        protected CompletionResponse doCompletionStream(CompletionRequest request, StreamingCallback callback) {
+            return doCompletion(request);
+        }
+
+        @Override
+        public EmbeddingResponse embeddings(EmbeddingRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public RerankingResponse rerankings(RerankingRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public CaptionImageResponse captionImage(CaptionImageRequest request) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public String name() {
+            return "gated-mock";
         }
     }
 

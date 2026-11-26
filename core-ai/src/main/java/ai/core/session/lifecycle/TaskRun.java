@@ -1,7 +1,9 @@
 package ai.core.session.lifecycle;
 
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -32,11 +34,22 @@ final class TaskRun {
     final long startedAtMs;
     final Map<String, Long> requiredJobs = new LinkedHashMap<>();
     final Map<String, Continuation> continuations = new LinkedHashMap<>();
+    /**
+     * Requests accepted before this run's root execution started. The driver drains every queued user
+     * input into the same batch, so they are claimed by that execution; they only keep the run open
+     * until then. A request for another turn is a queued Task Run of its own and never lands here.
+     */
+    final Set<String> pendingRequestTurns = new LinkedHashSet<>();
+    /**
+     * Turns already claimed by a root execution. A request marked queued after this point was claimed
+     * before the send path could account it, so it must not be counted again.
+     */
+    final Set<String> claimedRootTurns = new LinkedHashSet<>();
+    int anonymousQueuedRequests;
     boolean queued;
     long version;
     String rootDisposition;
     String activeExecutionId;
-    int queuedRequests;
     String coverage = TaskRunCoordinator.COVERAGE_COMPLETE;
     String attentionReason;
     boolean unhandledFailure;
@@ -66,12 +79,16 @@ final class TaskRun {
         return (int) continuations.values().stream().filter(value -> value.state() == ContinuationState.QUEUED).count();
     }
 
+    int queuedRequests() {
+        return pendingRequestTurns.size() + anonymousQueuedRequests;
+    }
+
     TaskRunState state() {
         if (terminal()) return TaskRunState.TERMINAL;
         if (queued) return TaskRunState.QUEUED;
         if (attentionReason != null) return TaskRunState.NEEDS_ATTENTION;
         if (activeExecutionId != null) return TaskRunState.RUNNING;
-        if (!requiredJobs.isEmpty() || !continuations.isEmpty() || queuedRequests > 0) return TaskRunState.AWAITING_ASYNC;
+        if (!requiredJobs.isEmpty() || !continuations.isEmpty() || queuedRequests() > 0) return TaskRunState.AWAITING_ASYNC;
         if (rootDisposition != null) return TaskRunState.DRAINING;
         return TaskRunState.REGISTERED;
     }
@@ -79,7 +96,7 @@ final class TaskRun {
     TaskRunSnapshot snapshot(String sessionId, String incarnation) {
         return new TaskRunSnapshot(sessionId, incarnation, taskRunId, generation, version, requestId,
                 state(), rootDisposition, activeExecutionId, requiredJobs.size(), pendingContinuations(),
-                queuedContinuations(), queuedRequests, coverage, attentionReason, startedAtMs, endedAtMs, outcome, reason);
+                queuedContinuations(), queuedRequests(), coverage, attentionReason, startedAtMs, endedAtMs, outcome, reason);
     }
 
     TaskRunEnded ended(String sessionId, String incarnation) {

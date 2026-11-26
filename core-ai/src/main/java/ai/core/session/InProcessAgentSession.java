@@ -258,8 +258,7 @@ public class InProcessAgentSession implements AgentSession {
     }
 
     private boolean deferUserBatch(SessionCommandQueue.CommandBatch batch) {
-        var turnIds = batch.values().stream().map(SessionCommandQueue.QueuedMessage::turnId)
-                .filter(value -> value != null).toList();
+        var turnIds = batch.values().stream().map(SessionCommandQueue.QueuedMessage::turnId).toList();
         if (taskRuns.shouldDeferUserBatch(turnIds)) {
             commandQueue.requeueUserInputs(batch.values());
             taskRuns.awaitChange(500);
@@ -276,7 +275,8 @@ public class InProcessAgentSession implements AgentSession {
         var executionId = turnId != null ? turnId : "exec-" + UUID.randomUUID();
         currentExecutionId = executionId;
         currentExecutionKind = kind;
-        taskRuns.executionStarted(executionId, kind, batch.values().size());
+        var claimedTurns = batch.values().stream().map(SessionCommandQueue.QueuedMessage::turnId).toList();
+        taskRuns.executionStarted(executionId, kind, claimedTurns);
     }
 
     private void finishTurn(ScheduledFuture<?> turnDeadline, Runnable threadUnbind, CancellationToken turnToken) {
@@ -502,6 +502,11 @@ public class InProcessAgentSession implements AgentSession {
     public void cancelBackgroundTasks() {
         var taskManager = agent.getExecutionContext().getTaskManager();
         if (taskManager != null) taskManager.cancelAllRunning();
+    }
+
+    /** Drops accepted user inputs that never started, used when the owning run is cancelled. */
+    public int discardQueuedInputs(java.util.Collection<String> turnIds) {
+        return commandQueue.dropUserInputs(turnIds);
     }
 
     @Override

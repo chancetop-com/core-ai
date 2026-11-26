@@ -36,7 +36,7 @@ class SessionLifecycleSourceTest {
         try (var source = new SessionLifecycleSource("session-1", session, tempDir, () -> sink)) {
             var opened = coordinator.openRoot("request-1");
             coordinator.requestQueued();
-            coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+            coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.Collections.singletonList(null));
             coordinator.taskLaunched("task-1", 7L);
             coordinator.executionEnded("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, TaskRunOutcome.RETURNED, null);
 
@@ -47,7 +47,7 @@ class SessionLifecycleSourceTest {
 
             coordinator.taskSettled("task-1", 7L, TaskRunOutcome.RETURNED, true, "completed");
             coordinator.notificationQueued("task-1", 7L, true);
-            coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, 0);
+            coordinator.executionStarted("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, java.util.List.of());
             coordinator.executionEnded("turn-2", TaskRunCoordinator.ExecutionKind.TASK_NOTIFICATION, TaskRunOutcome.RETURNED, null);
 
             var ended = source.inspect().path("lastEndedTaskRun");
@@ -70,7 +70,7 @@ class SessionLifecycleSourceTest {
         var sink = mock(NotificationSink.class);
         try (var source = new SessionLifecycleSource("session-queued", session, tempDir, () -> sink)) {
             coordinator.openRoot("request-1", "turn-1");
-            coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, 1);
+            coordinator.executionStarted("turn-1", TaskRunCoordinator.ExecutionKind.ROOT, java.util.List.of("turn-1"));
             var queued = coordinator.openRoot("request-2", "turn-2");
 
             var inspect = source.inspect();

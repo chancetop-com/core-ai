@@ -96,4 +96,21 @@ class SessionCommandQueueTest {
         queue.requeueUserInputs(batch.values());
         assertEquals(2, queue.size());
     }
+
+    @Test
+    void dropUserInputsRemovesOnlyTheNamedTurns() {
+        var queue = new SessionCommandQueue();
+        assertTrue(queue.enqueueUserInput("cancelled", null, null, "turn-1"));
+        assertTrue(queue.enqueueUserInput("kept", null, null, "turn-2"));
+        queue.enqueueTaskNotification("<task-id>task-1</task-id>");
+
+        assertEquals(1, queue.dropUserInputs(java.util.List.of("turn-1")));
+        assertEquals(2, queue.size());
+
+        var notifications = queue.drainSameMode();
+        assertEquals(SessionCommandQueue.CommandMode.TASK_NOTIFICATION, notifications.mode());
+        var user = queue.drainSameMode();
+        assertEquals(1, user.values().size());
+        assertEquals("kept", user.values().getFirst().value());
+    }
 }

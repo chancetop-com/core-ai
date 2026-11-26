@@ -19,6 +19,15 @@ public final class TaskRunCoordinator {
     private static final String REASON_RETURNED = "required_work_settled_and_processing_finished";
     private static final String REASON_JOB_FAILED = "required_job_failed_without_handler";
     private static final String REASON_COVERAGE = "required_work_coverage_incomplete";
+    private static final int CLAIMED_TURN_MEMORY = 64;
+
+    private static boolean claimsQueuedRequest(TaskRun run, java.util.List<String> turnIds) {
+        if (run.turnId != null && turnIds.contains(run.turnId)) return true;
+        for (var turnId : turnIds) {
+            if (turnId != null && run.pendingRequestTurns.contains(turnId)) return true;
+        }
+        return run.anonymousQueuedRequests > 0 && turnIds.contains(null);
+    }
 
     private final String sessionId;
     private final Object lock = new Object();
@@ -28,6 +37,11 @@ public final class TaskRunCoordinator {
     private TaskRun active;
     private TaskRun lastEnded;
     private final Map<String, TaskRun> queuedRuns = new LinkedHashMap<>();
+    /**
+     * Recently claimed turns. A queued marking can arrive after its execution started (even after it
+     * ended); such a turn must not be counted or turned into a second queued run.
+     */
+    private final java.util.Deque<String> claimedTurnMemory = new java.util.ArrayDeque<>();
     private long runSequence;
 
     public TaskRunCoordinator(String sessionId, String sessionIncarnation) {
@@ -93,22 +107,53 @@ public final class TaskRunCoordinator {
     }
 
     public void requestQueued() {
-        requestQueued(null);
+        requestQueued(null, null);
     }
 
     public void requestQueued(String turnId) {
-        TaskRun.Emission emission;
+        requestQueued(turnId, turnId);
+    }
+
+    /**
+     * Accounts one accepted user input for the active run. The caller marks this after the message is
+     * in the command queue, so the driver may already have started (and even finished) the execution
+     * that carries it. A request for a turn that execution already claimed must not be counted again;
+     * a request accepted after the run executed its root batch is the next queued Task Run.
+     */
+    public void requestQueued(String requestId, String turnId) {
+        TaskRun.Emission emission = null;
+        TaskRun.Emission registered = null;
         synchronized (lock) {
             var queued = turnId != null ? queuedRuns.get(turnId) : null;
             if (queued != null) {
                 TaskRun.touch(queued);
                 emission = new TaskRun.Emission(queued.snapshot(sessionId, sessionIncarnation), null, false);
-            } else {
-                emission = changeLocked(run -> run.queuedRequests++);
+            } else if (turnId != null && (wasClaimed(turnId)
+                    || active != null && active.claimedRootTurns.contains(turnId))) {
+                // the execution that carries this request already claimed it
+                emission = null;
+            } else if (active != null && !active.terminal() && (turnId == null || active.claimedRootTurns.isEmpty())) {
+                emission = changeLocked(run -> {
+                    if (turnId == null) run.anonymousQueuedRequests++;
+                    else run.pendingRequestTurns.add(turnId);
+                });
+            } else if (turnId != null) {
+                var run = registerQueued(requestId, turnId);
+                registered = new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), null, true);
             }
             lock.notifyAll();
         }
+        emit(registered);
         emit(emission);
+    }
+
+    /** A follow-up accepted after the active run executed its root batch is the next queued Task Run. */
+    private TaskRun registerQueued(String requestId, String turnId) {
+        var run = new TaskRun("run-" + UUID.randomUUID(), ++runSequence,
+                requestId != null ? requestId : turnId, turnId, true, System.currentTimeMillis());
+        queuedRuns.put(turnId, run);
+        TaskRun.touch(run);
+        return run;
     }
 
     public void discardQueued(String turnId, String reason) {
@@ -163,21 +208,48 @@ public final class TaskRunCoordinator {
     }
 
     public boolean shouldDeferUserBatch(java.util.List<String> turnIds) {
+        TaskRun.Emission emission = null;
+        boolean defer;
         synchronized (lock) {
             if (active == null || active.terminal()) return false;
             if (active.activeExecutionId != null) return true;
             if (!active.requiredJobs.isEmpty() || !active.continuations.isEmpty()) return true;
             if (active.state() == TaskRunState.DRAINING) return true;
             if (active.state() == TaskRunState.AWAITING_ASYNC) {
-                // Only queuedRequests remain; the batch owning this turn must run, not wait forever.
-                return active.turnId == null || !turnIds.contains(active.turnId);
+                // Only queued requests are outstanding. Every queued user input is drained into the
+                // same batch, so either this batch carries that request or the accounting can never
+                // be claimed (a marking that raced its own execution). Release it in the latter case
+                // instead of fencing the driver on a request that no execution will ever claim.
+                if (claimsQueuedRequest(active, turnIds)) return false;
+                var run = active;
+                run.pendingRequestTurns.clear();
+                run.anonymousQueuedRequests = 0;
+                TaskRun.touch(run);
+                var ended = evaluate(run);
+                emission = new TaskRun.Emission(run.snapshot(sessionId, sessionIncarnation), ended, false);
+                defer = false;
+            } else if (active.state() == TaskRunState.NEEDS_ATTENTION) {
+                defer = false;
+            } else if (active.state() == TaskRunState.REGISTERED) {
+                defer = active.turnId != null && !turnIds.isEmpty() && !turnIds.contains(active.turnId);
+            } else {
+                defer = false;
             }
-            if (active.state() == TaskRunState.NEEDS_ATTENTION) return false;
-            if (active.state() == TaskRunState.REGISTERED) {
-                if (active.turnId == null || turnIds.isEmpty()) return false;
-                return !turnIds.contains(active.turnId);
-            }
-            return false;
+        }
+        emit(emission);
+        return defer;
+    }
+
+    private boolean wasClaimed(String turnId) {
+        if (claimedTurnMemory.contains(turnId)) return true;
+        return lastEnded != null && lastEnded.claimedRootTurns.contains(turnId);
+    }
+
+    private void rememberClaimed(String turnId) {
+        if (claimedTurnMemory.contains(turnId)) return;
+        claimedTurnMemory.addLast(turnId);
+        while (claimedTurnMemory.size() > CLAIMED_TURN_MEMORY) {
+            claimedTurnMemory.removeFirst();
         }
     }
 
@@ -199,17 +271,45 @@ public final class TaskRunCoordinator {
         }));
     }
 
-    public void executionStarted(String executionId, ExecutionKind kind, int claimedRequests) {
-        emit(change(run -> {
+    /**
+     * @param claimedTurns the turn ids of the user inputs this execution actually carries (null for
+     *                     an input without a turn). They are the only pending requests it consumes.
+     */
+    public void executionStarted(String executionId, ExecutionKind kind, java.util.List<String> claimedTurns) {
+        java.util.List<TaskRun.Emission> merged = new java.util.ArrayList<>();
+        TaskRun.Emission emission = change(run -> {
             run.activeExecutionId = executionId;
             if (kind == ExecutionKind.ROOT) {
-                run.queuedRequests = Math.max(0, run.queuedRequests - Math.max(0, claimedRequests));
+                int anonymous = 0;
+                for (var turnId : claimedTurns) {
+                    if (turnId == null) {
+                        anonymous++;
+                        continue;
+                    }
+                    claimRootTurn(run, turnId, merged);
+                }
+                if (run.turnId != null) claimRootTurn(run, run.turnId, merged);
+                run.anonymousQueuedRequests = Math.max(0, run.anonymousQueuedRequests - anonymous);
             } else if (kind == ExecutionKind.TASK_NOTIFICATION) {
                 run.continuations.values().removeIf(value -> value.state() == TaskRun.ContinuationState.QUEUED);
                 run.unhandledFailure = false;
                 run.failureReason = null;
             }
-        }));
+        });
+        merged.forEach(this::emit);
+        emit(emission);
+    }
+
+    private void claimRootTurn(TaskRun run, String turnId, java.util.List<TaskRun.Emission> merged) {
+        run.pendingRequestTurns.remove(turnId);
+        run.claimedRootTurns.add(turnId);
+        rememberClaimed(turnId);
+        var queuedRun = queuedRuns.remove(turnId);
+        if (queuedRun != null && !queuedRun.terminal()) {
+            finishQueued(queuedRun, TaskRunOutcome.INTERRUPTED, "merged_into_active_run");
+            merged.add(new TaskRun.Emission(queuedRun.snapshot(sessionId, sessionIncarnation),
+                    queuedRun.ended(sessionId, sessionIncarnation), false));
+        }
     }
 
     public void executionEnded(String executionId, ExecutionKind kind, TaskRunOutcome outcome, String reason) {
@@ -289,11 +389,28 @@ public final class TaskRunCoordinator {
         emit(change(run -> run.attentionReason = reason));
     }
 
-    public void cancelRun(String reason) {
-        emit(change(run -> {
-            run.rootDisposition = TaskRun.disposition(TaskRunOutcome.CANCELLED);
-            run.failureReason = reason;
-        }));
+    /**
+     * Fences the active run as cancelled and releases its accepted-but-unstarted inputs. The caller
+     * drops those inputs from the command queue; keeping them would start a turn nobody asked for
+     * after the stop. Returns the turn ids the caller must discard.
+     */
+    public java.util.List<String> cancelRun(String reason) {
+        java.util.List<String> released;
+        TaskRun.Emission emission;
+        synchronized (lock) {
+            if (active == null || active.terminal()) return java.util.List.of();
+            var run = active;
+            released = new java.util.ArrayList<>(run.pendingRequestTurns);
+            emission = changeLocked(target -> {
+                target.rootDisposition = TaskRun.disposition(TaskRunOutcome.CANCELLED);
+                target.failureReason = reason;
+                target.pendingRequestTurns.clear();
+                target.anonymousQueuedRequests = 0;
+            });
+            lock.notifyAll();
+        }
+        emit(emission);
+        return released;
     }
 
     public void limitRun(String reason) {
@@ -385,7 +502,7 @@ public final class TaskRunCoordinator {
 
     private TaskRunEnded evaluate(TaskRun run) {
         if (run.activeExecutionId != null || run.attentionReason != null || run.terminal()) return null;
-        if (!run.requiredJobs.isEmpty() || !run.continuations.isEmpty() || run.queuedRequests > 0) return null;
+        if (!run.requiredJobs.isEmpty() || !run.continuations.isEmpty() || run.queuedRequests() > 0) return null;
         if (run.rootDisposition == null) return null;
         if (pendingWorkProbe.getAsBoolean()) return null;
         if (!COVERAGE_COMPLETE.equals(run.coverage)) {

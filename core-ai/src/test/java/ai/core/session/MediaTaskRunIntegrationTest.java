@@ -54,7 +54,7 @@ class MediaTaskRunIntegrationTest {
         session.taskRuns().setObserver(recorder);
         try {
             session.taskRuns().openRoot("request-1", "turn-1");
-            session.taskRuns().executionStarted("turn-1", ai.core.session.lifecycle.TaskRunCoordinator.ExecutionKind.ROOT, 0);
+            session.taskRuns().executionStarted("turn-1", ai.core.session.lifecycle.TaskRunCoordinator.ExecutionKind.ROOT, List.of());
             var event = ToolResultEvent.of(session.id(), "call-1", "generate_video", "pending", "video-1");
             event.taskId = "video-1";
             session.dispatchEvent(event);
