@@ -123,7 +123,8 @@ public final class ReportViewMapper {
         view.position = pin.position;
         view.width = pin.width;
         view.title = summary != null ? summary.title : null;
-        view.displayType = summary != null ? summary.displayType : null;
+        view.displayType = summary != null
+                ? (summary.firstDisplayType != null ? summary.firstDisplayType : summary.displayType) : null;
         view.datasetId = summary != null ? summary.datasetId : null;
         view.reportRevision = summary != null ? summary.revision : null;
         view.updatedAt = summary != null ? time(summary.updatedAt) : time(pin.updatedAt);

@@ -44,6 +44,15 @@ public class ReportService {
         return spec.display != null ? spec.display.type : null;
     }
 
+    public static String firstDisplayType(ReportSpec spec) {
+        if (spec == null) return null;
+        if (spec.components != null && !spec.components.isEmpty()
+                && spec.components.get(0) != null && spec.components.get(0).display != null) {
+            return spec.components.get(0).display.type;
+        }
+        return spec.display != null ? spec.display.type : null;
+    }
+
     @Inject
     Database database;
 
@@ -322,6 +331,7 @@ public class ReportService {
         var dataset = datasetService.get(report.datasetId);
         summary.datasetName = dataset != null ? dataset.name : null;
         summary.displayType = displayType(report.spec);
+        summary.firstDisplayType = firstDisplayType(report.spec);
         summary.pinId = pin != null ? pin.id : null;
         summary.pinWidth = pin != null ? pin.width : null;
         summary.updatedAt = report.updatedAt;

@@ -13,6 +13,7 @@ public class ReportSummary {
     public String datasetId;
     public String datasetName;
     public String displayType;
+    public String firstDisplayType;
     public String pinId;
     public String pinWidth;
     public ZonedDateTime updatedAt;
