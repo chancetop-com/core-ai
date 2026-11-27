@@ -22,6 +22,15 @@ public final class SandboxLifecycle extends AbstractLifecycle {
     private static final Logger LOGGER = LoggerFactory.getLogger(SandboxLifecycle.class);
 
     private static final String HUB_MARKER = "# Session capabilities from inside the sandbox";
+    private static final String WORKSPACE_MARKER = "# Persistent workspace";
+
+    private static final String WORKSPACE_INSTRUCTIONS = """
+
+            # Persistent workspace
+
+            This session is backed by a persistent workspace mounted at `/workspace` (project files, installed packages, and `/workspace/home` persist across sessions).
+            Before starting work, read `/workspace/AGENTS.md` and `/workspace/.core-ai/NOTES.md` if present to follow workspace conventions, environment setup (`/workspace/.core-ai/env`), and prior notes.
+            """;
 
     private static final String HUB_INSTRUCTIONS = """
 
@@ -97,6 +106,11 @@ public final class SandboxLifecycle extends AbstractLifecycle {
         return systemPrompt + HUB_INSTRUCTIONS;
     }
 
+    public static String appendWorkspaceInstructions(String systemPrompt) {
+        if (systemPrompt == null || systemPrompt.isBlank()) return WORKSPACE_INSTRUCTIONS.strip();
+        return systemPrompt + WORKSPACE_INSTRUCTIONS;
+    }
+
     private static boolean hasSubmitArtifactsTool(Agent agent) {
         return agent.getToolCalls().stream()
                 .anyMatch(t -> SubmitArtifactsTool.TOOL_NAME.equals(t.getName()));
@@ -105,6 +119,11 @@ public final class SandboxLifecycle extends AbstractLifecycle {
     private static boolean hasHubInstructions(Agent agent) {
         var prompt = agent.getSystemPromptAppendix();
         return prompt != null && prompt.contains(HUB_MARKER);
+    }
+
+    private static boolean hasWorkspaceInstructions(Agent agent) {
+        var prompt = agent.getSystemPromptAppendix();
+        return prompt != null && prompt.contains(WORKSPACE_MARKER);
     }
 
     private final FileService fileService;
@@ -131,6 +150,9 @@ public final class SandboxLifecycle extends AbstractLifecycle {
 
         if (!hasHubInstructions(agent)) {
             agent.setSystemPromptAppendix(appendHubInstructions(agent.getSystemPromptAppendix()));
+        }
+        if (sandbox instanceof WorkspaceSandbox && !hasWorkspaceInstructions(agent)) {
+            agent.setSystemPromptAppendix(appendWorkspaceInstructions(agent.getSystemPromptAppendix()));
         }
 
         injectSubmitArtifactsTool(agent, context);

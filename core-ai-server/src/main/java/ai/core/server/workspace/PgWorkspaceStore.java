@@ -18,9 +18,11 @@ public class PgWorkspaceStore implements WorkspaceStore {
     private static final String TABLE = "app.workspaces";
     private static final String SELECT = "SELECT id, owner_user_id, name, agent_id, is_default, volume_status, "
             + "runtime_status, active_volume_generation, size_gb, storage_class, profile, mount_path, image, "
-            + "runtime_version, env_json::text AS env_json, bootstrap_script, start_script, network_enabled, "
-            + "network_profile, idle_sleep_minutes, runtime_generation, last_used_at, last_provisioned_at, "
-            + "error_code, error_message, deleted_at, created_at, updated_at FROM " + TABLE;
+            + "runtime_version, env_json::text AS env_json, bootstrap_script, start_script, "
+            + "bootstrap_completed_at, bootstrap_script_hash, start_script_hash, last_bootstrap_log, env_file_present, "
+            + "network_enabled, network_profile, idle_sleep_minutes, runtime_generation, last_used_at, "
+            + "last_provisioned_at, last_woken_at, last_slept_at, error_code, error_message, deleted_at, "
+            + "created_at, updated_at FROM " + TABLE;
 
 
     private static WorkspaceRecord toWorkspace(PgWorkspaceRow row) {
@@ -44,12 +46,19 @@ public class PgWorkspaceStore implements WorkspaceStore {
                 : new LinkedHashMap<>(JsonUtil.fromJson(ENV_TYPE, row.envJson));
         workspace.bootstrapScript = row.bootstrapScript;
         workspace.startScript = row.startScript;
+        workspace.bootstrapCompletedAt = row.bootstrapCompletedAt;
+        workspace.bootstrapScriptHash = row.bootstrapScriptHash;
+        workspace.startScriptHash = row.startScriptHash;
+        workspace.lastBootstrapLog = row.lastBootstrapLog;
+        workspace.envFilePresent = Boolean.TRUE.equals(row.envFilePresent);
         workspace.networkEnabled = Boolean.TRUE.equals(row.networkEnabled);
         workspace.networkProfile = row.networkProfile;
         workspace.idleSleepMinutes = row.idleSleepMinutes;
         workspace.runtimeGeneration = row.runtimeGeneration == null ? 0 : row.runtimeGeneration;
         workspace.lastUsedAt = row.lastUsedAt;
         workspace.lastProvisionedAt = row.lastProvisionedAt;
+        workspace.lastWokenAt = row.lastWokenAt;
+        workspace.lastSleptAt = row.lastSleptAt;
         workspace.errorCode = row.errorCode;
         workspace.errorMessage = row.errorMessage;
         workspace.deletedAt = row.deletedAt;
@@ -110,17 +119,21 @@ public class PgWorkspaceStore implements WorkspaceStore {
     public boolean insertIfAbsent(WorkspaceRecord workspace) {
         return database.execute("INSERT INTO " + TABLE + " (id, owner_user_id, name, agent_id, is_default, "
                         + "volume_status, runtime_status, active_volume_generation, size_gb, storage_class, profile, "
-                        + "mount_path, image, runtime_version, env_json, bootstrap_script, start_script, network_enabled, "
-                        + "network_profile, idle_sleep_minutes, runtime_generation, last_used_at, last_provisioned_at, "
-                        + "error_code, error_message, deleted_at, created_at, updated_at) "
-                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                        + "mount_path, image, runtime_version, env_json, bootstrap_script, start_script, "
+                        + "bootstrap_completed_at, bootstrap_script_hash, start_script_hash, last_bootstrap_log, "
+                        + "env_file_present, network_enabled, network_profile, idle_sleep_minutes, runtime_generation, "
+                        + "last_used_at, last_provisioned_at, last_woken_at, last_slept_at, error_code, error_message, "
+                        + "deleted_at, created_at, updated_at) "
+                        + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                         + "ON CONFLICT DO NOTHING",
                 workspace.id, workspace.ownerUserId, workspace.name, workspace.agentId, workspace.isDefault,
                 workspace.volumeStatus.name(), workspace.runtimeStatus.name(), workspace.activeVolumeGeneration,
                 workspace.sizeGb, workspace.storageClass, workspace.profile.id, workspace.mountPath, workspace.image,
                 workspace.runtimeVersion, JsonUtil.toJson(workspace.env), workspace.bootstrapScript, workspace.startScript,
-                workspace.networkEnabled, workspace.networkProfile, workspace.idleSleepMinutes,
-                workspace.runtimeGeneration, workspace.lastUsedAt, workspace.lastProvisionedAt, workspace.errorCode,
+                workspace.bootstrapCompletedAt, workspace.bootstrapScriptHash, workspace.startScriptHash,
+                workspace.lastBootstrapLog, workspace.envFilePresent, workspace.networkEnabled, workspace.networkProfile,
+                workspace.idleSleepMinutes, workspace.runtimeGeneration, workspace.lastUsedAt,
+                workspace.lastProvisionedAt, workspace.lastWokenAt, workspace.lastSleptAt, workspace.errorCode,
                 workspace.errorMessage, workspace.deletedAt, workspace.createdAt, workspace.updatedAt) > 0;
     }
 
@@ -129,15 +142,20 @@ public class PgWorkspaceStore implements WorkspaceStore {
         database.execute("UPDATE " + TABLE + " SET name = ?, agent_id = ?, is_default = ?, volume_status = ?, "
                         + "runtime_status = ?, active_volume_generation = ?, size_gb = ?, storage_class = ?, profile = ?, "
                         + "mount_path = ?, image = ?, runtime_version = ?, env_json = ?::jsonb, bootstrap_script = ?, "
-                        + "start_script = ?, network_enabled = ?, network_profile = ?, idle_sleep_minutes = ?, "
-                        + "runtime_generation = ?, last_used_at = ?, last_provisioned_at = ?, error_code = ?, "
-                        + "error_message = ?, deleted_at = ?, updated_at = ? WHERE id = ?",
+                        + "start_script = ?, bootstrap_completed_at = ?, bootstrap_script_hash = ?, start_script_hash = ?, "
+                        + "last_bootstrap_log = ?, env_file_present = ?, network_enabled = ?, network_profile = ?, "
+                        + "idle_sleep_minutes = ?, runtime_generation = ?, last_used_at = ?, last_provisioned_at = ?, "
+                        + "last_woken_at = ?, last_slept_at = ?, error_code = ?, error_message = ?, deleted_at = ?, "
+                        + "updated_at = ? WHERE id = ?",
                 workspace.name, workspace.agentId, workspace.isDefault, workspace.volumeStatus.name(),
                 workspace.runtimeStatus.name(), workspace.activeVolumeGeneration, workspace.sizeGb,
                 workspace.storageClass, workspace.profile.id, workspace.mountPath, workspace.image,
                 workspace.runtimeVersion, JsonUtil.toJson(workspace.env), workspace.bootstrapScript,
-                workspace.startScript, workspace.networkEnabled, workspace.networkProfile, workspace.idleSleepMinutes,
-                workspace.runtimeGeneration, workspace.lastUsedAt, workspace.lastProvisionedAt, workspace.errorCode,
+                workspace.startScript, workspace.bootstrapCompletedAt, workspace.bootstrapScriptHash,
+                workspace.startScriptHash, workspace.lastBootstrapLog, workspace.envFilePresent,
+                workspace.networkEnabled, workspace.networkProfile, workspace.idleSleepMinutes,
+                workspace.runtimeGeneration, workspace.lastUsedAt, workspace.lastProvisionedAt,
+                workspace.lastWokenAt, workspace.lastSleptAt, workspace.errorCode,
                 workspace.errorMessage, workspace.deletedAt, ZonedDateTime.now(), workspace.id);
     }
 
@@ -158,8 +176,26 @@ public class PgWorkspaceStore implements WorkspaceStore {
     }
 
     @Override
+    public void updateBootstrapState(String id, WorkspaceBootstrapState state) {
+        database.execute("UPDATE " + TABLE + " SET bootstrap_completed_at = ?, bootstrap_script_hash = ?, "
+                + "start_script_hash = ?, last_bootstrap_log = ?, env_file_present = ?, updated_at = now() WHERE id = ?",
+                state.bootstrapCompletedAt(), state.bootstrapScriptHash(), state.startScriptHash(),
+                state.lastBootstrapLog(), state.envFilePresent(), id);
+    }
+
+    @Override
     public void touchLastUsed(String id, ZonedDateTime at) {
         database.execute("UPDATE " + TABLE + " SET last_used_at = ?, updated_at = now() WHERE id = ?", at, id);
+    }
+
+    @Override
+    public void touchWoken(String id, ZonedDateTime at) {
+        database.execute("UPDATE " + TABLE + " SET last_woken_at = ?, updated_at = now() WHERE id = ?", at, id);
+    }
+
+    @Override
+    public void touchSlept(String id, ZonedDateTime at) {
+        database.execute("UPDATE " + TABLE + " SET last_slept_at = ?, updated_at = now() WHERE id = ?", at, id);
     }
 
     @Override

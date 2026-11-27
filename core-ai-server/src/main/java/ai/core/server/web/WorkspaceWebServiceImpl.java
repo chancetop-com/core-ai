@@ -7,6 +7,7 @@ import ai.core.api.server.workspace.WorkspaceEventView;
 import ai.core.api.server.workspace.WorkspaceListView;
 import ai.core.api.server.workspace.WorkspaceListRequest;
 import ai.core.api.server.workspace.WorkspaceResetRequest;
+import ai.core.api.server.workspace.WorkspaceRetryRequest;
 import ai.core.api.server.workspace.WorkspaceUpdateRequest;
 import ai.core.api.server.workspace.WorkspaceUsageView;
 import ai.core.api.server.workspace.WorkspaceView;
@@ -14,6 +15,8 @@ import ai.core.api.server.workspace.WorkspaceWebService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.workspace.WorkspaceBootstrapRunner;
+import ai.core.server.workspace.WorkspaceCreateSpec;
 import ai.core.server.workspace.WorkspaceEventRecord;
 import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
@@ -50,18 +53,25 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
 
     @Override
     public WorkspaceView create(WorkspaceCreateRequest request) {
-        return call(() -> view(workspaceService.create(userId(), request.name, request.agentId,
-                request.sizeGb, request.profile, request.idleSleepMinutes)));
+        var spec = new WorkspaceCreateSpec(request.name, request.agentId, request.sizeGb, request.profile,
+                request.idleSleepMinutes, request.bootstrapScript, request.startScript);
+        return call(() -> view(workspaceService.create(userId(), spec)));
     }
 
     @Override
     public WorkspaceView get(String id) {
-        return call(() -> view(workspaceService.get(userId(), id)));
+        return call(() -> {
+            var userId = userId();
+            var record = workspaceService.get(userId, id);
+            var usage = workspaceService.usage(userId, id).orElse(null);
+            return view(record, usage);
+        });
     }
 
     @Override
     public WorkspaceView update(String id, WorkspaceUpdateRequest request) {
-        return call(() -> view(workspaceService.update(userId(), id, request.name, request.idleSleepMinutes)));
+        return call(() -> view(workspaceService.update(userId(), id, request.name, request.idleSleepMinutes,
+                request.bootstrapScript, request.startScript)));
     }
 
     @Override
@@ -88,6 +98,12 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     @Override
     public WorkspaceView reset(String id, WorkspaceResetRequest request) {
         return call(() -> view(workspaceService.reset(userId(), id, request.confirmName)));
+    }
+
+    @Override
+    public WorkspaceView retry(String id, WorkspaceRetryRequest request) {
+        var rerunBootstrap = request != null && Boolean.TRUE.equals(request.rerunBootstrap);
+        return call(() -> view(workspaceService.retryAsync(userId(), id, rerunBootstrap)));
     }
 
     @Override
@@ -170,6 +186,16 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         view.idleSleepMinutes = record.idleSleepMinutes;
         view.lastUsedAt = record.lastUsedAt;
         view.lastProvisionedAt = record.lastProvisionedAt;
+        view.lastWokenAt = record.lastWokenAt;
+        view.lastSleptAt = record.lastSleptAt;
+        view.bootstrapCompletedAt = record.bootstrapCompletedAt;
+        view.bootstrapScriptHash = record.bootstrapScriptHash;
+        view.startScriptHash = record.startScriptHash;
+        view.bootstrapScriptChanged = WorkspaceBootstrapRunner.scriptChanged(record.bootstrapScript, record.bootstrapScriptHash);
+        view.lastBootstrapLog = record.lastBootstrapLog;
+        view.envFilePresent = record.envFilePresent;
+        view.bootstrapScript = record.bootstrapScript;
+        view.startScript = record.startScript;
         view.errorCode = record.errorCode;
         view.errorMessage = record.errorMessage;
         view.deletedAt = record.deletedAt;

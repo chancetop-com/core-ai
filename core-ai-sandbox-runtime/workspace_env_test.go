@@ -158,3 +158,68 @@ func TestExecuteBashDoesNotInheritBashEnv(t *testing.T) {
 		t.Fatal("BASH_ENV must not leak into nested bash invocations")
 	}
 }
+
+func TestParseWorkspaceEnvSkipsAllProtectedKeysAndSupportsMultiPathPrepend(t *testing.T) {
+	content := strings.Join([]string{
+		"HOME=/bad",
+		"WORKSPACE_DIR=/bad",
+		"PATH=/bad",
+		"LD_PRELOAD=/bad.so",
+		"LD_LIBRARY_PATH=/bad",
+		"SHELL=/bin/evil",
+		"PORT=9999",
+		"HUB_PORT=9998",
+		"CORE_AI_HUB=http://evil",
+		"CORE_AI_SESSION_ID=forged",
+		"CORE_AI_AGENT_NAME=forged",
+		"MAX_ASYNC_TASKS=999",
+		"PATH_PREPEND=/opt/a/bin:/opt/b/bin",
+		"APP_MODE=staging",
+	}, "\n")
+
+	values, warnings := parseWorkspaceEnv(content)
+
+	if len(warnings) != 12 {
+		t.Fatalf("expected 12 warnings for protected keys, got %d: %v", len(warnings), warnings)
+	}
+	if values["PATH_PREPEND"] != "/opt/a/bin:/opt/b/bin" {
+		t.Fatalf("PATH_PREPEND not preserved: %q", values["PATH_PREPEND"])
+	}
+	if values["APP_MODE"] != "staging" {
+		t.Fatalf("valid key missing: %q", values["APP_MODE"])
+	}
+}
+
+func TestWorkspaceEnvIgnoredOnRegularSandboxWithoutWorkspaceEnvFile(t *testing.T) {
+	workspace := useTempWorkspace(t)
+	envFile := filepath.Join(workspace, ".core-ai", "env")
+	if err := os.MkdirAll(filepath.Dir(envFile), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, []byte("ONLY_FOR_PERSISTENT=should-not-load\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKSPACE_ENV_FILE", "")
+
+	env := envMap(minimalEnv())
+	if _, ok := env["ONLY_FOR_PERSISTENT"]; ok {
+		t.Fatal("regular sandbox without WORKSPACE_ENV_FILE must ignore workspace env file")
+	}
+}
+
+func TestExecutePythonAppliesWorkspaceEnv(t *testing.T) {
+	workspace := useTempWorkspace(t)
+	envFile := filepath.Join(workspace, ".core-ai", "env")
+	if err := os.MkdirAll(filepath.Dir(envFile), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(envFile, []byte("PY_WS_VAR=hello-py\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WORKSPACE_ENV_FILE", envFile)
+
+	result, status := executePython(`{"code": "import os; print(os.environ.get('PY_WS_VAR', ''), end='')"}`)
+	if status != "completed" || result != "hello-py" {
+		t.Fatalf("status=%q result=%q", status, result)
+	}
+}

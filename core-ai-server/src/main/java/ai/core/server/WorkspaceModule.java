@@ -86,7 +86,7 @@ public class WorkspaceModule extends Module {
         var provisioner = new KubernetesWorkspaceProvisioner(kubernetesClient);
         var runtimes = new WorkspaceRuntimeManager(agentSandboxClient, placement, apiVersion);
         var usageService = bind(new WorkspaceUsageService(stores.workspaces(), stores.bindings(), stores.usage(), runtimes));
-        var wakeExecutor = Executors.newFixedThreadPool(2, runnable -> {
+        var wakeExecutor = Executors.newFixedThreadPool(4, runnable -> {
             var thread = new Thread(runnable, "workspace-wake");
             thread.setDaemon(true);
             return thread;
@@ -118,6 +118,8 @@ public class WorkspaceModule extends Module {
         config.maxRunningPerUser = intProperty("sys.workspace.maxRunningPerUser", WorkspaceDefaults.MAX_RUNNING_PER_USER);
         config.idleSleepMinutes = intProperty("sys.workspace.idleSleepMinutes", WorkspaceDefaults.IDLE_SLEEP_MINUTES);
         config.wakeTimeoutSeconds = intProperty("sys.workspace.wakeTimeoutSeconds", WorkspaceDefaults.WAKE_TIMEOUT_SECONDS);
+        config.bootstrapTimeoutSeconds = intProperty("sys.workspace.bootstrapTimeoutSeconds", WorkspaceDefaults.BOOTSTRAP_TIMEOUT_SECONDS);
+        config.startTimeoutSeconds = intProperty("sys.workspace.startTimeoutSeconds", WorkspaceDefaults.START_TIMEOUT_SECONDS);
         config.leaseTtlSeconds = intProperty("sys.workspace.leaseTtlSeconds", WorkspaceDefaults.LEASE_TTL_SECONDS);
         config.leaseWaitSeconds = intProperty("sys.workspace.leaseWaitSeconds", WorkspaceDefaults.LEASE_WAIT_SECONDS);
         config.minRuntimeSeconds = intProperty("sys.workspace.minRuntimeSeconds", WorkspaceDefaults.MIN_RUNTIME_SECONDS);

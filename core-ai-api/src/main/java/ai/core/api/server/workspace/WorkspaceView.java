@@ -78,6 +78,36 @@ public class WorkspaceView {
     @Property(name = "last_provisioned_at")
     public ZonedDateTime lastProvisionedAt;
 
+    @Property(name = "last_woken_at")
+    public ZonedDateTime lastWokenAt;
+
+    @Property(name = "last_slept_at")
+    public ZonedDateTime lastSleptAt;
+
+    @Property(name = "bootstrap_completed_at")
+    public ZonedDateTime bootstrapCompletedAt;
+
+    @Property(name = "bootstrap_script_hash")
+    public String bootstrapScriptHash;
+
+    @Property(name = "start_script_hash")
+    public String startScriptHash;
+
+    @Property(name = "bootstrap_script_changed")
+    public Boolean bootstrapScriptChanged;
+
+    @Property(name = "last_bootstrap_log")
+    public String lastBootstrapLog;
+
+    @Property(name = "env_file_present")
+    public Boolean envFilePresent;
+
+    @Property(name = "bootstrap_script")
+    public String bootstrapScript;
+
+    @Property(name = "start_script")
+    public String startScript;
+
     @Property(name = "error_code")
     public String errorCode;
 

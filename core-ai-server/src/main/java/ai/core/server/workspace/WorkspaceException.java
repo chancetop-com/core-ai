@@ -22,6 +22,8 @@ public class WorkspaceException extends RuntimeException implements ErrorCode {
     public static final String REPLACED = "WORKSPACE_REPLACED";
     public static final String WAKING = "WORKSPACE_WAKING";
     public static final String WAKE_FAILED = "WORKSPACE_WAKE_FAILED";
+    public static final String BOOTSTRAP_FAILED = "WORKSPACE_BOOTSTRAP_FAILED";
+    public static final String START_FAILED = "WORKSPACE_START_FAILED";
     public static final String TASK_LOST = "WORKSPACE_TASK_LOST";
     public static final String VOLUME_UNAVAILABLE = "WORKSPACE_VOLUME_UNAVAILABLE";
 

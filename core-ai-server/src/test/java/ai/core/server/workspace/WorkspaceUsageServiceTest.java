@@ -63,7 +63,8 @@ class WorkspaceUsageServiceTest {
             if (statFailure != null) throw statFailure;
             return nextStat;
         });
-        workspaceService = new WorkspaceService(stores, new StubProvisioner(), runtimes, usageService,
+        workspaceService = new WorkspaceService(stores,
+                new WorkspaceService.RuntimeDeps(new StubProvisioner(), runtimes, usageService, null),
                 config, scheduledWakeTasks::add);
     }
 
@@ -313,9 +314,25 @@ class WorkspaceUsageServiceTest {
         }
 
         @Override
+        public void updateBootstrapState(String id, WorkspaceBootstrapState state) {
+        }
+
+        @Override
         public void touchLastUsed(String id, ZonedDateTime at) {
             var row = rows.get(id);
             if (row != null) row.lastUsedAt = at;
+        }
+
+        @Override
+        public void touchWoken(String id, ZonedDateTime at) {
+            var row = rows.get(id);
+            if (row != null) row.lastWokenAt = at;
+        }
+
+        @Override
+        public void touchSlept(String id, ZonedDateTime at) {
+            var row = rows.get(id);
+            if (row != null) row.lastSleptAt = at;
         }
 
         @Override

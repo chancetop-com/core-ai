@@ -3,6 +3,8 @@ package ai.core.server.workspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.ZonedDateTime;
+
 /**
  * Stops and inspects the replaceable Sandbox CR behind a workspace. Deleting a runtime never touches
  * the PVC; the binding row is the only pointer that is removed with it.
@@ -44,6 +46,7 @@ class WorkspaceRuntimeLifecycle {
         }
         if (workspace.runtimeStatus != WorkspaceRuntimeStatus.NONE) {
             workspaces.updateRuntimeState(workspace.id, WorkspaceRuntimeStatus.NONE, workspace.runtimeGeneration, null, null);
+            workspaces.touchSlept(workspace.id, ZonedDateTime.now());
         }
     }
 

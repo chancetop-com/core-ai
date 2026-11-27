@@ -249,6 +249,15 @@ func main() {
 	if capMs, err := strconv.Atoi(envOrDefault("MAX_BASH_TIMEOUT_MS", strconv.Itoa(maxBashTimeoutMs))); err == nil && capMs > 0 {
 		maxBashTimeout = time.Duration(capMs) * time.Millisecond
 	}
+	asyncMaxBashTimeout = maxBashTimeout
+	if asyncCapMs, err := strconv.Atoi(envOrDefault("ASYNC_MAX_TIMEOUT_MS", "")); err == nil && asyncCapMs > 0 {
+		if d := time.Duration(asyncCapMs) * time.Millisecond; d > asyncMaxBashTimeout {
+			asyncMaxBashTimeout = d
+		}
+	}
+	if retentionMs, err := strconv.Atoi(envOrDefault("ASYNC_TASK_RETENTION_MS", strconv.Itoa(defaultAsyncTaskRetentionMs))); err == nil && retentionMs > 0 {
+		asyncTaskRetention = time.Duration(retentionMs) * time.Millisecond
+	}
 	if capBytes, err := strconv.ParseInt(envOrDefault("MAX_DOWNLOAD_FILE_SIZE", strconv.Itoa(defaultMaxDownloadFileSize)), 10, 64); err == nil && capBytes > 0 {
 		maxDownloadFileSize = capBytes
 	}
@@ -257,10 +266,10 @@ func main() {
 	}
 	taskRegistry = NewTaskRegistry(maxAsync)
 
-	// Periodic cleanup of completed tasks older than 30 minutes
+	// Periodic cleanup of completed tasks older than asyncTaskRetention (default 30m, 2h on workspaces)
 	go func() {
 		for range time.Tick(5 * time.Minute) {
-			taskRegistry.Cleanup(30 * time.Minute)
+			taskRegistry.Cleanup(asyncTaskRetention)
 		}
 	}()
 
@@ -305,8 +314,8 @@ func main() {
 	probeFfmpeg()
 
 	log.Printf("runtime version: %s", runtimeVersion)
-	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d, maxBashTimeout=%s, maxDownload=%dMB, maxUpload=%dMB",
-		port, workspaceDir, maxAsync, maxBashTimeout, maxDownloadFileSize>>20, maxUploadFileSize>>20)
+	log.Printf("core-ai-sandbox-runtime starting on :%s, workspace=%s, maxAsync=%d, maxBashTimeout=%s, asyncMaxTimeout=%s, asyncRetention=%s, maxDownload=%dMB, maxUpload=%dMB",
+		port, workspaceDir, maxAsync, maxBashTimeout, asyncMaxBashTimeout, asyncTaskRetention, maxDownloadFileSize>>20, maxUploadFileSize>>20)
 	if err := http.ListenAndServe(":"+port, loggingMiddleware(http.DefaultServeMux)); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}
@@ -732,18 +741,33 @@ func writeFileUploadError(w http.ResponseWriter, status int, msg string) {
 // MAX_BASH_TIMEOUT_MS because drama assembly runs multi-minute ffmpeg steps in this same image
 // (design §9.4) — the default is unchanged, so nothing gets a longer leash unless it asks for one.
 const (
-	defaultBashTimeoutMs = 120_000
-	maxBashTimeoutMs     = 600_000
+	defaultBashTimeoutMs        = 120_000
+	maxBashTimeoutMs            = 600_000
+	defaultAsyncTaskRetentionMs = 30 * 60 * 1000
 )
 
-var maxBashTimeout = maxBashTimeoutMs * time.Millisecond
+var (
+	maxBashTimeout      = maxBashTimeoutMs * time.Millisecond
+	asyncMaxBashTimeout = maxBashTimeoutMs * time.Millisecond
+	asyncTaskRetention  = defaultAsyncTaskRetentionMs * time.Millisecond
+)
 
-// bashTimeout resolves the requested timeout against the deployment cap.
+// bashTimeout resolves the requested sync timeout against the deployment cap.
 func bashTimeout(requestedMs int) time.Duration {
+	return bashTimeoutFor(requestedMs, false)
+}
+
+// bashTimeoutFor resolves the requested timeout; async commands may use the higher
+// ASYNC_MAX_TIMEOUT_MS cap (e.g. 2h for workspace bootstrap) while sync stays capped at maxBashTimeout.
+func bashTimeoutFor(requestedMs int, async bool) time.Duration {
 	if requestedMs <= 0 {
 		return defaultBashTimeoutMs * time.Millisecond
 	}
-	return min(time.Duration(requestedMs)*time.Millisecond, maxBashTimeout)
+	capDuration := maxBashTimeout
+	if async && asyncMaxBashTimeout > capDuration {
+		capDuration = asyncMaxBashTimeout
+	}
+	return min(time.Duration(requestedMs)*time.Millisecond, capDuration)
 }
 
 // outputPipeGrace bounds how long a timed-out command may keep the call blocked after its
@@ -780,7 +804,7 @@ func executeBashCtx(parentCtx context.Context, args string) (string, string) {
 		return "command is empty", "failed"
 	}
 
-	ctx, cancel := context.WithTimeout(parentCtx, bashTimeout(parsed.Timeout))
+	ctx, cancel := context.WithTimeout(parentCtx, bashTimeoutFor(parsed.Timeout, isAsync(args)))
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--norc", "-c", bashWrapper, "core-ai-bash", parsed.Command)

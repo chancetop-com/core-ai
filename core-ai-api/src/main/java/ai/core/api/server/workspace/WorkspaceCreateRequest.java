@@ -25,4 +25,10 @@ public class WorkspaceCreateRequest {
     @Min(1)
     @Property(name = "idle_sleep_minutes")
     public Integer idleSleepMinutes;
+
+    @Property(name = "bootstrap_script")
+    public String bootstrapScript;
+
+    @Property(name = "start_script")
+    public String startScript;
 }

@@ -43,6 +43,10 @@ public interface WorkspaceWebService {
     @Path("/api/workspaces/:id/reset")
     WorkspaceView reset(@PathParam("id") String id, WorkspaceResetRequest request);
 
+    @POST
+    @Path("/api/workspaces/:id/retry")
+    WorkspaceView retry(@PathParam("id") String id, WorkspaceRetryRequest request);
+
     @GET
     @Path("/api/workspaces/:id/events")
     WorkspaceEventListView events(@PathParam("id") String id, WorkspaceEventListRequest request);

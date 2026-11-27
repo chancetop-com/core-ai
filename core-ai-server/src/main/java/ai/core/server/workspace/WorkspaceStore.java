@@ -35,7 +35,13 @@ public interface WorkspaceStore {
     void updateRuntimeState(String id, WorkspaceRuntimeStatus status, long runtimeGeneration,
                             String errorCode, String errorMessage);
 
+    void updateBootstrapState(String id, WorkspaceBootstrapState state);
+
     void touchLastUsed(String id, ZonedDateTime at);
+
+    void touchWoken(String id, ZonedDateTime at);
+
+    void touchSlept(String id, ZonedDateTime at);
 
     boolean softDelete(String id, ZonedDateTime at);
 

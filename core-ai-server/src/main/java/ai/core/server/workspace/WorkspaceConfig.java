@@ -18,6 +18,8 @@ public class WorkspaceConfig {
     public int maxRunningPerUser = WorkspaceDefaults.MAX_RUNNING_PER_USER;
     public int idleSleepMinutes = WorkspaceDefaults.IDLE_SLEEP_MINUTES;
     public int wakeTimeoutSeconds = WorkspaceDefaults.WAKE_TIMEOUT_SECONDS;
+    public int bootstrapTimeoutSeconds = WorkspaceDefaults.BOOTSTRAP_TIMEOUT_SECONDS;
+    public int startTimeoutSeconds = WorkspaceDefaults.START_TIMEOUT_SECONDS;
     public int leaseTtlSeconds = WorkspaceDefaults.LEASE_TTL_SECONDS;
     public int leaseWaitSeconds = WorkspaceDefaults.LEASE_WAIT_SECONDS;
     public int minRuntimeSeconds = WorkspaceDefaults.MIN_RUNTIME_SECONDS;

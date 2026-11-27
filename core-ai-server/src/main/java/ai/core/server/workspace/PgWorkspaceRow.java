@@ -59,6 +59,21 @@ public class PgWorkspaceRow {
     @Column(name = "start_script")
     public String startScript;
 
+    @Column(name = "bootstrap_completed_at")
+    public ZonedDateTime bootstrapCompletedAt;
+
+    @Column(name = "bootstrap_script_hash")
+    public String bootstrapScriptHash;
+
+    @Column(name = "start_script_hash")
+    public String startScriptHash;
+
+    @Column(name = "last_bootstrap_log")
+    public String lastBootstrapLog;
+
+    @Column(name = "env_file_present")
+    public Boolean envFilePresent;
+
     @Column(name = "network_enabled")
     public Boolean networkEnabled;
 
@@ -76,6 +91,12 @@ public class PgWorkspaceRow {
 
     @Column(name = "last_provisioned_at")
     public ZonedDateTime lastProvisionedAt;
+
+    @Column(name = "last_woken_at")
+    public ZonedDateTime lastWokenAt;
+
+    @Column(name = "last_slept_at")
+    public ZonedDateTime lastSleptAt;
 
     @Column(name = "error_code")
     public String errorCode;

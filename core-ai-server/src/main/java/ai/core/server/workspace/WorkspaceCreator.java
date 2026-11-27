@@ -31,23 +31,29 @@ class WorkspaceCreator {
     }
 
     WorkspaceRecord create(String ownerUserId, String name, String agentId, Integer sizeGb, String profileId,
-                            Integer idleSleepMinutes) {
-        var workspaceName = name == null ? "" : name.trim();
+                           Integer idleSleepMinutes) {
+        return create(ownerUserId, new WorkspaceCreateSpec(name, agentId, sizeGb, profileId, idleSleepMinutes, null, null));
+    }
+
+    WorkspaceRecord create(String ownerUserId, WorkspaceCreateSpec spec) {
+        var workspaceName = spec.name() == null ? "" : spec.name().trim();
         if (workspaceName.isEmpty() || workspaceName.length() > 64) {
             throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
         }
-        var size = sizeGb != null ? sizeGb : config.defaultSizeGb;
+        var size = spec.sizeGb() != null ? spec.sizeGb() : config.defaultSizeGb;
         if (size <= 0 || size > config.maxSizeGb) {
             throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED, "workspace size must be between 1 and " + config.maxSizeGb + " GB");
         }
         WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
-        var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, agentId);
+        var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, spec.agentId());
         workspace.sizeGb = size;
         workspace.storageClass = config.storageClass;
         workspace.image = config.image;
-        workspace.idleSleepMinutes = validatedIdleSleep(idleSleepMinutes);
+        workspace.idleSleepMinutes = validatedIdleSleep(spec.idleSleepMinutes());
+        workspace.bootstrapScript = spec.bootstrapScript();
+        workspace.startScript = spec.startScript();
         try {
-            workspace.profile = WorkspaceProfile.of(profileId);
+            workspace.profile = WorkspaceProfile.of(spec.profileId());
         } catch (IllegalArgumentException e) {
             throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, e.getMessage(), e);
         }
@@ -116,5 +122,17 @@ class WorkspaceCreator {
             throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "idle sleep minutes must be between 1 and 1440");
         }
         return idleSleepMinutes;
+    }
+
+    void rename(String ownerUserId, WorkspaceRecord workspace, String name) {
+        var trimmed = name.trim();
+        if (trimmed.isEmpty() || trimmed.length() > 64) {
+            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
+        }
+        if (trimmed.equals(workspace.name)) return;
+        if (workspaces.findByName(ownerUserId, trimmed).isPresent()) {
+            throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + trimmed);
+        }
+        workspace.name = trimmed;
     }
 }

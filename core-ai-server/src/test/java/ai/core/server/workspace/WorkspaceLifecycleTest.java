@@ -229,11 +229,41 @@ class WorkspaceLifecycleTest {
         public void updateRuntimeState(String id, WorkspaceRuntimeStatus status, long runtimeGeneration,
                                        String errorCode, String errorMessage) {
             var workspace = rows.get(id);
-            if (workspace != null) workspace.runtimeStatus = status;
+            if (workspace != null) {
+                workspace.runtimeStatus = status;
+                workspace.runtimeGeneration = runtimeGeneration;
+                workspace.errorCode = errorCode;
+                workspace.errorMessage = errorMessage;
+            }
+        }
+
+        @Override
+        public void updateBootstrapState(String id, WorkspaceBootstrapState state) {
+            var workspace = rows.get(id);
+            if (workspace == null) return;
+            workspace.bootstrapCompletedAt = state.bootstrapCompletedAt();
+            workspace.bootstrapScriptHash = state.bootstrapScriptHash();
+            workspace.startScriptHash = state.startScriptHash();
+            workspace.lastBootstrapLog = state.lastBootstrapLog();
+            workspace.envFilePresent = state.envFilePresent();
         }
 
         @Override
         public void touchLastUsed(String id, ZonedDateTime at) {
+            var workspace = rows.get(id);
+            if (workspace != null) workspace.lastUsedAt = at;
+        }
+
+        @Override
+        public void touchWoken(String id, ZonedDateTime at) {
+            var workspace = rows.get(id);
+            if (workspace != null) workspace.lastWokenAt = at;
+        }
+
+        @Override
+        public void touchSlept(String id, ZonedDateTime at) {
+            var workspace = rows.get(id);
+            if (workspace != null) workspace.lastSleptAt = at;
         }
 
         @Override

@@ -162,3 +162,36 @@ func TestHandleTaskCancelMethodAndNotFound(t *testing.T) {
 		t.Fatalf("POST unknown task cancel status = %d, want 404", notFoundRec.Code)
 	}
 }
+
+func TestAsyncMaxBashTimeoutAndRetention(t *testing.T) {
+	oldSync := maxBashTimeout
+	oldAsync := asyncMaxBashTimeout
+	defer func() {
+		maxBashTimeout = oldSync
+		asyncMaxBashTimeout = oldAsync
+	}()
+
+	maxBashTimeout = 10 * time.Minute
+	asyncMaxBashTimeout = 2 * time.Hour
+
+	if got := bashTimeoutFor(1_800_000, false); got != 10*time.Minute {
+		t.Fatalf("sync timeout = %s, want 10m cap", got)
+	}
+	if got := bashTimeoutFor(1_800_000, true); got != 30*time.Minute {
+		t.Fatalf("async timeout = %s, want 30m", got)
+	}
+	if got := bashTimeoutFor(9_999_000, true); got != 2*time.Hour {
+		t.Fatalf("async timeout cap = %s, want 2h", got)
+	}
+
+	reg := NewTaskRegistry(2)
+	reg.tasks["recent"] = &AsyncTask{ID: "recent", Status: "completed", DoneAt: time.Now().Add(-90 * time.Minute)}
+	reg.tasks["expired"] = &AsyncTask{ID: "expired", Status: "completed", DoneAt: time.Now().Add(-150 * time.Minute)}
+	reg.Cleanup(2 * time.Hour)
+	if reg.Get("recent") == nil {
+		t.Fatal("task completed 90m ago should survive 2h retention")
+	}
+	if reg.Get("expired") != nil {
+		t.Fatal("task completed 150m ago should be pruned after 2h retention")
+	}
+}
