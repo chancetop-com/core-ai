@@ -20,10 +20,7 @@ import core.framework.module.Module;
 public class PostgresModule extends Module {
     @Override
     protected void initialize() {
-        var storeMode = property("sys.store.mode").orElse("mongo");
-        var datasetStore = property("sys.dataset.store").orElse("mongo");
-        var migrationEnabled = Boolean.parseBoolean(property("sys.dataset.migration.enabled").orElse("false"));
-        if (!migrationEnabled && !"pg".equals(storeMode) && !"postgresql".equals(datasetStore)) return;
+        if (!postgresRequired()) return;
 
         var url = requiredProperty("sys.db.url");
         var user = requiredProperty("sys.db.user");
@@ -62,6 +59,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.skill.PgSkillNameRow.class);
         db().view(PgUserRow.class);
         db().view(PgUserIdRow.class);
+        db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
     }
 
     private void registerForYouViews() {
@@ -137,7 +135,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgComparisonMigrationMarkerRow.class);
         registerWorkflowViews();
         registerReplayViews();
-        db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
+        load(new TraceDbModule());
     }
 
     private void registerEvaluationViews() {
@@ -184,6 +182,12 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.replay.PgReplayRunRow.class);
         db().view(ai.core.server.replay.PgReplayMigrationLockRow.class);
         db().view(ai.core.server.replay.PgReplayMigrationMarkerRow.class);
+    }
+
+    private boolean postgresRequired() {
+        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) return true;
+        if ("postgresql".equals(property("sys.dataset.store").orElse("mongo"))) return true;
+        return Boolean.parseBoolean(property("sys.dataset.migration.enabled").orElse("false"));
     }
 
     private int intProperty(String key, int defaultValue) {

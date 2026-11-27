@@ -126,8 +126,6 @@ public class ServerApp extends App {
         loadProperties("agent.properties");
         registerMongo();
         load(new PostgresModule());
-        // trace stores inject the named "trace" datasource, so it must exist before their store modules bind
-        load(new TraceDbModule());
         // quality policy/run storage must exist before AgentDefinitionModule binds the publish gate
         load(new AgentQualityStoreModule());
         // agent definitions are read by project attribution/session runtime during startup wiring

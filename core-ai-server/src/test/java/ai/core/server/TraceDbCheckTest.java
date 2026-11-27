@@ -26,7 +26,7 @@ class TraceDbCheckTest {
         when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
             .thenReturn(Optional.of(setting("100")));
 
-        var check = check(true, false, 45, 4, 2, 2, false);
+        var check = check(true, 100, false);
 
         assertDoesNotThrow(check::verify);
     }
@@ -40,7 +40,7 @@ class TraceDbCheckTest {
         when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
             .thenReturn(Optional.of(setting("300")));
 
-        var check = check(true, false, 50, 4, 2, 10, false);
+        var check = check(true, 100, false);
 
         var error = assertThrows(IllegalStateException.class, check::verify);
         assertTrue(error.getMessage().contains("app.spans"));
@@ -52,7 +52,7 @@ class TraceDbCheckTest {
         when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
             .thenReturn(Optional.of(setting("100")));
 
-        var check = check(false, false, 50, 4, 2, 10, false);
+        var check = check(false, 118, false);
 
         assertDoesNotThrow(check::verify);
     }
@@ -63,14 +63,14 @@ class TraceDbCheckTest {
         when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
             .thenReturn(Optional.of(setting("100")));
 
-        var check = check(false, false, 50, 4, 2, 10, true);
+        var check = check(false, 118, true);
 
         var error = assertThrows(IllegalStateException.class, check::verify);
         assertTrue(error.getMessage().contains("connection budget"));
     }
 
-    private TraceDbCheck check(boolean schemaCheck, boolean dedicated, int mainPoolMax, int tracePoolMax, int replicas, int reserve, boolean fail) {
-        var check = new TraceDbCheck(schemaCheck, dedicated, mainPoolMax, tracePoolMax, replicas, reserve, fail);
+    private TraceDbCheck check(boolean schemaCheck, int planned, boolean fail) {
+        var check = new TraceDbCheck(schemaCheck, planned, fail);
         check.database = database;
         return check;
     }

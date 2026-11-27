@@ -33,26 +33,12 @@ public class TraceDbCheck {
     Database database;
 
     private final boolean schemaCheck;
-    private final boolean dedicated;
-    private final int mainPoolMax;
-    private final int tracePoolMax;
-    private final int expectedReplicas;
-    private final int reserve;
+    private final int plannedConnections;
     private final boolean failOnBudgetExceeded;
 
-    public TraceDbCheck(boolean schemaCheck,
-                        boolean dedicated,
-                        int mainPoolMax,
-                        int tracePoolMax,
-                        int expectedReplicas,
-                        int reserve,
-                        boolean failOnBudgetExceeded) {
+    public TraceDbCheck(boolean schemaCheck, int plannedConnections, boolean failOnBudgetExceeded) {
         this.schemaCheck = schemaCheck;
-        this.dedicated = dedicated;
-        this.mainPoolMax = mainPoolMax;
-        this.tracePoolMax = tracePoolMax;
-        this.expectedReplicas = expectedReplicas;
-        this.reserve = reserve;
+        this.plannedConnections = plannedConnections;
         this.failOnBudgetExceeded = failOnBudgetExceeded;
     }
 
@@ -63,13 +49,14 @@ public class TraceDbCheck {
     }
 
     private void verifyConnectivity() {
+        PgStartupRow row;
         try {
-            var row = database.selectOne("SELECT 1 AS ok", PgStartupRow.class).orElse(null);
-            if (row == null || row.ok == null || row.ok != 1) {
-                throw new IllegalStateException("trace database is not reachable");
-            }
+            row = database.selectOne("SELECT 1 AS ok", PgStartupRow.class).orElse(null);
         } catch (RuntimeException e) {
             throw new IllegalStateException("trace database is not reachable, check sys.trace.db.url", e);
+        }
+        if (row == null || row.ok == null || row.ok != 1) {
+            throw new IllegalStateException("trace database is not reachable");
         }
         LOGGER.info("trace database verified");
     }
@@ -101,20 +88,11 @@ public class TraceDbCheck {
             LOGGER.warn("unexpected max_connections value, value={}, connection budget check skipped", maxConnections);
             return;
         }
-        int planned = dedicated
-            ? tracePoolMax * expectedReplicas + reserve
-            : (mainPoolMax + tracePoolMax) * expectedReplicas + reserve;
-        if (planned <= limit) {
-            LOGGER.info("trace connection budget verified, planned={}, maxConnections={}", planned, limit);
+        if (plannedConnections <= limit) {
+            LOGGER.info("trace connection budget verified, planned={}, maxConnections={}", plannedConnections, limit);
             return;
         }
-        var message = "trace connection budget exceeded, planned=" + planned
-            + ", maxConnections=" + limit
-            + ", dedicated=" + dedicated
-            + ", mainPoolMax=" + mainPoolMax
-            + ", tracePoolMax=" + tracePoolMax
-            + ", replicas=" + expectedReplicas
-            + ", reserve=" + reserve;
+        var message = "trace connection budget exceeded, planned=" + plannedConnections + ", maxConnections=" + limit;
         if (failOnBudgetExceeded) throw new IllegalStateException(message);
         LOGGER.warn(message);
     }

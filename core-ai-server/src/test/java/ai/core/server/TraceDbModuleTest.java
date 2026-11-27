@@ -128,7 +128,7 @@ class TraceDbModuleTest {
 
         @Override
         public DBConfig db(String name) {
-            if (!TraceDbModule.NAME.equals(name)) throw new IllegalArgumentException("unexpected datasource, name=" + name);
+            if (!NAME.equals(name)) throw new IllegalArgumentException("unexpected datasource, name=" + name);
             return config;
         }
 

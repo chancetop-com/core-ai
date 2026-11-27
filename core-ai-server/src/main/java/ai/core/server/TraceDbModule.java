@@ -79,14 +79,17 @@ public class TraceDbModule extends Module {
             dedicated, poolMin, poolMax, timeoutSeconds);
 
         var check = new TraceDbCheck(booleanProperty("sys.trace.db.schema.check", true),
-            dedicated,
-            intProperty("sys.db.pool.max", 50),
-            poolMax,
-            intProperty("sys.trace.db.conn.budget.replicas", 2),
-            intProperty("sys.trace.db.conn.budget.reserve", 10),
+            plannedConnections(dedicated, poolMax),
             booleanProperty("sys.trace.db.conn.budget.fail", false));
         bind(check);
         onStartup(check::verify);
+    }
+
+    private int plannedConnections(boolean dedicated, int tracePoolMax) {
+        var replicas = intProperty("sys.trace.db.conn.budget.replicas", 2);
+        var reserve = intProperty("sys.trace.db.conn.budget.reserve", 10);
+        if (dedicated) return tracePoolMax * replicas + reserve;
+        return (intProperty("sys.db.pool.max", 50) + tracePoolMax) * replicas + reserve;
     }
 
     private void registerViews(DBConfig config) {
