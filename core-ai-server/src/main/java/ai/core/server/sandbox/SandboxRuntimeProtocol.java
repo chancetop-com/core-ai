@@ -10,11 +10,11 @@ import java.util.Map;
  *
  * @author stephen
  */
-final class SandboxRuntimeProtocol {
+public final class SandboxRuntimeProtocol {
     private SandboxRuntimeProtocol() {
     }
 
-    static class BindRequest {
+    public static class BindRequest {
         @Property(name = "server_url")
         public String serverUrl;
         @Property(name = "token")
@@ -27,21 +27,21 @@ final class SandboxRuntimeProtocol {
         public long expiresAt;
     }
 
-    static class ExecuteRequest {
+    public static class ExecuteRequest {
         @Property(name = "tool")
         public String tool;
         @Property(name = "arguments")
         public String arguments;
     }
 
-    static class HealthResponse {
+    public static class HealthResponse {
         @Property(name = "status")
         public String status;
         @Property(name = "bound")
         public Boolean bound;
     }
 
-    static class ExecuteResponse {
+    public static class ExecuteResponse {
         @Property(name = "status")
         public String status;
         @Property(name = "result")
@@ -52,7 +52,7 @@ final class SandboxRuntimeProtocol {
         public Long durationMs;
     }
 
-    static class McpStartRequest {
+    public static class McpStartRequest {
         @Property(name = "id")
         public String id;
         @Property(name = "command")
@@ -63,7 +63,7 @@ final class SandboxRuntimeProtocol {
         public Map<String, String> env;
     }
 
-    static class McpStopRequest {
+    public static class McpStopRequest {
         @Property(name = "id")
         public String id;
     }
