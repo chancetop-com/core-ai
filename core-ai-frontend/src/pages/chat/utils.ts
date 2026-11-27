@@ -40,6 +40,7 @@ function buildSegments(m: HistoryMessage): MessageSegment[] {
       before: m.compression.before_count ?? 0,
       after: m.compression.after_count ?? 0,
       contextTokens: m.compression.context_tokens,
+      afterContextTokens: m.compression.after_context_tokens,
       maxContextTokens: m.compression.max_context_tokens,
       triggerThreshold: m.compression.trigger_threshold,
     }));
@@ -151,6 +152,7 @@ export interface CompressionUsage {
   before: number;
   after: number;
   contextTokens?: number;
+  afterContextTokens?: number;
   maxContextTokens?: number;
   triggerThreshold?: number;
 }
@@ -160,7 +162,13 @@ export function compressionUsageText(info: CompressionUsage): string {
   const parts: string[] = [];
   if (info.contextTokens !== undefined && info.maxContextTokens) {
     const percent = Math.round((info.contextTokens / info.maxContextTokens) * 100);
-    parts.push(`${info.contextTokens.toLocaleString()} / ${info.maxContextTokens.toLocaleString()} tokens (${percent}%)`);
+    if (info.afterContextTokens !== undefined) {
+      const afterPercent = Math.round((info.afterContextTokens / info.maxContextTokens) * 100);
+      parts.push(`${info.contextTokens.toLocaleString()} -> ${info.afterContextTokens.toLocaleString()} tokens`);
+      parts.push(`${percent}% -> ${afterPercent}% of ${info.maxContextTokens.toLocaleString()}`);
+    } else {
+      parts.push(`${info.contextTokens.toLocaleString()} / ${info.maxContextTokens.toLocaleString()} tokens (${percent}%)`);
+    }
   }
   if (info.triggerThreshold !== undefined) parts.push(`threshold ${Math.round(info.triggerThreshold * 100)}%`);
   return parts.length > 0 ? ` · ${parts.join(' · ')}` : '';
@@ -173,6 +181,7 @@ export function compressionSegment(usage: CompressionUsage): CompressionSegment 
     before: usage.before,
     after: usage.after,
     contextTokens: usage.contextTokens,
+    afterContextTokens: usage.afterContextTokens,
     maxContextTokens: usage.maxContextTokens,
     triggerThreshold: usage.triggerThreshold,
   };

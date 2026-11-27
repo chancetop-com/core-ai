@@ -227,6 +227,7 @@ function applySseToMessages(prev: ChatMessage[], event: SseEvent): ChatMessage[]
         before: compressionEvent.before_count,
         after: compressionEvent.after_count,
         contextTokens: compressionEvent.context_tokens,
+        afterContextTokens: compressionEvent.after_context_tokens,
         maxContextTokens: compressionEvent.max_context_tokens,
         triggerThreshold: compressionEvent.trigger_threshold,
       });

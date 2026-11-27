@@ -116,7 +116,7 @@ class ChatMessageServiceTest {
         var listener = service.listener("s-1");
 
         listener.onCompression(CompressionEvent.of("s-1", 16, 16, false));
-        listener.onCompression(CompressionEvent.of("s-1", 16, 14, true).withContext(6979, 8192, 0.8));
+        listener.onCompression(CompressionEvent.of("s-1", 16, 14, true).withContext(6979, 1200, 8192, 0.8));
         listener.onTurnComplete(TurnCompleteEvent.of("s-1", "done"));
 
         var captor = ArgumentCaptor.forClass(ChatMessage.class);
@@ -126,6 +126,7 @@ class ChatMessageServiceTest {
         assertEquals(16, compression.beforeCount);
         assertEquals(14, compression.afterCount);
         assertEquals(6979, compression.contextTokens);
+        assertEquals(1200, compression.afterContextTokens);
         assertEquals(8192, compression.maxContextTokens);
         assertEquals(0.8, compression.triggerThreshold);
     }

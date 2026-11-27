@@ -400,6 +400,9 @@ class CompressionTest {
         assertTrue(completed.completed());
         assertEquals(result.size(), completed.afterCount());
         assertEquals(started.contextTokens(), completed.contextTokens());
+        assertEquals(MessageTokenCounterUtil.count(result), completed.afterContextTokens());
+        assertEquals(started.contextTokens(), started.afterContextTokens(), "the started phase has not compressed anything yet");
+        assertTrue(completed.afterUsedPercent() <= completed.usedPercent());
 
         LOGGER.info("Report describes context usage test passed");
     }

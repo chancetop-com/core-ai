@@ -60,6 +60,7 @@ export interface CompressionSegment {
   before: number;
   after: number;
   contextTokens?: number;
+  afterContextTokens?: number;
   maxContextTokens?: number;
   triggerThreshold?: number;
 }

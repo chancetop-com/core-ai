@@ -113,6 +113,9 @@ public class Message {
         @Property(name = "context_tokens")
         public Integer contextTokens;
 
+        @Property(name = "after_context_tokens")
+        public Integer afterContextTokens;
+
         @Property(name = "max_context_tokens")
         public Integer maxContextTokens;
 

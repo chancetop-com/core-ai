@@ -79,6 +79,7 @@ public class SessionShareProjection {
             compression.beforeCount = record.compression.beforeCount;
             compression.afterCount = record.compression.afterCount;
             compression.contextTokens = record.compression.contextTokens;
+            compression.afterContextTokens = record.compression.afterContextTokens;
             compression.maxContextTokens = record.compression.maxContextTokens;
             compression.triggerThreshold = record.compression.triggerThreshold;
             view.compression = compression;

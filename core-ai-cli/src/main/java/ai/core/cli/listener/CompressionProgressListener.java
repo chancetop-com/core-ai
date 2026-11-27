@@ -28,18 +28,24 @@ public class CompressionProgressListener implements CompressionListener {
     public void onCompression(CompressionReport report) {
         switch (report.phase()) {
             case STARTED -> print("\n  " + AnsiTheme.MUTED + "\u2726 Compressing " + report.afterCount() + " messages... "
-                + context(report) + AnsiTheme.RESET);
+                + beforeUsage(report) + AnsiTheme.RESET);
             case COMPLETED -> print("\n  " + AnsiTheme.SUCCESS + "\u2726" + AnsiTheme.RESET + AnsiTheme.MUTED
                 + " Compressed: " + report.beforeCount() + " \u2192 " + report.afterCount() + " messages "
-                + context(report) + AnsiTheme.RESET + "\n");
+                + afterUsage(report) + AnsiTheme.RESET + "\n");
             case SKIPPED -> print("\n  " + AnsiTheme.MUTED + "\u2726 Compression skipped: " + report.reason() + AnsiTheme.RESET + "\n");
             default -> throw new IllegalStateException("unknown compression phase: " + report.phase());
         }
     }
 
-    private String context(CompressionReport report) {
+    private String beforeUsage(CompressionReport report) {
         return String.format(Locale.ROOT, "(%,d / %,d tokens, %d%%, threshold %d%%)",
             report.contextTokens(), report.maxContextTokens(), report.usedPercent(), report.thresholdPercent());
+    }
+
+    private String afterUsage(CompressionReport report) {
+        return String.format(Locale.ROOT, "(%,d \u2192 %,d tokens, %d%% \u2192 %d%% of %,d, threshold %d%%)",
+            report.contextTokens(), report.afterContextTokens(), report.usedPercent(), report.afterUsedPercent(),
+            report.maxContextTokens(), report.thresholdPercent());
     }
 
     private void print(String message) {

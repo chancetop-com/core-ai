@@ -209,6 +209,7 @@ test('compression keeps the completed record only and carries its counts', () =>
       after_count: 2463,
       completed: false,
       context_tokens: 801086,
+      after_context_tokens: 801086,
       max_context_tokens: 1000000,
       trigger_threshold: 0.8,
     },
@@ -220,6 +221,7 @@ test('compression keeps the completed record only and carries its counts', () =>
       after_count: 31,
       completed: true,
       context_tokens: 801086,
+      after_context_tokens: 96130,
       max_context_tokens: 1000000,
       trigger_threshold: 0.8,
     },
@@ -230,6 +232,7 @@ test('compression keeps the completed record only and carries its counts', () =>
   assert.equal(compressions[0].beforeCount, 2492);
   assert.equal(compressions[0].afterCount, 31);
   assert.equal(compressions[0].contextTokens, 801086);
+  assert.equal(compressions[0].afterContextTokens, 96130);
   assert.equal(compressions[0].maxContextTokens, 1000000);
   assert.equal(compressions[0].triggerThreshold, 0.8);
 });

@@ -13,6 +13,7 @@ import ai.core.mcp.client.McpClientManagerRegistry;
 import ai.core.session.SessionLoad;
 import ai.core.session.SessionLoads;
 import ai.core.session.TurnPersistence;
+import ai.core.utils.MessageTokenCounterUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -215,12 +216,15 @@ class AcpSlashCommandHandler {
         var compression = agent.getCompression();
         if (compression == null || msgs.size() <= 4) return "Nothing to compact.";
         int before = msgs.size();
+        int beforeTokens = MessageTokenCounterUtil.count(msgs);
         var compressed = compression.forceCompress(msgs);
         if (compressed.equals(msgs)) return nothingToCompact(compression);
         msgs.clear();
         msgs.addAll(compressed);
         boolean persisted = TurnPersistence.save(agent, session.sessionId(), LOGGER, "compact");
-        return "Compacted: " + before + " \u2192 " + msgs.size() + " messages."
+        int afterTokens = MessageTokenCounterUtil.count(msgs);
+        return "Compacted: " + before + " \u2192 " + msgs.size() + " messages, "
+                + String.format(Locale.ROOT, "%,d \u2192 %,d tokens", beforeTokens, afterTokens) + "."
                 + (persisted ? "" : " The session could not be saved.");
     }
 

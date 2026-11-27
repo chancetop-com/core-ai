@@ -96,6 +96,7 @@ export interface SseCompressionEvent extends SseBaseEvent {
   after_count: number;
   completed: boolean;
   context_tokens?: number;
+  after_context_tokens?: number;
   max_context_tokens?: number;
   trigger_threshold?: number;
 }
@@ -162,6 +163,7 @@ export interface HistoryCompression {
   before_count?: number;
   after_count?: number;
   context_tokens?: number;
+  after_context_tokens?: number;
   max_context_tokens?: number;
   trigger_threshold?: number;
 }

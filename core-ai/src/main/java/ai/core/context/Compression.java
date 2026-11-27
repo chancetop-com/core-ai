@@ -226,22 +226,23 @@ public class Compression {
     }
     private List<Message> applySummary(List<Message> messages, Message systemMsg, Message preservedUserMsg,
                                        List<Message> toKeep, List<Message> toCompress, int contextTokens) {
-        notifyListeners(report(CompressionReport.Phase.STARTED, messages.size(), toCompress.size(), contextTokens, null));
+        notifyListeners(report(CompressionReport.Phase.STARTED, messages.size(), toCompress.size(), contextTokens, contextTokens, null));
         var summary = summarize(toCompress);
         if (summary.isBlank()) {
             if (lastFailure == null) lastFailure = "summarization returned an empty result";
             LOGGER.warn("Summarization returned empty result, keeping original messages");
-            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, lastFailure));
+            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, contextTokens, lastFailure));
             return messages;
         }
         var result = buildCompressedResult(systemMsg, summary, preservedUserMsg, toKeep);
         if (result.size() >= messages.size()) {
             lastFailure = "compression would not shrink the conversation";
             LOGGER.debug("Compression did not reduce message count, keeping original");
-            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, lastFailure));
+            notifyListeners(report(CompressionReport.Phase.SKIPPED, messages.size(), messages.size(), contextTokens, contextTokens, lastFailure));
             return messages;
         }
-        notifyListeners(report(CompressionReport.Phase.COMPLETED, messages.size(), result.size(), contextTokens, null));
+        notifyListeners(report(CompressionReport.Phase.COMPLETED, messages.size(), result.size(), contextTokens,
+            MessageTokenCounterUtil.count(result), null));
         LOGGER.debug("Compression complete: {} -> {} messages", messages.size(), result.size());
         return result;
     }
@@ -436,9 +437,9 @@ public class Compression {
         return maxToolResultTokens;
     }
     private CompressionReport report(CompressionReport.Phase phase, int beforeCount, int afterCount,
-                                     int contextTokens, String reason) {
+                                     int contextTokens, int afterContextTokens, String reason) {
         double threshold = maxContextTokens > 0 ? (double) effectiveTriggerTokens() / maxContextTokens : triggerThreshold;
-        return new CompressionReport(phase, beforeCount, afterCount, contextTokens, maxContextTokens, threshold, reason);
+        return new CompressionReport(phase, beforeCount, afterCount, contextTokens, afterContextTokens, maxContextTokens, threshold, reason);
     }
 
     private void notifyListeners(CompressionReport report) {

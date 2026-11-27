@@ -10,6 +10,7 @@ import ai.core.session.TurnPersistence;
 import ai.core.session.transcript.TranscriptReader;
 import ai.core.session.transcript.TranscriptRecorder;
 import ai.core.utils.JsonUtil;
+import ai.core.utils.MessageTokenCounterUtil;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -134,6 +135,7 @@ public class EngineSession {
             return node;
         }
         int beforeCount = messages.size();
+        int beforeTokens = MessageTokenCounterUtil.count(messages);
         var compressed = compression.forceCompress(messages);
         if (compressed.equals(messages)) {
             node.put("compacted", false);
@@ -153,6 +155,8 @@ public class EngineSession {
         node.put("persisted", persisted);
         node.put("beforeCount", beforeCount);
         node.put("afterCount", messages.size());
+        node.put("beforeTokens", beforeTokens);
+        node.put("afterTokens", MessageTokenCounterUtil.count(messages));
         return node;
     }
 

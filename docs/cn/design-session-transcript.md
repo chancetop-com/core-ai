@@ -153,7 +153,7 @@ TranscriptRecorder（唯一写入者，一把锁）
 | `tool_approval` | 请求事件 / `approval` | `callId, toolName, suggestedPattern, decision` | 两条 |
 | `batch_tool_start` | 同名事件 | `group, tools[], task_id` | |
 | `plan_update` | 同名事件 | `todos[]` | |
-| `compression` | 同名事件 | `before_count, after_count, completed, context_tokens, max_context_tokens, trigger_threshold` | |
+| `compression` | 同名事件 | `before_count, after_count, completed, context_tokens, after_context_tokens, max_context_tokens, trigger_threshold` | |
 | `sandbox` | 同名事件 | 原载荷 | |
 | `task_status` | 同名事件 | `taskId, toolName, status` | |
 | `custom` | 同名事件 | `name, data, card, callId` | |

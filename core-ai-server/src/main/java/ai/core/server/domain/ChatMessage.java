@@ -121,6 +121,9 @@ public class ChatMessage {
         @Field(name = "context_tokens")
         public Integer contextTokens;
 
+        @Field(name = "after_context_tokens")
+        public Integer afterContextTokens;
+
         @Field(name = "max_context_tokens")
         public Integer maxContextTokens;
 

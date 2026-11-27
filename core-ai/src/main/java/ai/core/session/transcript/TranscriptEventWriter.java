@@ -122,6 +122,7 @@ final class TranscriptEventWriter {
         record.put("after_count", event.afterCount);
         record.put("completed", event.completed);
         record.put("context_tokens", event.contextTokens);
+        record.put("after_context_tokens", event.afterContextTokens);
         record.put("max_context_tokens", event.maxContextTokens);
         record.put("trigger_threshold", event.triggerThreshold);
         recorder.commitLocked(record);

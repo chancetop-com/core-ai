@@ -171,6 +171,7 @@ public class SseEventBridge implements AgentEventListener {
         sse.afterCount = event.afterCount;
         sse.completed = event.completed;
         sse.contextTokens = event.contextTokens;
+        sse.afterContextTokens = event.afterContextTokens;
         sse.maxContextTokens = event.maxContextTokens;
         sse.triggerThreshold = event.triggerThreshold;
         eventPublisher.publish(sessionId, sse);

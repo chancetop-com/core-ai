@@ -587,7 +587,8 @@ public class InProcessAgentSession implements AgentSession {
     private CompressionEvent compressionEvent(CompressionReport report) {
         if (report.phase() == CompressionReport.Phase.SKIPPED) return null;
         return CompressionEvent.of(sessionId, report.beforeCount(), report.afterCount(), report.completed())
-            .withContext(report.contextTokens(), report.maxContextTokens(), report.triggerThreshold());
+            .withContext(report.contextTokens(), report.afterContextTokens(), report.maxContextTokens(),
+                report.triggerThreshold());
     }
 
     /**

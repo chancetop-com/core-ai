@@ -132,6 +132,7 @@ class SessionHistoryHelperTest {
         message.compression.beforeCount = 16;
         message.compression.afterCount = 14;
         message.compression.contextTokens = 6979;
+        message.compression.afterContextTokens = 1200;
         message.compression.maxContextTokens = 8192;
         message.compression.triggerThreshold = 0.8;
         when(service.history("s-2")).thenReturn(List.of(message));
@@ -143,11 +144,13 @@ class SessionHistoryHelperTest {
         assertEquals(16, compression.beforeCount);
         assertEquals(14, compression.afterCount);
         assertEquals(6979, compression.contextTokens);
+        assertEquals(1200, compression.afterContextTokens);
         assertEquals(8192, compression.maxContextTokens);
         assertEquals(0.8, compression.triggerThreshold);
 
         var json = JSON.toJSON(response);
         assertTrue(json.contains("\"before_count\":16"));
+        assertTrue(json.contains("\"after_context_tokens\":1200"));
         assertTrue(json.contains("\"trigger_threshold\":0.8"));
         var roundTripped = JSON.fromJSON(SessionHistoryResponse.class, json);
         assertEquals(14, roundTripped.messages.getFirst().compression.afterCount);

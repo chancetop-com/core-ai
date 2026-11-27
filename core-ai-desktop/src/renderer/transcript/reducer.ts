@@ -140,6 +140,7 @@ export interface CompressionItem {
   beforeCount: number;
   afterCount: number;
   contextTokens?: number;
+  afterContextTokens?: number;
   maxContextTokens?: number;
   triggerThreshold?: number;
 }
@@ -584,6 +585,7 @@ function addCompression(model: TranscriptModel, record: TranscriptRecord): void 
     beforeCount: before,
     afterCount: after,
     contextTokens: recordNumber(record, 'context_tokens'),
+    afterContextTokens: recordNumber(record, 'after_context_tokens'),
     maxContextTokens: recordNumber(record, 'max_context_tokens'),
     triggerThreshold: recordNumber(record, 'trigger_threshold'),
   });

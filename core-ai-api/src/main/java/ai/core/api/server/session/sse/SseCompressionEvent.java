@@ -24,6 +24,10 @@ public class SseCompressionEvent extends SseBaseEvent {
     public Integer contextTokens;
 
     @NotNull
+    @Property(name = "after_context_tokens")
+    public Integer afterContextTokens;
+
+    @NotNull
     @Property(name = "max_context_tokens")
     public Integer maxContextTokens;
 

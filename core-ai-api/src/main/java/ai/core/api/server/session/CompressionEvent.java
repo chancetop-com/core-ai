@@ -37,6 +37,10 @@ public class CompressionEvent implements AgentEvent {
     public Integer contextTokens;
 
     @NotNull
+    @Property(name = "after_context_tokens")
+    public Integer afterContextTokens;
+
+    @NotNull
     @Property(name = "max_context_tokens")
     public Integer maxContextTokens;
 
@@ -45,11 +49,13 @@ public class CompressionEvent implements AgentEvent {
     public Double triggerThreshold;
 
     /**
-     * Describes how much of the model context the conversation occupied when compression started, so a
+     * Describes how much of the model context the conversation occupied before and after compression, so a
      * client can show the compression in the same terms the trigger was decided in.
      */
-    public CompressionEvent withContext(int contextTokens, int maxContextTokens, double triggerThreshold) {
+    public CompressionEvent withContext(int contextTokens, int afterContextTokens, int maxContextTokens,
+                                        double triggerThreshold) {
         this.contextTokens = contextTokens;
+        this.afterContextTokens = afterContextTokens;
         this.maxContextTokens = maxContextTokens;
         this.triggerThreshold = triggerThreshold;
         return this;

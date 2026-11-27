@@ -124,7 +124,18 @@ describe('restoreCachedChatMessages', () => {
 });
 
 describe('compressionUsageText', () => {
-  it('reports the context occupancy and the trigger threshold', () => {
+  it('reports the context occupancy before and after compression', () => {
+    expect(compressionUsageText({
+      before: 66,
+      after: 29,
+      contextTokens: 39912,
+      afterContextTokens: 12000,
+      maxContextTokens: 128000,
+      triggerThreshold: 0.8,
+    })).toBe(' · 39,912 -> 12,000 tokens · 31% -> 9% of 128,000 · threshold 80%');
+  });
+
+  it('falls back to the single occupancy when the record predates after_context_tokens', () => {
     expect(compressionUsageText({ before: 66, after: 29, contextTokens: 39912, maxContextTokens: 128000, triggerThreshold: 0.8 }))
       .toBe(' · 39,912 / 128,000 tokens (31%) · threshold 80%');
   });

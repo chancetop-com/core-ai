@@ -91,5 +91,7 @@ class CompressionEventDispatchTest {
         assertEquals(0.5, completed.triggerThreshold, 0.0001);
         assertEquals(started.contextTokens, completed.contextTokens, "the context usage is the one compression measured");
         assertTrue(completed.contextTokens > 0);
+        assertEquals(started.contextTokens, started.afterContextTokens, "nothing was compressed when the phase started");
+        assertTrue(completed.afterContextTokens < completed.contextTokens, "the event carries the post-compression usage");
     }
 }

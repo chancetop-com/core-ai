@@ -5474,6 +5474,7 @@ interface CompressionFacts {
   beforeCount: number;
   afterCount: number;
   contextTokens?: number;
+  afterContextTokens?: number;
   maxContextTokens?: number;
   triggerThreshold?: number;
 }
@@ -5481,9 +5482,18 @@ interface CompressionFacts {
 function compressionRowText(facts: CompressionFacts): string {
   const parts = [`${facts.beforeCount.toLocaleString()} → ${facts.afterCount.toLocaleString()} messages`];
   if (facts.contextTokens !== undefined && facts.maxContextTokens) {
-    parts.push(`${facts.contextTokens.toLocaleString()} / ${facts.maxContextTokens.toLocaleString()} tokens`);
-    const used = `${Math.round(facts.contextTokens / facts.maxContextTokens * 100)}%`;
-    parts.push(facts.triggerThreshold !== undefined ? `${used} (trigger ${Math.round(facts.triggerThreshold * 100)}%)` : used);
+    const used = Math.round(facts.contextTokens / facts.maxContextTokens * 100);
+    if (facts.afterContextTokens !== undefined) {
+      const afterUsed = Math.round(facts.afterContextTokens / facts.maxContextTokens * 100);
+      parts.push(`${facts.contextTokens.toLocaleString()} → ${facts.afterContextTokens.toLocaleString()} tokens`);
+      parts.push(`${used}% → ${afterUsed}% of ${facts.maxContextTokens.toLocaleString()}`);
+    } else {
+      parts.push(`${facts.contextTokens.toLocaleString()} / ${facts.maxContextTokens.toLocaleString()} tokens`);
+      parts.push(`${used}%`);
+    }
+    if (facts.triggerThreshold !== undefined) {
+      parts[parts.length - 1] += ` (trigger ${Math.round(facts.triggerThreshold * 100)}%)`;
+    }
   }
   return parts.join(' · ');
 }
@@ -5508,6 +5518,7 @@ function appendCompression(view: SessionView, event: any): void {
     beforeCount: Number(event.before_count),
     afterCount: Number(event.after_count),
     contextTokens: numeric(event.context_tokens),
+    afterContextTokens: numeric(event.after_context_tokens),
     maxContextTokens: numeric(event.max_context_tokens),
     triggerThreshold: numeric(event.trigger_threshold),
   }));

@@ -326,6 +326,7 @@ public class ChatMessageService {
             compression.beforeCount = event.beforeCount;
             compression.afterCount = event.afterCount;
             compression.contextTokens = event.contextTokens;
+            compression.afterContextTokens = event.afterContextTokens;
             compression.maxContextTokens = event.maxContextTokens;
             compression.triggerThreshold = event.triggerThreshold;
             buffer(sessionId).compression = compression;

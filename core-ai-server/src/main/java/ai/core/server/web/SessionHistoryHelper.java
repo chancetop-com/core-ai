@@ -135,6 +135,7 @@ public final class SessionHistoryHelper {
         compression.beforeCount = record.beforeCount;
         compression.afterCount = record.afterCount;
         compression.contextTokens = record.contextTokens;
+        compression.afterContextTokens = record.afterContextTokens;
         compression.maxContextTokens = record.maxContextTokens;
         compression.triggerThreshold = record.triggerThreshold;
         return compression;

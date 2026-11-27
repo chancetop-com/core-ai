@@ -4,12 +4,14 @@ package ai.core.context;
  * Snapshot of one compression attempt: how much of the model context the conversation occupied when
  * it started, and what happened to it. {@code afterCount} counts the messages being summarized while
  * the phase is {@code STARTED}, the messages left in the conversation once it is {@code COMPLETED},
- * and the untouched conversation when it is {@code SKIPPED}.
+ * and the untouched conversation when it is {@code SKIPPED}. {@code afterContextTokens} is measured
+ * on the compressed conversation once the phase is {@code COMPLETED}, and equals
+ * {@code contextTokens} otherwise.
  *
  * @author stephen
  */
 public record CompressionReport(Phase phase, int beforeCount, int afterCount, int contextTokens,
-                                int maxContextTokens, double triggerThreshold, String reason) {
+                                int afterContextTokens, int maxContextTokens, double triggerThreshold, String reason) {
     /**
      * @return true when the conversation was actually summarized and replaced
      */
@@ -22,6 +24,13 @@ public record CompressionReport(Phase phase, int beforeCount, int afterCount, in
      */
     public int usedPercent() {
         return maxContextTokens > 0 ? (int) Math.round(contextTokens * 100.0 / maxContextTokens) : 0;
+    }
+
+    /**
+     * @return the share of the model context window the compressed conversation occupies, in percent
+     */
+    public int afterUsedPercent() {
+        return maxContextTokens > 0 ? (int) Math.round(afterContextTokens * 100.0 / maxContextTokens) : 0;
     }
 
     /**
