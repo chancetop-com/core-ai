@@ -19,6 +19,8 @@ import java.util.Optional;
 public class PgServerBackgroundTaskStore implements BackgroundTaskStore {
     private static final Logger LOGGER = LoggerFactory.getLogger(PgServerBackgroundTaskStore.class);
     private static final String TABLE = "app.server_background_tasks";
+    static final String STATUS_RUNNING = "running";
+    static final String STATUS_LOST = "lost";
     static final String STARTUP_LOST_MESSAGE = "SERVER_TASK_LOST: server restarted while background task was running";
 
     @Inject
@@ -32,13 +34,13 @@ public class PgServerBackgroundTaskStore implements BackgroundTaskStore {
         var pod = hostname();
         database.execute("INSERT INTO " + TABLE
                         + " (task_id, session_id, owner_pod, status, output_ref, notified, created_at, updated_at)"
-                        + " VALUES (?, ?, ?, 'running', ?, FALSE, ?, ?)"
+                        + " VALUES (?, ?, ?, ?, ?, FALSE, ?, ?)"
                         + " ON CONFLICT (task_id) DO UPDATE SET"
                         + " session_id = EXCLUDED.session_id, owner_pod = EXCLUDED.owner_pod,"
-                        + " status = 'running', result = NULL, error = NULL,"
+                        + " status = EXCLUDED.status, result = NULL, error = NULL,"
                         + " output_ref = EXCLUDED.output_ref, notified = FALSE,"
                         + " updated_at = EXCLUDED.updated_at, finished_at = NULL",
-                taskId, sessionId, pod, outputRef, now, now);
+                taskId, sessionId, pod, STATUS_RUNNING, outputRef, now, now);
     }
 
     @Override
@@ -77,9 +79,9 @@ public class PgServerBackgroundTaskStore implements BackgroundTaskStore {
         var now = ZonedDateTime.now();
         var pod = hostname();
         int updated = database.execute("UPDATE " + TABLE
-                        + " SET status = 'lost', error = ?, notified = TRUE, updated_at = ?, finished_at = ?"
-                        + " WHERE status = 'running' AND owner_pod = ?",
-                STARTUP_LOST_MESSAGE, now, now, pod);
+                        + " SET status = ?, error = ?, notified = TRUE, updated_at = ?, finished_at = ?"
+                        + " WHERE status = ? AND owner_pod = ?",
+                STATUS_LOST, STARTUP_LOST_MESSAGE, now, now, STATUS_RUNNING, pod);
         if (updated > 0) {
             LOGGER.info("marked orphaned server background tasks lost on startup, pod={}, count={}", pod, updated);
         }
@@ -88,7 +90,8 @@ public class PgServerBackgroundTaskStore implements BackgroundTaskStore {
 
     public int purgeTerminalOlderThan(Duration age) {
         var cutoff = ZonedDateTime.now().minus(age);
-        return database.execute("DELETE FROM " + TABLE + " WHERE status <> 'running' AND updated_at <= ?", cutoff);
+        return database.execute("DELETE FROM " + TABLE + " WHERE status <> ? AND updated_at <= ?",
+                STATUS_RUNNING, cutoff);
     }
 
     private String hostname() {

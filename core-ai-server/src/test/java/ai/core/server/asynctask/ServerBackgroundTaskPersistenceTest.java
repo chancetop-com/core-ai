@@ -4,14 +4,22 @@ import ai.core.session.BackgroundTaskManager;
 import ai.core.session.BackgroundTaskStore;
 import ai.core.session.SessionCommandQueue;
 import ai.core.tool.subagent.SubagentOutputSink;
+import core.framework.db.Database;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
+import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class ServerBackgroundTaskPersistenceTest {
     @Test
@@ -48,6 +56,23 @@ class ServerBackgroundTaskPersistenceTest {
         var polled = restarted.pollTask("bg-done-1");
         assertTrue(polled.isCompleted());
         assertTrue(polled.getResult().contains("subagent-answer"));
+    }
+
+    @Test
+    void pgStoreUsesParameterizedSqlWithoutSingleQuotes() {
+        var db = mock(Database.class);
+        var store = new PgServerBackgroundTaskStore();
+        store.database = db;
+
+        store.saveRunning("t1", "s1", "/workspace/.core-ai/tasks/t1.out");
+        store.markPodOpenTasksLost();
+        store.purgeTerminalOlderThan(Duration.ofHours(24));
+
+        var sqlCaptor = ArgumentCaptor.forClass(String.class);
+        verify(db, atLeastOnce()).execute(sqlCaptor.capture(), any(Object[].class));
+        for (var sql : sqlCaptor.getAllValues()) {
+            assertFalse(sql.contains("'"), "core-ng forbids single quotes in SQL: " + sql);
+        }
     }
 
     private static final class InMemoryBackgroundTaskStore implements BackgroundTaskStore {
