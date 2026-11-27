@@ -567,11 +567,11 @@ MCP server processes / remote endpoints (one set per workspace engine)
 | `servers.<name>.confirmedCommandHash` | string | 否 | 上次用户确认的 command/args/env 名称哈希；不写 `settings.json` |
 | `definition.command` | string | stdio 必填 | 不展开 `${env:}` |
 | `definition.args` | string[] | 否 | 支持 `${env:NAME}` |
-| `definition.env` | object<string,string> | 否 | 值支持 `${env:NAME}` |
+| `definition.env` | `object<string,string>` | 否 | 值支持 `${env:NAME}` |
 | `definition.url` | string | HTTP/SSE 必填 | 支持 `${env:NAME}` |
 | `definition.endpoint` | string | 否 | 支持 `${env:NAME}` |
 | `definition.transport` | string | 否 | `sse` 显式 SSE；其他/缺省 Streamable HTTP |
-| `definition.headers` | object<string,string> | 否 | 值支持 `${env:NAME}` |
+| `definition.headers` | `object<string,string>` | 否 | 值支持 `${env:NAME}` |
 | `definition.connectTimeout` | number | 否 | 秒，默认 10 |
 | `definition.requestTimeout` | number | 否 | 秒，默认 60 |
 | `definition.initializationTimeout` | number | 否 | 秒，默认 60 |
@@ -1606,7 +1606,7 @@ interface McpError {
 | desktop | `main/main.ts` | MCP 服务装配；`isInternalRpc`；`engine:call`/`engine:capabilities`/`engine:restart`/`workspace:*`/`mcp:*` 的 sender + workspace + 方法白名单校验；`mcp:importPreview`/`mcp:import` |
 | desktop | `main/engine/EngineSupervisor.ts` | `desktopMcp` 异步探测后决定是否附加 `--desktop-mcp`；`onReady` 回调 |
 | desktop | `preload/preload.ts`、`shared/workspaceTrust.ts` | `mcpList/mcpSave/mcpSetEnabled/mcpRemove/mcpStatus/mcpTest/mcpImportPreview/mcpImport`；`workspaceKey` |
-| desktop | `renderer/app.ts` | Settings → 「MCP servers for <workspace>」（Skill SDK 之后、Permission rules 之前）：列表、表单、启停、删除、Test connection、复制 JSON、导入预览；`rejected` 与被拒工具展示 |
+| desktop | `renderer/app.ts` | Settings → 「MCP servers for `<workspace>`」（Skill SDK 之后、Permission rules 之前）：列表、表单、启停、删除、Test connection、复制 JSON、导入预览；`rejected` 与被拒工具展示 |
 
 ### 14.2 实现期决策（在 v0.6 默认建议上落地）
 
