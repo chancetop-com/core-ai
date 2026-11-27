@@ -238,6 +238,7 @@ func main() {
 	http.HandleFunc("/mcp", handleMcp)
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
+	http.HandleFunc("/workspace/stat", handleWorkspaceStat)
 	registerTerminalWs(http.DefaultServeMux, terminalRegistry)
 
 	startHubProxy()

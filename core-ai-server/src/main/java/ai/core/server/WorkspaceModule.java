@@ -19,6 +19,8 @@ import ai.core.server.workspace.PgWorkspaceLeaseRow;
 import ai.core.server.workspace.PgWorkspaceLeaseStore;
 import ai.core.server.workspace.PgWorkspaceRow;
 import ai.core.server.workspace.PgWorkspaceStore;
+import ai.core.server.workspace.PgWorkspaceUsageRow;
+import ai.core.server.workspace.PgWorkspaceUsageStore;
 import ai.core.server.workspace.PgWorkspaceVolumeRow;
 import ai.core.server.workspace.PgWorkspaceVolumeStore;
 import ai.core.server.workspace.WorkspaceConfig;
@@ -28,6 +30,7 @@ import ai.core.server.workspace.WorkspaceRuntimeManager;
 import ai.core.server.workspace.WorkspaceService;
 import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.server.workspace.WorkspaceStores;
+import ai.core.server.workspace.WorkspaceUsageService;
 import ai.core.server.web.WorkspaceWebServiceImpl;
 import core.framework.module.Module;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -60,10 +63,12 @@ public class WorkspaceModule extends Module {
             db().view(PgWorkspaceBindingRow.class);
             db().view(PgWorkspaceEventRow.class);
             db().view(PgWorkspaceLeaseRow.class);
+            db().view(PgWorkspaceUsageRow.class);
             stores = new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
-                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()), bind(new PgWorkspaceLeaseStore()));
+                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()),
+                    bind(new PgWorkspaceLeaseStore()), bind(new PgWorkspaceUsageStore()));
         } else {
-            stores = new WorkspaceStores(null, null, null, null, null);
+            stores = new WorkspaceStores(null, null, null, null, null, null);
         }
 
         KubernetesClient kubernetesClient = null;
@@ -80,12 +85,13 @@ public class WorkspaceModule extends Module {
 
         var provisioner = new KubernetesWorkspaceProvisioner(kubernetesClient);
         var runtimes = new WorkspaceRuntimeManager(agentSandboxClient, placement, apiVersion);
+        var usageService = bind(new WorkspaceUsageService(stores.workspaces(), stores.bindings(), stores.usage(), runtimes));
         var wakeExecutor = Executors.newFixedThreadPool(2, runnable -> {
             var thread = new Thread(runnable, "workspace-wake");
             thread.setDaemon(true);
             return thread;
         });
-        bind(new WorkspaceService(stores, provisioner, runtimes, config, wakeExecutor));
+        bind(new WorkspaceService(stores, provisioner, runtimes, usageService, config, wakeExecutor));
         bind(new WorkspaceSessionBinder(bean(WorkspaceService.class)));
         var sandboxService = bean(SandboxService.class);
         bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
@@ -116,6 +122,7 @@ public class WorkspaceModule extends Module {
         config.leaseWaitSeconds = intProperty("sys.workspace.leaseWaitSeconds", WorkspaceDefaults.LEASE_WAIT_SECONDS);
         config.minRuntimeSeconds = intProperty("sys.workspace.minRuntimeSeconds", WorkspaceDefaults.MIN_RUNTIME_SECONDS);
         config.purgeAfterDays = intProperty("sys.workspace.purgeAfterDays", WorkspaceDefaults.PURGE_AFTER_DAYS);
+        config.usageSampleMinutes = intProperty("sys.workspace.usageSampleMinutes", WorkspaceDefaults.USAGE_SAMPLE_MINUTES);
         return config;
     }
 

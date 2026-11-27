@@ -8,5 +8,5 @@ package ai.core.server.workspace;
  */
 public record WorkspaceStores(WorkspaceStore workspaces, WorkspaceVolumeStore volumes,
                               WorkspaceBindingStore bindings, WorkspaceEventStore events,
-                              WorkspaceLeaseStore leases) {
+                              WorkspaceLeaseStore leases, WorkspaceUsageStore usage) {
 }

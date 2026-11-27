@@ -22,6 +22,7 @@ class WorkspaceLifecycleTest {
     private final FakeBindings bindings = new FakeBindings();
     private final FakeLeases leases = new FakeLeases();
     private final FakeEvents events = new FakeEvents();
+    private final FakeUsage usage = new FakeUsage();
     private final FakeProvisioner provisioner = new FakeProvisioner();
     private WorkspaceService service;
 
@@ -30,7 +31,7 @@ class WorkspaceLifecycleTest {
         var config = new WorkspaceConfig();
         config.enabled = true;
         config.purgeAfterDays = 7;
-        var stores = new WorkspaceStores(workspaces, volumes, bindings, events, leases);
+        var stores = new WorkspaceStores(workspaces, volumes, bindings, events, leases, usage);
         service = new WorkspaceService(stores, provisioner, new WorkspaceRuntimeManager(null, null, null), config, Runnable::run);
     }
 
@@ -69,6 +70,12 @@ class WorkspaceLifecycleTest {
         var workspace = deletedWorkspace(10);
         volumes.put(volume(workspace, WorkspaceVolumeStatus.READY));
         events.count = 2;
+        var sample = new WorkspaceUsageRecord();
+        sample.workspaceId = workspace.id;
+        sample.usedBytes = 1024L;
+        sample.capacityBytes = 4096L;
+        sample.sampledAt = ZonedDateTime.now();
+        usage.upsert(sample);
 
         var result = service.runLifecycleSweep();
 
@@ -77,6 +84,7 @@ class WorkspaceLifecycleTest {
         assertTrue(workspaces.missing(workspace.id));
         assertEquals(WorkspaceVolumeStatus.DELETED, volumes.status(workspace.id));
         assertEquals(0, events.count);
+        assertTrue(usage.get(workspace.id).isEmpty());
     }
 
     @Test
@@ -432,6 +440,35 @@ class WorkspaceLifecycleTest {
             var removed = count;
             count = 0;
             return removed;
+        }
+    }
+
+    private static final class FakeUsage implements WorkspaceUsageStore {
+        private final Map<String, WorkspaceUsageRecord> rows = new HashMap<>();
+
+        @Override
+        public Optional<WorkspaceUsageRecord> get(String workspaceId) {
+            return Optional.ofNullable(rows.get(workspaceId));
+        }
+
+        @Override
+        public Map<String, WorkspaceUsageRecord> listByWorkspaces(List<String> workspaceIds) {
+            var result = new HashMap<String, WorkspaceUsageRecord>();
+            for (var id : workspaceIds) {
+                var row = rows.get(id);
+                if (row != null) result.put(id, row);
+            }
+            return result;
+        }
+
+        @Override
+        public void upsert(WorkspaceUsageRecord usage) {
+            rows.put(usage.workspaceId, usage);
+        }
+
+        @Override
+        public void delete(String workspaceId) {
+            rows.remove(workspaceId);
         }
     }
 

@@ -50,4 +50,8 @@ public interface WorkspaceWebService {
     @POST
     @Path("/api/workspaces/:id/undelete")
     WorkspaceView undelete(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/workspaces/:id/usage")
+    WorkspaceUsageView usage(@PathParam("id") String id);
 }

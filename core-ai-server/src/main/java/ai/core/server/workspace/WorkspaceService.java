@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -35,6 +36,7 @@ public class WorkspaceService {
     private final WorkspaceLeaseManager leases;
     private final WorkspaceAudit audit;
     private final WorkspaceCreator creator;
+    private final WorkspaceUsageService usage;
     private final WorkspaceSweeper sweeper;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
@@ -43,6 +45,14 @@ public class WorkspaceService {
 
     public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
+        this(stores, provisioner, runtimes,
+                new WorkspaceUsageService(stores.workspaces(), stores.bindings(), stores.usage(), runtimes),
+                config, wakeExecutor);
+    }
+
+    public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
+                            WorkspaceRuntimeManager runtimes, WorkspaceUsageService usage,
+                            WorkspaceConfig config, Executor wakeExecutor) {
         this.workspaces = stores.workspaces();
         this.bindings = stores.bindings();
         this.events = stores.events();
@@ -53,8 +63,9 @@ public class WorkspaceService {
         this.leases = new WorkspaceLeaseManager(stores.leases(), config);
         this.audit = new WorkspaceAudit(stores.events());
         this.creator = new WorkspaceCreator(stores.workspaces(), volumeManager, audit, config);
+        this.usage = usage;
         this.sweeper = new WorkspaceSweeper(new WorkspaceSweeper.Deps(stores.workspaces(), stores.bindings(),
-                leases, volumeManager, runtimeLifecycle, audit));
+                leases, volumeManager, runtimeLifecycle, audit), this.usage);
         this.config = config;
         this.wakeExecutor = wakeExecutor;
     }
@@ -87,6 +98,17 @@ public class WorkspaceService {
         requireEnabled();
         load(ownerUserId, id);
         return events.list(id, Math.max(1, Math.min(limit, 200)));
+    }
+
+    public Optional<WorkspaceUsageRecord> usage(String ownerUserId, String id) {
+        requireEnabled();
+        load(ownerUserId, id);
+        return usage.read(id);
+    }
+
+    public Map<String, WorkspaceUsageRecord> usageByWorkspaces(List<String> workspaceIds) {
+        requireEnabled();
+        return usage.readAll(workspaceIds);
     }
 
     public boolean enabled() {
@@ -224,7 +246,17 @@ public class WorkspaceService {
         workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.READY, runtimeGeneration, null, null);
         workspaces.touchLastUsed(id, now);
         audit.append(id, "woken", ownerUserId, Map.of("sandboxId", sandboxName, "runtimeGeneration", runtimeGeneration));
+        sampleUsageAsync(id);
         return load(ownerUserId, id);
+    }
+
+    private void sampleUsageAsync(String id) {
+        if (wakeExecutor == null || usage == null) return;
+        try {
+            wakeExecutor.execute(() -> usage.sample(id));
+        } catch (RuntimeException e) {
+            LOGGER.warn("failed to schedule workspace usage sample, workspace={}", id, e);
+        }
     }
 
     /** Start of a turn's tool execution: wake/attach, then take the workspace lease (waits, then WORKSPACE_BUSY). */
@@ -312,6 +344,7 @@ public class WorkspaceService {
         leases.releaseByWorkspace(id);
         runtimeLifecycle.stop(workspace);
         var generation = volumeManager.reset(workspace);
+        usage.delete(id);
         audit.append(id, "reset", ownerUserId, Map.of("volumeGeneration", generation));
         return load(ownerUserId, id);
     }
@@ -362,7 +395,7 @@ public class WorkspaceService {
     }
 
     WorkspaceSweeper.SweepResult runLifecycleSweep() {
-        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0);
+        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0, 0);
         return sweeper.run(config, sessionBusy);
     }
 

@@ -1,8 +1,11 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, type WorkspaceView } from '../../api/client';
+import { api, type WorkspaceUsageView, type WorkspaceView } from '../../api/client';
 import Workspaces from './Workspaces';
+
+const MIB = 1024 ** 2;
+const GIB = 1024 ** 3;
 
 function workspace(overrides: Partial<WorkspaceView>): WorkspaceView {
   return {
@@ -120,11 +123,82 @@ describe('Workspaces settings', () => {
     vi.spyOn(api.workspaces, 'events').mockResolvedValue([
       { id: 'event-1', event_type: 'created', actor: 'user-1', payload: '{"sizeGb":32}', created_at: new Date().toISOString() },
     ]);
+    vi.spyOn(api.workspaces, 'getUsage').mockRejectedValue(Object.assign(new Error('not found'), { status: 404 }));
 
     render(<Workspaces />);
     await userEvent.click(await screen.findByRole('button', { name: 'Details for default' }));
 
     expect(await screen.findByText('created')).toBeTruthy();
     expect(screen.getByText(/sizeGb=32/)).toBeTruthy();
+  });
+
+  it('formats cached usage in list rows and renders em dash when unsampled', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([
+      workspace({ id: 'ws-gib', name: 'big-repo', used_bytes: 12.5 * GIB, capacity_bytes: 32 * GIB }),
+      workspace({ id: 'ws-mib', name: 'small-repo', is_default: false, used_bytes: 256 * MIB, capacity_bytes: 16 * GIB }),
+      workspace({ id: 'ws-none', name: 'fresh-repo', is_default: false }),
+    ]);
+
+    render(<Workspaces />);
+
+    expect(await screen.findByText('12.5 GiB / 32.0 GiB')).toBeTruthy();
+    expect(screen.getByText('256 MiB / 16.0 GiB')).toBeTruthy();
+    expect(screen.getByText('—')).toBeTruthy();
+    expect(screen.queryByLabelText('High disk usage')).toBeNull();
+  });
+
+  it('shows warning styling when usage reaches 90 percent or more', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([
+      workspace({ id: 'ws-warn', name: 'almost-full', used_bytes: 29.5 * GIB, capacity_bytes: 32 * GIB }),
+      workspace({ id: 'ws-ok', name: 'plenty-left', is_default: false, used_bytes: 10 * GIB, capacity_bytes: 32 * GIB }),
+    ]);
+
+    render(<Workspaces />);
+
+    const warnLabel = await screen.findByText('29.5 GiB / 32.0 GiB');
+    const warnContainer = warnLabel.closest('[data-usage-warning="true"]');
+    expect(warnContainer).toBeTruthy();
+    expect(screen.getAllByLabelText('High disk usage')).toHaveLength(1);
+  });
+
+  it('fetches usage in details panel with loading and loaded states', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([workspace({})]);
+    vi.spyOn(api.workspaces, 'events').mockResolvedValue([]);
+    let resolveUsage!: (value: WorkspaceUsageView) => void;
+    const getUsage = vi.spyOn(api.workspaces, 'getUsage').mockImplementation(
+      () => new Promise<WorkspaceUsageView>(resolve => { resolveUsage = resolve; }));
+
+    render(<Workspaces />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details for default' }));
+
+    expect(getUsage).toHaveBeenCalledWith('ws-1');
+    expect(screen.getByText('Loading usage...')).toBeTruthy();
+
+    resolveUsage({
+      used_bytes: 10 * GIB,
+      capacity_bytes: 32 * GIB,
+      available_bytes: 22 * GIB,
+      inodes_used: 12_345,
+      inodes_total: 2_000_000,
+      sampled_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+    });
+
+    expect(await screen.findByText('10.0 GiB / 32.0 GiB (31%)')).toBeTruthy();
+    expect(screen.getByText('22.0 GiB')).toBeTruthy();
+    expect(screen.getByText(`${(12_345).toLocaleString()} / ${(2_000_000).toLocaleString()}`)).toBeTruthy();
+    expect(screen.getByText('2m ago')).toBeTruthy();
+  });
+
+  it('shows an explicit no-sample state when usage returns 404', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([workspace({})]);
+    vi.spyOn(api.workspaces, 'events').mockResolvedValue([]);
+    vi.spyOn(api.workspaces, 'getUsage').mockRejectedValue(
+      Object.assign(new Error('workspace usage not found'), { status: 404, errorCode: 'WORKSPACE_NOT_FOUND' }));
+
+    render(<Workspaces />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details for default' }));
+
+    expect(await screen.findByText('No sample yet.')).toBeTruthy();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });

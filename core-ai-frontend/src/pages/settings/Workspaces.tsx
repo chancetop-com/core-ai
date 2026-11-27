@@ -1,15 +1,25 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, HardDrive, Moon, Play, Plus, RefreshCw, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
-import { api, type WorkspaceEventView, type WorkspaceView } from '../../api/client';
+import { api, type WorkspaceEventView, type WorkspaceUsageView, type WorkspaceView } from '../../api/client';
 
 type Tone = 'ok' | 'info' | 'warn' | 'error' | 'muted';
 type DialogKind = 'reset' | 'delete';
+type UsageState =
+  | { status: 'loading' }
+  | { status: 'loaded'; data: WorkspaceUsageView }
+  | { status: 'empty' }
+  | { status: 'error'; message: string };
 
 interface PendingAction {
   kind: DialogKind;
   workspace: WorkspaceView;
 }
+
+const MIB = 1024 ** 2;
+const GIB = 1024 ** 3;
+const USAGE_WARN_RATIO = 0.9;
+const USAGE_CRITICAL_RATIO = 0.95;
 
 const IDLE_OPTIONS = [5, 15, 30, 60, 120];
 const SIZE_OPTIONS = [8, 16, 32, 64, 96];
@@ -62,6 +72,43 @@ function errorMessage(err: unknown): string {
 
 function workspaceDisabled(err: unknown): boolean {
   return typeof err === 'object' && err !== null && (err as { errorCode?: string }).errorCode === 'WORKSPACE_UNSUPPORTED';
+}
+
+function isNotFound(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null) return false;
+  const candidate = err as { status?: number; errorCode?: string };
+  return candidate.status === 404 || candidate.errorCode === 'WORKSPACE_NOT_FOUND';
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= GIB) {
+    const gib = bytes / GIB;
+    return `${gib >= 100 ? gib.toFixed(0) : gib.toFixed(1)} GiB`;
+  }
+  if (bytes >= MIB) {
+    const mib = bytes / MIB;
+    return `${mib >= 100 ? mib.toFixed(0) : mib.toFixed(1)} MiB`;
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+  return `${bytes} B`;
+}
+
+function usageSummary(usedBytes?: number, capacityBytes?: number): {
+  label: string;
+  percent: number;
+  warning: boolean;
+  critical: boolean;
+} | null {
+  if (usedBytes == null || capacityBytes == null || capacityBytes <= 0) return null;
+  const ratio = usedBytes / capacityBytes;
+  return {
+    label: `${formatBytes(usedBytes)} / ${formatBytes(capacityBytes)}`,
+    percent: Math.round(ratio * 100),
+    warning: ratio >= USAGE_WARN_RATIO,
+    critical: ratio >= USAGE_CRITICAL_RATIO,
+  };
 }
 
 function payloadSummary(payload?: string): string {
@@ -226,6 +273,7 @@ export default function Workspaces() {
   const [creating, setCreating] = useState(false);
   const [expandedId, setExpandedId] = useState('');
   const [events, setEvents] = useState<Record<string, WorkspaceEventView[]>>({});
+  const [usageByWorkspace, setUsageByWorkspace] = useState<Record<string, UsageState>>({});
 
   const load = (quiet = false) => {
     if (!quiet) setLoading(true);
@@ -274,6 +322,11 @@ export default function Workspaces() {
         delete next[workspace.id];
         return next;
       });
+      setUsageByWorkspace(previous => {
+        const next = { ...previous };
+        delete next[workspace.id];
+        return next;
+      });
       load(true);
     } catch (err) {
       setError(errorMessage(err));
@@ -306,6 +359,19 @@ export default function Workspaces() {
     }
   };
 
+  const fetchUsage = (workspaceId: string) => {
+    setUsageByWorkspace(previous => ({ ...previous, [workspaceId]: { status: 'loading' } }));
+    api.workspaces.getUsage(workspaceId)
+      .then(data => setUsageByWorkspace(previous => ({ ...previous, [workspaceId]: { status: 'loaded', data } })))
+      .catch(err => {
+        if (isNotFound(err)) {
+          setUsageByWorkspace(previous => ({ ...previous, [workspaceId]: { status: 'empty' } }));
+          return;
+        }
+        setUsageByWorkspace(previous => ({ ...previous, [workspaceId]: { status: 'error', message: errorMessage(err) } }));
+      });
+  };
+
   const toggleDetail = (workspace: WorkspaceView) => {
     if (expandedId === workspace.id) {
       setExpandedId('');
@@ -316,6 +382,9 @@ export default function Workspaces() {
       api.workspaces.events(workspace.id, 20)
         .then(items => setEvents(previous => ({ ...previous, [workspace.id]: items })))
         .catch(err => setError(errorMessage(err)));
+    }
+    if (!usageByWorkspace[workspace.id]) {
+      fetchUsage(workspace.id);
     }
   };
 
@@ -362,7 +431,9 @@ export default function Workspaces() {
             onClick={() => {
               setError('');
               setNotice('');
+              setUsageByWorkspace({});
               load();
+              if (expandedId) fetchUsage(expandedId);
             }}
             disabled={loading}
             className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
@@ -408,13 +479,14 @@ export default function Workspaces() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm table-fixed">
               <colgroup>
-                <col style={{ width: '21%' }} />
                 <col style={{ width: '19%' }} />
-                <col style={{ width: '12%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '11%' }} />
                 <col style={{ width: '8%' }} />
-                <col style={{ width: '13%' }} />
-                <col style={{ width: '10%' }} />
-                <col style={{ width: '17%' }} />
+                <col style={{ width: '14%' }} />
               </colgroup>
               <thead>
                 <tr className="text-left" style={{ color: 'var(--color-text-secondary)' }}>
@@ -422,8 +494,9 @@ export default function Workspaces() {
                   <th className="py-2 pr-3 font-medium">Agent</th>
                   <th className="py-2 pr-3 font-medium">Status</th>
                   <th className="py-2 pr-3 font-medium">Size</th>
+                  <th className="py-2 pr-3 font-medium">Disk</th>
                   <th className="py-2 pr-3 font-medium">Idle</th>
-                  <th className="py-2 pr-3 font-medium">Used</th>
+                  <th className="py-2 pr-3 font-medium">Last used</th>
                   <th className="py-2 font-medium text-right">Actions</th>
                 </tr>
               </thead>
@@ -432,6 +505,11 @@ export default function Workspaces() {
                   const status = workspaceStatus(workspace);
                   const busy = busyId === workspace.id;
                   const expanded = expandedId === workspace.id;
+                  const rowUsage = usageSummary(workspace.used_bytes, workspace.capacity_bytes);
+                  const detailUsage = usageByWorkspace[workspace.id];
+                  const detailSummary = detailUsage?.status === 'loaded'
+                    ? usageSummary(detailUsage.data.used_bytes, detailUsage.data.capacity_bytes)
+                    : null;
                   return (
                     <Fragment key={workspace.id}>
                       <tr className="border-t align-top" style={{ borderColor: 'var(--color-border)' }}>
@@ -472,7 +550,25 @@ export default function Workspaces() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 pr-4 whitespace-nowrap">{workspace.size_gb} GB</td>
+                        <td className="py-3 pr-3 whitespace-nowrap">{workspace.size_gb} GB</td>
+                        <td className="py-3 pr-3 whitespace-nowrap">
+                          {rowUsage ? (
+                            <div
+                              data-usage-warning={rowUsage.warning ? 'true' : undefined}
+                              title={`${rowUsage.percent}% used`}
+                              className="inline-flex items-center gap-1"
+                              style={rowUsage.warning
+                                ? { color: rowUsage.critical ? '#dc2626' : '#b45309', fontWeight: 500 }
+                                : undefined}>
+                              {rowUsage.warning && (
+                                <AlertTriangle size={12} aria-label="High disk usage" className="shrink-0" />
+                              )}
+                              <span>{rowUsage.label}</span>
+                            </div>
+                          ) : (
+                            <span style={{ color: 'var(--color-text-tertiary)' }}>—</span>
+                          )}
+                        </td>
                         <td className="py-3 pr-3">
                           <select
                             value={workspace.idle_sleep_minutes}
@@ -546,7 +642,7 @@ export default function Workspaces() {
                       </tr>
                       {expanded && (
                         <tr key={`${workspace.id}-detail`} className="border-t" style={{ borderColor: 'var(--color-border)' }}>
-                          <td colSpan={7} className="py-3 px-1">
+                          <td colSpan={8} className="py-3 px-1">
                             <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs"
                               style={{ color: 'var(--color-text-secondary)' }}>
                               <span>Profile: <span style={{ color: 'var(--color-text)' }}>{workspace.profile}</span></span>
@@ -555,6 +651,49 @@ export default function Workspaces() {
                               <span>Runtime generation: <span style={{ color: 'var(--color-text)' }}>{workspace.runtime_generation}</span></span>
                               <span>Last provisioned: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.last_provisioned_at)}</span></span>
                               <span>Created: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.created_at)}</span></span>
+                            </div>
+                            <div className="mt-3">
+                              <div className="text-xs font-medium mb-1">Disk usage</div>
+                              {(!detailUsage || detailUsage.status === 'loading') && (
+                                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Loading usage...</p>
+                              )}
+                              {detailUsage?.status === 'empty' && (
+                                <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>No sample yet.</p>
+                              )}
+                              {detailUsage?.status === 'error' && (
+                                <p className="text-xs" style={{ color: '#dc2626' }}>Failed to load usage: {detailUsage.message}</p>
+                              )}
+                              {detailUsage?.status === 'loaded' && (
+                                <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs"
+                                  style={{ color: 'var(--color-text-secondary)' }}>
+                                  <span>
+                                    Used / Capacity:{' '}
+                                    <span style={detailSummary?.warning
+                                      ? { color: detailSummary.critical ? '#dc2626' : '#b45309', fontWeight: 500 }
+                                      : { color: 'var(--color-text)' }}>
+                                      {detailSummary ? `${detailSummary.label} (${detailSummary.percent}%)` : '—'}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Available:{' '}
+                                    <span style={{ color: 'var(--color-text)' }}>
+                                      {detailUsage.data.available_bytes != null ? formatBytes(detailUsage.data.available_bytes) : '—'}
+                                    </span>
+                                  </span>
+                                  <span>
+                                    Inodes:{' '}
+                                    <span style={{ color: 'var(--color-text)' }}>
+                                      {detailUsage.data.inodes_used != null && detailUsage.data.inodes_total != null
+                                        ? `${detailUsage.data.inodes_used.toLocaleString()} / ${detailUsage.data.inodes_total.toLocaleString()}`
+                                        : '—'}
+                                    </span>
+                                  </span>
+                                  <span title={detailUsage.data.sampled_at}>
+                                    Sampled:{' '}
+                                    <span style={{ color: 'var(--color-text)' }}>{relativeTime(detailUsage.data.sampled_at)}</span>
+                                  </span>
+                                </div>
+                              )}
                             </div>
                             {workspace.error_code && (
                               <div className="mt-2 text-xs" style={{ color: '#dc2626' }}>

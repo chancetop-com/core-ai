@@ -8,6 +8,7 @@ import ai.core.api.server.workspace.WorkspaceListView;
 import ai.core.api.server.workspace.WorkspaceListRequest;
 import ai.core.api.server.workspace.WorkspaceResetRequest;
 import ai.core.api.server.workspace.WorkspaceUpdateRequest;
+import ai.core.api.server.workspace.WorkspaceUsageView;
 import ai.core.api.server.workspace.WorkspaceView;
 import ai.core.api.server.workspace.WorkspaceWebService;
 import ai.core.server.rbac.PermissionCodes;
@@ -18,6 +19,7 @@ import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
 import ai.core.server.workspace.WorkspaceRecord;
 import ai.core.server.workspace.WorkspaceService;
+import ai.core.server.workspace.WorkspaceUsageRecord;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 
@@ -37,7 +39,12 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     public WorkspaceListView list(WorkspaceListRequest request) {
         var includeDeleted = request != null && Boolean.TRUE.equals(request.includeDeleted);
         var view = new WorkspaceListView();
-        view.items = call(() -> workspaceService.list(userId(), includeDeleted).stream().map(this::view).toList());
+        view.items = call(() -> {
+            var records = workspaceService.list(userId(), includeDeleted);
+            var ids = records.stream().map(r -> r.id).toList();
+            var usageByWorkspace = workspaceService.usageByWorkspaces(ids);
+            return records.stream().map(r -> view(r, usageByWorkspace.get(r.id))).toList();
+        });
         return view;
     }
 
@@ -96,6 +103,13 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         return call(() -> view(workspaceService.restore(userId(), id)));
     }
 
+    @Override
+    public WorkspaceUsageView usage(String id) {
+        return call(() -> workspaceService.usage(userId(), id)
+                .map(this::usageView)
+                .orElseThrow(() -> new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace usage not found: " + id)));
+    }
+
     private String userId() {
         return AuthContext.userId(webContext);
     }
@@ -118,7 +132,22 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         return view;
     }
 
+    private WorkspaceUsageView usageView(WorkspaceUsageRecord record) {
+        var view = new WorkspaceUsageView();
+        view.usedBytes = record.usedBytes;
+        view.capacityBytes = record.capacityBytes;
+        view.availableBytes = record.availableBytes;
+        view.inodesUsed = record.inodesUsed;
+        view.inodesTotal = record.inodesTotal;
+        view.sampledAt = record.sampledAt;
+        return view;
+    }
+
     private WorkspaceView view(WorkspaceRecord record) {
+        return view(record, null);
+    }
+
+    private WorkspaceView view(WorkspaceRecord record, WorkspaceUsageRecord usage) {
         var view = new WorkspaceView();
         view.id = record.id;
         view.name = record.name;
@@ -129,6 +158,10 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         view.activeVolumeGeneration = record.activeVolumeGeneration;
         view.runtimeGeneration = record.runtimeGeneration;
         view.sizeGb = record.sizeGb;
+        if (usage != null) {
+            view.usedBytes = usage.usedBytes;
+            view.capacityBytes = usage.capacityBytes;
+        }
         view.storageClass = record.storageClass;
         view.profile = record.profile != null ? record.profile.id : null;
         view.mountPath = record.mountPath;

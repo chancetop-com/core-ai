@@ -18,18 +18,48 @@ import java.util.function.Predicate;
  */
 class WorkspaceSweeper {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceSweeper.class);
+    // Sampling probes a live runtime (k8s GET + HTTP call), so a tick samples at most this many
+    // workspaces: a fleet of sleeping pods can never stretch one sweep past its job lease.
+    private static final int MAX_USAGE_SAMPLES_PER_SWEEP = 10;
 
     private final Deps deps;
+    private final WorkspaceUsageService usage;
 
-    WorkspaceSweeper(Deps deps) {
+    WorkspaceSweeper(Deps deps, WorkspaceUsageService usage) {
         this.deps = deps;
+        this.usage = usage;
     }
 
     SweepResult run(WorkspaceConfig config, Predicate<String> sessionBusy) {
         var slept = sleepIdleRuntimes(config, sessionBusy);
         var purged = purgeDeletedWorkspaces(config);
         var volumes = retryDeletingVolumes();
-        return new SweepResult(slept, purged, volumes);
+        // Usage sampling is the only step that talks to a live runtime, so it runs last: a hung or
+        // outdated pod delays the next sample, never the sleep/purge that keeps storage reclaimable.
+        var sampled = sampleReadyWorkspaces(config);
+        return new SweepResult(slept, purged, volumes, sampled);
+    }
+
+    private int sampleReadyWorkspaces(WorkspaceConfig config) {
+        if (config.usageSampleMinutes <= 0 || usage == null) return 0;
+        var ready = deps.workspaces.listActive().stream()
+                .filter(w -> w.runtimeStatus == WorkspaceRuntimeStatus.READY)
+                .toList();
+        if (ready.isEmpty()) return 0;
+        var existing = usage.readAll(ready.stream().map(w -> w.id).toList());
+        var staleBefore = ZonedDateTime.now().minusMinutes(config.usageSampleMinutes);
+        var due = ready.stream()
+                .filter(w -> {
+                    var cached = existing.get(w.id);
+                    return cached == null || cached.sampledAt == null || cached.sampledAt.isBefore(staleBefore);
+                })
+                .limit(MAX_USAGE_SAMPLES_PER_SWEEP)
+                .toList();
+        var sampled = 0;
+        for (var workspace : due) {
+            if (usage.sample(workspace.id)) sampled++;
+        }
+        return sampled;
     }
 
     private int sleepIdleRuntimes(WorkspaceConfig config, Predicate<String> sessionBusy) {
@@ -131,6 +161,7 @@ class WorkspaceSweeper {
         }
         deps.bindings.delete(workspace.id);
         deps.audit.delete(workspace.id);
+        if (usage != null) usage.delete(workspace.id);
         if (!deps.workspaces.purge(workspace.id)) return false;
         LOGGER.info("workspace purged, workspace={}, volumes={}", workspace.id, volumes.size());
         return true;
@@ -150,6 +181,6 @@ class WorkspaceSweeper {
                 WorkspaceVolumeManager volumes, WorkspaceRuntimeLifecycle lifecycle, WorkspaceAudit audit) {
     }
 
-    record SweepResult(int slept, int purged, int volumesDeleted) {
+    record SweepResult(int slept, int purged, int volumesDeleted, int usageSampled) {
     }
 }

@@ -12,7 +12,7 @@ class WorkspaceServiceTest {
     void disabledServiceFailsClosedWithoutTouchingPostgresStores() {
         var config = new WorkspaceConfig();
         config.enabled = false;
-        var service = new WorkspaceService(new WorkspaceStores(null, null, null, null, null), null, null, config, Runnable::run);
+        var service = new WorkspaceService(new WorkspaceStores(null, null, null, null, null, null), null, null, config, Runnable::run);
 
         assertFalse(service.enabled());
         var error = assertThrows(WorkspaceException.class, () -> service.list("user-1"));

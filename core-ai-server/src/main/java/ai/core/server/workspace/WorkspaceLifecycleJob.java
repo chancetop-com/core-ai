@@ -35,12 +35,13 @@ public class WorkspaceLifecycleJob implements Job {
         if (!jobLeases.tryAcquire(JOB, holder, JOB_LEASE_TTL)) return;
         try {
             var result = workspaces.runLifecycleSweep();
-            if (result.slept() > 0 || result.purged() > 0 || result.volumesDeleted() > 0) {
+            if (result.slept() > 0 || result.purged() > 0 || result.volumesDeleted() > 0 || result.usageSampled() > 0) {
                 ActionLogContext.stat("workspace.slept_total", result.slept());
                 ActionLogContext.stat("workspace.purged_total", result.purged());
                 ActionLogContext.stat("workspace.volumes_deleted_total", result.volumesDeleted());
-                LOGGER.info("workspace lifecycle sweep, slept={}, purged={}, volumesDeleted={}",
-                        result.slept(), result.purged(), result.volumesDeleted());
+                ActionLogContext.stat("workspace.usage_sampled_total", result.usageSampled());
+                LOGGER.info("workspace lifecycle sweep, slept={}, purged={}, volumesDeleted={}, usageSampled={}",
+                        result.slept(), result.purged(), result.volumesDeleted(), result.usageSampled());
             }
         } catch (RuntimeException e) {
             LOGGER.warn("workspace lifecycle sweep failed, retry next tick", e);

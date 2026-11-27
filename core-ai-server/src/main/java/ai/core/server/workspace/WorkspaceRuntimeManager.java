@@ -64,6 +64,20 @@ public class WorkspaceRuntimeManager {
         return client.getSandbox(name);
     }
 
+    public Optional<String> endpointHost(String name) {
+        if (client == null || name == null || name.isBlank()) return Optional.empty();
+        var cr = client.getSandbox(name).orElse(null);
+        if (cr == null || cr.status == null) return Optional.empty();
+        if (cr.status.serviceFQDN != null && !cr.status.serviceFQDN.isBlank()) {
+            return Optional.of(cr.status.serviceFQDN);
+        }
+        if (cr.status.podIPs != null && cr.status.podIPs.length > 0
+                && cr.status.podIPs[0] != null && !cr.status.podIPs[0].isBlank()) {
+            return Optional.of(cr.status.podIPs[0]);
+        }
+        return Optional.empty();
+    }
+
     private void validate(AgentSandboxClient.SandboxCR cr, WorkspaceRuntimeSpec spec) {
         var labels = cr.metadata != null ? cr.metadata.labels : null;
         var workspaceLabel = labels != null ? labels.get("core-ai/workspace-id") : null;

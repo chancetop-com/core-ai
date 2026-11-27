@@ -1729,6 +1729,7 @@ P1a 不是“可以给所有用户”的版本；它用于验证“卷真的持�
 | 版本 | 日期 | 修改人 | 修改内容 | 原因 / 用户确认 |
 |---|---|---|---|---|
 | v0.1 | 2026-11-23 | core-ai | 初稿：第一性原理、Workspace/Volume/Runtime/Lease 模型、状态分层、静态 PVC、turn lease、休眠/配额/API/UX、安全与验收、行业依据与源码核对 | 用户请求设计；待 Review，未批准实施 |
+| v0.2 | 2026-11-27 | core-ai | 实现状态回填：V52 卷/生命周期/租约与 Settings/Agent/chat UI 已随 server 2.0.407 上线；用量采样（runtime `GET /workspace/stat` + `app.workspace_usage`，迁移 V59、runtime 1.0.58、server 2.0.409）已实现 | 记录已落地范围；文档批准状态未变 |
 
 ### C.4 设计时未执行的事项
 

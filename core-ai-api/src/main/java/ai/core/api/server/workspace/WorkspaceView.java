@@ -43,6 +43,12 @@ public class WorkspaceView {
     @Property(name = "size_gb")
     public Integer sizeGb;
 
+    @Property(name = "used_bytes")
+    public Long usedBytes;
+
+    @Property(name = "capacity_bytes")
+    public Long capacityBytes;
+
     @NotNull
     @Property(name = "storage_class")
     public String storageClass;

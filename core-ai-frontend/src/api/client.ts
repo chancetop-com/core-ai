@@ -2281,6 +2281,8 @@ export interface WorkspaceView {
   active_volume_generation?: number;
   runtime_generation: number;
   size_gb: number;
+  used_bytes?: number;
+  capacity_bytes?: number;
   storage_class: string;
   profile: string;
   mount_path: string;
@@ -2304,11 +2306,21 @@ export interface WorkspaceEventView {
   created_at: string;
 }
 
+export interface WorkspaceUsageView {
+  used_bytes?: number;
+  capacity_bytes?: number;
+  available_bytes?: number;
+  inodes_used?: number;
+  inodes_total?: number;
+  sampled_at: string;
+}
+
 export const api = {
   workspaces: {
     list: async (includeDeleted = false) => (await request<{ items: WorkspaceView[] }>(
       `/api/workspaces${includeDeleted ? '?include_deleted=true' : ''}`)).items,
     get: (id: string) => request<WorkspaceView>(`/api/workspaces/${id}`),
+    getUsage: (id: string) => request<WorkspaceUsageView>(`/api/workspaces/${id}/usage`),
     create: (data: { name: string; agent_id?: string; size_gb?: number; profile?: string; idle_sleep_minutes?: number }) =>
       request<WorkspaceView>('/api/workspaces', { method: 'POST', body: JSON.stringify(data) }),
     events: async (id: string, limit = 20) => (await request<{ items: WorkspaceEventView[] }>(
