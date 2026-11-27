@@ -214,29 +214,28 @@ public class LiteLLMProvider extends LLMProvider {
             bodyMap.putAll((Map<String, Object>) extraMap);
         }
         var rawBody = JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8);
-        boolean gzipped = false;
-        if (requestCompressionSupported && rawBody.length >= GZIP_MIN_BYTES && LLMRetrySupport.isServerProxyEndpoint(reqUrl)) {
-            var compressed = gzip(rawBody);
-            if (compressed.length < rawBody.length) {
-                req.headers.put("Content-Encoding", "gzip");
-                req.body(compressed, ContentType.APPLICATION_JSON);
-                gzipped = true;
-            } else {
-                req.body(rawBody, ContentType.APPLICATION_JSON);
-            }
-        } else {
+        if (!requestCompressionSupported || rawBody.length < GZIP_MIN_BYTES || !LLMRetrySupport.isServerProxyEndpoint(reqUrl)) {
             req.body(rawBody, ContentType.APPLICATION_JSON);
+            return executeSSERequest(req, callback, request.isPassthrough());
+        }
+        var compressed = gzip(rawBody);
+        if (compressed.length >= rawBody.length) {
+            req.body(rawBody, ContentType.APPLICATION_JSON);
+            return executeSSERequest(req, callback, request.isPassthrough());
         }
 
-        if (!gzipped) {
-            return executeSSERequest(req, callback, request.isPassthrough());
-        }
+        req.headers.put("Content-Encoding", "gzip");
+        req.body(compressed, ContentType.APPLICATION_JSON);
+        var probe = new LLMRetrySupport.OutputTrackingCallback(callback, request.isPassthrough());
         try {
-            return executeSSERequest(req, callback, request.isPassthrough());
+            return executeSSERequest(req, probe, request.isPassthrough());
         } catch (LLMStreamException e) {
-            if (!LLMRetrySupport.requestEncodingRejected(e)) throw e;
+            // only a rejection the server sent before running the model can be resent; once anything
+            // was delivered, a retry would duplicate output
+            if (probe.outputEmitted() || !LLMRetrySupport.requestEncodingRejected(e)) throw e;
             requestCompressionSupported = false;
-            LOGGER.warn("core-ai-server rejected the gzipped request body (server older than 2.0.398), retrying uncompressed and disabling request compression, endpoint={}", reqUrl);
+            LOGGER.warn("core-ai-server rejected the gzipped request body (server older than 2.0.398), "
+                    + "retrying uncompressed and disabling request compression, endpoint={}", reqUrl);
             req.headers.remove("Content-Encoding");
             req.body(rawBody, ContentType.APPLICATION_JSON);
             return executeSSERequest(req, callback, request.isPassthrough());

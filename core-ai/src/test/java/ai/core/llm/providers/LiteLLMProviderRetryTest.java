@@ -342,6 +342,25 @@ class LiteLLMProviderRetryTest {
         assertEquals(3, requests.get());
     }
 
+    // a rejection that arrives after the server already streamed text cannot be resent: the retry
+    // would replay the same tokens
+    @Test
+    void doesNotResendUncompressedAfterPartialOutput() {
+        var provider = provider((exchange, attempt) -> sse(exchange,
+                "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"partial\"}}]}",
+                "{\"error\":{\"message\":\"com.fasterxml.jackson.core.JsonParseException: "
+                        + "Illegal character ((CTRL-CHAR, code 31)): only regular white space (\\\\r, \\\\n, \\\\t) "
+                        + "is allowed between tokens\"}}"), 5);
+        var content = "large-message ".repeat(500);
+
+        var error = assertThrows(LLMStreamException.class, () -> provider.completionStream(
+                CompletionRequest.of(List.of(Message.of(RoleType.USER, content)), List.of(), 0.0, "test-model", "test"),
+                new DefaultStreamingCallback()));
+
+        assertTrue(error.getMessage().contains("CTRL-CHAR"), error.getMessage());
+        assertEquals(1, requests.get(), "a resend after streamed text would duplicate it");
+    }
+
     @Test
     void detectsARejectedRequestEncoding() {
         assertTrue(LLMRetrySupport.requestEncodingRejected(new LLMStreamException(
