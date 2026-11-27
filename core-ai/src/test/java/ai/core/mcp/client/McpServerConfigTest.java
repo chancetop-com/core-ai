@@ -41,6 +41,28 @@ class McpServerConfigTest {
     }
 
     @Test
+    void httpEndpointStripsBomAndWhitespace() {
+        var config = McpServerConfig.http(" https://business-api.tiktok.com ")
+            .endpoint("\uFEFF /open_mcp/tt-ads-mcp-flat\t")
+            .build();
+
+        assertEquals("https://business-api.tiktok.com", config.getUrl());
+        assertEquals("/open_mcp/tt-ads-mcp-flat", config.getEndpoint());
+        assertDoesNotThrow(() -> URI.create(config.getUrl()).resolve(URI.create(config.getEndpoint())));
+    }
+
+    @Test
+    void httpConfigFromMapStripsEndpointWhitespace() {
+        var config = McpServerConfig.fromMap("TikTok_Ads_MCP", Map.of(
+            "url", " https://business-api.tiktok.com",
+            "endpoint", " /open_mcp/tt-ads-mcp-flat"
+        ));
+
+        assertEquals("https://business-api.tiktok.com", config.getUrl());
+        assertEquals("/open_mcp/tt-ads-mcp-flat", config.getEndpoint());
+    }
+
+    @Test
     void metaAdsConfigPrefersJsonResponses() {
         var config = McpServerConfig.fromMap("meta-ads", Map.of(
             "url", "https://mcp.facebook.com",
