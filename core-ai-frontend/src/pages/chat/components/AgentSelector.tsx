@@ -1,5 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
-import { Bot, Check, ChevronDown, Search, Share2, Star } from 'lucide-react';
+import { Bot, Check, ChevronDown, HardDrive, Search, Share2, Star } from 'lucide-react';
 import type { AgentDefinition } from '../../../api/client';
 import { api } from '../../../api/client';
 
@@ -14,6 +14,23 @@ interface AgentSelectorProps {
   onSelectAgent: (id: string, agent?: AgentDefinition) => void;
   onToggleFavorite: (id: string) => void;
   onShare?: () => void;
+  workspace?: { id: string; name: string; runtimeStatus: string; volumeStatus: string } | null;
+}
+
+function workspaceDotColor(runtimeStatus: string, volumeStatus: string): string {
+  if (volumeStatus === 'ERROR' || runtimeStatus === 'ERROR') return '#dc2626';
+  if (runtimeStatus === 'READY') return '#16a34a';
+  if (runtimeStatus === 'PROVISIONING' || volumeStatus === 'PROVISIONING') return '#2563eb';
+  return '#94a3b8';
+}
+
+function workspaceStatusLabel(runtimeStatus: string, volumeStatus: string): string {
+  if (volumeStatus === 'ERROR') return 'volume error';
+  if (volumeStatus === 'PROVISIONING') return 'preparing volume';
+  if (runtimeStatus === 'READY') return 'runtime ready';
+  if (runtimeStatus === 'PROVISIONING') return 'waking';
+  if (runtimeStatus === 'ERROR') return 'wake error';
+  return 'sleeping';
 }
 
 function canChatWithAgent(agent: AgentDefinition): boolean {
@@ -29,6 +46,7 @@ const AgentSelector = memo(function AgentSelector({
   onSelectAgent,
   onToggleFavorite,
   onShare,
+  workspace,
 }: AgentSelectorProps) {
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -225,6 +243,16 @@ const AgentSelector = memo(function AgentSelector({
           <span className="flex-1 min-w-0 text-xs truncate" style={{ color: 'var(--color-text-secondary)' }}>
             {selectedAgent.model || 'default model'}
             {selectedAgent.description && ` · ${selectedAgent.description}`}
+          </span>
+        )}
+        {workspace && (
+          <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
+            title={`Persistent workspace "${workspace.name}" · ${workspaceStatusLabel(workspace.runtimeStatus, workspace.volumeStatus)}`}
+            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+            <HardDrive size={12} />
+            <span className="truncate max-w-[140px]">{workspace.name}</span>
+            <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+              style={{ background: workspaceDotColor(workspace.runtimeStatus, workspace.volumeStatus) }} />
           </span>
         )}
         {onShare && <button type="button" onClick={onShare} title="Share conversation"

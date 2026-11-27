@@ -79,4 +79,52 @@ describe('Workspaces settings', () => {
     expect(await screen.findByText(/not enabled on this deployment/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /refresh/i })).toBeNull();
   });
+
+  it('creates a workspace with the chosen size, profile and idle period', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([]);
+    const create = vi.spyOn(api.workspaces, 'create').mockResolvedValue(workspace({ id: 'ws-new', name: 'scratch' }));
+
+    render(<Workspaces />);
+    await userEvent.click(screen.getByRole('button', { name: 'New workspace' }));
+
+    await userEvent.type(screen.getByLabelText('Name'), 'scratch');
+    await userEvent.selectOptions(screen.getByLabelText('Volume size'), '64');
+    await userEvent.selectOptions(screen.getByLabelText('Runtime profile'), 'workspace-build');
+    await userEvent.click(screen.getByRole('button', { name: 'Create workspace' }));
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'scratch',
+      size_gb: 64,
+      profile: 'workspace-build',
+      idle_sleep_minutes: 15,
+    }));
+    expect(await screen.findByText(/scratch.+created/i)).toBeTruthy();
+  });
+
+  it('lists soft-deleted workspaces and restores them', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([
+      workspace({ id: 'ws-gone', name: 'old-project', is_default: false, deleted_at: new Date().toISOString() }),
+    ]);
+    const undelete = vi.spyOn(api.workspaces, 'undelete')
+      .mockResolvedValue(workspace({ id: 'ws-gone', name: 'old-project', is_default: false }));
+
+    render(<Workspaces />);
+
+    expect(await screen.findByText('Deleted workspaces')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(undelete).toHaveBeenCalledWith('ws-gone');
+  });
+
+  it('shows lifecycle events in the detail row', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([workspace({})]);
+    vi.spyOn(api.workspaces, 'events').mockResolvedValue([
+      { id: 'event-1', event_type: 'created', actor: 'user-1', payload: '{"sizeGb":32}', created_at: new Date().toISOString() },
+    ]);
+
+    render(<Workspaces />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Details for default' }));
+
+    expect(await screen.findByText('created')).toBeTruthy();
+    expect(screen.getByText(/sizeGb=32/)).toBeTruthy();
+  });
 });

@@ -200,10 +200,10 @@ public class AgentSessionWebServiceImpl implements AgentSessionWebService {
         ActionLogContext.put("session_id", sessionId);
 
         var meta = readableSessionMeta(sessionId, userId, true);
-
         var response = new SessionInfo();
         response.id = sessionId;
         response.agentId = meta.agentId;
+        response.workspaceId = meta.workspaceId;
         if (meta.loadedTools != null && !meta.loadedTools.isEmpty()) {
             response.loadedTools = meta.loadedTools.stream()
                     .filter(ref -> ref != null && ref.id != null && !ref.id.isBlank())

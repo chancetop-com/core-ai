@@ -28,4 +28,8 @@ public class SessionInfo {
 
     @Property(name = "dataset_config")
     public List<DatasetConfigEntry> datasetConfig;
+
+    /** durable workspace this session is bound to; null when the session runs in an ephemeral sandbox */
+    @Property(name = "workspace_id")
+    public String workspaceId;
 }

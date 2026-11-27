@@ -3060,9 +3060,11 @@ function SandboxConfigSection({ config, onChange, onEnvChange, inputStyle }: {
           <Wrench size={14} style={{ color: 'var(--color-text-secondary)' }} />
           <span>Sandbox Configuration</span>
           <span className="text-xs font-normal" style={{ color: 'var(--color-text-secondary)' }}>(optional)</span>
-          {!open && (config?.image || hasEnv) && (
+          {!open && (config?.image || hasEnv || config?.workspace_enabled !== undefined) && (
             <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               {config?.image ? 'image set' : ''}{config?.image && hasEnv ? ', ' : ''}{hasEnv ? `${envRows.filter(r => r.key.trim()).length} env vars` : ''}
+              {(config?.image || hasEnv) && config?.workspace_enabled !== undefined ? ', ' : ''}
+              {config?.workspace_enabled !== undefined ? (config.workspace_enabled ? 'persistent workspace' : 'workspace off') : ''}
             </span>
           )}
         </div>
@@ -3124,6 +3126,70 @@ function SandboxConfigSection({ config, onChange, onEnvChange, inputStyle }: {
               )}
             </div>
           </div>
+
+          {/* Persistent workspace */}
+          {(() => {
+            const mode = config?.workspace_enabled === undefined || config?.workspace_enabled === null
+              ? 'inherit'
+              : config.workspace_enabled ? 'on' : 'off';
+            const setMode = (next: string) => {
+              if (next === 'inherit') {
+                onChange('workspace_enabled', undefined);
+                onChange('workspace_size_gb', undefined);
+                onChange('workspace_profile', undefined);
+                return;
+              }
+              onChange('workspace_enabled', next === 'on');
+            };
+            return (
+              <div>
+                <label htmlFor="agent-workspace-mode" className="block text-xs font-medium mb-1" style={{ color: 'var(--color-text-secondary)' }}>
+                  Persistent workspace
+                </label>
+                <select
+                  id="agent-workspace-mode"
+                  value={mode}
+                  onChange={e => setMode(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border text-sm outline-none"
+                  style={inputStyle}>
+                  <option value="inherit">Deployment default</option>
+                  <option value="on">On — files and HOME persist across conversations</option>
+                  <option value="off">Off — ephemeral sandbox only</option>
+                </select>
+                <p className="text-xs mt-1" style={{ color: 'var(--color-text-tertiary)' }}>
+                  Size and profile apply only when the agent's default workspace is first created; later changes do not resize it.
+                </p>
+                {mode === 'on' && (
+                  <div className="mt-2 grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Volume size (GB)</label>
+                      <input
+                        type="number" min={1} max={100}
+                        value={config?.workspace_size_gb ?? ''}
+                        onChange={e => onChange('workspace_size_gb', e.target.value ? Number(e.target.value) : undefined)}
+                        placeholder="32"
+                        className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                        style={inputStyle}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--color-text-secondary)' }}>Runtime profile</label>
+                      <select
+                        value={config?.workspace_profile ?? ''}
+                        onChange={e => onChange('workspace_profile', e.target.value || undefined)}
+                        className="w-full px-2 py-1.5 rounded-lg border text-sm outline-none"
+                        style={inputStyle}>
+                        <option value="">Default</option>
+                        <option value="workspace-small">Small (2 GiB / 1 CPU)</option>
+                        <option value="workspace-default">Default (4 GiB / 2 CPU)</option>
+                        <option value="workspace-build">Build (8 GiB / 4 CPU)</option>
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Advanced */}
           <div>

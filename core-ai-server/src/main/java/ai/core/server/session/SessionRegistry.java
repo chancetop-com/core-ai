@@ -4,6 +4,7 @@ import ai.core.server.domain.AgentDatasetConfig;
 import ai.core.server.domain.ChatSession;
 import ai.core.server.domain.ToolRef;
 import ai.core.server.util.IdLists;
+import ai.core.server.workspace.WorkspacePolicy;
 import ai.core.server.workspace.WorkspaceSessionBinder;
 import core.framework.inject.Inject;
 import core.framework.web.exception.ForbiddenException;
@@ -30,6 +31,10 @@ public class SessionRegistry {
     }
 
     public ChatSession create(SessionRegistration registration) {
+        return create(registration, WorkspacePolicy.inherit());
+    }
+
+    public ChatSession create(SessionRegistration registration, WorkspacePolicy workspacePolicy) {
         var session = new ChatSession();
         session.id = registration.sessionId;
         session.userId = registration.userId;
@@ -43,7 +48,7 @@ public class SessionRegistry {
         session.loadedSkillIds = new ArrayList<>();
         session.loadedSubAgentIds = new ArrayList<>();
         session.datasetConfig = registration.datasetConfig;
-        if (workspaceSessionBinder != null) workspaceSessionBinder.bindNewSession(session);
+        if (workspaceSessionBinder != null) workspaceSessionBinder.bindNewSession(session, workspacePolicy);
         if (chatSessionStore.insertIfAbsent(session)) return session;
         var existing = chatSessionStore.get(registration.sessionId).orElse(null);
         if (sameIdentity(existing, registration)) return existing;

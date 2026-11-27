@@ -237,6 +237,7 @@ export interface LoadSubAgentsResponse {
 export interface SessionInfo {
   id: string;
   agent_id: string;
+  workspace_id?: string;
   loaded_tools?: { id: string; type?: string; source?: string }[];
   loaded_skill_ids?: string[];
   loaded_sub_agent_ids?: string[];

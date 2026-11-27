@@ -1,7 +1,11 @@
 package ai.core.server.web;
 
 import ai.core.api.server.workspace.WorkspaceCreateRequest;
+import ai.core.api.server.workspace.WorkspaceEventListRequest;
+import ai.core.api.server.workspace.WorkspaceEventListView;
+import ai.core.api.server.workspace.WorkspaceEventView;
 import ai.core.api.server.workspace.WorkspaceListView;
+import ai.core.api.server.workspace.WorkspaceListRequest;
 import ai.core.api.server.workspace.WorkspaceResetRequest;
 import ai.core.api.server.workspace.WorkspaceUpdateRequest;
 import ai.core.api.server.workspace.WorkspaceView;
@@ -9,6 +13,7 @@ import ai.core.api.server.workspace.WorkspaceWebService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.workspace.WorkspaceEventRecord;
 import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
 import ai.core.server.workspace.WorkspaceRecord;
@@ -29,16 +34,17 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     WorkspaceService workspaceService;
 
     @Override
-    public WorkspaceListView list() {
+    public WorkspaceListView list(WorkspaceListRequest request) {
+        var includeDeleted = request != null && Boolean.TRUE.equals(request.includeDeleted);
         var view = new WorkspaceListView();
-        view.items = call(() -> workspaceService.list(userId()).stream().map(this::view).toList());
+        view.items = call(() -> workspaceService.list(userId(), includeDeleted).stream().map(this::view).toList());
         return view;
     }
 
     @Override
     public WorkspaceView create(WorkspaceCreateRequest request) {
         return call(() -> view(workspaceService.create(userId(), request.name, request.agentId,
-                request.sizeGb, request.profile)));
+                request.sizeGb, request.profile, request.idleSleepMinutes)));
     }
 
     @Override
@@ -78,6 +84,14 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     }
 
     @Override
+    public WorkspaceEventListView events(String id, WorkspaceEventListRequest request) {
+        var limit = request != null && request.limit != null ? request.limit : 20;
+        var view = new WorkspaceEventListView();
+        view.items = call(() -> workspaceService.events(userId(), id, limit).stream().map(this::eventView).toList());
+        return view;
+    }
+
+    @Override
     public WorkspaceView undelete(String id) {
         return call(() -> view(workspaceService.restore(userId(), id)));
     }
@@ -92,6 +106,16 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         } catch (WorkspaceException e) {
             throw WorkspaceHttpErrors.translate(e);
         }
+    }
+
+    private WorkspaceEventView eventView(WorkspaceEventRecord record) {
+        var view = new WorkspaceEventView();
+        view.id = record.id;
+        view.eventType = record.eventType;
+        view.actor = record.actor;
+        view.payload = record.payloadJson;
+        view.createdAt = record.createdAt;
+        return view;
     }
 
     private WorkspaceView view(WorkspaceRecord record) {

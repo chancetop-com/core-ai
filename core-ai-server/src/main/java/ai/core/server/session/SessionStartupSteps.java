@@ -1,5 +1,7 @@
 package ai.core.server.session;
 
+import ai.core.server.workspace.WorkspacePolicy;
+
 import java.util.function.Supplier;
 
 /**
@@ -13,8 +15,13 @@ final class SessionStartupSteps {
 
     static <T> T registerAndRun(SessionRegistry.SessionRegistration registration, SessionRegistry registry,
                                 Runnable abort, Supplier<T> action) {
+        return registerAndRun(registration, WorkspacePolicy.inherit(), registry, abort, action);
+    }
+
+    static <T> T registerAndRun(SessionRegistry.SessionRegistration registration, WorkspacePolicy workspacePolicy,
+                                SessionRegistry registry, Runnable abort, Supplier<T> action) {
         try {
-            registry.create(registration);
+            registry.create(registration, workspacePolicy);
             return action.get();
         } catch (RuntimeException | Error e) {
             abort.run();

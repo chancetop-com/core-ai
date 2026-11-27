@@ -176,6 +176,7 @@ export default function Chat() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
   const [sharingSession, setSharingSession] = useState<{ id: string; title?: string } | null>(null);
+  const [workspaceChip, setWorkspaceChip] = useState<{ id: string; name: string; runtimeStatus: string; volumeStatus: string } | null>(null);
   const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
     if (!cachedChatUsable) return [];
@@ -528,6 +529,7 @@ export default function Chat() {
     setSelectedSkillIds(new Set());
     setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
+    setWorkspaceChip(null);
     setDraftDatasetConfigs([]);
     setNotifyOnComplete(Boolean(session.notify_on_complete));
     setShowConfigModal(false);
@@ -597,6 +599,22 @@ export default function Chat() {
       }
       setMessages(hydrated);
       setSessionArtifacts(res.artifacts || []);
+      const workspaceId = sessionInfo?.workspace_id;
+      if (!workspaceId) {
+        setWorkspaceChip(null);
+      } else {
+        api.workspaces.get(workspaceId).then(view => {
+          if (!isCurrentHydration()) return;
+          setWorkspaceChip({
+            id: view.id,
+            name: view.name,
+            runtimeStatus: view.runtime_status,
+            volumeStatus: view.volume_status,
+          });
+        }).catch(() => {
+          // workspace chip is advisory; a failed lookup never blocks the conversation
+        });
+      }
       if (sessionAgentId) {
         setSelectedAgentId(sessionAgentId);
       }
@@ -1760,6 +1778,7 @@ export default function Chat() {
     setSelectedSkillIds(new Set());
     setSelectedAgentIds(new Set());
     setLoadedNames(new Map());
+    setWorkspaceChip(null);
     setDraftDatasetConfigs([]);
     setNotifyOnComplete(false);
     setShowConfigModal(false);
@@ -2119,6 +2138,7 @@ export default function Chat() {
         favoriteAgents={favoriteAgents}
         selectedAgentId={selectedAgentId}
         selectedAgent={selectedAgent}
+        workspace={workspaceChip}
         onSelectAgent={handleSelectAgent}
         onToggleFavorite={handleToggleFavorite}
         onShare={sessionId && !comparisonContext ? () => setSharingSession({ id: sessionId }) : undefined}

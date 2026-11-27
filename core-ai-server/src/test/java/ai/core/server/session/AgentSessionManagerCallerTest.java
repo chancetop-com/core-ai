@@ -29,6 +29,7 @@ import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillService;
+import ai.core.server.workspace.WorkspacePolicy;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillProvider;
 import ai.core.tool.registry.ToolRegistryFactory;
@@ -204,7 +205,7 @@ class AgentSessionManagerCallerTest {
         assertEquals(List.of(), result.loadedSkillIds());
         assertEquals(List.of(), result.loadedSubAgentIds());
         var registration = ArgumentCaptor.forClass(SessionRegistry.SessionRegistration.class);
-        verify(harness.manager.sessionRegistry).create(registration.capture());
+        verify(harness.manager.sessionRegistry).create(registration.capture(), any(WorkspacePolicy.class));
         assertEquals(result.sessionId(), registration.getValue().sessionId());
         assertEquals("owner-user", registration.getValue().userId());
         assertEquals("agent-1", registration.getValue().agentId());
@@ -219,7 +220,7 @@ class AgentSessionManagerCallerTest {
         var sessionId = harness.manager.createSession(new SessionConfig(), "owner-user", "chat", "key-1");
 
         var registration = ArgumentCaptor.forClass(SessionRegistry.SessionRegistration.class);
-        verify(harness.manager.sessionRegistry).create(registration.capture());
+        verify(harness.manager.sessionRegistry).create(registration.capture(), any(WorkspacePolicy.class));
         assertEquals(sessionId, registration.getValue().sessionId());
         assertEquals("owner-user", registration.getValue().userId());
         assertNull(registration.getValue().agentId());
@@ -238,7 +239,7 @@ class AgentSessionManagerCallerTest {
         harness.manager.createSessionFromAgent(definition, null, "owner-user", "chat");
 
         var ordered = inOrder(harness.manager.sessionRegistry, harness.manager.chatMessageService);
-        ordered.verify(harness.manager.sessionRegistry).create(any(SessionRegistry.SessionRegistration.class));
+        ordered.verify(harness.manager.sessionRegistry).create(any(SessionRegistry.SessionRegistration.class), any(WorkspacePolicy.class));
         ordered.verify(harness.manager.chatMessageService).addLoadedSkillIds(anyString(), anyList());
     }
 
@@ -251,13 +252,13 @@ class AgentSessionManagerCallerTest {
                 () -> harness.manager.createSessionFromAgent(
                         definition(AgentStatus.DRAFT), null, "owner-user", "chat"));
 
-        verify(harness.manager.sessionRegistry, never()).create(any());
+        verify(harness.manager.sessionRegistry, never()).create(any(SessionRegistry.SessionRegistration.class), any(WorkspacePolicy.class));
     }
 
     @Test
     void registryFailureReleasesPartiallyCreatedRuntime() {
         var harness = harness();
-        when(harness.manager.sessionRegistry.create(any()))
+        when(harness.manager.sessionRegistry.create(any(SessionRegistry.SessionRegistration.class), any(WorkspacePolicy.class)))
                 .thenThrow(new IllegalStateException("mongo unavailable"));
 
         assertThrows(IllegalStateException.class,
@@ -280,7 +281,7 @@ class AgentSessionManagerCallerTest {
                 () -> harness.manager.createSessionFromAgent(definition, null, "owner-user", "chat"));
 
         assertEquals("skill is unavailable", error.getMessage());
-        verify(harness.manager.sessionRegistry, never()).create(any());
+        verify(harness.manager.sessionRegistry, never()).create(any(SessionRegistry.SessionRegistration.class), any(WorkspacePolicy.class));
     }
 
     @Test

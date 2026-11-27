@@ -5,10 +5,8 @@ import org.slf4j.LoggerFactory;
 
 import java.time.ZonedDateTime;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -29,12 +27,14 @@ public class WorkspaceService {
 
     private final WorkspaceStore workspaces;
     private final WorkspaceBindingStore bindings;
+    private final WorkspaceEventStore events;
     private final WorkspaceProvisioner provisioner;
     private final WorkspaceVolumeManager volumeManager;
     private final WorkspaceRuntimeManager runtimes;
     private final WorkspaceRuntimeLifecycle runtimeLifecycle;
     private final WorkspaceLeaseManager leases;
     private final WorkspaceAudit audit;
+    private final WorkspaceCreator creator;
     private final WorkspaceSweeper sweeper;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
@@ -45,12 +45,14 @@ public class WorkspaceService {
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
         this.workspaces = stores.workspaces();
         this.bindings = stores.bindings();
+        this.events = stores.events();
         this.provisioner = provisioner;
         this.volumeManager = new WorkspaceVolumeManager(stores.volumes(), stores.workspaces(), provisioner);
         this.runtimes = runtimes;
         this.runtimeLifecycle = new WorkspaceRuntimeLifecycle(stores.workspaces(), stores.bindings(), runtimes);
         this.leases = new WorkspaceLeaseManager(stores.leases(), config);
         this.audit = new WorkspaceAudit(stores.events());
+        this.creator = new WorkspaceCreator(stores.workspaces(), volumeManager, audit, config);
         this.sweeper = new WorkspaceSweeper(new WorkspaceSweeper.Deps(stores.workspaces(), stores.bindings(),
                 leases, volumeManager, runtimeLifecycle, audit));
         this.config = config;
@@ -58,37 +60,13 @@ public class WorkspaceService {
     }
 
     public WorkspaceRecord create(String ownerUserId, String name, String agentId, Integer sizeGb, String profileId) {
+        return create(ownerUserId, name, agentId, sizeGb, profileId, null);
+    }
+
+    public WorkspaceRecord create(String ownerUserId, String name, String agentId, Integer sizeGb, String profileId,
+                                  Integer idleSleepMinutes) {
         requireEnabled();
-        var workspaceName = name == null ? "" : name.trim();
-        if (workspaceName.isEmpty() || workspaceName.length() > 64) {
-            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
-        }
-        var size = sizeGb != null ? sizeGb : config.defaultSizeGb;
-        if (size <= 0 || size > config.maxSizeGb) {
-            throw new WorkspaceException(WorkspaceException.QUOTA_EXCEEDED, "workspace size must be between 1 and " + config.maxSizeGb + " GB");
-        }
-        WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
-        var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, agentId);
-        workspace.sizeGb = size;
-        workspace.storageClass = config.storageClass;
-        workspace.image = config.image;
-        workspace.idleSleepMinutes = config.idleSleepMinutes;
-        try {
-            workspace.profile = WorkspaceProfile.of(profileId);
-        } catch (IllegalArgumentException e) {
-            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, e.getMessage(), e);
-        }
-        if (!workspaces.insertIfAbsent(workspace)) {
-            throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + workspaceName);
-        }
-        audit.append(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "profile", workspace.profile.id));
-        try {
-            volumeManager.ensure(workspace);
-        } catch (WorkspaceProvisioningException e) {
-            // the workspace row stays: the name is reserved and the user can retry provisioning
-            LOGGER.warn("workspace volume provisioning failed, workspace={}", workspace.id, e);
-        }
-        return load(ownerUserId, workspace.id);
+        return load(ownerUserId, creator.create(ownerUserId, name, agentId, sizeGb, profileId, idleSleepMinutes).id);
     }
 
     public WorkspaceRecord get(String ownerUserId, String id) {
@@ -97,51 +75,36 @@ public class WorkspaceService {
     }
 
     public List<WorkspaceRecord> list(String ownerUserId) {
+        return list(ownerUserId, false);
+    }
+
+    public List<WorkspaceRecord> list(String ownerUserId, boolean includeDeleted) {
         requireEnabled();
-        return workspaces.listByOwner(ownerUserId);
+        return workspaces.listByOwner(ownerUserId, includeDeleted);
+    }
+
+    public List<WorkspaceEventRecord> events(String ownerUserId, String id, int limit) {
+        requireEnabled();
+        load(ownerUserId, id);
+        return events.list(id, Math.max(1, Math.min(limit, 200)));
     }
 
     public boolean enabled() {
         return config.enabled;
     }
 
-    /**
-     * Resolves the default workspace of (user, agent), creating it when absent. The name is not user
-     * input, so a conflict moves to the next candidate instead of failing the session.
-     */
-    public WorkspaceRecord resolveDefault(String ownerUserId, String agentId) {
-        requireEnabled();
-        if (agentId == null || agentId.isBlank()) {
-            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "agent id is required for a default workspace");
-        }
-        var existing = workspaces.findDefault(ownerUserId, agentId);
-        if (existing.isPresent() && !existing.get().deleted()) return existing.get();
-        var size = config.defaultSizeGb;
-        WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), size);
-        for (var name : defaultNames(agentId)) {
-            var workspace = WorkspaceRecord.create(ownerUserId, name, agentId);
-            workspace.isDefault = true;
-            workspace.sizeGb = size;
-            workspace.storageClass = config.storageClass;
-            workspace.image = config.image;
-            workspace.idleSleepMinutes = config.idleSleepMinutes;
-            if (workspaces.insertIfAbsent(workspace)) {
-                audit.append(workspace.id, "created", ownerUserId, Map.of("sizeGb", size, "default", Boolean.TRUE));
-                return load(ownerUserId, workspace.id);
-            }
-            // another request may have created the default first, or the name belongs to a detached workspace
-            var concurrent = workspaces.findDefault(ownerUserId, agentId);
-            if (concurrent.isPresent() && !concurrent.get().deleted()) return concurrent.get();
-        }
-        throw new WorkspaceException(WorkspaceException.NAME_CONFLICT,
-                "cannot allocate a default workspace name for agent: " + agentId);
+    /** false when the deployment has no sandbox runtime backend, so a workspace cannot run here */
+    public boolean runtimeAvailable() {
+        return runtimes.available();
     }
 
-    private List<String> defaultNames(String agentId) {
-        var slug = agentId.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-+|-+$)", "");
-        if (slug.length() > 24) slug = slug.substring(0, 24);
-        return List.of("default", "default-" + (slug.isEmpty() ? "agent" : slug),
-                "default-" + Long.toHexString(ThreadLocalRandom.current().nextLong()));
+    public WorkspaceRecord resolveDefault(String ownerUserId, String agentId) {
+        return resolveDefault(ownerUserId, agentId, null, null);
+    }
+
+    public WorkspaceRecord resolveDefault(String ownerUserId, String agentId, Integer sizeGb, String profileId) {
+        requireEnabled();
+        return load(ownerUserId, creator.resolveDefault(ownerUserId, agentId, sizeGb, profileId).id);
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes) {
@@ -149,10 +112,7 @@ public class WorkspaceService {
         var workspace = loadActive(ownerUserId, id);
         if (name != null) rename(ownerUserId, workspace, name);
         if (idleSleepMinutes != null) {
-            if (idleSleepMinutes < 1 || idleSleepMinutes > 1440) {
-                throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "idle sleep minutes must be between 1 and 1440");
-            }
-            workspace.idleSleepMinutes = idleSleepMinutes;
+            workspace.idleSleepMinutes = creator.validatedIdleSleep(idleSleepMinutes);
         }
         workspace.updatedAt = ZonedDateTime.now();
         workspaces.update(workspace);

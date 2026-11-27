@@ -84,7 +84,13 @@ public class PgWorkspaceStore implements WorkspaceStore {
 
     @Override
     public List<WorkspaceRecord> listByOwner(String ownerUserId) {
-        return database.select(SELECT + " WHERE owner_user_id = ? AND deleted_at IS NULL ORDER BY updated_at DESC",
+        return listByOwner(ownerUserId, false);
+    }
+
+    @Override
+    public List<WorkspaceRecord> listByOwner(String ownerUserId, boolean includeDeleted) {
+        var condition = includeDeleted ? "" : " AND deleted_at IS NULL";
+        return database.select(SELECT + " WHERE owner_user_id = ?" + condition + " ORDER BY updated_at DESC",
                 PgWorkspaceRow.class, ownerUserId).stream().map(PgWorkspaceStore::toWorkspace).toList();
     }
 

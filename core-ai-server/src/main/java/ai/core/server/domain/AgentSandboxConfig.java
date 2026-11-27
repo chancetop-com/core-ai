@@ -61,6 +61,16 @@ public class AgentSandboxConfig {
     @Field(name = "environment_variables")
     public Map<String, String> environmentVariables;
 
+    /** null follows the deployment switch; false opts this agent out of persistent workspaces */
+    @Field(name = "workspace_enabled")
+    public Boolean workspaceEnabled;
+
+    @Field(name = "workspace_size_gb")
+    public Integer workspaceSizeGb;
+
+    @Field(name = "workspace_profile")
+    public String workspaceProfile;
+
     public SandboxConfig toConfig() {
         var config = new SandboxConfig();
         applyTo(config);

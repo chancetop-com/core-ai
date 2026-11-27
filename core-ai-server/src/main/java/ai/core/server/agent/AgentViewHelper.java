@@ -222,6 +222,9 @@ final class AgentViewHelper {
         view.tmpSizeLimit = config.tmpSizeLimit;
         view.maxAsyncTasks = config.maxAsyncTasks;
         view.envVars = config.environmentVariables;
+        view.workspaceEnabled = config.workspaceEnabled;
+        view.workspaceSizeGb = config.workspaceSizeGb;
+        view.workspaceProfile = config.workspaceProfile;
         return view;
     }
 
@@ -239,6 +242,9 @@ final class AgentViewHelper {
         config.tmpSizeLimit = view.tmpSizeLimit;
         config.maxAsyncTasks = view.maxAsyncTasks;
         config.environmentVariables = view.envVars;
+        config.workspaceEnabled = view.workspaceEnabled;
+        config.workspaceSizeGb = view.workspaceSizeGb;
+        config.workspaceProfile = view.workspaceProfile;
         return config;
     }
 

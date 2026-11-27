@@ -35,6 +35,36 @@ class WorkspaceLifecycleTest {
     }
 
     @Test
+    void createAppliesIdleSleepOverride() {
+        var workspace = service.create("user-1", "scratch", null, null, null, 90);
+
+        assertEquals(90, workspace.idleSleepMinutes);
+        assertEquals(WorkspaceDefaults.SIZE_GB, workspace.sizeGb);
+    }
+
+    @Test
+    void createRejectsIdleSleepOutsideRange() {
+        assertThrows(WorkspaceException.class, () -> service.create("user-1", "scratch", null, null, null, 0));
+    }
+
+    @Test
+    void resolveDefaultAppliesAgentSizeAndProfileOnCreation() {
+        var workspace = service.resolveDefault("user-1", "agent-1", 64, "workspace-build");
+
+        assertTrue(workspace.isDefault);
+        assertEquals("agent-1", workspace.agentId);
+        assertEquals(64, workspace.sizeGb);
+        assertEquals(WorkspaceProfile.BUILD, workspace.profile);
+    }
+
+    @Test
+    void resolveDefaultFallsBackForUnknownAgentProfile() {
+        var workspace = service.resolveDefault("user-1", "agent-1", null, "no-such-profile");
+
+        assertEquals(WorkspaceProfile.DEFAULT, workspace.profile);
+    }
+
+    @Test
     void purgesDeletedWorkspaceAfterRetention() {
         var workspace = deletedWorkspace(10);
         volumes.put(volume(workspace, WorkspaceVolumeStatus.READY));
@@ -151,6 +181,11 @@ class WorkspaceLifecycleTest {
 
         @Override
         public List<WorkspaceRecord> listByOwner(String ownerUserId) {
+            return List.of();
+        }
+
+        @Override
+        public List<WorkspaceRecord> listByOwner(String ownerUserId, boolean includeDeleted) {
             return List.of();
         }
 

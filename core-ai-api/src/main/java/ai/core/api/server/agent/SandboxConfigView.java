@@ -40,4 +40,14 @@ public class SandboxConfigView {
 
     @Property(name = "env_vars")
     public Map<String, String> envVars;
+
+    /** null follows the deployment switch; false opts this agent out of persistent workspaces */
+    @Property(name = "workspace_enabled")
+    public Boolean workspaceEnabled;
+
+    @Property(name = "workspace_size_gb")
+    public Integer workspaceSizeGb;
+
+    @Property(name = "workspace_profile")
+    public String workspaceProfile;
 }

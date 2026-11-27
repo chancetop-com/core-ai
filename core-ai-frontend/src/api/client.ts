@@ -611,6 +611,9 @@ export interface SandboxConfig {
   tmp_size_limit?: string;
   max_async_tasks?: number;
   env_vars?: Record<string, string>;
+  workspace_enabled?: boolean;
+  workspace_size_gb?: number;
+  workspace_profile?: string;
 }
 
 export interface AgentQualityReceipt {
@@ -2293,10 +2296,23 @@ export interface WorkspaceView {
   updated_at: string;
 }
 
+export interface WorkspaceEventView {
+  id: string;
+  event_type: string;
+  actor?: string;
+  payload?: string;
+  created_at: string;
+}
+
 export const api = {
   workspaces: {
-    list: async () => (await request<{ items: WorkspaceView[] }>('/api/workspaces')).items,
+    list: async (includeDeleted = false) => (await request<{ items: WorkspaceView[] }>(
+      `/api/workspaces${includeDeleted ? '?include_deleted=true' : ''}`)).items,
     get: (id: string) => request<WorkspaceView>(`/api/workspaces/${id}`),
+    create: (data: { name: string; agent_id?: string; size_gb?: number; profile?: string; idle_sleep_minutes?: number }) =>
+      request<WorkspaceView>('/api/workspaces', { method: 'POST', body: JSON.stringify(data) }),
+    events: async (id: string, limit = 20) => (await request<{ items: WorkspaceEventView[] }>(
+      `/api/workspaces/${id}/events?limit=${limit}`)).items,
     update: (id: string, data: { name?: string; idle_sleep_minutes?: number }) =>
       request<WorkspaceView>(`/api/workspaces/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     wake: (id: string) =>

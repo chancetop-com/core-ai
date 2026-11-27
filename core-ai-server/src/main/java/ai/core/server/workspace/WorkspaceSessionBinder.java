@@ -21,10 +21,16 @@ public class WorkspaceSessionBinder {
     }
 
     public void bindNewSession(ChatSession session) {
+        bindNewSession(session, WorkspacePolicy.inherit());
+    }
+
+    public void bindNewSession(ChatSession session, WorkspacePolicy policy) {
         if (session == null || session.userId == null || session.agentId == null || session.agentId.isBlank()) return;
-        if (!workspaces.enabled()) return;
+        if (!workspaces.enabled() || !workspaces.runtimeAvailable()) return;
+        if (policy != null && Boolean.FALSE.equals(policy.enabled())) return;
         try {
-            var workspace = workspaces.resolveDefault(session.userId, session.agentId);
+            var workspace = workspaces.resolveDefault(session.userId, session.agentId,
+                    policy == null ? null : policy.sizeGb(), policy == null ? null : policy.profile());
             session.workspaceId = workspace.id;
             session.workspaceGeneration = workspace.activeVolumeGeneration;
         } catch (RuntimeException e) {

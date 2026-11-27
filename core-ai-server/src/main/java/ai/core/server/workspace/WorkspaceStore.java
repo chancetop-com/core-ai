@@ -16,6 +16,9 @@ public interface WorkspaceStore {
 
     List<WorkspaceRecord> listByOwner(String ownerUserId);
 
+    /** deleted workspaces stay restorable for a grace window, so the settings page can list them */
+    List<WorkspaceRecord> listByOwner(String ownerUserId, boolean includeDeleted);
+
     /** active workspaces across all owners, for the reconciler / quota repair */
     List<WorkspaceRecord> listActive();
 

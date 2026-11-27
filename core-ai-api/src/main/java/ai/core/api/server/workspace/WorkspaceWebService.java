@@ -13,7 +13,7 @@ import core.framework.api.web.service.PathParam;
 public interface WorkspaceWebService {
     @GET
     @Path("/api/workspaces")
-    WorkspaceListView list();
+    WorkspaceListView list(WorkspaceListRequest request);
 
     @POST
     @Path("/api/workspaces")
@@ -42,6 +42,10 @@ public interface WorkspaceWebService {
     @POST
     @Path("/api/workspaces/:id/reset")
     WorkspaceView reset(@PathParam("id") String id, WorkspaceResetRequest request);
+
+    @GET
+    @Path("/api/workspaces/:id/events")
+    WorkspaceEventListView events(@PathParam("id") String id, WorkspaceEventListRequest request);
 
     @POST
     @Path("/api/workspaces/:id/undelete")

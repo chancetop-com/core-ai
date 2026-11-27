@@ -31,6 +31,7 @@ import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.server.util.IdLists;
+import ai.core.server.workspace.WorkspacePolicy;
 import ai.core.server.channel.ChannelRegistry;
 import ai.core.server.web.sse.SessionChannelService;
 import ai.core.server.memory.AgentMemoryService;
@@ -209,8 +210,8 @@ public class AgentSessionManager {
         var registration = new SessionRegistry.SessionRegistration(
                 sessionId, userId, executableDefinition.id, source, null, apiKeyId, datasetConfig);
         claimForStartup(sessionId, userId);
-        var buildResult = SessionStartupSteps.registerAndRun(registration, sessionRegistry, () -> abortStartup(sessionId, userId),
-                () -> buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig));
+        var buildResult = SessionStartupSteps.registerAndRun(registration, WorkspacePolicy.of(executableDefinition.sandboxConfig, sandboxService),
+                sessionRegistry, () -> abortStartup(sessionId, userId), () -> buildAgentForDefinition(executableDefinition, sessionId, userId, config, datasetConfig));
         var agent = buildResult.agent;
         var session = new InProcessAgentSession(sessionId, agent, true, new InMemoryToolPermissionStore());
         buildResult.sessionRef[0] = session;
