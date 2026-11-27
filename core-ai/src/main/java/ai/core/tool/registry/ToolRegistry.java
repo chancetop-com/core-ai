@@ -130,7 +130,7 @@ public class ToolRegistry {
         }
     }
 
-    private static boolean isMcpProvider(ToolProvider provider) {
+    private boolean isMcpProvider(ToolProvider provider) {
         return provider instanceof ai.core.tool.mcp.McpToolProvider;
     }
 

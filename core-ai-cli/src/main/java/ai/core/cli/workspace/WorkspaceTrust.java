@@ -17,6 +17,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Workspace trust for the app-server engine.
@@ -51,7 +52,7 @@ public final class WorkspaceTrust {
             "MCP.json",
             "mcp.json"
     );
-    private static final List<String> DESKTOP_SKIPPED_FILES = List.of(
+    private static final Set<String> DESKTOP_SKIPPED_FILES = Set.of(
             ".core-ai/MCP.json",
             ".core-ai/mcp.json",
             "MCP.json",
@@ -61,11 +62,6 @@ public final class WorkspaceTrust {
             ".core-ai/plugins",
             ".core-ai/skills"
     );
-
-    public enum Mode {
-        CLI,
-        DESKTOP_MCP
-    }
 
     public static Evaluation evaluate(Path workspace) {
         return evaluate(workspace, Mode.CLI);
@@ -234,18 +230,23 @@ public final class WorkspaceTrust {
                 record.put("trustedAt", Instant.now().toString());
                 workspaces.put(key, record);
                 root.put("workspaces", workspaces);
-                Files.createDirectories(trustFile.getParent());
+                var parent = trustFile.toAbsolutePath().getParent();
+                if (parent != null) Files.createDirectories(parent);
                 var temp = trustFile.resolveSibling(TRUST_FILE_NAME + ".tmp-" + ProcessHandle.current().pid());
                 Files.writeString(temp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n",
                         StandardCharsets.UTF_8);
-                try {
-                    Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                } catch (IOException e) {
-                    Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING);
-                }
+                moveIntoPlace(temp, trustFile);
             } catch (IOException | RuntimeException e) {
                 LOGGER.warn("failed to persist the migrated workspace trust record: {}", e.getMessage());
             }
+        }
+    }
+
+    private static void moveIntoPlace(Path temp, Path trustFile) throws IOException {
+        try {
+            Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -259,6 +260,11 @@ public final class WorkspaceTrust {
     }
 
     private WorkspaceTrust() {
+    }
+
+    public enum Mode {
+        CLI,
+        DESKTOP_MCP
     }
 
     public enum State {

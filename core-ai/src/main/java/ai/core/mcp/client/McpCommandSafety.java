@@ -16,26 +16,6 @@ public final class McpCommandSafety {
     private static final boolean WINDOWS = System.getProperty("os.name", "")
             .toLowerCase(Locale.ROOT).contains("win");
 
-    /** Command or argument text that must not reach the Windows command wrapper. */
-    public static final class UnsafeCommandException extends IllegalArgumentException {
-        @java.io.Serial
-        private static final long serialVersionUID = 1L;
-
-        public UnsafeCommandException(String message) {
-            super(message);
-        }
-    }
-
-    /** A header name or value containing a line break. */
-    public static final class UnsafeHeaderException extends IllegalArgumentException {
-        @java.io.Serial
-        private static final long serialVersionUID = 1L;
-
-        public UnsafeHeaderException(String message) {
-            super(message);
-        }
-    }
-
     public static void validate(String serverName, Map<String, Object> config) {
         var command = config.get("command");
         if (command instanceof String text) {
@@ -78,5 +58,25 @@ public final class McpCommandSafety {
     }
 
     private McpCommandSafety() {
+    }
+
+    /** Command or argument text that must not reach the Windows command wrapper. */
+    public static final class UnsafeCommandException extends IllegalArgumentException {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+
+        public UnsafeCommandException(String message) {
+            super(message);
+        }
+    }
+
+    /** A header name or value containing a line break. */
+    public static final class UnsafeHeaderException extends IllegalArgumentException {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+
+        public UnsafeHeaderException(String message) {
+            super(message);
+        }
     }
 }

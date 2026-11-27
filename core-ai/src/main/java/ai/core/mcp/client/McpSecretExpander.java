@@ -18,27 +18,6 @@ import java.util.regex.Pattern;
 public final class McpSecretExpander {
     public static final Pattern REFERENCE = Pattern.compile("\\$\\{env:([A-Za-z_][A-Za-z0-9_]*)}");
 
-    public static final class MissingSecretException extends RuntimeException {
-        @java.io.Serial
-        private static final long serialVersionUID = 1L;
-        private final String serverName;
-        private final String secretName;
-
-        MissingSecretException(String serverName, String secretName) {
-            super("MCP server '" + serverName + "' references undefined secret " + secretName);
-            this.serverName = serverName;
-            this.secretName = secretName;
-        }
-
-        public String serverName() {
-            return serverName;
-        }
-
-        public String secretName() {
-            return secretName;
-        }
-    }
-
     public static Map<String, Object> expand(String serverName, Map<String, Object> config, Map<String, String> secrets) {
         var resolvedSecrets = secrets == null ? Map.<String, String>of() : secrets;
         var copy = new LinkedHashMap<>(config);
@@ -106,5 +85,26 @@ public final class McpSecretExpander {
     }
 
     private McpSecretExpander() {
+    }
+
+    public static final class MissingSecretException extends RuntimeException {
+        @java.io.Serial
+        private static final long serialVersionUID = 1L;
+        private final String serverName;
+        private final String secretName;
+
+        MissingSecretException(String serverName, String secretName) {
+            super("MCP server '" + serverName + "' references undefined secret " + secretName);
+            this.serverName = serverName;
+            this.secretName = secretName;
+        }
+
+        public String serverName() {
+            return serverName;
+        }
+
+        public String secretName() {
+            return secretName;
+        }
     }
 }

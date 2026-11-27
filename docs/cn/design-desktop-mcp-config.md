@@ -1600,6 +1600,7 @@ interface McpError {
 | cli | `appserver/EngineBootstrap.java` | `desktopMcp` 标记、Desktop 模式跳过 workspace `MCP.json`、从 bootstrap 结果剥离 `mcp.servers.json` |
 | cli | `appserver/McpApi.java` | `mcp/config`、`mcp/secrets`、`mcp/finalize`、`mcp/status`、`mcp/probe/start|cancel|result`；异步 finalize watchdog（quiet 10s / boot 30s）；一次性 probe service + 90s 超时；只对已保存且启用的 server 探活；`status.rejected` 上报被拒 server |
 | cli | `appserver/AppServerEngine.java`、`AppServerCommand.java`、`EngineScheduler.java`、`CliAppHelper.java`、`agent/CliAgent.java` | `--desktop-mcp` 选项、`mcp_management_v1` capability、`mcpApi`、幂等 `start()`、Desktop 模式不注册 `add_mcp_server` |
+| cli | `CliWorkspaceConfig.java` | workspace 级配置合并从 `CliAppHelper` 抽出（`includeWorkspaceMcp=false` 时不读 `MCP.json`）；`CliAppHelper` 保持薄委托，控制在 450 行内 |
 | desktop | `main/mcp/mcpStore.ts` | 按 workspace 的加密 store（`userData/mcp/workspaces|secrets/<sha256>.json` + `index.json`）、原子写、事务回滚快照、`safeStorage` |
 | desktop | `main/mcp/mcpService.ts` | list/save/setEnabled/remove/status/test/import；quiesce + 仅重启当前 workspace（5s × 24 重试）；engine ready 后 `syncWorkspace` |
 | desktop | `main/mcp/mcpImport.ts` | 一次性导入预览（全局 `agent.properties`、workspace `agent.properties`、workspace `MCP.json`），copy/skip/rename 三种冲突策略 |
@@ -1627,7 +1628,9 @@ interface McpError {
 | Engine E2E（`tmp/mcp-e2e/driver.js`，`--desktop-mcp`） | PASS：`mcp_management_v1` 存在；`add_mcp_server` 不注册；trust key `<ws>#desktop-mcp`；`status.rejected.broken` 隔离生效；`fake` CONNECTED 且 `echo` 出现于 `tools/list`；probe ok |
 | Engine E2E（`tmp/mcp-e2e/driver-cli.js`，无 `--desktop-mcp`） | PASS：文件型 MCP（全局 `agent.properties`）仍加载 `echo_plain`；`add_mcp_server` 仍注册；无 `mcp_management_v1` |
 | Desktop E2E（`tmp/mcp-desktop-e2e/main.js`，Electron 主进程） | PASS：capability 探测、保存、状态 CONNECTED、probe、禁用/启用/删除、跨 workspace 隔离、导入 copy/skip/rename 且 CLI 文件不变 |
-| `core-ai-desktop` `tsc --noEmit` | 通过 |
+| `core-ai-desktop` `tsc --noEmit` / `npm test` | 通过；326 项测试 325 通过、1 跳过 |
+| `WorkspaceTrustTest`（新增 3 项） | 通过：Desktop 模式忽略 CLI MCP 文件但 CLI 模式仍受其约束；旧 CLI 记录按旧指纹一次性迁移到 `#desktop-mcp`；迁移后再次评估不再报迁移原因 |
+| `:core-ai-cli:releaseCheck` | BUILD SUCCESSFUL（checkstyle main/test、pmd main/test、spotbugs main/test、test） |
 
 ### 14.4 剩余缺口与已知偏离（发布前）
 

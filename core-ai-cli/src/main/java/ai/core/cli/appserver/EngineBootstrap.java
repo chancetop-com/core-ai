@@ -80,6 +80,14 @@ public class EngineBootstrap {
         return evaluation;
     }
 
+    private static SessionLock acquireEngineLock(Path sessionsDir) {
+        var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
+        if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
+            throw new EngineAlreadyRunningException(busy.holder());
+        }
+        return ((SessionLock.AcquireResult.Acquired) acquire).lock();
+    }
+
     public final Path workspace;
     public final Path sessionsDir;
     public final SessionLock engineLock;
@@ -129,11 +137,7 @@ public class EngineBootstrap {
         this.workspaceTrust = evaluateTrust(this.workspace, desktopMcp);
         this.workspaceTrusted = workspaceTrust.trusted();
         this.sessionsDir = prepareSessionsDir(this.workspace);
-        var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
-        if (acquire instanceof SessionLock.AcquireResult.Busy busy) {
-            throw new EngineAlreadyRunningException(busy.holder());
-        }
-        this.engineLock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
+        this.engineLock = acquireEngineLock(this.sessionsDir);
         CliLogger.initialize(this.workspace, "app-server");
         this.props = loadProperties(configFile, !workspaceTrusted, desktopMcp);
         var bootstrap = new AgentBootstrap(props);

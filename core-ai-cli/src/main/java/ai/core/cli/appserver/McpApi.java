@@ -48,6 +48,38 @@ final class McpApi {
     private static final long QUIET_FINALIZE_NANOS = TimeUnit.SECONDS.toNanos(10);
     private static final long BOOT_FINALIZE_NANOS = TimeUnit.SECONDS.toNanos(30);
 
+    private static void closeQuietly(McpClientService service) {
+        if (service == null) return;
+        try {
+            service.close();
+        } catch (RuntimeException e) {
+            LOGGER.debug("failed to close an MCP probe client: {}", e.getMessage());
+        }
+    }
+
+    private static String configSignature(Map<String, Map<String, Object>> servers) {
+        var ordered = new TreeMap<String, String>();
+        servers.forEach((name, config) -> ordered.put(name, JsonUtil.toJson(new TreeMap<>(config))));
+        return ordered.toString();
+    }
+
+    private static String secretSignature(Map<String, Map<String, String>> secrets) {
+        var ordered = new TreeMap<String, String>();
+        for (var entry : secrets.entrySet()) {
+            ordered.put(entry.getKey(), new TreeMap<>(entry.getValue()).toString());
+        }
+        return ordered.toString();
+    }
+
+    private static String digest(String value) {
+        try {
+            var digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 is unavailable", e);
+        }
+    }
+
     private final EngineBootstrap bootstrap;
     private final Supplier<NotificationSink> sinkSupplier;
     private final Runnable startScheduler;
@@ -91,7 +123,7 @@ final class McpApi {
         return Map.of(
                 "mcp/config", this::config,
                 "mcp/secrets", this::secrets,
-                "mcp/finalize", this::finalizeConfig,
+                "mcp/finalize", params -> finalizeConfig(),
                 "mcp/status", params -> status(),
                 "mcp/probe/start", this::probeStart,
                 "mcp/probe/cancel", this::probeCancel);
@@ -125,27 +157,7 @@ final class McpApi {
         }
         var raws = new LinkedHashMap<String, Map<String, Object>>();
         var rejected = new LinkedHashMap<String, String>();
-        for (var node : serversNode) {
-            var name = node.path("name").asText("").strip();
-            if (!SERVER_NAME.matcher(name).matches()) {
-                rejected.put(name.isEmpty() ? "(unnamed)" : name, "invalid MCP server name");
-                continue;
-            }
-            var configNode = node.get("config");
-            if (configNode == null || !configNode.isObject()) {
-                rejected.put(name, "no config object");
-                continue;
-            }
-            @SuppressWarnings("unchecked")
-            var raw = (Map<String, Object>) JsonUtil.fromJson(Map.class, configNode.toString());
-            try {
-                validateDefinition(name, raw);
-            } catch (RpcException e) {
-                rejected.put(name, e.getMessage());
-                continue;
-            }
-            raws.put(name, raw);
-        }
+        collectServers(serversNode, raws, rejected);
         var signature = digest(configSignature(raws));
         if (configLoaded.get()) {
             if (!signature.equals(configSignature)) {
@@ -169,6 +181,31 @@ final class McpApi {
         return status();
     }
 
+    private void collectServers(JsonNode serversNode, Map<String, Map<String, Object>> raws,
+                                Map<String, String> rejected) {
+        for (var node : serversNode) {
+            var name = node.path("name").asText("").strip();
+            if (!SERVER_NAME.matcher(name).matches()) {
+                rejected.put(name.isEmpty() ? "(unnamed)" : name, "invalid MCP server name");
+                continue;
+            }
+            var configNode = node.get("config");
+            if (configNode == null || !configNode.isObject()) {
+                rejected.put(name, "no config object");
+                continue;
+            }
+            @SuppressWarnings("unchecked")
+            var raw = (Map<String, Object>) JsonUtil.fromJson(Map.class, configNode.toString());
+            try {
+                validateDefinition(name, raw);
+            } catch (RpcException e) {
+                rejected.put(name, e.getMessage());
+                continue;
+            }
+            raws.put(name, raw);
+        }
+    }
+
     private void validateDefinition(String name, Map<String, Object> raw) {
         try {
             var expanded = McpSecretExpander.expand(name, raw, Map.of());
@@ -178,12 +215,12 @@ final class McpApi {
             // Placeholders are legal here; mcp/secrets resolves them and re-runs the safety checks.
             validateStructure(name, raw);
         } catch (McpCommandSafety.UnsafeHeaderException e) {
-            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage());
+            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage(), e);
         } catch (McpCommandSafety.UnsafeCommandException e) {
-            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage());
+            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage(), e);
         } catch (RuntimeException e) {
             throw RpcException.business("MCP_CONFIG_INVALID",
-                    "invalid MCP server '" + name + "': " + e.getMessage());
+                    "invalid MCP server '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -191,12 +228,12 @@ final class McpApi {
         try {
             McpServerConfig.fromMap(name, raw);
         } catch (McpCommandSafety.UnsafeHeaderException e) {
-            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage());
+            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage(), e);
         } catch (McpCommandSafety.UnsafeCommandException e) {
-            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage());
+            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage(), e);
         } catch (RuntimeException e) {
             throw RpcException.business("MCP_CONFIG_INVALID",
-                    "invalid MCP server '" + name + "': " + e.getMessage());
+                    "invalid MCP server '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -266,10 +303,8 @@ final class McpApi {
             McpServerConfig config;
             try {
                 config = McpServerConfig.fromMap(serverName, entry.getValue(), secrets);
-            } catch (McpSecretExpander.MissingSecretException e) {
-                rejectedServers.put(serverName, e.getMessage());
-                continue;
-            } catch (McpCommandSafety.UnsafeHeaderException | McpCommandSafety.UnsafeCommandException e) {
+            } catch (McpSecretExpander.MissingSecretException | McpCommandSafety.UnsafeHeaderException
+                     | McpCommandSafety.UnsafeCommandException e) {
                 rejectedServers.put(serverName, e.getMessage());
                 continue;
             } catch (RuntimeException e) {
@@ -281,7 +316,7 @@ final class McpApi {
         }
     }
 
-    private JsonNode finalizeConfig(ObjectNode params) {
+    private JsonNode finalizeConfig() {
         noteRpc();
         finalizeNow();
         return status();
@@ -352,11 +387,9 @@ final class McpApi {
 
     private void runProbe(String probeId, String name, McpServerConfig config) {
         var started = System.currentTimeMillis();
-        McpClientService service = null;
         var result = Params.object();
         result.put("probeId", probeId);
-        try {
-            service = new McpClientService(config.copyForProbe());
+        try (var service = new McpClientService(config.copyForProbe())) {
             probes.put(probeId, service);
             var tools = service.listTools();
             if (probeCancelled.containsKey(probeId)) return;
@@ -373,7 +406,6 @@ final class McpApi {
             result.put("error", "MCP probe failed: " + e.getMessage());
         } finally {
             probes.remove(probeId);
-            closeQuietly(service);
             probeCancelled.remove(probeId);
             result.put("server", name);
             result.put("elapsedMs", System.currentTimeMillis() - started);
@@ -392,43 +424,11 @@ final class McpApi {
         return node;
     }
 
-    private static void closeQuietly(McpClientService service) {
-        if (service == null) return;
-        try {
-            service.close();
-        } catch (RuntimeException e) {
-            LOGGER.debug("failed to close an MCP probe client: {}", e.getMessage());
-        }
-    }
-
     private void requireTrusted() {
         if (bootstrap.workspaceTrusted) return;
         throw RpcException.business("MCP_RESTRICTED",
                 "this workspace is not trusted; MCP servers cannot be loaded",
                 "key", bootstrap.workspaceTrust.key());
-    }
-
-    private static String configSignature(Map<String, Map<String, Object>> servers) {
-        var ordered = new TreeMap<String, String>();
-        servers.forEach((name, config) -> ordered.put(name, JsonUtil.toJson(new TreeMap<>(config))));
-        return ordered.toString();
-    }
-
-    private static String secretSignature(Map<String, Map<String, String>> secrets) {
-        var ordered = new TreeMap<String, String>();
-        for (var entry : secrets.entrySet()) {
-            ordered.put(entry.getKey(), new TreeMap<>(entry.getValue()).toString());
-        }
-        return ordered.toString();
-    }
-
-    private static String digest(String value) {
-        try {
-            var digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("SHA-256 is unavailable", e);
-        }
     }
 
     void close() {

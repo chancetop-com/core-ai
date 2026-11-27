@@ -241,7 +241,8 @@ public class AgentBootstrap {
     }
 
     @SuppressWarnings("unchecked")
-    private void configureMcpClient(BootstrapResult result) {        props.property("mcp.servers.json").ifPresent(json -> {
+    private void configureMcpClient(BootstrapResult result) {
+        props.property("mcp.servers.json").ifPresent(json -> {
             try {
                 var mcpServersConfig = (Map<String, Object>) JsonUtil.fromJson(Map.class, json);
                 var manager = McpClientManager.fromConfig(mcpServersConfig);

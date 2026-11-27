@@ -47,7 +47,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Properties;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -138,29 +137,8 @@ public class CliAppHelper {
         mergeWorkspaceConfig(global, workspace, true);
     }
 
-    /**
-     * @param includeWorkspaceMcp false in desktop-managed MCP mode: the desktop store is the only
-     *                            MCP source, so the workspace {@code MCP.json} must not be loaded.
-     */
     public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace, boolean includeWorkspaceMcp) {
-        Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
-        if (Files.exists(localConfig)) {
-            try (var is = Files.newInputStream(localConfig)) {
-                var localProps = new Properties();
-                localProps.load(is);
-                localProps.forEach((k, v) -> global.putProperty((String) k, (String) v));
-            } catch (IOException e) {
-                throw new UncheckedIOException("Failed to load workspace-local config: " + localConfig, e);
-            }
-        }
-
-        if (!includeWorkspaceMcp) {
-            global.removeProperty("mcp.servers.json");
-            return;
-        }
-        // Merge workspace MCP.json into mcp.servers.json so both
-        // STDIO and HTTP MCP servers are auto-loaded on startup.
-        CliMcpConfig.mergeWorkspaceMcpConfig(global, workspace);
+        CliWorkspaceConfig.merge(global, workspace, includeWorkspaceMcp);
     }
 
     /**
