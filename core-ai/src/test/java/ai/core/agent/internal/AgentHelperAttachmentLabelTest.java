@@ -92,6 +92,23 @@ class AgentHelperAttachmentLabelTest {
         assertTrue(content.get(3).text.startsWith("[Video attachment: demo.mp4]"));
     }
 
+    @Test
+    void contextFreeListOverloadLabelsMultipleImagesInOrder() {
+        var attachments = List.of(
+                image("menu.png"),
+                image("receipt.jpg"));
+
+        var content = AgentHelper.buildUserMessage("compare them", attachments).content;
+
+        assertEquals(List.of(
+                Content.ContentType.TEXT,
+                Content.ContentType.TEXT, Content.ContentType.IMAGE_URL,
+                Content.ContentType.TEXT, Content.ContentType.IMAGE_URL), types(content));
+        assertEquals("compare them", content.get(0).text);
+        assertEquals("[Image 1: menu.png]", content.get(1).text);
+        assertEquals("[Image 2: receipt.jpg]", content.get(3).text);
+    }
+
     private ExecutionContext context(AttachedContent... attachments) {
         var context = ExecutionContext.builder().sessionId("test").build();
         context.setAttachedContents(List.of(attachments));

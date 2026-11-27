@@ -30,6 +30,7 @@ import org.slf4j.LoggerFactory;
 import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -207,11 +208,19 @@ public class AgentHelper {
     }
 
     public static Message buildUserMessage(String query, ExecutionContext context) {
-        var attachedContents = context.getAttachedContents();
+        var attachedContents = context == null ? null : context.getAttachedContents();
+        return buildUserMessage(query, attachedContents, context);
+    }
+
+    public static Message buildUserMessage(String query, List<AttachedContent> attachedContents) {
+        return buildUserMessage(query, attachedContents, null);
+    }
+
+    private static Message buildUserMessage(String query, List<AttachedContent> attachedContents, ExecutionContext context) {
         if (attachedContents == null || attachedContents.isEmpty()) {
             return Message.of(RoleType.USER, query, buildRequestName(false), null, null);
         }
-        var contents = new java.util.ArrayList<Content>(attachedContents.size() * 2 + 1);
+        var contents = new ArrayList<Content>(attachedContents.size() * 2 + 1);
         contents.add(Content.of(withoutDuplicateAttachmentUrls(query, attachedContents)));
         var imageOrdinal = 0;
         var fileOrdinal = 0;

@@ -104,15 +104,27 @@ public class LLMCallExecutor {
         if (attachments == null || attachments.isEmpty()) {
             return Message.of(RoleType.USER, input);
         }
-        var attachment = attachments.getFirst();
-        var type = AttachedContent.AttachedContentType.valueOf(attachment.type.name());
-        AttachedContent attachedContent;
-        if (attachment.data != null) {
-            attachedContent = AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
-        } else {
-            attachedContent = AttachedContent.ofUrl(attachment.url, type);
+        var attachedContents = attachments.stream().map(this::toAttachedContent).toList();
+        return AgentHelper.buildUserMessage(input, attachedContents);
+    }
+
+    private AttachedContent toAttachedContent(LLMCallRequest.Attachment attachment) {
+        if (attachment == null || attachment.type == null) {
+            throw new IllegalArgumentException("attachment type is required");
         }
-        return AgentHelper.buildUserMessage(input, attachedContent);
+        return switch (attachment.type) {
+            case IMAGE -> toAttachedContent(attachment, AttachedContent.AttachedContentType.IMAGE);
+            case PDF -> toAttachedContent(attachment, AttachedContent.AttachedContentType.PDF);
+            case VIDEO -> throw new IllegalArgumentException("video attachments are not supported by LLM call");
+            case FILE -> throw new IllegalArgumentException("file attachments are not supported by LLM call");
+        };
+    }
+
+    private AttachedContent toAttachedContent(LLMCallRequest.Attachment attachment, AttachedContent.AttachedContentType type) {
+        if (attachment.data != null) {
+            return AttachedContent.ofBase64(attachment.data, attachment.mediaType, type);
+        }
+        return AttachedContent.ofUrl(attachment.url, type);
     }
 
     private String resolveSystemPrompt(AgentPublishedConfig config, AgentDefinition definition) {
