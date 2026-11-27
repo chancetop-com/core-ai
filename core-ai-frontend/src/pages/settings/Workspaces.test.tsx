@@ -201,4 +201,28 @@ describe('Workspaces settings', () => {
     expect(await screen.findByText('No sample yet.')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
   });
+
+  it('links each workspace name to its detail page and renders bootstrap and env fields in expanded row', async () => {
+    vi.spyOn(api.workspaces, 'list').mockResolvedValue([
+      workspace({
+        id: 'ws-42',
+        name: 'ml-box',
+        env_file_present: true,
+        bootstrap_completed_at: new Date(Date.now() - 10 * 60_000).toISOString(),
+        last_woken_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+        last_slept_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+        last_bootstrap_log: '[/workspace/.core-ai/logs/bootstrap-1.log]\nboot ok',
+      }),
+    ]);
+    vi.spyOn(api.workspaces, 'events').mockResolvedValue([]);
+    vi.spyOn(api.workspaces, 'getUsage').mockRejectedValue(Object.assign(new Error('not found'), { status: 404 }));
+
+    render(<Workspaces />);
+    const link = await screen.findByRole('link', { name: 'ml-box' });
+    expect(link.getAttribute('href')).toBe('/settings/workspaces/ws-42');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Details for ml-box' }));
+    expect(await screen.findByText('present')).toBeTruthy();
+    expect(screen.getByText(/boot ok/)).toBeTruthy();
+  });
 });

@@ -1,9 +1,23 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, HardDrive, Moon, Play, Plus, RefreshCw, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
+import { Link, useInRouterContext } from 'react-router-dom';
+import { AlertTriangle, ChevronDown, ChevronRight, ExternalLink, HardDrive, Moon, Play, Plus, RefreshCw, RotateCcw, Trash2, Undo2, X } from 'lucide-react';
 import { api, type WorkspaceEventView, type WorkspaceUsageView, type WorkspaceView } from '../../api/client';
+import {
+  errorMessage,
+  formatBytes,
+  isNotFound,
+  payloadSummary,
+  PURGE_AFTER_DAYS,
+  purgeDaysLeft,
+  relativeTime,
+  TONE_STYLES,
+  truncateLog,
+  usageSummary,
+  workspaceDisabled,
+  workspaceStatus,
+} from './workspaceHelpers';
 
-type Tone = 'ok' | 'info' | 'warn' | 'error' | 'muted';
 type DialogKind = 'reset' | 'delete';
 type UsageState =
   | { status: 'loading' }
@@ -16,11 +30,6 @@ interface PendingAction {
   workspace: WorkspaceView;
 }
 
-const MIB = 1024 ** 2;
-const GIB = 1024 ** 3;
-const USAGE_WARN_RATIO = 0.9;
-const USAGE_CRITICAL_RATIO = 0.95;
-
 const IDLE_OPTIONS = [5, 15, 30, 60, 120];
 const SIZE_OPTIONS = [8, 16, 32, 64, 96];
 const PROFILE_OPTIONS = [
@@ -28,98 +37,8 @@ const PROFILE_OPTIONS = [
   { id: 'workspace-default', label: 'Default (4 GiB / 2 CPU)' },
   { id: 'workspace-build', label: 'Build (8 GiB / 4 CPU)' },
 ];
-const PURGE_AFTER_DAYS = 7;
 const MAX_WORKSPACES_PER_USER = 3;
 const MAX_TOTAL_GB_PER_USER = 96;
-
-const TONE_STYLES: Record<Tone, { bg: string; text: string }> = {
-  ok: { bg: '#dcfce7', text: '#16a34a' },
-  info: { bg: '#dbeafe', text: '#2563eb' },
-  warn: { bg: '#fef3c7', text: '#b45309' },
-  error: { bg: '#fee2e2', text: '#dc2626' },
-  muted: { bg: '#f1f5f9', text: '#64748b' },
-};
-
-function workspaceStatus(workspace: WorkspaceView): { label: string; tone: Tone } {
-  if (workspace.volume_status === 'ERROR') return { label: 'Volume error', tone: 'error' };
-  if (workspace.volume_status === 'PROVISIONING') return { label: 'Preparing', tone: 'warn' };
-  if (workspace.runtime_status === 'READY') return { label: 'Running', tone: 'ok' };
-  if (workspace.runtime_status === 'PROVISIONING') return { label: 'Waking', tone: 'info' };
-  if (workspace.runtime_status === 'ERROR') return { label: 'Wake error', tone: 'error' };
-  return { label: 'Sleeping', tone: 'muted' };
-}
-
-function relativeTime(iso?: string): string {
-  if (!iso) return 'never';
-  const diff = Date.now() - new Date(iso).getTime();
-  if (!Number.isFinite(diff) || diff < 0) return 'just now';
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return 'just now';
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-function purgeDaysLeft(deletedAt: string): number {
-  const elapsed = (Date.now() - new Date(deletedAt).getTime()) / 86_400_000;
-  return Math.max(0, Math.ceil(PURGE_AFTER_DAYS - elapsed));
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : 'Workspace request failed.';
-}
-
-function workspaceDisabled(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { errorCode?: string }).errorCode === 'WORKSPACE_UNSUPPORTED';
-}
-
-function isNotFound(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null) return false;
-  const candidate = err as { status?: number; errorCode?: string };
-  return candidate.status === 404 || candidate.errorCode === 'WORKSPACE_NOT_FOUND';
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= GIB) {
-    const gib = bytes / GIB;
-    return `${gib >= 100 ? gib.toFixed(0) : gib.toFixed(1)} GiB`;
-  }
-  if (bytes >= MIB) {
-    const mib = bytes / MIB;
-    return `${mib >= 100 ? mib.toFixed(0) : mib.toFixed(1)} MiB`;
-  }
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-  return `${bytes} B`;
-}
-
-function usageSummary(usedBytes?: number, capacityBytes?: number): {
-  label: string;
-  percent: number;
-  warning: boolean;
-  critical: boolean;
-} | null {
-  if (usedBytes == null || capacityBytes == null || capacityBytes <= 0) return null;
-  const ratio = usedBytes / capacityBytes;
-  return {
-    label: `${formatBytes(usedBytes)} / ${formatBytes(capacityBytes)}`,
-    percent: Math.round(ratio * 100),
-    warning: ratio >= USAGE_WARN_RATIO,
-    critical: ratio >= USAGE_CRITICAL_RATIO,
-  };
-}
-
-function payloadSummary(payload?: string): string {
-  if (!payload) return '';
-  try {
-    const value = JSON.parse(payload) as Record<string, unknown>;
-    return Object.entries(value).map(([key, entry]) => `${key}=${String(entry)}`).join(' · ');
-  } catch {
-    return payload;
-  }
-}
 
 function CreateWorkspaceForm({ onCreated, onCancel }: { onCreated: (workspace: WorkspaceView) => void; onCancel: () => void }) {
   const [name, setName] = useState('');
@@ -262,6 +181,7 @@ function CreateWorkspaceForm({ onCreated, onCancel }: { onCreated: (workspace: W
 }
 
 export default function Workspaces() {
+  const inRouter = useInRouterContext();
   const [workspaces, setWorkspaces] = useState<WorkspaceView[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -523,7 +443,20 @@ export default function Workspaces() {
                               className="p-0.5 rounded cursor-pointer hover:opacity-70">
                               {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                             </button>
-                            <span className="font-medium truncate" title={workspace.name}>{workspace.name}</span>
+                            {inRouter ? (
+                              <Link to={`/settings/workspaces/${workspace.id}`}
+                                className="font-medium truncate hover:underline inline-flex items-center gap-1"
+                                title={workspace.name}>
+                                <span className="truncate">{workspace.name}</span>
+                                <ExternalLink size={11} className="shrink-0 opacity-60" />
+                              </Link>
+                            ) : (
+                              <a href={`/settings/workspaces/${workspace.id}`}
+                                className="font-medium truncate hover:underline inline-flex items-center gap-1"
+                                title={workspace.name}>
+                                <span className="truncate">{workspace.name}</span>
+                              </a>
+                            )}
                             {workspace.is_default && (
                               <span className="px-1.5 py-0.5 rounded text-xs"
                                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
@@ -651,7 +584,24 @@ export default function Workspaces() {
                               <span>Runtime generation: <span style={{ color: 'var(--color-text)' }}>{workspace.runtime_generation}</span></span>
                               <span>Last provisioned: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.last_provisioned_at)}</span></span>
                               <span>Created: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.created_at)}</span></span>
+                              <span>Last wake: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.last_woken_at)}</span></span>
+                              <span>Last sleep: <span style={{ color: 'var(--color-text)' }}>{relativeTime(workspace.last_slept_at)}</span></span>
+                              <span>Bootstrap: <span style={{ color: 'var(--color-text)' }}>
+                                {workspace.bootstrap_completed_at ? `completed ${relativeTime(workspace.bootstrap_completed_at)}` : 'not completed'}
+                              </span></span>
+                              <span>Env file: <span style={{ color: 'var(--color-text)' }}>
+                                {workspace.env_file_present ? 'present' : 'absent'}
+                              </span></span>
                             </div>
+                            {workspace.last_bootstrap_log && (
+                              <div className="mt-3">
+                                <div className="text-xs font-medium mb-1">Last bootstrap/start log</div>
+                                <pre className="rounded-lg border p-2 text-xs font-mono overflow-x-auto whitespace-pre-wrap max-h-36"
+                                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)' }}>
+                                  {truncateLog(workspace.last_bootstrap_log, 10, 800).text}
+                                </pre>
+                              </div>
+                            )}
                             <div className="mt-3">
                               <div className="text-xs font-medium mb-1">Disk usage</div>
                               {(!detailUsage || detailUsage.status === 'loading') && (

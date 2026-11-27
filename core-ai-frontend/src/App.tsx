@@ -36,6 +36,7 @@ const Register = lazy(() => import('./pages/login/Register'));
 const Authorize = lazy(() => import('./pages/login/Authorize'));
 const UserManagement = lazy(() => import('./pages/users/UserManagement'));
 const SettingsPage = lazy(() => import('./pages/settings/Settings'));
+const WorkspaceDetailPage = lazy(() => import('./pages/settings/WorkspaceDetail'));
 const GatewayProvidersPage = lazy(() => import('./pages/settings/GatewayProviders'));
 const SystemSettingsPage = lazy(() => import('./pages/settings/SystemSettings'));
 const QualityPage = lazy(() => import('./pages/settings/Quality'));
@@ -296,6 +297,7 @@ function AuthenticatedApp() {
 
                     {/* Settings is personal security only; legacy URLs redirect to their new homes. */}
                     <Route path="/settings" element={<SettingsPage />} />
+                    <Route path="/settings/workspaces/:id" element={<WorkspaceDetailPage />} />
                     <Route path="/settings/api-keys" element={<Navigate to="/settings" replace />} />
                     <Route path="/settings/users" element={<Navigate to="/admin/users" replace />} />
                     <Route path="/settings/api-users" element={<Navigate to="/admin/users" replace />} />

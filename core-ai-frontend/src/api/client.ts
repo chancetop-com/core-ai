@@ -2291,6 +2291,16 @@ export interface WorkspaceView {
   idle_sleep_minutes: number;
   last_used_at?: string;
   last_provisioned_at?: string;
+  last_woken_at?: string;
+  last_slept_at?: string;
+  bootstrap_completed_at?: string;
+  bootstrap_script_hash?: string;
+  start_script_hash?: string;
+  bootstrap_script_changed?: boolean;
+  last_bootstrap_log?: string;
+  env_file_present?: boolean;
+  bootstrap_script?: string;
+  start_script?: string;
   error_code?: string;
   error_message?: string;
   deleted_at?: string;
@@ -2321,11 +2331,24 @@ export const api = {
       `/api/workspaces${includeDeleted ? '?include_deleted=true' : ''}`)).items,
     get: (id: string) => request<WorkspaceView>(`/api/workspaces/${id}`),
     getUsage: (id: string) => request<WorkspaceUsageView>(`/api/workspaces/${id}/usage`),
-    create: (data: { name: string; agent_id?: string; size_gb?: number; profile?: string; idle_sleep_minutes?: number }) =>
+    create: (data: {
+      name: string;
+      agent_id?: string;
+      size_gb?: number;
+      profile?: string;
+      idle_sleep_minutes?: number;
+      bootstrap_script?: string;
+      start_script?: string;
+    }) =>
       request<WorkspaceView>('/api/workspaces', { method: 'POST', body: JSON.stringify(data) }),
     events: async (id: string, limit = 20) => (await request<{ items: WorkspaceEventView[] }>(
       `/api/workspaces/${id}/events?limit=${limit}`)).items,
-    update: (id: string, data: { name?: string; idle_sleep_minutes?: number }) =>
+    update: (id: string, data: {
+      name?: string;
+      idle_sleep_minutes?: number;
+      bootstrap_script?: string;
+      start_script?: string;
+    }) =>
       request<WorkspaceView>(`/api/workspaces/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     wake: (id: string) =>
       request<WorkspaceView>(`/api/workspaces/${id}/wake`, { method: 'POST' }),
@@ -2333,6 +2356,8 @@ export const api = {
       request<WorkspaceView>(`/api/workspaces/${id}/sleep`, { method: 'POST' }),
     reset: (id: string, data: { confirm_name: string }) =>
       request<WorkspaceView>(`/api/workspaces/${id}/reset`, { method: 'POST', body: JSON.stringify(data) }),
+    retry: (id: string, data: { rerun_bootstrap?: boolean } = {}) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/retry`, { method: 'POST', body: JSON.stringify(data) }),
     delete: (id: string) =>
       request<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
     undelete: (id: string) =>

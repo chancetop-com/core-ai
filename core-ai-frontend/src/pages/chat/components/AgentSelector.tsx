@@ -1,9 +1,21 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useInRouterContext } from 'react-router-dom';
 import { Bot, Check, ChevronDown, HardDrive, Search, Share2, Star } from 'lucide-react';
 import type { AgentDefinition } from '../../../api/client';
 import { api } from '../../../api/client';
+import { usageSummary } from '../../settings/workspaceHelpers';
 
 type ChatStatus = 'idle' | 'running';
+
+export interface WorkspaceChipInfo {
+  id: string;
+  name: string;
+  runtimeStatus: string;
+  volumeStatus: string;
+  usedBytes?: number;
+  capacityBytes?: number;
+  sizeGb?: number;
+}
 
 interface AgentSelectorProps {
   status: ChatStatus;
@@ -14,7 +26,7 @@ interface AgentSelectorProps {
   onSelectAgent: (id: string, agent?: AgentDefinition) => void;
   onToggleFavorite: (id: string) => void;
   onShare?: () => void;
-  workspace?: { id: string; name: string; runtimeStatus: string; volumeStatus: string } | null;
+  workspace?: WorkspaceChipInfo | null;
 }
 
 function workspaceDotColor(runtimeStatus: string, volumeStatus: string): string {
@@ -48,6 +60,7 @@ const AgentSelector = memo(function AgentSelector({
   onShare,
   workspace,
 }: AgentSelectorProps) {
+  const inRouter = useInRouterContext();
   const [open, setOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchedAgents, setSearchedAgents] = useState<AgentDefinition[]>([]);
@@ -245,16 +258,38 @@ const AgentSelector = memo(function AgentSelector({
             {selectedAgent.description && ` · ${selectedAgent.description}`}
           </span>
         )}
-        {workspace && (
-          <span className="shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs"
-            title={`Persistent workspace "${workspace.name}" · ${workspaceStatusLabel(workspace.runtimeStatus, workspace.volumeStatus)}`}
-            style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
-            <HardDrive size={12} />
-            <span className="truncate max-w-[140px]">{workspace.name}</span>
-            <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
-              style={{ background: workspaceDotColor(workspace.runtimeStatus, workspace.volumeStatus) }} />
-          </span>
-        )}
+        {workspace && (() => {
+          const usage = usageSummary(workspace.usedBytes, workspace.capacityBytes);
+          const usageLabel = usage ? usage.label : (workspace.sizeGb ? `${workspace.sizeGb} GB` : null);
+          const statusText = workspaceStatusLabel(workspace.runtimeStatus, workspace.volumeStatus);
+          const target = `/settings/workspaces/${workspace.id}`;
+          const chipTitle = `Persistent workspace "${workspace.name}" · ${statusText}${usageLabel ? ` · ${usageLabel}` : ''}`;
+          const chipBody = (
+            <>
+              <HardDrive size={12} className="shrink-0" />
+              <span className="truncate max-w-[120px] font-medium" style={{ color: 'var(--color-text)' }}>
+                {workspace.name}
+              </span>
+              <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ background: workspaceDotColor(workspace.runtimeStatus, workspace.volumeStatus) }} />
+              <span className="shrink-0">{statusText}</span>
+              {usageLabel && (
+                <span className="shrink-0 opacity-80" data-testid="workspace-chip-usage">· {usageLabel}</span>
+              )}
+            </>
+          );
+          const className = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs hover:opacity-80 transition-opacity';
+          const style = { borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' };
+          return inRouter ? (
+            <Link to={target} title={chipTitle} aria-label={`Workspace ${workspace.name}`} className={className} style={style}>
+              {chipBody}
+            </Link>
+          ) : (
+            <a href={target} title={chipTitle} aria-label={`Workspace ${workspace.name}`} className={className} style={style}>
+              {chipBody}
+            </a>
+          );
+        })()}
         {onShare && <button type="button" onClick={onShare} title="Share conversation"
           className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs cursor-pointer shrink-0"
           style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>

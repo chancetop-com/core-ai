@@ -17,7 +17,7 @@ import type { ArtifactSpec } from './components/artifactTypes';
 import ChatMessagesPanel, { INITIAL_VISIBLE_MESSAGES, MESSAGE_RENDER_BATCH } from './components/ChatMessagesPanel';
 import ChatComposer from './components/ChatComposer';
 import type { ChatComposerHandle, ComposerAttachment } from './components/ChatComposer';
-import AgentSelector from './components/AgentSelector';
+import AgentSelector, { type WorkspaceChipInfo } from './components/AgentSelector';
 import { useSpeechRecognition } from './hooks/useSpeechRecognition';
 import type { AwaitInfo, ChatMessage, ToolEvent, PlanTodo, MessageSegment, ToolsSegment, SandboxSegment, TasksSegment, SandboxTerminalSpec } from './types';
 import { historyToChatMessages, restoreCachedChatMessages, compressionSegment, customEventSegments, appendCustomSegments } from './utils';
@@ -176,7 +176,7 @@ export default function Chat() {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [activeArtifact, setActiveArtifact] = useState<ArtifactSpec | null>(null);
   const [sharingSession, setSharingSession] = useState<{ id: string; title?: string } | null>(null);
-  const [workspaceChip, setWorkspaceChip] = useState<{ id: string; name: string; runtimeStatus: string; volumeStatus: string } | null>(null);
+  const [workspaceChip, setWorkspaceChip] = useState<WorkspaceChipInfo | null>(null);
   const [activeSandboxTerminal, setActiveSandboxTerminal] = useState<SandboxTerminalSpec | null>(null);
   const [sessionArtifacts, setSessionArtifacts] = useState<SessionArtifact[]>(() => {
     if (!cachedChatUsable) return [];
@@ -610,6 +610,9 @@ export default function Chat() {
             name: view.name,
             runtimeStatus: view.runtime_status,
             volumeStatus: view.volume_status,
+            usedBytes: view.used_bytes,
+            capacityBytes: view.capacity_bytes,
+            sizeGb: view.size_gb,
           });
         }).catch(() => {
           // workspace chip is advisory; a failed lookup never blocks the conversation
@@ -665,6 +668,37 @@ export default function Chat() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // Keep workspace chip synced for newly created sessions too (hydrated sessions already populate it).
+  useEffect(() => {
+    if (!sessionId || sessionId === DRAFT_CHAT_SESSION_ID) {
+      setWorkspaceChip(null);
+      return;
+    }
+    let alive = true;
+    sessionApi.getInfo(sessionId)
+      .then(info => {
+        if (!alive) return;
+        if (!info?.workspace_id) {
+          setWorkspaceChip(null);
+          return;
+        }
+        return api.workspaces.get(info.workspace_id).then(view => {
+          if (!alive) return;
+          setWorkspaceChip({
+            id: view.id,
+            name: view.name,
+            runtimeStatus: view.runtime_status,
+            volumeStatus: view.volume_status,
+            usedBytes: view.used_bytes,
+            capacityBytes: view.capacity_bytes,
+            sizeGb: view.size_gb,
+          });
+        });
+      })
+      .catch(() => { /* workspace chip is advisory */ });
+    return () => { alive = false; };
+  }, [sessionId]);
 
   // Comparison mode probe for the open session; a regular session clears it.
   useEffect(() => {
