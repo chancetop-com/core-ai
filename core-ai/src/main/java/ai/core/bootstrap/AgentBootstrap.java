@@ -48,6 +48,14 @@ public class AgentBootstrap {
     }
 
     public BootstrapResult initialize() {
+        return initialize(false);
+    }
+
+    /**
+     * @param deferMcp when true the MCP manager starts empty and is filled later by the host
+     *                 (desktop app-server mode); no file or inline MCP configuration is read.
+     */
+    public BootstrapResult initialize(boolean deferMcp) {
         var result = new BootstrapResult();
         configurePersistenceProviders(result);
         configureVectorStores(result);
@@ -55,7 +63,11 @@ public class AgentBootstrap {
         configureLangfusePrompts(result);
         configureSystemPromptProvider(result);
         configureLLMProviders(result);
-        configureMcpClient(result);
+        if (deferMcp) {
+            configureDeferredMcpClient(result);
+        } else {
+            configureMcpClient(result);
+        }
         warmup();
         return result;
     }
@@ -229,8 +241,7 @@ public class AgentBootstrap {
     }
 
     @SuppressWarnings("unchecked")
-    private void configureMcpClient(BootstrapResult result) {
-        props.property("mcp.servers.json").ifPresent(json -> {
+    private void configureMcpClient(BootstrapResult result) {        props.property("mcp.servers.json").ifPresent(json -> {
             try {
                 var mcpServersConfig = (Map<String, Object>) JsonUtil.fromJson(Map.class, json);
                 var manager = McpClientManager.fromConfig(mcpServersConfig);
@@ -251,6 +262,14 @@ public class AgentBootstrap {
             logger.debug("MCP client disabled - mcp.servers.json not configured");
             McpClientManagerRegistry.clear();
         }
+    }
+
+    private void configureDeferredMcpClient(BootstrapResult result) {
+        var manager = McpClientManager.desktop();
+        McpClientManagerRegistry.notifyCreation(manager);
+        result.mcpClientManager = manager;
+        McpClientManagerRegistry.setManager(manager);
+        logger.debug("MCP client deferred to the desktop host");
     }
 
     private void injectTracerIfAvailable(LLMProvider provider) {

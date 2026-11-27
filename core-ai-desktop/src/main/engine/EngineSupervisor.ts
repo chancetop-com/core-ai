@@ -9,9 +9,13 @@ export interface EngineSupervisorOptions {
   enginePath: string;
   engineArgs?: string[];
   clientVersion: string;
+  /** The engine supports `--desktop-mcp`: the desktop owns MCP configuration for this engine. */
+  desktopMcp?: () => Promise<boolean> | boolean;
   extraEnv?: (workspace: string) => Record<string, string> | Promise<Record<string, string>>;
   onEvent: (workspace: string, method: string, params: Record<string, unknown>) => void;
   onLog?: (workspace: string, line: string) => void;
+  /** Fired after the handshake succeeds; callers must not await engine RPCs synchronously here. */
+  onReady?: (workspace: string) => void;
 }
 interface EngineState {
   client: RpcClient;
@@ -115,22 +119,27 @@ export class EngineSupervisor {
     state.capabilities = Array.isArray(result?.capabilities) ? result.capabilities : [];
     state.trustState = result?.trustState && typeof result.trustState === 'object' ? result.trustState : null;
     this.options.onLog?.(workspace, `engine ready (pid ${state.client.pid ?? '?'}), policy=${state.approvalPolicy}, trust=${state.trustState?.state ?? 'unknown'}`);
+    this.options.onReady?.(workspace);
   }
 
   private async spawnClient(workspace: string): Promise<RpcClient> {
     const enginePath = this.options.enginePath;
     const extraEnv = (await this.options.extraEnv?.(workspace)) ?? {};
     const clientOptions = { cwd: workspace, env: { ...process.env, ...extraEnv }, onStderr: (line: string) => this.options.onLog?.(workspace, line) };
-    if (this.options.engineArgs) return this.attach(new RpcClient(enginePath, this.options.engineArgs, clientOptions), workspace, `engine spawned: ${enginePath} ${this.options.engineArgs.join(' ')}`);
+    const mcpFlag = (await this.options.desktopMcp?.()) === true ? ['--desktop-mcp'] : [];
+    if (this.options.engineArgs) {
+      const args = [...this.options.engineArgs, ...mcpFlag];
+      return this.attach(new RpcClient(enginePath, args, clientOptions), workspace, `engine spawned: ${enginePath} ${args.join(' ')}`);
+    }
     if (process.platform === 'win32' && /\.(bat|cmd)$/i.test(enginePath)) {
       const libDir = path.join(path.dirname(path.dirname(enginePath)), 'lib');
       if (existsSync(libDir)) {
         const java = resolveJavaBin();
-        const args = ['--enable-native-access=ALL-UNNAMED', '-classpath', path.join(libDir, '*'), 'Main', 'app-server', '--workspace', workspace];
-        return this.attach(new RpcClient(java, args, clientOptions), workspace, `engine spawned: ${java} Main app-server --workspace ${workspace}`);
+        const args = ['--enable-native-access=ALL-UNNAMED', '-classpath', path.join(libDir, '*'), 'Main', 'app-server', '--workspace', workspace, ...mcpFlag];
+        return this.attach(new RpcClient(java, args, clientOptions), workspace, `engine spawned: ${java} Main app-server --workspace ${workspace} ${mcpFlag.join(' ')}`);
       }
     }
-    const args = ['app-server', '--workspace', workspace];
+    const args = ['app-server', '--workspace', workspace, ...mcpFlag];
     const client = process.platform === 'win32' && /\.(bat|cmd)$/i.test(enginePath)
       ? new RpcClient('cmd.exe', ['/c', enginePath, ...args], clientOptions)
       : new RpcClient(enginePath, args, clientOptions);

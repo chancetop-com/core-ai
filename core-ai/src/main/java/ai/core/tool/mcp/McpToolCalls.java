@@ -38,12 +38,23 @@ public class McpToolCalls extends ArrayList<McpToolCall> {
     }
 
     private static void addToolsFromClient(List<McpToolCall> mcpToolCalls, McpClientManager manager, String serverName, List<String> includes, List<String> excludes, String displayName) {
-        var tools = manager.safeListTools(serverName);
+        mcpToolCalls.addAll(fromServer(manager, serverName, manager.safeListTools(serverName), includes, excludes, displayName));
+    }
+
+    /** Builds tool calls from an already-resolved tool list (desktop snapshot mode). */
+    public static List<McpToolCall> fromServer(McpClientManager manager, String serverName, List<McpSchema.Tool> tools,
+                                               List<String> includes, List<String> excludes, String displayName) {
+        var mcpToolCalls = new ArrayList<McpToolCall>();
         for (var tool : tools) {
+            if (tool.name() == null || tool.name().length() > McpToolProvider.MAX_TOOL_NAME_LENGTH) {
+                if (manager != null) manager.recordInvalidToolName(serverName, String.valueOf(tool.name()), "MCP_TOOL_NAME_TOO_LONG");
+                continue;
+            }
             if (includes != null && includes.stream().noneMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
             if (excludes != null && excludes.stream().anyMatch(t -> Pattern.compile(t).matcher(tool.name()).matches())) continue;
             mcpToolCalls.add(buildToolCall(tool, manager, serverName, displayName));
         }
+        return mcpToolCalls;
     }
 
     private static McpToolCall buildToolCall(McpSchema.Tool tool, McpClientManager manager, String serverName, String displayName) {

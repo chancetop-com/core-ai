@@ -2,10 +2,10 @@
 // stays in the engine child process; this process only routes.
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, powerSaveBlocker, protocol, screen, session, shell, Tray } from 'electron';
 import QRCode from 'qrcode';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import http from 'node:http';
 import https from 'node:https';
-import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -56,6 +56,9 @@ import {
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
+import { McpService } from './mcp/mcpService';
+import { McpStore } from './mcp/mcpStore';
+import { previewImports } from './mcp/mcpImport';
 import { RpcCallError } from './engine/RpcClient';
 import { PluginHost } from './plugins/PluginHost';
 import { WorkspaceTrustStore } from './plugins/workspaceTrust';
@@ -110,6 +113,7 @@ let supervisor: EngineSupervisor | null = null;
 let pluginHost: PluginHost | null = null;
 let pluginPageHost: PluginPageHost | null = null;
 let workspaceTrustStore: WorkspaceTrustStore | null = null;
+let mcpService: McpService | null = null;
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
 let builtinSkills: BuiltinSkills | null = null;
@@ -676,6 +680,61 @@ function resolveEnginePath(): string {
   const executable = process.platform === 'win32' ? 'core-ai-cli.bat' : 'core-ai-cli';
   return path.join(repoRoot, 'build', 'core-ai-cli', 'install', 'core-ai-cli', 'bin', executable);
 }
+/**
+ * The desktop store keys everything by a canonical workspace path; the engine reports the same
+ * value in its trustState. When the engine is not running yet, canonicalize locally so a save
+ * before the first session still lands in the right per-workspace file.
+ */
+function canonicalWorkspaceKey(workspace: string): string {
+  try {
+    return realpathSync.native(workspace);
+  } catch {
+    return path.resolve(workspace);
+  }
+}
+/** Only workspaces the app has recorded (chosen by the user or the daily default) may start an engine. */
+function isKnownWorkspace(workspace: string): boolean {
+  if (typeof workspace !== 'string' || !workspace) return false;
+  const normalize = (value: string): string => {
+    const resolved = path.resolve(value);
+    return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  };
+  const target = normalize(workspace);
+  if (target === normalize(defaultWorkspacePath())) return true;
+  return (settings.workspaces ?? []).some((entry) => typeof entry === 'string' && normalize(entry) === target);
+}
+/**
+ * Probes the engine's `app-server --help` once in the background; an older engine simply keeps
+ * file-based MCP. Spawning is async so a slow engine never freezes the window.
+ */
+let desktopMcpProbe: Promise<boolean> | null = null;
+function desktopMcpSupported(enginePath: string): Promise<boolean> {
+  if (desktopMcpProbe) return desktopMcpProbe;
+  desktopMcpProbe = new Promise<boolean>((resolve) => {
+    const isScript = process.platform === 'win32' && /\.(bat|cmd)$/i.test(enginePath);
+    const child = isScript
+      ? spawn('cmd.exe', ['/c', enginePath, 'app-server', '--help'], { windowsHide: true })
+      : spawn(enginePath, ['app-server', '--help'], { windowsHide: true });
+    let output = '';
+    let settled = false;
+    const finish = (supported: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(supported);
+    };
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(false);
+    }, 20_000);
+    timer.unref?.();
+    child.stdout?.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.stderr?.on('data', (chunk: Buffer) => (output += chunk.toString()));
+    child.on('error', () => finish(false));
+    child.on('exit', () => finish(output.includes('--desktop-mcp')));
+  });
+  return desktopMcpProbe;
+}
 function resolveSkillsRoot(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, 'skills');
   return path.resolve(app.getAppPath(), '..', 'docs', 'skills');
@@ -997,7 +1056,7 @@ function registerIpc(): void {
     return settings.lastWorkspace;
   });
   ipcMain.handle('workspace:trust', async (event, workspace: string) => {
-    if (!isMainFrameSender(event) || typeof workspace !== 'string' || !workspace || !supervisor) return null;
+    if (!isMainFrameSender(event) || !isKnownWorkspace(workspace) || !supervisor) return null;
     return supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask').catch(() => null);
   });
   ipcMain.handle('workspace:setTrust', async (event, workspace: string, trusted: boolean) => {
@@ -1005,6 +1064,7 @@ function registerIpc(): void {
     if (typeof workspace !== 'string' || !workspace || !supervisor || !workspaceTrustStore) {
       return { ok: false, error: 'workspace trust is not available' };
     }
+    if (!isKnownWorkspace(workspace)) return { ok: false, error: 'unknown workspace' };
     try {
       const current = await supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask');
       if (!current) return { ok: false, error: 'the engine did not report a trust state' };
@@ -1019,6 +1079,101 @@ function registerIpc(): void {
     }
   });
   ipcMain.handle('workspace:default', () => defaultWorkspace());
+  ipcMain.handle('mcp:list', async (event, workspace: string) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      return { ok: true, ...(await mcpService.list(workspace)) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:save', async (event, workspace: string, request: Record<string, unknown>) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      const result = await mcpService.save(workspace, request as unknown as Parameters<McpService['save']>[1]);
+      return { ok: true, ...result };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:setEnabled', async (event, workspace: string, id: string, enabled: boolean) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      return { ok: true, ...(await mcpService.setEnabled(workspace, String(id ?? ''), enabled === true)) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:remove', async (event, workspace: string, id: string) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      return { ok: true, ...(await mcpService.remove(workspace, String(id ?? ''))) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:status', async (event, workspace: string) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      return { ok: true, status: await mcpService.status(workspace) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:test', async (event, workspace: string, name: string) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP settings are only available from the app window' };
+    }
+    try {
+      return { ok: true, result: await mcpService.test(workspace, String(name ?? '')) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:importPreview', async (event, workspace: string) => {
+    if (!isMainFrameSender(event) || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP import is only available from the app window' };
+    }
+    try {
+      return { ok: true, sources: await previewImports(workspace) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+  ipcMain.handle('mcp:import', async (event, workspace: string, request: { servers?: unknown; mode?: unknown }) => {
+    if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
+      return { ok: false, error: 'MCP import is only available from the app window' };
+    }
+    const mode = request?.mode === 'replace' || request?.mode === 'rename' ? request.mode : 'skip';
+    const servers = Array.isArray(request?.servers) ? request.servers : [];
+    const drafts = servers
+      .filter((entry): entry is { name: string; config: Record<string, unknown> } =>
+        Boolean(entry) && typeof entry === 'object'
+        && typeof (entry as { name?: unknown }).name === 'string'
+        && Boolean((entry as { config?: unknown }).config) && typeof (entry as { config?: unknown }).config === 'object')
+      .map((entry) => ({
+        name: entry.name.trim(),
+        config: entry.config,
+        enabled: true,
+      }))
+      .filter((draft) => draft.name.length > 0);
+    if (drafts.length === 0) return { ok: false, error: 'nothing to import' };
+    try {
+      return { ok: true, ...(await mcpService.importServers(workspace, drafts, mode)) };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
   ipcMain.handle('workspaces:summaries', () => buildWorkspaceSummaries());
   ipcMain.handle('auth:status', () => authStatus());
   ipcMain.handle('auth:servers', () => listAuthServers());
@@ -1135,9 +1290,10 @@ function registerIpc(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
-  ipcMain.handle('engine:capabilities', async (_event, workspace: string) => {
+  ipcMain.handle('engine:capabilities', async (event, workspace: string) => {
+    if (!isMainFrameSender(event)) return [];
     const target = String(workspace ?? '');
-    if (!target || !supervisor) return [];
+    if (!target || !supervisor || !isKnownWorkspace(target)) return [];
     // The window just opened this workspace: the IM bridge's default route follows it.
     rememberWorkspace(target);
     try {
@@ -1148,8 +1304,8 @@ function registerIpc(): void {
       return [];
     }
   });
-  ipcMain.handle('engine:restart', async (_event, workspace: string) => {
-    if (!workspace) return;
+  ipcMain.handle('engine:restart', async (event, workspace: string) => {
+    if (!isMainFrameSender(event) || !isKnownWorkspace(workspace)) return;
     rememberWorkspace(workspace);
     await supervisor?.restart(workspace);
   });
@@ -1424,8 +1580,14 @@ function registerIpc(): void {
   ipcMain.handle('update:check', async () => updateService?.check() ?? null);
   ipcMain.handle('update:download', async () => updateService?.download() ?? null);
   ipcMain.handle('update:install', async () => updateService?.install() ?? null);
-  ipcMain.handle('engine:call', async (_event, workspace: string, method: string, params: Record<string, unknown>): Promise<CallEnvelope> => {
+  ipcMain.handle('engine:call', async (event, workspace: string, method: string, params: Record<string, unknown>): Promise<CallEnvelope> => {
+    if (!isMainFrameSender(event)) return { ok: false, error: { code: 0, message: 'engine calls are only available from the app window' } };
     if (!supervisor) return { ok: false, error: { code: 0, message: 'engine supervisor not ready' } };
+    if (typeof workspace !== 'string' || !workspace) return { ok: false, error: { code: 0, message: 'workspace is required' } };
+    if (!isKnownWorkspace(workspace)) return { ok: false, error: { code: 0, message: 'unknown workspace' } };
+    // Internal surfaces have their own typed IPC handlers; letting the renderer address them by
+    // method name would bypass their validation (MCP config, trust writes, intake quiescing).
+    if (isInternalRpc(String(method ?? ''))) return { ok: false, error: { code: -32601, message: `method not available: ${method}` } };
     try {
       const result = await supervisor.call(workspace, method, params ?? {}, settings.approvalPolicy ?? 'ask');
       return { ok: true, result };
@@ -1699,6 +1861,11 @@ function isMainFrameSender(event: Electron.IpcMainInvokeEvent): boolean {
   const contents = mainWindow?.webContents;
   return Boolean(contents) && event.sender === contents && event.senderFrame === contents.mainFrame;
 }
+const INTERNAL_RPC_PREFIXES = ['mcp/', 'workspace/', 'host/'];
+const INTERNAL_RPC_METHODS = new Set(['engine/quiesce', 'engine/resumeIntake', 'initialize', 'shutdown']);
+function isInternalRpc(method: string): boolean {
+  return INTERNAL_RPC_METHODS.has(method) || INTERNAL_RPC_PREFIXES.some((prefix) => method.startsWith(prefix));
+}
 function resolveInsideWorkspace(workspace: string, relativePath: string): string | null {
   const root = path.resolve(workspace);
   const absolute = path.resolve(root, relativePath);
@@ -1811,6 +1978,7 @@ else {
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,
+      desktopMcp: () => desktopMcpSupported(resolveEnginePath()),
       extraEnv: async (workspace: string) => {
         const enginePath = resolveEnginePath();
         let env: Record<string, string> = {
@@ -1835,6 +2003,7 @@ else {
         pluginPageHost?.onEngineEvent(workspace, method, params);
         channelBridge?.onEngineEvent(workspace, method, params);
         completionNotifier?.onEngineEvent(workspace, method, params);
+        mcpService?.onEngineEvent(workspace, method, params);
         if (method === 'host/request') void handleHostRequest(workspace, params);
         if (method === 'session/lifecycle') subscriptionService?.onEngineEvent(workspace, method, params);
         send('engine:event', { workspace, method, params });
@@ -1843,7 +2012,25 @@ else {
         console.error(`[engine ${workspace}] ${line}`);
         send('engine:log', { workspace, line });
       },
+      onReady: (workspace) => {
+        // Deferred: the handshake promise is still pending, so an engine RPC from here would deadlock.
+        setTimeout(() => { void mcpService?.syncWorkspace(workspace); }, 0);
+      },
     });
+    mcpService = new McpService(
+      new McpStore(path.join(app.getPath('userData'), 'mcp')),
+      supervisor,
+      (workspace) => supervisor?.trustState(workspace)?.workspaceKey ?? canonicalWorkspaceKey(workspace),
+      () => settings.approvalPolicy ?? 'ask',
+      (workspace, line) => {
+        console.log(`[mcp ${workspace}] ${line}`);
+        send('engine:log', { workspace, line });
+      },
+    );
+    // An engine may have become ready before the service existed; push its saved configuration now.
+    for (const workspace of supervisor.runningWorkspaces()) {
+      setTimeout(() => { void mcpService?.syncWorkspace(workspace); }, 0);
+    }
     pluginPageHost = new PluginPageHost({
       pluginHost: () => pluginHost,
       supervisor: () => supervisor,

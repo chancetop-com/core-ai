@@ -59,6 +59,7 @@ public class AppServerEngine implements EngineApi {
     private final MediaGenerationApi mediaGeneration;
     private final UsageApi usageApi;
     private final ModelSettingsApi modelSettings;
+    private final McpApi mcpApi;
     private final SpeechApi speechApi = new SpeechApi();
     private final HubBridge hubBridge = new HubBridge();
     private final HelperBridge helperBridge = new HelperBridge();
@@ -66,13 +67,18 @@ public class AppServerEngine implements EngineApi {
     private volatile NotificationSink sink = (method, params) -> { };
 
     public AppServerEngine(Path workspace, Path configFile) {
-        this.bootstrap = new EngineBootstrap(workspace, configFile);
+        this(workspace, configFile, false);
+    }
+
+    public AppServerEngine(Path workspace, Path configFile, boolean desktopMcp) {
+        this.bootstrap = new EngineBootstrap(workspace, configFile, desktopMcp);
         this.hostRequests = new HostRequestBridge(() -> sink);
         this.registry = new EngineSessionRegistry(bootstrap, () -> sink, hostRequests);
         this.runApi = new SessionRunApi(bootstrap, registry);
         this.sdkBroker = startSdkBroker(registry);
         this.scheduler = new EngineScheduler(bootstrap, registry, () -> sink);
         this.registry.setScheduler(scheduler);
+        this.mcpApi = desktopMcp ? new McpApi(bootstrap, () -> sink, scheduler::start) : null;
         this.schedulesApi = new SchedulesApi(bootstrap, registry, scheduler);
         this.mediaSettings = new MediaSettingsApi(bootstrap.props, bootstrap.workspace, bootstrap.imageMediaProvider,
                 bootstrap.videoMediaProvider, bootstrap.mediaModelCatalog,
@@ -125,9 +131,14 @@ public class AppServerEngine implements EngineApi {
         capabilities.add("usage_summary");
         capabilities.add("task_run_lifecycle_v1");
         capabilities.add("desktop_host_requests_v1");
+        if (bootstrap.desktopMcp) capabilities.add("mcp_management_v1");
         node.put("workspace", bootstrap.workspace.toString());
         node.set("trustState", trustNode());
-        if (bootstrap.workspaceTrusted) scheduler.start();
+        if (bootstrap.desktopMcp) {
+            mcpApi.noteInitialize();
+        } else if (bootstrap.workspaceTrusted) {
+            scheduler.start();
+        }
         return node;
     }
 
@@ -135,6 +146,7 @@ public class AppServerEngine implements EngineApi {
         var trust = Params.object();
         trust.put("state", bootstrap.workspaceTrusted ? "trusted" : "restricted");
         trust.put("key", bootstrap.workspaceTrust.key());
+        trust.put("workspaceKey", bootstrap.workspaceTrust.workspaceKey());
         trust.put("fingerprint", bootstrap.workspaceTrust.fingerprint());
         trust.put("hasExecutableInputs", bootstrap.workspaceTrust.hasExecutableInputs());
         trust.put("reason", bootstrap.workspaceTrust.reason());
@@ -167,6 +179,7 @@ public class AppServerEngine implements EngineApi {
     public void shutdown() {
         hostRequests.close();
         if (sdkBroker != null) sdkBroker.close();
+        if (mcpApi != null) mcpApi.close();
         AppServerShutdown.close(scheduler, registry, bootstrap);
     }
 
@@ -215,6 +228,7 @@ public class AppServerEngine implements EngineApi {
         handlers.putAll(extraHandlers());
         handlers.putAll(lifecycleHandlers());
         handlers.putAll(schedulerHandlers());
+        if (mcpApi != null) handlers.putAll(mcpApi.handlers());
         return Map.copyOf(handlers);
     }
 

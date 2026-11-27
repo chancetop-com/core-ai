@@ -135,6 +135,14 @@ public class CliAppHelper {
     }
 
     public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace) {
+        mergeWorkspaceConfig(global, workspace, true);
+    }
+
+    /**
+     * @param includeWorkspaceMcp false in desktop-managed MCP mode: the desktop store is the only
+     *                            MCP source, so the workspace {@code MCP.json} must not be loaded.
+     */
+    public static void mergeWorkspaceConfig(PropertiesFileSource global, Path workspace, boolean includeWorkspaceMcp) {
         Path localConfig = workspace.resolve(".core-ai").resolve("agent.properties");
         if (Files.exists(localConfig)) {
             try (var is = Files.newInputStream(localConfig)) {
@@ -146,6 +154,10 @@ public class CliAppHelper {
             }
         }
 
+        if (!includeWorkspaceMcp) {
+            global.removeProperty("mcp.servers.json");
+            return;
+        }
         // Merge workspace MCP.json into mcp.servers.json so both
         // STDIO and HTTP MCP servers are auto-loaded on startup.
         CliMcpConfig.mergeWorkspaceMcpConfig(global, workspace);

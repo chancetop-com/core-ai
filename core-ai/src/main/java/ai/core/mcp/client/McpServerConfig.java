@@ -35,6 +35,16 @@ public class McpServerConfig {
         throw new IllegalArgumentException("Invalid config: must have 'command' (STDIO) or 'url' (HTTP)");
     }
 
+    /**
+     * Desktop-managed variant: {@code ${env:NAME}} placeholders are resolved from the per-server
+     * secret map before parsing, then the expanded command/headers are safety-checked.
+     */
+    public static McpServerConfig fromMap(String serverName, Map<String, Object> config, Map<String, String> secrets) {
+        var expanded = McpSecretExpander.expand(serverName, config, secrets);
+        McpCommandSafety.validate(serverName, expanded);
+        return fromMap(serverName, expanded);
+    }
+
     @SuppressWarnings("unchecked")
     public static Map<String, McpServerConfig> parseServers(Map<String, Object> mcpServersConfig) {
         var result = new HashMap<String, McpServerConfig>();
@@ -173,7 +183,7 @@ public class McpServerConfig {
             }
             return result;
         } catch (Exception e) {
-            LOGGER.warn("failed to parse headers json for server '{}', raw: {}", serverName, headersStr, e);
+            LOGGER.warn("failed to parse headers json for server '{}', length={}", serverName, headersStr.length(), e);
             return Map.of();
         }
     }
@@ -198,7 +208,7 @@ public class McpServerConfig {
                 }
                 return result;
             } catch (Exception e) {
-                LOGGER.warn("failed to parse env as JSON: {}", envStr, e);
+                LOGGER.warn("failed to parse env as JSON, length={}", envStr.length(), e);
             }
         }
         return Map.of();
@@ -306,6 +316,30 @@ public class McpServerConfig {
     }
     public boolean isSandboxHosted() {
         return transportType == TransportType.SANDBOX_HOSTED;
+    }
+
+    /** A disposable copy for one-off probes: no reconnect loop, no heartbeat, no shared state. */
+    public McpServerConfig copyForProbe() {
+        var copy = new McpServerConfig();
+        copy.name = name;
+        copy.transportType = transportType;
+        copy.command = command;
+        copy.args = args == null ? List.of() : List.copyOf(args);
+        copy.env = env == null ? Map.of() : Map.copyOf(env);
+        copy.url = url;
+        copy.endpoint = endpoint;
+        copy.headers = headers == null ? Map.of() : Map.copyOf(headers);
+        copy.connectTimeout = connectTimeout;
+        copy.requestTimeout = requestTimeout;
+        copy.initializationTimeout = initializationTimeout;
+        copy.autoReconnect = false;
+        copy.maxReconnectAttempts = 0;
+        copy.reconnectInterval = reconnectInterval;
+        copy.reconnectBackoffMax = reconnectBackoffMax;
+        copy.enableHeartbeat = false;
+        copy.heartbeatInterval = heartbeatInterval;
+        copy.heartbeatTimeout = heartbeatTimeout;
+        return copy;
     }
     interface CommonConfigBuilder<T> {
         void enableHeartbeat(boolean enable);

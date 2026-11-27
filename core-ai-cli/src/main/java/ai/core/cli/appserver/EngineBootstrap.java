@@ -73,8 +73,9 @@ public class EngineBootstrap {
         return dir;
     }
 
-    private static WorkspaceTrust.Evaluation evaluateTrust(Path workspace) {
-        var evaluation = WorkspaceTrust.evaluate(workspace);
+    private static WorkspaceTrust.Evaluation evaluateTrust(Path workspace, boolean desktopMcp) {
+        var mode = desktopMcp ? WorkspaceTrust.Mode.DESKTOP_MCP : WorkspaceTrust.Mode.CLI;
+        var evaluation = WorkspaceTrust.evaluate(workspace, mode);
         System.setProperty(WorkspaceTrust.RESTRICTED_PROPERTY, String.valueOf(!evaluation.trusted()));
         return evaluation;
     }
@@ -111,10 +112,21 @@ public class EngineBootstrap {
     public final Set<String> disabledTools;
     public final WorkspaceTrust.Evaluation workspaceTrust;
     public final boolean workspaceTrusted;
+    public final boolean desktopMcp;
 
     public EngineBootstrap(Path workspace, Path configFile) {
+        this(workspace, configFile, false);
+    }
+
+    /**
+     * @param desktopMcp the desktop owns MCP configuration: workspace and global MCP files are not
+     *                   loaded, the trust fingerprint excludes them, and the MCP manager starts
+     *                   empty until the host pushes {@code mcp/config}.
+     */
+    public EngineBootstrap(Path workspace, Path configFile, boolean desktopMcp) {
+        this.desktopMcp = desktopMcp;
         this.workspace = workspace.toAbsolutePath();
-        this.workspaceTrust = evaluateTrust(this.workspace);
+        this.workspaceTrust = evaluateTrust(this.workspace, desktopMcp);
         this.workspaceTrusted = workspaceTrust.trusted();
         this.sessionsDir = prepareSessionsDir(this.workspace);
         var acquire = EngineLock.tryAcquire(sessionsDir, "engine");
@@ -123,10 +135,12 @@ public class EngineBootstrap {
         }
         this.engineLock = ((SessionLock.AcquireResult.Acquired) acquire).lock();
         CliLogger.initialize(this.workspace, "app-server");
-        this.props = loadProperties(configFile, !workspaceTrusted);
+        this.props = loadProperties(configFile, !workspaceTrusted, desktopMcp);
         var bootstrap = new AgentBootstrap(props);
-        CliAppHelper.registerMcpLoadingListener();
-        this.result = bootstrap.initialize();
+        if (!desktopMcp) {
+            CliAppHelper.registerMcpLoadingListener();
+        }
+        this.result = bootstrap.initialize(desktopMcp);
         this.providerStore = initializeProviders(result);
         this.maxTurn = intFlag("agent.max.turn", 100);
         this.memoryEnabled = workspaceTrusted && boolFlag("agent.memory.enabled", true);
@@ -175,7 +189,7 @@ public class EngineBootstrap {
         return store;
     }
 
-    private PropertiesFileSource loadProperties(Path configFile, boolean restricted) {
+    private PropertiesFileSource loadProperties(Path configFile, boolean restricted, boolean desktopMcp) {
         var resolved = configFile != null ? configFile : PathUtils.DEFAULT_CONFIG;
         PropertiesFileSource props;
         if (Files.exists(resolved)) {
@@ -185,7 +199,7 @@ public class EngineBootstrap {
             props = new PropertiesFileSource(new Properties());
         }
         if (!restricted) {
-            CliAppHelper.mergeWorkspaceConfig(props, workspace);
+            CliAppHelper.mergeWorkspaceConfig(props, workspace, !desktopMcp);
         } else {
             // A restricted workspace must not contribute provider overrides, MCP servers or other
             // executable configuration. Global MCP is also suppressed: the design treats hooks/MCP
@@ -193,6 +207,7 @@ public class EngineBootstrap {
             props.removeProperty("mcp.servers.json");
             LOGGER.info("app-server: workspace is restricted; workspace config and MCP are not loaded");
         }
+        if (desktopMcp) props.removeProperty("mcp.servers.json");
         CliAppHelper.injectLiteLLMFallback(props);
         return props;
     }

@@ -102,7 +102,17 @@ public class ToolRegistry {
                 .toList();
         var tools = new LinkedHashMap<String, ToolCall>();
         var toolProviderIndex = new LinkedHashMap<String, String>();
+        // Two phases: every non-MCP provider registers first, so an MCP server can never shadow a
+        // builtin/user tool and inherit its pre-approved permission rules.
+        collectPhase(sorted, false, tools, toolProviderIndex);
+        collectPhase(sorted, true, tools, toolProviderIndex);
+        return new CollectResult(tools, toolProviderIndex);
+    }
+
+    private void collectPhase(List<ToolProvider> sorted, boolean mcpPhase,
+                              Map<String, ToolCall> tools, Map<String, String> toolProviderIndex) {
         for (var provider : sorted) {
+            if (isMcpProvider(provider) != mcpPhase) continue;
             try {
                 var toolMap = resolveToolMap(provider);
                 for (var entry : toolMap.entrySet()) {
@@ -118,7 +128,10 @@ public class ToolRegistry {
                 LOGGER.warn("provider {} failed, skipping, id={}", provider.getClass().getSimpleName(), provider.id(), e);
             }
         }
-        return new CollectResult(tools, toolProviderIndex);
+    }
+
+    private static boolean isMcpProvider(ToolProvider provider) {
+        return provider instanceof ai.core.tool.mcp.McpToolProvider;
     }
 
     private Map<String, ToolCall> resolveToolMap(ToolProvider provider) {

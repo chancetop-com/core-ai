@@ -22,6 +22,9 @@ public class AppServerCommand implements Callable<Integer> {
     @Option(names = "--config", description = "Config file path")
     Path configFile;
 
+    @Option(names = "--desktop-mcp", description = "Let the desktop host own MCP configuration (no file-based MCP loading)")
+    boolean desktopMcp;
+
     @Override
     @SuppressWarnings("PMD.SystemPrintln")
     public Integer call() {
@@ -31,7 +34,7 @@ public class AppServerCommand implements Callable<Integer> {
         var resolvedWorkspace = workspace != null ? workspace : Path.of("").toAbsolutePath();
         AppServerEngine engine;
         try {
-            engine = new AppServerEngine(resolvedWorkspace, configFile);
+            engine = new AppServerEngine(resolvedWorkspace, configFile, desktopMcp);
         } catch (EngineAlreadyRunningException e) {
             System.err.println(e.getMessage());
             return 2;

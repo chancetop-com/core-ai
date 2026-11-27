@@ -298,7 +298,12 @@ public class CliAgent {
     private static List<ToolCall> cliUserTools(Config config) {
         var tools = new ArrayList<ToolCall>();
         tools.add(AskUserTool.builder().questionHandler(config.askUserHandler()).build());
-        tools.add(AddMcpServerTool.builder().build());
+        // Desktop-managed MCP owns the configuration: a tool that writes workspace MCP.json must not
+        // exist there, or the two stores would silently diverge.
+        var mcpManager = ai.core.mcp.client.McpClientManagerRegistry.getManager();
+        if (mcpManager == null || !mcpManager.isSnapshotMode()) {
+            tools.add(AddMcpServerTool.builder().build());
+        }
         if (config.scheduledTaskStore() != null) {
             tools.add(ai.core.tool.tools.ScheduledTaskTool.builder(config.scheduledTaskStore()).build());
         }

@@ -5,6 +5,8 @@
 export interface WorkspaceTrustState {
   state: 'trusted' | 'restricted';
   key: string;
+  /** Canonical workspace path; the desktop MCP store keys its per-workspace documents by this. */
+  workspaceKey?: string;
   fingerprint: string;
   hasExecutableInputs: boolean;
   reason: string | null;

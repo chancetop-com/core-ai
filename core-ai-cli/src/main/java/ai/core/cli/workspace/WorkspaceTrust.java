@@ -8,10 +8,13 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,6 +27,10 @@ import java.util.Map;
  * user-side trust record is required. A changed fingerprint invalidates the old record, so adding
  * a hook or swapping an MCP command cannot inherit trust.
  *
+ * The desktop-managed MCP mode uses its own fingerprint (CLI MCP files are not loaded there) and
+ * its own trust record key ({@code <canonical>#desktop-mcp}). An existing CLI record is migrated
+ * once, but only when it matches the full legacy fingerprint.
+ *
  * The record lives outside the workspace on purpose: a repository cannot declare itself trusted.
  */
 public final class WorkspaceTrust {
@@ -31,12 +38,20 @@ public final class WorkspaceTrust {
     public static final String TRUST_FILE_NAME = "workspace-trust.json";
     public static final String RESTRICTED_PROPERTY = "core.ai.workspace.restricted";
     public static final String PLUGIN_HOME_ENV = "CORE_AI_PLUGIN_HOME";
+    public static final String DESKTOP_MCP_KEY_SUFFIX = "#desktop-mcp";
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceTrust.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final Object WRITE_LOCK = new Object();
     private static final List<String> CONFIG_FILES = List.of(
             ".core-ai/agent.properties",
             ".core-ai/hooks.json",
+            ".core-ai/MCP.json",
+            ".core-ai/mcp.json",
+            "MCP.json",
+            "mcp.json"
+    );
+    private static final List<String> DESKTOP_SKIPPED_FILES = List.of(
             ".core-ai/MCP.json",
             ".core-ai/mcp.json",
             "MCP.json",
@@ -47,24 +62,59 @@ public final class WorkspaceTrust {
             ".core-ai/skills"
     );
 
-    public static Evaluation evaluate(Path workspace) {
-        return evaluate(workspace, trustFile());
+    public enum Mode {
+        CLI,
+        DESKTOP_MCP
     }
 
-    static Evaluation evaluate(Path workspace, Path trustFile) {
-        var key = canonicalKey(workspace);
-        var snapshot = fingerprint(workspace);
+    public static Evaluation evaluate(Path workspace) {
+        return evaluate(workspace, Mode.CLI);
+    }
+
+    public static Evaluation evaluate(Path workspace, Mode mode) {
+        return evaluate(workspace, trustFile(), mode);
+    }
+
+    static Evaluation evaluate(Path workspace, Path trustFile, Mode mode) {
+        var workspaceKey = canonicalKey(workspace);
+        var key = recordKey(workspaceKey, mode);
+        var snapshot = fingerprint(workspace, mode);
         if (!snapshot.hasExecutableInputs()) {
-            return new Evaluation(State.TRUSTED, key, snapshot.fingerprint(), false, "no_workspace_config");
+            return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), false, "no_workspace_config");
         }
         var record = readRecord(trustFile, key);
+        if (record == null && mode == Mode.DESKTOP_MCP) {
+            var migrated = migrateLegacyRecord(trustFile, workspace, workspaceKey, key, snapshot.fingerprint());
+            if (migrated) {
+                return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), true, "migrated_from_cli_record");
+            }
+        }
         if (record == null) {
-            return new Evaluation(State.RESTRICTED, key, snapshot.fingerprint(), true, "not_trusted");
+            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(), true, "not_trusted");
         }
         if (!snapshot.fingerprint().equals(record)) {
-            return new Evaluation(State.RESTRICTED, key, snapshot.fingerprint(), true, "fingerprint_changed");
+            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(), true, "fingerprint_changed");
         }
-        return new Evaluation(State.TRUSTED, key, snapshot.fingerprint(), true, null);
+        return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), true, null);
+    }
+
+    /**
+     * A desktop-managed workspace used to be evaluated with the CLI fingerprint. Reuse that record
+     * only when it still matches the full legacy fingerprint (including CLI MCP files).
+     */
+    private static boolean migrateLegacyRecord(Path trustFile, Path workspace, String workspaceKey,
+                                               String desktopKey, String desktopFingerprint) {
+        var legacyRecord = readRecord(trustFile, workspaceKey);
+        if (legacyRecord == null) return false;
+        var legacySnapshot = fingerprint(workspace, Mode.CLI);
+        if (!legacySnapshot.fingerprint().equals(legacyRecord)) return false;
+        writeRecord(trustFile, desktopKey, desktopFingerprint);
+        LOGGER.info("migrated workspace trust record to the desktop-mcp key");
+        return true;
+    }
+
+    public static String recordKey(String workspaceKey, Mode mode) {
+        return mode == Mode.DESKTOP_MCP ? workspaceKey + DESKTOP_MCP_KEY_SUFFIX : workspaceKey;
     }
 
     public static Path trustFile() {
@@ -86,10 +136,11 @@ public final class WorkspaceTrust {
     }
 
     /** Fingerprint covers every workspace input that can execute or steer the agent. */
-    static Snapshot fingerprint(Path workspace) {
+    static Snapshot fingerprint(Path workspace, Mode mode) {
         var entries = new ArrayList<String>();
         boolean inputs = false;
         for (var relative : CONFIG_FILES) {
+            if (mode == Mode.DESKTOP_MCP && DESKTOP_SKIPPED_FILES.contains(relative)) continue;
             var file = workspace.resolve(relative);
             if (!Files.isRegularFile(file)) continue;
             inputs = true;
@@ -157,6 +208,47 @@ public final class WorkspaceTrust {
         }
     }
 
+    /** Read-modify-write of one record; concurrent writers are rare (boot-time migration only). */
+    @SuppressWarnings("unchecked")
+    private static void writeRecord(Path trustFile, String key, String fingerprint) {
+        synchronized (WRITE_LOCK) {
+            try {
+                Map<String, Object> root;
+                if (Files.isRegularFile(trustFile)) {
+                    root = MAPPER.readValue(trustFile.toFile(), Map.class);
+                } else {
+                    root = new LinkedHashMap<>();
+                }
+                if (!TRUST_SCHEMA_VERSION.equals(String.valueOf(root.get("schemaVersion")))) {
+                    root = new LinkedHashMap<>();
+                    root.put("schemaVersion", TRUST_SCHEMA_VERSION);
+                }
+                Map<String, Object> workspaces;
+                if (root.get("workspaces") instanceof Map<?, ?> existing) {
+                    workspaces = new LinkedHashMap<>((Map<String, Object>) existing);
+                } else {
+                    workspaces = new LinkedHashMap<>();
+                }
+                var record = new LinkedHashMap<String, Object>();
+                record.put("fingerprint", fingerprint);
+                record.put("trustedAt", Instant.now().toString());
+                workspaces.put(key, record);
+                root.put("workspaces", workspaces);
+                Files.createDirectories(trustFile.getParent());
+                var temp = trustFile.resolveSibling(TRUST_FILE_NAME + ".tmp-" + ProcessHandle.current().pid());
+                Files.writeString(temp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n",
+                        StandardCharsets.UTF_8);
+                try {
+                    Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+                } catch (IOException e) {
+                    Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } catch (IOException | RuntimeException e) {
+                LOGGER.warn("failed to persist the migrated workspace trust record: {}", e.getMessage());
+            }
+        }
+    }
+
     private static String sha256(String value) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
@@ -174,7 +266,8 @@ public final class WorkspaceTrust {
         RESTRICTED
     }
 
-    public record Evaluation(State state, String key, String fingerprint, boolean hasExecutableInputs, String reason) {
+    public record Evaluation(State state, String key, String workspaceKey, String fingerprint,
+                             boolean hasExecutableInputs, String reason) {
         public boolean trusted() {
             return state == State.TRUSTED;
         }

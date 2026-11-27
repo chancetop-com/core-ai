@@ -6,6 +6,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serial;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -13,6 +15,9 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author stephen
@@ -46,12 +51,29 @@ public class McpClientManager implements AutoCloseable {
         return of(List.of(configs));
     }
 
+    /**
+     * Desktop-managed manager: tools are served from a snapshot filled by the warmup/heartbeat
+     * executors, so tool enumeration never opens a connection on the caller's thread.
+     */
+    public static McpClientManager desktop() {
+        var manager = new McpClientManager();
+        manager.snapshotMode = true;
+        manager.registerShutdownHook();
+        return manager;
+    }
+
     private final Map<String, McpServerConfig> configs = new ConcurrentHashMap<>();
     private final Map<String, McpClientService> clients = new ConcurrentHashMap<>();
     private final Map<String, ConnectionState> states = new ConcurrentHashMap<>();
     private final Map<String, Object> locks = new ConcurrentHashMap<>();
+    private final Map<String, List<McpSchema.Tool>> toolSnapshots = new ConcurrentHashMap<>();
+    private final Map<String, ToolConflict> toolConflicts = new ConcurrentHashMap<>();
+    private final Map<String, String> invalidToolNames = new ConcurrentHashMap<>();
     private final List<ConnectionStateListener> listeners = new CopyOnWriteArrayList<>();
     private final Object connectionMonitorLock = new Object();
+    private volatile boolean snapshotMode;
+    private volatile ExecutorService snapshotExecutor;
+    private final AtomicBoolean snapshotWarmupStarted = new AtomicBoolean();
     private McpConnectionMonitor connectionMonitor;
     private volatile boolean connectionMonitorInitialized = false;
     private Thread shutdownHook;
@@ -164,6 +186,92 @@ public class McpClientManager implements AutoCloseable {
         }
     }
 
+    /** Desktop mode warmup: a bounded dedicated executor, idempotent, never the common pool. */
+    public void warmupAsync() {
+        if (!snapshotWarmupStarted.compareAndSet(false, true)) return;
+        if (configs.isEmpty()) return;
+        executor().submit(() -> {
+            for (var serverName : configs.keySet().stream().sorted().toList()) {
+                if (closed) return;
+                try {
+                    getClient(serverName);
+                    refreshSnapshot(serverName);
+                } catch (Exception e) {
+                    LOGGER.warn("Failed to warmup client: {}", serverName, e);
+                }
+            }
+            boolean anyHeartbeatEnabled = configs.values().stream().anyMatch(McpServerConfig::isEnableHeartbeat);
+            if (anyHeartbeatEnabled) startHeartbeat();
+        });
+    }
+
+    public boolean isSnapshotMode() {
+        return snapshotMode;
+    }
+
+    /** Tools last seen for a server, or empty when no successful listTools has completed yet. */
+    public Optional<List<McpSchema.Tool>> toolSnapshot(String serverName) {
+        return Optional.ofNullable(toolSnapshots.get(serverName));
+    }
+
+    public void refreshSnapshotAsync(String serverName) {
+        if (!snapshotMode || closed) return;
+        executor().submit(() -> {
+            try {
+                refreshSnapshot(serverName);
+            } catch (Exception e) {
+                LOGGER.debug("Failed to refresh MCP tool snapshot for {}: {}", serverName, e.getMessage());
+            }
+        });
+    }
+
+    private void refreshSnapshot(String serverName) {
+        var client = clients.get(serverName);
+        if (client == null) throw new McpClientException("MCP server " + serverName + " is not connected", null);
+        toolSnapshots.put(serverName, List.copyOf(client.listTools(null)));
+    }
+
+    public void recordToolConflict(String toolName, String winnerServer, String skippedServer) {
+        toolConflicts.compute(toolName, (name, existing) -> {
+            var servers = existing == null ? new ArrayList<String>() : new ArrayList<>(existing.servers());
+            if (!servers.contains(winnerServer)) servers.add(winnerServer);
+            if (!servers.contains(skippedServer)) servers.add(skippedServer);
+            var skipped = existing == null ? new ArrayList<String>() : new ArrayList<>(existing.skipped());
+            if (!skipped.contains(skippedServer)) skipped.add(skippedServer);
+            return new ToolConflict(name, List.copyOf(servers), winnerServer, List.copyOf(skipped));
+        });
+    }
+
+    public void recordInvalidToolName(String serverName, String toolName, String reason) {
+        invalidToolNames.put(serverName + "/" + toolName, reason);
+    }
+
+    public List<ToolConflict> toolConflicts() {
+        return toolConflicts.values().stream()
+                .sorted(Comparator.comparing(ToolConflict::tool))
+                .toList();
+    }
+
+    public Map<String, String> invalidToolNames() {
+        return Map.copyOf(invalidToolNames);
+    }
+
+    private ExecutorService executor() {
+        var existing = snapshotExecutor;
+        if (existing != null) return existing;
+        synchronized (connectionMonitorLock) {
+            if (snapshotExecutor == null) {
+                var threads = Math.max(1, Math.min(4, configs.size()));
+                snapshotExecutor = Executors.newFixedThreadPool(threads, runnable -> {
+                    var thread = new Thread(runnable, "mcp-desktop-warmup");
+                    thread.setDaemon(true);
+                    return thread;
+                });
+            }
+            return snapshotExecutor;
+        }
+    }
+
     public void startHeartbeat() {
         getConnectionMonitor().startHeartbeat();
     }
@@ -241,6 +349,7 @@ public class McpClientManager implements AutoCloseable {
             var client = new McpClientService(config);
             clients.put(serverName, client);
             updateState(serverName, ConnectionState.CONNECTED);
+            if (snapshotMode) refreshSnapshotAsync(serverName);
             return true;
         } catch (Exception e) {
             LOGGER.warn("Sync reconnect failed for server {}: {}", serverName, e.getMessage());
@@ -311,6 +420,8 @@ public class McpClientManager implements AutoCloseable {
             closeClient(serverName);
         }
         listeners.clear();
+        var executor = snapshotExecutor;
+        if (executor != null) executor.shutdownNow();
         removeShutdownHook();
         disposeReactorSchedulers();
         LOGGER.debug("McpClientManager closed");
@@ -406,6 +517,9 @@ public class McpClientManager implements AutoCloseable {
                 LOGGER.warn("Error notifying listener for server: {}", serverName, e);
             }
         }
+    }
+
+    public record ToolConflict(String tool, List<String> servers, String winner, List<String> skipped) {
     }
 
     public enum ConnectionState {

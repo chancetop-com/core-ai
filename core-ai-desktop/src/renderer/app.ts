@@ -396,6 +396,65 @@ interface ObservationWatchView {
   lastError: string | null;
 }
 
+interface McpServerView {
+  id: string;
+  name: string;
+  enabled: boolean;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  secretNames: string[];
+}
+interface McpListResult {
+  ok: boolean;
+  servers?: McpServerView[];
+  hash?: string;
+  supported?: boolean;
+  pendingReload?: boolean;
+  error?: string;
+}
+interface McpSaveRequest {
+  server: {
+    id?: string;
+    name: string;
+    enabled: boolean;
+    config: Record<string, unknown>;
+  };
+  secrets?: Record<string, string | null>;
+  expectedHash?: string | null;
+}
+interface McpMutationResult {
+  ok: boolean;
+  pending?: boolean;
+  error?: string;
+}
+interface McpStatusResult {
+  trusted?: boolean;
+  configLoaded?: boolean;
+  secretsLoaded?: boolean;
+  finalized?: boolean;
+  servers?: Array<{ name: string; state: string; transport?: string; toolCount: number }>;
+  conflicts?: Array<{ tool: string; winner: string; skipped: string[] }>;
+  invalidTools?: Record<string, string>;
+  rejected?: Record<string, string>;
+}
+interface McpImportSource {
+  id: string;
+  label: string;
+  file: string;
+  kind: 'mcp-json' | 'agent-properties';
+  servers: Array<{ name: string; config: Record<string, unknown> }>;
+  warnings: string[];
+}
+interface McpProbeResult {
+  ok?: boolean;
+  probeId?: string;
+  server?: string;
+  tools?: Array<{ name: string; description?: string }>;
+  error?: string;
+  elapsedMs?: number;
+}
+
 interface CoreAiBridge {
   call(workspace: string, method: string, params: Record<string, unknown>): Promise<Envelope>;
   chooseWorkspace(): Promise<string | null>;
@@ -403,6 +462,14 @@ interface CoreAiBridge {
   workspaceSetTrust(workspace: string, trusted: boolean): Promise<{ ok: boolean; trust?: WorkspaceTrustState | null; error?: string }>;
   defaultWorkspace(): Promise<string>;
   workspaceSummaries(): Promise<WorkspaceSummary[]>;
+  mcpList(workspace: string): Promise<McpListResult>;
+  mcpSave(workspace: string, request: McpSaveRequest): Promise<McpMutationResult>;
+  mcpSetEnabled(workspace: string, id: string, enabled: boolean): Promise<McpMutationResult>;
+  mcpRemove(workspace: string, id: string): Promise<McpMutationResult>;
+  mcpStatus(workspace: string): Promise<{ ok: boolean; status?: McpStatusResult; error?: string }>;
+  mcpTest(workspace: string, name: string): Promise<{ ok: boolean; result?: McpProbeResult; error?: string }>;
+  mcpImportPreview(workspace: string): Promise<{ ok: boolean; sources?: McpImportSource[]; error?: string }>;
+  mcpImport(workspace: string, request: { servers: Array<{ name: string; config: Record<string, unknown> }>; mode: 'skip' | 'replace' | 'rename' }): Promise<{ ok: boolean; imported?: string[]; skipped?: string[]; renamed?: string[]; pending?: boolean; error?: string }>;
   authStatus(): Promise<AuthStatus>;
   authServers(): Promise<AuthServerEntry[]>;
   authSwitch(serverUrl: string): Promise<AuthStatus>;
@@ -7770,6 +7837,8 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   brokerLabel.append(brokerToggle, document.createTextNode('Enable skill SDK capabilities for local sessions (experimental)'));
   body.append(brokerLabel);
 
+  if (state.workspace) body.append(await renderMcpServersSection());
+
   const permissions = state.workspace ? await call('permissions/get', {}) : null;
   if (permissions) {
     const section = collapsibleSettingsSection('Permission rules',
@@ -7793,6 +7862,345 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
   body.append(await renderPluginsSection());
   body.append(renderAboutSection());
   return root;
+}
+
+function mcpTransportLabel(config: Record<string, unknown>): string {
+  if (typeof config.command === 'string' && config.command) return `stdio · ${config.command}`;
+  if (typeof config.url === 'string' && config.url) return `http · ${config.url}`;
+  return 'no transport';
+}
+
+function parseLinePairs(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const index = line.indexOf('=');
+    if (index <= 0) continue;
+    out[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+  }
+  return out;
+}
+
+function formatPairs(values: Record<string, unknown> | undefined): string {
+  if (!values || typeof values !== 'object') return '';
+  return Object.entries(values).map(([key, value]) => `${key}=${String(value)}`).join('\n');
+}
+
+/**
+ * Settings → MCP servers. Definitions, secrets and processes are owned per workspace by the desktop
+ * and pushed to that workspace's engine; the CLI's `.core-ai/MCP.json` is not read or written here.
+ */
+function renderMcpServersSection(): HTMLElement {
+  const section = collapsibleSettingsSection('MCP servers',
+    `Servers for ${state.workspace ? workspaceLabel(state.workspace) : 'this workspace'} · stored outside the repository, scoped to this workspace only`);
+  const workspace = state.workspace;
+  if (!workspace) {
+    section.body.append(el('div', 'hint', 'Connect a workspace to manage its MCP servers.'));
+    return section.root;
+  }
+  const loading = el('div', 'hint', 'Loading MCP servers…');
+  section.body.append(loading);
+  void loadMcpServersInto(section.body, workspace, loading);
+  return section.root;
+}
+
+async function loadMcpServersInto(body: HTMLElement, workspace: string, loading: HTMLElement): Promise<void> {
+  const result = await window.coreai.mcpList(workspace).catch((error: unknown): McpListResult => ({
+    ok: false, error: error instanceof Error ? error.message : String(error),
+  }));
+  loading.remove();
+  if (!result.ok) {
+    body.append(el('div', 'hint', `MCP store unavailable: ${result.error ?? 'unknown error'}`));
+    return;
+  }
+  if (!result.supported) {
+    body.append(el('div', 'hint', 'This engine does not support desktop-managed MCP. Update the desktop/engine to configure MCP here.'));
+    return;
+  }
+  const servers = result.servers ?? [];
+  const [statusResult, importResult] = await Promise.all([
+    window.coreai.mcpStatus(workspace).catch(() => null),
+    window.coreai.mcpImportPreview(workspace).catch(() => null),
+  ]);
+  const status = statusResult?.ok ? statusResult.status : undefined;
+  if (result.pendingReload) {
+    body.append(el('div', 'hint', 'A configuration change is waiting for the current turn to finish; it will be applied automatically.'));
+  }
+  if (servers.length === 0) {
+    body.append(el('div', 'hint', 'No MCP servers yet. Add one to give this workspace extra tools.'));
+  } else {
+    const runtime = new Map((status?.servers ?? []).map((entry) => [entry.name, entry]));
+    const list = el('div', 'mcp-list');
+    for (const server of servers) {
+      const row = el('div', 'settings-actions');
+      const label = el('div');
+      label.style.flex = '1 1 260px';
+      label.append(el('div', undefined, server.name));
+      label.append(el('div', 'hint', mcpTransportLabel(server.config)));
+      const stateInfo = runtime.get(server.name);
+      const details = [server.enabled ? 'enabled' : 'disabled'];
+      if (stateInfo) details.push(`${stateInfo.state.toLowerCase()}${stateInfo.toolCount ? ` · ${stateInfo.toolCount} tools` : ''}`);
+      if (server.secretNames.length) details.push(`secrets: ${server.secretNames.join(', ')}`);
+      label.append(el('div', 'hint', details.join(' · ')));
+      row.append(label);
+      const toggle = el('button', 'btn small', server.enabled ? 'Disable' : 'Enable') as HTMLButtonElement;
+      toggle.onclick = async () => {
+        const changed = await window.coreai.mcpSetEnabled(workspace, server.id, !server.enabled);
+        if (!changed.ok) toast(`Could not update MCP server: ${changed.error ?? 'unknown error'}`, 'error');
+        else if (changed.pending) toast('MCP change queued until the current turn finishes');
+        await renderContent();
+      };
+      const edit = el('button', 'btn small', 'Edit') as HTMLButtonElement;
+      edit.onclick = () => openMcpEditor(body, workspace, server, result.hash ?? null);
+      const test = el('button', 'btn small', 'Test') as HTMLButtonElement;
+      test.onclick = async () => {
+        if (!server.enabled) {
+          toast('Enable this MCP server before testing it', 'error');
+          return;
+        }
+        test.disabled = true;
+        test.textContent = 'Testing…';
+        const probe = await window.coreai.mcpTest(workspace, server.name);
+        test.disabled = false;
+        test.textContent = 'Test';
+        if (!probe.ok) toast(`MCP test failed: ${probe.error ?? 'unknown error'}`, 'error');
+        else if (!probe.result?.ok) toast(probe.result?.error ?? 'MCP test failed', 'error');
+        else toast(`Connected · ${(probe.result.tools ?? []).length} tools`);
+      };
+      const remove = el('button', 'btn small danger', 'Delete') as HTMLButtonElement;
+      remove.onclick = async () => {
+        if (!window.confirm(`Delete MCP server ${server.name}? A running engine is reloaded without it.`)) return;
+        const deleted = await window.coreai.mcpRemove(workspace, server.id);
+        if (!deleted.ok) toast(`Could not delete MCP server: ${deleted.error ?? 'unknown error'}`, 'error');
+        await renderContent();
+      };
+      const copy = el('button', 'btn small', 'Copy JSON') as HTMLButtonElement;
+      copy.onclick = async () => {
+        await copyToClipboard(JSON.stringify({ [server.name]: server.config }, null, 2));
+        toast(`Copied ${server.name} JSON`);
+      };
+      row.append(toggle, edit, test, copy, remove);
+      list.append(row);
+    }
+    body.append(list);
+  }
+  if (status?.conflicts?.length) {
+    body.append(el('div', 'hint',
+      `Name conflicts: ${status.conflicts.map((conflict) => `${conflict.tool} (kept ${conflict.winner})`).join(', ')}`));
+  }
+  if (status?.invalidTools && Object.keys(status.invalidTools).length) {
+    body.append(el('div', 'hint',
+      `Rejected tools (name over 64 characters): ${Object.keys(status.invalidTools).join(', ')}`));
+  }
+  if (status?.rejected && Object.keys(status.rejected).length) {
+    body.append(el('div', 'hint',
+      `This engine skipped: ${Object.entries(status.rejected).map(([name, reason]) => `${name} (${reason})`).join('; ')}`));
+  }
+  if (status?.trusted === false) {
+    body.append(el('div', 'hint', 'This workspace is restricted, so saved MCP servers are not loaded. Trust the workspace to run them.'));
+  }
+  if (importResult?.ok && importResult.sources?.length) {
+    body.append(renderMcpImportPanel(workspace, importResult.sources));
+  }
+  const actions = el('div', 'settings-actions');
+  const add = el('button', 'btn small primary', 'Add MCP server') as HTMLButtonElement;
+  add.onclick = () => openMcpEditor(body, workspace, null, result.hash ?? null);
+  const copyAll = el('button', 'btn small', 'Copy all JSON') as HTMLButtonElement;
+  copyAll.onclick = async () => {
+    const payload: Record<string, Record<string, unknown>> = {};
+    for (const server of servers) payload[server.name] = server.config;
+    await copyToClipboard(JSON.stringify({ mcpServers: payload }, null, 2));
+    toast('Copied workspace MCP JSON');
+  };
+  actions.append(add, copyAll);
+  body.append(actions);
+}
+
+function renderMcpImportPanel(workspace: string, sources: McpImportSource[]): HTMLElement {
+  const panel = el('div', 'settings-actions');
+  panel.style.flexDirection = 'column';
+  panel.style.alignItems = 'stretch';
+  panel.append(el('div', 'hint',
+    'CLI MCP configuration detected. Importing copies it into this workspace; the CLI files are only read, never changed.'));
+  const select = el('select', 'settings-input') as HTMLSelectElement;
+  for (const source of sources) {
+    const option = el('option', undefined, `${source.label} · ${source.servers.length} server${source.servers.length === 1 ? '' : 's'}`);
+    option.value = source.id;
+    select.append(option);
+  }
+  const mode = el('select', 'settings-input') as HTMLSelectElement;
+  for (const value of ['skip', 'replace', 'rename']) {
+    const option = el('option', undefined, `on conflict: ${value}`);
+    option.value = value;
+    mode.append(option);
+  }
+  const button = el('button', 'btn small', 'Import') as HTMLButtonElement;
+  button.onclick = async () => {
+    const source = sources.find((entry) => entry.id === select.value);
+    if (!source) return;
+    button.disabled = true;
+    const imported = await window.coreai.mcpImport(workspace, { servers: source.servers, mode: mode.value as 'skip' | 'replace' | 'rename' });
+    button.disabled = false;
+    if (!imported.ok) {
+      toast(`MCP import failed: ${imported.error ?? 'unknown error'}`, 'error');
+      return;
+    }
+    const parts = [`imported ${imported.imported?.length ?? 0}`];
+    if (imported.skipped?.length) parts.push(`skipped ${imported.skipped.join(', ')}`);
+    if (imported.renamed?.length) parts.push(`renamed ${imported.renamed.join(', ')}`);
+    toast(`MCP import: ${parts.join(' · ')}`);
+    await renderContent();
+  };
+  const row = el('div', 'settings-actions');
+  row.append(select, mode, button);
+  panel.append(row);
+  const warnings = sources.flatMap((source) => source.warnings);
+  if (warnings.length) panel.append(el('div', 'hint', warnings.join('; ')));
+  if (sources.some((source) => source.servers.some((server) => JSON.stringify(server.config).includes('${env:')))) {
+    panel.append(el('div', 'hint', 'Imported servers use ${env:NAME} placeholders; add the matching secrets after importing.'));
+  }
+  return panel;
+}
+
+async function copyToClipboard(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    toast('Could not copy to the clipboard', 'error');
+  }
+}
+
+function openMcpEditor(host: HTMLElement, workspace: string, existing: McpServerView | null, expectedHash: string | null): void {
+  host.querySelector('.mcp-editor')?.remove();
+  const isHttp = typeof existing?.config.url === 'string' && !existing.config.command;
+  const form = el('div', 'mcp-editor');
+  form.style.borderTop = '1px solid var(--border-strong)';
+  form.style.marginTop = '12px';
+  form.style.paddingTop = '12px';
+  const grid = el('dl', 'settings-grid');
+  const field = (label: string, input: HTMLElement): void => {
+    grid.append(el('dt', undefined, label));
+    const cell = el('dd');
+    cell.append(input);
+    grid.append(cell);
+  };
+  const nameInput = el('input', 'settings-input') as HTMLInputElement;
+  nameInput.value = existing?.name ?? '';
+  nameInput.style.width = '260px';
+  field('Name', nameInput);
+  const transport = el('select', 'settings-input') as HTMLSelectElement;
+  for (const value of ['stdio', 'http']) {
+    const option = el('option', undefined, value);
+    option.value = value;
+    transport.append(option);
+  }
+  transport.value = isHttp ? 'http' : 'stdio';
+  field('Transport', transport);
+  const commandInput = el('input', 'settings-input') as HTMLInputElement;
+  commandInput.placeholder = 'npx';
+  commandInput.value = typeof existing?.config.command === 'string' ? existing.config.command : '';
+  commandInput.style.width = '320px';
+  field('Command (stdio)', commandInput);
+  const argsInput = el('textarea', 'settings-input') as HTMLTextAreaElement;
+  argsInput.rows = 3;
+  argsInput.style.width = '420px';
+  argsInput.style.fontFamily = 'var(--mono)';
+  argsInput.value = Array.isArray(existing?.config.args) ? (existing?.config.args as unknown[]).map(String).join('\n') : '';
+  field('Arguments (one per line)', argsInput);
+  const envInput = el('textarea', 'settings-input') as HTMLTextAreaElement;
+  envInput.rows = 3;
+  envInput.style.width = '420px';
+  envInput.style.fontFamily = 'var(--mono)';
+  envInput.placeholder = 'GITHUB_TOKEN=${env:GITHUB_TOKEN}';
+  envInput.value = formatPairs(existing?.config.env as Record<string, unknown> | undefined);
+  field('Environment', envInput);
+  const urlInput = el('input', 'settings-input') as HTMLInputElement;
+  urlInput.placeholder = 'https://example.com/mcp';
+  urlInput.value = typeof existing?.config.url === 'string' ? existing.config.url : '';
+  urlInput.style.width = '420px';
+  field('URL (http)', urlInput);
+  const headerInput = el('textarea', 'settings-input') as HTMLTextAreaElement;
+  headerInput.rows = 3;
+  headerInput.style.width = '420px';
+  headerInput.style.fontFamily = 'var(--mono)';
+  headerInput.placeholder = 'Authorization=Bearer ${env:TOKEN}';
+  headerInput.value = formatPairs(existing?.config.headers as Record<string, unknown> | undefined);
+  field('Headers (http)', headerInput);
+  const secretInput = el('textarea', 'settings-input') as HTMLTextAreaElement;
+  secretInput.rows = 3;
+  secretInput.style.width = '420px';
+  secretInput.style.fontFamily = 'var(--mono)';
+  secretInput.placeholder = 'NAME=value   (blank keeps the existing value; -NAME removes it)';
+  field('Secrets', secretInput);
+  const enabledLabel = el('label', 'settings-actions');
+  const enabledInput = el('input') as HTMLInputElement;
+  enabledInput.type = 'checkbox';
+  enabledInput.checked = existing ? existing.enabled : true;
+  enabledLabel.append(enabledInput, document.createTextNode('Enabled'));
+  field('State', enabledLabel);
+  form.append(grid);
+  const syncTransport = (): void => {
+    const http = transport.value === 'http';
+    urlInput.disabled = !http;
+    headerInput.disabled = !http;
+    commandInput.disabled = http;
+    argsInput.disabled = http;
+    envInput.disabled = http;
+  };
+  transport.onchange = syncTransport;
+  syncTransport();
+  const actions = el('div', 'settings-actions');
+  const save = el('button', 'btn small primary', 'Save') as HTMLButtonElement;
+  save.onclick = async () => {
+    const name = nameInput.value.trim();
+    if (!name) {
+      toast('MCP server name is required', 'error');
+      return;
+    }
+    const config: Record<string, unknown> = transport.value === 'http'
+      ? { url: urlInput.value.trim(), headers: parseLinePairs(headerInput.value) }
+      : { command: commandInput.value.trim(), args: argsInput.value.split('\n').map((line) => line.trim()).filter(Boolean), env: parseLinePairs(envInput.value) };
+    if (transport.value === 'http' && !config.url) {
+      toast('URL is required for an HTTP MCP server', 'error');
+      return;
+    }
+    if (transport.value === 'stdio' && !config.command) {
+      toast('Command is required for a stdio MCP server', 'error');
+      return;
+    }
+    const secrets: Record<string, string | null> = {};
+    for (const [key, value] of Object.entries(parseLinePairs(secretInput.value))) {
+      if (key.startsWith('-')) secrets[key.slice(1)] = null;
+      else secrets[key] = value;
+    }
+    save.disabled = true;
+    save.textContent = 'Saving…';
+    const saved = await window.coreai.mcpSave(workspace, {
+      server: {
+        id: existing?.id,
+        name,
+        enabled: enabledInput.checked,
+        config,
+      },
+      secrets: Object.keys(secrets).length ? secrets : undefined,
+      expectedHash,
+    });
+    save.disabled = false;
+    save.textContent = 'Save';
+    if (!saved.ok) {
+      toast(`Could not save MCP server: ${saved.error ?? 'unknown error'}`, 'error');
+      return;
+    }
+    toast(saved.pending ? 'MCP server saved; reload is waiting for the current turn to finish' : `MCP server ${name} saved`);
+    await renderContent();
+  };
+  const cancel = el('button', 'btn small', 'Cancel') as HTMLButtonElement;
+  cancel.onclick = () => form.remove();
+  actions.append(save, cancel);
+  form.append(actions);
+  host.append(form);
+  form.scrollIntoView({ block: 'nearest' });
 }
 
 function renderWorkspaceTrustSection(): HTMLElement {

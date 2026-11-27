@@ -20,6 +20,7 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Supplier;
 
 /**
@@ -76,6 +77,7 @@ public class EngineScheduler implements AutoCloseable {
     private final Object snapshotLock = new Object();
     private volatile Map<String, SnapshotEntry> snapshot;
     private volatile boolean paused;
+    private final AtomicBoolean started = new AtomicBoolean();
 
     public EngineScheduler(EngineBootstrap bootstrap, EngineSessionRegistry registry, Supplier<NotificationSink> sink) {
         this(bootstrap.scheduledTaskStore, bootstrap.workspace, new RegistrySessions(registry), sink);
@@ -90,6 +92,7 @@ public class EngineScheduler implements AutoCloseable {
     }
 
     void start() {
+        if (!started.compareAndSet(false, true)) return;
         ticker.scheduleWithFixedDelay(this::tickQuietly, INITIAL_DELAY_SECONDS, TICK_PERIOD_SECONDS, TimeUnit.SECONDS);
     }
 

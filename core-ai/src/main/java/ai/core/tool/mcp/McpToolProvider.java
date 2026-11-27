@@ -16,11 +16,16 @@ import java.util.Map;
  * The no-arg constructor enumerates all servers (CLI usage, {@link RefreshPolicy#EVERY_TURN}).
  * The parameterized constructor targets a specific server with optional tool filtering
  * (Server usage, with configurable {@link RefreshPolicy}).
+ * <p>
+ * In desktop snapshot mode the provider only reads the manager's tool snapshot: it never connects
+ * or reconnects on the caller's thread. Cross-server name conflicts are resolved by server name
+ * order, and a name longer than 64 characters is rejected instead of being truncated.
  *
  * @author Lim Chen
  */
 public class McpToolProvider implements ToolProvider {
     public static final String MCP = "mcp";
+    static final int MAX_TOOL_NAME_LENGTH = 64;
 
     private final String id;
     private final McpClientManager manager;
@@ -81,10 +86,37 @@ public class McpToolProvider implements ToolProvider {
             if (names == null || names.isEmpty()) return Map.of();
             servers = new ArrayList<>(names);
         }
+        if (mgr.isSnapshotMode()) {
+            return fromSnapshots(mgr, servers);
+        }
         var tools = McpToolCalls.from(mgr, servers, includes, null, serverName);
         var map = new LinkedHashMap<String, ToolCall>();
         for (var tc : tools) {
             map.put(tc.getName(), tc);
+        }
+        return map;
+    }
+
+    private Map<String, ToolCall> fromSnapshots(McpClientManager mgr, List<String> servers) {
+        var ordered = new ArrayList<>(servers);
+        ordered.sort(String::compareTo);
+        var map = new LinkedHashMap<String, ToolCall>();
+        var winners = new LinkedHashMap<String, String>();
+        for (var server : ordered) {
+            var snapshot = mgr.toolSnapshot(server).orElse(null);
+            if (snapshot == null) continue;
+            var display = serverName != null ? serverName : server;
+            for (var tool : snapshot) {
+                var winner = winners.get(tool.name());
+                if (winner != null) {
+                    mgr.recordToolConflict(tool.name(), winner, server);
+                    continue;
+                }
+                var calls = McpToolCalls.fromServer(mgr, server, List.of(tool), includes, null, display);
+                if (calls.isEmpty()) continue;
+                map.put(tool.name(), calls.getFirst());
+                winners.put(tool.name(), server);
+            }
         }
         return map;
     }
