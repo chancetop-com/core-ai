@@ -62,6 +62,21 @@ final class LLMRetrySupport {
         return false;
     }
 
+    /**
+     * An in-stream error event that is a Jackson failure to read a leading 0x1F: the server parsed
+     * the gzipped request body as JSON. Safe to retry only by resending the body uncompressed.
+     */
+    static boolean requestEncodingRejected(RuntimeException error) {
+        for (Throwable cause = error; cause != null; cause = cause.getCause()) {
+            var message = cause.getMessage();
+            if (message != null && message.contains("Illegal character ((CTRL-CHAR, code 31))")
+                    && message.contains("only regular white space")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // package-private for tests: exponential backoff capped at SERVER_RETRY_MAX_DELAY_MILLIS
     static long retryDelayMillis(int failures, double jitter) {
         int shift = Math.min(Math.max(failures - 1, 0), 10);

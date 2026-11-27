@@ -73,6 +73,10 @@ public class LiteLLMProvider extends LLMProvider {
     private volatile String token;
     private volatile String authHeaderName = "Authorization";
     private volatile String authHeaderValuePrefix = "Bearer ";
+    // a core-ai-server older than 2.0.398 parses the gzipped request body as JSON and echoes the
+    // Jackson error back as an SSE error event; the first rejection turns compression off for this
+    // provider, so only one turn pays for the fallback
+    private volatile boolean requestCompressionSupported = true;
     private final HTTPClient client;
 
     public LiteLLMProvider(LLMProviderConfig config, String url, String token) {
@@ -210,11 +214,13 @@ public class LiteLLMProvider extends LLMProvider {
             bodyMap.putAll((Map<String, Object>) extraMap);
         }
         var rawBody = JsonUtil.toJson(bodyMap).getBytes(StandardCharsets.UTF_8);
-        if (rawBody.length >= GZIP_MIN_BYTES && LLMRetrySupport.isServerProxyEndpoint(reqUrl)) {
+        boolean gzipped = false;
+        if (requestCompressionSupported && rawBody.length >= GZIP_MIN_BYTES && LLMRetrySupport.isServerProxyEndpoint(reqUrl)) {
             var compressed = gzip(rawBody);
             if (compressed.length < rawBody.length) {
                 req.headers.put("Content-Encoding", "gzip");
                 req.body(compressed, ContentType.APPLICATION_JSON);
+                gzipped = true;
             } else {
                 req.body(rawBody, ContentType.APPLICATION_JSON);
             }
@@ -222,7 +228,19 @@ public class LiteLLMProvider extends LLMProvider {
             req.body(rawBody, ContentType.APPLICATION_JSON);
         }
 
-        return executeSSERequest(req, callback, request.isPassthrough());
+        if (!gzipped) {
+            return executeSSERequest(req, callback, request.isPassthrough());
+        }
+        try {
+            return executeSSERequest(req, callback, request.isPassthrough());
+        } catch (LLMStreamException e) {
+            if (!LLMRetrySupport.requestEncodingRejected(e)) throw e;
+            requestCompressionSupported = false;
+            LOGGER.warn("core-ai-server rejected the gzipped request body (server older than 2.0.398), retrying uncompressed and disabling request compression, endpoint={}", reqUrl);
+            req.headers.remove("Content-Encoding");
+            req.body(rawBody, ContentType.APPLICATION_JSON);
+            return executeSSERequest(req, callback, request.isPassthrough());
+        }
     }
 
     private CompletionResponse executeSSERequest(HTTPRequest req, StreamingCallback callback, boolean rawDataVisible) {

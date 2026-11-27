@@ -26,6 +26,7 @@ import java.util.zip.GZIPInputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -286,6 +287,69 @@ class LiteLLMProviderRetryTest {
         assertTrue(LLMRetrySupport.isServerProxyEndpoint("https://uat.example.com/api/litellm/v1/chat/completions"));
         assertFalse(LLMRetrySupport.isServerProxyEndpoint("https://api.deepseek.com/v1/chat/completions"));
         assertFalse(LLMRetrySupport.isServerProxyEndpoint(null));
+    }
+
+    // core-ai-server < 2.0.398 has no request-body decoding: it parses the gzip bytes as JSON and
+    // echoes the Jackson failure back as an SSE error event, which the CLI reported as a failed turn
+    @Test
+    void retriesUncompressedWhenTheServerCannotDecodeTheGzippedBody() {
+        var provider = provider((exchange, attempt) -> {
+            if ("gzip".equals(exchange.getRequestHeaders().getFirst("Content-Encoding"))) {
+                sse(exchange, "{\"error\":{\"message\":\"com.fasterxml.jackson.core.JsonParseException: "
+                        + "Illegal character ((CTRL-CHAR, code 31)): only regular white space (\\\\r, \\\\n, \\\\t) "
+                        + "is allowed between tokens\\n at [Source: REDACTED; line: 1, column: 2]\","
+                        + "\"type\":\"invalid_request_error\"}}");
+            } else {
+                sse(exchange,
+                        "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"recovered\"}}]}",
+                        "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}",
+                        "[DONE]");
+            }
+        }, 5);
+        var content = "large-message ".repeat(500);
+
+        var response = provider.completionStream(
+                CompletionRequest.of(List.of(Message.of(RoleType.USER, content)), List.of(), 0.0, "test-model", "test"),
+                new DefaultStreamingCallback());
+
+        assertEquals("recovered", response.choices.getFirst().message.content);
+        assertEquals(2, requests.get());
+    }
+
+    @Test
+    void stopsCompressingAfterTheServerRejectsTheGzippedBody() {
+        var encoding = new AtomicReference<String>();
+        var provider = provider((exchange, attempt) -> {
+            encoding.set(exchange.getRequestHeaders().getFirst("Content-Encoding"));
+            if ("gzip".equals(encoding.get())) {
+                sse(exchange, "{\"error\":{\"message\":\"com.fasterxml.jackson.core.JsonParseException: "
+                        + "Illegal character ((CTRL-CHAR, code 31)): only regular white space (\\\\r, \\\\n, \\\\t) "
+                        + "is allowed between tokens\"}}");
+            } else {
+                sse(exchange,
+                        "{\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"ok\"}}]}",
+                        "{\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}",
+                        "[DONE]");
+            }
+        }, 5);
+        var content = "large-message ".repeat(500);
+        var request = CompletionRequest.of(List.of(Message.of(RoleType.USER, content)), List.of(), 0.0, "test-model", "test");
+
+        provider.completionStream(request, new DefaultStreamingCallback());
+        provider.completionStream(request, new DefaultStreamingCallback());
+
+        assertNull(encoding.get(), "the second turn must not try gzip on a server that rejected it");
+        assertEquals(3, requests.get());
+    }
+
+    @Test
+    void detectsARejectedRequestEncoding() {
+        assertTrue(LLMRetrySupport.requestEncodingRejected(new LLMStreamException(
+                "com.fasterxml.jackson.core.JsonParseException: Illegal character ((CTRL-CHAR, code 31)): "
+                        + "only regular white space (\\r, \\n, \\t) is allowed between tokens")));
+        assertFalse(LLMRetrySupport.requestEncodingRejected(new LLMStreamException("invalid request")));
+        assertFalse(LLMRetrySupport.requestEncodingRejected(
+                new RuntimeException(new IllegalStateException("Illegal character ((CTRL-CHAR, code 31))"))));
     }
 
     private LiteLLMProvider provider(Attempt attempt, long retrySeconds) {
