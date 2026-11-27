@@ -1,6 +1,9 @@
 // P0 IM bridge: pull authorized messages from the local OCG daemon, run one engine turn
-// per message, and post the final answer back. P1 replaces the CLI polling with the
-// versioned OCG HTTP client and adds bindings/authorization/journaling.
+// per message, and post the final answer back. A message that arrives while a turn is
+// running steers that turn, the way a message typed into the chat composer does, instead
+// of waiting behind it.
+// P1 replaces the CLI polling with the versioned OCG HTTP client and adds
+// bindings/authorization/journaling.
 import type { StagedAttachment } from '../attachments/AttachmentStager';
 import { BridgeStore, type BridgeSessionRecord } from './BridgeStore';
 import type { OcgInboundMessage, OcgResult } from './OcgCli';
@@ -67,16 +70,43 @@ interface TurnOutcome {
 
 interface PendingTurn {
   workspace: string;
+  sessionId: string;
   turnId: string;
-  finish: (outcome: TurnOutcome) => void;
+  promise: Promise<TurnOutcome>;
+  settle: (outcome: TurnOutcome) => void;
+  detach: () => void;
+}
+
+/** A message the engine took without opening a turn for it; a turn of its own may still follow. */
+interface AbsorbedMessage {
+  message: OcgInboundMessage;
+  expiresAt: number;
+}
+
+/**
+ * Holds a session's next message until the turn this bridge just started is reported running.
+ * A message sent into that window is queued into the same batch as the previous one, and a
+ * batch reports only its first turn id — the later message would never get its own reply.
+ */
+interface TurnStartGate {
+  waiters: Array<() => void>;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface SendAdmission {
+  admission?: string;
 }
 
 const WAIT_SECONDS = 20;
 const TURN_TIMEOUT_MS = 10 * 60 * 1000;
+const TURN_START_TIMEOUT_MS = 3_000;
+const ABSORBED_TTL_MS = 30 * 60 * 1000;
 const RETRY_MIN_MS = 5_000;
 const RETRY_MAX_MS = 60_000;
 const PROGRESS_DELAY_MS = 2_500;
 const PROGRESS_TEXT = '收到，正在处理…';
+const STEERED_REPLY = '收到，已并入当前任务。';
+const QUEUED_REPLY = '收到，正在排队处理。';
 const MEDIA_FAILED_TEXT = '附件接收失败，请重试。';
 const TITLE_TEXT_MAX = 32;
 
@@ -107,7 +137,16 @@ function titleText(value: string | null | undefined): string {
 
 export class ChannelBridge {
   private readonly store: BridgeStore;
+  // Keyed by turn id, not session id: a message can be queued behind a running turn, so one
+  // session may hold several turns that have not answered yet.
   private readonly pending = new Map<string, PendingTurn>();
+  // Messages absorbed into a running turn. The engine requeues a steer that missed the turn's
+  // last model call, so such a message may still get a turn of its own after the receipt.
+  private readonly absorbed = new Map<string, AbsorbedMessage>();
+  private readonly turnStarts = new Map<string, TurnStartGate>();
+  // Messages this bridge is still working on. OCG can redeliver one while its turn runs; a second
+  // turn for the same id would overwrite the first turn's waiter.
+  private readonly claimed = new Set<string>();
   private readonly progressTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly progressWork = new Map<string, Promise<void>>();
   private running = false;
@@ -145,6 +184,11 @@ export class ChannelBridge {
     this.options.origins?.clearAll();
     for (const timer of this.progressTimers.values()) clearTimeout(timer);
     this.progressTimers.clear();
+    this.absorbed.clear();
+    this.claimed.clear();
+    // Unanswered turns are left to OCG's lease expiry: the message is redelivered and handled afresh.
+    for (const turn of [...this.pending.values()]) turn.detach();
+    for (const sessionId of [...this.turnStarts.keys()]) this.releaseTurnStart(sessionId);
     this.state = { ...this.state, enabled: false, running: false, activeSessionId: null };
     this.emit();
   }
@@ -155,18 +199,69 @@ export class ChannelBridge {
     const sessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
     const event = params.event as Record<string, unknown> | undefined;
     if (!sessionId || !event) return;
-    const pending = this.pending.get(sessionId);
-    if (!pending || pending.workspace !== workspace) return;
-    const turnId = typeof event.turn_id === 'string' ? event.turn_id : undefined;
-    if (turnId && turnId !== pending.turnId) return;
-    if (event.type === 'turn_complete') {
-      pending.finish({
-        output: typeof event.output === 'string' ? event.output : '',
-        cancelled: event.cancelled === true,
-      });
-    } else if (event.type === 'error') {
-      pending.finish({ error: typeof event.message === 'string' ? event.message : 'engine error' });
+    const type = typeof event.type === 'string' ? event.type : '';
+    if (type === 'status_change') {
+      // RUNNING is dispatched after the turn opened its input window, so the next message of this
+      // session can be steered instead of being queued next to it.
+      if (String(event.status ?? '').toLowerCase() === 'running') this.releaseTurnStart(sessionId);
+      return;
     }
+    if (type !== 'turn_complete' && type !== 'error') return;
+    const turnId = typeof event.turn_id === 'string' ? event.turn_id : '';
+    const pending = turnId ? this.pending.get(turnId) : this.onlyPending(sessionId);
+    if (pending && pending.workspace === workspace) {
+      if (type === 'turn_complete') {
+        pending.settle({
+          output: typeof event.output === 'string' ? event.output : '',
+          cancelled: event.cancelled === true,
+        });
+      } else {
+        pending.settle({ error: typeof event.message === 'string' ? event.message : 'engine error' });
+      }
+      return;
+    }
+    const absorbed = turnId ? this.absorbed.get(turnId) : undefined;
+    if (!absorbed) return;
+    this.absorbed.delete(turnId);
+    if (type === 'turn_complete') {
+      const output = typeof event.output === 'string' ? event.output.trim() : '';
+      if (output) void this.deliverAbsorbed(absorbed, output);
+    } else {
+      const detail = typeof event.message === 'string' ? event.message : 'engine error';
+      void this.deliverAbsorbed(absorbed, `处理失败：${truncate(detail, 200)}`);
+    }
+  }
+
+  /** Older engines (and command-level errors) do not tag an event with a turn id. */
+  private onlyPending(sessionId: string): PendingTurn | undefined {
+    let found: PendingTurn | undefined;
+    for (const turn of this.pending.values()) {
+      if (turn.sessionId !== sessionId) continue;
+      if (found) return undefined;
+      found = turn;
+    }
+    return found;
+  }
+
+  /** Blocks a message until the turn this bridge just started reports running (or the wait times out). */
+  private async waitTurnStart(sessionId: string): Promise<void> {
+    const gate = this.turnStarts.get(sessionId);
+    if (!gate) return;
+    await new Promise<void>((resolve) => gate.waiters.push(resolve));
+  }
+
+  private beginTurnStart(sessionId: string): void {
+    this.releaseTurnStart(sessionId);
+    const timer = setTimeout(() => this.releaseTurnStart(sessionId), TURN_START_TIMEOUT_MS);
+    this.turnStarts.set(sessionId, { waiters: [], timer });
+  }
+
+  private releaseTurnStart(sessionId: string): void {
+    const gate = this.turnStarts.get(sessionId);
+    if (!gate) return;
+    clearTimeout(gate.timer);
+    this.turnStarts.delete(sessionId);
+    for (const resolve of gate.waiters) resolve();
   }
 
   private async loop(): Promise<void> {
@@ -195,7 +290,7 @@ export class ChannelBridge {
   }
 
   private async handle(message: OcgInboundMessage): Promise<void> {
-    if (this.store.isHandled(message.id)) {
+    if (this.store.isHandled(message.id) || this.claimed.has(message.id)) {
       await this.ack(message.id);
       return;
     }
@@ -227,6 +322,7 @@ export class ChannelBridge {
       return;
     }
 
+    this.claimed.add(message.id);
     this.scheduleProgress(message);
     this.state = {
       ...this.state,
@@ -264,24 +360,75 @@ export class ChannelBridge {
     if (text) parts.push({ type: 'text', text });
     for (const attachment of staged) parts.push({ type: attachment.kind, path: attachment.path });
 
+    await this.dispatch(message, workspace, sessionId, title, parts);
+  }
+
+  /**
+   * Hands one message to the engine and returns as soon as the engine accepted it, so the inbox
+   * loop keeps consuming: a message that arrives during a running turn then steers that turn
+   * instead of waiting behind it. The answer is posted when the turn ends.
+   */
+  private async dispatch(
+    message: OcgInboundMessage,
+    workspace: string,
+    sessionId: string,
+    title: string,
+    parts: Array<{ type: string; text?: string; path?: string }>,
+  ): Promise<void> {
+    await this.waitTurnStart(sessionId);
+    if (!this.running) return;
+    this.beginTurnStart(sessionId);
     const waiter = this.createWaiter(sessionId, workspace, message.id);
+    let admission: string | undefined;
     try {
-      await this.options.callEngine(workspace, 'session/send', {
+      const result = await this.options.callEngine(workspace, 'session/send', {
         sessionId,
         turnId: message.id,
         parts,
-      });
+      }) as SendAdmission | null;
+      admission = typeof result?.admission === 'string' ? result.admission : undefined;
     } catch (error) {
-      waiter.cancel();
+      waiter.detach();
+      this.releaseTurnStart(sessionId);
       const detail = error instanceof Error ? error.message : String(error);
       this.fail(`session/send failed: ${detail}`);
       await this.replyAndFinish(message, `处理失败：${truncate(detail, 200)}`, true, workspace, sessionId, title);
       return;
     }
 
-    const outcome = await waiter.promise;
-    this.state = { ...this.state, activeSessionId: null };
-    const sessionKey = this.sessionKeyOf(message);
+    if (admission === 'steered' || admission === 'queued') {
+      waiter.detach();
+      this.releaseTurnStart(sessionId);
+      // A queued message can be drained together with another one and lose its turn id, so it
+      // gets the same treatment as a steered message: a receipt now, its answer by turn id later.
+      await this.absorb(message, workspace, sessionId, title, admission === 'steered' ? STEERED_REPLY : QUEUED_REPLY);
+      return;
+    }
+    if (admission === 'rejected') {
+      waiter.detach();
+      this.releaseTurnStart(sessionId);
+      await this.replyAndFinish(message, '这一轮未被接收：会话排队已满，请稍后重试。', true, workspace, sessionId, title);
+      return;
+    }
+
+    void this.awaitTurn(message, waiter, workspace, sessionId, title);
+  }
+
+  private async awaitTurn(
+    message: OcgInboundMessage,
+    waiter: PendingTurn,
+    workspace: string,
+    sessionId: string,
+    title: string,
+  ): Promise<void> {
+    let outcome: TurnOutcome;
+    try {
+      outcome = await waiter.promise;
+    } catch (error) {
+      this.options.log(`turn ${message.id} failed to settle: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+    this.state = { ...this.state, activeSessionId: this.idleIfNoTurns(sessionId) };
 
     if (outcome.error) {
       this.fail(`turn failed: ${outcome.error}`);
@@ -294,6 +441,66 @@ export class ChannelBridge {
       reply = outcome.cancelled ? '已取消。' : '这一轮没有产出。';
     }
     await this.replyAndFinish(message, reply, false, workspace, sessionId, title);
+  }
+
+  /**
+   * The engine took the message without opening a turn for it (it steered a running turn, or it
+   * queued it behind one). The turn that is running answers to the message that started it, so
+   * this one gets a receipt and is marked handled; the entry stays around because a steer that
+   * missed the turn's last model call, or a queued message, may still run a turn of its own.
+   */
+  private async absorb(
+    message: OcgInboundMessage,
+    workspace: string,
+    sessionId: string,
+    title: string,
+    receipt: string,
+  ): Promise<void> {
+    this.absorbed.set(message.id, { message, expiresAt: Date.now() + ABSORBED_TTL_MS });
+    this.pruneAbsorbed();
+    await this.cancelProgress(message.id);
+    const result = await this.options.ocg.reply(message.id, receipt, false, this.options.consumer, `${message.id}:1`);
+    if (!result.ok && result.code !== 'ALREADY_REPLIED') {
+      this.absorbed.delete(message.id);
+      this.fail(`reply failed: ${result.error ?? 'unknown error'}`);
+      await this.finishWithoutReply(message, 'failed');
+      return;
+    }
+    this.store.markHandled(message.id, 'replied');
+    this.claimed.delete(message.id);
+    this.state = { ...this.state, lastReplyAt: Date.now(), activeSessionId: this.idleIfNoTurns(sessionId) };
+    this.emit();
+    this.options.log(`accepted ${message.id} without its own turn yet (${receipt})`);
+    this.options.origins?.clear(message.id);
+    if (sessionId) {
+      this.options.onSession({ kind: 'replied', sessionId, workspace, title, sessionKey: this.sessionKeyOf(message) });
+    }
+  }
+
+  /** The receipt only covered acceptance: the message ran (or was drained) as a turn of its own. */
+  private async deliverAbsorbed(entry: AbsorbedMessage, text: string): Promise<void> {
+    const to = entry.message.target;
+    if (!to) return;
+    const result = await this.options.ocg.send(entry.message.channel, to, text, entry.message.accountId);
+    if (!result.ok) {
+      this.options.log(`answer for ${entry.message.id} send failed: ${result.error ?? 'unknown error'}`);
+      return;
+    }
+    this.options.log(`answered ${entry.message.id} with its own turn`);
+  }
+
+  private pruneAbsorbed(): void {
+    const now = Date.now();
+    for (const [id, entry] of this.absorbed) {
+      if (entry.expiresAt <= now) this.absorbed.delete(id);
+    }
+  }
+
+  private idleIfNoTurns(sessionId: string): string | null {
+    for (const turn of this.pending.values()) {
+      if (turn.sessionId === sessionId) return sessionId;
+    }
+    return null;
   }
 
   private async replyAndFinish(
@@ -318,7 +525,8 @@ export class ChannelBridge {
       return;
     }
     this.store.markHandled(message.id, 'replied');
-    this.state = { ...this.state, lastReplyAt: Date.now(), activeSessionId: null };
+    this.claimed.delete(message.id);
+    this.state = { ...this.state, lastReplyAt: Date.now(), activeSessionId: this.idleIfNoTurns(sessionId) };
     this.emit();
     this.options.log(`replied ${message.id} textLen=${text.length}`);
     this.options.origins?.clear(message.id);
@@ -331,6 +539,7 @@ export class ChannelBridge {
     await this.cancelProgress(message.id);
     await this.ack(message.id);
     this.store.markHandled(message.id, state);
+    this.claimed.delete(message.id);
     this.options.origins?.clear(message.id);
   }
 
@@ -425,23 +634,32 @@ export class ChannelBridge {
     return { sessionId, title };
   }
 
-  private createWaiter(sessionId: string, workspace: string, turnId: string): { promise: Promise<TurnOutcome>; cancel: () => void } {
+  private createWaiter(sessionId: string, workspace: string, turnId: string): PendingTurn {
     let resolvePromise: (outcome: TurnOutcome) => void = () => undefined;
-    let finish: (outcome: TurnOutcome) => void = () => undefined;
     const promise = new Promise<TurnOutcome>((resolve) => { resolvePromise = resolve; });
-    const entry: PendingTurn = {
+    const turn: PendingTurn = {
       workspace,
+      sessionId,
       turnId,
-      finish: (outcome) => finish(outcome),
+      promise,
+      settle: () => undefined,
+      detach: () => undefined,
     };
-    const timer = setTimeout(() => finish({ error: 'turn timed out' }), TURN_TIMEOUT_MS);
-    finish = (outcome: TurnOutcome): void => {
+    const remove = (): void => {
+      if (this.pending.get(turnId) === turn) this.pending.delete(turnId);
+    };
+    const timer = setTimeout(() => turn.settle({ error: 'turn timed out' }), TURN_TIMEOUT_MS);
+    turn.settle = (outcome: TurnOutcome): void => {
       clearTimeout(timer);
-      if (this.pending.get(sessionId) === entry) this.pending.delete(sessionId);
+      remove();
       resolvePromise(outcome);
     };
-    this.pending.set(sessionId, entry);
-    return { promise, cancel: () => finish({ error: 'turn not started' }) };
+    turn.detach = (): void => {
+      clearTimeout(timer);
+      remove();
+    };
+    this.pending.set(turnId, turn);
+    return turn;
   }
 
   private async lastAssistantText(sessionId: string, workspace: string): Promise<string> {

@@ -1,4 +1,5 @@
-// P0 IM bridge: one OCG message becomes one engine turn and one OCG reply.
+// P0 IM bridge: one OCG message becomes one engine turn and one OCG reply. A message sent while a
+// turn is running steers that turn, the way the chat composer does.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -66,18 +67,21 @@ function makeBridge(t, { messages, engine, progressDelayMs, store, sessionTitle,
     if (method === 'session/resume') return { sessionId: params.sessionId };
     if (method === 'session/send') {
       engineSends.push(params);
-      setTimeout(() => {
-        bridge.onEngineEvent(workspace, 'session/event', {
-          sessionId: params.sessionId,
-          event: {
-            type: 'turn_complete',
-            output: engine.output ?? '回复内容',
-            cancelled: false,
-            ...(params.turnId ? { turn_id: params.turnId } : {}),
-          },
-        });
-      }, engine.delayMs ?? 5);
-      return { accepted: true, queued: false };
+      const admission = typeof engine.admission === 'function' ? engine.admission(params) : engine.admission;
+      if (engine.autoComplete !== false) {
+        setTimeout(() => {
+          bridge.onEngineEvent(workspace, 'session/event', {
+            sessionId: params.sessionId,
+            event: {
+              type: 'turn_complete',
+              output: engine.output ?? '回复内容',
+              cancelled: false,
+              ...(params.turnId ? { turn_id: params.turnId } : {}),
+            },
+          });
+        }, engine.delayMs ?? 5);
+      }
+      return { accepted: admission !== 'rejected', queued: false, ...(admission ? { admission } : {}) };
     }
     if (method === 'session/history') return { messages: [] };
     if (method === 'session/rename') {
@@ -112,6 +116,22 @@ async function waitFor(predicate, timeoutMs = 2_000) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error('condition was not met before timeout');
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function running(bridge) {
+  bridge.onEngineEvent('D:/work', 'session/event', {
+    sessionId: 's_1',
+    event: { type: 'status_change', status: 'running' },
+  });
+}
+
+function complete(bridge, turnId, output) {
+  bridge.onEngineEvent('D:/work', 'session/event', {
+    sessionId: 's_1',
+    event: { type: 'turn_complete', output, cancelled: false, turn_id: turnId },
+  });
 }
 
 test('direct message creates a session and replies with the turn output', async (t) => {
@@ -296,6 +316,82 @@ test('a legacy openid title is upgraded to the first user message', async (t) =>
   await waitFor(() => replies.length === 1);
   bridge.stop();
   assert.deepEqual(renames, [{ sessionId: 's_legacy', title: '微信 · 第一个问题' }]);
+});
+
+test('a message that arrives while a turn is running steers it instead of waiting behind it', async (t) => {
+  const { bridge, replies, engineSends, sends } = makeBridge(t, {
+    messages: [message(), message({ id: 'm_2', text: '再补一句' })],
+    engine: {
+      admission: (params) => (params.turnId === 'm_1' ? 'active' : 'steered'),
+      autoComplete: false,
+    },
+  });
+  bridge.start();
+  await waitFor(() => engineSends.length === 1);
+  await sleep(60);
+  assert.equal(engineSends.length, 1, 'the second message waits until the first turn opens its input window');
+  running(bridge);
+  await waitFor(() => engineSends.length === 2);
+  assert.equal(engineSends[1].turnId, 'm_2');
+  await waitFor(() => replies.length === 1);
+  assert.deepEqual(replies[0], { id: 'm_2', text: '收到，已并入当前任务。', isError: false });
+  assert.equal(sends.length, 0);
+  complete(bridge, 'm_1', '合并后的回答');
+  await waitFor(() => replies.length === 2);
+  assert.deepEqual(replies[1], { id: 'm_1', text: '合并后的回答', isError: false });
+  bridge.stop();
+});
+
+test('a steered message still answers when the engine runs it as its own turn', async (t) => {
+  const { bridge, replies, sends, engineSends } = makeBridge(t, {
+    messages: [message(), message({ id: 'm_2', text: '再补一句' })],
+    engine: {
+      admission: (params) => (params.turnId === 'm_1' ? 'active' : 'steered'),
+      autoComplete: false,
+    },
+  });
+  bridge.start();
+  await waitFor(() => engineSends.length === 1);
+  running(bridge);
+  await waitFor(() => replies.length === 1);
+  assert.equal(replies[0].id, 'm_2');
+  complete(bridge, 'm_2', '补充的回答');
+  await waitFor(() => sends.length === 1);
+  assert.deepEqual(sends[0], {
+    channel: 'openclaw-weixin',
+    to: 'peer@im.wechat',
+    text: '补充的回答',
+    accountId: 'acct',
+  });
+  complete(bridge, 'm_1', '原回答');
+  await waitFor(() => replies.length === 2);
+  bridge.stop();
+});
+
+test('a queued message gets a receipt and its answer when its turn runs', async (t) => {
+  const { bridge, replies, sends } = makeBridge(t, {
+    messages: [message()],
+    engine: { admission: () => 'queued', autoComplete: false },
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  assert.deepEqual(replies[0], { id: 'm_1', text: '收到，正在排队处理。', isError: false });
+  complete(bridge, 'm_1', '轮到我回答');
+  await waitFor(() => sends.length === 1);
+  assert.equal(sends[0].text, '轮到我回答');
+  bridge.stop();
+});
+
+test('a message the engine refuses to queue is answered with a retry hint', async (t) => {
+  const { bridge, replies } = makeBridge(t, {
+    messages: [message()],
+    engine: { admission: () => 'rejected' },
+  });
+  bridge.start();
+  await waitFor(() => replies.length === 1);
+  bridge.stop();
+  assert.equal(replies[0].isError, true);
+  assert.match(replies[0].text, /排队已满/);
 });
 
 test('a user-renamed session title is never overwritten by the upgrade', async (t) => {
