@@ -23,7 +23,7 @@ class TraceDbCheckTest {
     void passesWhenSchemaAndBudgetFit() {
         when(database.selectOne("SELECT 1 AS ok", PgStartupRow.class)).thenReturn(Optional.of(ok()));
         when(database.selectOne(contains("app."), eq(PgStartupRow.class))).thenReturn(Optional.of(ok()));
-        when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
+        when(database.selectOne(contains("current_setting"), eq(PgSettingRow.class), eq("max_connections")))
             .thenReturn(Optional.of(setting("100")));
 
         var check = check(true, 100, false);
@@ -37,7 +37,7 @@ class TraceDbCheckTest {
         when(database.selectOne(contains("app.traces"), eq(PgStartupRow.class))).thenReturn(Optional.of(ok()));
         when(database.selectOne(contains("app.spans"), eq(PgStartupRow.class)))
             .thenThrow(new RuntimeException("relation does not exist"));
-        when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
+        when(database.selectOne(contains("current_setting"), eq(PgSettingRow.class), eq("max_connections")))
             .thenReturn(Optional.of(setting("300")));
 
         var check = check(true, 100, false);
@@ -49,7 +49,7 @@ class TraceDbCheckTest {
     @Test
     void budgetOverrunOnlyWarnsByDefault() {
         when(database.selectOne("SELECT 1 AS ok", PgStartupRow.class)).thenReturn(Optional.of(ok()));
-        when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
+        when(database.selectOne(contains("current_setting"), eq(PgSettingRow.class), eq("max_connections")))
             .thenReturn(Optional.of(setting("100")));
 
         var check = check(false, 118, false);
@@ -60,7 +60,7 @@ class TraceDbCheckTest {
     @Test
     void budgetOverrunFailsWhenConfigured() {
         when(database.selectOne("SELECT 1 AS ok", PgStartupRow.class)).thenReturn(Optional.of(ok()));
-        when(database.selectOne(contains("max_connections"), eq(PgSettingRow.class)))
+        when(database.selectOne(contains("current_setting"), eq(PgSettingRow.class), eq("max_connections")))
             .thenReturn(Optional.of(setting("100")));
 
         var check = check(false, 118, true);
@@ -87,3 +87,4 @@ class TraceDbCheckTest {
         return row;
     }
 }
+

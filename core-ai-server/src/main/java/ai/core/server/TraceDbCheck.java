@@ -74,7 +74,7 @@ public class TraceDbCheck {
     }
 
     private void verifyConnectionBudget() {
-        var maxConnections = database.selectOne("SELECT current_setting('max_connections') AS value", PgSettingRow.class)
+        var maxConnections = database.selectOne("SELECT current_setting(?) AS value", PgSettingRow.class, "max_connections")
             .map(row -> row.value)
             .orElse(null);
         if (maxConnections == null || maxConnections.isBlank()) {
