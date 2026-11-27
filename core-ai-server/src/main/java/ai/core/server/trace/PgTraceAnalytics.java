@@ -1,7 +1,9 @@
 package ai.core.server.trace;
 
+import ai.core.server.TraceDbModule;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -68,6 +70,7 @@ public class PgTraceAnalytics {
         + ", COUNT(*) AS call_count";
 
     @Inject
+    @Named(TraceDbModule.NAME)
     Database database;
 
     List<TraceAggregateRow> aggregate(TraceAggregation aggregation) {

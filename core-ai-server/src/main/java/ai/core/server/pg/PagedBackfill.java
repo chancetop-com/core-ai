@@ -30,6 +30,15 @@ public abstract class PagedBackfill<T> {
     @Inject
     protected Database database;
 
+    /**
+     * Trace backfills copy into the named trace datasource. The cursor must be written on the same
+     * datasource as the rows: core-ng keeps the transaction connection in a static ThreadLocal, so a
+     * statement issued through another Database silently joins the open transaction of this one.
+     */
+    protected Database database() {
+        return database;
+    }
+
     protected abstract String name();
 
     protected abstract String marker();
@@ -76,7 +85,7 @@ public abstract class PagedBackfill<T> {
 
     private boolean copy(List<T> page) {
         boolean written;
-        try (var transaction = database.beginTransaction()) {
+        try (var transaction = database().beginTransaction()) {
             if (!lock()) {
                 transaction.rollback();
                 return false;
@@ -109,7 +118,7 @@ public abstract class PagedBackfill<T> {
         int skipped = 0;
         for (var row : page) {
             String rowKey = key(row);
-            try (var transaction = database.beginTransaction()) {
+            try (var transaction = database().beginTransaction()) {
                 writeOne(row);
                 saveCursor(rowKey);
                 transaction.commit();
@@ -124,21 +133,21 @@ public abstract class PagedBackfill<T> {
     }
 
     private void advanceCursor(String rowKey) {
-        try (var transaction = database.beginTransaction()) {
+        try (var transaction = database().beginTransaction()) {
             saveCursor(rowKey);
             transaction.commit();
         }
     }
 
     private boolean finish() {
-        try (var transaction = database.beginTransaction()) {
+        try (var transaction = database().beginTransaction()) {
             if (!lock()) {
                 transaction.rollback();
                 return false;
             }
-            database.execute("INSERT INTO app.g2_migration_markers (id, completed_at) VALUES (?, now())"
+            database().execute("INSERT INTO app.g2_migration_markers (id, completed_at) VALUES (?, now())"
                 + " ON CONFLICT DO NOTHING", marker());
-            database.execute("DELETE FROM app.migration_progress WHERE id = ?", marker());
+            database().execute("DELETE FROM app.migration_progress WHERE id = ?", marker());
             transaction.commit();
             LOGGER.info("{} finished", name());
             return true;
@@ -146,23 +155,23 @@ public abstract class PagedBackfill<T> {
     }
 
     protected boolean lock() {
-        var lock = database.selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired",
+        var lock = database().selectOne("SELECT pg_try_advisory_xact_lock(hashtext(?)) AS acquired",
             PgSpanMigrationLockRow.class, lockKey()).orElse(null);
         return lock != null && Boolean.TRUE.equals(lock.acquired);
     }
 
     private boolean migrationDone() {
-        return database.selectOne("SELECT id FROM app.g2_migration_markers WHERE id = ?",
+        return database().selectOne("SELECT id FROM app.g2_migration_markers WHERE id = ?",
             PgSpanMigrationMarkerRow.class, marker()).isPresent();
     }
 
     private String cursor() {
-        return database.selectOne("SELECT last_key FROM app.migration_progress WHERE id = ?",
+        return database().selectOne("SELECT last_key FROM app.migration_progress WHERE id = ?",
             PgMigrationProgressRow.class, marker()).map(row -> row.lastKey).orElse("");
     }
 
     protected void saveCursor(String lastKey) {
-        database.execute("INSERT INTO app.migration_progress (id, last_key, updated_at) VALUES (?, ?, now())"
+        database().execute("INSERT INTO app.migration_progress (id, last_key, updated_at) VALUES (?, ?, now())"
             + " ON CONFLICT (id) DO UPDATE SET last_key = EXCLUDED.last_key, updated_at = now()", marker(), lastKey);
     }
 

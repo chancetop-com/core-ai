@@ -1,5 +1,6 @@
 package ai.core.server.trace;
 
+import ai.core.server.TraceDbModule;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceFacetRow;
 import ai.core.server.trace.domain.TraceStatus;
@@ -9,6 +10,7 @@ import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.core.type.TypeReference;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -88,6 +90,7 @@ public class PgTraceStore implements TraceStore {
     private static final TypeReference<Map<String, String>> METADATA_TYPE = new TypeReference<>() { };
 
     @Inject
+    @Named(TraceDbModule.NAME)
     Database database;
     @Inject
     PgTraceAnalytics analytics;

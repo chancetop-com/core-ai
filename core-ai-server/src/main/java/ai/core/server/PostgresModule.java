@@ -31,6 +31,7 @@ public class PostgresModule extends Module {
         db().url(url);
         db().user(user);
         db().password(password);
+        db().poolSize(intProperty("sys.db.pool.min", 5), intProperty("sys.db.pool.max", 50));
         db().view(PgDocumentRow.class);
         db().view(PgSessionShareRow.class);
         db().view(ai.core.server.session.PgChatSessionRow.class);
@@ -136,7 +137,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.comparison.PgComparisonMigrationMarkerRow.class);
         registerWorkflowViews();
         registerReplayViews();
-        registerSpanViews();
+        db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
     }
 
     private void registerEvaluationViews() {
@@ -153,30 +154,6 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.evaluation.store.PgBaselineRow.class);
         db().view(ai.core.server.evaluation.store.PgEvalCountRow.class);
         db().view(ai.core.server.evaluation.store.PgEvalNextRow.class);
-    }
-
-    private void registerSpanViews() {
-        db().view(ai.core.server.trace.PgSpanRow.class);
-        db().view(ai.core.server.trace.PgSpanTokenTotalsRow.class);
-        db().view(ai.core.server.trace.PgTraceCountRow.class);
-        db().view(ai.core.server.trace.PgTraceIdRow.class);
-        db().view(ai.core.server.trace.PgLlmThroughputRow.class);
-        db().view(ai.core.server.trace.PgLlmModelMetricsRow.class);
-        db().view(ai.core.server.trace.PgSpanMigrationLockRow.class);
-        db().view(ai.core.server.trace.PgSpanMigrationMarkerRow.class);
-        db().view(ai.core.server.trace.PgMigrationProgressRow.class);
-        db().view(ai.core.server.trace.PgTraceRow.class);
-        db().view(ai.core.server.trace.PgTraceFacetRow.class);
-        db().view(ai.core.server.trace.PgTraceAggregateRow.class);
-        db().view(ai.core.server.trace.PgTraceTraceIdRow.class);
-        db().view(ai.core.server.trace.PgTraceRollupRow.class);
-        db().view(ai.core.server.trace.PgTraceStatsRow.class);
-        db().view(ai.core.server.trace.PgTraceTrendRow.class);
-        db().view(ai.core.server.trace.PgTraceDimensionTrendRow.class);
-        db().view(ai.core.server.trace.PgTraceDailyUsageRow.class);
-        db().view(ai.core.server.trace.service.PgTracePayloadRow.class);
-        db().view(ai.core.server.trace.service.PgTraceStorageKeyRow.class);
-        db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
     }
 
     private void registerMessagingViews() {
@@ -207,6 +184,16 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.replay.PgReplayRunRow.class);
         db().view(ai.core.server.replay.PgReplayMigrationLockRow.class);
         db().view(ai.core.server.replay.PgReplayMigrationMarkerRow.class);
+    }
+
+    private int intProperty(String key, int defaultValue) {
+        var value = property(key).orElse(null);
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Integer.parseInt(value.strip());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }
 

@@ -1,9 +1,11 @@
 package ai.core.server.trace;
 
+import ai.core.server.TraceDbModule;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import ai.core.server.util.JsonSanitizer;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
@@ -51,6 +53,7 @@ public class PgAnalyticsStatsStore implements AnalyticsStatsStore {
     private static final String HOUR = "hour";
 
     @Inject
+    @Named(TraceDbModule.NAME)
     Database database;
 
     @Override

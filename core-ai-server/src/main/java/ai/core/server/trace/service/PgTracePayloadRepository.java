@@ -1,10 +1,12 @@
 package ai.core.server.trace.service;
 
 import ai.core.server.trace.domain.TracePayloadBlob;
+import ai.core.server.TraceDbModule;
 import ai.core.server.trace.PgTraceCountRow;
 import ai.core.server.util.JsonSanitizer;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,6 +36,7 @@ public class PgTracePayloadRepository implements TracePayloadRepository {
     }
 
     @Inject
+    @Named(TraceDbModule.NAME)
     Database database;
 
     @Override

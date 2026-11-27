@@ -1,10 +1,12 @@
 package ai.core.server.trace;
 
+import ai.core.server.TraceDbModule;
 import ai.core.server.trace.domain.Span;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
 import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 import org.slf4j.Logger;
@@ -38,6 +40,7 @@ public class SpanMigrationService {
     @Inject
     SpanStore spanStore;
     @Inject
+    @Named(TraceDbModule.NAME)
     Database database;
 
     public void start(boolean copyLegacySpans) {

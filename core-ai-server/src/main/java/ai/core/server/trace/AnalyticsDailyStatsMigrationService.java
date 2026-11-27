@@ -1,10 +1,13 @@
 package ai.core.server.trace;
 
+import ai.core.server.TraceDbModule;
 import ai.core.server.pg.PagedBackfill;
 import ai.core.server.trace.domain.AnalyticsDailyStats;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Sorts;
+import core.framework.db.Database;
 import core.framework.inject.Inject;
+import core.framework.inject.Named;
 import core.framework.mongo.MongoCollection;
 import core.framework.mongo.Query;
 
@@ -22,6 +25,14 @@ public class AnalyticsDailyStatsMigrationService extends PagedBackfill<Analytics
     MongoCollection<AnalyticsDailyStats> statsCollection;
     @Inject
     AnalyticsStatsStore statsStore;
+    @Inject
+    @Named(TraceDbModule.NAME)
+    Database traceDatabase;
+
+    @Override
+    protected Database database() {
+        return traceDatabase;
+    }
 
     @Override
     protected String name() {
