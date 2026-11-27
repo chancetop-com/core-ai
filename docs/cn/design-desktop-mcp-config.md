@@ -2,8 +2,8 @@
 
 | 项目 | 内容 |
 |---|---|
-| 状态 | Implemented（开发环境实现并 E2E 验证；未打包发布） |
-| 文档版本 | v0.7（v0.6 设计 + §14 实现记录） |
+| 状态 | Released（Engine `v2.0.94` + Desktop `v0.1.88`，2026-11-27） |
+| 文档版本 | v0.8（v0.6 设计 + §14 实现与发布记录） |
 | 日期 | 2026-11-26 |
 | 作者 | core-ai |
 | 需求提出者 / 决策人 | 用户 |
@@ -1639,4 +1639,22 @@ interface McpError {
 - 已知偏离：§4.6 的「拒绝保留 env 名（PATH/HOME/…）」未实现。实际暴露面与 env 字段本身等价（用户可直接写 `PATH=...`），故不构成新增风险；若要做，应在 engine 的 secret 校验里统一拒绝。
 - P1：per-session allowlist、workspace 级状态点、模板/复制。
 - 待验证：Linux `safeStorage` 弱 keyring 行为、旧 engine 提示文案、`mcp/probe/cancel` 的真实取消路径、Desktop 端打包后 `--desktop-mcp` 在 `.bat`/lib 目录启动路径下的表现。
+
+### 14.5 发布记录（2026-11-27）
+
+| 组件 | 版本 | 发布 | 说明 |
+|---|---|---|---|
+| Engine（CLI） | `v2.0.94` | Release CLI run 45966031588（15m7s），三平台构建 + release job 全绿 | darwin/linux/windows 二进制与 zip 共 6 个资产 |
+| Desktop | `v0.1.88` | Release Desktop run 45968473082（3m11s），plan/build(mac,win)/release 全绿 | `coreAi.pinnedEngine=2.0.94`；资产 `win-x64.exe`、`mac-arm64.dmg/zip`、`latest*.yml` |
+
+发版前为通过质量门做的清理（行为不变，纯结构/可见性调整）：
+
+- `CliWorkspaceConfig`（新）承接 CLI 的 workspace 配置合并，`CliAppHelper` 降到 441 行；`includeWorkspaceMcp=false` 时跳过 `MCP.json`。
+- `HttpEndpointCompatibility`（新）承接 Meta Ads endpoint 默认值，`McpServerConfig` 降到 420 行。
+- `WorkspaceTrust`：`Mode` 枚举移到底部、`moveIntoPlace` 提取、`DESKTOP_SKIPPED_FILES` 改 `Set`、父目录空安全；`WorkspaceTrustTest` 11 处调用改新签名并补 3 项（Desktop 忽略 CLI MCP 文件、旧记录一次性迁移、迁移后不再报原因）。
+- `McpApi`/`EngineBootstrap`/`McpCommandSafety`/`McpSecretExpander`/`ToolRegistry`/`AgentBootstrap` 的 checkstyle/PMD 违规逐条修正（`finalizeConfig()` 去参、catch 分支合并、try-with-resources、`InnerTypeLast` 等）。
+- `ShellCommandTool` → `ShellToolSupport`（准入/超时/通知 XML），`ToolCallAsyncTaskManager` → `AsyncTaskData`，`BackgroundTaskManager` → `TaskRunResult`/`SharedTaskState`/`TerminalTask`，三个 450+ 行文件回到限值内；`AsyncTaskData` 必须 `public` 且字段 `public`——否则 JSON mapper 的生成类无法访问，任务登记会静默读不回来（`ToolCallAsyncTaskManagerTest` 直接暴露）。
+- `McpClientManager`（564 行）保留 `FileLengthCheck` 豁免：它同时承载连接生命周期与 Desktop 快照面，拆分另立任务；豁免在 `buildSrc/src/main/check/checkstyle-suppressions.xml` 注明。
+
+CI 证据：`Core AI Check` run 45967881638 success（3m7s）；本地 `:core-ai:ciCheck`、`:core-ai-cli:releaseCheck`、`core-ai-desktop` `npm run check`/`npm test`（326 项，325 通过、1 跳过）均通过。
 
