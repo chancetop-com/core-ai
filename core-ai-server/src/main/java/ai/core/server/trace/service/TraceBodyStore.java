@@ -89,6 +89,41 @@ public class TraceBodyStore {
         return value == null || value.isBlank() ? "unknown" : UNSAFE_KEY.matcher(value).replaceAll("_");
     }
 
+    /** @return true when the stored value (inline text or body reference) already represents the same body */
+    public static boolean sameContent(String existingValue, String newBody) {
+        if (existingValue == null || newBody == null) return false;
+        if (existingValue.equals(newBody)) return true;
+        var node = ref(existingValue);
+        if (node == null) return false;
+        var expectedSha = node.path("sha256").asText(null);
+        if (expectedSha == null || expectedSha.isBlank()) return false;
+        var raw = newBody.getBytes(StandardCharsets.UTF_8);
+        long expectedBytes = node.path("rawBytes").asLong(-1);
+        if (expectedBytes < 0 || raw.length != expectedBytes) return false;
+        return expectedSha.equals(sha256(raw));
+    }
+
+    private static String referencedKey(JsonNode node) {
+        if (node == null) return null;
+        var value = node.get(REF_KEY);
+        if (value == null || !value.isTextual()) return null;
+        var reference = value.asText();
+        if (!reference.startsWith(REF_SCHEME)) return null;
+        var key = reference.substring(REF_SCHEME.length());
+        return key.contains(BODY_PREFIX + "/") ? key : null;
+    }
+
+    private static JsonNode ref(String value) {
+        if (value == null || value.length() > MAX_REF_LENGTH || !value.startsWith("{") || !value.contains(REF_KEY)) return null;
+        try {
+            var node = JsonUtil.OBJECT_MAPPER.readTree(value);
+            if (node == null || !node.hasNonNull(REF_KEY)) return null;
+            return referencedKey(node) == null ? null : node;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
     @Inject
     ObjectStorageServiceResolver objectStorageResolver;
 
@@ -256,27 +291,6 @@ public class TraceBodyStore {
             preview = head.replaceAll("\\s+", " ").strip();
         }
         return preview == null || preview.isBlank() ? null : preview;
-    }
-
-    private String referencedKey(JsonNode node) {
-        if (node == null) return null;
-        var value = node.get(REF_KEY);
-        if (value == null || !value.isTextual()) return null;
-        var reference = value.asText();
-        if (!reference.startsWith(REF_SCHEME)) return null;
-        var key = reference.substring(REF_SCHEME.length());
-        return key.contains(BODY_PREFIX + "/") ? key : null;
-    }
-
-    private JsonNode ref(String value) {
-        if (value == null || value.length() > MAX_REF_LENGTH || !value.startsWith("{") || !value.contains(REF_KEY)) return null;
-        try {
-            var node = JsonUtil.OBJECT_MAPPER.readTree(value);
-            if (node == null || !node.hasNonNull(REF_KEY)) return null;
-            return referencedKey(node) == null ? null : node;
-        } catch (IOException e) {
-            return null;
-        }
     }
 
     private String monthOf(String key) {

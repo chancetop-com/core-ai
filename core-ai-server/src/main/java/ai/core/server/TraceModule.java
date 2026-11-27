@@ -133,6 +133,7 @@ public class TraceModule extends Module {
         // (cli by default, desktop when the desktop app drives the engine). Distinct HTTP method from
         // GET /api/traces/:traceId.
         http().route(HTTPMethod.POST, "/api/traces/ingest", ingestController::ingestAuthed);
+        http().route(HTTPMethod.POST, "/api/traces/ingest/start", ingestController::ingestStartAuthed);
         // On-demand image fetch for detail views whose payload exceeded the hydration budget.
         // core-ng path variables must be letters only, hence ":hash" rather than ":sha256".
         http().route(HTTPMethod.GET, "/api/traces/:traceId/payloads/:hash", bind(TracePayloadController.class));

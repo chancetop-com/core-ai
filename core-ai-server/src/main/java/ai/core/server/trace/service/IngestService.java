@@ -11,17 +11,16 @@ import ai.core.server.trace.TraceStore;
 import ai.core.server.trace.TraceUpdate;
 import ai.core.server.trace.domain.Span;
 import ai.core.server.trace.domain.SpanStatus;
-import ai.core.server.trace.domain.SpanType;
 import ai.core.server.trace.domain.Trace;
 import ai.core.server.trace.domain.TraceStatus;
 import ai.core.server.trace.web.ingest.IngestRequest;
 import ai.core.server.trace.web.ingest.IngestSpanRequest;
+import ai.core.server.trace.web.ingest.IngestStartRequest;
 
-import java.time.Instant;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,9 +31,6 @@ import java.util.UUID;
  */
 public class IngestService {
     private static final Logger LOGGER = LoggerFactory.getLogger(IngestService.class);
-    private static final String CORE_AI_CANCELLED = "core_ai.cancelled";
-    private static final String GEN_AI_AGENT_NAME = "gen_ai.agent.name";
-    private static final String GEN_AI_AGENT_ID = "gen_ai.agent.id";
     private static final Set<String> OPERATION_TRACE_NAMES = Set.of("agent.run", "agent.turn", "llm_call.run");
 
     static String resolveUserId(String authUserId, Map<String, String> attributes) {
@@ -43,19 +39,11 @@ public class IngestService {
     }
 
     static String friendlyTraceName(String spanName, String agentName) {
-        var cleanAgentName = nonBlank(agentName);
-        var cleanSpanName = nonBlank(spanName);
+        var cleanAgentName = IngestTraceHelper.nonBlank(agentName);
+        var cleanSpanName = IngestTraceHelper.nonBlank(spanName);
         if (cleanAgentName == null) return cleanSpanName;
         if (cleanSpanName == null || OPERATION_TRACE_NAMES.contains(cleanSpanName)) return cleanAgentName;
         return cleanSpanName;
-    }
-
-    private static String attr(Map<String, String> attributes, String key) {
-        return attributes != null ? nonBlank(attributes.get(key)) : null;
-    }
-
-    private static String nonBlank(String value) {
-        return value != null && !value.isBlank() ? value : null;
     }
 
     @Inject
@@ -69,6 +57,39 @@ public class IngestService {
     @Inject
     TraceBodyStore bodyStore;
 
+    public void startTrace(IngestStartRequest request, String authUserId, String source) {
+        if (request == null || request.traceId == null || request.traceId.isBlank()) return;
+        var now = ZonedDateTime.now();
+        var trace = IngestTraceHelper.buildStartTrace(request, authUserId, source, now);
+        bodyStore.offload(trace);
+        if (traceStore.insertIfAbsent(trace)) {
+            LOGGER.debug("trace started, traceId={}, source={}", request.traceId, source);
+            return;
+        }
+        handleStartConflict(request.traceId, trace.name, authUserId, now);
+    }
+
+    private void handleStartConflict(String traceId, String resolvedName, String authUserId, ZonedDateTime now) {
+        var existing = traceStore.findByTraceId(traceId);
+        if (existing == null) return;
+        if (IngestTraceHelper.isOwnerMismatch(existing, authUserId)) {
+            LOGGER.warn("trace start rejected: owner mismatch, traceId={}, authUserId={}, ownerUserId={}",
+                traceId, authUserId, existing.userId);
+            return;
+        }
+        if (IngestTraceHelper.nonBlank(existing.name) != null) {
+            LOGGER.debug("trace start ignored, trace already exists, traceId={}", traceId);
+            return;
+        }
+        var update = new TraceUpdate();
+        update.traceId = traceId;
+        update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.NAME;
+        update.valueWhenEmpty = resolvedName;
+        update.updatedAt = now;
+        traceStore.update(update);
+        LOGGER.debug("trace start hit existing row, backfilled name, traceId={}", traceId);
+    }
+
     public void ingest(IngestRequest request) {
         ingest(request, null, null);
     }
@@ -78,134 +99,177 @@ public class IngestService {
     public void ingest(IngestRequest request, String authUserId, String source) {
         if (request.spans == null || request.spans.isEmpty()) return;
 
-        if (payloadStore != null && request.payloads != null) {
-            for (var payload : request.payloads) {
-                if (payload == null || payload.traceId == null || payload.dataUrl == null) continue;
-                if (payloadStore.storePayload(payload.traceId, payload.dataUrl) == null) {
-                    LOGGER.warn("trace image payload rejected, traceId={}", payload.traceId);
-                }
-            }
+        var authenticatedUser = IngestTraceHelper.nonBlank(authUserId);
+        Map<String, Trace> existingByTrace = authenticatedUser != null ? new LinkedHashMap<>() : null;
+        Set<String> rejectedTraces = new HashSet<>();
+        if (authenticatedUser != null) {
+            checkTraceOwnership(request, authenticatedUser, existingByTrace, rejectedTraces);
         }
 
-        if (payloadStore != null) {
-            var compactor = payloadStore.newCompactor();
-            for (var spanReq : request.spans) {
-                TraceServiceHelper.stripDuplicatedPayloadAttributes(spanReq.attributes, spanReq.input, spanReq.output);
-                spanReq.input = compactor.compact(spanReq.traceId, spanReq.input);
-                spanReq.output = compactor.compact(spanReq.traceId, spanReq.output);
-            }
-        }
+        List<IngestSpanRequest> acceptedSpans = rejectedTraces.isEmpty() ? request.spans
+            : request.spans.stream().filter(spanReq -> !rejectedTraces.contains(spanReq.traceId)).toList();
+        if (acceptedSpans.isEmpty()) return;
 
-        // Prefer root spans for trace metadata initialization (parentSpanId == null).
-        Map<String, IngestSpanRequest> rootByTrace = new LinkedHashMap<>();
-        for (var spanReq : request.spans) {
-            if (spanReq.parentSpanId == null) {
-                rootByTrace.put(spanReq.traceId, spanReq);
-            }
-        }
+        var newSpans = filterExistingSpans(acceptedSpans);
+        storePayloads(request, rejectedTraces);
+        compactSpans(newSpans);
 
-        // Ensure trace doc exists BEFORE saving any spans so $inc has a target.
-        Set<String> ensuredTraces = HashSet.newHashSet(request.spans.size());
-        for (var spanReq : request.spans) {
-            if (ensuredTraces.add(spanReq.traceId)) {
-                var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
-                ensureTrace(spanReq.traceId, representative, request, authUserId, source);
-            }
-        }
-
-        for (var spanReq : request.spans) {
+        var ensuredTraces = ensureTraces(newSpans, acceptedSpans, existingByTrace, request, authUserId, source);
+        for (var spanReq : newSpans) {
             saveSpan(spanReq, authUserId);
         }
-
         recomputeTotals(ensuredTraces);
 
-        LOGGER.debug("ingested {} spans for {} traces", request.spans.size(), ensuredTraces.size());
+        LOGGER.debug("ingested {} spans for {} traces", newSpans.size(), ensuredTraces.size());
+    }
+
+    private void checkTraceOwnership(IngestRequest request, String authUserId,
+                                     Map<String, Trace> existingByTrace, Set<String> rejectedTraces) {
+        var traceIds = new LinkedHashSet<String>();
+        for (var spanReq : request.spans) {
+            if (spanReq != null && spanReq.traceId != null) traceIds.add(spanReq.traceId);
+        }
+        if (request.payloads != null) {
+            for (var payload : request.payloads) {
+                if (payload != null && payload.traceId != null) traceIds.add(payload.traceId);
+            }
+        }
+        for (var traceId : traceIds) {
+            var existing = traceStore.findByTraceId(traceId);
+            existingByTrace.put(traceId, existing);
+            if (existing != null && IngestTraceHelper.isOwnerMismatch(existing, authUserId)) {
+                rejectedTraces.add(traceId);
+                LOGGER.warn("trace ingest rejected: owner mismatch, traceId={}, authUserId={}, ownerUserId={}",
+                    traceId, authUserId, existing.userId);
+            }
+        }
+    }
+
+    private List<IngestSpanRequest> filterExistingSpans(List<IngestSpanRequest> spans) {
+        var spanIds = new LinkedHashSet<String>();
+        for (var spanReq : spans) {
+            if (spanReq.spanId != null && !spanReq.spanId.isBlank()) spanIds.add(spanReq.spanId);
+        }
+        if (spanIds.isEmpty()) return spans;
+        var existingIds = spanStore.existingSpanIds(List.copyOf(spanIds));
+        if (existingIds == null || existingIds.isEmpty()) return spans;
+        var remaining = spans.stream()
+            .filter(spanReq -> spanReq.spanId == null || !existingIds.contains(spanReq.spanId))
+            .toList();
+        int skipped = spans.size() - remaining.size();
+        if (skipped > 0) LOGGER.debug("skipped {} already-ingested spans before compaction/offload", skipped);
+        return remaining;
+    }
+
+    private void storePayloads(IngestRequest request, Set<String> rejectedTraces) {
+        if (payloadStore == null || request.payloads == null) return;
+        for (var payload : request.payloads) {
+            if (payload == null || payload.traceId == null || payload.dataUrl == null) continue;
+            if (rejectedTraces.contains(payload.traceId)) continue;
+            if (payloadStore.storePayload(payload.traceId, payload.dataUrl) == null) {
+                LOGGER.warn("trace image payload rejected, traceId={}", payload.traceId);
+            }
+        }
+    }
+
+    private void compactSpans(List<IngestSpanRequest> spans) {
+        if (payloadStore == null || spans.isEmpty()) return;
+        var compactor = payloadStore.newCompactor();
+        for (var spanReq : spans) {
+            TraceServiceHelper.stripDuplicatedPayloadAttributes(spanReq.attributes, spanReq.input, spanReq.output);
+            spanReq.input = compactor.compact(spanReq.traceId, spanReq.input);
+            spanReq.output = compactor.compact(spanReq.traceId, spanReq.output);
+        }
+    }
+
+    private Set<String> ensureTraces(List<IngestSpanRequest> newSpans, List<IngestSpanRequest> acceptedSpans,
+                                     Map<String, Trace> existingByTrace, IngestRequest request,
+                                     String authUserId, String source) {
+        Map<String, IngestSpanRequest> rootByTrace = new LinkedHashMap<>();
+        for (var spanReq : newSpans) {
+            if (spanReq.parentSpanId == null) rootByTrace.put(spanReq.traceId, spanReq);
+        }
+
+        Set<String> ensuredTraces = HashSet.newHashSet(acceptedSpans.size());
+        for (var spanReq : newSpans) {
+            if (ensuredTraces.add(spanReq.traceId)) {
+                var representative = rootByTrace.getOrDefault(spanReq.traceId, spanReq);
+                var existing = existingByTrace != null ? existingByTrace.get(spanReq.traceId) : traceStore.findByTraceId(spanReq.traceId);
+                ensureTrace(spanReq.traceId, representative, existing, request, authUserId, source);
+            }
+        }
+        for (var spanReq : acceptedSpans) {
+            ensuredTraces.add(spanReq.traceId);
+        }
+        return ensuredTraces;
     }
 
     private void recomputeTotals(Set<String> traceIds) {
         TraceTotalsReconciler.recompute(spanStore, traceStore, traceIds);
     }
 
-    private void ensureTrace(String traceId, IngestSpanRequest rootSpan, IngestRequest request, String authUserId, String source) {
-        if (traceStore.findByTraceId(traceId) != null) {
-            updateTrace(traceId, rootSpan);
+    private void ensureTrace(String traceId, IngestSpanRequest representative, Trace existing,
+                             IngestRequest request, String authUserId, String source) {
+        boolean hasRoot = representative.parentSpanId == null;
+        boolean authenticated = source != null;
+        boolean canUpdate = !authenticated || hasRoot;
+
+        if (existing != null) {
+            if (canUpdate) updateTrace(traceId, representative, existing);
             return;
         }
 
-        var trace = new Trace();
-        trace.id = UUID.randomUUID().toString();
-        trace.traceId = traceId;
-        trace.agentName = attr(rootSpan.attributes, GEN_AI_AGENT_NAME);
-        trace.agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
-        trace.name = friendlyTraceName(rootSpan.name, trace.agentName);
-        trace.model = rootSpan.model;
-        trace.resolvedModel = resolveResolvedModel(rootSpan);
-        trace.providerId = attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
-        trace.sessionId = rootSpan.attributes != null ? rootSpan.attributes.get("session.id") : null;
-        trace.userId = resolveUserId(authUserId, rootSpan.attributes);
-        trace.source = source;
-        // Trace-level type from the root span. Without this the frontend falls back to "llm_call" for any
-        // trace that has a model (backfilled from an LLM child span), mislabeling agent runs as LLM calls.
-        trace.type = mapTraceType(rootSpan.type);
-        trace.status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
-        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
-        // error_message so the trace detail/list surfaces the real error instead of a blank field.
-        if (trace.status == TraceStatus.ERROR && rootSpan.output != null) {
-            trace.errorMessage = rootSpan.output;
-        }
-        trace.input = rootSpan.input;
-        trace.output = rootSpan.output;
-        bodyStore.offload(trace);
-        trace.metadata = Map.of("service", request.serviceName != null ? request.serviceName : "unknown",
-            "version", request.serviceVersion != null ? request.serviceVersion : "unknown",
-            "environment", request.environment != null ? request.environment : "unknown");
-        trace.durationMs = rootSpan.durationMs;
-        trace.startedAt = toZonedDateTime(rootSpan.startedAtEpochMs);
-        trace.completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
-        trace.createdAt = ZonedDateTime.now();
-        trace.updatedAt = ZonedDateTime.now();
+        boolean provisional = authenticated && !hasRoot;
+        var trace = IngestTraceHelper.buildTrace(traceId, representative, request, authUserId, source, provisional);
+        if (!provisional) bodyStore.offload(trace);
 
-        trace.inputTokens = 0L;
-        trace.outputTokens = 0L;
-        trace.totalTokens = 0L;
-        trace.cachedTokens = 0L;
-        // costUsd must start as numeric 0.0, NOT null: MongoDB $inc fails on an existing null field
-        // ("Cannot apply $inc to a value of non-numeric type"), which would 400 every ingest carrying a
-        // priced LLM span. $inc treats a MISSING field as 0, but the codec writes null as a present field.
-        trace.costUsd = 0.0;
-
-        // Race-safe: the store's unique trace id decides the winner. If another ingest created the
-        // trace concurrently, fall through to the partial update path.
-        if (!traceStore.insertIfAbsent(trace)) {
-            updateTrace(traceId, rootSpan);
+        boolean inserted = traceStore.insertIfAbsent(trace);
+        if (!inserted && canUpdate) {
+            handleEnsureConflict(traceId, representative, authUserId, authenticated);
         }
     }
 
-    private void updateTrace(String traceId, IngestSpanRequest rootSpan) {
-        // userId/source attribution is set only at insert (ensureTrace) and never overwritten here,
-        // so a later anonymous re-ingest of the same trace cannot blank attribution.
-        // Targeted updates instead of a full replace keep concurrent counter increments intact.
-        var status = mapTraceStatus(rootSpan.status, rootSpan.attributes);
+    private void handleEnsureConflict(String traceId, IngestSpanRequest representative,
+                                      String authUserId, boolean authenticated) {
+        var current = traceStore.findByTraceId(traceId);
+        if (authenticated && current != null && IngestTraceHelper.isOwnerMismatch(current, authUserId)) {
+            LOGGER.warn("trace ingest update rejected after race: owner mismatch, traceId={}, authUserId={}, ownerUserId={}",
+                traceId, authUserId, current.userId);
+            return;
+        }
+        updateTrace(traceId, representative, current);
+    }
+
+    private void updateTrace(String traceId, IngestSpanRequest rootSpan, Trace existing) {
+        var status = IngestTraceHelper.mapTraceStatus(rootSpan.status, rootSpan.attributes);
         var update = new TraceUpdate();
         update.traceId = traceId;
         update.status = status;
-        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
-        // error_message so the trace detail/list surfaces the real error instead of a blank field.
-        if (status == TraceStatus.ERROR && rootSpan.output != null) update.errorMessage = rootSpan.output;
+        if (status == TraceStatus.ERROR && rootSpan.output != null) {
+            update.errorMessage = rootSpan.output;
+        } else if (status != TraceStatus.ERROR && rootSpan.parentSpanId == null) {
+            update.clearErrorMessage = true;
+        }
         update.updatedAt = ZonedDateTime.now();
-        if (rootSpan.output != null) update.output = bodyStore.offload(traceId, null, "out", rootSpan.output);
-        if (rootSpan.input != null) update.input = bodyStore.offload(traceId, null, "in", rootSpan.input);
+        if (rootSpan.output != null && (existing == null || !TraceBodyStore.sameContent(existing.output, rootSpan.output))) {
+            update.output = bodyStore.offload(traceId, null, "out", rootSpan.output);
+        }
+        if (rootSpan.input != null && (existing == null || !TraceBodyStore.sameContent(existing.input, rootSpan.input))) {
+            update.input = bodyStore.offload(traceId, null, "in", rootSpan.input);
+        }
         if (rootSpan.durationMs > 0) update.durationMs = rootSpan.durationMs;
-        var completedAt = toZonedDateTime(rootSpan.completedAtEpochMs);
+        var completedAt = IngestTraceHelper.toZonedDateTime(rootSpan.completedAtEpochMs);
         if (completedAt != null) update.completedAt = completedAt;
-        var agentName = attr(rootSpan.attributes, GEN_AI_AGENT_NAME);
+        var agentName = IngestTraceHelper.attr(rootSpan.attributes, IngestTraceHelper.GEN_AI_AGENT_NAME);
         if (agentName != null) update.agentName = agentName;
-        var agentId = attr(rootSpan.attributes, GEN_AI_AGENT_ID);
+        var agentId = IngestTraceHelper.attr(rootSpan.attributes, IngestTraceHelper.GEN_AI_AGENT_ID);
         if (agentId != null) update.agentId = agentId;
         if (rootSpan.model != null && !rootSpan.model.isBlank()) update.model = rootSpan.model;
         traceStore.update(update);
-        TraceIdentity.backfillProvider(traceStore, traceId, attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID));
-        if (agentName != null) backfillTraceName(traceId, rootSpan.name, agentName);
+        TraceIdentity.backfillProvider(traceStore, traceId, IngestTraceHelper.attr(rootSpan.attributes, TraceAttribute.GATEWAY_PROVIDER_ID));
+        if (rootSpan.parentSpanId == null || agentName != null) {
+            backfillTraceName(traceId, rootSpan.name, agentName);
+        }
     }
 
     private void saveSpan(IngestSpanRequest spanReq, String authUserId) {
@@ -216,60 +280,46 @@ public class IngestService {
         span.spanId = spanReq.spanId;
         span.parentSpanId = spanReq.parentSpanId;
         span.name = spanReq.name;
-        span.type = mapSpanType(spanReq.type);
+        span.type = IngestTraceHelper.mapSpanType(spanReq.type);
         span.model = spanReq.model;
-        span.resolvedModel = resolveResolvedModel(spanReq);
-        span.providerId = attr(spanReq.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
+        span.resolvedModel = IngestTraceHelper.resolveResolvedModel(spanReq);
+        span.providerId = IngestTraceHelper.attr(spanReq.attributes, TraceAttribute.GATEWAY_PROVIDER_ID);
         span.input = spanReq.input;
         span.output = spanReq.output;
         span.inputTokens = spanReq.inputTokens;
         span.outputTokens = spanReq.outputTokens;
-        span.cachedTokens = resolveCachedTokens(spanReq);
+        span.cachedTokens = IngestTraceHelper.resolveCachedTokens(spanReq);
         span.reasoningTokens = TraceServiceHelper.resolveReasoningTokens(spanReq);
         applyCost(span, spanReq.costUsd, spanReq.attributes);
-        span.ttftMs = resolveTtftMs(spanReq);
+        span.ttftMs = IngestTraceHelper.resolveTtftMs(spanReq);
         span.firstContentMs = TraceServiceHelper.resolveFirstContentMs(spanReq);
         span.durationMs = spanReq.durationMs;
-        span.status = mapSpanStatus(spanReq.status, spanReq.attributes);
-        // CLI spans carry the failure text in output (no OTLP status message); mirror it into
-        // errorMessage so the trace detail shows the real error, not a blank field.
-        if (span.status == SpanStatus.ERROR && spanReq.output != null) {
-            span.errorMessage = spanReq.output;
-        }
+        span.status = IngestTraceHelper.mapSpanStatus(spanReq.status, spanReq.attributes);
+        if (span.status == SpanStatus.ERROR && spanReq.output != null) span.errorMessage = spanReq.output;
         span.attributes = spanReq.attributes;
-        // Defensive: drop attribute copies that duplicate the payload fields (clients may mirror
-        // the OTLP tracer convention and send both); keeps spans small.
         TraceServiceHelper.stripDuplicatedPayloadAttributes(span);
         bodyStore.offload(span);
-        span.startedAt = toZonedDateTime(spanReq.startedAtEpochMs);
-        span.completedAt = toZonedDateTime(spanReq.completedAtEpochMs);
+        span.startedAt = IngestTraceHelper.toZonedDateTime(spanReq.startedAtEpochMs);
+        span.completedAt = IngestTraceHelper.toZonedDateTime(spanReq.completedAtEpochMs);
         span.createdAt = ZonedDateTime.now();
 
-        // Race-free dedup: rely on the unique index on spans.span_id (see SchemaMigrationVTraceIndexes).
-        // Only the first concurrent inserter succeeds; the rest skip the $inc, so trace counters cannot
-        // be double-counted under OTLP retries or multi-instance ingest.
         if (!spanStore.insertIfAbsent(span)) {
             LOGGER.debug("span {} already ingested, skipping", spanReq.spanId);
             return;
         }
+        backfillAfterSpanInsert(spanReq, span);
+        incrementTraceTotals(spanReq.traceId, span);
+    }
 
-        if (spanReq.model != null && !spanReq.model.isEmpty()) {
-            backfillTraceModel(spanReq.traceId, spanReq.model);
-        }
+    private void backfillAfterSpanInsert(IngestSpanRequest spanReq, Span span) {
+        if (spanReq.model != null && !spanReq.model.isEmpty()) backfillTraceModel(spanReq.traceId, spanReq.model);
         TraceIdentity.backfillProvider(traceStore, spanReq.traceId, span.providerId);
         TraceIdentity.backfillResolvedModel(traceStore, spanReq.traceId, span.resolvedModel);
         backfillTraceIdentity(spanReq.traceId, spanReq.name, spanReq.attributes);
-
-        // Incrementally roll up this span's tokens/cost onto the parent trace doc.
-        // Replaces the previous full re-aggregation pass for O(1) per span instead of O(N).
-        incrementTraceTotals(spanReq.traceId, span);
-        // NOTE: quota accounting no longer happens here. Span-level user attribution is unreliable
-        // (LLM spans carry the tokens but no user.id), so usage is metered synchronously via the
-        // ExecutionContext tokenCostCallback wired in SessionContextBuilder / AgentRunBuilder instead.
     }
 
     private void backfillTraceIdentity(String traceId, String spanName, Map<String, String> attributes) {
-        var agentName = attr(attributes, GEN_AI_AGENT_NAME);
+        var agentName = IngestTraceHelper.attr(attributes, IngestTraceHelper.GEN_AI_AGENT_NAME);
         if (agentName != null) {
             var update = new TraceUpdate();
             update.traceId = traceId;
@@ -279,7 +329,7 @@ public class IngestService {
             traceStore.update(update);
             backfillTraceName(traceId, spanName, agentName);
         }
-        var agentId = attr(attributes, GEN_AI_AGENT_ID);
+        var agentId = IngestTraceHelper.attr(attributes, IngestTraceHelper.GEN_AI_AGENT_ID);
         if (agentId != null) {
             var update = new TraceUpdate();
             update.traceId = traceId;
@@ -291,18 +341,18 @@ public class IngestService {
     }
 
     private void backfillTraceName(String traceId, String spanName, String agentName) {
+        var candidate = friendlyTraceName(spanName, agentName);
+        if (candidate == null) return;
         var update = new TraceUpdate();
         update.traceId = traceId;
         update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.NAME;
-        update.valueWhenEmpty = friendlyTraceName(spanName, agentName);
+        update.valueWhenEmpty = candidate;
         update.namePlaceholders = List.copyOf(OPERATION_TRACE_NAMES);
         update.updatedAt = ZonedDateTime.now();
         traceStore.update(update);
     }
 
     private void backfillTraceModel(String traceId, String model) {
-        // Only update when model is still unset; a conditional update keeps concurrent counter
-        // updates intact and avoids churning the document once a model is recorded.
         var update = new TraceUpdate();
         update.traceId = traceId;
         update.setOnlyWhenEmpty = TraceUpdate.EmptyGuard.MODEL;
@@ -312,9 +362,9 @@ public class IngestService {
     }
 
     private void incrementTraceTotals(String traceId, Span span) {
-        long inputDelta = safeLong(span.inputTokens);
-        long outputDelta = safeLong(span.outputTokens);
-        long cachedDelta = safeLong(span.cachedTokens);
+        long inputDelta = TraceServiceHelper.safeLong(span.inputTokens);
+        long outputDelta = TraceServiceHelper.safeLong(span.outputTokens);
+        long cachedDelta = TraceServiceHelper.safeLong(span.cachedTokens);
         double costDelta = span.costUsd != null ? span.costUsd : 0.0;
         long totalDelta = inputDelta + outputDelta;
 
@@ -325,32 +375,8 @@ public class IngestService {
         update.totalTokensDelta = totalDelta;
         update.cachedTokensDelta = cachedDelta;
         update.costUsdDelta = costDelta;
-        // Always refresh updatedAt so list views show progress between aggregation deltas.
         update.updatedAt = ZonedDateTime.now();
         traceStore.update(update);
-    }
-
-    // Clients that know the server-side routing (CLI/desktop) send it explicitly; OTLP producers
-    // (the server gateway) put the same fact in the span attribute.
-    private String resolveResolvedModel(IngestSpanRequest spanReq) {
-        var resolved = nonBlank(spanReq.resolvedModel);
-        if (resolved != null) return resolved;
-        return attr(spanReq.attributes, TraceAttribute.GEN_AI_RESOLVED_MODEL);
-    }
-
-    private Long resolveCachedTokens(IngestSpanRequest spanReq) {
-        if (spanReq.cachedTokens != null) return spanReq.cachedTokens;
-        return parseLongAttr(spanReq.attributes,
-            "gen_ai.usage.cached_tokens",
-            "gen_ai.usage.prompt_tokens_details.cached_tokens",
-            "gen_ai.usage.input_tokens_details.cached_tokens",
-            "usage.prompt_tokens_details.cached_tokens",
-            "prompt_tokens_details.cached_tokens");
-    }
-
-    private Long resolveTtftMs(IngestSpanRequest spanReq) {
-        if (spanReq.ttftMs != null) return spanReq.ttftMs;
-        return parseLongAttr(spanReq.attributes, TraceServiceHelper.GEN_AI_TTFT_MS, TraceServiceHelper.LEGACY_TTFT_MS);
     }
 
     private void applyCost(Span span, Double requestCostUsd, Map<String, String> attributes) {
@@ -359,7 +385,7 @@ public class IngestService {
             span.costSource = "request";
             return;
         }
-        var attrCost = parseDoubleAttr(attributes,
+        var attrCost = IngestTraceHelper.parseDoubleAttr(attributes,
             "gen_ai.usage.cost_usd",
             "gen_ai.usage.cost",
             "langfuse.observation.total_cost");
@@ -370,79 +396,5 @@ public class IngestService {
         span.pricingModelId = price.modelId();
         span.inputPricePer1MTokens = price.inputPricePer1MTokens();
         span.outputPricePer1MTokens = price.outputPricePer1MTokens();
-    }
-
-    private Long parseLongAttr(Map<String, String> attributes, String... keys) {
-        if (attributes == null) return null;
-        for (var key : keys) {
-            var value = attributes.get(key);
-            if (value == null || value.isBlank()) continue;
-            try {
-                return Long.valueOf(value);
-            } catch (NumberFormatException ignored) {
-                LOGGER.debug("invalid long trace attribute {}={}", key, value);
-            }
-        }
-        return null;
-    }
-
-    private Double parseDoubleAttr(Map<String, String> attributes, String... keys) {
-        if (attributes == null) return null;
-        for (var key : keys) {
-            var value = attributes.get(key);
-            if (value == null || value.isBlank()) continue;
-            try {
-                return Double.valueOf(value);
-            } catch (NumberFormatException ignored) {
-                LOGGER.debug("invalid double trace attribute {}={}", key, value);
-            }
-        }
-        return null;
-    }
-
-    private long safeLong(Long value) {
-        return value != null ? value : 0L;
-    }
-
-    private SpanStatus mapSpanStatus(String status, Map<String, String> attributes) {
-        if (isCancelled(status, attributes)) return SpanStatus.CANCELLED;
-        if ("ERROR".equals(status)) return SpanStatus.ERROR;
-        if ("WARNING".equals(status)) return SpanStatus.WARNING;
-        return SpanStatus.OK;
-    }
-
-    private TraceStatus mapTraceStatus(String status, Map<String, String> attributes) {
-        if (isCancelled(status, attributes)) return TraceStatus.CANCELLED;
-        if ("ERROR".equals(status)) return TraceStatus.ERROR;
-        if ("OK".equals(status)) return TraceStatus.COMPLETED;
-        return TraceStatus.RUNNING;
-    }
-
-    // Trace-level type (agent | llm_call | external) derived from the root span. An LLM-rooted trace is an
-    // llm_call; agent/flow/group roots (and unknowns) are agent runs.
-    private String mapTraceType(String rootSpanType) {
-        if ("LLM".equals(rootSpanType)) return "llm_call";
-        return "agent";
-    }
-
-    private boolean isCancelled(String status, Map<String, String> attributes) {
-        return "CANCELLED".equals(status)
-            || attributes != null && "true".equalsIgnoreCase(attributes.get(CORE_AI_CANCELLED));
-    }
-
-    private SpanType mapSpanType(String type) {
-        if (type == null) return SpanType.AGENT;
-        return switch (type) {
-            case "LLM" -> SpanType.LLM;
-            case "TOOL" -> SpanType.TOOL;
-            case "FLOW" -> SpanType.FLOW;
-            case "GROUP" -> SpanType.GROUP;
-            default -> SpanType.AGENT;
-        };
-    }
-
-    private ZonedDateTime toZonedDateTime(long epochMs) {
-        if (epochMs <= 0) return null;
-        return ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMs), ZoneId.systemDefault());
     }
 }

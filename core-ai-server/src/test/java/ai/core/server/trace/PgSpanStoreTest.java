@@ -15,6 +15,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -101,6 +102,7 @@ class PgSpanStoreTest {
         assertEquals(10L, loaded.inputTokens);
         assertTrue(store.existsToolCall("t1", "tool-1"));
         assertFalse(store.existsToolCall("t1", "tool-x"));
+        assertEquals(Set.of("l1"), store.existingSpanIds(List.of("l1", "missing")));
     }
 
     @Test

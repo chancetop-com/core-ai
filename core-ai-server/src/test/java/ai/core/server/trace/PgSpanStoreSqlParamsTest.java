@@ -7,7 +7,11 @@ import ai.core.server.trace.domain.SpanType;
 import org.junit.jupiter.api.Test;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * @author stephen
@@ -46,5 +50,18 @@ class PgSpanStoreSqlParamsTest {
         span.startedAt = ZonedDateTime.now();
 
         store().insert(span);
+    }
+
+    @Test
+    void existingSpanIdsBindsPlaceholdersAcrossBatches() {
+        var db = new RecordingDatabase();
+        var store = new PgSpanStore();
+        store.database = db;
+        var ids = IntStream.range(0, 600).mapToObj(i -> "span-" + i).toList();
+
+        store.existingSpanIds(ids);
+
+        assertEquals(2, db.statementCount());
+        assertEquals(List.of(), store.existingSpanIds(List.of()).stream().toList());
     }
 }

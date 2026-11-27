@@ -1,5 +1,6 @@
 package ai.core.server.trace.service;
 
+import ai.core.server.trace.web.ingest.IngestStartRequest;
 import org.junit.jupiter.api.Test;
 
 import java.time.Duration;
@@ -11,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author core-ai
@@ -80,5 +82,22 @@ class MemoryTraceSpanBufferTest {
 
         assertEquals(3, attempts.get());
         assertEquals(0, buffer.failed());
+    }
+
+    @Test
+    void offerStartExecutesStartTraceAndSharesBudget() throws Exception {
+        var buffer = new MemoryTraceSpanBuffer(otlp, ingest, 10, 128, 128);
+        buffer.start();
+        var request = new IngestStartRequest();
+        request.traceId = "0123456789abcdef0123456789abcdef";
+
+        assertTrue(buffer.offerStart(request, "user-1", "cli", 64));
+        assertFalse(buffer.offerStart(request, "user-1", "cli", 129));
+        buffer.shutdown(Duration.ofSeconds(2));
+
+        verify(ingest).startTrace(request, "user-1", "cli");
+        assertEquals(0, buffer.depth());
+        assertEquals(0, buffer.queuedBytes());
+        assertTrue(buffer.rejected() > 0);
     }
 }

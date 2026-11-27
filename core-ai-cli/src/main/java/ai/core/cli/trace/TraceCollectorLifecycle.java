@@ -29,6 +29,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
     private static final String SERVICE_NAME = "core-ai-cli";
     private static final String SERVICE_VERSION = "1";
     private static final String ENVIRONMENT = "cli";
+    private static final String ROOT_SPAN_NAME = "cli turn";
     private static final int MAX_FIELD_LEN = 100_000;
     private static final ThreadLocal<TurnState> TURN = new ThreadLocal<>();
 
@@ -77,8 +78,18 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             state.rootSpanId = hex16();
             state.currentLlmSpanId = state.rootSpanId;
             state.startedAtMs = System.currentTimeMillis();
-            state.input = query != null ? query.get() : null;
+            state.input = truncate(query != null ? query.get() : null);
             TURN.set(state);
+            var start = new CliTraceStart();
+            start.traceId = state.traceId;
+            start.name = ROOT_SPAN_NAME;
+            start.input = state.input;
+            start.startedAtEpochMs = state.startedAtMs;
+            start.serviceName = SERVICE_NAME;
+            start.serviceVersion = SERVICE_VERSION;
+            start.environment = ENVIRONMENT;
+            start.clientType = clientType;
+            uploader.start(start);
         });
     }
 
@@ -119,6 +130,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             span.durationMs = now - start;
             state.spans.add(span);
             state.currentLlmSpanId = span.spanId;
+            uploader.span(span);
         });
     }
 
@@ -154,6 +166,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
             span.completedAtEpochMs = now;
             span.durationMs = now - start;
             state.spans.add(span);
+            uploader.span(span);
         });
     }
 
@@ -176,7 +189,7 @@ public class TraceCollectorLifecycle extends AbstractLifecycle {
         root.traceId = state.traceId;
         root.spanId = state.rootSpanId;
         root.parentSpanId = null;
-        root.name = "cli turn";
+        root.name = ROOT_SPAN_NAME;
         root.type = "AGENT";
         root.input = truncate(state.input);
         root.output = truncate(output);

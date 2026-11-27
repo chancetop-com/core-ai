@@ -5,4 +5,10 @@ package ai.core.cli.trace;
  */
 public interface TraceUploader {
     void upload(CliTraceRequest request);
+
+    default void start(CliTraceStart start) {
+    }
+
+    default void span(CliTraceSpan span) {
+    }
 }

@@ -14,8 +14,10 @@ import core.framework.inject.Named;
 
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * @author stephen
@@ -128,6 +130,20 @@ public class PgSpanStore implements SpanStore {
     @Override
     public boolean insertIfAbsent(Span span) {
         return database.execute(INSERT + INSERT_VALUES + " ON CONFLICT DO NOTHING", params(span)) > 0;
+    }
+
+    @Override
+    public Set<String> existingSpanIds(List<String> spanIds) {
+        if (spanIds == null || spanIds.isEmpty()) return Set.of();
+        var existing = new HashSet<String>();
+        for (int i = 0; i < spanIds.size(); i += DELETE_BATCH_SIZE) {
+            var batch = spanIds.subList(i, Math.min(i + DELETE_BATCH_SIZE, spanIds.size()));
+            var sql = "SELECT span_id FROM " + TABLE + " WHERE span_id IN (" + placeholders(batch.size()) + ")";
+            for (var row : database.select(sql, PgSpanRow.class, batch.toArray())) {
+                if (row.spanId != null) existing.add(row.spanId);
+            }
+        }
+        return existing;
     }
 
     @Override

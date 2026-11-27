@@ -4,6 +4,7 @@ import ai.core.server.trace.domain.Span;
 
 import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Span storage. Span payloads are large and write-heavy, so callers pick the summary queries
@@ -20,6 +21,14 @@ public interface SpanStore {
      * @return true when this call inserted the row; false when it was a replay
      */
     boolean insertIfAbsent(Span span);
+
+    /**
+     * Span ids from the supplied list that are already persisted, used to skip compaction and
+     * body offloading on replayed batches before {@link #insertIfAbsent(Span)} acts as the race gate.
+     */
+    default Set<String> existingSpanIds(List<String> spanIds) {
+        return Set.of();
+    }
 
     void bulkInsert(List<Span> spans);
 

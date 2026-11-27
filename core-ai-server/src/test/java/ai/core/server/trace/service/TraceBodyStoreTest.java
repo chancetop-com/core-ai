@@ -141,6 +141,20 @@ class TraceBodyStoreTest {
         assertTrue(objects.isEmpty());
     }
 
+    @Test
+    void sameContentMatchesInlineAndOffloadedReferenceBySha256() {
+        var body = "x".repeat(64 * 1024);
+        var reference = store.offload("trace-1", null, "in", body);
+
+        assertTrue(TraceBodyStore.sameContent("hello", "hello"));
+        assertFalse(TraceBodyStore.sameContent("hello", "world"));
+        assertFalse(TraceBodyStore.sameContent(null, "hello"));
+        assertTrue(TraceBodyStore.sameContent(reference, body));
+        assertFalse(TraceBodyStore.sameContent(reference, body + "!"));
+        assertFalse(TraceBodyStore.sameContent(reference, "y".repeat(64 * 1024)));
+        assertFalse(TraceBodyStore.sameContent(ref("dev-ai/trace-bodies/2026-01/trace-1/span-1.in.json.gz"), body));
+    }
+
     private String ref(String key) {
         Map<String, Object> reference = new HashMap<>();
         reference.put("$coreai_blob_ref", "coreai-blob://" + key);

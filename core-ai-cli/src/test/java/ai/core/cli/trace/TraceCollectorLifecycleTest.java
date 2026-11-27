@@ -9,11 +9,13 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TraceCollectorLifecycleTest {
@@ -215,6 +217,168 @@ class TraceCollectorLifecycleTest {
         assertEquals(2, tools.size());
         assertTrue(tools.stream().allMatch(t -> llm.spanId.equals(t.parentSpanId)),
                 "both tools nest under the same triggering llm span");
+    }
+
+    @Test
+    void beforeAgentRunEmitsStartWithTruncatedInputAndConsistentMetadata() {
+        var recorder = new RecordingUploader();
+        var lifecycle = new TraceCollectorLifecycle(recorder, "desktop");
+        var longQuery = "q".repeat(120_000);
+
+        lifecycle.beforeAgentRun(new AtomicReference<>(longQuery), null);
+
+        assertEquals(1, recorder.starts.size());
+        assertTrue(recorder.spans.isEmpty());
+        assertTrue(recorder.uploads.isEmpty());
+
+        var start = recorder.starts.get(0);
+        assertNotNull(start.traceId);
+        assertEquals(32, start.traceId.length());
+        assertEquals("cli turn", start.name);
+        assertEquals(100_000, start.input.length());
+        assertNotNull(start.startedAtEpochMs);
+        assertEquals("core-ai-cli", start.serviceName);
+        assertEquals("1", start.serviceVersion);
+        assertEquals("cli", start.environment);
+        assertEquals("desktop", start.clientType);
+
+        lifecycle.afterAgentRun(longQuery, new AtomicReference<>("ok"), null);
+
+        assertEquals(1, recorder.uploads.size());
+        var finalReq = recorder.uploads.get(0);
+        assertEquals(start.serviceName, finalReq.serviceName);
+        assertEquals(start.serviceVersion, finalReq.serviceVersion);
+        assertEquals(start.environment, finalReq.environment);
+        assertEquals(start.clientType, finalReq.clientType);
+        assertEquals(1, finalReq.spans.size());
+        var root = finalReq.spans.get(0);
+        assertEquals(start.traceId, root.traceId);
+        assertEquals(start.startedAtEpochMs, root.startedAtEpochMs);
+        assertEquals(start.input, root.input);
+    }
+
+    @Test
+    void afterModelAndAfterToolEmitCompletedSpansAndFinalIncludesRootPlusAll() {
+        var recorder = new RecordingUploader();
+        var lifecycle = new TraceCollectorLifecycle(recorder, "cli");
+
+        lifecycle.beforeAgentRun(new AtomicReference<>("hello"), null);
+        var request = CompletionRequest.of(new ArrayList<>(), null, 0.8, "gpt-4o", "agent");
+        var usage = new Usage(12, 7, 19);
+        var response = CompletionResponse.of(List.of(), usage);
+        lifecycle.beforeModel(request, null);
+        lifecycle.afterModel(request, response, null);
+
+        var call1 = FunctionCall.of("call-1", "function", "read_file", "{\"path\":\"a\"}");
+        lifecycle.beforeTool(call1, null);
+        lifecycle.afterTool(call1, null, ToolCallResult.completed("contents"));
+
+        var call2 = FunctionCall.of("call-2", "function", "grep_file", "{\"q\":\"x\"}");
+        lifecycle.beforeTool(call2, null);
+        lifecycle.afterTool(call2, null, ToolCallResult.failed("not found"));
+
+        lifecycle.afterAgentRun("hello", new AtomicReference<>("done"), null);
+
+        assertEquals(List.of("start", "span:LLM", "span:TOOL", "span:TOOL", "upload"), recorder.events);
+        assertEquals(1, recorder.starts.size());
+        assertEquals(3, recorder.spans.size());
+        assertEquals(1, recorder.uploads.size());
+
+        var finalSpans = recorder.uploads.get(0).spans;
+        assertEquals(4, finalSpans.size(), "final batch must carry root + all emitted spans");
+        var root = finalSpans.get(0);
+        var liveLlm = recorder.spans.get(0);
+        var liveTool1 = recorder.spans.get(1);
+        var liveTool2 = recorder.spans.get(2);
+
+        assertSame(liveLlm, finalSpans.get(1));
+        assertSame(liveTool1, finalSpans.get(2));
+        assertSame(liveTool2, finalSpans.get(3));
+
+        assertEquals(root.spanId, liveLlm.parentSpanId);
+        assertEquals("OK", liveLlm.status);
+        assertEquals(12L, liveLlm.inputTokens);
+        assertEquals(7L, liveLlm.outputTokens);
+        assertEquals(liveLlm.spanId, liveTool1.parentSpanId);
+        assertEquals("OK", liveTool1.status);
+        assertEquals(liveLlm.spanId, liveTool2.parentSpanId);
+        assertEquals("WARNING", liveTool2.status);
+    }
+
+    @Test
+    void uploaderExceptionsNeverBreakTurnAcrossAllHooks() {
+        var flaky = new ThrowingUploader();
+        var lifecycle = new TraceCollectorLifecycle(flaky, "cli");
+
+        lifecycle.beforeAgentRun(new AtomicReference<>("hi"), null);
+        lifecycle.afterModel(CompletionRequest.of(new ArrayList<>(), null, 0.8, "m", "a"),
+                CompletionResponse.of(List.of(), new Usage(3, 4, 7)), null);
+        var call = FunctionCall.of("c1", "function", "read_file", "{}");
+        lifecycle.beforeTool(call, null);
+        lifecycle.afterTool(call, null, ToolCallResult.completed("ok"));
+        lifecycle.afterAgentRun("hi", new AtomicReference<>("done"), null);
+
+        assertEquals(1, flaky.startCalls.get());
+        assertEquals(2, flaky.spanCalls.get());
+        assertEquals(1, flaky.uploadCalls.get());
+        assertNotNull(flaky.capturedFinal.get(), "turn state must survive start/span uploader failures");
+        assertEquals(3, flaky.capturedFinal.get().spans.size(), "root + llm + tool still collected");
+        var root = flaky.capturedFinal.get().spans.get(0);
+        var llm = flaky.capturedFinal.get().spans.get(1);
+        var tool = flaky.capturedFinal.get().spans.get(2);
+        assertEquals(root.spanId, llm.parentSpanId);
+        assertEquals(llm.spanId, tool.parentSpanId);
+    }
+
+    private static final class ThrowingUploader implements TraceUploader {
+        final AtomicInteger startCalls = new AtomicInteger();
+        final AtomicInteger spanCalls = new AtomicInteger();
+        final AtomicInteger uploadCalls = new AtomicInteger();
+        final AtomicReference<CliTraceRequest> capturedFinal = new AtomicReference<>();
+
+        @Override
+        public void start(CliTraceStart start) {
+            startCalls.incrementAndGet();
+            throw new IllegalStateException("start boom");
+        }
+
+        @Override
+        public void span(CliTraceSpan span) {
+            spanCalls.incrementAndGet();
+            throw new IllegalStateException("span boom");
+        }
+
+        @Override
+        public void upload(CliTraceRequest request) {
+            uploadCalls.incrementAndGet();
+            capturedFinal.set(request);
+            throw new IllegalStateException("upload boom");
+        }
+    }
+
+    private static final class RecordingUploader implements TraceUploader {
+        final List<CliTraceStart> starts = new ArrayList<>();
+        final List<CliTraceSpan> spans = new ArrayList<>();
+        final List<CliTraceRequest> uploads = new ArrayList<>();
+        final List<String> events = new ArrayList<>();
+
+        @Override
+        public void start(CliTraceStart start) {
+            starts.add(start);
+            events.add("start");
+        }
+
+        @Override
+        public void span(CliTraceSpan span) {
+            spans.add(span);
+            events.add("span:" + span.type);
+        }
+
+        @Override
+        public void upload(CliTraceRequest request) {
+            uploads.add(request);
+            events.add("upload");
+        }
     }
 
 }

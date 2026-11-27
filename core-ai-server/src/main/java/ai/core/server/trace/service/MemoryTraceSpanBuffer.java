@@ -1,6 +1,7 @@
 package ai.core.server.trace.service;
 
 import ai.core.server.trace.web.ingest.IngestRequest;
+import ai.core.server.trace.web.ingest.IngestStartRequest;
 import io.opentelemetry.proto.collector.trace.v1.ExportTraceServiceRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,6 +68,10 @@ public class MemoryTraceSpanBuffer implements AutoCloseable {
 
     public boolean offerIngest(IngestRequest request, String authUserId, String source, long bytes) {
         return offer(() -> ingestService.ingest(request, authUserId, source), bytes, "ingest");
+    }
+
+    public boolean offerStart(IngestStartRequest request, String authUserId, String source, long bytes) {
+        return offer(() -> ingestService.startTrace(request, authUserId, source), bytes, "start");
     }
 
     /**
