@@ -57,7 +57,7 @@ type ExecuteRequest struct {
 }
 
 type ExecuteResponse struct {
-	Status     string `json:"status"` // completed, failed, timeout, pending
+	Status     string `json:"status"` // completed, failed, timeout, pending, cancelled
 	Result     string `json:"result"`
 	TaskID     string `json:"task_id,omitempty"`
 	DurationMs int64  `json:"duration_ms,omitempty"`
@@ -75,11 +75,13 @@ type FileUploadResponse struct {
 type AsyncTask struct {
 	ID         string
 	Tool       string
-	Status     string // pending, completed, failed, timeout
+	Status     string // pending, completed, failed, timeout, cancelled
 	Result     string
 	DurationMs int64
 	CreatedAt  time.Time
 	DoneAt     time.Time
+	cancel     context.CancelFunc
+	done       chan struct{}
 }
 
 type TaskRegistry struct {
@@ -97,17 +99,21 @@ func NewTaskRegistry(maxConcurrent int) *TaskRegistry {
 	}
 }
 
-func (r *TaskRegistry) Submit(tool string, execFn func() (string, string)) (string, error) {
+func (r *TaskRegistry) Submit(tool string, execFn func(ctx context.Context) (string, string)) (string, error) {
 	if atomic.LoadInt32(&r.running) >= r.maxConcurrent {
 		return "", fmt.Errorf("max concurrent async tasks reached (%d)", r.maxConcurrent)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
 	id := fmt.Sprintf("task-%d", r.nextID.Add(1))
 	task := &AsyncTask{
 		ID:        id,
 		Tool:      tool,
 		Status:    "pending",
 		CreatedAt: time.Now(),
+		cancel:    cancel,
+		done:      done,
 	}
 
 	r.mu.Lock()
@@ -117,13 +123,19 @@ func (r *TaskRegistry) Submit(tool string, execFn func() (string, string)) (stri
 	atomic.AddInt32(&r.running, 1)
 
 	go func() {
+		defer close(done)
+		defer cancel()
 		defer atomic.AddInt32(&r.running, -1)
 		start := time.Now()
-		result, status := execFn()
-		task.Result = truncateOutput(result)
-		task.Status = status
-		task.DurationMs = time.Since(start).Milliseconds()
-		task.DoneAt = time.Now()
+		result, status := execFn(ctx)
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		if task.Status == "pending" {
+			task.Result = truncateOutput(result)
+			task.Status = status
+			task.DurationMs = time.Since(start).Milliseconds()
+			task.DoneAt = time.Now()
+		}
 	}()
 
 	return id, nil
@@ -132,7 +144,48 @@ func (r *TaskRegistry) Submit(tool string, execFn func() (string, string)) (stri
 func (r *TaskRegistry) Get(id string) *AsyncTask {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.tasks[id]
+	task := r.tasks[id]
+	if task == nil {
+		return nil
+	}
+	cp := *task
+	return &cp
+}
+
+func (r *TaskRegistry) Cancel(id string) (*AsyncTask, bool) {
+	r.mu.Lock()
+	task := r.tasks[id]
+	if task == nil {
+		r.mu.Unlock()
+		return nil, false
+	}
+	if task.Status != "pending" {
+		cp := *task
+		r.mu.Unlock()
+		return &cp, true
+	}
+	task.Status = "cancelled"
+	task.Result = "task cancelled"
+	task.DurationMs = time.Since(task.CreatedAt).Milliseconds()
+	task.DoneAt = time.Now()
+	cancelFn := task.cancel
+	doneCh := task.done
+	r.mu.Unlock()
+
+	if cancelFn != nil {
+		cancelFn()
+	}
+	if doneCh != nil {
+		select {
+		case <-doneCh:
+		case <-time.After(3 * time.Second):
+		}
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	cp := *task
+	return &cp, true
 }
 
 func (r *TaskRegistry) Cleanup(maxAge time.Duration) {
@@ -162,6 +215,7 @@ var runtimeVersion = "dev"
 // ---- Tool executor type ----
 
 type toolExecutor func(args string) (string, string)
+type ctxToolExecutor func(ctx context.Context, args string) (string, string)
 
 var toolMap = map[string]toolExecutor{
 	"run_bash_command":  executeBash,
@@ -171,6 +225,11 @@ var toolMap = map[string]toolExecutor{
 	"edit_file":         executeEditFile,
 	"glob_file":         executeGlob,
 	"grep_file":         executeGrep,
+}
+
+var ctxToolMap = map[string]ctxToolExecutor{
+	"run_bash_command":  executeBashCtx,
+	"run_python_script": executePythonCtx,
 }
 
 // ---- Main ----
@@ -229,7 +288,7 @@ func main() {
 	// Proactive send: the host reaches the gateway's POST /ocg/send through the runtime.
 	http.HandleFunc(ocgSendPath, handleOcgProxy)
 	http.HandleFunc("/execute", handleExecute)
-	http.HandleFunc("/tasks/", handleTaskPoll)
+	http.HandleFunc("/tasks/", handleTasks)
 	http.HandleFunc("/files/content", handleFileContent)
 	http.HandleFunc("/files/upload", handleFileUpload)
 	http.HandleFunc("/skills/", handleSkillMaterialize)
@@ -410,7 +469,11 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 
 	// Check if async mode is requested (parsed from arguments)
 	if isAsync(req.Arguments) {
-		taskID, err := taskRegistry.Submit(req.Tool, func() (string, string) {
+		ctxExec, hasCtxExec := ctxToolMap[req.Tool]
+		taskID, err := taskRegistry.Submit(req.Tool, func(ctx context.Context) (string, string) {
+			if hasCtxExec {
+				return ctxExec(ctx, req.Arguments)
+			}
 			return executor(req.Arguments)
 		})
 		if err != nil {
@@ -427,6 +490,44 @@ func handleExecute(w http.ResponseWriter, r *http.Request) {
 		Status:     status,
 		Result:     truncateOutput(result),
 		DurationMs: time.Since(start).Milliseconds(),
+	})
+}
+
+// handleTasks dispatches GET /tasks/{taskId} and POST /tasks/{taskId}/cancel
+func handleTasks(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	if strings.HasSuffix(rest, "/cancel") {
+		taskID := strings.TrimSuffix(rest, "/cancel")
+		handleTaskCancel(w, r, taskID)
+		return
+	}
+	handleTaskPoll(w, r)
+}
+
+// handleTaskCancel handles POST /tasks/{taskId}/cancel
+func handleTaskCancel(w http.ResponseWriter, r *http.Request, taskID string) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if taskID == "" || strings.Contains(taskID, "/") {
+		http.Error(w, "task_id is required", http.StatusBadRequest)
+		return
+	}
+
+	task, ok := taskRegistry.Cancel(taskID)
+	if !ok {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(ExecuteResponse{Status: "failed", Result: "task not found: " + taskID})
+		return
+	}
+
+	writeJSON(w, ExecuteResponse{
+		Status:     task.Status,
+		Result:     task.Result,
+		TaskID:     task.ID,
+		DurationMs: task.DurationMs,
 	})
 }
 
@@ -663,6 +764,10 @@ func runBounded(cmd *exec.Cmd) ([]byte, error) {
 }
 
 func executeBash(args string) (string, string) {
+	return executeBashCtx(context.Background(), args)
+}
+
+func executeBashCtx(parentCtx context.Context, args string) (string, string) {
 	var parsed struct {
 		Command      string `json:"command"`
 		WorkspaceDir string `json:"workspace"`
@@ -675,7 +780,7 @@ func executeBash(args string) (string, string) {
 		return "command is empty", "failed"
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), bashTimeout(parsed.Timeout))
+	ctx, cancel := context.WithTimeout(parentCtx, bashTimeout(parsed.Timeout))
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "bash", "--noprofile", "--norc", "-c", bashWrapper, "core-ai-bash", parsed.Command)
@@ -685,6 +790,9 @@ func executeBash(args string) (string, string) {
 	output, err := runBounded(cmd)
 	result := string(output)
 
+	if parentCtx.Err() != nil {
+		return result + "\n... command cancelled", "cancelled"
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return result + "\n... command timed out", "timeout"
 	}
@@ -697,6 +805,10 @@ func executeBash(args string) (string, string) {
 // executePython mirrors the run_python_script tool contract (PythonScriptTool):
 // inline "code" wins over "script_path"; "script" is a legacy alias for "code".
 func executePython(args string) (string, string) {
+	return executePythonCtx(context.Background(), args)
+}
+
+func executePythonCtx(parentCtx context.Context, args string) (string, string) {
 	var parsed struct {
 		Code         string `json:"code"`
 		Script       string `json:"script"`
@@ -732,7 +844,7 @@ func executePython(args string) (string, string) {
 		timeout = time.Duration(parsed.Timeout) * time.Second
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, findPython(), pythonArgs...)
@@ -742,6 +854,9 @@ func executePython(args string) (string, string) {
 	output, err := runBounded(cmd)
 	result := string(output)
 
+	if parentCtx.Err() != nil {
+		return result + "\n... script cancelled", "cancelled"
+	}
 	if ctx.Err() == context.DeadlineExceeded {
 		return result + "\n... script timed out", "timeout"
 	}

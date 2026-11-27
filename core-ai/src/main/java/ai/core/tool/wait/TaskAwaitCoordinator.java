@@ -5,6 +5,7 @@ import ai.core.agent.CancellationException;
 import ai.core.agent.ExecutionContext;
 import ai.core.api.server.session.AgentWaitEvent;
 import ai.core.llm.domain.FunctionCall;
+import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import org.slf4j.Logger;
@@ -25,9 +26,11 @@ import java.util.concurrent.atomic.AtomicReference;
  * @author stephen
  */
 public final class TaskAwaitCoordinator {
+    public static final long DEFAULT_MAX_MANAGED_WAIT_MS = 600_000L;
     private static final Logger LOGGER = LoggerFactory.getLogger(TaskAwaitCoordinator.class);
     private static final String SOURCE_BACKGROUND = "background";
     private static final String SOURCE_EXECUTOR = "executor";
+    private static final String SOURCE_MANAGED = "managed";
 
     private static final TaskAwaitCoordinator INSTANCE = new TaskAwaitCoordinator();
 
@@ -65,10 +68,14 @@ public final class TaskAwaitCoordinator {
 
         var entry = target.entry();
         var waiter = entry.subscribe();
-        var budget = effectiveTimeout(request.timeoutMs(), context);
+        var budget = effectiveTimeout(request.timeoutMs(), context, target.source());
         if (budget.immediateFailure() != null) {
             waiter.close();
+            releaseSuppression(entry, target.source());
             return failure(budget.immediateFailure(), entry.ref(), startedAt, "timeout");
+        }
+        if (SOURCE_MANAGED.equals(target.source()) && !entry.isDone() && target.managed() != null) {
+            target.managed().startWaitPolling(entry.ref().taskId(), entry);
         }
 
         try {
@@ -98,6 +105,7 @@ public final class TaskAwaitCoordinator {
             if (cancelReason.get() != null) {
                 return failure(cancelReason.get(), entry.ref(), startedAt, "cancelled");
             }
+            markManagedDelivered(target);
             emit(context, AgentWaitEvent.RESUMING, entry.ref(), scope, budget.timeoutMs(), startedAt);
             return completed(terminal, entry.ref(), startedAt);
         } catch (TimeoutException e) {
@@ -105,6 +113,7 @@ public final class TaskAwaitCoordinator {
             // rather than reporting a timeout for a task that is already finished.
             var raced = entry.peek();
             if (raced != null) {
+                markManagedDelivered(target);
                 emit(context, AgentWaitEvent.RESUMING, entry.ref(), scope, budget.timeoutMs(), startedAt);
                 return completed(raced, entry.ref(), startedAt);
             }
@@ -151,33 +160,41 @@ public final class TaskAwaitCoordinator {
         if (taskManager != null && taskManager.hasTask(taskId)) {
             var entry = taskManager.findCompletion(taskId);
             if (entry.isEmpty()) {
-                return Optional.of(new Resolution(null, null, "WAIT_UNAVAILABLE: task state is no longer retained: " + taskId));
+                return Optional.of(new Resolution(null, null, "WAIT_UNAVAILABLE: task state is no longer retained: " + taskId, null));
             }
             if (!entry.get().isDone()) {
                 entry.get().suppressAutoNotification();
             }
-            return Optional.of(new Resolution(SOURCE_BACKGROUND, entry.get(), null));
+            return Optional.of(new Resolution(SOURCE_BACKGROUND, entry.get(), null, null));
         }
         var executor = AsyncToolTaskExecutor.getInstance();
         if (executor.getTaskInfo(taskId).isPresent()) {
             var entry = executor.findCompletion(taskId, scope.ownerScope());
             if (entry.isEmpty()) {
-                return Optional.of(new Resolution(null, null, "WAIT_UNAVAILABLE: task state is no longer retained: " + taskId));
+                return Optional.of(new Resolution(null, null, "WAIT_UNAVAILABLE: task state is no longer retained: " + taskId, null));
             }
-            return Optional.of(new Resolution(SOURCE_EXECUTOR, entry.get(), null));
+            return Optional.of(new Resolution(SOURCE_EXECUTOR, entry.get(), null, null));
         }
         var managed = context.getAsyncTaskManager();
-        if (managed != null && managed.loadTask(taskId).isPresent()) {
-            return Optional.of(new Resolution(null, null,
-                    "WAIT_UNSUPPORTED: managed tasks can only be waited on by a host with a completion producer "
-                            + "(this host has a poll-only task store); use action='poll'"));
+        if (managed != null && managed.hasTaskData(taskId)) {
+            var entry = managed.findOrEnsureCompletion(taskId, scope.ownerScope());
+            if (entry.isEmpty()) {
+                return Optional.empty();
+            }
+            if (!entry.get().isDone()) {
+                entry.get().suppressAutoNotification();
+            }
+            return Optional.of(new Resolution(SOURCE_MANAGED, entry.get(), null, managed));
         }
         return Optional.empty();
     }
 
-    private Budget effectiveTimeout(long requestedTimeoutMs, ExecutionContext context) {
+    private Budget effectiveTimeout(long requestedTimeoutMs, ExecutionContext context, String source) {
         var timeout = requestedTimeoutMs;
         var budgetLimited = false;
+        if (SOURCE_MANAGED.equals(source) && (timeout <= 0 || timeout > DEFAULT_MAX_MANAGED_WAIT_MS)) {
+            timeout = DEFAULT_MAX_MANAGED_WAIT_MS;
+        }
         var budget = context.getRunBudget();
         if (budget != null && budget.time() != null) {
             long available = budget.time().remainingMillis() - budget.time().reserveMillis();
@@ -190,6 +207,12 @@ public final class TaskAwaitCoordinator {
             }
         }
         return new Budget(timeout, budgetLimited, null);
+    }
+
+    private void markManagedDelivered(Resolution target) {
+        if (SOURCE_MANAGED.equals(target.source()) && target.managed() != null) {
+            target.managed().markNotificationDelivered(target.entry().ref().taskId());
+        }
     }
 
     private ToolCallResult completed(ToolCallResult terminal, TaskRef ref, long startedAt) {
@@ -222,7 +245,7 @@ public final class TaskAwaitCoordinator {
     }
 
     private void releaseSuppression(TaskCompletionRegistry.Entry entry, String source) {
-        if (SOURCE_BACKGROUND.equals(source) && !entry.isDone()) {
+        if ((SOURCE_BACKGROUND.equals(source) || SOURCE_MANAGED.equals(source)) && !entry.isDone()) {
             entry.releaseAutoNotification();
         }
     }
@@ -245,7 +268,8 @@ public final class TaskAwaitCoordinator {
         }
     }
 
-    private record Resolution(String source, TaskCompletionRegistry.Entry entry, String unsupportedReason) {
+    private record Resolution(String source, TaskCompletionRegistry.Entry entry, String unsupportedReason,
+                              ToolCallAsyncTaskManager managed) {
     }
 
     private record Budget(long timeoutMs, boolean budgetLimited, String immediateFailure) {

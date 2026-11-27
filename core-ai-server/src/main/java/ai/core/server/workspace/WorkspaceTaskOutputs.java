@@ -27,15 +27,33 @@ public final class WorkspaceTaskOutputs {
         return retentionDays;
     }
 
-    public static void cleanup(Sandbox sandbox) {
-        if (sandbox == null || retentionDays <= 0) return;
-        var command = "find " + DIR + " -type f -name '*.out' -mtime +" + retentionDays
-                + " -delete 2>/dev/null || true";
+    public static int cleanup(Sandbox sandbox) {
+        if (sandbox == null || retentionDays <= 0) return 0;
+        var retentionMinutes = retentionDays * 24 * 60;
+        var command = "if [ -d " + DIR + " ]; then find " + DIR
+                + " -maxdepth 1 -type f -name '*.out' -mmin +" + retentionMinutes
+                + " -print -delete 2>/dev/null | wc -l; else echo 0; fi";
         try {
-            sandbox.execute("run_bash_command", JSON.toJSON(Map.of("command", command)), null);
+            var result = sandbox.execute("run_bash_command", JSON.toJSON(Map.of("command", command)), null);
+            var deleted = parseCount(result != null ? result.getResult() : null);
+            LOGGER.info("pruned workspace task outputs, dir={}, retentionDays={}, deleted={}", DIR, retentionDays, deleted);
+            return deleted;
         } catch (RuntimeException e) {
             LOGGER.warn("failed to prune workspace task outputs, dir={}", DIR, e);
+            return 0;
         }
+    }
+
+    private static int parseCount(String output) {
+        if (output == null || output.isBlank()) return 0;
+        var lines = output.trim().split("\\R");
+        for (int i = lines.length - 1; i >= 0; i--) {
+            var line = lines[i].trim();
+            if (!line.isEmpty() && line.chars().allMatch(Character::isDigit)) {
+                return Integer.parseInt(line);
+            }
+        }
+        return 0;
     }
 
     private WorkspaceTaskOutputs() {

@@ -5,6 +5,7 @@ import ai.core.server.asynctask.AsyncToolTaskService;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.server.asynctask.MongoAsyncTaskPersistence;
 import ai.core.server.asynctask.PgAsyncTaskPersistence;
+import ai.core.server.asynctask.PgServerBackgroundTaskStore;
 import core.framework.module.Module;
 
 import java.time.Duration;
@@ -22,10 +23,13 @@ public class AsyncToolTaskModule extends Module {
         var pollSeconds = property("sys.asyncTask.pollSeconds").map(Integer::parseInt).orElse(10);
         if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
             bind(PersistenceProvider.class, bind(PgAsyncTaskPersistence.class));
+            var store = bind(PgServerBackgroundTaskStore.class);
+            bind(AsyncToolTaskService.class).setBackgroundTaskStore(store);
+            onStartup(store::markPodOpenTasksLost);
         } else {
             bind(PersistenceProvider.class, bind(MongoAsyncTaskPersistence.class));
+            bind(AsyncToolTaskService.class);
         }
-        bind(AsyncToolTaskService.class);
         schedule().fixedRate("async-tool-task-poll", bind(AsyncToolTaskPollJob.class), Duration.ofSeconds(pollSeconds));
     }
 }

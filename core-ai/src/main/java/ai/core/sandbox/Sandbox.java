@@ -34,6 +34,14 @@ public interface Sandbox extends AutoCloseable {
         throw new UnsupportedOperationException("poll is not supported by " + getClass().getSimpleName());
     }
 
+    /**
+     * Cancels a running async task in this sandbox runtime. Ids are the runtime's own ids, not the
+     * server's namespaced task ids.
+     */
+    default ToolCallResult cancelTask(String taskId) {
+        throw new UnsupportedOperationException("cancel is not supported by " + getClass().getSimpleName());
+    }
+
     SandboxStatus getStatus();
 
     String getId();

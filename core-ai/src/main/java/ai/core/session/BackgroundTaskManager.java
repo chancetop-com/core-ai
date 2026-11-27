@@ -10,7 +10,6 @@ import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.wait.TaskCompletionRegistry;
 import ai.core.tool.wait.TaskRef;
-import ai.core.tool.subagent.SubagentOutputSink;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import io.opentelemetry.context.Context;
 import org.slf4j.Logger;
@@ -39,28 +38,10 @@ public class BackgroundTaskManager {
 
     private static final int MAX_TERMINAL_TASKS = 100;
 
-    private static final int MAX_TERMINAL_NOTE_LENGTH = 4000;
-
     private static volatile int maxTasksPerSession = 5;
 
     public static void configureMaxTasks(int max) {
         maxTasksPerSession = max > 0 ? max : 5;
-    }
-
-    private static void safeWrite(SubagentOutputSink sink, String content) {
-        try {
-            sink.write(content);
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to write background task output, falling back to the notification result: {}", e.getMessage());
-        }
-    }
-
-    private static void safeClose(SubagentOutputSink sink) {
-        try {
-            sink.close();
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to close background task output sink: {}", e.getMessage());
-        }
     }
 
     private static TaskRunOutcome outcomeOfStatus(String status) {
@@ -69,47 +50,10 @@ public class BackgroundTaskManager {
         return TaskRunOutcome.FAILED;
     }
 
-    private static TaskRunResult runAgentWithSink(Supplier<String> agentRunner, SubagentOutputSink sink, String taskId) {
-        String status;
-        String result = null;
-        String error = null;
-        try {
-            result = agentRunner.get();
-            safeWrite(sink, result != null ? result : "");
-            status = "completed";
-        } catch (Exception e) {
-            if (Thread.currentThread().isInterrupted()) {
-                status = "cancelled";
-                error = e.getMessage();
-                LOGGER.debug("background task interrupted, taskId={}", taskId);
-            } else {
-                status = "failed";
-                error = e.getMessage();
-                LOGGER.warn("background task failed, taskId={}, error={}", taskId, e.getMessage());
-            }
-            writeTerminalNote(sink, status, error);
-        } finally {
-            safeClose(sink);
-        }
-        return new TaskRunResult(status, result, error);
-    }
-
-    /** A failed or cancelled subagent still leaves a readable file behind instead of a zero-byte result. */
-    private static void writeTerminalNote(SubagentOutputSink sink, String status, String error) {
-        try {
-            var detail = error == null || error.isBlank() ? "no error detail" : error;
-            if (detail.length() > MAX_TERMINAL_NOTE_LENGTH) {
-                detail = detail.substring(0, MAX_TERMINAL_NOTE_LENGTH) + "\n[error truncated]";
-            }
-            sink.write("[task " + status + "]\n" + detail + "\n");
-        } catch (RuntimeException e) {
-            LOGGER.warn("failed to write terminal note for background task: {}", e.getMessage());
-        }
-    }
-
-    private static SharedTaskState newSharedState(TaskRunCoordinator taskRuns) {
+    private static SharedTaskState newSharedState(TaskRunCoordinator taskRuns, BackgroundTaskStore taskStore) {
         return new SharedTaskState(new ConcurrentHashMap<>(), new ConsumedTasks(),
-                new TaskCompletionRegistry("background", null), taskRuns, new AtomicInteger());
+                new TaskCompletionRegistry("background", null), taskRuns, new AtomicInteger(),
+                new BackgroundTaskPersistence(taskStore));
     }
 
     private final List<Task> tasks = new CopyOnWriteArrayList<>();
@@ -124,18 +68,24 @@ public class BackgroundTaskManager {
     private final Consumer<AgentEvent> dispatcher;
     private final TaskRunCoordinator taskRuns;
     private final AtomicInteger activeTaskCount;
+    private final BackgroundTaskPersistence persistence;
 
     public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher) {
-        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(null));
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(null, null));
     }
 
     public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
                                  Consumer<AgentEvent> dispatcher, TaskRunCoordinator taskRuns) {
-        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(taskRuns));
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(taskRuns, null));
+    }
+
+    public BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
+                                 Consumer<AgentEvent> dispatcher, TaskRunCoordinator taskRuns, BackgroundTaskStore taskStore) {
+        this(commandQueue, sinkFactory, sessionId, dispatcher, AsyncToolTaskExecutor.getInstance().getExecutor(), newSharedState(taskRuns, taskStore));
     }
 
     BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId, Consumer<AgentEvent> dispatcher, ExecutorService executor) {
-        this(commandQueue, sinkFactory, sessionId, dispatcher, executor, newSharedState(null));
+        this(commandQueue, sinkFactory, sessionId, dispatcher, executor, newSharedState(null, null));
     }
 
     private BackgroundTaskManager(SessionCommandQueue commandQueue, SubagentOutputSinkFactory sinkFactory, String sessionId,
@@ -150,6 +100,7 @@ public class BackgroundTaskManager {
         this.completions = sharedState.completions();
         this.taskRuns = sharedState.taskRuns();
         this.activeTaskCount = sharedState.activeTaskCount();
+        this.persistence = sharedState.persistence();
         commandQueue.setTaskNotificationFilter(this::isNotificationSuperseded);
         commandQueue.setNotificationDroppedListener((taskId, generation) -> {
             if (taskRuns != null) taskRuns.notificationDropped(taskId, generation);
@@ -186,13 +137,14 @@ public class BackgroundTaskManager {
         var running = new RunningTask(null, notified, outputRef, onNeverStarted, notify, completion);
         runningTasks.put(taskId, running);
         activeTaskCount.incrementAndGet();
+        persistence.recordRunning(taskId, sessionId, outputRef);
         if (taskRuns != null) taskRuns.taskLaunched(taskId, completion.ref().generation());
         var otelContext = Context.current();
         var future = submitTask(taskId, completion.ref().generation(), () -> {
             running.started.set(true);
             var scope = otelContext.makeCurrent();
             try {
-                var runResult = runAgentWithSink(agentRunner, sink, taskId);
+                var runResult = BackgroundTaskRunner.run(agentRunner, sink, taskId);
                 LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status());
                 notifyTerminal(taskId, runResult.status(), runResult.result(), runResult.error(), running);
             } finally {
@@ -254,7 +206,8 @@ public class BackgroundTaskManager {
     }
 
     public boolean hasTask(String taskId) {
-        return runningTasks.containsKey(taskId) || terminalTasks.containsKey(taskId);
+        return runningTasks.containsKey(taskId) || terminalTasks.containsKey(taskId)
+                || persistence.hasStored(sessionId, taskId);
     }
 
     /** A fast status read for a background task; the terminal result stays available for later readers. */
@@ -262,7 +215,8 @@ public class BackgroundTaskManager {
         var terminal = terminalTasks.get(taskId);
         if (terminal != null) return terminal.toResult();
         if (runningTasks.containsKey(taskId)) return ToolCallResult.pending(taskId, "Background task is still running");
-        return ToolCallResult.failed("Task not found: " + taskId);
+        return persistence.pollStored(sessionId, taskId)
+                .orElseGet(() -> ToolCallResult.failed("Task not found: " + taskId));
     }
 
     /**
@@ -294,8 +248,9 @@ public class BackgroundTaskManager {
 
     public ToolCallResult cancelTask(String taskId) {
         if (terminalTasks.containsKey(taskId)) return ToolCallResult.failed("Task already finished: " + taskId);
-        if (!cancel(taskId)) return ToolCallResult.failed("Task not found or not running: " + taskId);
-        return ToolCallResult.completed("Task cancelled: " + taskId);
+        if (cancel(taskId)) return ToolCallResult.completed("Task cancelled: " + taskId);
+        return persistence.cancelStored(sessionId, taskId)
+                .orElseGet(() -> ToolCallResult.failed("Task not found or not running: " + taskId));
     }
 
     public void markConsumed(String taskId) {
@@ -388,6 +343,8 @@ public class BackgroundTaskManager {
                                  RunningTask running) {
         var generation = running.completion.ref().generation();
         boolean continuationExpected = running.notify && !running.completion.isNotificationSuppressed();
+        persistence.recordTerminal(new BackgroundTaskStore.StoredTask(
+                taskId, sessionId, status, TaskNotificationText.terminalResult(result, outputRef), error, outputRef, true));
         if (taskRuns != null) {
             taskRuns.taskSettled(taskId, generation, outcomeOfStatus(status), continuationExpected, status);
         }
@@ -418,7 +375,7 @@ public class BackgroundTaskManager {
 
     public BackgroundTaskManager createChild() {
         return new BackgroundTaskManager(commandQueue, sinkFactory, sessionId, dispatcher, executor,
-                new SharedTaskState(terminalTasks, consumedTasks, completions, taskRuns, activeTaskCount));
+                new SharedTaskState(terminalTasks, consumedTasks, completions, taskRuns, activeTaskCount, persistence));
     }
 
     public List<Task> getTasks() {

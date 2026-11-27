@@ -6,7 +6,6 @@ import ai.core.sandbox.SandboxBinding;
 import ai.core.sandbox.SandboxFile;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.tool.ToolCallResult;
-import core.framework.api.json.Property;
 import core.framework.http.ContentType;
 import core.framework.http.HTTPClient;
 import core.framework.http.HTTPMethod;
@@ -28,9 +27,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.UUID;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * @author stephen
@@ -124,7 +124,7 @@ public class SandboxClient {
     public ToolCallResult execute(String toolName, String arguments, ExecutionContext context) {
         var startTime = System.currentTimeMillis();
         try {
-            var request = new ExecuteRequest();
+            var request = new SandboxRuntimeProtocol.ExecuteRequest();
             request.tool = toolName;
             request.arguments = arguments;
             var requestJson = JSON.toJSON(request);
@@ -174,6 +174,28 @@ public class SandboxClient {
         } catch (Exception e) {
             LOGGER.error("sandbox task poll failed: url={}, taskId={}", baseUrl, taskId, e);
             return ToolCallResult.hardFailed("Failed to poll task: " + e.getMessage(), e)
+                    .withDuration(System.currentTimeMillis() - startTime);
+        }
+    }
+
+    public ToolCallResult cancelTask(String taskId) {
+        var startTime = System.currentTimeMillis();
+        try {
+            var url = baseUrl + "/tasks/" + taskId + "/cancel";
+            var req = new HTTPRequest(HTTPMethod.POST, url);
+            var response = httpClient.execute(req);
+            var duration = System.currentTimeMillis() - startTime;
+            if (response.statusCode == 404) {
+                return ToolCallResult.failed("task not found: " + taskId).withDuration(duration);
+            }
+            if (response.statusCode == 405) {
+                return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: sandbox runtime does not support cancel")
+                        .withDuration(duration);
+            }
+            return parseResponse(response.text(), duration, false);
+        } catch (Exception e) {
+            LOGGER.error("sandbox task cancel failed: url={}, taskId={}", baseUrl, taskId, e);
+            return ToolCallResult.hardFailed("Failed to cancel task: " + e.getMessage(), e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
     }
@@ -249,14 +271,19 @@ public class SandboxClient {
     @SuppressFBWarnings("REC_CATCH_EXCEPTION")
     private ToolCallResult parseResponse(String responseBody, long durationMs, boolean namespacePendingTask) {
         try {
-            var response = JSON.fromJSON(ExecuteResponse.class, responseBody);
-            return switch (response.status) {
+            var response = JSON.fromJSON(SandboxRuntimeProtocol.ExecuteResponse.class, responseBody);
+            var status = response.status == null ? "" : response.status.toLowerCase(Locale.ROOT);
+            return switch (status) {
                 case "completed" -> ToolCallResult.completed(response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "completed");
                 case "failed" -> ToolCallResult.failed(response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "failed");
+                case "cancelled" -> ToolCallResult.failed(cancelledMessage(response.result))
+                        .withDuration(durationMs)
+                        .withStats("sandboxStatus", "cancelled")
+                        .withStats("taskStatus", "cancelled");
                 case "timeout" -> ToolCallResult.hardFailed("Sandbox execution timeout: " + response.result)
                         .withDuration(durationMs)
                         .withStats("sandboxStatus", "timeout");
@@ -268,6 +295,11 @@ public class SandboxClient {
             return ToolCallResult.hardFailed("Failed to parse sandbox response: " + e.getMessage(), e)
                     .withDuration(durationMs);
         }
+    }
+
+    private String cancelledMessage(String detail) {
+        if (detail == null || detail.isBlank()) return "CANCELLED: task cancelled";
+        return detail.startsWith("CANCELLED") ? detail : "CANCELLED: " + detail;
     }
 
     /** A runtime task id is only runtime-local; give the agent a server id and keep the raw one for the relay. */
@@ -295,7 +327,7 @@ public class SandboxClient {
     // ---- MCP server management ----
 
     public String startMcpServer(String id, String command, List<String> args, Map<String, String> env) {
-        var request = new McpStartRequest();
+        var request = new SandboxRuntimeProtocol.McpStartRequest();
         request.id = id;
         request.command = command;
         request.args = args != null ? args : List.of();
@@ -315,7 +347,7 @@ public class SandboxClient {
     }
 
     public void stopMcpServer(String id) {
-        var request = new McpStopRequest();
+        var request = new SandboxRuntimeProtocol.McpStopRequest();
         request.id = id;
 
         var url = baseUrl + "/mcp/stop";
@@ -351,20 +383,15 @@ public class SandboxClient {
                 LOGGER.warn("sandbox health probe failed: url={}, status={}", baseUrl, response.statusCode);
                 return null;
             }
-            return JSON.fromJSON(HealthResponse.class, response.text()).bound;
+            return JSON.fromJSON(SandboxRuntimeProtocol.HealthResponse.class, response.text()).bound;
         } catch (Exception e) {
             LOGGER.warn("sandbox health probe failed: url={}, error={}", baseUrl, e.getMessage());
             return null;
         }
     }
 
-    /**
-     * Hands the session identity to the runtime, which keeps it in memory and uses it as the
-     * Authorization header of every hub call a script makes through the loopback proxy.
-     * Runtimes that predate this endpoint answer 404, reported as {@link UnsupportedOperationException}.
-     */
     public void bind(SandboxBinding binding) {
-        var request = new BindRequest();
+        var request = new SandboxRuntimeProtocol.BindRequest();
         request.serverUrl = binding.serverUrl();
         request.token = binding.token();
         request.sessionId = binding.sessionId();
@@ -390,59 +417,5 @@ public class SandboxClient {
             throw new RuntimeException("sandbox hub unbind failed: status=" + response.statusCode
                     + ", body=" + response.text());
         }
-    }
-
-    public static class BindRequest {
-        @Property(name = "server_url")
-        public String serverUrl;
-        @Property(name = "token")
-        public String token;
-        @Property(name = "session_id")
-        public String sessionId;
-        @Property(name = "agent_name")
-        public String agentName;
-        @Property(name = "expires_at")
-        public long expiresAt;
-    }
-
-    public static class ExecuteRequest {
-        @Property(name = "tool")
-        public String tool;
-        @Property(name = "arguments")
-        public String arguments;
-    }
-
-    public static class HealthResponse {
-        @Property(name = "status")
-        public String status;
-        @Property(name = "bound")
-        public Boolean bound;
-    }
-
-    public static class ExecuteResponse {
-        @Property(name = "status")
-        public String status;
-        @Property(name = "result")
-        public String result;
-        @Property(name = "task_id")
-        public String taskId;
-        @Property(name = "duration_ms")
-        public Long durationMs;
-    }
-
-    public static class McpStartRequest {
-        @Property(name = "id")
-        public String id;
-        @Property(name = "command")
-        public String command;
-        @Property(name = "args")
-        public List<String> args;
-        @Property(name = "env")
-        public Map<String, String> env;
-    }
-
-    public static class McpStopRequest {
-        @Property(name = "id")
-        public String id;
     }
 }

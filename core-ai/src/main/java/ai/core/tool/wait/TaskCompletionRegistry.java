@@ -126,6 +126,12 @@ public final class TaskCompletionRegistry {
             return terminal != null;
         }
 
+        public boolean hasWaiters() {
+            synchronized (this) {
+                return !waiters.isEmpty();
+            }
+        }
+
         public ToolCallResult peek() {
             var snapshot = terminal;
             return snapshot == null ? null : snapshot.snapshotCopy();

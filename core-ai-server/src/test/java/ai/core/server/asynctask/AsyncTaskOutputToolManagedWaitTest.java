@@ -7,6 +7,7 @@ import ai.core.tool.ToolCallAsyncTask;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.tools.AsyncTaskOutputTool;
+import ai.core.tool.wait.WaitCapability;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -37,7 +38,8 @@ class AsyncTaskOutputToolManagedWaitTest {
         var polls = new int[]{0};
         manager.sandboxTaskPoller = (sessionId, sandboxTaskId) ->
                 polls[0]++ == 0 ? ToolCallResult.pending("task-1", "still running") : ToolCallResult.completed("OK");
-        var context = ExecutionContext.builder().asyncTaskManager(manager).build();
+        var context = ExecutionContext.builder().sessionId("s1").asyncTaskManager(manager)
+                .waitCapability(WaitCapability.ENABLED).build();
 
         var result = AsyncTaskOutputTool.builder().build()
                 .execute("{\"action\":\"wait\",\"task_id\":\"st-1\",\"timeout_ms\":3000}", context);
@@ -54,7 +56,8 @@ class AsyncTaskOutputToolManagedWaitTest {
         // deliberately not registered: loadTask() would be empty, the task record is what routing needs
         manager.storeTask(sandboxTask(tool), "s1");
         manager.sandboxTaskPoller = (sessionId, sandboxTaskId) -> ToolCallResult.completed("OK");
-        var context = ExecutionContext.builder().asyncTaskManager(manager).build();
+        var context = ExecutionContext.builder().sessionId("s1").asyncTaskManager(manager)
+                .waitCapability(WaitCapability.ENABLED).build();
 
         var result = AsyncTaskOutputTool.builder().build()
                 .execute("{\"action\":\"wait\",\"task_id\":\"st-1\",\"timeout_ms\":3000}", context);
@@ -71,7 +74,8 @@ class AsyncTaskOutputToolManagedWaitTest {
         manager.registerTool(tool);
         manager.storeTask(sandboxTask(tool), "s1");
         manager.sandboxTaskPoller = (sessionId, sandboxTaskId) -> ToolCallResult.pending("task-1", "still running");
-        var context = ExecutionContext.builder().asyncTaskManager(manager).build();
+        var context = ExecutionContext.builder().sessionId("s1").asyncTaskManager(manager)
+                .waitCapability(WaitCapability.ENABLED).build();
 
         var result = AsyncTaskOutputTool.builder().build()
                 .execute("{\"action\":\"wait\",\"task_id\":\"st-1\",\"timeout_ms\":100}", context);

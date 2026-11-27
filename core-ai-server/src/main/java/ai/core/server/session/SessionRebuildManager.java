@@ -113,12 +113,13 @@ public class SessionRebuildManager {
         this.sessionCompletionNotifier = deps.sessionCompletionNotifier;
         this.contextBuilder = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration,
                 systemSettingsService, deps.mediaProvider, deps.quotaService).withDecisionProvider(deps.decisionProvider)
-                .withMediaStore(deps.mediaStore)
-                .withAsyncTaskManager(deps.asyncTaskManager);
+                .withMediaStore(deps.mediaStore).withAsyncTaskManager(deps.asyncTaskManager);
         this.restoreHelper = new SessionRestoreHelper(chatMessageService, toolRegistryService, skillManager,
                 subAgentManager, agentDefinitionStore);
     }
-
+    public void setBackgroundTaskStore(ai.core.session.BackgroundTaskStore store) {
+        contextBuilder.withBackgroundTaskStore(store);
+    }
     private SessionDatasetHelper datasetHelper() {
         if (datasetHelper == null) datasetHelper = new SessionDatasetHelper(datasetService, datasetRecordService);
         return datasetHelper;
@@ -417,33 +418,19 @@ public class SessionRebuildManager {
     }
     private record SandboxSetup(ExecutionContext context, InProcessAgentSession[] sessionRef, boolean sandboxOn) {
     }
-
-    public record Deps(ChatMessageService chatMessageService,
-                        AgentDefinitionStore agentDefinitionStore,
-                        SessionSkillManager skillManager,
-                        SessionSubAgentManager subAgentManager,
-                        SandboxService sandboxService,
-                        ChatArtifactSetup artifactSetup,
-                        ToolRegistryService toolRegistryService,
-                        SystemPromptService systemPromptService,
-                        DatasetService datasetService,
-                        DatasetRecordService datasetRecordService,
-                        FileService fileService,
-                        PublicUrlConfiguration publicUrlConfiguration,
-                        EventPublisher eventPublisher,
-                        SessionOwnershipRegistry ownershipRegistry,
-                        SystemSettingsService systemSettingsService,
-                        UserStore userStore,
-                        AgentMemoryExperimentService memoryExperimentService,
-                        AgentMemoryService agentMemoryService,
-                                  SessionSearchService sessionSearchService,
-                        MediaProvider mediaProvider,
-                        ai.core.decision.DecisionProvider decisionProvider,
-                        ApiUserQuotaService quotaService,
-                        TurnStateRegistry turnStateRegistry,
-                        ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
-                        SessionCompletionNotifier sessionCompletionNotifier,
-                                  SessionReadService sessionReadService,
+    public record Deps(ChatMessageService chatMessageService, AgentDefinitionStore agentDefinitionStore,
+                        SessionSkillManager skillManager, SessionSubAgentManager subAgentManager,
+                        SandboxService sandboxService, ChatArtifactSetup artifactSetup,
+                        ToolRegistryService toolRegistryService, SystemPromptService systemPromptService,
+                        DatasetService datasetService, DatasetRecordService datasetRecordService,
+                        FileService fileService, PublicUrlConfiguration publicUrlConfiguration,
+                        EventPublisher eventPublisher, SessionOwnershipRegistry ownershipRegistry,
+                        SystemSettingsService systemSettingsService, UserStore userStore,
+                        AgentMemoryExperimentService memoryExperimentService, AgentMemoryService agentMemoryService,
+                        SessionSearchService sessionSearchService, MediaProvider mediaProvider,
+                        ai.core.decision.DecisionProvider decisionProvider, ApiUserQuotaService quotaService,
+                        TurnStateRegistry turnStateRegistry, ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager,
+                        SessionCompletionNotifier sessionCompletionNotifier, SessionReadService sessionReadService,
                         ai.core.server.comparison.AgentComparisonStore comparisonStore,
                         ai.core.media.SessionMediaStore mediaStore) {
     }

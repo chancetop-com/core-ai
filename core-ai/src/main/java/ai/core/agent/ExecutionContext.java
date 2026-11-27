@@ -12,6 +12,7 @@ import ai.core.media.MediaProvider;
 import ai.core.persistence.PersistenceProvider;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
+import ai.core.session.BackgroundTaskStore;
 import ai.core.skill.SkillCapability;
 import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.agent.profile.AgentProfileRegistry;
@@ -56,6 +57,7 @@ public final class ExecutionContext {
     private volatile PendingUserInputQueue pendingUserInput;
     private final PersistenceProvider persistenceProvider;
     private final SubagentOutputSinkFactory subagentOutputSinkFactory;
+    private final BackgroundTaskStore backgroundTaskStore;
     private final TodoStoreFactory todoStoreFactory;
     private final List<PromptInject> promptSections;
     private Sandbox sandbox;
@@ -98,6 +100,7 @@ public final class ExecutionContext {
         this.asyncTaskManager = builder.asyncTaskManager;
         this.persistenceProvider = builder.persistenceProvider;
         this.subagentOutputSinkFactory = builder.subagentOutputSinkFactory;
+        this.backgroundTaskStore = builder.backgroundTaskStore;
         this.todoStoreFactory = builder.todoStoreFactory;
         this.promptSections = new ArrayList<>(builder.promptSections);
         this.sandbox = builder.sandbox;
@@ -150,6 +153,10 @@ public final class ExecutionContext {
 
     public SubagentOutputSinkFactory getSubagentOutputSinkFactory() {
         return subagentOutputSinkFactory;
+    }
+
+    public BackgroundTaskStore getBackgroundTaskStore() {
+        return backgroundTaskStore;
     }
 
     public TodoStoreFactory getTodoStoreFactory() {
@@ -370,7 +377,6 @@ public final class ExecutionContext {
         this.skillCapabilities = skillCapabilities == null ? List.of() : List.copyOf(skillCapabilities);
     }
 
-    /** True once a local skill declared its SDK capabilities; the broker then treats that set as authoritative. */
     public boolean isSkillCapabilityScopeActive() {
         return skillCapabilityScopeActive;
     }
@@ -379,7 +385,6 @@ public final class ExecutionContext {
         this.skillCapabilityScopeActive = true;
     }
 
-    /** Environment entries injected into shell / Python processes spawned for this execution context. */
     public Map<String, String> getProcessEnvironment() {
         return processEnvironment;
     }
@@ -400,7 +405,6 @@ public final class ExecutionContext {
         this.agentProfileRegistry = agentProfileRegistry;
     }
 
-    /** Session subagent threads, created on first use and shared with contexts spawned from this one. */
     public SubagentThreadRegistry getSubagentThreads() {
         if (subagentThreads == null) {
             synchronized (this) {
@@ -414,7 +418,6 @@ public final class ExecutionContext {
         this.subagentThreads = registry;
     }
 
-    /** True when this context already owns or shares a thread registry; lets a close skip untouched sessions. */
     public boolean hasSubagentThreads() {
         return subagentThreads != null;
     }
@@ -427,7 +430,6 @@ public final class ExecutionContext {
         this.runBudget = runBudget;
     }
 
-    /** Explicit host permission for live-stack waits; disabled unless a host opts in. */
     public WaitCapability getWaitCapability() {
         return waitCapability;
     }
@@ -436,7 +438,6 @@ public final class ExecutionContext {
         this.waitCapability = waitCapability;
     }
 
-    /** Non-terminal wait progress for the current session; null in heads that do not display it. */
     public WaitEventListener getWaitEventListener() {
         return waitEventListener;
     }

@@ -124,7 +124,8 @@ public class InProcessAgentSession implements AgentSession {
         var context = agent.getExecutionContext();
         context.setWaitEventListener(this::dispatch);
         if (context.getSubagentOutputSinkFactory() != null) {
-            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(), sessionId, this::dispatch, taskRuns));
+            context.setTaskManager(new BackgroundTaskManager(commandQueue, context.getSubagentOutputSinkFactory(),
+                    sessionId, this::dispatch, taskRuns, context.getBackgroundTaskStore()));
         }
         agent.setStreamingCallback(new SessionStreamingCallback(sessionId, this::dispatch, context, this::onLlmFirstToken));
         var permissionLifecycle = new ServerPermissionLifecycle(sessionId, this::dispatch, permissionGate, autoApproveAll, permissionStore, toolTypeResolver());

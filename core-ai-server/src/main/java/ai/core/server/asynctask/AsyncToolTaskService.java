@@ -1,8 +1,11 @@
 package ai.core.server.asynctask;
 
 import ai.core.persistence.PersistenceProvider;
+import ai.core.sandbox.Sandbox;
 import ai.core.server.messaging.SessionOwnershipRegistry;
+import ai.core.server.sandbox.SandboxService;
 import ai.core.server.tool.ToolRegistryService;
+import ai.core.session.BackgroundTaskStore;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallAsyncTask;
 import ai.core.tool.ToolCallAsyncTaskManager;
@@ -43,11 +46,20 @@ public class AsyncToolTaskService {
     @Inject
     SessionOwnershipRegistry ownershipRegistry;
     @Inject
-    ai.core.server.sandbox.SandboxService sandboxService;
+    SandboxService sandboxService;
 
+    private volatile PgServerBackgroundTaskStore backgroundTaskStore;
     private volatile ToolCallAsyncTaskManager manager;
     private volatile TaskNotificationDispatcher dispatcher =
         (sessionId, taskId, toolName, status, xml) -> TaskNotificationDispatcher.Outcome.RETRY;
+
+    public void setBackgroundTaskStore(PgServerBackgroundTaskStore store) {
+        this.backgroundTaskStore = store;
+    }
+
+    public BackgroundTaskStore backgroundTaskStore() {
+        return backgroundTaskStore;
+    }
 
     public ToolCallAsyncTaskManager manager() {
         var current = manager;
@@ -57,8 +69,12 @@ public class AsyncToolTaskService {
                     var created = new ServerAsyncTaskManager(persistence, toolRegistryService);
                     created.addTerminalListener(this::notifySession);
                     created.sandboxTaskPoller = (sessionId, sandboxTaskId) -> {
-                        ai.core.sandbox.Sandbox sandbox = sandboxService == null ? null : sandboxService.getSandbox(sessionId);
+                        Sandbox sandbox = sandboxService == null ? null : sandboxService.getSandbox(sessionId);
                         return sandbox == null ? null : sandbox.pollTask(sandboxTaskId);
+                    };
+                    created.sandboxTaskCanceller = (sessionId, sandboxTaskId) -> {
+                        Sandbox sandbox = sandboxService == null ? null : sandboxService.getSandbox(sessionId);
+                        return sandbox == null ? null : sandbox.cancelTask(sandboxTaskId);
                     };
                     manager = created;
                 }
@@ -92,6 +108,13 @@ public class AsyncToolTaskService {
             }
         }
         current.purgeTerminalOlderThan(TERMINAL_RETENTION);
+        if (backgroundTaskStore != null) {
+            try {
+                backgroundTaskStore.purgeTerminalOlderThan(TERMINAL_RETENTION);
+            } catch (RuntimeException e) {
+                LOGGER.warn("failed to purge terminal server background tasks", e);
+            }
+        }
     }
 
     /** True while this session has an open sandbox async task; drives workspace activity/lease checks. */
@@ -140,7 +163,12 @@ public class AsyncToolTaskService {
 
     void notifySession(String sessionId, ToolCallAsyncTask task, ToolCallResult result) {
         if (sessionId == null) return;
-        var status = result.isCompleted() ? "completed" : "failed";
+        String status;
+        if ("cancelled".equals(result.getStats().get("taskStatus"))) {
+            status = "cancelled";
+        } else {
+            status = result.isCompleted() ? "completed" : "failed";
+        }
         var toolName = task.tool().getName();
         var outcome = dispatcher.dispatch(sessionId, task.taskId(), toolName, status, notificationXml(task, status, result));
         switch (outcome) {

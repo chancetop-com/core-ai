@@ -140,11 +140,15 @@ public class AgentSessionManager {
             rebuildManager = new SessionRebuildManager(new SessionRebuildManager.Deps(chatMessageService, agentDefinitionStore, skillManager(), subAgentManager(), sandboxService,
                     artifactSetup, toolRegistryService, systemPromptService, datasetService, datasetRecordService, fileService, publicUrlConfiguration, eventPublisher,
                     ownershipRegistry, systemSettingsService, userStore, memoryExperimentService, agentMemoryService, sessionSearchService, sessionAgentHelper.mediaProvider, sessionAgentHelper.decisionProvider, apiUserQuotaService, turnStateRegistry, asyncTaskManager(), sessionCompletionNotifier, sessionReadService, sessionAgentHelper.agentComparisonStore, sessionMediaStore));
+            rebuildManager.setBackgroundTaskStore(backgroundTaskStore());
         }
         return rebuildManager;
     }
     private ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager() {
         return asyncToolTaskService == null ? null : asyncToolTaskService.manager();
+    }
+    private ai.core.session.BackgroundTaskStore backgroundTaskStore() {
+        return asyncToolTaskService == null ? null : asyncToolTaskService.backgroundTaskStore();
     }
 
     private SessionDatasetHelper datasetHelper() {
@@ -162,7 +166,7 @@ public class AgentSessionManager {
         if (userSessionBudget != null) userSessionBudget.acquire(userId);
         var effectiveConfig = config != null ? config : new SessionConfig();
         var sessionId = UUID.randomUUID().toString();
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).withBackgroundTaskStore(backgroundTaskStore()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
         CallerContexts.attach(context, userStore, userId);
         var sandboxOn = sandboxService.isSandboxEnabled(null);
         var toolRegistry = datasetHelper().buildSessionToolRegistry(effectiveConfig, sessionId, scheduledTaskStore);
@@ -245,7 +249,7 @@ public class AgentSessionManager {
         var toolRegistry = subAgentManager().resolveTopLevelToolsToRegistry(definition, sessionId, userId);
         datasetHelper().addDatasetToolsToRegistry(toolRegistry, datasetConfig, definition.id, sessionId);
         var extraVars = datasetHelper().buildExtraVars(config, datasetConfig);
-        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
+        var context = new SessionContextBuilder(artifactSetup, fileService, publicUrlConfiguration, systemSettingsService, sessionAgentHelper.mediaProvider, apiUserQuotaService).withDecisionProvider(sessionAgentHelper.decisionProvider).withMediaStore(sessionMediaStore).withAsyncTaskManager(asyncTaskManager()).withBackgroundTaskStore(backgroundTaskStore()).build(sessionId, userId, SandboxSubagentOutputSinkFactory.of(sandboxService, sessionId));
         var caller = CallerContexts.attach(context, userStore, userId);
         if (sandbox2 != null) context.sandbox(sandbox2);
         UserIdentityPrompt.attach(context, definition, caller);
@@ -416,9 +420,7 @@ public class AgentSessionManager {
         requireSessionCaller(sessionId, callerUserId);
         var session = getSession(sessionId);
         var tools = toolRegistryService.resolveToolRefs(toolRefs, sessionId, callerUserId);
-        if (tools.isEmpty()) {
-            throw new NotFoundException("no tools found for refs: " + toolRefs);
-        }
+        if (tools.isEmpty()) throw new NotFoundException("no tools found for refs: " + toolRefs);
         session.loadTools(tools);
         chatMessageService.addLoadedTools(sessionId, toolRefs);
         return toolRefs;
@@ -429,15 +431,12 @@ public class AgentSessionManager {
     }
     public List<String> loadSkills(String sessionId, List<String> skillIds, String callerUserId) {
         requireSessionCaller(sessionId, callerUserId);
-        var session = getSession(sessionId);
-        return skillManager().loadSkills(session, skillIds, callerUserId);
+        return skillManager().loadSkills(getSession(sessionId), skillIds, callerUserId);
     }
     public List<String> loadSubAgents(String sessionId, List<AgentDefinition> definitions, String callerUserId) {
         requireSessionCaller(sessionId, callerUserId);
-        var session = getSession(sessionId);
-        return subAgentManager().loadSubAgents(session, definitions, callerUserId);
+        return subAgentManager().loadSubAgents(getSession(sessionId), definitions, callerUserId);
     }
-
     void requireSessionCaller(String sessionId, String callerUserId) {
         String ownerUserId = sessionRegistry.requireUserId(sessionId);
         if (callerUserId == null || callerUserId.isBlank() || !callerUserId.equals(ownerUserId)) {

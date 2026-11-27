@@ -12,11 +12,16 @@ import ai.core.server.file.FileService;
 import ai.core.server.gateway.ContextualMediaProvider;
 import ai.core.server.gateway.GatewayMediaProvider;
 import ai.core.server.gateway.MediaJobOwner;
+import ai.core.media.SessionMediaKey;
+import ai.core.media.SessionMediaStore;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.session.BackgroundTaskStore;
+import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
 import ai.core.tool.tools.GenerateImageTool;
 import ai.core.tool.tools.GetVideoStatusTool;
 import ai.core.tool.tools.InternalUrlResolver;
+import ai.core.tool.wait.WaitCapability;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -36,8 +41,9 @@ public final class SessionContextBuilder {
     private final MediaProvider mediaProvider;
     private DecisionProvider decisionProvider;
     private final ApiUserQuotaService quotaService;
-    private ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager;
-    private ai.core.media.SessionMediaStore mediaStore;
+    private ToolCallAsyncTaskManager asyncTaskManager;
+    private BackgroundTaskStore backgroundTaskStore;
+    private SessionMediaStore mediaStore;
 
     public SessionContextBuilder(ChatArtifactSetup artifactSetup, FileService fileService,
                                  PublicUrlConfiguration publicUrlConfiguration,
@@ -52,8 +58,13 @@ public final class SessionContextBuilder {
     }
 
     /** Registry for pending tool results; the server drives and notifies them (see AsyncToolTaskService). */
-    public SessionContextBuilder withAsyncTaskManager(ai.core.tool.ToolCallAsyncTaskManager asyncTaskManager) {
+    public SessionContextBuilder withAsyncTaskManager(ToolCallAsyncTaskManager asyncTaskManager) {
         this.asyncTaskManager = asyncTaskManager;
+        return this;
+    }
+
+    public SessionContextBuilder withBackgroundTaskStore(BackgroundTaskStore backgroundTaskStore) {
+        this.backgroundTaskStore = backgroundTaskStore;
         return this;
     }
 
@@ -63,7 +74,7 @@ public final class SessionContextBuilder {
     }
 
     /** Session media refs need the store to register uploads and hydrate them per request. */
-    public SessionContextBuilder withMediaStore(ai.core.media.SessionMediaStore mediaStore) {
+    public SessionContextBuilder withMediaStore(SessionMediaStore mediaStore) {
         this.mediaStore = mediaStore;
         return this;
     }
@@ -78,7 +89,10 @@ public final class SessionContextBuilder {
      */
     public ExecutionContext build(String sessionId, String userId, SubagentOutputSinkFactory subagentOutputSinkFactory) {
         // pending tool results are registered against this session; the server drives and notifies them
-        var builder = ExecutionContext.builder().sessionId(sessionId).userId(userId).asyncTaskManager(asyncTaskManager)
+        var builder = ExecutionContext.builder().sessionId(sessionId).userId(userId)
+                .asyncTaskManager(asyncTaskManager)
+                .backgroundTaskStore(backgroundTaskStore)
+                .waitCapability(WaitCapability.ENABLED)
                 .customVariable(InternalUrlResolver.CONTEXT_KEY, new FileDownloadUrlResolver(fileService, publicUrlConfiguration.value()))
                 .customVariable(GenerateImageTool.IMAGE_OUTPUT_SINK_CONTEXT_KEY,
                         new ServerImageOutputSink(userId, fileService,
@@ -90,9 +104,9 @@ public final class SessionContextBuilder {
         if (subagentOutputSinkFactory != null) builder.subagentOutputSinkFactory(subagentOutputSinkFactory);
         var context = builder.build();
         if (mediaStore != null) {
-            context.getCustomVariables().put(ai.core.media.SessionMediaStore.CONTEXT_KEY, mediaStore);
-            context.getCustomVariables().put(ai.core.media.SessionMediaStore.KEY_CONTEXT_KEY,
-                    new ai.core.media.SessionMediaKey(sessionId, userId));
+            context.getCustomVariables().put(SessionMediaStore.CONTEXT_KEY, mediaStore);
+            context.getCustomVariables().put(SessionMediaStore.KEY_CONTEXT_KEY,
+                    new SessionMediaKey(sessionId, userId));
         }
         // quota metering fires per LLM call (main turns, sub-agents and tool-internal calls all
         // share this context), so token usage is accounted against the session user synchronously

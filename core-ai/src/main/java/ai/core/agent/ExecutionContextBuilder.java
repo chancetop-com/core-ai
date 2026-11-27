@@ -5,6 +5,7 @@ import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
 import ai.core.sandbox.Sandbox;
 import ai.core.session.BackgroundTaskManager;
+import ai.core.session.BackgroundTaskStore;
 import ai.core.tool.OutboundCallerContext.Caller;
 import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.subagent.SubagentOutputSinkFactory;
@@ -33,6 +34,7 @@ public final class ExecutionContextBuilder {
     AttachedContent attachedContent;
     PersistenceProvider persistenceProvider;
     SubagentOutputSinkFactory subagentOutputSinkFactory;
+    BackgroundTaskStore backgroundTaskStore;
     TodoStoreFactory todoStoreFactory;
     final List<PromptInject> promptSections = new ArrayList<>();
     Sandbox sandbox;
@@ -101,6 +103,11 @@ public final class ExecutionContextBuilder {
 
     public ExecutionContextBuilder subagentOutputSinkFactory(SubagentOutputSinkFactory subagentOutputSinkFactory) {
         this.subagentOutputSinkFactory = subagentOutputSinkFactory;
+        return this;
+    }
+
+    public ExecutionContextBuilder backgroundTaskStore(BackgroundTaskStore backgroundTaskStore) {
+        this.backgroundTaskStore = backgroundTaskStore;
         return this;
     }
 

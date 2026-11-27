@@ -46,6 +46,8 @@ public class AsyncTaskData {
     public Long notifiedAtMs;
     public int notifyAttempts;
     public Long lastNotifyAttemptAtMs;
+    /** terminal sub-status when FAILED represents a cancellation (e.g. "cancelled") */
+    public String taskStatus;
 
     /** {@link #from} rebuilds the task facts only; who it belongs to and what it still owes carries over. */
     void inheritDelivery(AsyncTaskData previous) {
@@ -55,6 +57,7 @@ public class AsyncTaskData {
         lastNotifyAttemptAtMs = previous.lastNotifyAttemptAtMs;
         sandboxTask = previous.sandboxTask;
         sandboxTaskId = previous.sandboxTaskId;
+        taskStatus = previous.taskStatus;
     }
 
     ToolCallAsyncTask toTask(ToolCall tool) {
@@ -73,12 +76,16 @@ public class AsyncTaskData {
     ToolCallResult restoredResult() {
         var message = lastMessage != null ? lastMessage : "";
         if (status == null) return ToolCallResult.pending(taskId, message);
-        return switch (status) {
+        var result = switch (status) {
             case COMPLETED -> ToolCallResult.completed(message);
             case FAILED -> ToolCallResult.failed(message);
             case WAITING_FOR_INPUT -> ToolCallResult.waitingForInput(taskId, message);
             default -> ToolCallResult.pending(taskId, message);
         };
+        if (taskStatus != null && !taskStatus.isBlank()) {
+            result.withStats("taskStatus", taskStatus);
+        }
+        return result;
     }
 }
 

@@ -97,6 +97,15 @@ public class LazySandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult cancelTask(String taskId) {
+        var current = delegate;
+        if (current == null) {
+            return ToolCallResult.failed("task not found: " + taskId);
+        }
+        return current.cancelTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         ensureReady();
         delegate.materializeSkill(name, version, tarBytes);

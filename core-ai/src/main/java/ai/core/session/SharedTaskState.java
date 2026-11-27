@@ -14,5 +14,5 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 record SharedTaskState(Map<String, TerminalTask> terminalTasks, ConsumedTasks consumedTasks,
                        TaskCompletionRegistry completions, TaskRunCoordinator taskRuns,
-                       AtomicInteger activeTaskCount) {
+                       AtomicInteger activeTaskCount, BackgroundTaskPersistence persistence) {
 }

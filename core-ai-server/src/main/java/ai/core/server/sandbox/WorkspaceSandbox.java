@@ -116,6 +116,11 @@ public class WorkspaceSandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult cancelTask(String taskId) {
+        return runtime().cancelTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         turnSandbox().materializeSkill(name, version, tarBytes);
     }

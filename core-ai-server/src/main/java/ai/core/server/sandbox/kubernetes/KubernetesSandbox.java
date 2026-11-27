@@ -97,6 +97,11 @@ public class KubernetesSandbox implements Sandbox {
     }
 
     @Override
+    public ToolCallResult cancelTask(String taskId) {
+        return runtimeClient.cancelTask(taskId);
+    }
+
+    @Override
     public void materializeSkill(String name, String version, byte[] tarBytes) {
         runtimeClient.materializeSkill(name, version, tarBytes);
     }

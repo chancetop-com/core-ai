@@ -2,6 +2,7 @@ package ai.core.tool;
 
 import ai.core.persistence.PersistenceProvider;
 import ai.core.tool.tools.AsyncTaskOutputTool;
+import ai.core.tool.wait.TaskCompletionRegistry;
 import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,8 +12,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -44,10 +47,16 @@ public class ToolCallAsyncTaskManager {
     private final PersistenceProvider persistenceProvider;
     private final Map<String, ToolCall> toolRegistry = new HashMap<>();
     private final List<TerminalListener> listeners = new CopyOnWriteArrayList<>();
+    private final ManagedTaskCompletionBridge completionBridge = new ManagedTaskCompletionBridge();
+    private final Map<String, Object> taskLocks = new ConcurrentHashMap<>();
     /** Resolves a sandbox task; null means the host has no sandbox relay (tests / non-server hosts). */
     public volatile SandboxTaskPoller sandboxTaskPoller;
+    /** Cancels a sandbox task; null means the host has no sandbox cancel relay. */
+    public volatile SandboxTaskCanceller sandboxTaskCanceller;
     /** Consecutive unreachable polls before a sandbox task is terminated as lost. */
     public volatile int sandboxLostPolls = 3;
+    /** Poll interval while a waiter is actively blocked on a managed task. */
+    public volatile long waitPollIntervalMs = 500L;
 
     public ToolCallAsyncTaskManager(PersistenceProvider persistenceProvider) {
         this.persistenceProvider = persistenceProvider;
@@ -58,9 +67,7 @@ public class ToolCallAsyncTaskManager {
     }
 
     public void registerTools(Iterable<ToolCall> tools) {
-        for (var tool : tools) {
-            registerTool(tool);
-        }
+        for (var tool : tools) registerTool(tool);
     }
 
     public void addTerminalListener(TerminalListener listener) {
@@ -71,14 +78,21 @@ public class ToolCallAsyncTaskManager {
         storeTask(task, null);
     }
 
-    /** sessionId is the conversation that issued the call; terminal notifications are addressed to it. */
     public void storeTask(ToolCallAsyncTask task, String sessionId) {
         var data = AsyncTaskData.from(task);
         data.sessionId = sessionId;
         save(data);
+        completionBridge.register(task.taskId(), sessionId);
     }
 
-    /** Task record presence without resolving the (possibly unavailable) tool, used by poll/wait routing. */
+    public Optional<TaskCompletionRegistry.Entry> findOrEnsureCompletion(String taskId, String ownerScope) {
+        return loadData(taskId).flatMap(data -> completionBridge.findOrEnsure(data, isTerminal(data), ownerScope));
+    }
+
+    public void startWaitPolling(String taskId, TaskCompletionRegistry.Entry entry) {
+        completionBridge.startPolling(taskId, entry, () -> pollTask(taskId), () -> waitPollIntervalMs);
+    }
+
     public boolean hasTaskData(String taskId) {
         return loadData(taskId).isPresent();
     }
@@ -94,7 +108,6 @@ public class ToolCallAsyncTaskManager {
         });
     }
 
-    /** Whether the stored task is terminal, without resolving its tool. */
     public boolean isTaskTerminal(String taskId) {
         var data = loadData(taskId);
         return data.isPresent() && isTerminal(data.get());
@@ -106,18 +119,14 @@ public class ToolCallAsyncTaskManager {
 
     public void deleteTask(String taskId) {
         persistenceProvider.delete(List.of(TASK_PREFIX + taskId));
+        taskLocks.remove(taskId);
         LOGGER.debug("Deleted async task: {}", taskId);
     }
 
-    /** Task ids still pending or waiting for input — what a server-side driver refreshes each tick. */
     public List<String> listOpenTaskIds() {
         return listTasks().stream().filter(TaskSnapshot::open).map(TaskSnapshot::taskId).toList();
     }
 
-    /**
-     * One pass over the store, giving a driver everything it needs to decide what to poll and what to
-     * re-announce. Kept as a single scan because both questions are asked on the same tick.
-     */
     public List<TaskSnapshot> listTasks() {
         var snapshots = new ArrayList<TaskSnapshot>();
         for (var key : persistenceProvider.listIds(TASK_PREFIX)) {
@@ -131,7 +140,6 @@ public class ToolCallAsyncTaskManager {
         return snapshots;
     }
 
-    /** Terminal tasks are kept for late readers; this drops the ones nobody will ask about any more. */
     public int purgeTerminalOlderThan(Duration age) {
         var cutoff = Instant.now().minus(age).toEpochMilli();
         var stale = new ArrayList<String>();
@@ -139,9 +147,8 @@ public class ToolCallAsyncTaskManager {
             var json = persistenceProvider.load(key);
             if (json.isEmpty()) continue;
             var data = JSON.fromJSON(AsyncTaskData.class, json.get());
-            var terminal = isTerminal(data);
             var lastTouch = data.lastPolledAtMs != null ? data.lastPolledAtMs : data.createdAtMs;
-            if (terminal && lastTouch != null && lastTouch <= cutoff) stale.add(key);
+            if (lastTouch != null && lastTouch <= cutoff && isTerminal(data)) stale.add(key);
         }
         if (!stale.isEmpty()) persistenceProvider.delete(stale);
         return stale.size();
@@ -153,20 +160,29 @@ public class ToolCallAsyncTaskManager {
      * orphan work that is still running.
      */
     public ToolCallResult pollTask(String taskId) {
+        synchronized (taskLock(taskId)) {
+            return pollTaskLocked(taskId);
+        }
+    }
+
+    private ToolCallResult pollTaskLocked(String taskId) {
         var dataOpt = loadData(taskId);
         if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
         var data = dataOpt.get();
-        if (data.status == ToolCallResult.Status.COMPLETED || data.status == ToolCallResult.Status.FAILED) return data.restoredResult();
+        if (isTerminal(data)) {
+            var restored = data.restoredResult().withToolName(data.toolName);
+            completionBridge.complete(taskId, restored);
+            return restored;
+        }
         if (Boolean.TRUE.equals(data.sandboxTask)) return pollSandboxTask(data);
         var tool = resolveTool(data.toolName);
         if (tool == null) return ToolCallResult.failed("Tool not available for task " + taskId + ": " + data.toolName);
         if (tool instanceof AsyncTaskOutputTool) {
-            // Corrupt record from before the executor stopped re-registering poll relays: the stored tool is the
-            // polling tool itself, which never started the task and cannot poll it, so it can never turn terminal.
-            // Drop it (the underlying work keeps running and is reachable through async_task_output by task id).
             LOGGER.warn("Dropping async task {}: stored tool '{}' does not support polling", taskId, data.toolName);
             deleteTask(taskId);
-            return ToolCallResult.failed("Dropped task " + taskId + ": tool '" + data.toolName + "' does not support polling");
+            var dropped = ToolCallResult.failed("Dropped task " + taskId + ": tool '" + data.toolName + "' does not support polling");
+            completionBridge.complete(taskId, dropped);
+            return dropped;
         }
         var task = data.toTask(tool);
         if (!task.isPending()) return ToolCallResult.failed("Task is not pending: " + taskId);
@@ -181,8 +197,8 @@ public class ToolCallAsyncTaskManager {
                 save(updated);
                 return result;
             }
-            if (updated.sessionId == null) {
-                // no conversation to continue: settle the delivery state now so the retry sweep skips it
+            completionBridge.complete(taskId, result);
+            if (updated.sessionId == null || completionBridge.isNotificationSuppressed(taskId)) {
                 updated.notifiedAtMs = System.currentTimeMillis();
                 save(updated);
                 return result;
@@ -195,7 +211,6 @@ public class ToolCallAsyncTaskManager {
         }
     }
 
-    /** Sandbox tasks are refreshed through the runtime; their stored tool is only used for the notification. */
     private ToolCallResult pollSandboxTask(AsyncTaskData data) {
         var poller = sandboxTaskPoller;
         var result = poller == null ? null : poller.poll(data.sessionId, data.sandboxTaskId);
@@ -207,17 +222,25 @@ public class ToolCallAsyncTaskManager {
             return ToolCallResult.pending(data.taskId, "Sandbox task is not reachable right now");
         }
         var text = result.getResult() == null ? "" : result.getResult();
-        if (result.isFailed() && text.toLowerCase(java.util.Locale.ROOT).startsWith("task not found")) {
+        if (result.isFailed() && text.toLowerCase(Locale.ROOT).startsWith("task not found")) {
             return loseSandboxTask(data, text);
         }
+        return finishSandboxObservation(data, result);
+    }
+
+    private ToolCallResult finishSandboxObservation(AsyncTaskData data, ToolCallResult result) {
         data.status = result.getStatus();
         data.lastMessage = result.getResult();
         data.lastPolledAtMs = System.currentTimeMillis();
         data.pollCount++;
+        var statusStat = result.getStats().get("taskStatus");
+        if (statusStat != null) data.taskStatus = String.valueOf(statusStat);
         save(data);
-        if (!result.isTerminal()) return result.withToolName(data.toolName);
-        announceSandboxTerminal(data, result);
-        return result.withToolName(data.toolName);
+        var named = result.withToolName(data.toolName);
+        if (!named.isTerminal()) return named;
+        completionBridge.complete(data.taskId, named);
+        announceSandboxTerminal(data, named);
+        return named;
     }
 
     private ToolCallResult loseSandboxTask(AsyncTaskData data, String detail) {
@@ -226,12 +249,18 @@ public class ToolCallAsyncTaskManager {
         data.lastPolledAtMs = System.currentTimeMillis();
         data.pollCount++;
         save(data);
-        var result = ToolCallResult.failed(data.lastMessage);
+        var result = ToolCallResult.failed(data.lastMessage).withToolName(data.toolName);
+        completionBridge.complete(data.taskId, result);
         announceSandboxTerminal(data, result);
         return result;
     }
 
     private void announceSandboxTerminal(AsyncTaskData data, ToolCallResult result) {
+        if (completionBridge.isNotificationSuppressed(data.taskId)) {
+            data.notifiedAtMs = System.currentTimeMillis();
+            save(data);
+            return;
+        }
         var tool = resolveTool(data.toolName);
         if (tool == null || data.sessionId == null) {
             LOGGER.warn("cannot announce sandbox task {}, tool={}, session={}", data.taskId, data.toolName, data.sessionId);
@@ -265,38 +294,62 @@ public class ToolCallAsyncTaskManager {
     }
 
     public ToolCallResult cancelTask(String taskId) {
-        var dataOpt = loadData(taskId);
-        if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
-        if (Boolean.TRUE.equals(dataOpt.get().sandboxTask)) {
-            return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: the sandbox runtime has no cancel "
-                    + "endpoint; the command will keep running (use action='poll' for its result)");
-        }
-        var taskOpt = loadTask(taskId);
-        if (taskOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
-        var task = taskOpt.get();
-        try {
-            var result = task.tool().cancel(taskId);
-            deleteTask(taskId);
-            return result;
-        } catch (UnsupportedOperationException e) {
-            return ToolCallResult.failed("Tool does not support cancellation");
-        } catch (Exception e) {
-            LOGGER.error("Error cancelling task {}: {}", taskId, e.getMessage(), e);
-            deleteTask(taskId);
-            return ToolCallResult.failed("Cancel error: " + e.getMessage());
+        synchronized (taskLock(taskId)) {
+            var dataOpt = loadData(taskId);
+            if (dataOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
+            var data = dataOpt.get();
+            if (Boolean.TRUE.equals(data.sandboxTask)) {
+                return cancelSandboxTask(data);
+            }
+            var taskOpt = loadTask(taskId);
+            if (taskOpt.isEmpty()) return ToolCallResult.failed("Task not found: " + taskId);
+            var task = taskOpt.get();
+            try {
+                var result = task.tool().cancel(taskId);
+                deleteTask(taskId);
+                completionBridge.complete(taskId, result);
+                return result;
+            } catch (UnsupportedOperationException e) {
+                return ToolCallResult.failed("Tool does not support cancellation");
+            } catch (Exception e) {
+                LOGGER.error("Error cancelling task {}: {}", taskId, e.getMessage(), e);
+                deleteTask(taskId);
+                var failed = ToolCallResult.failed("Cancel error: " + e.getMessage());
+                completionBridge.complete(taskId, failed);
+                return failed;
+            }
         }
     }
 
-    /** Registry lookup by tool name; hosts with a wider tool catalogue override this to fall back to it. */
+    private ToolCallResult cancelSandboxTask(AsyncTaskData data) {
+        if (isTerminal(data)) {
+            return ToolCallResult.failed("Task already finished: " + data.taskId);
+        }
+        var canceller = sandboxTaskCanceller;
+        if (canceller == null) {
+            return ToolCallResult.failed("SANDBOX_TASK_CANCEL_UNSUPPORTED: no sandbox cancel relay is configured");
+        }
+        var result = canceller.cancel(data.sessionId, data.sandboxTaskId);
+        if (result == null) {
+            return ToolCallResult.failed("SANDBOX_TASK_UNREACHABLE: sandbox is not reachable right now");
+        }
+        var text = result.getResult() == null ? "" : result.getResult();
+        if (text.contains("SANDBOX_TASK_CANCEL_UNSUPPORTED")) return result;
+        if (result.isFailed() && text.toLowerCase(Locale.ROOT).startsWith("task not found")) {
+            return loseSandboxTask(data, text);
+        }
+        if (result.isHardFailure()) return result;
+        return finishSandboxObservation(data, result);
+    }
+
+    private Object taskLock(String taskId) {
+        return taskLocks.computeIfAbsent(taskId, key -> new Object());
+    }
+
     protected ToolCall resolveTool(String toolName) {
         return toolRegistry.get(toolName);
     }
 
-    /**
-     * Re-announces a terminal task whose session never confirmed the notification, so a completion lost
-     * to a dead session, a failed rebuild or a Redis hiccup is not lost for good — the task is already
-     * terminal, so nothing would ever poll, let alone announce, it again.
-     */
     public boolean retryNotification(String taskId) {
         var dataOpt = loadData(taskId);
         if (dataOpt.isEmpty()) return false;
@@ -312,11 +365,6 @@ public class ToolCallAsyncTaskManager {
         return true;
     }
 
-    /**
-     * Claims delivery of a terminal task's notification. Exactly one caller wins, so a task announced
-     * twice (two replicas polled it on the same tick) is still injected into its session once. The
-     * winner calls {@link #reopenNotification} when the injection then fails.
-     */
     public boolean markNotificationDelivered(String taskId) {
         synchronized (this) {
             var dataOpt = loadData(taskId);
@@ -329,7 +377,6 @@ public class ToolCallAsyncTaskManager {
         }
     }
 
-    /** Hands a claimed notification back to the retry sweep after the session refused it. */
     public void reopenNotification(String taskId) {
         synchronized (this) {
             var dataOpt = loadData(taskId);
@@ -341,18 +388,12 @@ public class ToolCallAsyncTaskManager {
         }
     }
 
-    /** Stops re-announcing a task no one can take: its session is gone, or the retries ran out. */
     public void abandonNotification(String taskId) {
         if (markNotificationDelivered(taskId)) {
             LOGGER.warn("giving up on async task notification, taskId={}", taskId);
         }
     }
 
-    /**
-     * Hands a terminal task to its listeners and records the attempt. A listener returning normally is
-     * not a delivery receipt: the session side confirms with {@link #markNotificationDelivered}, and the
-     * attempt counter written here is what lets a driver back off and eventually give up.
-     */
     private void announce(AsyncTaskData data, ToolCallAsyncTask task, ToolCallResult result) {
         data.notifyAttempts++;
         data.lastNotifyAttemptAtMs = System.currentTimeMillis();
@@ -389,5 +430,11 @@ public class ToolCallAsyncTaskManager {
     @FunctionalInterface
     public interface SandboxTaskPoller {
         ToolCallResult poll(String sessionId, String sandboxTaskId);
+    }
+
+    /** Host hook that cancels a sandbox runtime task; null means "not reachable right now". */
+    @FunctionalInterface
+    public interface SandboxTaskCanceller {
+        ToolCallResult cancel(String sessionId, String sandboxTaskId);
     }
 }

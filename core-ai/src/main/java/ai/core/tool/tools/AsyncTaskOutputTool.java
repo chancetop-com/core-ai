@@ -2,15 +2,12 @@ package ai.core.tool.tools;
 
 import ai.core.agent.ExecutionContext;
 import ai.core.tool.ToolCall;
-import ai.core.tool.ToolCallAsyncTaskManager;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import ai.core.tool.async.AsyncToolTaskExecutor;
 import ai.core.tool.wait.RuntimeWaitTool;
 import ai.core.tool.wait.TaskAwaitCoordinator;
 import ai.core.tool.wait.WaitRequest;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.Map;
@@ -20,7 +17,6 @@ import java.util.Map;
  */
 public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
     public static final String TOOL_NAME = "async_task_output";
-    private static final Logger LOGGER = LoggerFactory.getLogger(AsyncTaskOutputTool.class);
 
     private static final String TOOL_DESC = """
             Query the status and output of async tasks: long-running tool calls that returned a task id
@@ -92,72 +88,14 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
             return ToolCallResult.failed("WAIT_UNSUPPORTED: waiting requires an agent execution context; "
                     + "use action='poll' instead");
         }
-        if (timeoutMs < 0) {
-            return ToolCallResult.failed("WAIT_INVALID: timeout_ms must be a non-negative number of milliseconds");
-        }
+        var result = TaskAwaitCoordinator.getInstance()
+                .await(WaitRequest.of(taskId, timeoutMs), null, context)
+                .withToolName(TOOL_NAME);
         var manager = context.getAsyncTaskManager();
-        var background = context.getTaskManager();
-        LOGGER.info("async wait state: taskId={}, sessionId={}, manager={}, data={}, background={}, backgroundHas={}",
-                taskId, context.getSessionId(), manager != null, manager != null && manager.hasTaskData(taskId),
-                background != null, background != null && background.hasTask(taskId));
-        // Managed tasks (renders and sandbox async work) live in the poll-only store; wait on them here
-        // before the coordinator, whose wait registry cannot see them.
         if (manager != null && manager.hasTaskData(taskId)) {
-            LOGGER.info("async wait routed to the managed task store, taskId={}, sessionId={}",
-                    taskId, context.getSessionId());
-            return waitManagedTask(manager, taskId, timeoutMs, context).withToolName(TOOL_NAME).withManagedTask();
+            result.withManagedTask();
         }
-        if (background != null && background.hasTask(taskId)) {
-            return TaskAwaitCoordinator.getInstance()
-                    .await(WaitRequest.of(taskId, timeoutMs), null, context)
-                    .withToolName(TOOL_NAME);
-        }
-        LOGGER.info("async wait found no task record, taskId={}, sessionId={}, manager={}, background={}",
-                taskId, context.getSessionId(), manager != null, background != null);
-        if (manager == null) {
-            return ToolCallResult.failed("WAIT_UNSUPPORTED: no async task store is attached to this session; "
-                    + "use action='poll'");
-        }
-        return ToolCallResult.failed("WAIT_UNAVAILABLE: task " + taskId
-                + " is not tracked by this session (it may have been pruned)");
-    }
-
-    private ToolCallResult waitManagedTask(ToolCallAsyncTaskManager manager, String taskId, long timeoutMs,
-                                          ExecutionContext context) {
-        var deadline = timeoutMs > 0 ? System.currentTimeMillis() + timeoutMs : Long.MAX_VALUE;
-        var budget = context.getRunBudget();
-        if (budget != null && budget.time() != null) {
-            var available = budget.time().remainingMillis() - budget.time().reserveMillis();
-            if (available <= 0) {
-                return ToolCallResult.failed("WAIT_TIMEOUT: the run time budget is exhausted");
-            }
-            deadline = Math.min(deadline, System.currentTimeMillis() + available);
-        }
-        var token = context.getCancellationToken();
-        while (true) {
-            var result = manager.pollTask(taskId);
-            if (result.isTerminal()) {
-                manager.markNotificationDelivered(taskId);
-                return result;
-            }
-            if (manager.loadTask(taskId).isEmpty()) {
-                return ToolCallResult.failed("WAIT_UNAVAILABLE: task state is no longer retained: " + taskId);
-            }
-            if (token != null && token.isCancelled()) {
-                return ToolCallResult.failed("WAIT_CANCELLED: the turn was cancelled while waiting for " + taskId);
-            }
-            if (System.currentTimeMillis() >= deadline) {
-                return ToolCallResult.failed("WAIT_TIMEOUT: task " + taskId
-                        + " is still running after " + (timeoutMs > 0 ? timeoutMs + "ms" : "the run time budget"))
-                        .withStats("waitTimeout", Boolean.TRUE);
-            }
-            try {
-                Thread.sleep(1_000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return ToolCallResult.failed("WAIT_INTERRUPTED: interrupted while waiting for " + taskId);
-            }
-        }
+        return result;
     }
 
     private ToolCallResult pollTask(AsyncToolTaskExecutor executor, String taskId, ExecutionContext context) {

@@ -92,6 +92,7 @@ public class PostgresModule extends Module {
         db().view(ai.core.server.asynctask.PgAsyncTaskRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationLockRow.class);
         db().view(ai.core.server.asynctask.PgAsyncTaskMigrationMarkerRow.class);
+        db().view(ai.core.server.asynctask.PgServerBackgroundTaskRow.class);
         registerEvaluationViews();
     }
 
