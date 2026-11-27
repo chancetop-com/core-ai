@@ -8127,6 +8127,7 @@ function openMcpEditor(host: HTMLElement, workspace: string, existing: McpServer
   headerInput.placeholder = 'Authorization=Bearer ${env:TOKEN}';
   headerInput.value = formatPairs(existing?.config.headers as Record<string, unknown> | undefined);
   field('Headers (http)', headerInput);
+  grid.append(el('dt'), el('dd', 'hint', 'Prefer ${env:NAME} here and put the value under Secrets (encrypted per workspace). Literal values are stored unencrypted in this workspace config.'));
   const secretInput = el('textarea', 'settings-input') as HTMLTextAreaElement;
   secretInput.rows = 3;
   secretInput.style.width = '420px';

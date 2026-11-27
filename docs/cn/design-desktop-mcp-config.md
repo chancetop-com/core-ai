@@ -1629,9 +1629,11 @@ interface McpError {
 | Desktop E2E（`tmp/mcp-desktop-e2e/main.js`，Electron 主进程） | PASS：capability 探测、保存、状态 CONNECTED、probe、禁用/启用/删除、跨 workspace 隔离、导入 copy/skip/rename 且 CLI 文件不变 |
 | `core-ai-desktop` `tsc --noEmit` | 通过 |
 
-### 14.4 剩余缺口（发布前）
+### 14.4 剩余缺口与已知偏离（发布前）
 
-- P0 未实现：MCP 日志尾部查看（`mcp/status` 暂无日志片段）；粘贴 JSON 导入（当前导入只读取 CLI 文件）；真实 UI 手测与打包（含 Desktop 内置 engine 的版本/能力对齐）。
+- P0 未实现：MCP 日志尾部查看（`mcp/status` 暂无日志片段）；粘贴 JSON 导入的 UI 入口（`parsePastedConfig` 已在 `mcpImport.ts` 实现，但设置页只接入了 CLI 文件导入）；真实 UI 手测与打包（含 Desktop 内置 engine 的版本/能力对齐）。
+- 已知偏离：**literal secret 不入加密库**。用户在 env/headers 里直接写明文（或从 CLI 配置导入明文）时，该值保存在 workspace 配置文件里（明文）；只有 Secrets 字段的值经 `safeStorage` 加密。表单已加提示，但未做自动抽取/强制拦截。理由：env 里大量非敏感量（`NODE_ENV`、`LOG_LEVEL`）自动搬进加密库会造成语义噪音，且 engine 展开后结果等价；后续若要「只允许占位符」需先定敏感判定规则。
+- 已知偏离：§4.6 的「拒绝保留 env 名（PATH/HOME/…）」未实现。实际暴露面与 env 字段本身等价（用户可直接写 `PATH=...`），故不构成新增风险；若要做，应在 engine 的 secret 校验里统一拒绝。
 - P1：per-session allowlist、workspace 级状态点、模板/复制。
 - 待验证：Linux `safeStorage` 弱 keyring 行为、旧 engine 提示文案、`mcp/probe/cancel` 的真实取消路径、Desktop 端打包后 `--desktop-mcp` 在 `.bat`/lib 目录启动路径下的表现。
 
