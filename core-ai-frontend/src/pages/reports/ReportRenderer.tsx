@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -10,6 +10,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  type LegendPayload,
+  type TooltipPayloadEntry,
+  type TooltipValueType,
 } from 'recharts';
 interface RenderableReportData {
   status: string;
@@ -121,9 +124,74 @@ function seriesLabel(field: { label?: string | null; column: ReportColumn }) {
   return field.label || field.column.label || field.column.name;
 }
 
+function resolveIsolatedField(
+  isolatedField: string | null,
+  series: ReadonlyArray<Pick<ReportDisplaySeries, 'field'>>,
+): string | null {
+  if (!isolatedField || series.length <= 1) return null;
+  return series.some(item => item.field === isolatedField) ? isolatedField : null;
+}
+
+function nextIsolatedField(
+  current: string | null,
+  clickedDataKey: unknown,
+  series: ReadonlyArray<Pick<ReportDisplaySeries, 'field'>>,
+): string | null {
+  const active = resolveIsolatedField(current, series);
+  if (series.length <= 1 || typeof clickedDataKey !== 'string') return active;
+  if (!series.some(item => item.field === clickedDataKey)) return active;
+  return active === clickedDataKey ? null : clickedDataKey;
+}
+
+function isSeriesHidden(
+  field: string,
+  isolatedField: string | null,
+  series: ReadonlyArray<Pick<ReportDisplaySeries, 'field'>>,
+): boolean {
+  const active = resolveIsolatedField(isolatedField, series);
+  return active !== null && active !== field;
+}
+
+function resolveAxisFormat(
+  series: ReadonlyArray<Pick<ReportDisplaySeries, 'field' | 'format'>>,
+  isolatedField: string | null = null,
+): string | null {
+  const active = resolveIsolatedField(isolatedField, series);
+  const visible = active ? series.filter(item => item.field === active) : series;
+  if (visible.length === 0) return null;
+  const first = visible[0].format || null;
+  if (!first) return null;
+  return visible.every(item => (item.format || null) === first) ? first : null;
+}
+
+function formatChartValue(
+  value: TooltipValueType | null | undefined,
+  format?: string | null,
+  precision?: number | null,
+): string {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) {
+    return value.map(item => formatValue(String(item), format, precision)).join(' ~ ');
+  }
+  return formatValue(String(value), format, precision);
+}
+
+function formatTooltipValue(
+  value: TooltipValueType | null | undefined,
+  dataKey: unknown,
+  series: ReadonlyArray<Pick<ReportDisplaySeries, 'field' | 'format'>>,
+  precision?: number | null,
+): string {
+  const format = typeof dataKey === 'string'
+    ? series.find(item => item.field === dataKey)?.format
+    : undefined;
+  return formatChartValue(value, format, precision);
+}
+
 export default function ReportRenderer({ data, displayType, display, height = 260 }: ReportRendererProps) {
   const columns = useMemo(() => parseColumns(data?.columns_json), [data?.columns_json]);
   const rows = useMemo(() => parseRows(data?.rows_json), [data?.rows_json]);
+  const [isolatedField, setIsolatedField] = useState<string | null>(null);
   const type = display?.type || displayType;
 
   if (!data) {
@@ -237,6 +305,22 @@ export default function ReportRenderer({ data, displayType, display, height = 26
     return item;
   });
 
+  const activeIsolatedField = resolveIsolatedField(isolatedField, fields);
+  const axisFormat = resolveAxisFormat(fields, activeIsolatedField);
+  const canIsolate = fields.length > 1;
+  const formatTick = (value: number | string) => formatChartValue(value, axisFormat, display?.precision);
+  const formatTooltip = (
+    value: TooltipValueType | undefined,
+    name: string | number | undefined,
+    item: TooltipPayloadEntry,
+  ) => {
+    const formatted = formatTooltipValue(value, item.dataKey, fields, display?.precision);
+    return name === undefined ? formatted : ([formatted, name] as [string, string | number]);
+  };
+  const handleLegendClick = (entry: LegendPayload) => {
+    setIsolatedField(current => nextIsolatedField(current, entry.dataKey, fields));
+  };
+
   if (type === 'BAR') {
     const horizontal = display?.orientation === 'HORIZONTAL';
     const chart = (
@@ -244,20 +328,21 @@ export default function ReportRenderer({ data, displayType, display, height = 26
         <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
         {horizontal ? (
           <>
-            <XAxis type="number" tick={{ fontSize: 11 }} />
+            <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={formatTick} />
             <YAxis type="category" dataKey="__axis" width={120} interval={0} tick={{ fontSize: 11 }}
               tickFormatter={(value: string) => value.length > 14 ? `${value.slice(0, 14)}…` : value} />
           </>
         ) : (
           <>
             <XAxis dataKey="__axis" tick={{ fontSize: 11 }} />
-            <YAxis tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} tickFormatter={formatTick} />
           </>
         )}
-        <Tooltip />
-        {fields.length > 1 && <Legend />}
+        <Tooltip formatter={formatTooltip} />
+        {canIsolate && <Legend onClick={handleLegendClick} labelStyle={{ cursor: 'pointer' }} />}
         {fields.map((field, index) => (
           <Bar key={field.field} dataKey={field.field} name={seriesLabel(field)} fill={COLORS[index % COLORS.length]}
+            hide={isSeriesHidden(field.field, activeIsolatedField, fields)}
             radius={horizontal ? [0, 3, 3, 0] : [3, 3, 0, 0]} />
         ))}
       </BarChart>
@@ -273,12 +358,16 @@ export default function ReportRenderer({ data, displayType, display, height = 26
     <LineChart data={chartRows}>
       <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
       <XAxis dataKey="__axis" tick={{ fontSize: 11 }} />
-      <YAxis tick={{ fontSize: 11 }} />
-      <Tooltip />
-      <Legend />
+      <YAxis tick={{ fontSize: 11 }} tickFormatter={formatTick} />
+      <Tooltip formatter={formatTooltip} />
+      <Legend
+        onClick={canIsolate ? handleLegendClick : undefined}
+        labelStyle={canIsolate ? { cursor: 'pointer' } : undefined}
+      />
       {fields.map((field, index) => (
         <Line key={field.field} type="monotone" dataKey={field.field} name={seriesLabel(field)}
-          stroke={COLORS[index % COLORS.length]} strokeWidth={2} dot={false} connectNulls={false} />
+          stroke={COLORS[index % COLORS.length]} strokeWidth={2} dot={false} connectNulls={false}
+          hide={isSeriesHidden(field.field, activeIsolatedField, fields)} />
       ))}
     </LineChart>
   );
@@ -289,3 +378,14 @@ export default function ReportRenderer({ data, displayType, display, height = 26
     </div>
   );
 }
+
+/* eslint-disable react-refresh/only-export-components */
+export {
+  formatChartValue,
+  formatTooltipValue,
+  isSeriesHidden,
+  nextIsolatedField,
+  resolveAxisFormat,
+  resolveIsolatedField,
+};
+/* eslint-enable react-refresh/only-export-components */
