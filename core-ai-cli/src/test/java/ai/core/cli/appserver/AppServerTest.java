@@ -23,6 +23,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -159,6 +160,20 @@ class AppServerTest {
     }
 
     @Test
+    void mcpUnexpectedRuntimeExceptionReturnsFixedErrorWithoutEchoingMessage() throws Exception {
+        harness = new Harness(60_000L);
+        harness.initAndDrain();
+        harness.send("{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"mcp/status\",\"params\":{\"mode\":\"leak\"}}");
+        var frame = harness.next();
+        assertEquals(RpcException.INTERNAL_ERROR, frame.path("error").path("code").asInt());
+        assertEquals("MCP_INTERNAL_ERROR", frame.path("error").path("data").path("code").asText());
+        assertEquals("MCP internal error", frame.path("error").path("message").asText());
+        var serialized = JsonUtil.toJson(frame);
+        assertFalse(serialized.contains("SUPER_SECRET_VALUE_123"));
+        assertFalse(serialized.contains("user:pass"));
+    }
+
+    @Test
     void stdinEofStopsTheServer() throws Exception {
         harness = new Harness(60_000L);
         harness.initAndDrain();
@@ -178,7 +193,7 @@ class AppServerTest {
 
         @Override
         public Set<String> supportedMethods() {
-            return Set.of("echo");
+            return Set.of("echo", "mcp/status");
         }
 
         @Override
@@ -192,6 +207,9 @@ class AppServerTest {
         public JsonNode call(String method, ObjectNode params) {
             if ("boom".equals(params.path("mode").asText())) {
                 throw RpcException.invalidParams("bad param");
+            }
+            if ("leak".equals(params.path("mode").asText())) {
+                throw new IllegalStateException("https://user:pass@host/mcp?token=SUPER_SECRET_VALUE_123");
             }
             var node = JsonUtil.OBJECT_MAPPER.createObjectNode();
             node.put("method", method);

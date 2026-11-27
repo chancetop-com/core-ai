@@ -2,8 +2,7 @@ package ai.core.cli.appserver;
 
 import ai.core.mcp.client.McpClientManager;
 import ai.core.mcp.client.McpClientService;
-import ai.core.mcp.client.McpCommandSafety;
-import ai.core.mcp.client.McpSecretExpander;
+import ai.core.mcp.client.McpLogSanitizer;
 import ai.core.mcp.client.McpServerConfig;
 import ai.core.utils.JsonUtil;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -29,7 +28,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.regex.Pattern;
 
 /**
  * Desktop-managed MCP surface of the app-server engine.
@@ -42,9 +40,6 @@ import java.util.regex.Pattern;
  */
 final class McpApi {
     private static final Logger LOGGER = LoggerFactory.getLogger(McpApi.class);
-    private static final Pattern SERVER_NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._-]{0,63}");
-    private static final Pattern SECRET_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
-    private static final List<String> RESERVED_SECRET_PREFIXES = List.of("CORE_AI_", "MCP_");
     private static final long QUIET_FINALIZE_NANOS = TimeUnit.SECONDS.toNanos(10);
     private static final long BOOT_FINALIZE_NANOS = TimeUnit.SECONDS.toNanos(30);
 
@@ -53,7 +48,7 @@ final class McpApi {
         try {
             service.close();
         } catch (RuntimeException e) {
-            LOGGER.debug("failed to close an MCP probe client: {}", e.getMessage());
+            LOGGER.debug("failed to close an MCP probe client: type={}", e.getClass().getSimpleName());
         }
     }
 
@@ -185,55 +180,24 @@ final class McpApi {
                                 Map<String, String> rejected) {
         for (var node : serversNode) {
             var name = node.path("name").asText("").strip();
-            if (!SERVER_NAME.matcher(name).matches()) {
-                rejected.put(name.isEmpty() ? "(unnamed)" : name, "invalid MCP server name");
+            if (!McpApiValidation.SERVER_NAME.matcher(name).matches()) {
+                rejected.put(name.isEmpty() ? "(unnamed)" : name, "MCP_NAME_INVALID: invalid MCP server name");
                 continue;
             }
             var configNode = node.get("config");
             if (configNode == null || !configNode.isObject()) {
-                rejected.put(name, "no config object");
+                rejected.put(name, "MCP_CONFIG_INVALID: no config object");
                 continue;
             }
             @SuppressWarnings("unchecked")
             var raw = (Map<String, Object>) JsonUtil.fromJson(Map.class, configNode.toString());
             try {
-                validateDefinition(name, raw);
+                McpApiValidation.validateDefinition(name, raw);
             } catch (RpcException e) {
-                rejected.put(name, e.getMessage());
+                rejected.put(name, McpApiValidation.formatRpcRejection(e));
                 continue;
             }
             raws.put(name, raw);
-        }
-    }
-
-    private void validateDefinition(String name, Map<String, Object> raw) {
-        try {
-            var expanded = McpSecretExpander.expand(name, raw, Map.of());
-            McpCommandSafety.validate(name, expanded);
-            McpServerConfig.fromMap(name, expanded);
-        } catch (McpSecretExpander.MissingSecretException e) {
-            // Placeholders are legal here; mcp/secrets resolves them and re-runs the safety checks.
-            validateStructure(name, raw);
-        } catch (McpCommandSafety.UnsafeHeaderException e) {
-            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage(), e);
-        } catch (McpCommandSafety.UnsafeCommandException e) {
-            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage(), e);
-        } catch (RuntimeException e) {
-            throw RpcException.business("MCP_CONFIG_INVALID",
-                    "invalid MCP server '" + name + "': " + e.getMessage(), e);
-        }
-    }
-
-    private void validateStructure(String name, Map<String, Object> raw) {
-        try {
-            McpServerConfig.fromMap(name, raw);
-        } catch (McpCommandSafety.UnsafeHeaderException e) {
-            throw RpcException.business("MCP_HEADER_INVALID", e.getMessage(), e);
-        } catch (McpCommandSafety.UnsafeCommandException e) {
-            throw RpcException.business("MCP_ARG_UNSAFE", e.getMessage(), e);
-        } catch (RuntimeException e) {
-            throw RpcException.business("MCP_CONFIG_INVALID",
-                    "invalid MCP server '" + name + "': " + e.getMessage(), e);
         }
     }
 
@@ -245,6 +209,7 @@ final class McpApi {
         }
         var secretsNode = params.get("secrets");
         Map<String, Map<String, String>> incoming = new LinkedHashMap<>();
+        int loadedCount = 0;
         if (secretsNode != null && secretsNode.isObject()) {
             for (var entry : secretsNode.properties()) {
                 var serverName = entry.getKey();
@@ -258,9 +223,11 @@ final class McpApi {
                 }
                 var values = new LinkedHashMap<String, String>();
                 for (var value : entry.getValue().properties()) {
-                    validateSecret(serverName, value.getKey(), value.getValue());
+                    McpApiValidation.validateSecret(serverName, value.getKey(), value.getValue());
                     values.put(value.getKey(), value.getValue().asText(""));
                 }
+                McpLogSanitizer.registerSecrets(values.values());
+                loadedCount += values.size();
                 incoming.put(serverName, Map.copyOf(values));
             }
         }
@@ -271,29 +238,19 @@ final class McpApi {
                         "MCP secrets were already applied for this engine; restart the engine to change them");
             }
             applyDefinitions(incoming);
-            return status();
+            return secretsResponse(loadedCount);
         }
         applyDefinitions(incoming);
         secretsSignature = signature;
         secretsLoaded.set(true);
-        return status();
+        return secretsResponse(loadedCount);
     }
 
-    private void validateSecret(String serverName, String name, JsonNode value) {
-        if (!SECRET_NAME.matcher(name).matches()) {
-            throw RpcException.business("MCP_SECRET_NAME_INVALID",
-                    "invalid secret name for MCP server '" + serverName + "': " + name);
-        }
-        for (var prefix : RESERVED_SECRET_PREFIXES) {
-            if (name.startsWith(prefix)) {
-                throw RpcException.business("MCP_SECRET_NAME_RESERVED",
-                        "reserved secret name for MCP server '" + serverName + "': " + name);
-            }
-        }
-        if (!value.isTextual()) {
-            throw RpcException.business("MCP_CONFIG_INVALID",
-                    "secret " + name + " of MCP server '" + serverName + "' must be a string");
-        }
+    private ObjectNode secretsResponse(int loadedCount) {
+        var node = Params.object();
+        node.put("ok", true);
+        node.put("loaded", loadedCount);
+        return node;
     }
 
     private void applyDefinitions(Map<String, Map<String, String>> incoming) {
@@ -303,12 +260,8 @@ final class McpApi {
             McpServerConfig config;
             try {
                 config = McpServerConfig.fromMap(serverName, entry.getValue(), secrets);
-            } catch (McpSecretExpander.MissingSecretException | McpCommandSafety.UnsafeHeaderException
-                     | McpCommandSafety.UnsafeCommandException e) {
-                rejectedServers.put(serverName, e.getMessage());
-                continue;
             } catch (RuntimeException e) {
-                rejectedServers.put(serverName, "invalid MCP server: " + e.getMessage());
+                rejectedServers.put(serverName, McpApiValidation.rejectionFor(e));
                 continue;
             }
             serverConfigs.put(serverName, config);
@@ -338,6 +291,8 @@ final class McpApi {
         noteRpc();
         var node = Params.object();
         node.put("trusted", bootstrap.workspaceTrusted);
+        node.put("restricted", !bootstrap.workspaceTrusted);
+        node.put("ready", finalized.get());
         node.put("configLoaded", configLoaded.get());
         node.put("secretsLoaded", secretsLoaded.get());
         node.put("finalized", finalized.get());
@@ -349,6 +304,12 @@ final class McpApi {
             var config = serverConfigs.get(entry.getKey());
             if (config != null) server.put("transport", config.getTransportType().name());
             server.put("toolCount", manager.toolSnapshot(entry.getKey()).orElse(List.of()).size());
+            var lastError = manager.lastError(entry.getKey());
+            if (lastError != null) {
+                var errNode = server.putObject("lastError");
+                errNode.put("code", lastError.code());
+                errNode.put("message", lastError.message());
+            }
         }
         var conflicts = node.putArray("conflicts");
         for (var conflict : manager.toolConflicts()) {
@@ -375,8 +336,12 @@ final class McpApi {
         var config = serverConfigs.get(name);
         if (config == null) {
             var reason = rejectedServers.get(name);
+            if (reason != null && reason.startsWith("MCP_SECRET_UNSUPPORTED_LOCATION")) {
+                throw RpcException.business("MCP_SECRET_UNSUPPORTED_LOCATION",
+                        "secret placeholders are only allowed in env and headers values");
+            }
             throw RpcException.business("MCP_CONFIG_INVALID", reason != null
-                    ? "MCP server " + name + " was rejected: " + reason
+                    ? reason
                     : "unknown MCP server: " + name);
         }
         var probeId = UUID.randomUUID().toString();
@@ -402,8 +367,11 @@ final class McpApi {
             result.put("ok", true);
         } catch (Exception e) {
             if (probeCancelled.containsKey(probeId)) return;
+            LOGGER.warn("mcp: probe server={} failed, type={}", name, e.getClass().getSimpleName());
+            var classified = McpLogSanitizer.classifyError(e);
             result.put("ok", false);
-            result.put("error", "MCP probe failed: " + e.getMessage());
+            result.put("errorCode", classified.code());
+            result.put("error", classified.code() + ": " + classified.message());
         } finally {
             probes.remove(probeId);
             probeCancelled.remove(probeId);

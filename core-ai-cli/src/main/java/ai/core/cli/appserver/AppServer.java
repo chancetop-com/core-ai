@@ -101,9 +101,18 @@ public class AppServer {
                 send(JsonRpcCodec.error(request.id(), e.code(), e.getMessage(), e.data()));
             }
         } catch (RuntimeException e) {
-            LOGGER.warn("app-server request failed, method={}", request.method(), e);
-            if (!request.notification()) {
-                send(JsonRpcCodec.error(request.id(), RpcException.INTERNAL_ERROR, String.valueOf(e.getMessage()), null));
+            if (request.method() != null && request.method().startsWith("mcp/")) {
+                LOGGER.warn("app-server mcp request failed, method={}, type={}",
+                        request.method(), e.getClass().getSimpleName());
+                if (!request.notification()) {
+                    var data = Params.object().put("code", "MCP_INTERNAL_ERROR");
+                    send(JsonRpcCodec.error(request.id(), RpcException.INTERNAL_ERROR, "MCP internal error", data));
+                }
+            } else {
+                LOGGER.warn("app-server request failed, method={}", request.method(), e);
+                if (!request.notification()) {
+                    send(JsonRpcCodec.error(request.id(), RpcException.INTERNAL_ERROR, String.valueOf(e.getMessage()), null));
+                }
             }
         }
     }

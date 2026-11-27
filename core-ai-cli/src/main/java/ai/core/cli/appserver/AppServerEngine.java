@@ -151,6 +151,15 @@ public class AppServerEngine implements EngineApi {
         trust.put("hasExecutableInputs", bootstrap.workspaceTrust.hasExecutableInputs());
         trust.put("reason", bootstrap.workspaceTrust.reason());
         trust.put("engineRestricted", !bootstrap.workspaceTrusted);
+        trust.put("migratedFromLegacy", bootstrap.workspaceTrust.migratedFromLegacy());
+        var migration = bootstrap.workspaceTrust.migration();
+        if (migration != null) {
+            var node = trust.putObject("migration");
+            node.put("legacyKey", migration.legacyKey());
+            node.put("legacyFingerprint", migration.legacyFingerprint());
+            node.put("desktopKey", migration.desktopKey());
+            node.put("desktopFingerprint", migration.desktopFingerprint());
+        }
         return trust;
     }
 

@@ -45,6 +45,8 @@ export class RpcClient {
   private nextId = 1;
   private exited = false;
   private lastStderrLine = '';
+  private readonly stderrLines: string[] = [];
+  private lastExitCode: number | null = null;
 
   constructor(command: string, args: string[], options: RpcClientOptions = {}) {
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 120_000;
@@ -62,6 +64,7 @@ export class RpcClient {
         const text = line.trim();
         if (!text) continue;
         this.lastStderrLine = text;
+        if (this.stderrLines.length < 64) this.stderrLines.push(text);
         options.onStderr?.(text);
       }
     });
@@ -78,6 +81,14 @@ export class RpcClient {
 
   get isRunning(): boolean {
     return !this.exited;
+  }
+
+  get exitCode(): number | null {
+    return this.lastExitCode;
+  }
+
+  get recentStderr(): string {
+    return this.stderrLines.join('\n');
   }
 
   onNotification(handler: NotificationHandler): () => void {
@@ -140,6 +151,7 @@ export class RpcClient {
 
   private onExit(code: number | null, signal: NodeJS.Signals | null): void {
     this.exited = true;
+    this.lastExitCode = code;
     const detail = this.lastStderrLine ? `: ${this.lastStderrLine}` : '';
     this.rejectPending(new Error(`engine exited (code=${code ?? 'null'}, signal=${signal ?? 'null'})${detail}`));
   }

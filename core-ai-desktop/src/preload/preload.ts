@@ -14,7 +14,8 @@ contextBridge.exposeInMainWorld('coreai', {
   mcpSetEnabled: (workspace: string, id: string, enabled: boolean) => ipcRenderer.invoke('mcp:setEnabled', workspace, id, enabled),
   mcpRemove: (workspace: string, id: string) => ipcRenderer.invoke('mcp:remove', workspace, id),
   mcpStatus: (workspace: string) => ipcRenderer.invoke('mcp:status', workspace),
-  mcpTest: (workspace: string, name: string) => ipcRenderer.invoke('mcp:test', workspace, name),
+  mcpTest: (workspace: string, name: string, targetRevision?: number) =>
+    ipcRenderer.invoke('mcp:test', workspace, name, targetRevision),
   mcpImportPreview: (workspace: string) => ipcRenderer.invoke('mcp:importPreview', workspace),
   mcpImport: (workspace: string, request: Record<string, unknown>) => ipcRenderer.invoke('mcp:import', workspace, request),
   authStatus: () => ipcRenderer.invoke('auth:status'),
@@ -31,8 +32,8 @@ contextBridge.exposeInMainWorld('coreai', {
   providerTest: (payload: Record<string, unknown>) => ipcRenderer.invoke('providers:test', payload),
   providerDiscover: (payload: Record<string, unknown>) => ipcRenderer.invoke('providers:discover', payload),
   providerReset: () => ipcRenderer.invoke('providers:reset'),
-  onEngineReloaded: (callback: (payload: { workspace?: string }) => void) => {
-    const listener = (_event: unknown, payload: { workspace?: string }) => callback(payload);
+  onEngineReloaded: (callback: (payload: { workspace?: string; revision?: number }) => void) => {
+    const listener = (_event: unknown, payload: { workspace?: string; revision?: number }) => callback(payload);
     ipcRenderer.on('engine:reloaded', listener);
     return () => ipcRenderer.removeListener('engine:reloaded', listener);
   },

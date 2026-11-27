@@ -56,14 +56,16 @@ public class McpClientService implements AutoCloseable {
             try {
                 partialClient.closeGracefully();
             } catch (Exception suppressed) {
-                LOGGER.warn("Failed to close partially-initialized MCP client: {}", serverName, suppressed);
+                LOGGER.warn("Failed to close partially-initialized MCP client: {}, type={}",
+                        serverName, suppressed.getClass().getSimpleName());
             }
         }
         if (partialTransport != null) {
             try {
                 partialTransport.closeGracefully().block(Duration.ofSeconds(2));
             } catch (Exception suppressed) {
-                LOGGER.warn("Failed to close partially-initialized MCP transport: {}", serverName, suppressed);
+                LOGGER.warn("Failed to close partially-initialized MCP transport: {}, type={}",
+                        serverName, suppressed.getClass().getSimpleName());
             }
         }
         if (stdioProcess != null && stdioProcess.isAlive()) {
@@ -99,7 +101,8 @@ public class McpClientService implements AutoCloseable {
         } catch (Exception e) {
             if (isConnectionError(e)) {
                 throw new McpClientManager.McpClientException(
-                    "MCP transport error listing tools on " + serverName + ": " + e.getMessage(), e);
+                    "MCP transport error listing tools on " + serverName + ": "
+                        + McpLogSanitizer.sanitizeText(e.getMessage()), e);
             }
             throw e;
         }
@@ -144,12 +147,12 @@ public class McpClientService implements AutoCloseable {
             // to McpClientManager to trigger reconnection
             if (isConnectionError(e)) {
                 throw new McpClientManager.McpClientException(
-                    "MCP transport error calling tool " + name + " on " + serverName + ": " + e.getMessage(), e);
+                    "MCP transport error calling tool " + name + " on " + serverName + ": "
+                        + McpLogSanitizer.sanitizeText(e.getMessage()), e);
             }
-            // Application-level errors (e.g., HTTP 405 from MCP server, invalid tool name,
-            // JSON-RPC errors) should NOT trigger reconnection — return a failed result instead
-            LOGGER.warn("MCP tool call failed for {}/{}: {}", serverName, name, e.getMessage());
-            return ToolCallResult.failed("MCP tool call failed: " + e.getMessage());
+            var safeMessage = McpLogSanitizer.sanitizeText(e.getMessage());
+            LOGGER.warn("MCP tool call failed for {}/{}: {}", serverName, name, safeMessage);
+            return ToolCallResult.failed("MCP tool call failed: " + safeMessage);
         }
     }
 
@@ -205,7 +208,7 @@ public class McpClientService implements AutoCloseable {
                 .block();
             return Boolean.TRUE.equals(pingResult);
         } catch (Exception e) {
-            LOGGER.warn("Ping failed for server {}: {}", serverName, e.getMessage());
+            LOGGER.warn("Ping failed for server {}: {}", serverName, McpLogSanitizer.classifyError(e).code());
             return false;
         }
     }
@@ -236,14 +239,16 @@ public class McpClientService implements AutoCloseable {
             try {
                 client.closeGracefully();
             } catch (Exception e) {
-                LOGGER.warn("Error closing MCP client gracefully: {}", serverName, e);
+                LOGGER.warn("Error closing MCP client gracefully: {}, type={}",
+                        serverName, e.getClass().getSimpleName());
             }
         }
         if (transport != null) {
             try {
                 transport.closeGracefully().block(Duration.ofSeconds(5));
             } catch (Exception e) {
-                LOGGER.warn("Error closing MCP transport: {}", serverName, e);
+                LOGGER.warn("Error closing MCP transport: {}, type={}",
+                        serverName, e.getClass().getSimpleName());
             }
         }
 

@@ -23,6 +23,8 @@ const targets = [
   { entryPoints: ['src/preload/pluginPagePreload.ts'], outfile: 'dist/pluginPagePreload.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
   { entryPoints: ['src/main/engine/RpcClient.ts'], outfile: 'dist/test/rpcClient.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/engine/EngineSupervisor.ts'], outfile: 'dist/test/engineSupervisor.js', platform: 'node', target: 'node20', format: 'cjs' },
+  { entryPoints: ['src/main/mcp/mcpService.ts'], outfile: 'dist/test/mcpService.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },
+  { entryPoints: ['src/main/mcp/mcpSanitizer.ts'], outfile: 'dist/test/mcpSanitizer.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/schedule/ScheduleWaker.ts'], outfile: 'dist/test/scheduleWaker.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/browser/CdpBridge.ts'], outfile: 'dist/test/cdpBridge.js', platform: 'node', target: 'node20', format: 'cjs' },
   { entryPoints: ['src/main/browser/BrowserManager.ts'], outfile: 'dist/test/browserManager.js', platform: 'node', target: 'node20', format: 'cjs', external: ['electron'] },

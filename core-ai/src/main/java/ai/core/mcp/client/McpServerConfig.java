@@ -145,7 +145,8 @@ public class McpServerConfig {
             }
             return result;
         } catch (Exception e) {
-            LOGGER.warn("failed to parse headers json for server '{}', length={}", serverName, headersStr.length(), e);
+            LOGGER.warn("failed to parse headers json for server '{}', length={}, type={}",
+                    serverName, headersStr.length(), e.getClass().getSimpleName());
             return Map.of();
         }
     }
@@ -170,7 +171,8 @@ public class McpServerConfig {
                 }
                 return result;
             } catch (Exception e) {
-                LOGGER.warn("failed to parse env as JSON, length={}", envStr.length(), e);
+                LOGGER.warn("failed to parse env as JSON, length={}, type={}",
+                        envStr.length(), e.getClass().getSimpleName());
             }
         }
         return Map.of();

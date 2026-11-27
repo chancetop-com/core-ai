@@ -8,34 +8,29 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * Workspace trust for the app-server engine.
+ * Strictly read-only workspace trust evaluation for the app-server engine.
  *
  * A workspace can contribute executable configuration: hooks, MCP servers, and skills that steer
- * the agent. The engine evaluates a fingerprint of those inputs on every boot. A fresh workspace
- * with none of them is trusted (there is nothing to execute); once any input exists, a matching
- * user-side trust record is required. A changed fingerprint invalidates the old record, so adding
- * a hook or swapping an MCP command cannot inherit trust.
+ * the agent. The engine evaluates a fingerprint of those inputs on every boot. Desktop
+ * {@code WorkspaceTrustStore} is the sole writer of {@code workspace-trust.json} (schemaVersion 2,
+ * including revoked tombstones); this class never modifies the file.
  *
  * The desktop-managed MCP mode uses its own fingerprint (CLI MCP files are not loaded there) and
- * its own trust record key ({@code <canonical>#desktop-mcp}). An existing CLI record is migrated
- * once, but only when it matches the full legacy fingerprint.
- *
- * The record lives outside the workspace on purpose: a repository cannot declare itself trusted.
+ * its own trust record key ({@code <canonical>#desktop-mcp}). When no desktop record exists yet,
+ * a matching legacy CLI record is honored for the current boot and reported via
+ * {@link Evaluation#migration()} so the desktop host can persist the desktop fingerprint.
  */
 public final class WorkspaceTrust {
-    public static final String TRUST_SCHEMA_VERSION = "1";
+    public static final String TRUST_SCHEMA_VERSION = "2";
     public static final String TRUST_FILE_NAME = "workspace-trust.json";
     public static final String RESTRICTED_PROPERTY = "core.ai.workspace.restricted";
     public static final String PLUGIN_HOME_ENV = "CORE_AI_PLUGIN_HOME";
@@ -43,7 +38,7 @@ public final class WorkspaceTrust {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceTrust.class);
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Object WRITE_LOCK = new Object();
+    private static final Set<String> SUPPORTED_SCHEMA_VERSIONS = Set.of("1", "2");
     private static final List<String> CONFIG_FILES = List.of(
             ".core-ai/agent.properties",
             ".core-ai/hooks.json",
@@ -75,38 +70,41 @@ public final class WorkspaceTrust {
         var workspaceKey = canonicalKey(workspace);
         var key = recordKey(workspaceKey, mode);
         var snapshot = fingerprint(workspace, mode);
-        if (!snapshot.hasExecutableInputs()) {
-            return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), false, "no_workspace_config");
+        var entry = readEntry(trustFile, key);
+        if (entry != null && entry.revoked()) {
+            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(),
+                    snapshot.hasExecutableInputs(), "trust_revoked", false, null);
         }
-        var record = readRecord(trustFile, key);
-        if (record == null && mode == Mode.DESKTOP_MCP) {
-            var migrated = migrateLegacyRecord(trustFile, workspace, workspaceKey, key, snapshot.fingerprint());
-            if (migrated) {
-                return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), true, "migrated_from_cli_record");
+        if (entry != null) {
+            if (snapshot.fingerprint().equals(entry.fingerprint())) {
+                return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(),
+                        snapshot.hasExecutableInputs(), null, false, null);
+            }
+            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(),
+                    snapshot.hasExecutableInputs(), "fingerprint_changed", false, null);
+        }
+        if (!snapshot.hasExecutableInputs()) {
+            return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(),
+                    false, "no_workspace_config", false, null);
+        }
+        if (mode == Mode.DESKTOP_MCP) {
+            var migration = detectLegacyMigration(trustFile, workspace, workspaceKey, key, snapshot.fingerprint());
+            if (migration != null) {
+                return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(),
+                        true, "migrated_from_cli_record", true, migration);
             }
         }
-        if (record == null) {
-            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(), true, "not_trusted");
-        }
-        if (!snapshot.fingerprint().equals(record)) {
-            return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(), true, "fingerprint_changed");
-        }
-        return new Evaluation(State.TRUSTED, key, workspaceKey, snapshot.fingerprint(), true, null);
+        return new Evaluation(State.RESTRICTED, key, workspaceKey, snapshot.fingerprint(),
+                true, "not_trusted", false, null);
     }
 
-    /**
-     * A desktop-managed workspace used to be evaluated with the CLI fingerprint. Reuse that record
-     * only when it still matches the full legacy fingerprint (including CLI MCP files).
-     */
-    private static boolean migrateLegacyRecord(Path trustFile, Path workspace, String workspaceKey,
-                                               String desktopKey, String desktopFingerprint) {
-        var legacyRecord = readRecord(trustFile, workspaceKey);
-        if (legacyRecord == null) return false;
+    private static Migration detectLegacyMigration(Path trustFile, Path workspace, String workspaceKey,
+                                                   String desktopKey, String desktopFingerprint) {
+        var legacyEntry = readEntry(trustFile, workspaceKey);
+        if (legacyEntry == null || legacyEntry.revoked() || legacyEntry.fingerprint() == null) return null;
         var legacySnapshot = fingerprint(workspace, Mode.CLI);
-        if (!legacySnapshot.fingerprint().equals(legacyRecord)) return false;
-        writeRecord(trustFile, desktopKey, desktopFingerprint);
-        LOGGER.info("migrated workspace trust record to the desktop-mcp key");
-        return true;
+        if (!legacySnapshot.fingerprint().equals(legacyEntry.fingerprint())) return null;
+        return new Migration(workspaceKey, legacySnapshot.fingerprint(), desktopKey, desktopFingerprint);
     }
 
     public static String recordKey(String workspaceKey, Mode mode) {
@@ -131,7 +129,6 @@ public final class WorkspaceTrust {
         return canonical.toString();
     }
 
-    /** Fingerprint covers every workspace input that can execute or steer the agent. */
     static Snapshot fingerprint(Path workspace, Mode mode) {
         var entries = new ArrayList<String>();
         boolean inputs = false;
@@ -180,73 +177,28 @@ public final class WorkspaceTrust {
         try {
             return sha256(Files.readString(file, StandardCharsets.UTF_8));
         } catch (IOException | RuntimeException e) {
-            // An unreadable input is not silently ignored: it gets its own marker so any later
-            // readability change also changes the fingerprint.
             return "unreadable:" + e.getClass().getSimpleName();
         }
     }
 
     @SuppressWarnings("unchecked")
-    private static String readRecord(Path trustFile, String key) {
+    private static RecordEntry readEntry(Path trustFile, String key) {
         if (!Files.isRegularFile(trustFile)) return null;
         try {
             var root = (Map<String, Object>) MAPPER.readValue(trustFile.toFile(), Map.class);
-            if (!TRUST_SCHEMA_VERSION.equals(String.valueOf(root.get("schemaVersion")))) return null;
+            if (!SUPPORTED_SCHEMA_VERSIONS.contains(String.valueOf(root.get("schemaVersion")))) return null;
             var workspaces = root.get("workspaces");
             if (!(workspaces instanceof Map<?, ?> entries)) return null;
             var record = entries.get(key);
             if (!(record instanceof Map<?, ?> fields)) return null;
+            if ("revoked".equals(fields.get("state"))) {
+                return new RecordEntry(true, null);
+            }
             var fingerprint = fields.get("fingerprint");
-            return fingerprint instanceof String value ? value : null;
+            return fingerprint instanceof String value ? new RecordEntry(false, value) : null;
         } catch (IOException | RuntimeException e) {
             LOGGER.warn("ignoring unreadable workspace trust file {}: {}", trustFile, e.getMessage());
             return null;
-        }
-    }
-
-    /** Read-modify-write of one record; concurrent writers are rare (boot-time migration only). */
-    @SuppressWarnings("unchecked")
-    private static void writeRecord(Path trustFile, String key, String fingerprint) {
-        synchronized (WRITE_LOCK) {
-            try {
-                Map<String, Object> root;
-                if (Files.isRegularFile(trustFile)) {
-                    root = MAPPER.readValue(trustFile.toFile(), Map.class);
-                } else {
-                    root = new LinkedHashMap<>();
-                }
-                if (!TRUST_SCHEMA_VERSION.equals(String.valueOf(root.get("schemaVersion")))) {
-                    root = new LinkedHashMap<>();
-                    root.put("schemaVersion", TRUST_SCHEMA_VERSION);
-                }
-                Map<String, Object> workspaces;
-                if (root.get("workspaces") instanceof Map<?, ?> existing) {
-                    workspaces = new LinkedHashMap<>((Map<String, Object>) existing);
-                } else {
-                    workspaces = new LinkedHashMap<>();
-                }
-                var record = new LinkedHashMap<String, Object>();
-                record.put("fingerprint", fingerprint);
-                record.put("trustedAt", Instant.now().toString());
-                workspaces.put(key, record);
-                root.put("workspaces", workspaces);
-                var parent = trustFile.toAbsolutePath().getParent();
-                if (parent != null) Files.createDirectories(parent);
-                var temp = trustFile.resolveSibling(TRUST_FILE_NAME + ".tmp-" + ProcessHandle.current().pid());
-                Files.writeString(temp, MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n",
-                        StandardCharsets.UTF_8);
-                moveIntoPlace(temp, trustFile);
-            } catch (IOException | RuntimeException e) {
-                LOGGER.warn("failed to persist the migrated workspace trust record: {}", e.getMessage());
-            }
-        }
-    }
-
-    private static void moveIntoPlace(Path temp, Path trustFile) throws IOException {
-        try {
-            Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException e) {
-            Files.move(temp, trustFile, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -272,11 +224,19 @@ public final class WorkspaceTrust {
         RESTRICTED
     }
 
+    public record Migration(String legacyKey, String legacyFingerprint,
+                            String desktopKey, String desktopFingerprint) {
+    }
+
     public record Evaluation(State state, String key, String workspaceKey, String fingerprint,
-                             boolean hasExecutableInputs, String reason) {
+                             boolean hasExecutableInputs, String reason,
+                             boolean migratedFromLegacy, Migration migration) {
         public boolean trusted() {
             return state == State.TRUSTED;
         }
+    }
+
+    record RecordEntry(boolean revoked, String fingerprint) {
     }
 
     record Snapshot(String fingerprint, boolean hasExecutableInputs) {

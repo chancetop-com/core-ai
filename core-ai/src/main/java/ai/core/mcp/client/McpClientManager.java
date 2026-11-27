@@ -69,6 +69,7 @@ public class McpClientManager implements AutoCloseable {
     private final Map<String, List<McpSchema.Tool>> toolSnapshots = new ConcurrentHashMap<>();
     private final Map<String, ToolConflict> toolConflicts = new ConcurrentHashMap<>();
     private final Map<String, String> invalidToolNames = new ConcurrentHashMap<>();
+    private final Map<String, McpLogSanitizer.ErrorSummary> lastErrors = new ConcurrentHashMap<>();
     private final List<ConnectionStateListener> listeners = new CopyOnWriteArrayList<>();
     private final Object connectionMonitorLock = new Object();
     private volatile boolean snapshotMode;
@@ -115,6 +116,7 @@ public class McpClientManager implements AutoCloseable {
         configs.remove(serverName);
         states.remove(serverName);
         locks.remove(serverName);
+        lastErrors.remove(serverName);
         LOGGER.debug("Removed MCP server: {}", serverName);
     }
 
@@ -174,7 +176,7 @@ public class McpClientManager implements AutoCloseable {
             try {
                 getClient(serverName);
             } catch (Exception e) {
-                LOGGER.warn("Failed to warmup client: {}", serverName, e);
+                LOGGER.warn("Failed to warmup client: {} ({})", serverName, McpLogSanitizer.classifyError(e).code());
             }
         });
         LOGGER.debug("MCP clients warmup completed");
@@ -197,7 +199,7 @@ public class McpClientManager implements AutoCloseable {
                     getClient(serverName);
                     refreshSnapshot(serverName);
                 } catch (Exception e) {
-                    LOGGER.warn("Failed to warmup client: {}", serverName, e);
+                    LOGGER.warn("Failed to warmup client: {} ({})", serverName, McpLogSanitizer.classifyError(e).code());
                 }
             }
             boolean anyHeartbeatEnabled = configs.values().stream().anyMatch(McpServerConfig::isEnableHeartbeat);
@@ -220,7 +222,8 @@ public class McpClientManager implements AutoCloseable {
             try {
                 refreshSnapshot(serverName);
             } catch (Exception e) {
-                LOGGER.debug("Failed to refresh MCP tool snapshot for {}: {}", serverName, e.getMessage());
+                LOGGER.debug("Failed to refresh MCP tool snapshot for {}: {}",
+                        serverName, McpLogSanitizer.classifyError(e).code());
             }
         });
     }
@@ -254,6 +257,10 @@ public class McpClientManager implements AutoCloseable {
 
     public Map<String, String> invalidToolNames() {
         return Map.copyOf(invalidToolNames);
+    }
+
+    public McpLogSanitizer.ErrorSummary lastError(String serverName) {
+        return lastErrors.get(serverName);
     }
 
     private ExecutorService executor() {
@@ -313,7 +320,8 @@ public class McpClientManager implements AutoCloseable {
         try {
             return getClient(serverName).listTools(namespaces);
         } catch (McpClientException first) {
-            LOGGER.warn("MCP listTools failed for {}, sync reconnect once: {}", serverName, first.getMessage());
+            LOGGER.warn("MCP listTools failed for {}, sync reconnect once: {}",
+                    serverName, McpLogSanitizer.sanitizeText(first.getMessage()));
             handleDisconnection(serverName);
             if (!reconnectNow(serverName)) {
                 throw first;
@@ -327,17 +335,17 @@ public class McpClientManager implements AutoCloseable {
         try {
             return getClient(serverName).callToolWithResult(name, text);
         } catch (McpClientException e) {
-            LOGGER.warn("MCP callTool failed for {}/{}, scheduling reconnect: {}", serverName, name, e.getMessage());
+            var safeMessage = McpLogSanitizer.sanitizeText(e.getMessage());
+            LOGGER.warn("MCP callTool failed for {}/{}, scheduling reconnect: {}", serverName, name, safeMessage);
             if (clients.containsKey(serverName)) {
                 handleDisconnection(serverName);
                 getConnectionMonitor().scheduleReconnect(serverName);
             }
-            return ToolCallResult.failed("MCP server " + serverName + " unavailable: " + e.getMessage());
+            return ToolCallResult.failed("MCP server " + serverName + " unavailable: " + safeMessage);
         } catch (Exception e) {
-            // Application-level error (e.g., HTTP 405 from MCP server, invalid tool name) —
-            // do NOT trigger reconnection, just return the failure result
-            LOGGER.warn("MCP callTool failed for {}/{}: {}", serverName, name, e.getMessage());
-            return ToolCallResult.failed("MCP tool call failed: " + e.getMessage());
+            var safeMessage = McpLogSanitizer.sanitizeText(e.getMessage());
+            LOGGER.warn("MCP callTool failed for {}/{}: {}", serverName, name, safeMessage);
+            return ToolCallResult.failed("MCP tool call failed: " + safeMessage);
         }
     }
 
@@ -348,15 +356,16 @@ public class McpClientManager implements AutoCloseable {
             updateState(serverName, ConnectionState.CONNECTING);
             var client = new McpClientService(config);
             clients.put(serverName, client);
+            lastErrors.remove(serverName);
             updateState(serverName, ConnectionState.CONNECTED);
             if (snapshotMode) refreshSnapshotAsync(serverName);
             return true;
         } catch (Exception e) {
-            LOGGER.warn("Sync reconnect failed for server {}: {}", serverName, e.getMessage());
+            var summary = McpLogSanitizer.classifyError(e);
+            lastErrors.put(serverName, summary);
+            LOGGER.warn("Sync reconnect failed for server {}: {}", serverName, summary.code());
             updateState(serverName, ConnectionState.FAILED);
 
-            // Check if this is an authentication/permission error — retrying will never succeed,
-            // so mark the server as permanently failed to prevent reconnect storms.
             if (isAuthError(e)) {
                 getConnectionMonitor().markPermanentlyFailed(serverName);
                 LOGGER.error("Permanent failure for server {}: reconnection stopped due to authentication error. Check the MCP server configuration (credentials, session ID, etc.).", serverName);
@@ -479,14 +488,14 @@ public class McpClientManager implements AutoCloseable {
         try {
             var client = new McpClientService(config);
             clients.put(serverName, client);
+            lastErrors.remove(serverName);
             updateState(serverName, ConnectionState.CONNECTED);
             getConnectionMonitor().resetReconnectAttempts(serverName);
             LOGGER.debug("Created MCP client: {}, transport: {}", serverName, config.getTransportType());
             return client;
         } catch (Exception e) {
+            lastErrors.put(serverName, McpLogSanitizer.classifyError(e));
             updateState(serverName, ConnectionState.FAILED);
-            // hand initial failure off to ConnectionMonitor so future retries follow exponential backoff
-            // instead of the caller (e.g. scheduled job) hammering createClient every fixed interval
             if (!closed && config.isAutoReconnect()) {
                 scheduleReconnectSafely(serverName);
             }

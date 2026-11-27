@@ -411,6 +411,9 @@ interface McpListResult {
   hash?: string;
   supported?: boolean;
   pendingReload?: boolean;
+  reloadState?: string;
+  desiredRevision?: number;
+  appliedRevision?: number;
   error?: string;
 }
 interface McpSaveRequest {
@@ -425,7 +428,9 @@ interface McpSaveRequest {
 }
 interface McpMutationResult {
   ok: boolean;
+  revision?: number;
   pending?: boolean;
+  reloadState?: string;
   error?: string;
 }
 interface McpStatusResult {
@@ -467,7 +472,7 @@ interface CoreAiBridge {
   mcpSetEnabled(workspace: string, id: string, enabled: boolean): Promise<McpMutationResult>;
   mcpRemove(workspace: string, id: string): Promise<McpMutationResult>;
   mcpStatus(workspace: string): Promise<{ ok: boolean; status?: McpStatusResult; error?: string }>;
-  mcpTest(workspace: string, name: string): Promise<{ ok: boolean; result?: McpProbeResult; error?: string }>;
+  mcpTest(workspace: string, name: string, targetRevision?: number): Promise<{ ok: boolean; result?: McpProbeResult; error?: string }>;
   mcpImportPreview(workspace: string): Promise<{ ok: boolean; sources?: McpImportSource[]; error?: string }>;
   mcpImport(workspace: string, request: { servers: Array<{ name: string; config: Record<string, unknown> }>; mode: 'skip' | 'replace' | 'rename' }): Promise<{ ok: boolean; imported?: string[]; skipped?: string[]; renamed?: string[]; pending?: boolean; error?: string }>;
   authStatus(): Promise<AuthStatus>;
@@ -484,7 +489,7 @@ interface CoreAiBridge {
   providerTest(payload: Record<string, unknown>): Promise<ProviderProbeResult>;
   providerDiscover(payload: Record<string, unknown>): Promise<ProviderProbeResult>;
   providerReset(): Promise<ProviderSaveResult>;
-  onEngineReloaded(callback: (payload: { workspace?: string }) => void): () => void;
+  onEngineReloaded(callback: (payload: { workspace?: string; revision?: number }) => void): () => void;
   restartEngine(workspace: string): Promise<void>;
   engineCapabilities(workspace: string): Promise<string[]>;
   pickAttachments(): Promise<{ paths: string[] }>;
@@ -7877,7 +7882,16 @@ async function renderSettingsPanel(): Promise<HTMLElement> {
 
 function mcpTransportLabel(config: Record<string, unknown>): string {
   if (typeof config.command === 'string' && config.command) return `stdio · ${config.command}`;
-  if (typeof config.url === 'string' && config.url) return `http · ${config.url}`;
+  if (typeof config.url === 'string' && config.url) {
+    try {
+      const parsed = new URL(config.url.trim());
+      const port = parsed.port ? `:${parsed.port}` : '';
+      return `http · ${parsed.protocol}//${parsed.hostname}${port}${parsed.pathname}`;
+    } catch {
+      const stripped = config.url.replace(/(https?:\/\/)[^/@\s]+@/g, '$1').replace(/[?#].*$/, '');
+      return `http · ${stripped}`;
+    }
+  }
   return 'no transport';
 }
 

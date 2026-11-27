@@ -4,11 +4,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -126,20 +129,90 @@ class WorkspaceTrustTest {
     }
 
     @Test
-    void desktopModeReusesAMatchingLegacyRecordOnce() throws IOException {
+    void desktopModeReportsLegacyMigrationWithoutWritingTrustFile() throws IOException {
         var workspace = workspace();
         var hooks = workspace.resolve(".core-ai/hooks.json");
+        var mcp = workspace.resolve(".core-ai/MCP.json");
         Files.createDirectories(hooks.getParent());
         Files.writeString(hooks, "{\"hooks\":{}}");
+        Files.writeString(mcp, "{\"mcpServers\":{}}");
         var cli = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.CLI);
         writeTrust(workspace, cli.fingerprint());
+        var beforeBytes = Files.readAllBytes(trustFile());
+        var beforeMtime = Files.getLastModifiedTime(trustFile());
 
         var migrated = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.DESKTOP_MCP);
         assertEquals(WorkspaceTrust.State.TRUSTED, migrated.state());
         assertEquals("migrated_from_cli_record", migrated.reason());
+        assertTrue(migrated.migratedFromLegacy());
+        assertNotNull(migrated.migration());
+        assertEquals(WorkspaceTrust.canonicalKey(workspace), migrated.migration().legacyKey());
+        assertEquals(cli.fingerprint(), migrated.migration().legacyFingerprint());
+        assertEquals(WorkspaceTrust.canonicalKey(workspace) + "#desktop-mcp", migrated.migration().desktopKey());
+        assertEquals(migrated.fingerprint(), migrated.migration().desktopFingerprint());
+        assertArrayEquals(beforeBytes, Files.readAllBytes(trustFile()));
+        assertEquals(beforeMtime, Files.getLastModifiedTime(trustFile()));
 
-        var afterMigration = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.DESKTOP_MCP);
-        assertEquals(WorkspaceTrust.State.TRUSTED, afterMigration.state());
-        assertNull(afterMigration.reason());
+        var v2Json = """
+                {
+                  "schemaVersion": 2,
+                  "workspaces": {
+                    "%s": {"fingerprint": "%s", "trustedAt": "2026-11-17T00:00:00Z"},
+                    "%s": {"fingerprint": "%s", "trustedAt": "2026-11-27T00:00:00Z"}
+                  }
+                }
+                """.formatted(
+                WorkspaceTrust.canonicalKey(workspace).replace("\\", "\\\\"), cli.fingerprint(),
+                migrated.key().replace("\\", "\\\\"), migrated.fingerprint());
+        Files.writeString(trustFile(), v2Json, StandardCharsets.UTF_8);
+
+        var afterDesktopWrite = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.DESKTOP_MCP);
+        assertEquals(WorkspaceTrust.State.TRUSTED, afterDesktopWrite.state());
+        assertNull(afterDesktopWrite.reason());
+        assertFalse(afterDesktopWrite.migratedFromLegacy());
+        assertNull(afterDesktopWrite.migration());
+    }
+
+    @Test
+    void revokedTombstoneBlocksLegacyMigrationAndOverridesEmptyWorkspace() throws IOException {
+        var workspace = workspace();
+        var hooks = workspace.resolve(".core-ai/hooks.json");
+        var mcp = workspace.resolve(".core-ai/MCP.json");
+        Files.createDirectories(hooks.getParent());
+        Files.writeString(hooks, "{\"hooks\":{}}");
+        Files.writeString(mcp, "{\"mcpServers\":{}}");
+        var cli = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.CLI);
+        var desktopKey = WorkspaceTrust.canonicalKey(workspace) + "#desktop-mcp";
+        Files.createDirectories(trustFile().getParent());
+        var v2Json = """
+                {
+                  "schemaVersion": 2,
+                  "workspaces": {
+                    "%s": {"fingerprint": "%s", "trustedAt": "2026-11-17T00:00:00Z"},
+                    "%s": {"state": "revoked", "revokedAt": "2026-11-27T00:00:00Z"}
+                  }
+                }
+                """.formatted(
+                WorkspaceTrust.canonicalKey(workspace).replace("\\", "\\\\"), cli.fingerprint(),
+                desktopKey.replace("\\", "\\\\"));
+        Files.writeString(trustFile(), v2Json, StandardCharsets.UTF_8);
+        var beforeBytes = Files.readAllBytes(trustFile());
+
+        var revoked = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.DESKTOP_MCP);
+        assertEquals(WorkspaceTrust.State.RESTRICTED, revoked.state());
+        assertEquals("trust_revoked", revoked.reason());
+        assertFalse(revoked.migratedFromLegacy());
+        assertNull(revoked.migration());
+        assertArrayEquals(beforeBytes, Files.readAllBytes(trustFile()));
+
+        var cliEval = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.CLI);
+        assertEquals(WorkspaceTrust.State.TRUSTED, cliEval.state());
+
+        Files.delete(hooks);
+        Files.delete(mcp);
+        var revokedEmpty = WorkspaceTrust.evaluate(workspace, trustFile(), WorkspaceTrust.Mode.DESKTOP_MCP);
+        assertEquals(WorkspaceTrust.State.RESTRICTED, revokedEmpty.state());
+        assertEquals("trust_revoked", revokedEmpty.reason());
+        assertFalse(revokedEmpty.hasExecutableInputs());
     }
 }

@@ -56,6 +56,7 @@ import {
 import { BuiltinSkills } from './skills/BuiltinSkills';
 import { browserUseStatus, installBrowserUse, installOcg, isNewerVersion, latestCuaVersion, ocgStatus, resolveExecutable, runOcg, withExecutableOnPath } from './skills/RuntimeTools';
 import { EngineSupervisor } from './engine/EngineSupervisor';
+import { McpLogRedactor } from './mcp/mcpSanitizer';
 import { McpService } from './mcp/mcpService';
 import { McpStore } from './mcp/mcpStore';
 import { previewImports } from './mcp/mcpImport';
@@ -114,6 +115,7 @@ let pluginHost: PluginHost | null = null;
 let pluginPageHost: PluginPageHost | null = null;
 let workspaceTrustStore: WorkspaceTrustStore | null = null;
 let mcpService: McpService | null = null;
+const mcpRedactor = new McpLogRedactor();
 let browserManager: BrowserManager | null = null;
 let cuaManager: CuaManager | null = null;
 let builtinSkills: BuiltinSkills | null = null;
@@ -476,23 +478,24 @@ async function applyProviderReload(workspace: string): Promise<boolean> {
   providerReloadInFlight.add(workspace);
   try {
     if (!supervisor) return false;
-    // The engine's intake/scheduler pause is authoritative; the desktop's turn tracking is only a
-    // hint. A busy engine keeps the change pending and is retried when its last turn ends.
-    const quiesce = await supervisor.quiesce(workspace, 3_000);
-    if (quiesce === 'busy') {
-      providerPendingReload.add(workspace);
-      return false;
-    }
-    try {
-      await supervisor.restart(workspace);
-    } catch {
-      if (quiesce === 'ok') await supervisor.resumeIntake(workspace);
-      providerPendingReload.add(workspace);
-      return false;
-    }
-    providerPendingReload.delete(workspace);
-    send('engine:reloaded', { workspace });
-    return true;
+    return await supervisor.withLifecycleLock(workspace, async () => {
+      if (!supervisor) return false;
+      const quiesce = await supervisor.quiesce(workspace, 3_000);
+      if (quiesce.status === 'busy') {
+        providerPendingReload.add(workspace);
+        return false;
+      }
+      try {
+        await supervisor.restart(workspace);
+      } catch {
+        if (quiesce.status === 'idle') await supervisor.resumeIntake(workspace);
+        providerPendingReload.add(workspace);
+        return false;
+      }
+      providerPendingReload.delete(workspace);
+      send('engine:reloaded', { workspace });
+      return true;
+    });
   } finally {
     providerReloadInFlight.delete(workspace);
   }
@@ -1065,15 +1068,51 @@ function registerIpc(): void {
       return { ok: false, error: 'workspace trust is not available' };
     }
     if (!isKnownWorkspace(workspace)) return { ok: false, error: 'unknown workspace' };
+    const activeSupervisor = supervisor;
+    const trustStore = workspaceTrustStore;
     try {
-      const current = await supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask');
-      if (!current) return { ok: false, error: 'the engine did not report a trust state' };
-      if (trusted) await workspaceTrustStore.trust(current.key, current.fingerprint);
-      else await workspaceTrustStore.revoke(current.key);
-      // The running engine keeps the mode it booted with; a new engine re-evaluates the record.
-      await supervisor.restart(workspace);
-      const next = await supervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask').catch(() => null);
-      return { ok: true, trust: next };
+      return await activeSupervisor.withLifecycleLock(workspace, async () => {
+        const wasRunning = activeSupervisor.isRunning(workspace);
+        if (wasRunning) {
+          const quiesce = await activeSupervisor.quiesce(workspace, 3_000);
+          if (quiesce.status === 'busy') {
+            return { ok: false, error: 'Cannot change workspace trust while a turn is running' };
+          }
+        }
+        if (!trusted) {
+          const existingKey = activeSupervisor.trustState(workspace)?.key;
+          const desktopMode = existingKey
+            ? existingKey.endsWith('#desktop-mcp')
+            : await desktopMcpSupported(resolveEnginePath());
+          const revokeKey = existingKey ?? (desktopMode
+            ? `${canonicalWorkspaceKey(workspace)}#desktop-mcp`
+            : canonicalWorkspaceKey(workspace));
+          try {
+            await trustStore.revoke(revokeKey);
+          } catch (error) {
+            if (wasRunning) await activeSupervisor.resumeIntake(workspace);
+            throw error;
+          }
+          // Dispose immediately so MCP child processes stop now; do not respawn a trusted engine.
+          await activeSupervisor.restart(workspace);
+          return { ok: true, trust: null };
+        }
+        const current = activeSupervisor.trustState(workspace)
+          ?? await activeSupervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask');
+        if (!current) {
+          if (wasRunning) await activeSupervisor.resumeIntake(workspace);
+          return { ok: false, error: 'the engine did not report a trust state' };
+        }
+        try {
+          await trustStore.trust(current.key, current.fingerprint);
+        } catch (error) {
+          if (wasRunning) await activeSupervisor.resumeIntake(workspace);
+          throw error;
+        }
+        await activeSupervisor.restart(workspace);
+        const next = await activeSupervisor.ensureTrustState(workspace, settings.approvalPolicy ?? 'ask').catch(() => null);
+        return { ok: true, trust: next };
+      });
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -1130,12 +1169,13 @@ function registerIpc(): void {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
-  ipcMain.handle('mcp:test', async (event, workspace: string, name: string) => {
+  ipcMain.handle('mcp:test', async (event, workspace: string, name: string, targetRevision?: number) => {
     if (!isMainFrameSender(event) || !mcpService || !isKnownWorkspace(workspace)) {
       return { ok: false, error: 'MCP settings are only available from the app window' };
     }
     try {
-      return { ok: true, result: await mcpService.test(workspace, String(name ?? '')) };
+      const revision = typeof targetRevision === 'number' && Number.isFinite(targetRevision) ? targetRevision : undefined;
+      return { ok: true, result: await mcpService.test(workspace, String(name ?? ''), revision) };
     } catch (error) {
       return { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
@@ -1975,10 +2015,31 @@ else {
     setTimeout(() => {
       void syncBundledCli().catch((error: Error) => console.error(`[cli] sync failed: ${error.message}`));
     }, CLI_SYNC_DELAY_MS);
+    const mcpStore = new McpStore(path.join(app.getPath('userData'), 'mcp'));
     supervisor = new EngineSupervisor({
       enginePath: resolveEnginePath(),
       clientVersion,
       desktopMcp: () => desktopMcpSupported(resolveEnginePath()),
+      onTrustState: async (_workspace, trustState) => {
+        if (trustState.migratedFromLegacy && trustState.migration) {
+          await workspaceTrustStore?.applyMigration(trustState.migration);
+        }
+      },
+      mcpConfigProvider: async (_workspace, workspaceKey) => {
+        const { servers } = await mcpStore.list(workspaceKey);
+        const enabled = servers.filter((server) => server.enabled);
+        const payload: Array<{ name: string; config: Record<string, unknown> }> = [];
+        const secrets: Record<string, Record<string, string>> = {};
+        for (const server of enabled) {
+          payload.push({ name: server.name, config: server.config });
+          const values = await mcpStore.serverSecrets(workspaceKey, server.id);
+          if (Object.keys(values).length > 0) {
+            secrets[server.name] = values;
+          }
+        }
+        mcpRedactor.registerSecretMap(secrets);
+        return { servers: payload, secrets };
+      },
       extraEnv: async (workspace: string) => {
         const enginePath = resolveEnginePath();
         let env: Record<string, string> = {
@@ -2009,28 +2070,33 @@ else {
         send('engine:event', { workspace, method, params });
       },
       onLog: (workspace, line) => {
-        console.error(`[engine ${workspace}] ${line}`);
-        send('engine:log', { workspace, line });
-      },
-      onReady: (workspace) => {
-        // Deferred: the handshake promise is still pending, so an engine RPC from here would deadlock.
-        setTimeout(() => { void mcpService?.syncWorkspace(workspace); }, 0);
+        const safeLine = mcpRedactor.redact(line);
+        console.error(`[engine ${workspace}] ${safeLine}`);
+        send('engine:log', { workspace, line: safeLine });
       },
     });
     mcpService = new McpService(
-      new McpStore(path.join(app.getPath('userData'), 'mcp')),
+      mcpStore,
       supervisor,
       (workspace) => supervisor?.trustState(workspace)?.workspaceKey ?? canonicalWorkspaceKey(workspace),
       () => settings.approvalPolicy ?? 'ask',
       (workspace, line) => {
-        console.log(`[mcp ${workspace}] ${line}`);
-        send('engine:log', { workspace, line });
+        const safeLine = mcpRedactor.redact(line);
+        console.log(`[mcp ${workspace}] ${safeLine}`);
+        send('engine:log', { workspace, line: safeLine });
+      },
+      {
+        runningSessionCount: (workspace) => {
+          const target = supervisor?.normalizeWorkspace(workspace) ?? workspace;
+          for (const [ws, sessions] of providerRunningSessions.entries()) {
+            if ((supervisor?.normalizeWorkspace(ws) ?? ws) === target) return sessions.size;
+          }
+          return 0;
+        },
+        onReloaded: (workspace, revision) => send('engine:reloaded', { workspace, revision }),
+        onSecretsSaved: (secrets) => mcpRedactor.register(Object.values(secrets)),
       },
     );
-    // An engine may have become ready before the service existed; push its saved configuration now.
-    for (const workspace of supervisor.runningWorkspaces()) {
-      setTimeout(() => { void mcpService?.syncWorkspace(workspace); }, 0);
-    }
     pluginPageHost = new PluginPageHost({
       pluginHost: () => pluginHost,
       supervisor: () => supervisor,
@@ -2170,6 +2236,7 @@ else {
     if (quitting || !supervisor) return;
     event.preventDefault();
     quitting = true;
+    mcpService?.notifyShutdown();
     void browserManager?.stop();
     scheduleWaker?.stop();
     channelBridge?.stop();
