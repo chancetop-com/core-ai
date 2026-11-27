@@ -342,15 +342,9 @@ public class ShellCommandTool extends ToolCall {
                     ? number.longValue()
                     : DEFAULT_TIMEOUT_MILLISECONDS;
             long requestedTimeout = timeMilliseconds;
-            var budget = context.getRunBudget();
-            if (budget != null) {
-                var decision = budget.admitToolCall(budgetProfile(text, context), timeMilliseconds);
-                if (!decision.allowed()) {
-                    return ToolCallResult.failed(decision.reason())
-                            .withDuration(System.currentTimeMillis() - startTime);
-                }
-                timeMilliseconds = decision.effectiveTimeoutMs();
-            }
+            var admission = ShellToolSupport.admit(context.getRunBudget(), budgetProfile(text, context), timeMilliseconds);
+            if (!admission.accepted()) return ToolCallResult.failed(admission.reason()).withDuration(System.currentTimeMillis() - startTime);
+            timeMilliseconds = admission.timeoutMs();
             var timeoutSeconds = Math.max(1, (int) (timeMilliseconds / 1000));
             var runInBackground = Boolean.TRUE.equals(argsMap.get("run_in_background"));
             var workspaceDir = context.getCustomVariable("workspace") == null ? getStringValue(argsMap, "workspace") : (String) context.getCustomVariable("workspace");
@@ -366,11 +360,11 @@ public class ShellCommandTool extends ToolCall {
                 var notify = !Boolean.FALSE.equals(argsMap.get("notify"));
                 var handle = taskManager.submit(taskId, () -> exec(commands, workspaceDir, timeoutSeconds, null, processEnvironment), context.getCancellationToken(), null, notify);
                 taskManager.register(new Task(taskId, description, context.getTaskId(), handle.future(), context));
-                return withTimeoutNotice(ToolCallResult.asyncLaunched(taskId,
-                                buildAsyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
+                return ShellToolSupport.withTimeoutNotice(ToolCallResult.asyncLaunched(taskId,
+                                ShellToolSupport.asyncLaunchedNotificationXml(taskId, handle.outputRef(), description, notify))
                         .withDuration(System.currentTimeMillis() - startTime), requestedTimeout, timeMilliseconds);
             } else {
-                var result = withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk, processEnvironment))
+                var result = ShellToolSupport.withTimeoutNotice(ToolCallResult.completed(exec(commands, workspaceDir, timeoutSeconds, onChunk, processEnvironment))
                         .withDuration(System.currentTimeMillis() - startTime)
                         .withStats("command", command != null ? (command.length() > 50 ? command.substring(0, 50) + "..." : command) : null),
                         requestedTimeout, timeMilliseconds);
@@ -385,21 +379,6 @@ public class ShellCommandTool extends ToolCall {
             return ToolCallResult.failed(error, e)
                     .withDuration(System.currentTimeMillis() - startTime);
         }
-    }
-
-    private ToolCallResult withTimeoutNotice(ToolCallResult result, long requested, long effective) {
-        if (effective >= requested) return result;
-        return result.withStats("budget.timeout.requested_ms", requested)
-                .withStats("budget.timeout.effective_ms", effective);
-    }
-
-    private String buildAsyncLaunchedNotificationXml(String taskId, String outputRef, String description, boolean notify) {
-        var outputRefXml = outputRef != null ? "<output-ref>" + outputRef + "</output-ref>\n" : "";
-        var notification = notify
-                ? "You will be notified automatically when it completes."
-                : "Completion notification is disabled (notify=false); poll it with " + AsyncTaskOutputTool.TOOL_NAME + " if you need the result.";
-        var reminder = "  Async bash launched successfully.%n  The bash packaged as a task is working in the background. %s%n  task id: %s (internal ID - do not mention to user)%n  If your next step depends on this command's result, call %s with action='wait' and task_id=%s before answering; wait returns the result in this turn and suppresses the completion notification.%n  Do not duplicate this task's work — avoid working with the same files or topics it is using. Work on non-overlapping tasks, or briefly tell the user what you launched and end%n  your response.%n  output_file: %s%n  If asked, you can check progress before completion by using %s or %s tail on the output file.%n".formatted(notification, taskId, AsyncTaskOutputTool.TOOL_NAME, taskId, outputRef, ReadFileTool.TOOL_NAME, TOOL_NAME);
-        return "<task-notification>%n<task-id>%s</task-id>%n<task-type>%s</task-type>%n<task-description>%s</task-description>%n<status>%s</status>%n%s%n<system-reminder>%s</system-reminder>%n</task-notification>%n".formatted(taskId, "bash", description, "async_launched", outputRefXml, reminder);
     }
 
     @Override

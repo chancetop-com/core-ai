@@ -149,7 +149,7 @@ public class AsyncTaskOutputTool extends ToolCall implements RuntimeWaitTool {
             if (System.currentTimeMillis() >= deadline) {
                 return ToolCallResult.failed("WAIT_TIMEOUT: task " + taskId
                         + " is still running after " + (timeoutMs > 0 ? timeoutMs + "ms" : "the run time budget"))
-                        .withStats("waitTimeout", true);
+                        .withStats("waitTimeout", Boolean.TRUE);
             }
             try {
                 Thread.sleep(1_000);

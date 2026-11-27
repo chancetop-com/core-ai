@@ -11,6 +11,9 @@
     <suppress checks="FileLengthCheck" files="Node\.java"/>
     <suppress checks="FileLengthCheck" files="InProcessAgentSession\.java"/>
     <suppress checks="FileLengthCheck" files="TaskRunCoordinator\.java"/>
+    <!-- connection lifecycle plus the desktop snapshot surface; split is tracked, not urgent enough to
+         reshape a class that is hot on every tool listing -->
+    <suppress checks="FileLengthCheck" files="McpClientManager\.java"/>
     <suppress checks="MethodLength|ExecutableStatementCount" files="InProcessAgentSession\.java" lines="139"/>
     <suppress checks="InnerTypeLast|CustomDeclarationOrder" files="SessionLock\.java"/>
     <suppress checks="InnerTypeLast|CustomDeclarationOrder" files="AtomicFiles\.java"/>

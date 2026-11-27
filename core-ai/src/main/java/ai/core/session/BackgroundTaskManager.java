@@ -193,8 +193,8 @@ public class BackgroundTaskManager {
             var scope = otelContext.makeCurrent();
             try {
                 var runResult = runAgentWithSink(agentRunner, sink, taskId);
-                LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status);
-                notifyTerminal(taskId, runResult.status, runResult.result, runResult.error, running);
+                LOGGER.debug("background task finished, taskId={}, status={}", taskId, runResult.status());
+                notifyTerminal(taskId, runResult.status(), runResult.result(), runResult.error(), running);
             } finally {
                 scope.close();
             }
@@ -330,7 +330,7 @@ public class BackgroundTaskManager {
     public void markOutputRead(String path) {
         if (path == null || path.isBlank()) return;
         terminalTasks.forEach((taskId, task) -> {
-            if (task.outputRef != null && TaskNotificationText.samePath(task.outputRef, path)) consumedTasks.mark(taskId);
+            if (task.outputRef() != null && TaskNotificationText.samePath(task.outputRef(), path)) consumedTasks.mark(taskId);
         });
     }
 
@@ -345,7 +345,7 @@ public class BackgroundTaskManager {
     private void trimTerminalTasks() {
         while (terminalTasks.size() > MAX_TERMINAL_TASKS) {
             terminalTasks.entrySet().stream()
-                    .min(Comparator.comparingLong(entry -> entry.getValue().completedAtMs))
+                    .min(Comparator.comparingLong(entry -> entry.getValue().completedAtMs()))
                     // Notification suppression and consumption are generation tombstones and deliberately
                     // outlive the terminal result, so an already-queued notification cannot resurrect.
                     .ifPresent(entry -> terminalTasks.remove(entry.getKey()));
@@ -445,26 +445,6 @@ public class BackgroundTaskManager {
             this.onNeverStarted = onNeverStarted;
             this.notify = notify;
             this.completion = completion;
-        }
-    }
-
-    private record TaskRunResult(String status, String result, String error) {
-    }
-
-    private record SharedTaskState(Map<String, TerminalTask> terminalTasks, ConsumedTasks consumedTasks,
-                                   TaskCompletionRegistry completions, TaskRunCoordinator taskRuns,
-                                   AtomicInteger activeTaskCount) {
-    }
-
-    private record TerminalTask(String status, String result, String error, String outputRef, long completedAtMs) {
-        private TerminalTask(String status, String result, String error, String outputRef) {
-            this(status, result, error, outputRef, System.currentTimeMillis());
-        }
-
-        private ToolCallResult toResult() {
-            return "completed".equals(status)
-                    ? ToolCallResult.completed(result != null ? result : "")
-                    : ToolCallResult.failed(error != null ? error : status);
         }
     }
 }
