@@ -4,15 +4,20 @@ import ai.core.api.server.skill.CreateSkillQualityRuleRequest;
 import ai.core.decision.DecisionAnswer;
 import ai.core.decision.DecisionRoute;
 import ai.core.decision.DecisionType;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.domain.User;
+import ai.core.server.quality.QualityDecisionException;
 import ai.core.server.quality.QualityDecisionGateway;
 import ai.core.server.quality.ValidatedDecision;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityGateResult;
+import ai.core.server.quality.domain.QualityIssueStatus;
+import ai.core.server.skill.quality.domain.SkillQualityPolicyRevision;
 import ai.core.server.user.UserStore;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -75,14 +80,14 @@ class SkillQualityPolicyGateTest {
 
     @Test
     void passingCustomRuleUsesTheActivePolicyRevision() {
-        activate(QualityEnforcement.BLOCK);
+        var activated = activate(QualityEnforcement.BLOCK);
         when(decisions.decide(any(), any(), anyList(), any(), any()))
             .thenReturn(decision(0.92));
 
         var result = gate.evaluate(candidate());
 
         assertThat(result.gateResult()).isEqualTo(QualityGateResult.PASSED);
-        assertThat(result.policyRevision()).isEqualTo(2);
+        assertThat(result.policyRevision()).isEqualTo(activated.revision);
         assertThat(result.issues()).isEmpty();
     }
 
@@ -97,7 +102,7 @@ class SkillQualityPolicyGateTest {
         assertThat(result.gateResult()).as(result.issues().toString()).isEqualTo(QualityGateResult.REJECTED);
         assertThat(result.issues()).anySatisfy(issue -> {
             assertThat(issue.ruleId).isEqualTo("SKILL.CUSTOM.WORKFLOW");
-            assertThat(issue.status).isEqualTo(ai.core.server.quality.domain.QualityIssueStatus.FAIL);
+            assertThat(issue.status).isEqualTo(QualityIssueStatus.FAIL);
             assertThat(issue.enforcement).isEqualTo(QualityEnforcement.BLOCK);
             assertThat(issue.message).isEqualTo("The workflow is too vague to execute.");
         });
@@ -117,17 +122,17 @@ class SkillQualityPolicyGateTest {
 
     @Test
     void whitelistedSkillSkipsRuleEvaluationByQualifiedName() {
-        activateExemptions(List.of("demo/demo-skill"));
+        var activated = activateExemptions(List.of("demo/demo-skill"));
 
         var result = gate.evaluate(candidate());
 
         assertThat(result.gateResult()).isEqualTo(QualityGateResult.PASSED);
         assertThat(result.exempted()).isTrue();
         assertThat(result.exemptionReason()).isEqualTo("quality exemption whitelist: demo/demo-skill");
-        assertThat(result.policyRevision()).isEqualTo(2);
+        assertThat(result.policyRevision()).isEqualTo(activated.revision);
         assertThat(result.issues()).isEmpty();
         assertThat(result.ruleResults()).isEmpty();
-        org.mockito.Mockito.verifyNoInteractions(decisions);
+        Mockito.verifyNoInteractions(decisions);
     }
 
     @Test
@@ -143,36 +148,36 @@ class SkillQualityPolicyGateTest {
     @Test
     void laterPolicyChangesKeepTheExemptions() {
         activateExemptions(List.of("demo/demo-skill"));
-        policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, customRuleId, 1,
-            QualityEnforcement.SHADOW, 2, "observe only", null, null, null), "admin-1");
+        policyService.createPolicy(SkillTier.SCOPE_DOMAIN, new SkillQualityPolicyService.ActivateCommand(
+            null, customRuleId, 1, QualityEnforcement.SHADOW, 2, "observe only", null, null, null), "admin-1");
 
-        assertThat(policyService.active().exemptions()).containsExactly("demo/demo-skill");
+        assertThat(policyService.active(SkillTier.SCOPE_DOMAIN).exemptions()).containsExactly("demo/demo-skill");
     }
 
     @Test
     void decisionErrorFailsClosed() {
         activate(QualityEnforcement.BLOCK);
         when(decisions.decide(any(), any(), anyList(), any(), any()))
-            .thenThrow(new ai.core.server.quality.QualityDecisionException(
-                ai.core.server.quality.QualityDecisionException.Kind.PROVIDER, "provider down", true, null));
+            .thenThrow(new QualityDecisionException(
+                QualityDecisionException.Kind.PROVIDER, "provider down", true, null));
 
         var result = gate.evaluate(candidate());
 
         assertThat(result.gateResult()).isEqualTo(QualityGateResult.UNAVAILABLE);
         assertThat(result.issues()).anySatisfy(issue -> {
             assertThat(issue.ruleId).isEqualTo("SKILL.CUSTOM.WORKFLOW");
-            assertThat(issue.status).isEqualTo(ai.core.server.quality.domain.QualityIssueStatus.ERROR);
+            assertThat(issue.status).isEqualTo(QualityIssueStatus.ERROR);
         });
     }
 
-    private void activate(QualityEnforcement enforcement) {
-        policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, customRuleId, 1,
-            enforcement, 1, "test policy", null, null, null), "admin-1");
+    private SkillQualityPolicyRevision activate(QualityEnforcement enforcement) {
+        return policyService.createPolicy(SkillTier.SCOPE_DOMAIN, new SkillQualityPolicyService.ActivateCommand(
+            null, customRuleId, 1, enforcement, 1, "test policy", null, null, null), "admin-1");
     }
 
-    private void activateExemptions(List<String> exemptions) {
-        policyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, null, null,
-            null, 1, "exemption whitelist", null, null, exemptions), "admin-1");
+    private SkillQualityPolicyRevision activateExemptions(List<String> exemptions) {
+        return policyService.createPolicy(SkillTier.SCOPE_DOMAIN, new SkillQualityPolicyService.ActivateCommand(
+            null, null, null, null, 1, "exemption whitelist", null, null, exemptions), "admin-1");
     }
 
     private ValidatedDecision decision(double probability) {

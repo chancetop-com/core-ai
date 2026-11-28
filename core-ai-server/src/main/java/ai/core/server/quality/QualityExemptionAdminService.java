@@ -13,7 +13,9 @@ import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.agent.AgentNameKey;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.SkillStore;
+import ai.core.server.skill.SkillTiers;
 import ai.core.server.skill.quality.SkillQualityPolicyService;
 import core.framework.inject.Inject;
 import core.framework.web.exception.BadRequestException;
@@ -21,6 +23,7 @@ import core.framework.web.exception.BadRequestException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -91,8 +94,9 @@ public class QualityExemptionAdminService {
         var response = new QualityExemptionListResponse();
         var agent = agentPolicyService.active();
         response.agent = group(agent.revision(), agent.generation(), agent.exemptions(), true);
-        var skill = skillPolicyService.active();
-        response.skill = group(skill.revision(), skill.generation(), skill.exemptions(), false);
+        var domain = skillPolicyService.active(SkillTier.SCOPE_DOMAIN);
+        var entries = allSkillExemptions();
+        response.skill = group(domain.revision(), domain.generation(), entries, false);
         return response;
     }
 
@@ -122,13 +126,16 @@ public class QualityExemptionAdminService {
     private void addSkill(String skillId, Integer expectedGeneration, String userId) {
         var skill = skillStore.get(skillId)
             .orElseThrow(() -> new BadRequestException("skill not found: " + skillId));
-        var entries = new ArrayList<>(skillPolicyService.active().exemptions());
+        var scope = SkillTiers.resolve(skill).scope();
+        var active = skillPolicyService.active(scope);
+        var entries = new ArrayList<>(active.exemptions());
         if (QualityExemptions.match(entries, skill.qualifiedName, skill.name) != null) {
             throw new BadRequestException("skill is already exempt: " + skill.qualifiedName);
         }
         entries.add(skill.qualifiedName);
-        skillPolicyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, null, null, null,
-            expectedGeneration, "Exempt skill \"" + skill.qualifiedName + "\" from the publish quality gate",
+        var generation = SkillTier.SCOPE_DOMAIN.equals(scope) ? expectedGeneration : active.generation();
+        skillPolicyService.createPolicy(scope, new SkillQualityPolicyService.ActivateCommand(null, null, null, null,
+            generation, "Exempt skill \"" + skill.qualifiedName + "\" from the publish quality gate",
             null, null, entries), userId);
     }
 
@@ -145,15 +152,32 @@ public class QualityExemptionAdminService {
     }
 
     private void removeSkill(String value, Integer expectedGeneration, String userId) {
-        var entries = new ArrayList<>(skillPolicyService.active().exemptions());
-        if (!entries.remove(value)) {
-            throw new BadRequestException("quality exemption entry not found: " + value);
-        }
         var skill = resolveSkill(value);
         var label = skill != null ? skill.qualifiedName : value;
-        skillPolicyService.createPolicy(new SkillQualityPolicyService.ActivateCommand(null, null, null, null,
-            expectedGeneration, "Remove skill \"" + label + "\" from the quality exemptions", null, null, entries),
-            userId);
+        boolean removed = false;
+        for (var scope : SkillTiers.ALL_SCOPES) {
+            var active = skillPolicyService.findActive(scope).orElse(null);
+            if (active == null) continue;
+            var entries = new ArrayList<>(active.exemptions());
+            if (!entries.remove(value)) continue;
+            var generation = SkillTier.SCOPE_DOMAIN.equals(scope) ? expectedGeneration : active.generation();
+            skillPolicyService.createPolicy(scope, new SkillQualityPolicyService.ActivateCommand(null, null, null, null,
+                generation, "Remove skill \"" + label + "\" from the quality exemptions", null, null, entries),
+                userId);
+            removed = true;
+        }
+        if (!removed) {
+            throw new BadRequestException("quality exemption entry not found: " + value);
+        }
+    }
+
+    private List<String> allSkillExemptions() {
+        var entries = new LinkedHashSet<String>();
+        for (var scope : SkillTiers.ALL_SCOPES) {
+            var active = skillPolicyService.findActive(scope).orElse(null);
+            if (active != null) entries.addAll(active.exemptions());
+        }
+        return List.copyOf(entries);
     }
 
     private QualityExemptionView agentEntry(String value) {
@@ -245,7 +269,7 @@ public class QualityExemptionAdminService {
     }
 
     private List<QualityExemptionSubjectView> skillSubjects(String query) {
-        var exemptions = skillPolicyService.active().exemptions();
+        var exemptions = allSkillExemptions();
         var needle = query.toLowerCase(Locale.ROOT);
         return skillStore.listSummaries(null, null, null, null).stream()
             .filter(skill -> needle.isEmpty() || contains(skill.name, needle) || contains(skill.qualifiedName, needle))

@@ -81,6 +81,7 @@ public class SkillUploadController implements Controller {
         view.qualifiedName = entity.qualifiedName;
         view.description = entity.description;
         view.sourceType = entity.sourceType.name();
+        view.tier = SkillTiers.toView(SkillTiers.resolve(entity));
         view.userId = entity.userId;
         view.createdAt = entity.createdAt;
         view.updatedAt = entity.updatedAt;

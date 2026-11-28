@@ -10,6 +10,7 @@ import ai.core.server.skill.quality.SkillQualityGateException;
 import ai.core.server.skill.quality.SkillQualityReport;
 import ai.core.server.skill.quality.SkillQualityResult;
 import core.framework.inject.Inject;
+import core.framework.web.exception.BadRequestException;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -37,21 +38,16 @@ public class SkillPublishService {
     @Inject
     SkillQualityGate gate;
 
-    /**
-     * Precheck: runs the same candidate build, metadata consistency and gate as {@link #publish}, but never writes.
-     */
     public SkillQualityReport check(SkillPublishRequest request) {
         var evaluated = evaluate(request);
         return SkillQualityReport.of(evaluated.candidate(), evaluated.result());
     }
 
-    /** Editor save: merges the stored resources with the update rows, then publishes. */
     public SkillPublishOutcome publishUpdate(SkillDefinition entity, String description, String content,
                                              List<String> allowedTools, List<SkillResourceUpdate> updates) {
         return publish(updateRequest(entity, description, content, allowedTools, updates));
     }
 
-    /** Editor precheck: the same draft merge as {@link #publishUpdate}, evaluated without writing. */
     public SkillQualityReport checkUpdate(SkillDefinition entity, String description, String content,
                                           List<String> allowedTools, List<SkillResourceUpdate> updates) {
         return check(updateRequest(entity, description, content, allowedTools, updates));
@@ -74,16 +70,20 @@ public class SkillPublishService {
         var entity = project(request, candidate, result);
         write(entity, existing, expected);
         blobStore.deleteReplaced(previous, entity.resources);
-        LOGGER.info("published skill, id={}, qualifiedName={}, revision={}, gate={}, warns={}",
-            entity.id, entity.qualifiedName, entity.revision, result.gateResult(), result.warnCount());
+        LOGGER.info("published skill, id={}, qualifiedName={}, tier={}, revision={}, gate={}, warns={}",
+            entity.id, entity.qualifiedName, entity.tier, entity.revision, result.gateResult(), result.warnCount());
         return new SkillPublishOutcome(entity, report);
     }
 
     private Evaluated evaluate(SkillPublishRequest request) {
         var content = request.content != null ? request.content : existingContent(request.existing);
         var existing = request.existing;
-        var candidate = new SkillPublishCandidateBuilder().build(
-            request.namespace, directoryName(request), content, request.resources, request.sourceType, existing);
+        var targetTier = request.targetTier != null
+            ? request.targetTier
+            : SkillTiers.defaultFor(request.sourceType, existing);
+        var candidate = new SkillPublishCandidateBuilder()
+            .withTargetTier(targetTier)
+            .build(request.namespace, directoryName(request), content, request.resources, request.sourceType, existing);
         verifyMirrors(request, candidate);
         verifyImmutableIdentity(existing, candidate);
         return new Evaluated(candidate, gate.evaluate(candidate));
@@ -103,6 +103,7 @@ public class SkillPublishService {
         request.resources = resources;
         request.existing = entity;
         request.sourceType = entity.sourceType;
+        request.targetTier = SkillTiers.resolve(entity);
         request.repoConfig = entity.repoConfig;
         request.mirroredDescription = description;
         request.mirroredAllowedTools = allowedTools;
@@ -139,6 +140,7 @@ public class SkillPublishService {
         entity.directoryName = candidate.directoryName;
         entity.description = candidate.description;
         entity.sourceType = request.sourceType;
+        entity.tier = candidate.targetTier;
         entity.content = candidate.content;
         entity.resources = new SkillResourceWriter(blobStore).toResources(entity.id, candidate.content, candidate.resources);
         entity.allowedTools = candidate.allowedTools.isEmpty() ? null : new ArrayList<>(candidate.allowedTools);
@@ -190,8 +192,7 @@ public class SkillPublishService {
 
     private String existingContent(SkillDefinition existing) {
         if (existing == null || existing.content == null) {
-            throw new core.framework.web.exception.BadRequestException(
-                "SKILL.md content is required", "SKILL_DOCUMENT_INVALID");
+            throw new BadRequestException("SKILL.md content is required", "SKILL_DOCUMENT_INVALID");
         }
         return existing.content;
     }
@@ -212,4 +213,3 @@ public class SkillPublishService {
     private record Evaluated(SkillPublishCandidate candidate, SkillQualityResult result) {
     }
 }
-

@@ -2,7 +2,9 @@ package ai.core.server.skill.quality;
 
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityIssueStatus;
+import ai.core.server.quality.domain.StoredQualityIssue;
 
+import java.util.ArrayList;
 import java.util.regex.Pattern;
 
 /**
@@ -26,24 +28,34 @@ public final class SkillMetadataRule implements SkillQualityRule {
 
     @Override
     public SkillRuleResult evaluate(SkillPublishCandidate candidate) {
+        var issues = new ArrayList<StoredQualityIssue>();
         var version = candidate.metadata.get("version");
-        if (blank(version)) return fail("MISSING_VERSION", "metadata has no version.",
-            "Add a version to SKILL.md metadata, for example 1.0.0.");
-        if (version.length() > 32 || !VERSION.matcher(version).matches()) {
-            return fail("INVALID_VERSION", "version \"" + version + "\" is not a comparable version.",
-                "Use MAJOR.MINOR.PATCH, for example 1.2.0.");
+        if (blank(version)) {
+            issues.add(issue("MISSING_VERSION", "metadata has no version.",
+                "Add a version to SKILL.md metadata, for example 1.0.0."));
+        } else if (version.length() > 32 || !VERSION.matcher(version).matches()) {
+            issues.add(issue("INVALID_VERSION", "version \"" + version + "\" is not a comparable version.",
+                "Use MAJOR.MINOR.PATCH, for example 1.2.0."));
         }
         var author = candidate.metadata.get("author");
-        if (blank(author)) return fail("MISSING_AUTHOR", "metadata has no author.",
-            "Add the author or team identifier to metadata.");
-        var authorName = author.trim();
-        if (authorName.length() > 128 || CONTROL.matcher(authorName).matches()) {
-            return fail("INVALID_AUTHOR", "author is empty, too long, or contains control characters.",
-                "Use 1-128 printable characters.");
+        if (blank(author)) {
+            issues.add(issue("MISSING_AUTHOR", "metadata has no author.",
+                "Add the author or team identifier to metadata."));
+        } else {
+            var authorName = author.trim();
+            if (authorName.length() > 128 || CONTROL.matcher(authorName).matches()) {
+                issues.add(issue("INVALID_AUTHOR", "author is empty, too long, or contains control characters.",
+                    "Use 1-128 printable characters."));
+            }
         }
         var tags = candidate.metadata.get("tags");
-        if (blank(tags)) return fail("MISSING_TAGS", "metadata has no tags.",
-            "Add comma-separated tags to metadata, for example poster,image.");
+        if (blank(tags)) {
+            issues.add(issue("MISSING_TAGS", "metadata has no tags.",
+                "Add comma-separated tags to metadata, for example poster,image."));
+        }
+        if (!issues.isEmpty()) {
+            return new SkillRuleResult(QualityIssueStatus.FAIL, issues);
+        }
         return versionBump(candidate, version);
     }
 
@@ -57,9 +69,9 @@ public final class SkillMetadataRule implements SkillQualityRule {
             "Raise metadata.version above " + candidate.previousVersion + "."));
     }
 
-    private SkillRuleResult fail(String reason, String message, String suggestion) {
-        return SkillRuleResult.fail(SkillQualityIssues.issue(META, QualityIssueStatus.FAIL,
-            "/metadata", reason, message, suggestion));
+    private StoredQualityIssue issue(String reason, String message, String suggestion) {
+        return SkillQualityIssues.issue(META, QualityIssueStatus.FAIL,
+            "/metadata", reason, message, suggestion);
     }
 
     private boolean blank(String value) {

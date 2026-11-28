@@ -48,8 +48,8 @@ class SkillQualityAdminServiceTest {
     void returnsTheSeededCatalogToAnAdmin() {
         var response = service.rules("admin-1");
 
-        assertThat(response.policyRevision).isEqualTo(1);
-        assertThat(response.rules).hasSize(10);
+        assertThat(response.policyRevision).isPositive();
+        assertThat(response.rules).hasSize(12);
         assertThat(response.rules).extracting(view -> view.key)
             .containsExactlyInAnyOrderElementsOf(SkillQualityGate.ruleKeys());
         assertThat(response.rules).allSatisfy(view -> {

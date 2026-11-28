@@ -100,6 +100,14 @@ public class MongoSkillQualityStore implements SkillQualityStore {
     }
 
     @Override
+    public List<SkillQualityPolicyRevision> listPolicies(String scope) {
+        var query = new Query();
+        query.filter = Filters.eq("scope", scope);
+        query.sort = Sorts.descending("revision");
+        return policyCollection.find(query);
+    }
+
+    @Override
     public void insertPolicy(SkillQualityPolicyRevision policy) {
         policyCollection.insert(policy);
     }

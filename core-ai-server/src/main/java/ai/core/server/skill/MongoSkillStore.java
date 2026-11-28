@@ -153,6 +153,7 @@ public class MongoSkillStore implements SkillStore {
             Updates.set("directory_name", definition.directoryName),
             Updates.set("description", definition.description),
             Updates.set("source_type", definition.sourceType),
+            Updates.set("tier", definition.tier),
             Updates.set("content", definition.content),
             Updates.set("allowed_tools", definition.allowedTools),
             Updates.set("metadata", definition.metadata),

@@ -2,7 +2,9 @@ package ai.core.server.skill.quality;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.SkillDigest;
+import ai.core.server.skill.SkillTiers;
 import ai.core.skill.SkillLoader;
 import core.framework.crypto.Hash;
 import core.framework.web.exception.BadRequestException;
@@ -74,8 +76,14 @@ public final class SkillPublishCandidateBuilder {
     private String metadataHash;
     private int revision;
     private SkillSourceType sourceType;
+    private SkillTier targetTier;
     private String previousVersion;
     private boolean contentChanged;
+
+    public SkillPublishCandidateBuilder withTargetTier(SkillTier targetTier) {
+        this.targetTier = targetTier;
+        return this;
+    }
 
     public SkillPublishCandidate build(String namespace, String directoryName, String content,
                                        Map<String, byte[]> rawResources, SkillDefinition existing) {
@@ -94,6 +102,7 @@ public final class SkillPublishCandidateBuilder {
         this.content = content;
         this.sourceType = sourceType != null ? sourceType
             : existing == null ? SkillSourceType.UPLOAD : existing.sourceType;
+        this.targetTier = this.targetTier != null ? this.targetTier : SkillTiers.defaultFor(this.sourceType, existing);
         this.document = parser.parse(content);
         this.resources = normalizeResources(rawResources);
         this.name = string(document.frontMatter.get("name"));
@@ -229,6 +238,10 @@ public final class SkillPublishCandidateBuilder {
 
     SkillSourceType sourceType() {
         return sourceType;
+    }
+
+    SkillTier targetTier() {
+        return targetTier;
     }
 
     String previousVersion() {

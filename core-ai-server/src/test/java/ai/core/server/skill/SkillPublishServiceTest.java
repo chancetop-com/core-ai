@@ -4,11 +4,12 @@ import ai.core.agent.ExecutionContext;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
-import ai.core.server.quality.QualityExemptions;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.quality.domain.QualityGateResult;
 import ai.core.server.selfharness.SelfHarnessApiCaller;
 import ai.core.server.selfharness.SelfHarnessDispatcher;
 import ai.core.server.selfharness.SelfHarnessTools;
+import ai.core.server.skill.quality.SkillQualityGate;
 import ai.core.server.skill.quality.SkillQualityGateException;
 import ai.core.server.tool.ToolRegistryService;
 import ai.core.utils.JsonUtil;
@@ -25,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,6 +52,7 @@ class SkillPublishServiceTest {
             content(), resources()));
 
         assertEquals(1, outcome.entity().revision);
+        assertEquals(SkillTier.DOMAIN, outcome.entity().tier);
         assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
         assertNotNull(outcome.entity().qualityReceipt);
         assertEquals(outcome.report().runId, outcome.entity().qualityReceipt.runId);
@@ -57,7 +60,24 @@ class SkillPublishServiceTest {
     }
 
     @Test
-    void publishesThirdPartyRepoSkillWithoutQualityGate() {
+    void publishesDomainSkillWithoutEvalWithWarnings() {
+        var store = mock(SkillStore.class);
+        var blobStore = mock(SkillBlobStore.class);
+        when(store.insertIfAbsent(any())).thenReturn(true);
+        var service = service(store, blobStore);
+
+        var outcome = service.publish(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8))));
+
+        assertEquals(SkillTier.DOMAIN, outcome.entity().tier);
+        assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
+        assertTrue(outcome.report().warnCount > 0);
+        assertTrue(outcome.report().issues.stream().anyMatch(issue -> "SKILL.EVAL_DATASET".equals(issue.ruleId)));
+        verify(store).insertIfAbsent(any());
+    }
+
+    @Test
+    void publishesThirdPartyRepoSkillUnderImportedTierWithoutExemption() {
         var store = mock(SkillStore.class);
         var blobStore = mock(SkillBlobStore.class);
         when(store.insertIfAbsent(any())).thenReturn(true);
@@ -70,25 +90,28 @@ class SkillPublishServiceTest {
             # TikTok Ads Audit
             """, Map.of());
         request.sourceType = SkillSourceType.REPO;
+        request.targetTier = SkillTier.IMPORTED;
 
         var outcome = service.publish(request);
 
         assertEquals(QualityGateResult.PASSED, outcome.report().gateResult);
-        assertTrue(outcome.report().exempted);
+        assertFalse(outcome.report().exempted);
         assertEquals(SkillSourceType.REPO, outcome.entity().sourceType);
-        assertEquals(QualityExemptions.THIRD_PARTY_REPO_REASON, outcome.entity().qualityReceipt.exemptionReason);
+        assertEquals(SkillTier.IMPORTED, outcome.entity().tier);
+        assertTrue(outcome.report().warnCount > 0);
         verify(store).insertIfAbsent(any());
     }
 
     @Test
-    void rejectsInvalidPackageWithoutWriting() {
+    void rejectsCoreSkillWithoutEvalDatasetWithoutWriting() {
         var store = mock(SkillStore.class);
         var blobStore = mock(SkillBlobStore.class);
         var service = service(store, blobStore);
+        var request = SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8)));
+        request.targetTier = SkillTier.CORE;
 
-        var error = assertThrows(SkillQualityGateException.class,
-            () -> service.publish(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
-                content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8)))));
+        var error = assertThrows(SkillQualityGateException.class, () -> service.publish(request));
 
         assertEquals(SkillQualityGateException.REJECTED, error.errorCode());
         var extra = error.extraJson();
@@ -106,9 +129,11 @@ class SkillPublishServiceTest {
         var store = mock(SkillStore.class);
         var blobStore = mock(SkillBlobStore.class);
         var service = service(store, blobStore);
+        var request = SkillPublishRequest.upload("u1", "Admin", "demo-skill",
+            content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8)));
+        request.targetTier = SkillTier.CORE;
 
-        var report = service.check(SkillPublishRequest.upload("u1", "Admin", "demo-skill",
-            content(), Map.of("README.txt", "hello".getBytes(StandardCharsets.UTF_8))));
+        var report = service.check(request);
 
         assertEquals(QualityGateResult.REJECTED, report.gateResult);
         assertTrue(report.issues.stream().anyMatch(issue -> "SKILL.EVAL_DATASET".equals(issue.ruleId)));
@@ -161,7 +186,7 @@ class SkillPublishServiceTest {
 
     @Test
     void builderReturnsTheFailedRuleAndLeavesTheDownloadedPackageIntact() throws Exception {
-        var tools = builderToolsForLegacySkill();
+        var tools = builderToolsForLegacySkill(SkillTier.CORE);
         var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
 
         var failed = call(tools, "update_skill", Map.of("id", "legacy-id", "content", content(),
@@ -177,7 +202,7 @@ class SkillPublishServiceTest {
 
     @Test
     void builderPublishesAnUpdatedLegacySkillAndDownloadsTheExactResourceBytes() throws Exception {
-        var tools = builderToolsForLegacySkill();
+        var tools = builderToolsForLegacySkill(SkillTier.DOMAIN);
         var script = "print('café')\r\n";
         var rows = List.of(
             Map.of("path", "README.txt", "keep", true),
@@ -202,7 +227,7 @@ class SkillPublishServiceTest {
 
     @Test
     void builderCanCheckTheStoredSkillAndAValidDraftWithoutSaving() throws Exception {
-        var tools = builderToolsForLegacySkill();
+        var tools = builderToolsForLegacySkill(SkillTier.DOMAIN);
         assertTrue(tools.findBuiltinTool("update_skill").toJsonSchema().properties.containsKey("check_only"));
         var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
         var baseline = call(tools, "update_skill", Map.of("id", "legacy-id", "check_only", true));
@@ -216,7 +241,7 @@ class SkillPublishServiceTest {
 
     @Test
     void malformedCheckOnlyCannotPublishAValidDraft() throws Exception {
-        var tools = builderToolsForLegacySkill();
+        var tools = builderToolsForLegacySkill(SkillTier.DOMAIN);
         var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
         var response = call(tools, "update_skill", Map.of("id", "legacy-id", "check_only", "true",
             "content", content(), "resources", List.of(Map.of("path", "eval/eval.json", "content", evalDataset()))));
@@ -227,7 +252,7 @@ class SkillPublishServiceTest {
 
     @Test
     void contextVariablesCannotTurnAPrecheckIntoAPublish() throws Exception {
-        var tools = builderToolsForLegacySkill();
+        var tools = builderToolsForLegacySkill(SkillTier.DOMAIN);
         var before = call(tools, "download_skill", Map.of("id", "legacy-id"));
         var args = JsonUtil.toJson(Map.of("id", "legacy-id", "check_only", true, "content", content(),
             "resources", List.of(Map.of("path", "eval/eval.json", "content", evalDataset()))));
@@ -240,7 +265,7 @@ class SkillPublishServiceTest {
         }
     }
 
-    private ToolRegistryService builderToolsForLegacySkill() throws ReflectiveOperationException {
+    private ToolRegistryService builderToolsForLegacySkill(SkillTier tier) throws ReflectiveOperationException {
         var legacy = new SkillDefinition();
         legacy.id = "legacy-id";
         legacy.namespace = "fbradmin";
@@ -248,6 +273,7 @@ class SkillPublishServiceTest {
         legacy.qualifiedName = "fbradmin/demo-skill";
         legacy.userId = "u1";
         legacy.sourceType = SkillSourceType.UPLOAD;
+        legacy.tier = tier;
         legacy.content = "---\nname: demo-skill\ndescription: Old draft.\n---\n# Draft";
         var readme = new SkillResource();
         readme.path = "README.txt";
@@ -294,7 +320,7 @@ class SkillPublishServiceTest {
         var service = new SkillPublishService();
         service.skillStore = store;
         service.blobStore = blobStore;
-        service.gate = new ai.core.server.skill.quality.SkillQualityGate();
+        service.gate = new SkillQualityGate();
         return service;
     }
 

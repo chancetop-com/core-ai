@@ -1,10 +1,13 @@
 package ai.core.server.skill.quality;
 
 import ai.core.server.quality.QualityRuleEvaluation;
+import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityEvidenceKind;
 import ai.core.server.quality.domain.QualityIssueStatus;
 import ai.core.server.quality.domain.QualityRecommendedAction;
 import ai.core.server.quality.domain.StoredQualityIssue;
+
+import java.util.List;
 
 /**
  * Adapts one compiled deterministic rule to the policy-driven evaluator contract. The rule's own
@@ -33,22 +36,25 @@ public final class SkillCodeRuleEvaluator implements SkillQualityRuleEvaluator {
     public QualityRuleEvaluation evaluate(SkillQualityRuleContext context) {
         try {
             var result = rule.evaluate(context.candidate());
-            for (var issue : result.issues()) applyRevision(issue, context);
+            for (var issue : result.issues()) applyRevision(issue, context, result.status());
             return new QualityRuleEvaluation(result.status(), result.issues(), null, null);
         } catch (RuntimeException e) {
             return new QualityRuleEvaluation(QualityIssueStatus.ERROR,
-                java.util.List.of(executionError(context)), null, "RULE_EXECUTION_ERROR");
+                List.of(executionError(context)), null, "RULE_EXECUTION_ERROR");
         }
     }
 
-    private void applyRevision(StoredQualityIssue issue, SkillQualityRuleContext context) {
+    private void applyRevision(StoredQualityIssue issue, SkillQualityRuleContext context,
+                               QualityIssueStatus resultStatus) {
         var revision = context.rule();
         issue.ruleId = revision.ruleKey;
         issue.ruleRevision = revision.revision;
         issue.ruleName = revision.name;
         issue.ruleRequirement = revision.description;
         issue.category = revision.category;
-        issue.enforcement = context.enforcement();
+        issue.enforcement = resultStatus == QualityIssueStatus.PASS
+            && context.enforcement() == QualityEnforcement.BLOCK
+            ? QualityEnforcement.WARN : context.enforcement();
     }
 
     private StoredQualityIssue executionError(SkillQualityRuleContext context) {

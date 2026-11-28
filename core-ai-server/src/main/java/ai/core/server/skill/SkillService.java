@@ -31,9 +31,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SkillService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillService.class);
     private static final int MAX_SKILL_FILE_SIZE = 10 * 1024 * 1024;
-    // Skill bodies and resources stay inline in the skills table (UAT: 55 MB), so every summary
-    // read detoasts the whole table (~1 s) just to drop those two keys. Summaries only change on
-    // a write; a short per-pod TTL keeps list pages fast and bounds cross-pod staleness.
     private static final long SUMMARY_CACHE_TTL_MS = 10_000;
 
     private static ForbiddenException unavailableSkill() {
@@ -91,6 +88,7 @@ public class SkillService {
         if (parsedName != null) {
             request.existing = skillStore.findByQualifiedName(namespace + "/" + parsedName).orElse(null);
         }
+        request.targetTier = SkillTiers.defaultFor(SkillSourceType.UPLOAD, request.existing);
         var outcome = publishService.publish(request);
         invalidateCatalog();
         LOGGER.info("uploaded skill, id={}, qualifiedName={}", outcome.entity().id, outcome.entity().qualifiedName);
@@ -260,9 +258,6 @@ public class SkillService {
         return outcome;
     }
 
-    /**
-     * Runs the publish gate against the editor's unsaved draft without writing either the skill or its blobs.
-     */
     public SkillQualityReport checkQuality(String id, String description, String content,
                                            List<String> allowedTools, List<SkillResourceUpdate> updates) {
         return publishService.checkUpdate(get(id), description, content, allowedTools, updates);
@@ -336,6 +331,7 @@ public class SkillService {
             repoManager().readSkillMdFromDir(skillDir), repoManager().readResourceBytes(skillDir, skill.getResources()));
         request.existing = skillStore.findByQualifiedName(namespace + "/" + skill.getName()).orElse(null);
         request.sourceType = SkillSourceType.REPO;
+        request.targetTier = SkillTiers.defaultFor(SkillSourceType.REPO, request.existing);
         request.repoConfig = repoConfig(source);
         return publishService.publish(request).entity();
     }
@@ -382,6 +378,7 @@ public class SkillService {
         request.resources = repoManager().readResourceBytes(skillDir, skill.getResources());
         request.existing = entity;
         request.sourceType = SkillSourceType.REPO;
+        request.targetTier = SkillTiers.resolve(entity);
         request.repoConfig = entity.repoConfig;
         var outcome = publishService.publish(request);
         invalidateCatalog();

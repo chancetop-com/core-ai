@@ -24,6 +24,7 @@ import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillResourceUpdate;
 import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.SkillTiers;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
@@ -236,6 +237,7 @@ public class SkillWebServiceImpl implements SkillWebService {
         view.qualifiedName = entity.qualifiedName;
         view.description = entity.description;
         view.sourceType = entity.sourceType.name();
+        view.tier = SkillTiers.toView(SkillTiers.resolve(entity));
         view.allowedTools = entity.allowedTools;
         var manifest = SkillSdkCapabilityManifest.parse(entity.allowedTools, entity.metadata);
         view.sdkCapabilitiesVersion = manifest.enabled() ? manifest.contractVersion() : null;

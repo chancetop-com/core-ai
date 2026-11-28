@@ -34,6 +34,9 @@ public class SkillDefinitionView {
     @Property(name = "source_type")
     public String sourceType;
 
+    @Property(name = "tier")
+    public SkillTierView tier;
+
     @Property(name = "allowed_tools")
     public List<String> allowedTools;
 

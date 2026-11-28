@@ -45,6 +45,9 @@ public class SkillDefinition {
     @Field(name = "source_type")
     public SkillSourceType sourceType;
 
+    @Field(name = "tier")
+    public SkillTier tier;
+
     @Field(name = "content")
     public String content;
 

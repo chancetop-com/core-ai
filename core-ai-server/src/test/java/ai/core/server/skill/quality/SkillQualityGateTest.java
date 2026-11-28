@@ -1,8 +1,10 @@
 package ai.core.server.skill.quality;
 
 import ai.core.server.domain.SkillSourceType;
-import ai.core.server.quality.QualityExemptions;
+import ai.core.server.domain.SkillTier;
+import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityGateResult;
+import ai.core.server.quality.domain.QualityIssueStatus;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import org.junit.jupiter.api.Test;
 
@@ -12,24 +14,30 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SuppressFBWarnings("MRC_METHOD_RETURNS_CONSTANT")
 class SkillQualityGateTest {
     @Test
     void validSkillPasses() {
-        var result = new SkillQualityGate().evaluate(candidate(true));
+        var result = new SkillQualityGate().evaluate(candidate(true, skillContent(), SkillTier.CORE));
 
         assertEquals(QualityGateResult.PASSED, result.gateResult(), result.issues().toString());
-        assertTrue(result.issues().stream().noneMatch(issue -> issue.status == ai.core.server.quality.domain.QualityIssueStatus.FAIL));
+        assertTrue(result.issues().stream().noneMatch(issue -> issue.status == QualityIssueStatus.FAIL));
     }
 
     @Test
-    void missingEvalDatasetRejects() {
-        var result = new SkillQualityGate().evaluate(candidate(false));
+    void missingEvalDatasetWarnsOnDomainAndRejectsOnCore() {
+        var domainResult = new SkillQualityGate().evaluate(candidate(false, skillContent(), SkillTier.DOMAIN));
+        assertEquals(QualityGateResult.PASSED, domainResult.gateResult());
+        assertTrue(domainResult.warnCount() > 0);
+        assertTrue(domainResult.issues().stream().anyMatch(item -> item.enforcement == QualityEnforcement.WARN
+            && "EVAL_DATASET_NOT_PACKAGED".equals(item.issueReason)));
 
-        assertEquals(QualityGateResult.REJECTED, result.gateResult());
-        var issue = result.issues().stream()
+        var coreResult = new SkillQualityGate().evaluate(candidate(false, skillContent(), SkillTier.CORE));
+        assertEquals(QualityGateResult.REJECTED, coreResult.gateResult());
+        var issue = coreResult.issues().stream()
             .filter(item -> "EVAL_DATASET_NOT_PACKAGED".equals(item.issueReason))
             .findFirst().orElseThrow();
         assertTrue(issue.suggestion.contains("\"schema_version\":1"));
@@ -62,7 +70,9 @@ class SkillQualityGateTest {
               ]
             }
             """.getBytes(StandardCharsets.UTF_8));
-        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", skillContent(), resources, null);
+        var candidate = new SkillPublishCandidateBuilder()
+            .withTargetTier(SkillTier.CORE)
+            .build("demo", "demo-skill", skillContent(), resources, SkillSourceType.UPLOAD, null);
 
         var result = new SkillQualityGate().evaluate(candidate);
 
@@ -76,8 +86,8 @@ class SkillQualityGateTest {
     }
 
     @Test
-    void missingWorkflowSectionRejects() {
-        var candidate = candidate(true, """
+    void missingWorkflowSectionWarnsOnDomainAndRejectsOnCore() {
+        var missingWorkflow = """
             ---
             name: demo-skill
             description: "Do demo. Use when asked. Scope: demo only."
@@ -92,17 +102,25 @@ class SkillQualityGateTest {
             retry
             ## Quality assurance
             run eval
-            """);
+            """;
 
-        var result = new SkillQualityGate().evaluate(candidate);
+        var domainResult = new SkillQualityGate().evaluate(candidate(true, missingWorkflow, SkillTier.DOMAIN));
+        assertEquals(QualityGateResult.PASSED, domainResult.gateResult());
+        assertTrue(domainResult.warnCount() > 0);
+        assertTrue(domainResult.issues().stream().anyMatch(issue -> issue.enforcement == QualityEnforcement.WARN
+            && "MISSING_SECTION".equals(issue.issueReason) && issue.message.contains("Workflow")));
 
-        assertTrue(result.issues().stream().anyMatch(issue -> "MISSING_SECTION".equals(issue.issueReason)
-            && issue.message.contains("Workflow")));
+        var coreResult = new SkillQualityGate().evaluate(candidate(true, missingWorkflow, SkillTier.CORE));
+        assertEquals(QualityGateResult.REJECTED, coreResult.gateResult());
+        assertTrue(coreResult.issues().stream().anyMatch(issue -> issue.enforcement == QualityEnforcement.BLOCK
+            && "MISSING_SECTION".equals(issue.issueReason) && issue.message.contains("Workflow")));
     }
 
     @Test
-    void thirdPartyRepoImportSkipsTheGate() {
-        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", """
+    void thirdPartyRepoImportEvaluatesUnderImportedTierInsteadOfExempting() {
+        var candidate = new SkillPublishCandidateBuilder()
+            .withTargetTier(SkillTier.IMPORTED)
+            .build("demo", "demo-skill", """
             ---
             name: demo-skill
             description: Imported from an external repository.
@@ -113,13 +131,38 @@ class SkillQualityGateTest {
         var result = new SkillQualityGate().evaluate(candidate);
 
         assertEquals(QualityGateResult.PASSED, result.gateResult());
-        assertTrue(result.exempted());
-        assertEquals(QualityExemptions.THIRD_PARTY_REPO_REASON, result.exemptionReason());
+        assertFalse(result.exempted());
+        assertTrue(result.warnCount() > 0);
+        assertTrue(result.issues().stream().anyMatch(issue -> issue.enforcement == QualityEnforcement.WARN
+            && "SKILL.METADATA_REQUIRED".equals(issue.ruleId)));
+    }
+
+    @Test
+    void thirdPartyRepoImportIsBlockedByPackageHygiene() {
+        var candidate = new SkillPublishCandidateBuilder()
+            .withTargetTier(SkillTier.IMPORTED)
+            .build("demo", "demo-skill", """
+            ---
+            name: demo-skill
+            description: Imported from an external repository.
+            ---
+            # Demo
+            """, Map.of("SKILL.md", "duplicate".getBytes(StandardCharsets.UTF_8)),
+            SkillSourceType.REPO, null);
+
+        var result = new SkillQualityGate().evaluate(candidate);
+
+        assertEquals(QualityGateResult.REJECTED, result.gateResult());
+        assertFalse(result.exempted());
+        assertTrue(result.issues().stream().anyMatch(issue -> issue.enforcement == QualityEnforcement.BLOCK
+            && "SKILL.PACKAGE_HYGIENE".equals(issue.ruleId)));
     }
 
     @Test
     void uploadedSkillWithTheSameGapsStillRejects() {
-        var candidate = new SkillPublishCandidateBuilder().build("demo", "demo-skill", """
+        var candidate = new SkillPublishCandidateBuilder()
+            .withTargetTier(SkillTier.DOMAIN)
+            .build("demo", "demo-skill", """
             ---
             name: demo-skill
             description: Uploaded by an author.
@@ -136,21 +179,19 @@ class SkillQualityGateTest {
     void ruleCatalogMatchesTheRulesTheGateRuns() {
         var catalog = SkillQualityGate.ruleCatalog();
 
-        assertEquals(10, catalog.size());
+        assertEquals(12, catalog.size());
         assertEquals(SkillQualityGate.ruleKeys(), catalog.stream().map(SkillRuleMeta::key).toList());
         assertTrue(catalog.stream().allMatch(meta -> meta.name() != null && meta.requirement() != null
             && meta.category() != null && meta.enforcement() != null && meta.revision() > 0));
     }
 
-    private SkillPublishCandidate candidate(boolean withEval) {
-        return candidate(withEval, skillContent());
-    }
-
-    private SkillPublishCandidate candidate(boolean withEval, String content) {
+    private SkillPublishCandidate candidate(boolean withEval, String content, SkillTier tier) {
         var resources = new LinkedHashMap<String, byte[]>();
         resources.put("README.txt", "demo".getBytes(StandardCharsets.UTF_8));
         if (withEval) resources.put("eval/eval.json", evalDataset().getBytes(StandardCharsets.UTF_8));
-        return new SkillPublishCandidateBuilder().build("demo", "demo-skill", content, resources, null);
+        return new SkillPublishCandidateBuilder()
+            .withTargetTier(tier)
+            .build("demo", "demo-skill", content, resources, SkillSourceType.UPLOAD, null);
     }
 
     private String skillContent() {

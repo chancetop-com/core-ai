@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 
 import java.util.List;
 import java.util.Map;
@@ -23,6 +24,7 @@ public final class SkillPublishRequest {
         request.content = content;
         request.resources = resources;
         request.sourceType = SkillSourceType.UPLOAD;
+        request.targetTier = SkillTier.DOMAIN;
         return request;
     }
 
@@ -33,6 +35,7 @@ public final class SkillPublishRequest {
     public Map<String, byte[]> resources;
     public SkillDefinition existing;
     public SkillSourceType sourceType = SkillSourceType.UPLOAD;
+    public SkillTier targetTier;
     public SkillRepoConfig repoConfig;
     public String mirroredDescription;
     public List<String> mirroredAllowedTools;

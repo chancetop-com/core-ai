@@ -8,6 +8,9 @@ import java.util.List;
  * @author core-ai
  */
 public class ActivateSkillQualityPolicyRequest {
+    @Property(name = "scope")
+    public String scope;
+
     @Property(name = "policy_revision")
     public Integer policyRevision;
 

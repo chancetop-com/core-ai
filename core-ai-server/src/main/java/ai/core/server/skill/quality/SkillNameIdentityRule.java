@@ -30,6 +30,14 @@ public final class SkillNameIdentityRule implements SkillQualityRule {
                 "Use a frontmatter name such as my-skill-name."));
         }
         if (candidate.directoryName == null || !candidate.name.equals(candidate.directoryName)) {
+            if (candidate.isRepoSource()) {
+                var issue = SkillQualityIssues.issue(META, QualityIssueStatus.PASS, "/name",
+                    "SKILL_DIRECTORY_MISMATCH_REPO",
+                    "Skill name \"" + candidate.name + "\" does not match repository directory \"" + candidate.directoryName + "\".",
+                    "Align the directory name with the frontmatter name when possible.");
+                issue.enforcement = QualityEnforcement.WARN;
+                return SkillRuleResult.warn(issue);
+            }
             return SkillRuleResult.fail(SkillQualityIssues.issue(META, QualityIssueStatus.FAIL, "/name",
                 "SKILL_DIRECTORY_MISMATCH",
                 "Skill name \"" + candidate.name + "\" does not match directory \"" + candidate.directoryName + "\".",

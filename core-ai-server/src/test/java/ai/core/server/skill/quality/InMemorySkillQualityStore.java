@@ -93,6 +93,14 @@ class InMemorySkillQualityStore implements SkillQualityStore {
     }
 
     @Override
+    public List<SkillQualityPolicyRevision> listPolicies(String scope) {
+        return policies.values().stream()
+            .filter(policy -> scope.equals(policy.scope))
+            .sorted((left, right) -> Integer.compare(right.revision, left.revision))
+            .toList();
+    }
+
+    @Override
     public void insertPolicy(SkillQualityPolicyRevision policy) {
         policies.put(policy.revision, policy);
     }

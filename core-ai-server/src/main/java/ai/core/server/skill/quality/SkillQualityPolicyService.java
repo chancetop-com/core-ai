@@ -1,11 +1,13 @@
 package ai.core.server.skill.quality;
 
+import ai.core.server.domain.SkillTier;
 import ai.core.server.quality.QualityBudget;
 import ai.core.server.quality.QualityExemptions;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityRuleBinding;
 import ai.core.server.quality.domain.QualityRuleKind;
 import ai.core.server.quality.domain.QualityRuleLifecycle;
+import ai.core.server.skill.SkillTiers;
 import ai.core.server.skill.quality.domain.SkillQualityPolicyHead;
 import ai.core.server.skill.quality.domain.SkillQualityPolicyRevision;
 import ai.core.server.skill.quality.domain.SkillQualityRule;
@@ -23,18 +25,21 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
- * Versioned skill policy. Seeding is idempotent so replicas can start together; activation is one
- * conditional head update, never a sequence of per-rule writes that could expose half a policy.
+ * Versioned skill policy across the four independent tier scopes (skill:tier:imported, domain,
+ * core, always-on). Each scope owns its own head and CAS generation counter. Legacy skill:server
+ * rows are never read at runtime.
  *
  * @author core-ai
  */
 public class SkillQualityPolicyService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillQualityPolicyService.class);
-    public static final String SCOPE_SKILL_SERVER = "skill:server";
+    public static final String SCOPE_SKILL_SERVER_LEGACY = "skill:server";
     public static final int MAX_DECISION_RULES = QualityBudget.MAX_PROVIDER_CALLS;
     public static final int MAX_POLICY_QUESTIONS = QualityBudget.MAX_QUESTIONS;
+    private static final int SEED_INSERT_RETRIES = 5;
 
     public static String ruleId(String key) {
         return "sqrule:" + key;
@@ -52,9 +57,12 @@ public class SkillQualityPolicyService {
         for (var rule : SkillQualityGate.builtInRules()) {
             seedRule(rule.meta(), now);
         }
-        seedPolicy(now);
-        seedHead(now);
-        LOGGER.info("skill quality policy seeded, rules={}", SkillQualityGate.builtInRules().size());
+        for (var tier : SkillTier.values()) {
+            seedTierPolicy(tier, now);
+            seedTierHead(tier, now);
+        }
+        LOGGER.info("skill quality policies seeded, rules={}, scopes={}",
+            SkillQualityGate.builtInRules().size(), SkillTier.values().length);
     }
 
     private void seedRule(SkillRuleMeta meta, ZonedDateTime now) {
@@ -98,35 +106,43 @@ public class SkillQualityPolicyService {
         store.insertRevisionIfAbsent(revision);
     }
 
-    private void seedPolicy(ZonedDateTime now) {
-        if (!store.listPolicies().isEmpty()) return;
+    private void seedTierPolicy(SkillTier tier, ZonedDateTime now) {
+        var scope = tier.scope();
+        if (!store.listPolicies(scope).isEmpty()) return;
         var bindings = new ArrayList<QualityRuleBinding>();
         for (var rule : SkillQualityGate.builtInRules()) {
             var binding = new QualityRuleBinding();
             binding.ruleId = ruleId(rule.meta().key());
             binding.ruleRevision = 1;
-            binding.enforcement = rule.meta().enforcement();
+            binding.enforcement = SkillTierPolicyMatrix.enforcement(tier, rule.meta().key());
             bindings.add(binding);
         }
-        var policy = new SkillQualityPolicyRevision();
-        policy.id = "skill-policy:1";
-        policy.revision = 1;
-        policy.scope = SCOPE_SKILL_SERVER;
-        policy.bindings = bindings;
-        policy.exemptions = List.of();
-        policy.changeReason = "initial built-in skill policy";
-        policy.activatedBy = "system";
-        policy.activatedAt = now;
-        policy.generation = 1;
-        store.insertPolicyIfAbsent(policy);
+        for (int attempt = 0; attempt < SEED_INSERT_RETRIES; attempt++) {
+            if (!store.listPolicies(scope).isEmpty()) return;
+            int nextRevision = nextGlobalRevision();
+            var policy = new SkillQualityPolicyRevision();
+            policy.id = "skill-policy:" + nextRevision;
+            policy.revision = nextRevision;
+            policy.scope = scope;
+            policy.bindings = bindings;
+            policy.exemptions = List.of();
+            policy.changeReason = "initial built-in skill policy for " + scope;
+            policy.activatedBy = "system";
+            policy.activatedAt = now;
+            policy.generation = 1;
+            if (store.insertPolicyIfAbsent(policy)) return;
+        }
     }
 
-    private void seedHead(ZonedDateTime now) {
-        if (store.getHead(SCOPE_SKILL_SERVER).isPresent()) return;
-        var activeRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(1);
+    private void seedTierHead(SkillTier tier, ZonedDateTime now) {
+        var scope = tier.scope();
+        if (store.getHead(scope).isPresent()) return;
+        var scopePolicies = store.listPolicies(scope);
+        if (scopePolicies.isEmpty()) return;
+        var activeRevision = scopePolicies.stream().mapToInt(policy -> policy.revision).max().orElse(1);
         var head = new SkillQualityPolicyHead();
-        head.id = SCOPE_SKILL_SERVER;
-        head.scope = SCOPE_SKILL_SERVER;
+        head.id = scope;
+        head.scope = scope;
         head.activeRevision = activeRevision;
         head.generation = 1;
         head.updatedBy = "system";
@@ -134,42 +150,48 @@ public class SkillQualityPolicyService {
         store.insertHeadIfAbsent(head);
     }
 
-    public ActivePolicy active() {
-        var head = requireHead();
-        var policy = store.getPolicy(head.activeRevision)
-            .orElseThrow(() -> new IllegalStateException("active skill policy is missing, revision=" + head.activeRevision));
-        var rules = new ArrayList<ActiveRule>();
-        for (var binding : policy.bindings == null ? List.<QualityRuleBinding>of() : policy.bindings) {
-            var revision = store.getRevision(binding.ruleId, binding.ruleRevision).orElse(null);
-            if (revision == null) {
-                LOGGER.warn("active skill policy references a missing rule revision, rule={}, revision={}",
-                    binding.ruleId, binding.ruleRevision);
-                continue;
-            }
-            var enforcement = binding.enforcement == null ? QualityEnforcement.SHADOW : binding.enforcement;
-            rules.add(new ActiveRule(revision, enforcement));
+    public Optional<ActivePolicy> findActive(String scope) {
+        var normalized = SkillTiers.requireScope(scope);
+        var head = store.getHead(normalized).orElse(null);
+        if (head == null) return Optional.empty();
+        var policy = store.getPolicy(head.activeRevision).orElse(null);
+        if (policy == null) {
+            LOGGER.error("active skill policy revision is missing for scope={}, revision={}",
+                normalized, head.activeRevision);
+            return Optional.empty();
         }
-        return new ActivePolicy(policy, head, rules);
+        return Optional.of(toActivePolicy(policy, head));
     }
 
-    public SkillQualityPolicyHead requireHead() {
-        return store.getHead(SCOPE_SKILL_SERVER)
-            .orElseThrow(() -> new IllegalStateException("skill quality policy head is not initialized"));
+    public ActivePolicy active(String scope) {
+        var normalized = SkillTiers.requireScope(scope);
+        return findActive(normalized)
+            .orElseThrow(() -> new IllegalStateException("skill quality policy head is not initialized for scope=" + normalized));
     }
 
-    public SkillQualityPolicyRevision createPolicy(ActivateCommand command, String userId) {
-        var head = requireHead();
+    public SkillQualityPolicyHead requireHead(String scope) {
+        var normalized = SkillTiers.requireScope(scope);
+        return store.getHead(normalized)
+            .orElseThrow(() -> new IllegalStateException("skill quality policy head is not initialized for scope=" + normalized));
+    }
+
+    public SkillQualityPolicyRevision createPolicy(String scope, ActivateCommand command, String userId) {
+        var normalized = SkillTiers.requireScope(scope);
+        var head = requireHead(normalized);
         if (command.expectedGeneration() != null && !command.expectedGeneration().equals(head.generation)) {
             throw new ConflictException("skill quality policy was changed by another administrator; refresh and retry");
         }
         var basePolicy = policyOf(command.rollbackRevision() != null ? command.rollbackRevision() : head.activeRevision);
+        if (!normalized.equals(basePolicy.scope)) {
+            throw new BadRequestException("policy revision " + basePolicy.revision + " does not belong to scope " + normalized);
+        }
         var bindings = copyBindings(basePolicy);
         var exemptions = command.exemptions() == null
             ? QualityExemptions.copyOf(basePolicy.exemptions)
             : QualityExemptions.normalize(command.exemptions());
         applyCommand(bindings, command);
         validateBudget(bindings);
-        return activatePolicy(head, bindings, exemptions, command.changeReason(), userId);
+        return activatePolicy(normalized, head, bindings, exemptions, command.changeReason(), userId);
     }
 
     private void applyCommand(List<QualityRuleBinding> bindings, ActivateCommand command) {
@@ -196,13 +218,14 @@ public class SkillQualityPolicyService {
         }
     }
 
-    private SkillQualityPolicyRevision activatePolicy(SkillQualityPolicyHead head, List<QualityRuleBinding> bindings,
+    private SkillQualityPolicyRevision activatePolicy(String scope, SkillQualityPolicyHead head,
+                                                      List<QualityRuleBinding> bindings,
                                                       List<String> exemptions, String changeReason, String userId) {
-        int nextRevision = store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(0) + 1;
+        int nextRevision = nextGlobalRevision();
         var policy = new SkillQualityPolicyRevision();
         policy.id = "skill-policy:" + nextRevision;
         policy.revision = nextRevision;
-        policy.scope = SCOPE_SKILL_SERVER;
+        policy.scope = scope;
         policy.bindings = bindings;
         policy.exemptions = exemptions;
         policy.changeReason = changeReason;
@@ -212,8 +235,8 @@ public class SkillQualityPolicyService {
         store.insertPolicy(policy);
 
         var newHead = new SkillQualityPolicyHead();
-        newHead.id = SCOPE_SKILL_SERVER;
-        newHead.scope = SCOPE_SKILL_SERVER;
+        newHead.id = scope;
+        newHead.scope = scope;
         newHead.activeRevision = nextRevision;
         newHead.generation = head.generation + 1;
         newHead.updatedBy = userId;
@@ -221,22 +244,25 @@ public class SkillQualityPolicyService {
         if (!store.replaceHead(newHead, head.generation)) {
             throw new ConflictException("skill quality policy was changed by another administrator; refresh and retry");
         }
-        LOGGER.info("skill quality policy activated, revision={}, generation={}, by={}",
-            nextRevision, newHead.generation, userId);
+        LOGGER.info("skill quality policy activated, scope={}, revision={}, generation={}, by={}",
+            scope, nextRevision, newHead.generation, userId);
         return policy;
     }
 
-    public List<SkillQualityPolicyRevision> history() {
-        return store.listPolicies();
+    public List<SkillQualityPolicyRevision> history(String scope) {
+        var normalized = SkillTiers.requireScope(scope);
+        return store.listPolicies(normalized);
+    }
+
+    public List<SkillQualityPolicyRevision> historyAllTierScopes() {
+        return store.listPolicies().stream()
+            .filter(policy -> SkillTiers.tierForScope(policy.scope) != null)
+            .toList();
     }
 
     public void retireRule(String ruleId, String userId) {
-        var head = requireHead();
-        var active = policyOf(head.activeRevision);
-        var bindings = copyBindings(active);
-        if (bindings.removeIf(binding -> ruleId.equals(binding.ruleId))) {
-            activatePolicy(head, bindings, QualityExemptions.copyOf(active.exemptions),
-                "retire skill rule " + ruleId, userId);
+        for (var scope : SkillTiers.ALL_SCOPES) {
+            retireRuleInScope(scope, ruleId, userId);
         }
         var rule = requireRule(ruleId);
         rule.lifecycle = QualityRuleLifecycle.RETIRED;
@@ -244,6 +270,42 @@ public class SkillQualityPolicyService {
         rule.updatedAt = rule.retiredAt;
         rule.updatedBy = userId;
         store.replaceRule(rule);
+    }
+
+    public void retireRule(String scope, String ruleId, String userId) {
+        var normalized = SkillTiers.requireScope(scope);
+        retireRuleInScope(normalized, ruleId, userId);
+    }
+
+    private void retireRuleInScope(String scope, String ruleId, String userId) {
+        var head = store.getHead(scope).orElse(null);
+        if (head == null) return;
+        var active = store.getPolicy(head.activeRevision).orElse(null);
+        if (active == null) return;
+        var bindings = copyBindings(active);
+        if (bindings.removeIf(binding -> ruleId.equals(binding.ruleId))) {
+            activatePolicy(scope, head, bindings, QualityExemptions.copyOf(active.exemptions),
+                "retire skill rule " + ruleId, userId);
+        }
+    }
+
+    private ActivePolicy toActivePolicy(SkillQualityPolicyRevision policy, SkillQualityPolicyHead head) {
+        var rules = new ArrayList<ActiveRule>();
+        for (var binding : policy.bindings == null ? List.<QualityRuleBinding>of() : policy.bindings) {
+            var revision = store.getRevision(binding.ruleId, binding.ruleRevision).orElse(null);
+            if (revision == null) {
+                LOGGER.warn("active skill policy references a missing rule revision, scope={}, rule={}, revision={}",
+                    head.scope, binding.ruleId, binding.ruleRevision);
+                continue;
+            }
+            var enforcement = binding.enforcement == null ? QualityEnforcement.SHADOW : binding.enforcement;
+            rules.add(new ActiveRule(revision, enforcement));
+        }
+        return new ActivePolicy(policy, head, rules);
+    }
+
+    private int nextGlobalRevision() {
+        return store.listPolicies().stream().mapToInt(policy -> policy.revision).max().orElse(0) + 1;
     }
 
     private SkillQualityPolicyRevision policyOf(int revision) {
@@ -324,14 +386,14 @@ public class SkillQualityPolicyService {
         }
     }
 
-    public Map<String, QualityEnforcement> enforcements() {
+    public Map<String, QualityEnforcement> enforcements(String scope) {
         var result = new LinkedHashMap<String, QualityEnforcement>();
         try {
-            for (var rule : active().rules()) {
+            for (var rule : active(scope).rules()) {
                 result.put(rule.revision().ruleId, rule.enforcement());
             }
         } catch (RuntimeException e) {
-            LOGGER.warn("skill quality policy is not available: {}", e.getMessage());
+            LOGGER.warn("skill quality policy is not available for scope={}: {}", scope, e.getMessage());
         }
         return result;
     }
@@ -347,6 +409,10 @@ public class SkillQualityPolicyService {
 
         public int generation() {
             return head.generation;
+        }
+
+        public String scope() {
+            return head.scope;
         }
 
         public List<String> exemptions() {

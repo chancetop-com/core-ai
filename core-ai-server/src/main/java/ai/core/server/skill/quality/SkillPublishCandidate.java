@@ -1,6 +1,7 @@
 package ai.core.server.skill.quality;
 
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,7 @@ public final class SkillPublishCandidate {
     public final String metadataHash;
     public final int revision;
     public final SkillSourceType sourceType;
+    public final SkillTier targetTier;
     public final String previousVersion;
     public final boolean contentChanged;
 
@@ -46,6 +48,7 @@ public final class SkillPublishCandidate {
         this.metadataHash = builder.metadataHash();
         this.revision = builder.revision();
         this.sourceType = builder.sourceType();
+        this.targetTier = builder.targetTier();
         this.previousVersion = builder.previousVersion();
         this.contentChanged = builder.contentChanged();
     }

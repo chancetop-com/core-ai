@@ -118,6 +118,12 @@ public class PgSkillQualityStore implements SkillQualityStore {
     }
 
     @Override
+    public List<SkillQualityPolicyRevision> listPolicies(String scope) {
+        return select(POLICIES, SkillQualityPolicyRevision.class,
+            " WHERE data ->> ? = ? ORDER BY (data ->> ?)::int DESC", "scope", scope, "revision");
+    }
+
+    @Override
     public void insertPolicy(SkillQualityPolicyRevision policy) {
         policies().insert(policy);
     }

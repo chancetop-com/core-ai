@@ -29,13 +29,6 @@ public final class SkillDisclosureRule implements SkillQualityRule {
         var resolution = resolver.resolve(candidate);
         var issues = new ArrayList<StoredQualityIssue>();
         var status = QualityIssueStatus.PASS;
-        for (var broken : resolution.brokenLinks()) {
-            if (status == QualityIssueStatus.INDETERMINATE) continue;
-            status = QualityIssueStatus.FAIL;
-            issues.add(issue(status, "/SKILL.md", "REFERENCE_NOT_PACKAGED",
-                "Link target is not packaged with this upload: " + broken,
-                "Add the file to the skill directory and publish again, or remove the link."));
-        }
         for (var requirement : SkillDisclosureRequirements.ALL) {
             if (resolution.sections().containsKey(requirement.key())) continue;
             if (resolution.tooLarge().containsKey(requirement.key())) {
@@ -43,13 +36,6 @@ public final class SkillDisclosureRule implements SkillQualityRule {
                 issues.add(issue(QualityIssueStatus.INDETERMINATE, "/SKILL.md", "SECTION_TOO_LARGE",
                     resolution.tooLarge().get(requirement.key()),
                     "Add the matching heading, or split the reference into sections under 8000 characters."));
-                continue;
-            }
-            if (resolution.remoteRequirements().contains(requirement.key())) {
-                status = QualityIssueStatus.FAIL;
-                issues.add(issue(status, "/SKILL.md", "REMOTE_SECTION_NOT_ALLOWED",
-                    requirement.label() + " points only to an external URL; the gate cannot guarantee access.",
-                    "Put the content in a packaged reference and link it from SKILL.md."));
                 continue;
             }
             if (status != QualityIssueStatus.INDETERMINATE) status = QualityIssueStatus.FAIL;

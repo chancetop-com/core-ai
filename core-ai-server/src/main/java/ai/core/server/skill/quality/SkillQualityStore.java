@@ -41,6 +41,8 @@ public interface SkillQualityStore {
 
     List<SkillQualityPolicyRevision> listPolicies();
 
+    List<SkillQualityPolicyRevision> listPolicies(String scope);
+
     void insertPolicy(SkillQualityPolicyRevision policy);
 
     boolean insertPolicyIfAbsent(SkillQualityPolicyRevision policy);

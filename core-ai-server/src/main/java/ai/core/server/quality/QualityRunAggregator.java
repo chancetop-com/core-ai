@@ -30,8 +30,11 @@ public final class QualityRunAggregator {
         for (var outcome : outcomes) {
             var evaluation = outcome.evaluation();
             var enforcement = outcome.rule().enforcement();
+            var issueEnforcement = enforcement == QualityEnforcement.BLOCK
+                && evaluation.status() == QualityIssueStatus.PASS
+                ? QualityEnforcement.WARN : enforcement;
             for (var issue : evaluation.issues()) {
-                issue.enforcement = enforcement;
+                issue.enforcement = issueEnforcement;
                 issues.add(issue);
             }
             var result = new StoredRuleResult();

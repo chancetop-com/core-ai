@@ -6,6 +6,7 @@ import ai.core.api.server.quality.RemoveQualityExemptionRequest;
 import ai.core.server.agent.AgentDefinitionStore;
 import ai.core.server.domain.AgentDefinition;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.quality.domain.AgentQualityPolicyHead;
 import ai.core.server.quality.domain.AgentQualityPolicyRevision;
 import ai.core.server.skill.SkillStore;
@@ -41,12 +42,15 @@ class QualityExemptionAdminServiceTest {
         service.skillStore = skillStore;
         service.agentPolicyService = agentPolicyService;
         service.skillPolicyService = skillPolicyService;
+        when(skillPolicyService.findActive(any())).thenReturn(Optional.empty());
     }
 
     @Test
     void listResolvesEntriesAndMarksDanglingValues() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of("agent-1", "deleted-agent")));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of("demo/demo-skill")));
+        var domainPolicy = skillPolicy(5, 6, List.of("demo/demo-skill"));
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(domainPolicy);
+        when(skillPolicyService.findActive(SkillTier.SCOPE_DOMAIN)).thenReturn(Optional.of(domainPolicy));
 
         var agent = agent("agent-1", "Report Renderer");
         agent.systemDefault = Boolean.TRUE;
@@ -71,7 +75,7 @@ class QualityExemptionAdminServiceTest {
     @Test
     void addPinsTheAgentIdOnANewPolicyRevision() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of("agent-1")));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of()));
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(skillPolicy(5, 6, List.of()));
         when(agentDefinitionStore.get("agent-2")).thenReturn(Optional.of(agent("agent-2", "New Agent")));
         var request = new AddQualityExemptionRequest();
         request.type = "AGENT";
@@ -103,7 +107,9 @@ class QualityExemptionAdminServiceTest {
     @Test
     void addStoresTheQualifiedSkillName() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of()));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of()));
+        var domainPolicy = skillPolicy(5, 6, List.of());
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(domainPolicy);
+        when(skillPolicyService.findActive(SkillTier.SCOPE_DOMAIN)).thenReturn(Optional.of(domainPolicy));
         when(skillStore.get("skill-1")).thenReturn(Optional.of(skill("skill-1", "demo", "demo-skill")));
         var request = new AddQualityExemptionRequest();
         request.type = "SKILL";
@@ -113,14 +119,14 @@ class QualityExemptionAdminServiceTest {
         service.add(request, "admin-1");
 
         var captor = ArgumentCaptor.forClass(SkillQualityPolicyService.ActivateCommand.class);
-        verify(skillPolicyService).createPolicy(captor.capture(), eq("admin-1"));
+        verify(skillPolicyService).createPolicy(eq(SkillTier.SCOPE_DOMAIN), captor.capture(), eq("admin-1"));
         assertThat(captor.getValue().exemptions()).containsExactly("demo/demo-skill");
     }
 
     @Test
     void removeDropsTheStoredEntry() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of("agent-1", "agent-2")));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of()));
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(skillPolicy(5, 6, List.of()));
         when(agentDefinitionStore.get("agent-2")).thenReturn(Optional.of(agent("agent-2", "New Agent")));
         var request = new RemoveQualityExemptionRequest();
         request.type = "AGENT";
@@ -138,7 +144,9 @@ class QualityExemptionAdminServiceTest {
     @Test
     void subjectsFlagAlreadyExemptAgentsAndSkills() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of("agent-1")));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of("demo/demo-skill")));
+        var domainPolicy = skillPolicy(5, 6, List.of("demo/demo-skill"));
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(domainPolicy);
+        when(skillPolicyService.findActive(SkillTier.SCOPE_DOMAIN)).thenReturn(Optional.of(domainPolicy));
         when(agentDefinitionStore.find(any())).thenReturn(List.of(agent("agent-1", "Agent One"), agent("agent-2", "Agent Two")));
         when(skillStore.listSummaries(null, null, null, null))
             .thenReturn(List.of(skill("skill-1", "demo", "demo-skill")));
@@ -156,7 +164,7 @@ class QualityExemptionAdminServiceTest {
     @Test
     void subjectsMarkBuiltInAgentsAsAutomatic() {
         when(agentPolicyService.active()).thenReturn(agentPolicy(7, 9, List.of()));
-        when(skillPolicyService.active()).thenReturn(skillPolicy(5, 6, List.of()));
+        when(skillPolicyService.active(SkillTier.SCOPE_DOMAIN)).thenReturn(skillPolicy(5, 6, List.of()));
         var builtIn = agent("default-assistant", "Assistant");
         builtIn.systemDefault = Boolean.TRUE;
         when(agentDefinitionStore.find(any())).thenReturn(List.of(builtIn));
@@ -194,8 +202,10 @@ class QualityExemptionAdminServiceTest {
     private SkillQualityPolicyService.ActivePolicy skillPolicy(int revision, int generation, List<String> exemptions) {
         var policy = new SkillQualityPolicyRevision();
         policy.revision = revision;
+        policy.scope = SkillTier.SCOPE_DOMAIN;
         policy.exemptions = exemptions;
         var head = new SkillQualityPolicyHead();
+        head.scope = SkillTier.SCOPE_DOMAIN;
         head.generation = generation;
         return new SkillQualityPolicyService.ActivePolicy(policy, head, List.of());
     }

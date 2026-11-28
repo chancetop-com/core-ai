@@ -11,12 +11,14 @@ import ai.core.api.server.skill.TestSkillQualityRuleRequest;
 import ai.core.api.server.skill.TestSkillQualityRuleResponse;
 import ai.core.api.server.skill.UpdateSkillQualityRuleRequest;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.quality.DecisionSupport;
 import ai.core.server.quality.domain.QualityEnforcement;
 import ai.core.server.quality.domain.QualityRuleKind;
 import ai.core.server.quality.domain.QualityRuleLifecycle;
 import ai.core.server.skill.SkillQualityFixtureBuilder;
 import ai.core.server.skill.SkillStore;
+import ai.core.server.skill.SkillTiers;
 import ai.core.server.skill.quality.domain.SkillQualityRule;
 import ai.core.server.skill.quality.domain.SkillQualityRuleRevision;
 import core.framework.inject.Inject;
@@ -61,8 +63,13 @@ public class SkillQualityAdminService {
     }
 
     public SkillQualityRuleListResponse rules(String userId) {
+        return rules(userId, SkillTier.SCOPE_DOMAIN);
+    }
+
+    public SkillQualityRuleListResponse rules(String userId, String scope) {
         policyService.requireAdmin(userId);
-        var active = policyService.active();
+        var effectiveScope = scope == null || scope.isBlank() ? SkillTier.SCOPE_DOMAIN : SkillTiers.requireScope(scope);
+        var active = policyService.active(effectiveScope);
         var enforcementByRule = new LinkedHashMap<String, QualityEnforcement>();
         for (var rule : active.rules()) enforcementByRule.put(rule.revision().ruleId, rule.enforcement());
 
@@ -161,7 +168,7 @@ public class SkillQualityAdminService {
         SkillDefinition skill = skillStore.get(request.skillId)
             .orElseThrow(() -> new NotFoundException("skill not found, id=" + request.skillId));
         var candidate = fixtureBuilder.build(skill, request.skillMd);
-        var enforcement = enforcementOf(rule.id);
+        var enforcement = enforcementOf(candidate.targetTier.scope(), rule.id);
         long started = System.currentTimeMillis();
         var evaluation = gate.testRule(candidate, revision, enforcement);
         var response = new TestSkillQualityRuleResponse();
@@ -196,11 +203,29 @@ public class SkillQualityAdminService {
     }
 
     public SkillQualityPolicyListResponse policies(String userId) {
+        return policies(userId, SkillTier.SCOPE_DOMAIN);
+    }
+
+    public SkillQualityPolicyListResponse policies(String userId, String scope) {
         policyService.requireAdmin(userId);
-        var active = policyService.active();
+        var effectiveScope = scope == null || scope.isBlank() ? SkillTier.SCOPE_DOMAIN : scope.trim();
         var response = new SkillQualityPolicyListResponse();
+        if ("all".equalsIgnoreCase(effectiveScope)) {
+            var domainActive = policyService.active(SkillTier.SCOPE_DOMAIN);
+            response.active = SkillQualityAdminMapper.toPolicyView(domainActive.policy(), domainActive.generation(), true);
+            response.history = policyService.historyAllTierScopes().stream()
+                .map(policy -> {
+                    var head = policyService.requireHead(policy.scope);
+                    return SkillQualityAdminMapper.toPolicyView(policy, policy.generation,
+                        policy.revision.equals(head.activeRevision));
+                })
+                .toList();
+            return response;
+        }
+        var normalized = SkillTiers.requireScope(effectiveScope);
+        var active = policyService.active(normalized);
         response.active = SkillQualityAdminMapper.toPolicyView(active.policy(), active.generation(), true);
-        response.history = policyService.history().stream()
+        response.history = policyService.history(normalized).stream()
             .map(policy -> SkillQualityAdminMapper.toPolicyView(policy, policy.generation, policy.revision == active.revision()))
             .toList();
         return response;
@@ -211,6 +236,8 @@ public class SkillQualityAdminService {
         if (request.changeReason == null || request.changeReason.isBlank()) {
             throw new BadRequestException("change_reason is required");
         }
+        var scope = SkillTiers.requireScope(
+            request.scope == null || request.scope.isBlank() ? SkillTier.SCOPE_DOMAIN : request.scope);
         QualityEnforcement enforcement = null;
         if (request.enforcement != null) {
             try {
@@ -228,8 +255,8 @@ public class SkillQualityAdminService {
         var command = new SkillQualityPolicyService.ActivateCommand(request.policyRevision,
             request.ruleId, request.ruleRevision, enforcement, request.expectedGeneration,
             request.changeReason, request.suspend, request.resume, request.exemptions);
-        var policy = policyService.createPolicy(command, userId);
-        var head = policyService.requireHead();
+        var policy = policyService.createPolicy(scope, command, userId);
+        var head = policyService.requireHead(scope);
         return SkillQualityAdminMapper.toPolicyView(policy, head.generation, true);
     }
 
@@ -239,8 +266,8 @@ public class SkillQualityAdminService {
         }
     }
 
-    private QualityEnforcement enforcementOf(String ruleId) {
-        for (var active : policyService.active().rules()) {
+    private QualityEnforcement enforcementOf(String scope, String ruleId) {
+        for (var active : policyService.active(scope).rules()) {
             if (ruleId.equals(active.revision().ruleId)) return active.enforcement();
         }
         return QualityEnforcement.SHADOW;
