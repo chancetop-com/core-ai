@@ -7,11 +7,13 @@ import (
 )
 
 type WorkspaceStatResponse struct {
-	CapacityBytes  uint64 `json:"capacity_bytes"`
-	UsedBytes      uint64 `json:"used_bytes"`
-	AvailableBytes uint64 `json:"available_bytes"`
-	InodesTotal    uint64 `json:"inodes_total"`
-	InodesUsed     uint64 `json:"inodes_used"`
+	CapacityBytes    uint64 `json:"capacity_bytes"`
+	UsedBytes        uint64 `json:"used_bytes"`
+	AvailableBytes   uint64 `json:"available_bytes"`
+	InodesTotal      uint64 `json:"inodes_total"`
+	InodesUsed       uint64 `json:"inodes_used"`
+	ActiveAsyncTasks int    `json:"active_async_tasks"`
+	ActiveTerminals  int    `json:"active_terminals"`
 }
 
 func handleWorkspaceStat(w http.ResponseWriter, r *http.Request) {
@@ -42,12 +44,23 @@ func handleWorkspaceStat(w http.ResponseWriter, r *http.Request) {
 		inodesUsed = stat.Files - stat.Ffree
 	}
 
+	activeAsync := 0
+	if taskRegistry != nil {
+		activeAsync = taskRegistry.RunningCount()
+	}
+	activeTerms := 0
+	if activeTerminalRegistry != nil && activeTerminalRegistry.HasActive() {
+		activeTerms = 1
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(WorkspaceStatResponse{
-		CapacityBytes:  capacity,
-		UsedBytes:      used,
-		AvailableBytes: available,
-		InodesTotal:    stat.Files,
-		InodesUsed:     inodesUsed,
+		CapacityBytes:    capacity,
+		UsedBytes:        used,
+		AvailableBytes:   available,
+		InodesTotal:      stat.Files,
+		InodesUsed:       inodesUsed,
+		ActiveAsyncTasks: activeAsync,
+		ActiveTerminals:  activeTerms,
 	})
 }
