@@ -425,6 +425,7 @@ public class SkillService {
         return SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
             .skillId(def.id)
             .digest(def.digest)
+            .tier(SkillTiers.resolve(def).name())
             .namespace(def.namespace)
             .content(def.content)
             .allowedTools(def.allowedTools != null ? def.allowedTools : Collections.emptyList())

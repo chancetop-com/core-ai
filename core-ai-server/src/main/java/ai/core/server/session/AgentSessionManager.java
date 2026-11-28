@@ -27,6 +27,9 @@ import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillSdkCapabilityResolver;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
+import ai.core.server.skill.telemetry.SkillTelemetryService;
+import ai.core.server.skillhub.SkillCatalogService;
+import ai.core.server.skillhub.SkillHubAccessPolicy;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
@@ -72,25 +75,20 @@ public class AgentSessionManager {
     UserStore userStore;
     @Inject SkillService skillService;
     @Inject SkillTelemetryBuffer skillTelemetryBuffer;
+    @Inject SkillTelemetryService skillTelemetryService;
+    @Inject SkillCatalogService skillCatalogService;
+    @Inject SkillHubAccessPolicy skillHubAccessPolicy;
     @Inject ChatMessageService chatMessageService;
     @Inject SessionRegistry sessionRegistry;
     @Inject SessionChannelService sessionChannelService;
-    @Inject
-    SandboxService sandboxService;
-    @Inject
-    SystemPromptService systemPromptService;
-    @Inject
-    SkillArchiveBuilder skillArchiveBuilder;
-    @Inject
-    ChatArtifactSetup artifactSetup;
-    @Inject
-    DatasetService datasetService;
-    @Inject
-    DatasetRecordService datasetRecordService;
-    @Inject
-    FileService fileService;
-    @Inject
-    PublicUrlConfiguration publicUrlConfiguration;
+    @Inject SandboxService sandboxService;
+    @Inject SystemPromptService systemPromptService;
+    @Inject SkillArchiveBuilder skillArchiveBuilder;
+    @Inject ChatArtifactSetup artifactSetup;
+    @Inject DatasetService datasetService;
+    @Inject DatasetRecordService datasetRecordService;
+    @Inject FileService fileService;
+    @Inject PublicUrlConfiguration publicUrlConfiguration;
 
     @Inject EventPublisher eventPublisher;
     @Inject SessionOwnershipRegistry ownershipRegistry;
@@ -127,6 +125,9 @@ public class AgentSessionManager {
             skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
             skillManager.setCapabilityResolver(new SkillSdkCapabilityResolver(toolRegistryService, permissionService, agentDefinitionStore));
             skillManager.setTelemetryBuffer(skillTelemetryBuffer);
+            skillManager.setTelemetryService(skillTelemetryService);
+            skillManager.setCatalogService(skillCatalogService);
+            skillManager.setAccessPolicy(skillHubAccessPolicy);
         }
         return skillManager;
     }

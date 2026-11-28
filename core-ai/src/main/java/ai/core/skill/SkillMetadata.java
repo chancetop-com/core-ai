@@ -24,6 +24,7 @@ public final class SkillMetadata {
 
     private final String skillId;
     private final String digest;
+    private final String tier;
     private final String namespace;
     private final String name;
     private final String description;
@@ -39,6 +40,7 @@ public final class SkillMetadata {
     private SkillMetadata(Builder builder) {
         this.skillId = builder.skillId;
         this.digest = builder.digest;
+        this.tier = builder.tier;
         this.namespace = builder.namespace;
         this.name = builder.name;
         this.description = builder.description;
@@ -58,6 +60,10 @@ public final class SkillMetadata {
 
     public String getDigest() {
         return digest;
+    }
+
+    public String getTier() {
+        return tier;
     }
 
     public String getNamespace() {
@@ -115,6 +121,7 @@ public final class SkillMetadata {
         private final String path;
         private String skillId;
         private String digest;
+        private String tier;
         private String namespace;
         private String skillDir;
         private String content;
@@ -137,6 +144,11 @@ public final class SkillMetadata {
 
         public Builder digest(String digest) {
             this.digest = digest;
+            return this;
+        }
+
+        public Builder tier(String tier) {
+            this.tier = tier;
             return this;
         }
 

@@ -1,5 +1,7 @@
 package ai.core.cli.hub.skill;
 
+import ai.core.api.server.skill.ReportSkillPapercutRequest;
+import ai.core.api.server.skill.SkillPapercutView;
 import ai.core.api.server.skillhub.SkillHubDetail;
 import ai.core.api.server.skillhub.SkillHubLookupResponse;
 import ai.core.api.server.skillhub.SkillHubResourceResponse;
@@ -110,6 +112,11 @@ public class SkillHubClient {
         var effectiveTimeout = batchTimeout != null ? batchTimeout : Duration.ofMillis(1500);
         var body = apiClient(effectiveTimeout).postRequired("/api/skill-hub/telemetry/batch", request);
         return JsonUtil.fromJson(SkillTelemetryBatchResponse.class, body);
+    }
+
+    public SkillPapercutView reportPapercut(String skillId, ReportSkillPapercutRequest request) {
+        var body = apiClient(timeout).postRequired("/api/skills/" + encode(skillId) + "/papercuts", request);
+        return JsonUtil.fromJson(SkillPapercutView.class, body);
     }
 
     private Map<String, RemoteApiClient.MultipartFile> toMultipart(Map<String, Path> files) {

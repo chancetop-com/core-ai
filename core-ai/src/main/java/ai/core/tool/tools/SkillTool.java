@@ -7,6 +7,7 @@ import ai.core.skill.SkillLoadException;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSdkCapabilityManifest;
+import ai.core.skill.SkillSlotAllocator;
 import ai.core.skill.SkillSource;
 import ai.core.skill.telemetry.SkillTelemetryIdentity;
 import ai.core.skill.telemetry.SkillTelemetrySink;
@@ -50,9 +51,11 @@ public class SkillTool extends ToolCall {
         if (skills == null || skills.isEmpty()) {
             return NO_SKILLS_DESC;
         }
-        var sb = new StringBuilder(BASE_DESC.length() + skills.size() * 200);
+        var allocation = SkillSlotAllocator.allocate(skills);
+        var pinned = allocation.pinned();
+        var sb = new StringBuilder(BASE_DESC.length() + pinned.size() * 200);
         sb.append(BASE_DESC).append("\n<available_skills>\n");
-        for (var skill : skills) {
+        for (var skill : pinned) {
             sb.append("  <skill>\n    <name>").append(skill.getQualifiedName())
               .append("</name>\n    <description>").append(skill.getDescription()).append("</description>\n");
             if (skill.getSkillDir() != null) {
@@ -61,6 +64,10 @@ public class SkillTool extends ToolCall {
             sb.append("  </skill>\n");
         }
         sb.append("</available_skills>\n\nProvide the skill name to get full instructions and resources.");
+        if (!allocation.overflow().isEmpty()) {
+            sb.append("\nAdditional attached skills (").append(allocation.overflow().size())
+                    .append(") are available via search_skills(query) before calling use_skill.");
+        }
         return sb.toString();
     }
 
@@ -113,7 +120,7 @@ public class SkillTool extends ToolCall {
     private ToolCallResult loadSkill(String name, long startTime, ExecutionContext context) {
         SkillMetadata skill = registry != null ? registry.find(name) : null;
         if (skill == null) {
-            return ToolCallResult.failed("Skill '" + name + "' not found. Available skills: " + skillNameList())
+            return ToolCallResult.failed("SKILL_NOT_ATTACHED: Skill '" + name + "' not found. Available skills: " + skillNameList())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
         if (accessGuard != null && !accessGuard.allow(skill)) {

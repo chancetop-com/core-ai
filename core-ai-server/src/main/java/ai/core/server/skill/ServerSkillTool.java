@@ -31,6 +31,7 @@ import java.util.Map;
  */
 public class ServerSkillTool extends ToolCall {
 
+    public static final String ERROR_NOT_ATTACHED = "SKILL_NOT_ATTACHED";
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerSkillTool.class);
     private static final String SANDBOX_SKILL_BASE = "/skill";
     private static final String SANDBOX_HUB_HINT = """
@@ -79,7 +80,10 @@ public class ServerSkillTool extends ToolCall {
 
             var meta = registry.find(name.trim());
             if (meta == null) {
-                return ToolCallResult.failed("Skill '" + name + "' not found. Available: " + skillNameList())
+                emitNotAttachedCard(context, name.trim());
+                return ToolCallResult.failed(ERROR_NOT_ATTACHED + ": Skill '" + name.trim()
+                                + "' is not attached to this session. Ask the user to attach it before calling use_skill. Available: "
+                                + skillNameList())
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -143,6 +147,27 @@ public class ServerSkillTool extends ToolCall {
                 "version", manifest.contractVersion()));
         var error = emitter.emit("skill_capabilities", data, card, context.getCurrentToolCallId());
         if (error != null) LOGGER.debug("skill capability card not emitted: {}", error);
+    }
+
+    private void emitNotAttachedCard(ExecutionContext context, String requestedSkill) {
+        if (context == null) return;
+        var emitter = context.getCustomVariable(CustomEventEmitter.CONTEXT_KEY, CustomEventEmitter.class);
+        if (emitter == null) return;
+        var items = List.of(
+                Map.of("label", "Skill", "value", requestedSkill),
+                Map.of("label", "Status", "value", "Not attached to this session"),
+                Map.of("label", "Action Required", "value", "Attach this skill manually in session settings before retrying use_skill")
+        );
+        var card = JsonUtil.toJson(Map.of(
+                "schema_version", 1,
+                "title", "Skill Not Attached · " + requestedSkill,
+                "blocks", List.of(Map.of("type", "key_values", "items", items))));
+        var data = JsonUtil.toJson(Map.of(
+                "qualified_name", requestedSkill,
+                "attached", Boolean.FALSE,
+                "error_code", ERROR_NOT_ATTACHED));
+        var error = emitter.emit("skill_attach_request", data, card, context.getCurrentToolCallId());
+        if (error != null) LOGGER.debug("skill attach request card not emitted: {}", error);
     }
 
     private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {
