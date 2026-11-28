@@ -1,19 +1,25 @@
 package ai.core.server.web;
 
 import ai.core.api.server.SkillWebService;
+import ai.core.api.server.skill.CreateMarketplaceRepoRequest;
+import ai.core.api.server.skill.ListSkillPapercutsRequest;
+import ai.core.api.server.skill.ListSkillPapercutsResponse;
 import ai.core.api.server.skill.ListSkillsRequest;
 import ai.core.api.server.skill.ListSkillsResponse;
 import ai.core.api.server.skill.MarketplaceListResponse;
 import ai.core.api.server.skill.MarketplaceRepoDetailResponse;
-import ai.core.api.server.skill.CreateMarketplaceRepoRequest;
 import ai.core.api.server.skill.MarketplaceRepoView;
 import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
+import ai.core.api.server.skill.ReportSkillPapercutRequest;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
+import ai.core.api.server.skill.SkillPapercutView;
 import ai.core.api.server.skill.SkillQualityReportView;
 import ai.core.api.server.skill.SkillSdkPlanRequest;
 import ai.core.api.server.skill.SkillSdkPlanResponse;
+import ai.core.api.server.skill.SkillTelemetryResponse;
+import ai.core.api.server.skill.UpdateSkillPapercutStatusRequest;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
@@ -24,6 +30,7 @@ import ai.core.server.skill.SkillResourceUpdate;
 import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
 import ai.core.server.skill.SkillViewMapper;
+import ai.core.server.skill.telemetry.SkillTelemetryService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
@@ -50,6 +57,9 @@ public class SkillWebServiceImpl implements SkillWebService {
 
     @Inject
     SkillSdkAssignmentPlanService sdkAssignmentPlanService;
+
+    @Inject
+    SkillTelemetryService telemetryService;
 
     @Inject
     WebContext webContext;
@@ -210,6 +220,30 @@ public class SkillWebServiceImpl implements SkillWebService {
     @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
     public void deleteMarketplaceRepo(String repoId) {
         marketplaceService.delete(repoId);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public SkillTelemetryResponse telemetry(String id) {
+        return telemetryService.getTelemetry(id);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public ListSkillPapercutsResponse listPapercuts(String id, ListSkillPapercutsRequest request) {
+        return telemetryService.listPapercuts(id, request != null ? request.status : null, AuthContext.userId(webContext));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public SkillPapercutView reportPapercut(String id, ReportSkillPapercutRequest request) {
+        return telemetryService.reportPapercut(id, request, AuthContext.userId(webContext));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_MANAGE)
+    public SkillPapercutView updatePapercutStatus(String id, String papercutId, UpdateSkillPapercutStatusRequest request) {
+        return telemetryService.updatePapercutStatus(id, papercutId, request, AuthContext.userId(webContext));
     }
 
     private MarketplaceRepoView toRepoView(MarketplaceRepo repo) {

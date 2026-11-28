@@ -9,9 +9,14 @@ import ai.core.api.server.skillhub.SkillHubResourceRequest;
 import ai.core.api.server.skillhub.SkillHubResourceResponse;
 import ai.core.api.server.skillhub.SkillHubSearchRequest;
 import ai.core.api.server.skillhub.SkillHubSearchResponse;
+import ai.core.api.server.skillhub.SkillTelemetryBatchRequest;
+import ai.core.api.server.skillhub.SkillTelemetryBatchResponse;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
+import ai.core.server.skill.telemetry.SkillTelemetryService;
+import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
+import core.framework.web.WebContext;
 
 /**
  * @author stephen
@@ -19,6 +24,12 @@ import core.framework.inject.Inject;
 public class SkillHubWebServiceImpl implements SkillHubWebService {
     @Inject
     SkillHubService hubService;
+
+    @Inject
+    SkillTelemetryService telemetryService;
+
+    @Inject
+    WebContext webContext;
 
     @Override
     @PermissionsRequired(PermissionCodes.SKILL_VIEW)
@@ -49,5 +60,11 @@ public class SkillHubWebServiceImpl implements SkillHubWebService {
     @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public AlwaysOnSkillListResponse alwaysOn() {
         return hubService.alwaysOn();
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public SkillTelemetryBatchResponse recordTelemetryBatch(SkillTelemetryBatchRequest request) {
+        return telemetryService.recordBatch(request, AuthContext.userId(webContext));
     }
 }

@@ -22,7 +22,6 @@ public class SkillHubModule extends Module {
         var skillService = bean(SkillService.class);
         onStartup(() -> skillService.setCatalogInvalidator(catalog::invalidate));
 
-        bind(SkillHubAccessPolicy.class);
         bind(SkillHubService.class);
 
         api().service(SkillHubWebService.class, bind(SkillHubWebServiceImpl.class));

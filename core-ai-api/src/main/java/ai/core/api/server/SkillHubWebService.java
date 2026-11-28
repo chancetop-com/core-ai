@@ -8,7 +8,10 @@ import ai.core.api.server.skillhub.SkillHubResourceRequest;
 import ai.core.api.server.skillhub.SkillHubResourceResponse;
 import ai.core.api.server.skillhub.SkillHubSearchRequest;
 import ai.core.api.server.skillhub.SkillHubSearchResponse;
+import ai.core.api.server.skillhub.SkillTelemetryBatchRequest;
+import ai.core.api.server.skillhub.SkillTelemetryBatchResponse;
 import core.framework.api.web.service.GET;
+import core.framework.api.web.service.POST;
 import core.framework.api.web.service.Path;
 import core.framework.api.web.service.PathParam;
 
@@ -40,4 +43,8 @@ public interface SkillHubWebService {
     @GET
     @Path("/api/skill-hub/always-on")
     AlwaysOnSkillListResponse alwaysOn();
+
+    @POST
+    @Path("/api/skill-hub/telemetry/batch")
+    SkillTelemetryBatchResponse recordTelemetryBatch(SkillTelemetryBatchRequest request);
 }

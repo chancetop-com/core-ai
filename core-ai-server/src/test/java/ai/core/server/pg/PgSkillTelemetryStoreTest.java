@@ -21,10 +21,7 @@ import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -129,26 +126,32 @@ class PgSkillTelemetryStoreTest {
         int threads = batchIds.size();
         var ready = new CountDownLatch(threads);
         var start = new CountDownLatch(1);
-        var pool = Executors.newFixedThreadPool(threads);
-        try {
-            var futures = new ArrayList<Future<Boolean>>();
-            for (var batchId : batchIds) {
-                Callable<Boolean> task = () -> {
+        var results = new Boolean[threads];
+        var errors = new Throwable[threads];
+        var workers = new ArrayList<Thread>(threads);
+        for (int i = 0; i < threads; i++) {
+            int idx = i;
+            var batchId = batchIds.get(idx);
+            var worker = new Thread(() -> {
+                try {
                     ready.countDown();
                     start.await();
-                    return store.recordBatch(batchId, ZonedDateTime.now().plusHours(24), List.of(
+                    results[idx] = store.recordBatch(batchId, ZonedDateTime.now().plusHours(24), List.of(
                             new SkillTelemetryDelta(skillId, digest, invokesPerThread, 2, 1, 3, 1, ZonedDateTime.now())
                     ));
-                };
-                futures.add(pool.submit(task));
-            }
-            ready.await();
-            start.countDown();
-            for (var future : futures) {
-                assertTrue(future.get());
-            }
-        } finally {
-            pool.shutdownNow();
+                } catch (Throwable t) {
+                    errors[idx] = t;
+                }
+            }, "pg-telemetry-test-" + idx);
+            workers.add(worker);
+            worker.start();
+        }
+        ready.await();
+        start.countDown();
+        for (int i = 0; i < threads; i++) {
+            workers.get(i).join(30_000);
+            if (errors[i] != null) throw new AssertionError("worker " + i + " failed", errors[i]);
+            assertEquals(Boolean.TRUE, results[i]);
         }
     }
 

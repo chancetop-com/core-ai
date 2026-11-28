@@ -1,6 +1,8 @@
 package ai.core.api.server;
 
 import ai.core.api.server.skill.CreateMarketplaceRepoRequest;
+import ai.core.api.server.skill.ListSkillPapercutsRequest;
+import ai.core.api.server.skill.ListSkillPapercutsResponse;
 import ai.core.api.server.skill.ListSkillsRequest;
 import ai.core.api.server.skill.ListSkillsResponse;
 import ai.core.api.server.skill.MarketplaceListResponse;
@@ -8,11 +10,15 @@ import ai.core.api.server.skill.MarketplaceRepoDetailResponse;
 import ai.core.api.server.skill.MarketplaceRepoView;
 import ai.core.api.server.skill.RegisterRepoSkillRequest;
 import ai.core.api.server.skill.RegisterRepoSkillsResponse;
+import ai.core.api.server.skill.ReportSkillPapercutRequest;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
+import ai.core.api.server.skill.SkillPapercutView;
 import ai.core.api.server.skill.SkillQualityReportView;
 import ai.core.api.server.skill.SkillSdkPlanRequest;
 import ai.core.api.server.skill.SkillSdkPlanResponse;
+import ai.core.api.server.skill.SkillTelemetryResponse;
+import ai.core.api.server.skill.UpdateSkillPapercutStatusRequest;
 import ai.core.api.server.skill.UpdateSkillRequest;
 import core.framework.api.web.service.DELETE;
 import core.framework.api.web.service.GET;
@@ -80,4 +86,22 @@ public interface SkillWebService {
     @DELETE
     @Path("/api/skills/marketplace/:repoId")
     void deleteMarketplaceRepo(@PathParam("repoId") String repoId);
+
+    @GET
+    @Path("/api/skills/:id/telemetry")
+    SkillTelemetryResponse telemetry(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/skills/:id/papercuts")
+    ListSkillPapercutsResponse listPapercuts(@PathParam("id") String id, ListSkillPapercutsRequest request);
+
+    @POST
+    @Path("/api/skills/:id/papercuts")
+    SkillPapercutView reportPapercut(@PathParam("id") String id, ReportSkillPapercutRequest request);
+
+    @PUT
+    @Path("/api/skills/:id/papercuts/:papercutId")
+    SkillPapercutView updatePapercutStatus(@PathParam("id") String id,
+                                           @PathParam("papercutId") String papercutId,
+                                           UpdateSkillPapercutStatusRequest request);
 }
