@@ -11,6 +11,8 @@ import core.framework.json.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -225,6 +227,19 @@ public class KubernetesClient {
         }
     }
 
+    public List<PvcInfo> listPvcs(String labelSelector) {
+        var query = labelSelector == null || labelSelector.isBlank()
+                ? ""
+                : "?labelSelector=" + URLEncoder.encode(labelSelector, StandardCharsets.UTF_8);
+        var url = apiServer + "/api/v1/namespaces/" + namespace + "/persistentvolumeclaims" + query;
+        var response = get(url);
+        if (response.statusCode != 200) {
+            throw new RuntimeException("Failed to list pvcs: " + response.statusCode + " " + response.text());
+        }
+        var pvcList = JSON.fromJSON(PvcList.class, response.text());
+        return pvcList.items != null ? pvcList.items : List.of();
+    }
+
     public String getPodLogs(String podName, int tailLines) {
         var url = apiServer + "/api/v1/namespaces/" + namespace + "/pods/" + podName + "/log?tailLines=" + tailLines;
         var response = get(url);
@@ -390,6 +405,11 @@ public class KubernetesClient {
     public static class ServiceList {
         @Property(name = "items")
         public List<ServiceInfo> items;
+    }
+
+    public static class PvcList {
+        @Property(name = "items")
+        public List<PvcInfo> items;
     }
 
 }

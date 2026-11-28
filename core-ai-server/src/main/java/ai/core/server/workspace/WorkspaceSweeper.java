@@ -25,6 +25,7 @@ class WorkspaceSweeper {
     private final Deps deps;
     private final WorkspaceUsageService usage;
     private volatile WorkspaceArchiveService archiveService;
+    private volatile WorkspaceOrphanScanner orphanScanner = WorkspaceOrphanScanner.noop();
 
     WorkspaceSweeper(Deps deps, WorkspaceUsageService usage) {
         this.deps = deps;
@@ -35,15 +36,26 @@ class WorkspaceSweeper {
         this.archiveService = archiveService;
     }
 
+    void attachOrphanScanner(WorkspaceOrphanScanner orphanScanner) {
+        this.orphanScanner = orphanScanner == null ? WorkspaceOrphanScanner.noop() : orphanScanner;
+    }
+
     SweepResult run(WorkspaceConfig config, Predicate<String> sessionBusy) {
         var slept = sleepIdleRuntimes(config, sessionBusy);
         var purged = purgeDeletedWorkspaces(config);
         var volumes = retryDeletingVolumes();
         var archivesPurged = archiveService != null ? archiveService.purgeExpired() : 0;
+        var orphans = reconcileOrphans(config);
         // Usage sampling is the only step that talks to a live runtime, so it runs last: a hung or
         // outdated pod delays the next sample, never the sleep/purge that keeps storage reclaimable.
         var sampled = sampleReadyWorkspaces(config);
-        return new SweepResult(slept, purged, volumes, sampled, archivesPurged);
+        return new SweepResult(slept, purged, volumes, sampled, archivesPurged, orphans);
+    }
+
+    private WorkspaceOrphanReconciler.OrphanResult reconcileOrphans(WorkspaceConfig config) {
+        var scanner = orphanScanner;
+        if (scanner == null) return WorkspaceOrphanReconciler.OrphanResult.EMPTY;
+        return new WorkspaceOrphanReconciler(deps.workspaces, deps.volumes, deps.bindings, scanner).reconcile(config);
     }
 
     private int sampleReadyWorkspaces(WorkspaceConfig config) {
@@ -187,6 +199,16 @@ class WorkspaceSweeper {
                 WorkspaceVolumeManager volumes, WorkspaceRuntimeLifecycle lifecycle, WorkspaceAudit audit) {
     }
 
-    record SweepResult(int slept, int purged, int volumesDeleted, int usageSampled, int archivesPurged) {
+    record SweepResult(int slept, int purged, int volumesDeleted, int usageSampled, int archivesPurged,
+                       WorkspaceOrphanReconciler.OrphanResult orphans) {
+        static final SweepResult EMPTY = new SweepResult(0, 0, 0, 0, 0, WorkspaceOrphanReconciler.OrphanResult.EMPTY);
+
+        int orphanPvcsDeleted() {
+            return orphans.pvcsDeleted();
+        }
+
+        int orphanSandboxesDeleted() {
+            return orphans.sandboxesDeleted();
+        }
     }
 }

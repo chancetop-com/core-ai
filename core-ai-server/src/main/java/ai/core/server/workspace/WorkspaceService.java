@@ -47,17 +47,13 @@ public class WorkspaceService {
 
     public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceConfig config, Executor wakeExecutor) {
-        this(stores, provisioner, runtimes,
-                new WorkspaceUsageService(stores.workspaces(), stores.bindings(), stores.usage(), runtimes),
-                config, wakeExecutor);
+        this(stores, provisioner, runtimes, new WorkspaceUsageService(stores.workspaces(), stores.bindings(), stores.usage(), runtimes), config, wakeExecutor);
     }
 
     public WorkspaceService(WorkspaceStores stores, WorkspaceProvisioner provisioner,
                             WorkspaceRuntimeManager runtimes, WorkspaceUsageService usage,
                             WorkspaceConfig config, Executor wakeExecutor) {
-        this(stores, new RuntimeDeps(provisioner, runtimes, usage,
-                runtimes != null && runtimes.available() ? new WorkspaceBootstrapRunner(config) : null),
-                config, wakeExecutor);
+        this(stores, new RuntimeDeps(provisioner, runtimes, usage, runtimes != null && runtimes.available() ? new WorkspaceBootstrapRunner(config) : null), config, wakeExecutor);
     }
 
     WorkspaceService(WorkspaceStores stores, RuntimeDeps deps, WorkspaceConfig config, Executor wakeExecutor) {
@@ -405,13 +401,16 @@ public class WorkspaceService {
     }
 
     WorkspaceSweeper.SweepResult runLifecycleSweep() {
-        return !config.enabled || workspaces == null
-                ? new WorkspaceSweeper.SweepResult(0, 0, 0, 0, 0) : sweeper.run(config, sessionBusy);
+        return !config.enabled || workspaces == null ? WorkspaceSweeper.SweepResult.EMPTY : sweeper.run(config, sessionBusy);
     }
 
     public void attachArchiveService(WorkspaceArchiveService archiveService) {
         this.archiveService = archiveService;
         this.sweeper.attachArchiveService(archiveService);
+    }
+
+    public void attachOrphanScanner(WorkspaceOrphanScanner orphanScanner) {
+        this.sweeper.attachOrphanScanner(orphanScanner);
     }
 
     WorkspaceArchiveAccess archiveAccess() {
