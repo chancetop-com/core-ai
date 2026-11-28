@@ -2,6 +2,7 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 
 import java.util.Collection;
 import java.util.List;
@@ -39,6 +40,10 @@ public interface SkillStore {
     long countByNamespace(String namespace);
 
     long countBySourceType(SkillSourceType sourceType);
+
+    long countByTier(SkillTier tier);
+
+    List<SkillDefinition> listByTier(SkillTier tier);
 
     void insert(SkillDefinition definition);
 

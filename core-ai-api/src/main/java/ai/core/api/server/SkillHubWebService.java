@@ -1,5 +1,6 @@
 package ai.core.api.server;
 
+import ai.core.api.server.skillhub.AlwaysOnSkillListResponse;
 import ai.core.api.server.skillhub.SkillHubDetail;
 import ai.core.api.server.skillhub.SkillHubLookupRequest;
 import ai.core.api.server.skillhub.SkillHubLookupResponse;
@@ -35,4 +36,8 @@ public interface SkillHubWebService {
     @Path("/api/hub/skills/:namespace/:name/resource")
     SkillHubResourceResponse resource(@PathParam("namespace") String namespace, @PathParam("name") String name,
                                       SkillHubResourceRequest request);
+
+    @GET
+    @Path("/api/skill-hub/always-on")
+    AlwaysOnSkillListResponse alwaysOn();
 }

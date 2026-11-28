@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.domain.SkillStats;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.pg.PgDocumentRow;
 import ai.core.server.pg.PgDocumentStore;
 import ai.core.utils.JsonUtil;
@@ -145,6 +146,19 @@ public class PgSkillStore implements SkillStore {
     public long countBySourceType(SkillSourceType sourceType) {
         return database.selectOne("SELECT count(*) AS total FROM " + TABLE + " WHERE data ->> ? = ?",
             PgSkillCountRow.class, "sourceType", sourceType.name()).map(row -> row.total).orElse(0L);
+    }
+
+    @Override
+    public long countByTier(SkillTier tier) {
+        return database.selectOne("SELECT count(*) AS total FROM " + TABLE + " WHERE data ->> ? = ?",
+            PgSkillCountRow.class, "tier", tier.name()).map(row -> row.total).orElse(0L);
+    }
+
+    @Override
+    public List<SkillDefinition> listByTier(SkillTier tier) {
+        return database.select(SELECT + " WHERE data ->> ? = ? ORDER BY updated_at DESC, id DESC",
+            PgDocumentRow.class, "tier", tier.name())
+            .stream().map(PgSkillStore::toSkill).toList();
     }
 
     @Override

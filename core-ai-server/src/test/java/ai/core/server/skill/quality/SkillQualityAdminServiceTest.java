@@ -1,7 +1,9 @@
 package ai.core.server.skill.quality;
 
+import ai.core.api.server.skill.ActivateSkillQualityPolicyRequest;
 import ai.core.api.server.skill.CreateSkillQualityRuleRequest;
 import ai.core.api.server.skill.UpdateSkillQualityRuleRequest;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.domain.User;
 import ai.core.server.user.UserStore;
 import core.framework.web.exception.BadRequestException;
@@ -113,6 +115,34 @@ class SkillQualityAdminServiceTest {
         assertThatThrownBy(() -> service.rules("user-1")).isInstanceOf(ForbiddenException.class);
         assertThatThrownBy(() -> service.rules("api-1")).isInstanceOf(ForbiddenException.class);
         assertThatThrownBy(() -> service.rules("missing")).isInstanceOf(ForbiddenException.class);
+    }
+
+    @Test
+    void policiesRequireScopeAndSupportAllAndSingleScopeActivation() {
+        assertThatThrownBy(() -> service.policies("admin-1", null)).isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> service.policies("admin-1", "skill:server")).isInstanceOf(BadRequestException.class);
+
+        var all = service.policies("admin-1", "all");
+        assertThat(all.scopes).hasSize(4);
+
+        var domain = service.policies("admin-1", SkillTier.SCOPE_DOMAIN);
+        assertThat(domain.active.scope).isEqualTo(SkillTier.SCOPE_DOMAIN);
+
+        var activate = new ActivateSkillQualityPolicyRequest();
+        activate.scope = SkillTier.SCOPE_CORE;
+        activate.expectedGeneration = 1;
+        activate.changeReason = "relax eval for test";
+        activate.ruleId = SkillQualityPolicyService.ruleId("SKILL.EVAL_DATASET");
+        activate.ruleRevision = 1;
+        activate.enforcement = "WARN";
+
+        var missingScope = new ActivateSkillQualityPolicyRequest();
+        missingScope.changeReason = "no scope";
+        assertThatThrownBy(() -> service.activate(missingScope, "admin-1")).isInstanceOf(BadRequestException.class);
+
+        var updated = service.activate(activate, "admin-1");
+        assertThat(updated.scope).isEqualTo(SkillTier.SCOPE_CORE);
+        assertThat(updated.generation).isEqualTo(2);
     }
 
     private User user(String role, String userType) {

@@ -12,10 +12,8 @@ import java.time.ZonedDateTime;
 
 /**
  * Keeps REPO-sourced skills current so hub consumers never see a stale catalog.
- * <p>
- * The scheduler wakes this job every {@link #TICK_MINUTES} minutes and the job decides whether a sweep is due, because
- * admins can disable it or change the interval on the system configuration page — read per run, so the change applies
- * without a restart. The tick only bounds how quickly a setting change takes effect.
+ * Deterministic quality-gate rejections are isolated to the failing skill at its current commit
+ * without triggering repository-wide backoff or blocking sibling skills in the same repository.
  *
  * @author stephen
  */
@@ -46,7 +44,6 @@ public class SkillRepoSyncJob implements Job {
 
     private final SkillRepoSyncBackoff backoff = new SkillRepoSyncBackoff();
 
-    // per server instance and reset on restart, like the backoff state
     private volatile ZonedDateTime lastSweepAt;
 
     @Override
@@ -65,6 +62,7 @@ public class SkillRepoSyncJob implements Job {
         var repoSkills = skillStore.listBySourceType(SkillSourceType.REPO);
         int failed = 0;
         int deferred = 0;
+        int permanentlyRejected = 0;
         for (var skill : repoSkills) {
             String repoUrl = skill.repoConfig == null ? null : skill.repoConfig.repoUrl;
             if (backoff.deferred(repoUrl)) {
@@ -75,21 +73,25 @@ public class SkillRepoSyncJob implements Job {
                 skillService.syncFromRepoIfChanged(skill.id);
                 backoff.succeeded(repoUrl);
             } catch (Exception e) {
+                if (SkillRepoSyncHelper.isQualityRejection(e)) {
+                    permanentlyRejected++;
+                    continue;
+                }
                 failed++;
                 backoff.failed(repoUrl);
-                LOGGER.warn("failed to sync repo skill, id={}, qualifiedName={}, error={}", skill.id, skill.qualifiedName, describe(e));
+                LOGGER.warn("failed to sync repo skill, id={}, qualifiedName={}, error={}",
+                    skill.id, skill.qualifiedName, describe(e));
             }
         }
-        if (failed > 0 || deferred > 0) {
-            LOGGER.info("skill repo sync finished, skills={}, failed={}, deferred={}", repoSkills.size(), failed, deferred);
+        if (failed > 0 || deferred > 0 || permanentlyRejected > 0) {
+            LOGGER.info("skill repo sync finished, skills={}, failed={}, deferred={}, permanentlyRejected={}",
+                repoSkills.size(), failed, deferred, permanentlyRejected);
         }
     }
 
     private boolean sweepDue(int intervalMinutes) {
         var last = lastSweepAt;
         if (last == null) return true;
-        // a check can land a moment before the exact deadline when the interval is a multiple of the tick;
-        // without the tolerance the sweep would randomly slip a whole tick
         return !ZonedDateTime.now().plusSeconds(DUE_TOLERANCE_SECONDS).isBefore(last.plusMinutes(intervalMinutes));
     }
 }

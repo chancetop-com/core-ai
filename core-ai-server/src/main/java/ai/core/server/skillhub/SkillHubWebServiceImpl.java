@@ -1,6 +1,7 @@
 package ai.core.server.skillhub;
 
 import ai.core.api.server.SkillHubWebService;
+import ai.core.api.server.skillhub.AlwaysOnSkillListResponse;
 import ai.core.api.server.skillhub.SkillHubDetail;
 import ai.core.api.server.skillhub.SkillHubLookupRequest;
 import ai.core.api.server.skillhub.SkillHubLookupResponse;
@@ -42,5 +43,11 @@ public class SkillHubWebServiceImpl implements SkillHubWebService {
     @PermissionsRequired(PermissionCodes.SKILL_VIEW)
     public SkillHubResourceResponse resource(String namespace, String name, SkillHubResourceRequest request) {
         return hubService.resource(namespace, name, request != null ? request.path : null);
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.SKILL_VIEW)
+    public AlwaysOnSkillListResponse alwaysOn() {
+        return hubService.alwaysOn();
     }
 }

@@ -13,4 +13,7 @@ public class SkillQualityPolicyListResponse {
 
     @Property(name = "history")
     public List<SkillQualityPolicyView> history;
+
+    @Property(name = "scopes")
+    public List<SkillQualityPolicyView> scopes;
 }

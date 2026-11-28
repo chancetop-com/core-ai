@@ -8,9 +8,11 @@ import ai.core.server.domain.MarketplaceRepo;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.PgMarketplaceRepoStore;
 import ai.core.server.skill.PgSkillCountRow;
 import ai.core.server.skill.PgSkillStore;
+import ai.core.server.skill.PresetSkillSeeder;
 import core.framework.internal.db.DatabaseImpl;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
@@ -116,6 +118,36 @@ class PgSkillStoreTest {
             store.delete(skill.id);
         }
         assertFalse(store.get(skill.id).isPresent());
+    }
+
+    @Test
+    void tierCountListAndPresetSkillSeederInPg() throws Exception {
+        var store = withDatabase(new PgSkillStore());
+        var namespace = "tier-test-" + UUID.randomUUID();
+        var alwaysOn = skill(namespace, "pinned-skill", SkillSourceType.UPLOAD);
+        alwaysOn.tier = SkillTier.ALWAYS_ON;
+        long beforeCount = store.countByTier(SkillTier.ALWAYS_ON);
+        try {
+            store.insert(alwaysOn);
+            assertEquals(beforeCount + 1, store.countByTier(SkillTier.ALWAYS_ON));
+            assertTrue(store.listByTier(SkillTier.ALWAYS_ON).stream().anyMatch(item -> item.id.equals(alwaysOn.id)));
+
+            var seeder = new PresetSkillSeeder();
+            var field = PresetSkillSeeder.class.getDeclaredField("skillStore");
+            field.setAccessible(true);
+            field.set(seeder, store);
+            seeder.seed();
+            for (var name : PresetSkillSeeder.PRESET_NAMES) {
+                var seeded = store.get(PresetSkillSeeder.skillId(name)).orElseThrow();
+                assertEquals(SkillTier.CORE, seeded.tier);
+                assertEquals("builtin/" + name, seeded.qualifiedName);
+            }
+            var firstRevision = store.get("skill-ai-camera-language").orElseThrow().revision;
+            seeder.seed();
+            assertEquals(firstRevision, store.get("skill-ai-camera-language").orElseThrow().revision);
+        } finally {
+            store.delete(alwaysOn.id);
+        }
     }
 
     @Test

@@ -1,14 +1,18 @@
 package ai.core.server;
 
+import ai.core.api.server.SkillQualityAdminWebService;
 import ai.core.api.server.SkillWebService;
 import ai.core.server.skill.MarketplaceService;
 import ai.core.server.skill.MongoSkillProvider;
+import ai.core.server.skill.PresetSkillSeeder;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillPublishService;
+import ai.core.server.skill.SkillQualityFixtureBuilder;
 import ai.core.server.skill.SkillRepoSyncJob;
 import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.SkillTierAdminService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.skill.quality.SkillQualityAdminService;
@@ -29,18 +33,33 @@ public class SkillModule extends Module {
         bind(SkillPublishService.class);
         bind(SkillService.class);
         bind(SkillSdkAssignmentPlanService.class);
-        bind(ai.core.server.skill.SkillQualityFixtureBuilder.class);
+        bind(SkillQualityFixtureBuilder.class);
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
         bind(SkillArchiveBuilder.class);
         bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
+        var tierAdmin = bind(SkillTierAdminService.class);
+        tierAdmin.setMaxAlwaysOnSkills(intProperty("sys.skill.alwaysOn.max",
+            SkillTierAdminService.DEFAULT_MAX_ALWAYS_ON_SKILLS));
         bind(SkillQualityAdminService.class);
-        api().service(ai.core.api.server.SkillQualityAdminWebService.class,
-            bind(SkillQualityAdminWebServiceImpl.class));
+        api().service(SkillQualityAdminWebService.class, bind(SkillQualityAdminWebServiceImpl.class));
         http().route(HTTPMethod.POST, "/api/skills/upload", bind(SkillUploadController.class));
-        // fixed wake-up tick only; the job applies the enabled switch and interval configured on the
-        // system configuration page, so admins can throttle or stop the sync without a restart
-        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class), Duration.ofMinutes(SkillRepoSyncJob.TICK_MINUTES));
+        if ("pg".equals(property("sys.store.mode").orElse("mongo"))) {
+            var seeder = bind(PresetSkillSeeder.class);
+            onStartup(seeder::seed);
+        }
+        schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class),
+            Duration.ofMinutes(SkillRepoSyncJob.TICK_MINUTES));
+    }
+
+    private int intProperty(String key, int defaultValue) {
+        var value = property(key).orElse(null);
+        if (value == null || value.isBlank()) return defaultValue;
+        try {
+            return Integer.parseInt(value.strip());
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 }

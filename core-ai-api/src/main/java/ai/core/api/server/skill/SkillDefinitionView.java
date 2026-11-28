@@ -55,6 +55,15 @@ public class SkillDefinitionView {
     @Property(name = "digest")
     public String digest;
 
+    @Property(name = "last_sync_status")
+    public String lastSyncStatus;
+
+    @Property(name = "last_rejected_commit_hash")
+    public String lastRejectedCommitHash;
+
+    @Property(name = "last_sync_error")
+    public String lastSyncError;
+
     @NotNull
     @Property(name = "user_id")
     public String userId;

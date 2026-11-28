@@ -1,8 +1,8 @@
 package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
-import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.skill.quality.SkillQualityGateException;
 import ai.core.server.skill.quality.SkillQualityReport;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillLoader;
@@ -17,7 +17,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -63,6 +62,10 @@ public class SkillService {
         if (listener != null) healthListener = listener;
     }
 
+    public void invalidateCatalogCache() {
+        invalidateCatalog();
+    }
+
     private void invalidateCatalog() {
         summaryCache.clear();
         catalogInvalidator.run();
@@ -80,7 +83,7 @@ public class SkillService {
     public SkillPublishOutcome uploadOutcome(String userId, String namespace, String directoryName,
                                              byte[] skillFileBytes, Map<String, byte[]> resources) {
         if (directoryName == null || directoryName.isBlank()) {
-            throw ai.core.server.skill.quality.SkillQualityGateException.directoryRequired();
+            throw SkillQualityGateException.directoryRequired();
         }
         var content = new String(skillFileBytes, StandardCharsets.UTF_8);
         var request = SkillPublishRequest.upload(userId, namespace, directoryName, content, resources);
@@ -116,7 +119,7 @@ public class SkillService {
             String commitHash = repoManager().headCommit(tempDir);
             String effectiveSkillPath = skillPath;
             if (effectiveSkillPath == null || effectiveSkillPath.isBlank()) {
-                effectiveSkillPath = detectSkillPath(tempDir);
+                effectiveSkillPath = SkillRepoSyncHelper.detectSkillPath(tempDir);
             }
 
             List<SkillMetadata> skills;
@@ -135,7 +138,8 @@ public class SkillService {
             var results = new ArrayList<SkillDefinition>();
             var source = new SkillRepoSource(repoUrl, branch, effectiveSkillPath, commitHash);
             for (var skill : skills) {
-                results.add(publishRepoSKill(userId, namespace, skill, source));
+                var published = publishRepoSkillIsolated(userId, namespace, skill, source);
+                if (published != null) results.add(published);
             }
             LOGGER.info("registered {} skills from repo {}", results.size(), repoUrl);
             invalidateCatalog();
@@ -282,13 +286,17 @@ public class SkillService {
             LOGGER.info("skill repo unchanged, sync skipped, id={}, qualifiedName={}, commit={}", entity.id, entity.qualifiedName, remoteHead);
             return entity;
         }
+        if (remoteHead != null && remoteHead.equals(config.lastRejectedCommitHash)) {
+            LOGGER.debug("skill repo commit permanently rejected, sync skipped, id={}, qualifiedName={}, commit={}", entity.id, entity.qualifiedName, remoteHead);
+            return entity;
+        }
         Path tempDir = null;
         try {
             tempDir = Files.createTempDirectory(SkillRepoManager.SYNC_TEMP_DIR_PREFIX);
             repoManager().cloneRepo(config.repoUrl, config.branch, tempDir);
             String commitHash = remoteHead != null ? remoteHead : repoManager().headCommit(tempDir);
 
-            String effectiveSkillPath = resolveSyncedSkillPath(tempDir, config.skillPath);
+            String effectiveSkillPath = SkillRepoSyncHelper.resolveSyncedSkillPath(tempDir, config.skillPath);
 
             List<SkillMetadata> skills;
             var loader = new SkillLoader(MAX_SKILL_FILE_SIZE);
@@ -321,42 +329,27 @@ public class SkillService {
         return syncFromRepo(id, false);
     }
 
-    private SkillDefinition publishRepoSKill(String userId, String namespace, SkillMetadata skill, SkillRepoSource source) {
+    private SkillDefinition publishRepoSkillIsolated(String userId, String namespace, SkillMetadata skill, SkillRepoSource source) {
         var skillDir = skill.getSkillDir() != null ? Path.of(skill.getSkillDir()) : Path.of(skill.getPath()).getParent();
         var directoryName = skillDir == null ? null : skillDir.getFileName();
         if (directoryName == null) {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
         }
+        var existing = skillStore.findByQualifiedName(namespace + "/" + skill.getName()).orElse(null);
         var request = SkillPublishRequest.upload(userId, namespace, directoryName.toString(),
             repoManager().readSkillMdFromDir(skillDir), repoManager().readResourceBytes(skillDir, skill.getResources()));
-        request.existing = skillStore.findByQualifiedName(namespace + "/" + skill.getName()).orElse(null);
+        request.existing = existing;
         request.sourceType = SkillSourceType.REPO;
-        request.targetTier = SkillTiers.defaultFor(SkillSourceType.REPO, request.existing);
-        request.repoConfig = repoConfig(source);
-        return publishService.publish(request).entity();
-    }
-
-    /** A plugin manifest owns its layout, so a declared root wins over a path stored by an older detection. */
-    private String resolveSyncedSkillPath(Path repoDir, String configured) {
-        var declared = new PluginFormatDetector().declaredSkillPaths(repoDir);
-        if (!declared.isEmpty()) return String.join(",", declared);
-        if (configured != null && !configured.isBlank()) return configured;
-        return detectSkillPath(repoDir);
-    }
-
-    private String detectSkillPath(Path repoDir) {
-        var detected = new PluginFormatDetector().detectSkillPaths(repoDir);
-        return detected.isEmpty() ? null : String.join(",", detected);
-    }
-
-    private SkillRepoConfig repoConfig(SkillRepoSource source) {
-        var config = new SkillRepoConfig();
-        config.repoUrl = source.url();
-        config.branch = source.branch() == null || source.branch().isBlank() ? "main" : source.branch().trim();
-        config.skillPath = source.skillPath();
-        config.lastSyncedAt = ZonedDateTime.now();
-        config.lastCommitHash = source.commitHash();
-        return config;
+        request.targetTier = SkillTiers.defaultFor(SkillSourceType.REPO, existing);
+        request.repoConfig = SkillRepoSyncHelper.initialRepoConfig(source);
+        try {
+            return publishService.publish(request).entity();
+        } catch (SkillQualityGateException e) {
+            if (!SkillRepoSyncHelper.isQualityRejection(e)) throw e;
+            if (existing != null) SkillRepoSyncHelper.recordPermanentRejection(existing, source.commitHash(), e, skillStore);
+            else SkillRepoSyncHelper.logNewSkillRejection(namespace + "/" + skill.getName(), source.commitHash(), e);
+            return null;
+        }
     }
 
     private SkillDefinition syncMatchedSkill(SkillDefinition entity, SkillMetadata skill, String commitHash) {
@@ -365,10 +358,6 @@ public class SkillService {
             : Path.of(skill.getPath()).getParent();
         if (skillDir == null) {
             throw new RuntimeException("cannot determine skill directory for " + skill.getName() + ", path=" + skill.getPath());
-        }
-        if (entity.repoConfig != null) {
-            if (commitHash != null) entity.repoConfig.lastCommitHash = commitHash;
-            entity.repoConfig.lastSyncedAt = ZonedDateTime.now();
         }
         var request = new SkillPublishRequest();
         request.userId = entity.userId;
@@ -379,10 +368,17 @@ public class SkillService {
         request.existing = entity;
         request.sourceType = SkillSourceType.REPO;
         request.targetTier = SkillTiers.resolve(entity);
-        request.repoConfig = entity.repoConfig;
-        var outcome = publishService.publish(request);
-        invalidateCatalog();
-        return outcome.entity();
+        request.repoConfig = SkillRepoSyncHelper.nextSyncedConfig(entity.repoConfig, commitHash);
+        try {
+            var outcome = publishService.publish(request);
+            invalidateCatalog();
+            return outcome.entity();
+        } catch (SkillQualityGateException e) {
+            if (SkillRepoSyncHelper.isQualityRejection(e)) {
+                SkillRepoSyncHelper.recordPermanentRejection(entity, commitHash, e, skillStore);
+            }
+            throw e;
+        }
     }
 
     public SkillDefinition download(String id) {

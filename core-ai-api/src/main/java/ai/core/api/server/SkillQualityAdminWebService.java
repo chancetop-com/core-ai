@@ -2,6 +2,9 @@ package ai.core.api.server;
 
 import ai.core.api.server.skill.ActivateSkillQualityPolicyRequest;
 import ai.core.api.server.skill.CreateSkillQualityRuleRequest;
+import ai.core.api.server.skill.ListSkillQualityPoliciesRequest;
+import ai.core.api.server.skill.ListSkillQualityRulesRequest;
+import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillQualityPolicyListResponse;
 import ai.core.api.server.skill.SkillQualityPolicyView;
 import ai.core.api.server.skill.SkillQualityRuleListResponse;
@@ -10,6 +13,7 @@ import ai.core.api.server.skill.SkillQualityRuleView;
 import ai.core.api.server.skill.TestSkillQualityRuleRequest;
 import ai.core.api.server.skill.TestSkillQualityRuleResponse;
 import ai.core.api.server.skill.UpdateSkillQualityRuleRequest;
+import ai.core.api.server.skill.UpdateSkillTierRequest;
 import core.framework.api.http.HTTPStatus;
 import core.framework.api.web.service.GET;
 import core.framework.api.web.service.POST;
@@ -19,8 +23,8 @@ import core.framework.api.web.service.PathParam;
 import core.framework.api.web.service.ResponseStatus;
 
 /**
- * Skill publish-policy administration. Every method requires a human platform admin at the service
- * layer; the route-level RBAC annotation is not sufficient because API users bypass action checks.
+ * Skill publish-policy and tier administration. Every method requires a human platform admin at the
+ * service layer; the route-level RBAC annotation is not sufficient because API users bypass action checks.
  *
  * @author core-ai
  */
@@ -31,7 +35,7 @@ public interface SkillQualityAdminWebService {
 
     @GET
     @Path("/api/admin/skill-quality/rules")
-    SkillQualityRuleListResponse rules();
+    SkillQualityRuleListResponse rules(ListSkillQualityRulesRequest request);
 
     @POST
     @Path("/api/admin/skill-quality/rules")
@@ -52,9 +56,13 @@ public interface SkillQualityAdminWebService {
 
     @GET
     @Path("/api/admin/skill-quality/policies")
-    SkillQualityPolicyListResponse policies();
+    SkillQualityPolicyListResponse policies(ListSkillQualityPoliciesRequest request);
 
     @POST
     @Path("/api/admin/skill-quality/policies/activate")
     SkillQualityPolicyView activatePolicy(ActivateSkillQualityPolicyRequest request);
+
+    @PUT
+    @Path("/api/admin/skills/:id/tier")
+    SkillDefinitionView updateTier(@PathParam("id") String id, UpdateSkillTierRequest request);
 }

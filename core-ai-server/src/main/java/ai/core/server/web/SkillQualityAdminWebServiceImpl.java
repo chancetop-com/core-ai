@@ -3,6 +3,9 @@ package ai.core.server.web;
 import ai.core.api.server.SkillQualityAdminWebService;
 import ai.core.api.server.skill.ActivateSkillQualityPolicyRequest;
 import ai.core.api.server.skill.CreateSkillQualityRuleRequest;
+import ai.core.api.server.skill.ListSkillQualityPoliciesRequest;
+import ai.core.api.server.skill.ListSkillQualityRulesRequest;
+import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillQualityPolicyListResponse;
 import ai.core.api.server.skill.SkillQualityPolicyView;
 import ai.core.api.server.skill.SkillQualityRuleListResponse;
@@ -11,8 +14,10 @@ import ai.core.api.server.skill.SkillQualityRuleView;
 import ai.core.api.server.skill.TestSkillQualityRuleRequest;
 import ai.core.api.server.skill.TestSkillQualityRuleResponse;
 import ai.core.api.server.skill.UpdateSkillQualityRuleRequest;
+import ai.core.api.server.skill.UpdateSkillTierRequest;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
+import ai.core.server.skill.SkillTierAdminService;
 import ai.core.server.skill.quality.SkillQualityAdminService;
 import ai.core.server.web.auth.AuthContext;
 import core.framework.inject.Inject;
@@ -26,6 +31,8 @@ public class SkillQualityAdminWebServiceImpl implements SkillQualityAdminWebServ
     WebContext webContext;
     @Inject
     SkillQualityAdminService adminService;
+    @Inject
+    SkillTierAdminService tierAdminService;
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_QUALITY_MANAGE)
@@ -35,8 +42,8 @@ public class SkillQualityAdminWebServiceImpl implements SkillQualityAdminWebServ
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_QUALITY_MANAGE)
-    public SkillQualityRuleListResponse rules() {
-        return adminService.rules(AuthContext.userId(webContext));
+    public SkillQualityRuleListResponse rules(ListSkillQualityRulesRequest request) {
+        return adminService.rules(AuthContext.userId(webContext), request == null ? null : request.scope);
     }
 
     @Override
@@ -65,13 +72,19 @@ public class SkillQualityAdminWebServiceImpl implements SkillQualityAdminWebServ
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_QUALITY_MANAGE)
-    public SkillQualityPolicyListResponse policies() {
-        return adminService.policies(AuthContext.userId(webContext));
+    public SkillQualityPolicyListResponse policies(ListSkillQualityPoliciesRequest request) {
+        return adminService.policies(AuthContext.userId(webContext), request == null ? null : request.scope);
     }
 
     @Override
     @PermissionsRequired(PermissionCodes.AGENT_QUALITY_MANAGE)
     public SkillQualityPolicyView activatePolicy(ActivateSkillQualityPolicyRequest request) {
         return adminService.activate(request, AuthContext.userId(webContext));
+    }
+
+    @Override
+    @PermissionsRequired(PermissionCodes.AGENT_QUALITY_MANAGE)
+    public SkillDefinitionView updateTier(String id, UpdateSkillTierRequest request) {
+        return tierAdminService.updateTier(id, request, AuthContext.userId(webContext));
     }
 }

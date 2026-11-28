@@ -225,6 +225,24 @@ class SkillServiceTest {
     }
 
     @Test
+    void scheduledSyncSkipsTheCloneWhenTheRemoteCommitWasPermanentlyRejected() throws Exception {
+        var collection = skillCollection();
+        var entity = repoSkill("abc123");
+        entity.repoConfig.lastRejectedCommitHash = "bad999";
+        entity.repoConfig.lastSyncStatus = SkillRepoSyncHelper.STATUS_REJECTED;
+        when(collection.get("repo-1")).thenReturn(Optional.of(entity));
+        var manager = spy(manager(collection));
+        doReturn("bad999").when(manager).remoteHead(REPO_URL, "main");
+        var service = service(manager, collection);
+
+        var result = service.syncFromRepoIfChanged("repo-1");
+
+        assertSame(entity, result);
+        verify(manager, never()).cloneRepo(anyString(), anyString(), any());
+        verify(collection, never()).replace(any());
+    }
+
+    @Test
     void scheduledSyncClonesWhenTheRemoteCommitMoved() throws Exception {
         var collection = skillCollection();
         var entity = repoSkill("abc123");

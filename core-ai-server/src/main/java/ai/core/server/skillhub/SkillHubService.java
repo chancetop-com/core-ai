@@ -1,5 +1,7 @@
 package ai.core.server.skillhub;
 
+import ai.core.api.server.skillhub.AlwaysOnSkillListResponse;
+import ai.core.api.server.skillhub.AlwaysOnSkillView;
 import ai.core.api.server.skillhub.SkillHubDetail;
 import ai.core.api.server.skillhub.SkillHubLookupResponse;
 import ai.core.api.server.skillhub.SkillHubNamespaceMatch;
@@ -9,6 +11,7 @@ import ai.core.api.server.skillhub.SkillHubSearchResponse;
 import ai.core.api.server.skillhub.SkillHubSummary;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
 import ai.core.server.skill.SkillResourceLimits;
@@ -27,6 +30,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HexFormat;
 
 /**
@@ -118,6 +122,24 @@ public class SkillHubService {
         byte[] bytes = archiveBuilder.build(definition);
         recordPull(definition.id, namespace, name);
         return new ArchiveBundle(definition, bytes);
+    }
+
+    public AlwaysOnSkillListResponse alwaysOn() {
+        var skills = skillStore.listByTier(SkillTier.ALWAYS_ON).stream()
+            .filter(accessPolicy::canView)
+            .sorted(Comparator.comparing(skill -> skill.qualifiedName))
+            .map(def -> {
+                var view = new AlwaysOnSkillView();
+                view.id = def.id;
+                view.qualifiedName = def.qualifiedName;
+                view.description = def.description;
+                view.digest = def.digest;
+                return view;
+            })
+            .toList();
+        var response = new AlwaysOnSkillListResponse();
+        response.skills = skills;
+        return response;
     }
 
     private SkillDefinition definition(String namespace, String name) {

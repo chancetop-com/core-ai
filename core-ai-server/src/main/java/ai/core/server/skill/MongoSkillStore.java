@@ -2,6 +2,7 @@ package ai.core.server.skill;
 
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Updates;
 import core.framework.inject.Inject;
@@ -116,6 +117,16 @@ public class MongoSkillStore implements SkillStore {
     @Override
     public long countBySourceType(SkillSourceType sourceType) {
         return skillCollection.count(Filters.eq("source_type", sourceType));
+    }
+
+    @Override
+    public long countByTier(SkillTier tier) {
+        return skillCollection.count(Filters.eq("tier", tier));
+    }
+
+    @Override
+    public List<SkillDefinition> listByTier(SkillTier tier) {
+        return skillCollection.find(Filters.eq("tier", tier));
     }
 
     @Override

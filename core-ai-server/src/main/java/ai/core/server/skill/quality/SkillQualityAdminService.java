@@ -208,11 +208,18 @@ public class SkillQualityAdminService {
 
     public SkillQualityPolicyListResponse policies(String userId, String scope) {
         policyService.requireAdmin(userId);
-        var effectiveScope = scope == null || scope.isBlank() ? SkillTier.SCOPE_DOMAIN : scope.trim();
+        if (scope == null || scope.isBlank()) {
+            throw new BadRequestException("scope query parameter is required (use a tier scope or 'all')");
+        }
+        var effectiveScope = scope.trim();
         var response = new SkillQualityPolicyListResponse();
         if ("all".equalsIgnoreCase(effectiveScope)) {
             var domainActive = policyService.active(SkillTier.SCOPE_DOMAIN);
             response.active = SkillQualityAdminMapper.toPolicyView(domainActive.policy(), domainActive.generation(), true);
+            response.scopes = SkillTiers.ALL_SCOPES.stream()
+                .map(policyService::active)
+                .map(active -> SkillQualityAdminMapper.toPolicyView(active.policy(), active.generation(), true))
+                .toList();
             response.history = policyService.historyAllTierScopes().stream()
                 .map(policy -> {
                     var head = policyService.requireHead(policy.scope);
@@ -236,8 +243,10 @@ public class SkillQualityAdminService {
         if (request.changeReason == null || request.changeReason.isBlank()) {
             throw new BadRequestException("change_reason is required");
         }
-        var scope = SkillTiers.requireScope(
-            request.scope == null || request.scope.isBlank() ? SkillTier.SCOPE_DOMAIN : request.scope);
+        if (request.scope == null || request.scope.isBlank()) {
+            throw new BadRequestException("scope is required");
+        }
+        var scope = SkillTiers.requireScope(request.scope);
         QualityEnforcement enforcement = null;
         if (request.enforcement != null) {
             try {
@@ -261,6 +270,7 @@ public class SkillQualityAdminService {
     }
 
     public void requireTested(SkillQualityRule rule, SkillQualityRuleRevision revision) {
+        if (Boolean.TRUE.equals(rule.builtIn)) return;
         if (rule.lastTestedRevision == null || !rule.lastTestedRevision.equals(revision.revision)) {
             throw new BadRequestException("rule revision must be tested before it can block publishes");
         }

@@ -4,6 +4,8 @@ import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillRepoConfig;
 import ai.core.server.domain.SkillSourceType;
 import ai.core.server.settings.SystemSettingsService;
+import ai.core.server.skill.quality.SkillQualityGateException;
+import ai.core.server.skill.quality.SkillQualityReport;
 import core.framework.mongo.MongoCollection;
 import org.bson.conversions.Bson;
 import org.junit.jupiter.api.Test;
@@ -73,6 +75,21 @@ class SkillRepoSyncJobTest {
         job.execute(null);
 
         verify(service, times(1)).syncFromRepoIfChanged("repo-1");
+    }
+
+    @Test
+    void qualityRejectionIsolatesBadSkillWithoutBackingOffSiblingInSameRepo() {
+        var collection = skillCollection();
+        when(collection.find(any(Bson.class))).thenReturn(List.of(repoSkill("bad-skill"), repoSkill("good-skill")));
+        var service = mock(SkillService.class);
+        var report = new SkillQualityReport();
+        when(service.syncFromRepoIfChanged("bad-skill")).thenThrow(SkillQualityGateException.rejected(report));
+        var job = job(service, collection, settingsService(true, 0));
+
+        job.execute(null);
+
+        verify(service, times(1)).syncFromRepoIfChanged("bad-skill");
+        verify(service, times(1)).syncFromRepoIfChanged("good-skill");
     }
 
     private SkillRepoSyncJob job(SkillService service, MongoCollection<SkillDefinition> collection, SystemSettingsService settings) {

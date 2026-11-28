@@ -12,7 +12,6 @@ import ai.core.api.server.skill.RegisterRepoSkillsResponse;
 import ai.core.api.server.skill.SkillDefinitionView;
 import ai.core.api.server.skill.SkillDownloadResponse;
 import ai.core.api.server.skill.SkillQualityReportView;
-import ai.core.api.server.skill.SkillSdkCapabilityView;
 import ai.core.api.server.skill.SkillSdkPlanRequest;
 import ai.core.api.server.skill.SkillSdkPlanResponse;
 import ai.core.api.server.skill.UpdateSkillRequest;
@@ -24,16 +23,14 @@ import ai.core.server.skill.SkillFilter;
 import ai.core.server.skill.SkillResourceUpdate;
 import ai.core.server.skill.SkillSdkAssignmentPlanService;
 import ai.core.server.skill.SkillService;
-import ai.core.server.skill.SkillTiers;
+import ai.core.server.skill.SkillViewMapper;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
-import ai.core.skill.SkillSdkCapabilityManifest;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
 
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -230,46 +227,6 @@ public class SkillWebServiceImpl implements SkillWebService {
     }
 
     private SkillDefinitionView toView(SkillDefinition entity) {
-        var view = new SkillDefinitionView();
-        view.id = entity.id;
-        view.namespace = entity.namespace;
-        view.name = entity.name;
-        view.qualifiedName = entity.qualifiedName;
-        view.description = entity.description;
-        view.sourceType = entity.sourceType.name();
-        view.tier = SkillTiers.toView(SkillTiers.resolve(entity));
-        view.allowedTools = entity.allowedTools;
-        var manifest = SkillSdkCapabilityManifest.parse(entity.allowedTools, entity.metadata);
-        view.sdkCapabilitiesVersion = manifest.enabled() ? manifest.contractVersion() : null;
-        view.sdkCapabilities = sdkCapabilities(manifest);
-        view.metadata = entity.metadata;
-        view.version = entity.version;
-        view.digest = entity.digest;
-        view.userId = entity.userId;
-        view.createdAt = entity.createdAt;
-        view.updatedAt = entity.updatedAt;
-        return view;
-    }
-
-    private List<SkillSdkCapabilityView> sdkCapabilities(SkillSdkCapabilityManifest manifest) {
-        if (!manifest.enabled()) return List.of();
-        var views = new ArrayList<SkillSdkCapabilityView>(
-                manifest.entries().size() + manifest.unsupported().size());
-        for (var entry : manifest.entries()) {
-            views.add(sdkCapability(entry));
-        }
-        for (var entry : manifest.unsupported()) {
-            views.add(sdkCapability(entry));
-        }
-        return views;
-    }
-
-    private SkillSdkCapabilityView sdkCapability(SkillSdkCapabilityManifest.Entry entry) {
-        var view = new SkillSdkCapabilityView();
-        view.kind = entry.kind();
-        view.path = entry.displayPath();
-        view.raw = entry.raw();
-        view.supported = entry.supported();
-        return view;
+        return SkillViewMapper.toView(entity);
     }
 }
