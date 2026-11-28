@@ -60,6 +60,12 @@ public class PostgresModule extends Module {
         db().view(PgUserRow.class);
         db().view(PgUserIdRow.class);
         db().view(ai.core.server.runtime.PgRuntimeSampleRow.class);
+        registerSkillTelemetryViews();
+    }
+
+    private void registerSkillTelemetryViews() {
+        db().view(ai.core.server.skill.telemetry.PgSkillRuntimeStatRow.class);
+        db().view(ai.core.server.skill.telemetry.PgSkillPapercutRow.class);
     }
 
     private void registerForYouViews() {
