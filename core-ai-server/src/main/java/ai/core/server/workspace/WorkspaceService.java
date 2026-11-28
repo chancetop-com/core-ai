@@ -41,6 +41,7 @@ public class WorkspaceService {
     private final WorkspaceSweeper sweeper;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
+    private volatile WorkspaceArchiveService archiveService;
     /** Answers "is this session executing a turn"; assigned by RuntimeGovernanceModule. */
     public volatile Predicate<String> sessionBusy;
 
@@ -144,21 +145,25 @@ public class WorkspaceService {
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes) {
-        return update(ownerUserId, id, name, idleSleepMinutes, null, null);
+        return update(ownerUserId, id, new WorkspaceUpdateSpec(name, idleSleepMinutes, null, null, null, null));
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes,
                                   String bootstrapScript, String startScript) {
+        return update(ownerUserId, id, new WorkspaceUpdateSpec(name, idleSleepMinutes, bootstrapScript, startScript, null, null));
+    }
+
+    public WorkspaceRecord update(String ownerUserId, String id, WorkspaceUpdateSpec spec) {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
-        if (name != null) creator.rename(ownerUserId, workspace, name);
-        if (idleSleepMinutes != null) {
-            workspace.idleSleepMinutes = creator.validatedIdleSleep(idleSleepMinutes);
-        }
-        if (bootstrapScript != null) workspace.bootstrapScript = bootstrapScript;
-        if (startScript != null) workspace.startScript = startScript;
+        if (spec.name() != null) creator.rename(ownerUserId, workspace, spec.name());
+        if (spec.idleSleepMinutes() != null) workspace.idleSleepMinutes = creator.validatedIdleSleep(spec.idleSleepMinutes());
+        if (spec.bootstrapScript() != null) workspace.bootstrapScript = spec.bootstrapScript();
+        if (spec.startScript() != null) workspace.startScript = spec.startScript();
         workspace.updatedAt = ZonedDateTime.now();
         workspaces.update(workspace);
+        var targetImage = WorkspaceImageUpgrader.resolveTargetImage(spec.image(), spec.template());
+        if (targetImage != null) return WorkspaceImageUpgrader.upgrade(this, archiveService, ownerUserId, workspace, targetImage);
         audit.append(id, "updated", ownerUserId, Map.of());
         return load(ownerUserId, id);
     }
@@ -402,11 +407,12 @@ public class WorkspaceService {
     }
 
     WorkspaceSweeper.SweepResult runLifecycleSweep() {
-        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0, 0, 0);
-        return sweeper.run(config, sessionBusy);
+        return !config.enabled || workspaces == null
+                ? new WorkspaceSweeper.SweepResult(0, 0, 0, 0, 0) : sweeper.run(config, sessionBusy);
     }
 
     public void attachArchiveService(WorkspaceArchiveService archiveService) {
+        this.archiveService = archiveService;
         this.sweeper.attachArchiveService(archiveService);
     }
 

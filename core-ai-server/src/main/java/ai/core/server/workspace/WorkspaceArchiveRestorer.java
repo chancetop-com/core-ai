@@ -64,7 +64,9 @@ class WorkspaceArchiveRestorer {
         var access = workspaceService.archiveAccess();
         var activeVolume = access.volumeManager().active(workspace.id);
         var volumeHealthy = isVolumeHealthy(access, workspace, activeVolume);
-        var rollbackImage = allowOverwrite ? resolveRollbackImage() : null;
+        var rollbackImage = allowOverwrite
+                ? WorkspaceImageUpgrader.eligibleRollbackImage(access.stores().events(), workspace, archive.id)
+                : null;
         if (volumeHealthy && rollbackImage == null) {
             throw new WorkspaceException(WorkspaceException.RESTORE_TARGET_EXISTS,
                     "workspace already has a healthy volume; specify new_name to restore into a new workspace");
@@ -144,10 +146,6 @@ class WorkspaceArchiveRestorer {
         var generation = started != null ? started.runtimeGeneration() : target.runtimeGeneration + 1;
         access.stores().workspaces().updateRuntimeState(target.id, WorkspaceRuntimeStatus.ERROR,
                 generation, code, truncateReason(message));
-    }
-
-    private String resolveRollbackImage() {
-        return null;
     }
 
     private boolean isVolumeHealthy(WorkspaceArchiveAccess access, WorkspaceRecord workspace,

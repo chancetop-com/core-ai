@@ -19,4 +19,10 @@ public class WorkspaceUpdateRequest {
 
     @Property(name = "start_script")
     public String startScript;
+
+    @Property(name = "image")
+    public String image;
+
+    @Property(name = "template")
+    public String template;
 }

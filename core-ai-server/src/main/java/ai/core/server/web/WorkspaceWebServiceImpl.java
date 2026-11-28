@@ -28,6 +28,7 @@ import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
 import ai.core.server.workspace.WorkspaceRecord;
 import ai.core.server.workspace.WorkspaceService;
+import ai.core.server.workspace.WorkspaceUpdateSpec;
 import ai.core.server.workspace.WorkspaceUsageRecord;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
@@ -80,8 +81,13 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
 
     @Override
     public WorkspaceView update(String id, WorkspaceUpdateRequest request) {
-        return call(() -> view(workspaceService.update(userId(), id, request.name, request.idleSleepMinutes,
-                request.bootstrapScript, request.startScript)));
+        var spec = new WorkspaceUpdateSpec(request.name, request.idleSleepMinutes,
+                request.bootstrapScript, request.startScript, request.image, request.template);
+        return call(() -> {
+            var updated = workspaceService.update(userId(), id, spec);
+            var summary = archiveService.summary(updated.id);
+            return view(updated, null, summary);
+        });
     }
 
     @Override
