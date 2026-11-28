@@ -4,6 +4,8 @@ import ai.core.server.sandbox.SandboxTerminalRuntimeResolver;
 import ai.core.server.session.SessionActivityRegistry;
 import core.framework.web.exception.ConflictException;
 import core.framework.web.exception.NotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.security.SecureRandom;
 import java.util.HexFormat;
@@ -45,6 +47,7 @@ import java.util.function.Consumer;
  * @author xander
  */
 public class SandboxTerminalService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(SandboxTerminalService.class);
     private static final long ACTIVITY_THROTTLE_MILLIS = 60_000L;
     private static final long TICKET_TTL_SECONDS = 30L;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
@@ -61,6 +64,7 @@ public class SandboxTerminalService {
     private final Consumer<String> localTouch;
 
     private final Map<String, Long> lastTouch = new ConcurrentHashMap<>();
+    private volatile Consumer<String> activityListener = sessionId -> { };
 
     public boolean enabled;
     /** HMAC secret used to sign minted tickets; an empty (default) secret disables the gate regardless of {@link #enabled}. */
@@ -104,6 +108,10 @@ public class SandboxTerminalService {
         return TerminalTicketCodec.mint(ticket, ticketSecret);
     }
 
+    public void activityListener(Consumer<String> listener) {
+        this.activityListener = listener != null ? listener : sessionId -> { };
+    }
+
     public void recordActivity(String sessionId) {
         var now = System.currentTimeMillis();
         var previous = lastTouch.get(sessionId);
@@ -111,6 +119,15 @@ public class SandboxTerminalService {
         lastTouch.put(sessionId, now);
         activityRegistry.touch(sessionId);
         localTouch.accept(sessionId);
+        notifyActivityListener(sessionId);
+    }
+
+    private void notifyActivityListener(String sessionId) {
+        try {
+            activityListener.accept(sessionId);
+        } catch (RuntimeException e) {
+            LOGGER.warn("terminal activity listener failed, session={}", sessionId, e);
+        }
     }
 
     private boolean gateOpen() {

@@ -146,6 +146,34 @@ class SandboxTerminalServiceTest {
     }
 
     @Test
+    void recordActivityNotifiesListenerOncePerThrottleWindow() {
+        var listenerCalls = new AtomicInteger();
+        service.activityListener(sessionId -> listenerCalls.incrementAndGet());
+
+        service.recordActivity("s1");
+        service.recordActivity("s1");
+        service.recordActivity("s2");
+
+        assertEquals(2, listenerCalls.get());
+    }
+
+    @Test
+    void recordActivitySwallowsListenerFailureWithinThrottleWindow() {
+        var listenerCalls = new AtomicInteger();
+        service.activityListener(sessionId -> {
+            listenerCalls.incrementAndGet();
+            throw new IllegalStateException("workspace store unavailable");
+        });
+
+        service.recordActivity("s1");
+        service.recordActivity("s1");
+
+        assertEquals(1, touchCalls.get());
+        assertEquals(1, localTouchCalls.get());
+        assertEquals(1, listenerCalls.get());
+    }
+
+    @Test
     void requireAccessibleThrowsWhenGateOff() {
         service.enabled = false;
 

@@ -31,6 +31,7 @@ import ai.core.server.workspace.WorkspaceRuntimeManager;
 import ai.core.server.workspace.WorkspaceService;
 import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.server.workspace.WorkspaceStores;
+import ai.core.server.workspace.WorkspaceTerminalActivityListener;
 import ai.core.server.workspace.WorkspaceUsageService;
 import ai.core.server.workspace.HttpWorkspaceArchiveClient;
 import ai.core.server.workspace.PgWorkspaceArchiveRow;
@@ -89,8 +90,10 @@ public class WorkspaceModule extends Module {
                 storageResolver::resolve));
         workspaceService.attachArchiveService(archiveService);
         bind(new WorkspaceSessionBinder(workspaceService));
+        var chatSessionStore = bean(ChatSessionStore.class);
+        bind(new WorkspaceTerminalActivityListener(config, stores.workspaces(), chatSessionStore));
         var sandboxService = bean(SandboxService.class);
-        bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
+        bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), chatSessionStore, provider));
         sandboxService.workspaceSandboxFactory(bean(WorkspaceSandboxFactory.class));
         api().service(WorkspaceWebService.class, bind(WorkspaceWebServiceImpl.class));
         if (config.enabled) {

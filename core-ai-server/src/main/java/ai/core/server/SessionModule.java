@@ -35,6 +35,7 @@ import ai.core.server.web.sse.InternalSessionEventChannelListener;
 import ai.core.server.web.sse.InternalSsePreflight;
 import ai.core.server.web.sse.SseAuthInterceptor;
 import ai.core.server.workspace.WorkspaceSessionBinder;
+import ai.core.server.workspace.WorkspaceTerminalActivityListener;
 import ai.core.utils.ImageDownscaler;
 import core.framework.http.HTTPMethod;
 import core.framework.module.Module;
@@ -119,6 +120,7 @@ public class SessionModule extends Module {
         var terminalRuntimeResolver = new SandboxTerminalRuntimeResolver(sandboxService);
         var service = new SandboxTerminalService(sessionRegistry::requireAccessible,
                 terminalRuntimeResolver::resolveTerminalRuntime, activityRegistry, agentSessionManager::touchActivity);
+        service.activityListener(bean(WorkspaceTerminalActivityListener.class));
         service.enabled = "true".equals(property("sys.sandbox.terminal.enabled").orElse("false"));
         service.ticketSecret = parseTicketSecret(property("sys.sandbox.terminal.ticketSecret").orElse(""));
         service.gatewayUrl = property("sys.sandbox.terminal.gatewayUrl").orElse("");
