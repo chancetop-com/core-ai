@@ -9,7 +9,7 @@ import ai.core.server.quality.domain.StoredQualityIssue;
 /**
  * Checks the CL100K_BASE token budget of a skill description using Tokenizer.tokenCount().
  * Thresholds vary by tier (ALWAYS_ON <= 120, CORE <= 250, DOMAIN <= 500; IMPORTED is skipped).
- * In P1 this rule only emits warnings so existing long descriptions can transition smoothly.
+ * Blocks CORE and ALWAYS_ON when over budget while keeping DOMAIN at WARN enforcement.
  *
  * @author stephen
  */
@@ -20,7 +20,7 @@ public final class SkillDescriptionBudgetRule implements SkillQualityRule {
     public static final int ALWAYS_ON_MAX_TOKENS = 120;
     public static final int CORE_MAX_TOKENS = 250;
     public static final int DOMAIN_MAX_TOKENS = 500;
-    public static final boolean BLOCK_ON_BUDGET_EXCEEDED = false;
+    public static final boolean BLOCK_ON_BUDGET_EXCEEDED = true;
 
     private static final SkillRuleMeta META = new SkillRuleMeta(
         KEY, 1, "Description token budget",
