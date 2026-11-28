@@ -66,6 +66,33 @@ class WorkspaceBootstrapRunnerTest {
     }
 
     @Test
+    void retriesUntilRuntimeAcceptsConnections() {
+        var workspace = WorkspaceRecord.create("user-1", "dev", "agent-1");
+        var client = new FakeRuntimeClient(new ArrayList<>(), false, false, true);
+        client.probeFailuresRemaining = 2;
+        var runner = new WorkspaceBootstrapRunner(host -> client, 1800, 600, 10L, 5);
+
+        var state = runner.prepare(workspace, "10.0.0.1", false);
+
+        assertNotNull(state.bootstrapCompletedAt());
+        assertEquals(3, client.probeAttempts);
+        assertEquals(0, client.probeFailuresRemaining);
+    }
+
+    @Test
+    void failsWhenRuntimeNeverAcceptsConnections() {
+        var workspace = WorkspaceRecord.create("user-1", "dev", "agent-1");
+        var client = new FakeRuntimeClient(new ArrayList<>(), false, false, true);
+        client.probeFailuresRemaining = Integer.MAX_VALUE;
+        var runner = new WorkspaceBootstrapRunner(host -> client, 1800, 600, 10L, 1);
+
+        var failure = assertThrows(RuntimeException.class, () -> runner.prepare(workspace, "10.0.0.1", false));
+
+        assertTrue(failure.getMessage().contains("did not accept connections"));
+        assertTrue(client.probeFailuresRemaining > 0);
+    }
+
+    @Test
     void wrapperRedirectsStderrAndRotatesToLatestTwentyLogs() {
         var cmd = WorkspaceBootstrapRunner.buildScriptWrapper("bootstrap",
                 "/workspace/.core-ai/bootstrap.sh", "/workspace/.core-ai/logs/bootstrap-20261128-000000.log");
@@ -136,6 +163,8 @@ class WorkspaceBootstrapRunnerTest {
         private final Map<String, ToolCallResult> tasks = new HashMap<>();
         private final Map<String, Integer> polls = new HashMap<>();
         private int seq;
+        private int probeFailuresRemaining;
+        private int probeAttempts;
 
         private FakeRuntimeClient(List<String> asyncCommands, boolean failBootstrap, boolean failStart, boolean envPresent) {
             this.asyncCommands = asyncCommands;
@@ -146,6 +175,14 @@ class WorkspaceBootstrapRunnerTest {
 
         @Override
         public ToolCallResult execute(String toolName, String arguments) {
+            if (arguments.contains("CORE_AI_RUNTIME_READY")) {
+                probeAttempts++;
+                if (probeFailuresRemaining > 0) {
+                    probeFailuresRemaining--;
+                    throw new IllegalStateException("Connect timed out");
+                }
+                return ToolCallResult.completed("CORE_AI_RUNTIME_READY\n");
+            }
             if (arguments.contains("\"run_in_background\":true")) {
                 asyncCommands.add(arguments);
                 var rawId = "task-" + (++seq);

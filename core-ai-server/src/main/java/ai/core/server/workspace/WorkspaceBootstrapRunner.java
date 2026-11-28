@@ -31,6 +31,8 @@ public class WorkspaceBootstrapRunner {
     private static final int MAX_LOG_FILES = 20;
     private static final int MAX_LOG_SNIPPET_CHARS = 4096;
     private static final int SYNC_TIMEOUT_MS = 30_000;
+    private static final int RUNTIME_SERVING_TIMEOUT_SECONDS = 120;
+    private static final String RUNTIME_SERVING_MARKER = "CORE_AI_RUNTIME_READY";
     private static final String EXIT_PREFIX = "CORE_AI_EXIT_CODE=";
     private static final String LOG_FILE_PREFIX = "CORE_AI_LOG_FILE=";
     private static final String LOG_START_MARKER = "---CORE_AI_LOG_TAIL---";
@@ -78,6 +80,7 @@ public class WorkspaceBootstrapRunner {
     private final int bootstrapTimeoutSeconds;
     private final int startTimeoutSeconds;
     private final long pollIntervalMs;
+    private final int servingTimeoutSeconds;
 
     public WorkspaceBootstrapRunner(WorkspaceConfig config) {
         this(defaultFactory(), config.bootstrapTimeoutSeconds, config.startTimeoutSeconds, 1000L);
@@ -85,18 +88,56 @@ public class WorkspaceBootstrapRunner {
 
     WorkspaceBootstrapRunner(RuntimeClientFactory clientFactory, int bootstrapTimeoutSeconds,
                              int startTimeoutSeconds, long pollIntervalMs) {
+        this(clientFactory, bootstrapTimeoutSeconds, startTimeoutSeconds, pollIntervalMs, RUNTIME_SERVING_TIMEOUT_SECONDS);
+    }
+
+    WorkspaceBootstrapRunner(RuntimeClientFactory clientFactory, int bootstrapTimeoutSeconds,
+                             int startTimeoutSeconds, long pollIntervalMs, int servingTimeoutSeconds) {
         this.clientFactory = clientFactory;
         this.bootstrapTimeoutSeconds = Math.max(1, bootstrapTimeoutSeconds);
         this.startTimeoutSeconds = Math.max(1, startTimeoutSeconds);
         this.pollIntervalMs = Math.max(10L, pollIntervalMs);
+        this.servingTimeoutSeconds = Math.max(0, servingTimeoutSeconds);
     }
 
     public WorkspaceBootstrapState prepare(WorkspaceRecord workspace, String host, boolean forceRerunBootstrap) {
         try (var client = clientFactory.open(host)) {
+            awaitRuntimeServing(client, workspace.id);
             seedTemplates(client, workspace.id);
             var afterBootstrap = runBootstrapPhase(client, workspace, forceRerunBootstrap);
             return runStartPhase(client, workspace, afterBootstrap);
         }
+    }
+
+    private void awaitRuntimeServing(RuntimeClient client, String workspaceId) {
+        if (servingTimeoutSeconds == 0) return;
+        var deadlineNanos = System.nanoTime() + servingTimeoutSeconds * 1_000_000_000L;
+        RuntimeException lastError = null;
+        var attempts = 0;
+        while (true) {
+            attempts++;
+            try {
+                var probe = runSyncBash(client, "echo " + RUNTIME_SERVING_MARKER);
+                if (probe.isCompleted() && probe.getResult() != null
+                        && probe.getResult().contains(RUNTIME_SERVING_MARKER)) {
+                    if (attempts > 1) {
+                        LOGGER.info("workspace runtime accepted connections after retry, workspace={}, attempts={}", workspaceId, attempts);
+                    }
+                    return;
+                }
+                lastError = new IllegalStateException("runtime probe returned no readiness marker");
+            } catch (RuntimeException e) {
+                lastError = e;
+            }
+            if (System.nanoTime() >= deadlineNanos) break;
+            if (attempts == 1 || attempts % 5 == 0) {
+                LOGGER.warn("workspace runtime not serving yet, workspace={}, attempts={}, error={}",
+                        workspaceId, attempts, String.valueOf(lastError.getMessage()));
+            }
+            sleepPoll();
+        }
+        throw new RuntimeException("workspace runtime did not accept connections within "
+                + servingTimeoutSeconds + "s, workspace=" + workspaceId, lastError);
     }
 
     private WorkspaceBootstrapState runBootstrapPhase(RuntimeClient client, WorkspaceRecord workspace,
