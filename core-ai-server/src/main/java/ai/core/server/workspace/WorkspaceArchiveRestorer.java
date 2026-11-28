@@ -42,7 +42,9 @@ class WorkspaceArchiveRestorer {
         WorkspaceRuntimeStarter.StartedRuntime started = null;
         try {
             started = access.runtimeStarter().startRaw(target, ownerUserId, volume);
-            var options = new WorkspaceArchiveClient.RestoreOptions(archive.volumeGeneration, archive.workspaceId, false);
+            // the target volume was provisioned for this restore and always carries scaffold files (AGENTS.md, .core-ai/NOTES.md),
+            // which the runtime counts as content, so restoring into it must be allowed to overwrite
+            var options = new WorkspaceArchiveClient.RestoreOptions(archive.volumeGeneration, archive.workspaceId, true);
             client.restoreFromFile(started.host(), SandboxConstants.RUNTIME_PORT, archiveFile, options);
             access.runtimeStarter().finalizeRestored(target, ownerUserId, started);
             access.audit().append(target.id, "restored_from_archive", ownerUserId, Map.of(

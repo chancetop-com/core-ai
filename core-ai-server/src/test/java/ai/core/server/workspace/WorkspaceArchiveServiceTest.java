@@ -135,7 +135,7 @@ class WorkspaceArchiveServiceTest {
         assertNotNull(restored.bootstrapCompletedAt);
         assertEquals(archive.volumeGeneration, archiveClient.lastRestoreOptions.expectedGeneration());
         assertEquals(ws.id, archiveClient.lastRestoreOptions.expectedWorkspaceId());
-        assertFalse(archiveClient.lastRestoreOptions.allowOverwrite());
+        assertTrue(archiveClient.lastRestoreOptions.allowOverwrite());
         assertTrue(events.types(restored.id).contains("restored_from_archive"));
     }
 
@@ -294,6 +294,10 @@ class WorkspaceArchiveServiceTest {
         @Override
         public RestoreResult restoreFromFile(String host, int port, Path archiveFile, RestoreOptions options) {
             this.lastRestoreOptions = options;
+            if (!options.allowOverwrite()) {
+                // a freshly provisioned volume always carries scaffold files, which the runtime counts as content
+                throw new WorkspaceException(WorkspaceException.RESTORE_NOT_EMPTY, "workspace already contains files");
+            }
             try {
                 return new RestoreResult(4L, Files.size(archiveFile));
             } catch (IOException e) {
