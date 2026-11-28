@@ -1,7 +1,9 @@
 package ai.core.server.skill;
 
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.server.util.IdLists;
 import ai.core.skill.SkillRegistry;
+import ai.core.skill.telemetry.SkillTelemetrySink;
 import ai.core.tool.ToolCall;
 import ai.core.tool.registry.ToolProvider;
 import ai.core.tool.registry.ToolRegistry;
@@ -25,27 +27,32 @@ public class SkillToolAssembler {
     SkillService skillService;
     @Inject
     SkillArchiveBuilder skillArchiveBuilder;
+    @Inject
+    SkillTelemetryBuffer telemetryBuffer;
 
     public void attach(List<String> skillIds, ToolRegistry toolRegistry) {
         var clean = IdLists.clean(skillIds);
         if (clean.isEmpty()) return;
-        toolRegistry.registerProvider(new Provider(mongoSkillProvider, clean, skillService, skillArchiveBuilder));
+        toolRegistry.registerProvider(new Provider(mongoSkillProvider, clean, skillService, skillArchiveBuilder, telemetryBuffer));
     }
 
     private static class Provider implements ToolProvider {
         private final Map<String, ToolCall> tools;
 
         Provider(MongoSkillProvider mongoSkillProvider, List<String> skillIds,
-                 SkillService skillService, SkillArchiveBuilder skillArchiveBuilder) {
+                 SkillService skillService, SkillArchiveBuilder skillArchiveBuilder,
+                 SkillTelemetryBuffer telemetryBuffer) {
             var registry = new SkillRegistry();
             registry.addProvider(mongoSkillProvider.scoped(new java.util.HashSet<>(skillIds)));
+            var sink = telemetryBuffer != null ? telemetryBuffer.asSink() : SkillTelemetrySink.NOOP;
             var toolList = List.of(
                     ServerSkillTool.builder()
                             .registry(registry)
                             .skillService(skillService)
                             .archiveBuilder(skillArchiveBuilder)
+                            .telemetryBuffer(telemetryBuffer)
                             .build(),
-                    ReadSkillResourceTool.builder().registry(registry).build());
+                    ReadSkillResourceTool.builder().registry(registry).telemetrySink(sink).build());
             var map = new LinkedHashMap<String, ToolCall>();
             for (var tc : toolList) {
                 map.put(tc.getName(), tc);

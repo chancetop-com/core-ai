@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSdkCapabilityManifest;
@@ -51,6 +52,7 @@ public class ServerSkillTool extends ToolCall {
     private SkillRegistry registry;
     private SkillService skillService;
     private SkillArchiveBuilder archiveBuilder;
+    private SkillTelemetryBuffer telemetryBuffer;
 
     /** Compute description dynamically so that skills attached to the session after
      *  the tool was built (via AgentSessionManager.loadSkills) become visible to the LLM. */
@@ -87,6 +89,9 @@ public class ServerSkillTool extends ToolCall {
 
             var content = renderSkill(meta, definition, baseDir);
             emitCapabilities(context, meta, definition);
+            if (telemetryBuffer != null) {
+                telemetryBuffer.recordInvoke(definition.id, definition.digest);
+            }
             if (sandbox != null && baseDir == null) {
                 content += "\n\n[Sandbox unavailable: the skill content is loaded, but scripts cannot run until a sandbox is available.]";
             }
@@ -110,7 +115,9 @@ public class ServerSkillTool extends ToolCall {
             sandbox.materializeSkill(def.name, def.version, archive);
             return SANDBOX_SKILL_BASE + "/" + def.name;
         } catch (RuntimeException e) {
-            // Skill content is still useful without a sandbox: only its scripts need /skill materialization.
+            if (telemetryBuffer != null) {
+                telemetryBuffer.recordMaterializeFail(def.id, def.digest);
+            }
             LOGGER.warn("skill materialization failed, returning content without sandbox base_dir: {}, error={}",
                     def.qualifiedName, e.getMessage());
             return null;
@@ -175,6 +182,7 @@ public class ServerSkillTool extends ToolCall {
         private SkillRegistry registry;
         private SkillService skillService;
         private SkillArchiveBuilder archiveBuilder;
+        private SkillTelemetryBuffer telemetryBuffer;
 
         @Override
         protected Builder self() {
@@ -196,6 +204,11 @@ public class ServerSkillTool extends ToolCall {
             return this;
         }
 
+        public Builder telemetryBuffer(SkillTelemetryBuffer telemetryBuffer) {
+            this.telemetryBuffer = telemetryBuffer;
+            return this;
+        }
+
         public ServerSkillTool build() {
             if (registry == null || skillService == null || archiveBuilder == null) {
                 throw new RuntimeException("registry, skillService and archiveBuilder are required");
@@ -210,6 +223,7 @@ public class ServerSkillTool extends ToolCall {
             tool.registry = this.registry;
             tool.skillService = this.skillService;
             tool.archiveBuilder = this.archiveBuilder;
+            tool.telemetryBuffer = this.telemetryBuffer;
             return tool;
         }
     }

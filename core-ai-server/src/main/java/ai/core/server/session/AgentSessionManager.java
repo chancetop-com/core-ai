@@ -26,6 +26,7 @@ import ai.core.server.skill.MongoSkillProvider;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillSdkCapabilityResolver;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.server.settings.SystemSettingsService;
 import ai.core.server.systemprompt.SystemPromptService;
 import ai.core.server.tool.CallerContexts;
@@ -69,14 +70,11 @@ public class AgentSessionManager {
     AgentDefinitionStore agentDefinitionStore;
     @Inject
     UserStore userStore;
-    @Inject
-    SkillService skillService;
-    @Inject
-    ChatMessageService chatMessageService;
-    @Inject
-    SessionRegistry sessionRegistry;
-    @Inject
-    SessionChannelService sessionChannelService;
+    @Inject SkillService skillService;
+    @Inject SkillTelemetryBuffer skillTelemetryBuffer;
+    @Inject ChatMessageService chatMessageService;
+    @Inject SessionRegistry sessionRegistry;
+    @Inject SessionChannelService sessionChannelService;
     @Inject
     SandboxService sandboxService;
     @Inject
@@ -128,6 +126,7 @@ public class AgentSessionManager {
         if (skillManager == null) {
             skillManager = new SessionSkillManager(skillService, mongoSkillProvider, skillArchiveBuilder, chatMessageService);
             skillManager.setCapabilityResolver(new SkillSdkCapabilityResolver(toolRegistryService, permissionService, agentDefinitionStore));
+            skillManager.setTelemetryBuffer(skillTelemetryBuffer);
         }
         return skillManager;
     }

@@ -22,6 +22,8 @@ public final class SkillMetadata {
         return new Builder(name, description, path);
     }
 
+    private final String skillId;
+    private final String digest;
     private final String namespace;
     private final String name;
     private final String description;
@@ -35,6 +37,8 @@ public final class SkillMetadata {
     private final List<String> resources;
 
     private SkillMetadata(Builder builder) {
+        this.skillId = builder.skillId;
+        this.digest = builder.digest;
         this.namespace = builder.namespace;
         this.name = builder.name;
         this.description = builder.description;
@@ -46,6 +50,14 @@ public final class SkillMetadata {
         this.metadata = Collections.unmodifiableMap(new LinkedHashMap<>(builder.metadata));
         this.allowedTools = List.copyOf(builder.allowedTools);
         this.resources = List.copyOf(builder.resources);
+    }
+
+    public String getSkillId() {
+        return skillId;
+    }
+
+    public String getDigest() {
+        return digest;
     }
 
     public String getNamespace() {
@@ -101,6 +113,8 @@ public final class SkillMetadata {
         private final String name;
         private final String description;
         private final String path;
+        private String skillId;
+        private String digest;
         private String namespace;
         private String skillDir;
         private String content;
@@ -114,6 +128,16 @@ public final class SkillMetadata {
             this.name = name;
             this.description = description;
             this.path = path;
+        }
+
+        public Builder skillId(String skillId) {
+            this.skillId = skillId;
+            return this;
+        }
+
+        public Builder digest(String digest) {
+            this.digest = digest;
+            return this;
         }
 
         public Builder namespace(String namespace) {

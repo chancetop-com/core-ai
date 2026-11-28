@@ -4,6 +4,8 @@ import ai.core.api.server.skillhub.SkillHubDetail;
 import ai.core.api.server.skillhub.SkillHubLookupResponse;
 import ai.core.api.server.skillhub.SkillHubResourceResponse;
 import ai.core.api.server.skillhub.SkillHubSearchResponse;
+import ai.core.api.server.skillhub.SkillTelemetryBatchRequest;
+import ai.core.api.server.skillhub.SkillTelemetryBatchResponse;
 import ai.core.cli.http.RemoteApiClient;
 import ai.core.utils.JsonUtil;
 
@@ -102,6 +104,12 @@ public class SkillHubClient {
 
     public String push(Map<String, Path> files, Map<String, String> fields) {
         return apiClient(timeout).postMultipart("/api/skills/upload", fields, toMultipart(files));
+    }
+
+    public SkillTelemetryBatchResponse recordTelemetryBatch(SkillTelemetryBatchRequest request, Duration batchTimeout) {
+        var effectiveTimeout = batchTimeout != null ? batchTimeout : Duration.ofMillis(1500);
+        var body = apiClient(effectiveTimeout).postRequired("/api/skill-hub/telemetry/batch", request);
+        return JsonUtil.fromJson(SkillTelemetryBatchResponse.class, body);
     }
 
     private Map<String, RemoteApiClient.MultipartFile> toMultipart(Map<String, Path> files) {

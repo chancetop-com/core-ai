@@ -1,5 +1,7 @@
 package ai.core.server.skill.telemetry;
 
+import ai.core.skill.telemetry.SkillTelemetryIdentity;
+import ai.core.skill.telemetry.SkillTelemetrySink;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +63,10 @@ public class SkillTelemetryBuffer {
 
     public long unattributedScriptErrorCount() {
         return unattributedScriptErrors.sum();
+    }
+
+    public SkillTelemetrySink asSink() {
+        return new BufferSink();
     }
 
     public int flush() {
@@ -129,6 +135,35 @@ public class SkillTelemetryBuffer {
                     attributedScriptCalls.sum(),
                     attributedScriptErrors.sum(),
                     lastInvokedAt.get());
+        }
+    }
+
+    private final class BufferSink implements SkillTelemetrySink {
+        @Override
+        public void recordInvoke(SkillTelemetryIdentity identity) {
+            if (identity != null) SkillTelemetryBuffer.this.recordInvoke(identity.skillId(), identity.packageDigest());
+        }
+
+        @Override
+        public void recordResourceRead(SkillTelemetryIdentity identity) {
+            if (identity != null) SkillTelemetryBuffer.this.recordResourceRead(identity.skillId(), identity.packageDigest());
+        }
+
+        @Override
+        public void recordMaterializeFail(SkillTelemetryIdentity identity) {
+            if (identity != null) SkillTelemetryBuffer.this.recordMaterializeFail(identity.skillId(), identity.packageDigest());
+        }
+
+        @Override
+        public void recordAttributedScriptCall(SkillTelemetryIdentity identity, boolean error) {
+            if (identity != null) {
+                SkillTelemetryBuffer.this.recordAttributedScriptCall(identity.skillId(), identity.packageDigest(), error);
+            }
+        }
+
+        @Override
+        public void recordUnattributedScriptError() {
+            SkillTelemetryBuffer.this.recordUnattributedScriptError();
         }
     }
 }

@@ -6,10 +6,13 @@ import ai.core.server.skill.ServerSkillTool;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillSdkCapabilityResolver;
 import ai.core.server.skill.SkillService;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.server.util.IdLists;
 import ai.core.session.InProcessAgentSession;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
+import ai.core.skill.telemetry.SkillTelemetryLifecycle;
+import ai.core.skill.telemetry.SkillTelemetrySink;
 import ai.core.tool.ToolCall;
 import ai.core.tool.tools.ReadSkillResourceTool;
 import core.framework.web.exception.NotFoundException;
@@ -33,6 +36,7 @@ public class SessionSkillManager {
     private final SkillArchiveBuilder skillArchiveBuilder;
     private final ChatMessageService chatMessageService;
     private SkillSdkCapabilityResolver capabilityResolver;
+    private SkillTelemetryBuffer telemetryBuffer;
 
     public SessionSkillManager(SkillService skillService, MongoSkillProvider mongoSkillProvider,
                                 SkillArchiveBuilder skillArchiveBuilder, ChatMessageService chatMessageService) {
@@ -44,6 +48,10 @@ public class SessionSkillManager {
 
     public void setCapabilityResolver(SkillSdkCapabilityResolver capabilityResolver) {
         this.capabilityResolver = capabilityResolver;
+    }
+
+    public void setTelemetryBuffer(SkillTelemetryBuffer telemetryBuffer) {
+        this.telemetryBuffer = telemetryBuffer;
     }
 
     public List<String> unloadSkills(String sessionId, List<String> skillIds, String callerUserId) {
@@ -178,13 +186,21 @@ public class SessionSkillManager {
     private SessionSkillState initSkillState(InProcessAgentSession session) {
         var fresh = new SessionSkillState(session);
         fresh.registry.addProvider(mongoSkillProvider.scoped(fresh.allowedIds));
+        var sink = telemetryBuffer != null ? telemetryBuffer.asSink() : SkillTelemetrySink.NOOP;
         ToolCall skillTool = ServerSkillTool.builder()
                 .registry(fresh.registry)
                 .skillService(skillService)
                 .archiveBuilder(skillArchiveBuilder)
+                .telemetryBuffer(telemetryBuffer)
                 .build();
-        ToolCall readResourceTool = ReadSkillResourceTool.builder().registry(fresh.registry).build();
+        ToolCall readResourceTool = ReadSkillResourceTool.builder()
+                .registry(fresh.registry)
+                .telemetrySink(sink)
+                .build();
         session.loadTools(List.of(skillTool, readResourceTool));
+        if (telemetryBuffer != null && session.agent() != null) {
+            session.agent().addLifecycle(new SkillTelemetryLifecycle(fresh.registry, null, sink, null));
+        }
         return fresh;
     }
 

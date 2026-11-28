@@ -8,6 +8,8 @@ import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSdkCapabilityManifest;
 import ai.core.skill.SkillSource;
+import ai.core.skill.telemetry.SkillTelemetryIdentity;
+import ai.core.skill.telemetry.SkillTelemetrySink;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
@@ -18,6 +20,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
 /**
  * Tool that allows the agent to load and use skills by name.
@@ -74,6 +77,12 @@ public class SkillTool extends ToolCall {
 
     private SkillRegistry registry;
     private SkillAccessGuard accessGuard;
+    private SkillTelemetrySink telemetrySink = SkillTelemetrySink.NOOP;
+    private Function<SkillMetadata, SkillTelemetryIdentity> identityResolver;
+
+    public SkillRegistry getRegistry() {
+        return registry;
+    }
 
     @Override
     public ToolCallResult execute(String arguments, ExecutionContext context) {
@@ -115,13 +124,23 @@ public class SkillTool extends ToolCall {
         try {
             String content = readSkillContent(skill);
             applyCapabilities(skill, context);
+            telemetrySink.recordInvoke(resolveIdentity(skill));
             return ToolCallResult.completed(content)
                     .withDuration(System.currentTimeMillis() - startTime);
         } catch (SkillLoadException e) {
+            telemetrySink.recordMaterializeFail(resolveIdentity(skill));
             LOGGER.warn("Failed to read skill content: {}", skill.getQualifiedName(), e);
             return ToolCallResult.failed("Failed to read skill '" + name + "': " + e.getMessage())
                     .withDuration(System.currentTimeMillis() - startTime);
         }
+    }
+
+    private SkillTelemetryIdentity resolveIdentity(SkillMetadata skill) {
+        if (identityResolver != null) {
+            return identityResolver.apply(skill);
+        }
+        return new SkillTelemetryIdentity(skill.getSkillId(), skill.getQualifiedName(),
+                skill.getDigest() == null ? "" : skill.getDigest());
     }
 
     private void applyCapabilities(SkillMetadata skill, ExecutionContext context) {
@@ -224,6 +243,8 @@ public class SkillTool extends ToolCall {
         private int maxFileSize = 10 * 1024 * 1024;
         private String workspaceDir;
         private SkillAccessGuard accessGuard;
+        private SkillTelemetrySink telemetrySink = SkillTelemetrySink.NOOP;
+        private Function<SkillMetadata, SkillTelemetryIdentity> identityResolver;
 
         @Override
         protected Builder self() {
@@ -255,6 +276,16 @@ public class SkillTool extends ToolCall {
             return this;
         }
 
+        public Builder telemetrySink(SkillTelemetrySink telemetrySink) {
+            this.telemetrySink = telemetrySink != null ? telemetrySink : SkillTelemetrySink.NOOP;
+            return this;
+        }
+
+        public Builder identityResolver(Function<SkillMetadata, SkillTelemetryIdentity> identityResolver) {
+            this.identityResolver = identityResolver;
+            return this;
+        }
+
         public SkillTool build() {
             if (registry == null) {
                 registry = new SkillRegistry();
@@ -278,6 +309,8 @@ public class SkillTool extends ToolCall {
             build(tool);
             tool.registry = this.registry;
             tool.accessGuard = this.accessGuard;
+            tool.telemetrySink = this.telemetrySink;
+            tool.identityResolver = this.identityResolver;
             return tool;
         }
     }

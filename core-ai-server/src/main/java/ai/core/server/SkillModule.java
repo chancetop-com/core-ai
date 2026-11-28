@@ -42,10 +42,10 @@ public class SkillModule extends Module {
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
         bind(SkillArchiveBuilder.class);
-        bind(SkillToolAssembler.class);
         bind(SkillHubAccessPolicy.class);
         bind(SkillTelemetryBuffer.class);
         bind(SkillTelemetryService.class);
+        bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         var tierAdmin = bind(SkillTierAdminService.class);
         tierAdmin.setMaxAlwaysOnSkills(intProperty("sys.skill.alwaysOn.max",
