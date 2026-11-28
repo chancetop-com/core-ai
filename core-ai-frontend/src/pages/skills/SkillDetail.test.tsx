@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { api, type SkillDefinition } from '../../api/client';
-import { ApiError, skillQualityApi } from '../../api/quality';
+import { ApiError, skillQualityApi, skillTelemetryApi, type SkillPapercut } from '../../api/quality';
 import { useAuth } from '../../api/auth';
 import SkillDetail from './SkillDetail';
 
@@ -47,6 +47,38 @@ describe('SkillDetail governance UI', () => {
       logout: vi.fn(),
     });
     vi.spyOn(api.skills, 'get').mockResolvedValue(DOMAIN_SKILL);
+    vi.spyOn(skillTelemetryApi, 'getTelemetry').mockResolvedValue({
+      skill_id: 'skill-1',
+      qualified_name: 'team/demo-skill',
+      current_digest: 'sha-1',
+      telemetry_available: true,
+      total_invoke_count: 14,
+      total_resource_read_count: 6,
+      total_materialize_fail_count: 0,
+      total_attributed_script_calls: 5,
+      total_attributed_script_errors: 1,
+      open_papercut_count: 1,
+      last_invoked_at: '2026-11-28T03:00:00Z',
+      versions: [],
+    });
+    vi.spyOn(skillTelemetryApi, 'listPapercuts').mockResolvedValue({
+      telemetry_available: true,
+      papercuts: [
+        {
+          id: 'pc-1',
+          skill_id: 'skill-1',
+          qualified_name: 'team/demo-skill',
+          package_digest: 'sha-1',
+          category: 'SCRIPT_ERROR',
+          status: 'OPEN',
+          summary: 'Helper script fails on empty workspace',
+          latest_observed_error: 'Authorization: Bearer *** failed with 401',
+          suggested_fix: 'Check workspace flag before invoking script',
+          occurrence_count: 3,
+          last_seen_at: '2026-11-28T03:10:00Z',
+        },
+      ],
+    });
     vi.spyOn(skillQualityApi, 'check').mockResolvedValue({
       run_id: 'run-1',
       gate_result: 'PASSED',
@@ -166,5 +198,53 @@ describe('SkillDetail governance UI', () => {
 
     expect((await screen.findByRole('alert')).textContent).toMatch(/reason is required/i);
     expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('renders runtime health metrics, papercuts, and lets owner/admin update papercut status', async () => {
+    const resolved: SkillPapercut = {
+      id: 'pc-1',
+      skill_id: 'skill-1',
+      qualified_name: 'team/demo-skill',
+      package_digest: 'sha-1',
+      category: 'SCRIPT_ERROR',
+      status: 'RESOLVED',
+      summary: 'Helper script fails on empty workspace',
+      latest_observed_error: 'Authorization: Bearer *** failed with 401',
+      suggested_fix: 'Check workspace flag before invoking script',
+      occurrence_count: 3,
+      resolved_by: 'admin-1',
+      last_seen_at: '2026-11-28T03:10:00Z',
+    };
+    const updateStatusSpy = vi.spyOn(skillTelemetryApi, 'updatePapercutStatus').mockResolvedValue(resolved);
+
+    renderDetail();
+
+    const row = await screen.findByTestId('papercut-row-pc-1');
+    expect((await screen.findByTestId('metric-invocations')).textContent).toContain('14');
+    expect((await screen.findByTestId('metric-resource-reads')).textContent).toContain('6');
+    expect((await screen.findByTestId('metric-script-errors')).textContent).toContain('1 / 5');
+    expect(row.textContent).toContain('x3');
+    expect(row.textContent).toContain('Authorization: Bearer ***');
+
+    await userEvent.click(within(row).getByRole('button', { name: /^resolve$/i }));
+
+    await waitFor(() => {
+      expect(updateStatusSpy).toHaveBeenCalledWith('skill-1', 'pc-1', 'RESOLVED');
+      expect(screen.getByTestId('papercut-status-pc-1').textContent).toBe('RESOLVED');
+    });
+  });
+
+  it('hides papercut status controls from non-owner regular users', async () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: { apiKey: 'k2', userId: 'bob', name: 'Bob', role: 'user', permissions: [] },
+      login: vi.fn(),
+      logout: vi.fn(),
+    });
+
+    renderDetail();
+
+    const row = await screen.findByTestId('papercut-row-pc-1');
+    expect(within(row).queryByRole('button', { name: /^resolve$/i })).toBeNull();
+    expect(within(row).queryByRole('button', { name: /^ignore$/i })).toBeNull();
   });
 });

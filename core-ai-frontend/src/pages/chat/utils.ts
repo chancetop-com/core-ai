@@ -238,6 +238,24 @@ export function customEventSegments(event: { name: string; data?: string; card?:
       updated: event.name === 'report_updated',
     }];
   }
+  if (event.name === 'skill_attach_request') {
+    const payload = parseJsonObject(event.data);
+    const qualifiedName = payload && typeof payload.qualified_name === 'string' ? payload.qualified_name : undefined;
+    if (qualifiedName) {
+      const capabilities = Array.isArray(payload?.required_capabilities)
+        ? payload.required_capabilities.filter((item): item is string => typeof item === 'string')
+        : undefined;
+      return [{
+        type: 'skill_attach_notice',
+        qualifiedName,
+        tier: typeof payload?.tier === 'string' ? payload.tier : undefined,
+        namespace: typeof payload?.namespace === 'string' ? payload.namespace : undefined,
+        description: typeof payload?.description === 'string' ? payload.description : undefined,
+        requiredCapabilities: capabilities,
+        errorCode: typeof payload?.error_code === 'string' ? payload.error_code : undefined,
+      }];
+    }
+  }
   if (event.card) {
     const card = parseJsonObject(event.card);
     if (card && Array.isArray(card.blocks) && card.blocks.length > 0) {

@@ -7,6 +7,7 @@ import { useAuth } from '../../api/auth';
 import { skillQualityApi, type QualityIssue } from '../../api/quality';
 import SkillTierBadge from './SkillTierBadge';
 import SkillTierModal from './SkillTierModal';
+import SkillHealthPanel from './SkillHealthPanel';
 
 const DOMAIN_WARN_RULES = new Set(['SKILL.PROGRESSIVE_DISCLOSURE', 'SKILL.EVAL_DATASET']);
 
@@ -238,6 +239,8 @@ export default function SkillDetail() {
           <p className="text-sm">{skill.description}</p>
         </div>
       )}
+
+      <SkillHealthPanel skillId={skill.id} canManage={isAdmin || user?.userId === skill.user_id} />
 
       {skill.allowed_tools && skill.allowed_tools.length > 0 && (
         <div className="mb-6 p-4 rounded-xl border"

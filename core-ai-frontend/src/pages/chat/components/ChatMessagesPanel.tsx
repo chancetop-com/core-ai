@@ -8,7 +8,7 @@ import rehypeSanitize from 'rehype-sanitize';
 import type { PluggableList } from 'unified';
 import { AlertCircle, BarChart3, Bot, CheckCircle2, ChevronDown, ChevronRight, Loader2, MessageSquareHeart, Paperclip, Shield, ShieldOff, User } from 'lucide-react';
 import type { SessionArtifact } from '../../../api/session';
-import type { CardSegment, ChatMessage, CompressionSegment, MessageSegment, PlanTodo, QuickRepliesSegment, ReportLinkSegment, SandboxSegment, SandboxTerminalSpec, TasksSegment, ToolsSegment } from '../types';
+import type { CardSegment, ChatMessage, CompressionSegment, MessageSegment, PlanTodo, QuickRepliesSegment, ReportLinkSegment, SandboxSegment, SandboxTerminalSpec, SkillAttachNoticeSegment, TasksSegment, ToolsSegment } from '../types';
 import { formatMessageTime, formatMessageTimeFull, getMessageText } from '../utils';
 import { chatSanitizeSchema } from '../markdownSanitizeSchema';
 import type { ArtifactSpec } from './artifactTypes';
@@ -18,6 +18,7 @@ import CopyButton from './CopyButton';
 import { QuickReplyButtons, RichCardView } from './CustomEventBlocks';
 import PlanUpdateBlock from './PlanUpdateBlock';
 import SandboxBlock from './SandboxBlock';
+import SkillAttachNoticeCard from './SkillAttachNoticeCard';
 import ThinkingBlock from './ThinkingBlock';
 import ToolsBlock from './ToolsBlock';
 
@@ -172,6 +173,7 @@ export const ChatMessageRow = memo(function ChatMessageRow({
   const thinkingSeg = msg.segments?.find(s => s.type === 'thinking');
   const toolsSeg = msg.segments?.find(s => s.type === 'tools') as ToolsSegment | undefined;
   const cardSegs = msg.segments?.filter((s): s is CardSegment => s.type === 'card') ?? [];
+  const attachNoticeSegs = msg.segments?.filter((s): s is SkillAttachNoticeSegment => s.type === 'skill_attach_notice') ?? [];
   const reportSegs = msg.segments?.filter((s): s is ReportLinkSegment => s.type === 'report') ?? [];
   const quickReplySegs = msg.segments?.filter((s): s is QuickRepliesSegment => s.type === 'quick_replies') ?? [];
   const textSeg = msg.segments?.find(s => s.type === 'text');
@@ -238,6 +240,13 @@ export const ChatMessageRow = memo(function ChatMessageRow({
           <div className="mb-3 flex flex-col gap-2">
             {cardSegs.map((seg, idx) => (
               <RichCardView key={idx} card={seg.card} disabled={interactiveDisabled} onAction={onQuickReply} />
+            ))}
+          </div>
+        )}
+        {!readOnly && attachNoticeSegs.length > 0 && (
+          <div className="mb-3 flex flex-col gap-2">
+            {attachNoticeSegs.map((seg, idx) => (
+              <SkillAttachNoticeCard key={`${seg.qualifiedName}-${idx}`} segment={seg} />
             ))}
           </div>
         )}

@@ -133,7 +133,18 @@ export interface CardSegment {
   card: RichCard;
 }
 
-export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment | QuickRepliesSegment | CardSegment | ReportLinkSegment;
+/** Notice card emitted when search_skills or use_skill references a skill not attached to the session. */
+export interface SkillAttachNoticeSegment {
+  type: 'skill_attach_notice';
+  qualifiedName: string;
+  tier?: string;
+  namespace?: string;
+  description?: string;
+  requiredCapabilities?: string[];
+  errorCode?: string;
+}
+
+export type MessageSegment = TextSegment | ThinkingSegment | ToolsSegment | SandboxSegment | TasksSegment | CompressionSegment | QuickRepliesSegment | CardSegment | ReportLinkSegment | SkillAttachNoticeSegment;
 
 export interface ChatAttachment {
   url: string;
