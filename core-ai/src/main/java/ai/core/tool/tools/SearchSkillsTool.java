@@ -55,18 +55,22 @@ public class SearchSkillsTool extends ToolCall {
                     && !namespaceFilter.equals(skill.getNamespace())) {
                 continue;
             }
-            boolean coreEligible = "CORE".equalsIgnoreCase(skill.getTier())
-                    || "ALWAYS_ON".equalsIgnoreCase(skill.getTier());
-            var candidate = new SkillSearchScorer.Candidate(
-                    skill.getNamespace(),
-                    skill.getName(),
-                    skill.getDescription(),
-                    skill.getAllowedTools(),
-                    skill.getMetadata(),
-                    coreEligible);
-            Integer score = tokens.isEmpty() ? 0 : SkillSearchScorer.score(candidate, tokens, query);
-            if (score != null) {
-                hits.add(new ScoredLocal(skill, score));
+            if (tokens.isEmpty()) {
+                hits.add(new ScoredLocal(skill, 0));
+            } else {
+                boolean coreEligible = "CORE".equalsIgnoreCase(skill.getTier())
+                        || "ALWAYS_ON".equalsIgnoreCase(skill.getTier());
+                var candidate = new SkillSearchScorer.Candidate(
+                        skill.getNamespace(),
+                        skill.getName(),
+                        skill.getDescription(),
+                        skill.getAllowedTools(),
+                        skill.getMetadata(),
+                        coreEligible);
+                var score = SkillSearchScorer.score(candidate, tokens, query);
+                if (score != null) {
+                    hits.add(new ScoredLocal(skill, score));
+                }
             }
         }
         hits.sort(Comparator.comparingInt(ScoredLocal::score).reversed()
@@ -200,7 +204,7 @@ public class SearchSkillsTool extends ToolCall {
         if (value instanceof Number num) return num.intValue();
         if (value instanceof String str && !str.isBlank()) {
             try {
-                return Integer.parseInt(str.trim());
+                return Integer.valueOf(str.trim());
             } catch (NumberFormatException ignored) {
                 return null;
             }

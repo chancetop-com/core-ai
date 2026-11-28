@@ -136,11 +136,11 @@ public final class SkillScriptAttributor {
     }
 
     private static boolean isPathBoundaryBefore(char c) {
-        return Character.isWhitespace(c) || c == '"' || c == '\'' || c == '=' || c == ':' || c == '(' || c == '[' || c == ',' || c == ';';
+        return c == '"' || c == '\'' || c == '=' || c == ':' || c == '(' || c == '[' || c == ',' || c == ';' || Character.isWhitespace(c);
     }
 
     private static boolean isPathBoundaryAfter(char c) {
-        return c == '/' || Character.isWhitespace(c) || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == '&' || c == '|';
+        return c == '/' || c == '"' || c == '\'' || c == ')' || c == ']' || c == ',' || c == ';' || c == '&' || c == '|' || Character.isWhitespace(c);
     }
 
     private static String extractScriptText(String argumentsJson) {

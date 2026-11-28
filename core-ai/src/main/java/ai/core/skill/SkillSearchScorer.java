@@ -41,7 +41,7 @@ public final class SkillSearchScorer {
             if (metadataHit) score += METADATA_HIT_SCORE;
             if (allowedToolHit) score += ALLOWED_TOOL_HIT_SCORE;
         }
-        if (candidate.coreBonusEligible() && coreTierBonus > 0) {
+        if (coreTierBonus > 0 && candidate.coreBonusEligible()) {
             score += coreTierBonus;
         }
         return score;
