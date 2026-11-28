@@ -10,6 +10,7 @@ import ai.core.server.sandbox.agentsandbox.AgentSandboxProvider;
 import ai.core.server.sandbox.agentsandbox.SandboxPodPlacement;
 import ai.core.server.sandbox.kubernetes.KubernetesClient;
 import ai.core.server.session.ChatSessionStore;
+import ai.core.server.workspace.KubernetesWorkspaceOrphanScanner;
 import ai.core.server.workspace.KubernetesWorkspaceProvisioner;
 import ai.core.server.workspace.PgWorkspaceBindingRow;
 import ai.core.server.workspace.PgWorkspaceBindingStore;
@@ -31,6 +32,7 @@ import ai.core.server.workspace.WorkspaceRuntimeManager;
 import ai.core.server.workspace.WorkspaceService;
 import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.server.workspace.WorkspaceStores;
+import ai.core.server.workspace.WorkspaceTerminalActivityListener;
 import ai.core.server.workspace.WorkspaceUsageService;
 import ai.core.server.workspace.HttpWorkspaceArchiveClient;
 import ai.core.server.workspace.PgWorkspaceArchiveRow;
@@ -88,9 +90,12 @@ public class WorkspaceModule extends Module {
                 runtimes.available() ? new HttpWorkspaceArchiveClient() : null,
                 storageResolver::resolve));
         workspaceService.attachArchiveService(archiveService);
+        workspaceService.attachOrphanScanner(new KubernetesWorkspaceOrphanScanner(kubernetesClient, agentSandboxClient));
         bind(new WorkspaceSessionBinder(workspaceService));
+        var chatSessionStore = bean(ChatSessionStore.class);
+        bind(new WorkspaceTerminalActivityListener(config, stores.workspaces(), chatSessionStore));
         var sandboxService = bean(SandboxService.class);
-        bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
+        bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), chatSessionStore, provider));
         sandboxService.workspaceSandboxFactory(bean(WorkspaceSandboxFactory.class));
         api().service(WorkspaceWebService.class, bind(WorkspaceWebServiceImpl.class));
         if (config.enabled) {
@@ -138,6 +143,7 @@ public class WorkspaceModule extends Module {
         config.leaseWaitSeconds = intProperty("sys.workspace.leaseWaitSeconds", WorkspaceDefaults.LEASE_WAIT_SECONDS);
         config.minRuntimeSeconds = intProperty("sys.workspace.minRuntimeSeconds", WorkspaceDefaults.MIN_RUNTIME_SECONDS);
         config.purgeAfterDays = intProperty("sys.workspace.purgeAfterDays", WorkspaceDefaults.PURGE_AFTER_DAYS);
+        config.orphanGraceMinutes = intProperty("sys.workspace.orphanGraceMinutes", WorkspaceDefaults.ORPHAN_GRACE_MINUTES);
         config.usageSampleMinutes = intProperty("sys.workspace.usageSampleMinutes", WorkspaceDefaults.USAGE_SAMPLE_MINUTES);
         config.archiveRetentionDays = intProperty("sys.workspace.archive.retentionDays", WorkspaceDefaults.ARCHIVE_RETENTION_DAYS);
         var archiveContainer = property("sys.workspace.archive.container").orElse("");
