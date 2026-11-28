@@ -270,9 +270,15 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     }
 
     private void applyArchiveMeta(WorkspaceView view, WorkspaceRecord record, WorkspaceArchiveSummary archiveSummary) {
+        var lost = archiveService.isVolumeLostOrUnavailable(record);
+        if (lost) {
+            view.volumeStatus = record.volumeStatus.name();
+            view.errorCode = record.errorCode;
+            view.errorMessage = record.errorMessage;
+        }
         var archiveCount = archiveSummary != null ? archiveSummary.archiveCount() : 0L;
         view.archiveCount = archiveCount;
         view.latestArchiveAt = archiveSummary != null ? archiveSummary.latestArchiveAt() : null;
-        view.recoverable = archiveCount > 0 && archiveService.isVolumeLostOrUnavailable(record);
+        view.recoverable = archiveCount > 0 && lost;
     }
 }

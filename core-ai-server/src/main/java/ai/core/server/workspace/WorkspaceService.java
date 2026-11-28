@@ -130,7 +130,6 @@ public class WorkspaceService {
         return config.enabled;
     }
 
-    /** false when the deployment has no sandbox runtime backend, so a workspace cannot run here */
     public boolean runtimeAvailable() {
         return runtimes.available();
     }
@@ -168,7 +167,6 @@ public class WorkspaceService {
         return load(ownerUserId, id);
     }
 
-    /** explicit retry of a failed volume; idempotent for a healthy one */
     public WorkspaceRecord ensureVolume(String ownerUserId, String id) {
         requireEnabled();
         ensureVolumeFor(loadActive(ownerUserId, id));
@@ -215,9 +213,7 @@ public class WorkspaceService {
         var workspace = loadActive(ownerUserId, id);
         ensureRuntimeSupported();
         refuseWhenTurnRunning(workspace);
-        if (workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING) {
-            return load(ownerUserId, id);
-        }
+        if (workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING) return load(ownerUserId, id);
         return scheduleAsyncStart(ownerUserId, workspace, () -> retry(ownerUserId, id, rerunBootstrap), "retry");
     }
 
@@ -281,6 +277,7 @@ public class WorkspaceService {
 
     private WorkspaceBindingRecord readyBinding(String ownerUserId, String id, boolean verifyRuntime) {
         var workspace = loadActive(ownerUserId, id);
+        volumeManager.requireAvailableForTool(workspace);
         refuseIfInitFailed(workspace);
         var binding = bindings.get(id).orElse(null);
         var usable = workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null
@@ -311,6 +308,7 @@ public class WorkspaceService {
         requireEnabled();
         ensureRuntimeSupported();
         var workspace = loadActive(ownerUserId, id);
+        volumeManager.requireAvailableForTool(workspace);
         refuseIfInitFailed(workspace);
         var binding = bindings.get(id).orElse(null);
         if (workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null

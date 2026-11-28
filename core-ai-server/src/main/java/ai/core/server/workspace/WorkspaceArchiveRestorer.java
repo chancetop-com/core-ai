@@ -83,7 +83,8 @@ class WorkspaceArchiveRestorer {
                                                     WorkspaceVolumeRecord previousActive,
                                                     WorkspaceArchiveRecord archive, Path archiveFile) {
         var access = workspaceService.archiveAccess();
-        var newVolume = access.volumeManager().provisionForRecovery(workspace, previousActive);
+        var previousStatus = previousActive != null ? previousActive.status : null;
+        var newVolume = access.volumeManager().provisionForRecovery(workspace, previousActive, previousStatus);
         WorkspaceRuntimeStarter.StartedRuntime started = null;
         try {
             started = access.runtimeStarter().startRaw(workspace, ownerUserId, newVolume);
@@ -98,11 +99,11 @@ class WorkspaceArchiveRestorer {
             return workspaceService.get(ownerUserId, workspace.id);
         } catch (WorkspaceException e) {
             access.runtimeStarter().abortRaw(started);
-            access.volumeManager().rollbackRecoveryVolume(workspace, newVolume, previousActive);
+            access.volumeManager().rollbackRecoveryVolume(workspace, newVolume, previousActive, previousStatus);
             throw e;
         } catch (RuntimeException e) {
             access.runtimeStarter().abortRaw(started);
-            access.volumeManager().rollbackRecoveryVolume(workspace, newVolume, previousActive);
+            access.volumeManager().rollbackRecoveryVolume(workspace, newVolume, previousActive, previousStatus);
             throw new WorkspaceException(WorkspaceException.ARCHIVE_FAILED, "failed to restore archive in-place: " + e.getMessage(), e);
         }
     }
