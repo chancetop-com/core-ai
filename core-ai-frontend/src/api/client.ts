@@ -1032,6 +1032,8 @@ export interface SkillSdkPlanResponse {
     }[];
 }
 
+export type SkillTier = 'IMPORTED' | 'DOMAIN' | 'CORE' | 'ALWAYS_ON';
+
 export interface SkillDefinition {
     id: string;
     namespace: string;
@@ -1039,11 +1041,16 @@ export interface SkillDefinition {
     qualified_name: string;
     description: string;
     source_type: 'UPLOAD' | 'REPO';
+    tier?: SkillTier;
     allowed_tools: string[];
     sdk_capabilities?: SkillSdkCapability[];
     sdk_capabilities_version?: string;
     metadata: Record<string, string>;
     version: string;
+    digest?: string;
+    last_sync_status?: string;
+    last_rejected_commit_hash?: string;
+    last_sync_error?: string;
     user_id: string;
     created_at: string;
     updated_at: string;

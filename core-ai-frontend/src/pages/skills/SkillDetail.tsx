@@ -1,14 +1,24 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Sparkles, RefreshCw, Trash2, Copy, Check, Pencil } from 'lucide-react';
+import { ArrowLeft, Sparkles, RefreshCw, Trash2, Copy, Check, Pencil, AlertTriangle, Shield } from 'lucide-react';
 import { api } from '../../api/client';
 import type { SkillDefinition, SkillDownloadResponse } from '../../api/client';
+import { useAuth } from '../../api/auth';
+import { skillQualityApi, type QualityIssue } from '../../api/quality';
+import SkillTierBadge from './SkillTierBadge';
+import SkillTierModal from './SkillTierModal';
+
+const DOMAIN_WARN_RULES = new Set(['SKILL.PROGRESSIVE_DISCLOSURE', 'SKILL.EVAL_DATASET']);
 
 export default function SkillDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
   const [skill, setSkill] = useState<SkillDefinition | null>(null);
   const [downloaded, setDownloaded] = useState<SkillDownloadResponse | null>(null);
+  const [domainWarnings, setDomainWarnings] = useState<QualityIssue[]>([]);
+  const [showTierModal, setShowTierModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
   const [showContent, setShowContent] = useState(false);
@@ -16,11 +26,35 @@ export default function SkillDetail() {
 
   useEffect(() => {
     if (!id) return;
+    let active = true;
     setLoading(true);
+    setDomainWarnings([]);
     api.skills.get(id)
-      .then(res => setSkill(res))
-      .catch(() => setSkill(null))
-      .finally(() => setLoading(false));
+      .then(res => {
+        if (!active) return;
+        setSkill(res);
+        const resolvedTier = res.tier || (res.source_type === 'REPO' ? 'IMPORTED' : 'DOMAIN');
+        if (resolvedTier === 'DOMAIN') {
+          skillQualityApi.check(id, {})
+            .then(report => {
+              if (!active) return;
+              const warns = (report.issues || []).filter(
+                issue => issue.enforcement === 'WARN' && DOMAIN_WARN_RULES.has(issue.rule_id),
+              );
+              setDomainWarnings(warns);
+            })
+            .catch(() => {
+              if (active) setDomainWarnings([]);
+            });
+        }
+      })
+      .catch(() => {
+        if (active) setSkill(null);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [id]);
 
   const handleDownload = async () => {
@@ -54,7 +88,6 @@ export default function SkillDetail() {
   const handleSync = async () => {
     if (!id) return;
     await api.skills.sync(id);
-    // Refresh skill data
     api.skills.get(id).then(res => setSkill(res));
   };
 
@@ -87,9 +120,56 @@ export default function SkillDetail() {
     );
   }
 
+  const resolvedTier = skill.tier || (skill.source_type === 'REPO' ? 'IMPORTED' : 'DOMAIN');
+
   return (
     <div className="p-6">
-      {/* Header */}
+      {showTierModal && (
+        <SkillTierModal
+          skill={skill}
+          onClose={() => setShowTierModal(false)}
+          onUpdated={updated => {
+            setSkill(updated);
+            if (updated.tier !== 'DOMAIN') setDomainWarnings([]);
+          }}
+        />
+      )}
+
+      {resolvedTier === 'DOMAIN' && domainWarnings.length > 0 && (
+        <div
+          data-testid="domain-quality-warn-banner"
+          role="status"
+          className="mb-5 p-4 rounded-xl border"
+          style={{ background: 'rgba(245,158,11,0.12)', borderColor: '#f59e0b', color: '#fde68a' }}
+        >
+          <div className="flex items-center gap-2 font-medium text-sm mb-2">
+            <AlertTriangle size={16} style={{ color: '#fbbf24' }} />
+            Quality gaps before CORE promotion ({domainWarnings.length})
+          </div>
+          <ul className="text-xs space-y-1 list-disc list-inside">
+            {domainWarnings.map((issue, idx) => (
+              <li key={`${issue.rule_id}-${idx}`}>
+                <span className="font-mono">{issue.rule_id}</span>: {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {skill.last_sync_status === 'REJECTED' && (
+        <div
+          data-testid="repo-sync-rejected-banner"
+          role="alert"
+          className="mb-5 p-4 rounded-xl border text-xs"
+          style={{ background: 'rgba(220,38,38,0.12)', borderColor: '#ef4444', color: '#fca5a5' }}
+        >
+          <div className="font-medium mb-1">
+            Sync rejected at commit {skill.last_rejected_commit_hash || 'unknown'}
+          </div>
+          {skill.last_sync_error && <div>{skill.last_sync_error}</div>}
+        </div>
+      )}
+
       <div className="flex items-center gap-3 mb-6">
         <button onClick={() => navigate('/skills')}
           className="p-2 rounded-lg border cursor-pointer"
@@ -104,6 +184,7 @@ export default function SkillDetail() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <SkillTierBadge tier={resolvedTier} />
           <span className="px-2 py-1 rounded text-xs"
             style={{ background: skill.source_type === 'REPO' ? '#064e3b' : 'var(--color-bg-tertiary)', color: skill.source_type === 'REPO' ? '#6ee7b7' : 'var(--color-text-secondary)' }}>
             {skill.source_type}
@@ -113,6 +194,15 @@ export default function SkillDetail() {
               style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-secondary)' }}>
               v{skill.version}
             </span>
+          )}
+          {isAdmin && (
+            <button
+              onClick={() => setShowTierModal(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+              style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+            >
+              <Shield size={14} /> Manage Tier
+            </button>
           )}
           <button onClick={() => navigate(`/skills/${id}/edit`)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer"
@@ -134,7 +224,6 @@ export default function SkillDetail() {
         </div>
       </div>
 
-      {/* Meta info */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <InfoCard label="Namespace" value={skill.namespace} />
         <InfoCard label="User" value={skill.user_id} />
@@ -142,7 +231,6 @@ export default function SkillDetail() {
         <InfoCard label="Updated" value={formatTime(skill.updated_at)} />
       </div>
 
-      {/* Description */}
       {skill.description && (
         <div className="mb-6 p-4 rounded-xl border"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
@@ -151,7 +239,6 @@ export default function SkillDetail() {
         </div>
       )}
 
-      {/* Allowed tools */}
       {skill.allowed_tools && skill.allowed_tools.length > 0 && (
         <div className="mb-6 p-4 rounded-xl border"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
@@ -167,7 +254,6 @@ export default function SkillDetail() {
         </div>
       )}
 
-      {/* SDK capabilities */}
       {skill.sdk_capabilities && skill.sdk_capabilities.length > 0 && (
         <div className="mb-6 p-4 rounded-xl border"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
@@ -191,7 +277,6 @@ export default function SkillDetail() {
         </div>
       )}
 
-      {/* Metadata */}
       {skill.metadata && Object.keys(skill.metadata).length > 0 && (
         <div className="mb-6 p-4 rounded-xl border"
           style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
@@ -207,7 +292,6 @@ export default function SkillDetail() {
         </div>
       )}
 
-      {/* Content download */}
       <div className="mb-6 p-4 rounded-xl border"
         style={{ background: 'var(--color-bg-secondary)', borderColor: 'var(--color-border)' }}>
         <div className="flex items-center justify-between mb-3">

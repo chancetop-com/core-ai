@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -20,31 +20,85 @@ describe('Skill quality list', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     window.sessionStorage.clear();
-    vi.spyOn(skillQualityApi, 'rules').mockResolvedValue({
-      policy_revision: 1,
+    vi.spyOn(skillQualityApi, 'rules').mockImplementation(async scope => ({
+      policy_revision: scope === 'skill:tier:core' ? 3 : 2,
       rules: [{
-        id: 'sqrule:SKILL.NAME_IDENTITY',
-        key: 'SKILL.NAME_IDENTITY',
+        id: 'sqrule:SKILL.EVAL_DATASET',
+        key: 'SKILL.EVAL_DATASET',
         revision: 1,
-        name: 'Name matches directory',
-        category: 'IDENTITY',
+        name: 'Eval dataset',
+        category: 'EVAL',
         kind: 'CODE',
         lifecycle: 'ENFORCING',
         built_in: true,
-        enforcement: 'BLOCK',
-        description: 'The SKILL.md name must follow the naming rules and match the uploaded directory name.',
-        requirement: 'The SKILL.md name must follow the naming rules and match the uploaded directory name.',
+        enforcement: scope === 'skill:tier:core' ? 'BLOCK' : 'WARN',
+        description: 'eval/eval.json must be published.',
+        requirement: 'eval/eval.json must be published.',
       }],
+    }));
+    vi.spyOn(skillQualityApi, 'policies').mockImplementation(async scope => ({
+      active: {
+        revision: scope === 'skill:tier:core' ? 3 : 2,
+        generation: scope === 'skill:tier:core' ? 4 : 1,
+        scope: scope || 'skill:tier:domain',
+        bindings: [{
+          rule_id: 'sqrule:SKILL.EVAL_DATASET',
+          rule_revision: 1,
+          enforcement: scope === 'skill:tier:core' ? 'BLOCK' : 'WARN',
+        }],
+      },
+      history: [{
+        revision: scope === 'skill:tier:core' ? 3 : 2,
+        generation: scope === 'skill:tier:core' ? 4 : 1,
+        scope: scope || 'skill:tier:domain',
+        active: true,
+        change_reason: 'seed',
+      }],
+    }));
+  });
+
+  it('renders four tier scope tabs and reloads per scope', async () => {
+    renderList();
+    expect(await screen.findByText('SKILL.EVAL_DATASET')).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'DOMAIN' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'CORE' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'ALWAYS_ON' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'IMPORTED' })).toBeTruthy();
+    expect(screen.getByText(/revision 2 · generation 1/i)).toBeTruthy();
+
+    await userEvent.click(screen.getByRole('tab', { name: 'CORE' }));
+
+    await waitFor(() => {
+      expect(skillQualityApi.rules).toHaveBeenCalledWith('skill:tier:core');
+      expect(skillQualityApi.policies).toHaveBeenCalledWith('skill:tier:core');
+      expect(screen.getByText(/revision 3 · generation 4/i)).toBeTruthy();
     });
-    vi.spyOn(skillQualityApi, 'policies').mockResolvedValue({
-      active: { revision: 1, generation: 1, bindings: [] },
-      history: [],
+  });
+
+  it('saves inline enforcement change with scope and expected_generation', async () => {
+    const activateSpy = vi.spyOn(skillQualityApi, 'activate').mockResolvedValue({
+      revision: 5,
+      generation: 2,
+      scope: 'skill:tier:domain',
+    });
+    renderList();
+    const select = await screen.findByLabelText('Enforcement for SKILL.EVAL_DATASET');
+    await userEvent.selectOptions(select, 'BLOCK');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => {
+      expect(activateSpy).toHaveBeenCalledWith(expect.objectContaining({
+        scope: 'skill:tier:domain',
+        rule_id: 'sqrule:SKILL.EVAL_DATASET',
+        enforcement: 'BLOCK',
+        expected_generation: 1,
+      }));
     });
   });
 
   it('navigates to the rule detail page', async () => {
     renderList();
-    await userEvent.click(await screen.findByText('SKILL.NAME_IDENTITY'));
+    await userEvent.click(await screen.findByText('SKILL.EVAL_DATASET'));
     expect(screen.getByText('skill detail')).toBeTruthy();
   });
 

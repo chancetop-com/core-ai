@@ -1,5 +1,5 @@
 import { getAuthHeaders } from './client';
-import type { UpdateSkillRequest } from './client';
+import type { SkillDefinition, SkillTier, UpdateSkillRequest } from './client';
 
 export interface QualityIssue {
   rule_id: string;
@@ -197,16 +197,45 @@ export interface QualityPolicy {
   exemptions?: string[];
 }
 
+export type SkillTierScope =
+  | 'skill:tier:domain'
+  | 'skill:tier:core'
+  | 'skill:tier:always-on'
+  | 'skill:tier:imported';
+
+export const SKILL_TIER_SCOPES: ReadonlyArray<{
+  tier: SkillTier;
+  scope: SkillTierScope;
+  label: string;
+  description: string;
+}> = [
+  { tier: 'DOMAIN', scope: 'skill:tier:domain', label: 'DOMAIN', description: 'Default tier for team-authored skills' },
+  { tier: 'CORE', scope: 'skill:tier:core', label: 'CORE', description: 'Cross-team reusable skills (strict disclosure & eval)' },
+  { tier: 'ALWAYS_ON', scope: 'skill:tier:always-on', label: 'ALWAYS_ON', description: 'Platform baseline skills (global cap <= 10)' },
+  { tier: 'IMPORTED', scope: 'skill:tier:imported', label: 'IMPORTED', description: 'External repository skills (hygiene & identity guard)' },
+];
+
+export interface AlwaysOnSkill {
+  id: string;
+  qualified_name: string;
+  description?: string;
+  digest?: string;
+}
+
+export interface QualityPolicyListResponse {
+  active: QualityPolicy;
+  history: QualityPolicy[];
+  scopes?: QualityPolicy[];
+}
+
 export type QualityExemptionType = 'AGENT' | 'SKILL';
 
 export interface QualityExemptionEntry {
-  /** The raw entry stored in the policy revision; removals address the entry by this value. */
   value: string;
   subject_id?: string;
   name?: string;
   detail?: string;
   resolved?: boolean;
-  /** Built-in agents and personal assistant copies skip the gate without an entry. */
   automatic?: boolean;
 }
 
@@ -266,12 +295,12 @@ export interface SkillQualityRuleListResponse {
 
 export interface QualityAdminApi {
   templates: () => Promise<{ templates: RuleTemplate[]; input_options: string[] }>;
-  rules: () => Promise<{ rules: QualityRule[]; policy_revision: number }>;
+  rules: (scope?: string) => Promise<{ rules: QualityRule[]; policy_revision: number }>;
   createRule: (data: Record<string, unknown>) => Promise<QualityRule>;
   updateRule: (id: string, data: Record<string, unknown>) => Promise<QualityRule>;
   testRule: (id: string, data: Record<string, unknown>) => Promise<RuleTestResponse>;
   retireRule: (id: string) => Promise<QualityRule>;
-  policies: () => Promise<{ active: QualityPolicy; history: QualityPolicy[] }>;
+  policies: (scope?: string) => Promise<QualityPolicyListResponse>;
   activate: (data: Record<string, unknown>) => Promise<QualityPolicy>;
 }
 
@@ -279,7 +308,10 @@ function qualityAdminApi(prefix: 'agent' | 'skill'): QualityAdminApi {
   const base = `/api/admin/${prefix}-quality`;
   return {
     templates: () => request<{ templates: RuleTemplate[]; input_options: string[] }>(`${base}/rule-templates`),
-    rules: () => request<{ rules: QualityRule[]; policy_revision: number }>(`${base}/rules`),
+    rules: (scope?: string) => {
+      const qs = scope ? `?scope=${encodeURIComponent(scope)}` : '';
+      return request<{ rules: QualityRule[]; policy_revision: number }>(`${base}/rules${qs}`);
+    },
     createRule: (data: Record<string, unknown>) =>
       request<QualityRule>(`${base}/rules`, { method: 'POST', body: JSON.stringify(data) }),
     updateRule: (id: string, data: Record<string, unknown>) =>
@@ -294,7 +326,11 @@ function qualityAdminApi(prefix: 'agent' | 'skill'): QualityAdminApi {
       }),
     retireRule: (id: string) =>
       request<QualityRule>(`${base}/rules/${encodeURIComponent(id)}/retire`, { method: 'POST' }),
-    policies: () => request<{ active: QualityPolicy; history: QualityPolicy[] }>(`${base}/policies`),
+    policies: (scope?: string) => {
+      const effectiveScope = prefix === 'skill' ? (scope || 'skill:tier:domain') : scope;
+      const qs = effectiveScope ? `?scope=${encodeURIComponent(effectiveScope)}` : '';
+      return request<QualityPolicyListResponse>(`${base}/policies${qs}`);
+    },
     activate: (data: Record<string, unknown>) =>
       request<QualityPolicy>(`${base}/policies/activate`, {
         method: 'POST',
@@ -323,6 +359,13 @@ export const skillQualityApi = {
       method: 'POST',
       body: JSON.stringify(draft),
     }),
+  updateTier: (skillId: string, tier: SkillTier, reason?: string) =>
+    request<SkillDefinition>(`/api/admin/skills/${encodeURIComponent(skillId)}/tier`, {
+      method: 'PUT',
+      body: JSON.stringify({ tier, reason: reason?.trim() || undefined }),
+    }),
+  alwaysOn: () =>
+    request<{ skills: AlwaysOnSkill[] }>('/api/skill-hub/always-on'),
 };
 
 export const qualityExemptionsApi = {
@@ -351,8 +394,6 @@ export const qualityExemptionsApi = {
       }),
     }),
 };
-
-
 
 export function issueTargetSection(fieldPath?: string): string | null {
   if (!fieldPath) return null;

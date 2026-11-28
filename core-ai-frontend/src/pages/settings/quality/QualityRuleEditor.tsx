@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, FlaskConical, Trash2 } from 'lucide-react';
 import type { QualityAdminApi, QualityPolicy, QualityRule, RuleQuestion, RuleTemplate, RuleTestResponse } from '../../../api/quality';
 import ToggleSwitch from '../../../components/ToggleSwitch';
@@ -79,7 +79,9 @@ export default function QualityRuleEditor({
   canEditDefinition,
 }: Props) {
   const params = useParams<{ ruleId?: string; ruleKey?: string }>();
+  const [searchParams] = useSearchParams();
   const ruleId = params.ruleId ?? params.ruleKey;
+  const scope = subject === 'skill' ? (searchParams.get('scope') || 'skill:tier:domain') : undefined;
   const navigate = useNavigate();
   const creating = ruleId === 'new';
   const [rule, setRule] = useState<QualityRule | null>(null);
@@ -130,9 +132,9 @@ export default function QualityRuleEditor({
     setNotFound(false);
     try {
       const [rulesRes, templatesRes, policiesRes] = await Promise.all([
-        api.rules(),
+        api.rules(scope),
         api.templates(),
-        api.policies(),
+        api.policies(scope),
       ]);
       setTemplates(templatesRes.templates || []);
       setInputOptions(templatesRes.input_options || []);
@@ -205,6 +207,7 @@ export default function QualityRuleEditor({
     setBusy(true);
     try {
       await api.activate({
+        ...(scope ? { scope } : {}),
         rule_id: rule.id,
         rule_revision: rule.revision,
         enforcement,

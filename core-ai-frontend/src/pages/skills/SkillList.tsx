@@ -6,6 +6,7 @@ import type { SkillDefinition, MarketplaceRepoView } from '../../api/client';
 import type { QualityReport } from '../../api/quality';
 import QualityReportPanel from '../agents/QualityReportPanel';
 import { useListState } from '../../hooks/useListState';
+import SkillTierBadge from './SkillTierBadge';
 
 const DEFAULT_SEARCH_IN = 'name_description';
 const MAX_REQUEST_BYTES = 10_000_000;
@@ -393,6 +394,7 @@ export default function SkillList() {
                                     <div className="flex items-center gap-3">
                                         <Sparkles size={18} style={{ color: 'var(--color-primary)' }} />
                                         <span className="font-medium">{s.name}</span>
+                                        <SkillTierBadge tier={s.tier || (s.source_type === 'REPO' ? 'IMPORTED' : 'DOMAIN')} />
                                         <span className="px-2 py-0.5 rounded text-xs"
                                             style={{ background: s.source_type === 'REPO' ? '#064e3b' : 'var(--color-bg-tertiary)', color: s.source_type === 'REPO' ? '#6ee7b7' : 'var(--color-text-secondary)' }}>
                                             {s.source_type}

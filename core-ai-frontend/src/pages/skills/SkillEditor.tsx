@@ -1,12 +1,15 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download, ShieldCheck } from 'lucide-react';
-import { api, ApiRequestError } from '../../api/client';
+import { ArrowLeft, Save, Sparkles, FileText, FolderOpen, Plus, Trash2, Upload, X, ChevronRight, ChevronDown, RefreshCw, Download, ShieldCheck, Shield } from 'lucide-react';
+import { api, ApiRequestError, type SkillDefinition } from '../../api/client';
+import { useAuth } from '../../api/auth';
 import { ApiError as QualityApiError, skillQualityApi, type QualityReport } from '../../api/quality';
 import JSZip from 'jszip';
 import CodeMirrorEditor from '../../components/CodeMirrorEditor';
 import QualityReportPanel from '../agents/QualityReportPanel';
 import { parseFrontmatter, buildSkillMdContent, type FrontmatterKey } from './skillFrontmatter';
+import SkillTierBadge from './SkillTierBadge';
+import SkillTierModal from './SkillTierModal';
 
 interface SkillFile {
   path: string;
@@ -57,6 +60,10 @@ function groupResources(resources: SkillFile[]): { folders: Array<{ name: string
 export default function SkillEditor() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isAdmin = user?.role === 'admin';
+  const [skillRecord, setSkillRecord] = useState<SkillDefinition | null>(null);
+  const [showTierModal, setShowTierModal] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,6 +99,7 @@ export default function SkillEditor() {
     setLoading(true);
     Promise.all([api.skills.get(id), api.skills.download(id)])
       .then(([skill, downloaded]) => {
+        setSkillRecord(skill);
         setNamespace(skill.namespace);
         setSourceType(skill.source_type);
         setVersion(skill.version || '');
@@ -309,6 +317,13 @@ export default function SkillEditor() {
 
   return (
     <div className="p-6 h-full flex flex-col" style={{ maxHeight: 'calc(100vh - 2rem)' }}>
+      {showTierModal && skillRecord && (
+        <SkillTierModal
+          skill={skillRecord}
+          onClose={() => setShowTierModal(false)}
+          onUpdated={updated => setSkillRecord(updated)}
+        />
+      )}
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
@@ -319,12 +334,20 @@ export default function SkillEditor() {
           </button>
           <Sparkles size={20} style={{ color: 'var(--color-primary)' }} />
           <h1 className="text-xl font-semibold">{name}</h1>
+          <SkillTierBadge tier={skillRecord?.tier || (sourceType === 'REPO' ? 'IMPORTED' : 'DOMAIN')} />
           <span className="px-2 py-0.5 rounded text-xs"
             style={{ background: sourceType === 'REPO' ? '#064e3b' : 'var(--color-bg-tertiary)', color: sourceType === 'REPO' ? '#6ee7b7' : 'var(--color-text-secondary)' }}>
             {sourceType}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {isAdmin && skillRecord && (
+            <button onClick={() => setShowTierModal(true)}
+              className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
+              style={{ borderColor: 'var(--color-primary)', color: 'var(--color-primary)' }}>
+              <Shield size={14} /> Manage Tier
+            </button>
+          )}
           <button onClick={handleDelete}
             className="flex items-center gap-1 px-3 py-2 rounded-lg text-sm border cursor-pointer"
             style={{ borderColor: 'var(--color-border)', color: 'var(--color-error)' }}>
