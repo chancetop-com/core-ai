@@ -188,6 +188,20 @@ func (r *TaskRegistry) Cancel(id string) (*AsyncTask, bool) {
 	return &cp, true
 }
 
+func (r *TaskRegistry) HasRunning() bool {
+	if r == nil {
+		return false
+	}
+	return atomic.LoadInt32(&r.running) > 0
+}
+
+func (r *TaskRegistry) RunningCount() int {
+	if r == nil {
+		return 0
+	}
+	return int(atomic.LoadInt32(&r.running))
+}
+
 func (r *TaskRegistry) Cleanup(maxAge time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -202,8 +216,9 @@ func (r *TaskRegistry) Cleanup(maxAge time.Duration) {
 // ---- Globals ----
 
 var (
-	workspaceDir = "/workspace"
-	taskRegistry *TaskRegistry
+	workspaceDir           = "/workspace"
+	taskRegistry           *TaskRegistry
+	activeTerminalRegistry *TerminalRegistry
 
 	skillVersionsMu sync.Mutex
 	skillVersions   = make(map[string]string) // name -> installed version
@@ -274,6 +289,7 @@ func main() {
 	}()
 
 	terminalRegistry := NewTerminalRegistry(10 * time.Minute)
+	activeTerminalRegistry = terminalRegistry
 	go func() {
 		for range time.Tick(time.Minute) {
 			terminalRegistry.ReclaimDisconnected()
@@ -307,6 +323,8 @@ func main() {
 	http.HandleFunc("/snapshot", handleSnapshot)
 	http.HandleFunc("/snapshot/restore", handleSnapshotRestore)
 	http.HandleFunc("/workspace/stat", handleWorkspaceStat)
+	http.HandleFunc("/workspace/archive", handleWorkspaceArchive)
+	http.HandleFunc("/workspace/restore", handleWorkspaceRestore)
 	registerTerminalWs(http.DefaultServeMux, terminalRegistry)
 
 	startHubProxy()

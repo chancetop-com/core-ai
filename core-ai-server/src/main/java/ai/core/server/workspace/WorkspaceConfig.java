@@ -25,4 +25,6 @@ public class WorkspaceConfig {
     public int minRuntimeSeconds = WorkspaceDefaults.MIN_RUNTIME_SECONDS;
     public int purgeAfterDays = WorkspaceDefaults.PURGE_AFTER_DAYS;
     public int usageSampleMinutes = WorkspaceDefaults.USAGE_SAMPLE_MINUTES;
+    public int archiveRetentionDays = WorkspaceDefaults.ARCHIVE_RETENTION_DAYS;
+    public String archiveContainer = WorkspaceDefaults.ARCHIVE_CONTAINER;
 }

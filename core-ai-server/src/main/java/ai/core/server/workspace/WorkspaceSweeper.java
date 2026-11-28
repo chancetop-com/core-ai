@@ -24,20 +24,26 @@ class WorkspaceSweeper {
 
     private final Deps deps;
     private final WorkspaceUsageService usage;
+    private volatile WorkspaceArchiveService archiveService;
 
     WorkspaceSweeper(Deps deps, WorkspaceUsageService usage) {
         this.deps = deps;
         this.usage = usage;
     }
 
+    void attachArchiveService(WorkspaceArchiveService archiveService) {
+        this.archiveService = archiveService;
+    }
+
     SweepResult run(WorkspaceConfig config, Predicate<String> sessionBusy) {
         var slept = sleepIdleRuntimes(config, sessionBusy);
         var purged = purgeDeletedWorkspaces(config);
         var volumes = retryDeletingVolumes();
+        var archivesPurged = archiveService != null ? archiveService.purgeExpired() : 0;
         // Usage sampling is the only step that talks to a live runtime, so it runs last: a hung or
         // outdated pod delays the next sample, never the sleep/purge that keeps storage reclaimable.
         var sampled = sampleReadyWorkspaces(config);
-        return new SweepResult(slept, purged, volumes, sampled);
+        return new SweepResult(slept, purged, volumes, sampled, archivesPurged);
     }
 
     private int sampleReadyWorkspaces(WorkspaceConfig config) {
@@ -181,6 +187,6 @@ class WorkspaceSweeper {
                 WorkspaceVolumeManager volumes, WorkspaceRuntimeLifecycle lifecycle, WorkspaceAudit audit) {
     }
 
-    record SweepResult(int slept, int purged, int volumesDeleted, int usageSampled) {
+    record SweepResult(int slept, int purged, int volumesDeleted, int usageSampled, int archivesPurged) {
     }
 }

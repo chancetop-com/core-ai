@@ -26,6 +26,7 @@ import java.util.function.Predicate;
 public class WorkspaceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceService.class);
 
+    private final WorkspaceStores stores;
     private final WorkspaceStore workspaces;
     private final WorkspaceBindingStore bindings;
     private final WorkspaceEventStore events;
@@ -40,6 +41,7 @@ public class WorkspaceService {
     private final WorkspaceSweeper sweeper;
     private final WorkspaceConfig config;
     private final Executor wakeExecutor;
+    private volatile WorkspaceArchiveService archiveService;
     /** Answers "is this session executing a turn"; assigned by RuntimeGovernanceModule. */
     public volatile Predicate<String> sessionBusy;
 
@@ -59,6 +61,7 @@ public class WorkspaceService {
     }
 
     WorkspaceService(WorkspaceStores stores, RuntimeDeps deps, WorkspaceConfig config, Executor wakeExecutor) {
+        this.stores = stores;
         this.workspaces = stores.workspaces();
         this.bindings = stores.bindings();
         this.events = stores.events();
@@ -127,7 +130,6 @@ public class WorkspaceService {
         return config.enabled;
     }
 
-    /** false when the deployment has no sandbox runtime backend, so a workspace cannot run here */
     public boolean runtimeAvailable() {
         return runtimes.available();
     }
@@ -142,26 +144,29 @@ public class WorkspaceService {
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes) {
-        return update(ownerUserId, id, name, idleSleepMinutes, null, null);
+        return update(ownerUserId, id, new WorkspaceUpdateSpec(name, idleSleepMinutes, null, null, null, null));
     }
 
     public WorkspaceRecord update(String ownerUserId, String id, String name, Integer idleSleepMinutes,
                                   String bootstrapScript, String startScript) {
+        return update(ownerUserId, id, new WorkspaceUpdateSpec(name, idleSleepMinutes, bootstrapScript, startScript, null, null));
+    }
+
+    public WorkspaceRecord update(String ownerUserId, String id, WorkspaceUpdateSpec spec) {
         requireEnabled();
         var workspace = loadActive(ownerUserId, id);
-        if (name != null) creator.rename(ownerUserId, workspace, name);
-        if (idleSleepMinutes != null) {
-            workspace.idleSleepMinutes = creator.validatedIdleSleep(idleSleepMinutes);
-        }
-        if (bootstrapScript != null) workspace.bootstrapScript = bootstrapScript;
-        if (startScript != null) workspace.startScript = startScript;
+        if (spec.name() != null) creator.rename(ownerUserId, workspace, spec.name());
+        if (spec.idleSleepMinutes() != null) workspace.idleSleepMinutes = creator.validatedIdleSleep(spec.idleSleepMinutes());
+        if (spec.bootstrapScript() != null) workspace.bootstrapScript = spec.bootstrapScript();
+        if (spec.startScript() != null) workspace.startScript = spec.startScript();
         workspace.updatedAt = ZonedDateTime.now();
         workspaces.update(workspace);
+        var targetImage = WorkspaceImageUpgrader.resolveTargetImage(spec.image(), spec.template());
+        if (targetImage != null) return WorkspaceImageUpgrader.upgrade(this, archiveService, ownerUserId, workspace, targetImage);
         audit.append(id, "updated", ownerUserId, Map.of());
         return load(ownerUserId, id);
     }
 
-    /** explicit retry of a failed volume; idempotent for a healthy one */
     public WorkspaceRecord ensureVolume(String ownerUserId, String id) {
         requireEnabled();
         ensureVolumeFor(loadActive(ownerUserId, id));
@@ -208,9 +213,7 @@ public class WorkspaceService {
         var workspace = loadActive(ownerUserId, id);
         ensureRuntimeSupported();
         refuseWhenTurnRunning(workspace);
-        if (workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING) {
-            return load(ownerUserId, id);
-        }
+        if (workspace.runtimeStatus == WorkspaceRuntimeStatus.PROVISIONING) return load(ownerUserId, id);
         return scheduleAsyncStart(ownerUserId, workspace, () -> retry(ownerUserId, id, rerunBootstrap), "retry");
     }
 
@@ -274,6 +277,7 @@ public class WorkspaceService {
 
     private WorkspaceBindingRecord readyBinding(String ownerUserId, String id, boolean verifyRuntime) {
         var workspace = loadActive(ownerUserId, id);
+        volumeManager.requireAvailableForTool(workspace);
         refuseIfInitFailed(workspace);
         var binding = bindings.get(id).orElse(null);
         var usable = workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null
@@ -304,6 +308,7 @@ public class WorkspaceService {
         requireEnabled();
         ensureRuntimeSupported();
         var workspace = loadActive(ownerUserId, id);
+        volumeManager.requireAvailableForTool(workspace);
         refuseIfInitFailed(workspace);
         var binding = bindings.get(id).orElse(null);
         if (workspace.runtimeStatus == WorkspaceRuntimeStatus.READY && binding != null
@@ -400,34 +405,37 @@ public class WorkspaceService {
     }
 
     WorkspaceSweeper.SweepResult runLifecycleSweep() {
-        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0, 0);
-        return sweeper.run(config, sessionBusy);
+        return !config.enabled || workspaces == null
+                ? new WorkspaceSweeper.SweepResult(0, 0, 0, 0, 0) : sweeper.run(config, sessionBusy);
+    }
+
+    public void attachArchiveService(WorkspaceArchiveService archiveService) {
+        this.archiveService = archiveService;
+        this.sweeper.attachArchiveService(archiveService);
+    }
+
+    WorkspaceArchiveAccess archiveAccess() {
+        return new WorkspaceArchiveAccess(stores, volumeManager, runtimes, runtimeLifecycle, runtimeStarter,
+                leases, audit, creator, config, wakeExecutor);
     }
 
     private WorkspaceRecord load(String ownerUserId, String id) {
-        return workspaces.get(id)
-                .filter(w -> w.ownerUserId.equals(ownerUserId))
+        return workspaces.get(id).filter(w -> w.ownerUserId.equals(ownerUserId))
                 .orElseThrow(() -> new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace not found: " + id));
     }
 
-    private WorkspaceRecord loadActive(String ownerUserId, String id) {
+    WorkspaceRecord loadActive(String ownerUserId, String id) {
         var workspace = load(ownerUserId, id);
-        if (workspace.deleted()) {
-            throw new WorkspaceException(WorkspaceException.DELETED, "workspace is deleted: " + id);
-        }
+        if (workspace.deleted()) throw new WorkspaceException(WorkspaceException.DELETED, "workspace is deleted: " + id);
         return workspace;
     }
 
     private void requireEnabled() {
-        if (!config.enabled) {
-            throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "persistent workspace is not enabled");
-        }
+        if (!config.enabled) throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "persistent workspace is not enabled");
     }
 
     private void ensureRuntimeSupported() {
-        if (!runtimes.available()) {
-            throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "workspace runtime provider is not configured");
-        }
+        if (!runtimes.available()) throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "workspace runtime provider is not configured");
     }
 
     record RuntimeDeps(WorkspaceProvisioner provisioner, WorkspaceRuntimeManager runtimes,

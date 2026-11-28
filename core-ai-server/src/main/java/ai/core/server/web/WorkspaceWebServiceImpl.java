@@ -1,12 +1,15 @@
 package ai.core.server.web;
 
+import ai.core.api.server.workspace.WorkspaceArchiveListView;
+import ai.core.api.server.workspace.WorkspaceArchiveView;
 import ai.core.api.server.workspace.WorkspaceCreateRequest;
 import ai.core.api.server.workspace.WorkspaceEventListRequest;
 import ai.core.api.server.workspace.WorkspaceEventListView;
 import ai.core.api.server.workspace.WorkspaceEventView;
-import ai.core.api.server.workspace.WorkspaceListView;
 import ai.core.api.server.workspace.WorkspaceListRequest;
+import ai.core.api.server.workspace.WorkspaceListView;
 import ai.core.api.server.workspace.WorkspaceResetRequest;
+import ai.core.api.server.workspace.WorkspaceRestoreRequest;
 import ai.core.api.server.workspace.WorkspaceRetryRequest;
 import ai.core.api.server.workspace.WorkspaceUpdateRequest;
 import ai.core.api.server.workspace.WorkspaceUsageView;
@@ -15,6 +18,9 @@ import ai.core.api.server.workspace.WorkspaceWebService;
 import ai.core.server.rbac.PermissionCodes;
 import ai.core.server.rbac.PermissionsRequired;
 import ai.core.server.web.auth.AuthContext;
+import ai.core.server.workspace.WorkspaceArchiveRecord;
+import ai.core.server.workspace.WorkspaceArchiveService;
+import ai.core.server.workspace.WorkspaceArchiveSummary;
 import ai.core.server.workspace.WorkspaceBootstrapRunner;
 import ai.core.server.workspace.WorkspaceCreateSpec;
 import ai.core.server.workspace.WorkspaceEventRecord;
@@ -22,6 +28,7 @@ import ai.core.server.workspace.WorkspaceException;
 import ai.core.server.workspace.WorkspaceHttpErrors;
 import ai.core.server.workspace.WorkspaceRecord;
 import ai.core.server.workspace.WorkspaceService;
+import ai.core.server.workspace.WorkspaceUpdateSpec;
 import ai.core.server.workspace.WorkspaceUsageRecord;
 import core.framework.inject.Inject;
 import core.framework.web.WebContext;
@@ -37,6 +44,8 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     WebContext webContext;
     @Inject
     WorkspaceService workspaceService;
+    @Inject
+    WorkspaceArchiveService archiveService;
 
     @Override
     public WorkspaceListView list(WorkspaceListRequest request) {
@@ -46,7 +55,8 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
             var records = workspaceService.list(userId(), includeDeleted);
             var ids = records.stream().map(r -> r.id).toList();
             var usageByWorkspace = workspaceService.usageByWorkspaces(ids);
-            return records.stream().map(r -> view(r, usageByWorkspace.get(r.id))).toList();
+            var archivesByWorkspace = archiveService.summarizeReady(ids);
+            return records.stream().map(r -> view(r, usageByWorkspace.get(r.id), archivesByWorkspace.get(r.id))).toList();
         });
         return view;
     }
@@ -64,14 +74,20 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
             var userId = userId();
             var record = workspaceService.get(userId, id);
             var usage = workspaceService.usage(userId, id).orElse(null);
-            return view(record, usage);
+            var summary = archiveService.summary(id);
+            return view(record, usage, summary);
         });
     }
 
     @Override
     public WorkspaceView update(String id, WorkspaceUpdateRequest request) {
-        return call(() -> view(workspaceService.update(userId(), id, request.name, request.idleSleepMinutes,
-                request.bootstrapScript, request.startScript)));
+        var spec = new WorkspaceUpdateSpec(request.name, request.idleSleepMinutes,
+                request.bootstrapScript, request.startScript, request.image, request.template);
+        return call(() -> {
+            var updated = workspaceService.update(userId(), id, spec);
+            var summary = archiveService.summary(updated.id);
+            return view(updated, null, summary);
+        });
     }
 
     @Override
@@ -126,6 +142,36 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
                 .orElseThrow(() -> new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace usage not found: " + id)));
     }
 
+    @Override
+    public WorkspaceArchiveView createArchive(String id) {
+        return call(() -> archiveView(archiveService.create(userId(), id)));
+    }
+
+    @Override
+    public WorkspaceArchiveListView listArchives(String id) {
+        var view = new WorkspaceArchiveListView();
+        view.items = call(() -> archiveService.list(userId(), id).stream().map(this::archiveView).toList());
+        return view;
+    }
+
+    @Override
+    public WorkspaceView restore(String id, WorkspaceRestoreRequest request) {
+        var allowOverwrite = request != null && Boolean.TRUE.equals(request.allowOverwrite);
+        return call(() -> {
+            var restored = archiveService.restore(userId(), id, request.archiveId, request.newName, allowOverwrite);
+            var summary = archiveService.summary(restored.id);
+            return view(restored, null, summary);
+        });
+    }
+
+    @Override
+    public void deleteArchive(String id, String archiveId) {
+        call(() -> {
+            archiveService.delete(userId(), id, archiveId);
+            return null;
+        });
+    }
+
     private String userId() {
         return AuthContext.userId(webContext);
     }
@@ -136,6 +182,23 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         } catch (WorkspaceException e) {
             throw WorkspaceHttpErrors.translate(e);
         }
+    }
+
+    private WorkspaceArchiveView archiveView(WorkspaceArchiveRecord record) {
+        var view = new WorkspaceArchiveView();
+        view.id = record.id;
+        view.workspaceId = record.workspaceId;
+        view.volumeGeneration = record.volumeGeneration;
+        view.sha256 = record.sha256;
+        view.sizeBytes = record.sizeBytes;
+        view.fileCount = record.fileCount;
+        view.image = record.image;
+        view.status = record.status.name();
+        view.failureReason = record.failureReason;
+        view.createdBy = record.createdBy;
+        view.createdAt = record.createdAt;
+        view.updatedAt = record.updatedAt;
+        return view;
     }
 
     private WorkspaceEventView eventView(WorkspaceEventRecord record) {
@@ -160,10 +223,10 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
     }
 
     private WorkspaceView view(WorkspaceRecord record) {
-        return view(record, null);
+        return view(record, null, null);
     }
 
-    private WorkspaceView view(WorkspaceRecord record, WorkspaceUsageRecord usage) {
+    private WorkspaceView view(WorkspaceRecord record, WorkspaceUsageRecord usage, WorkspaceArchiveSummary archiveSummary) {
         var view = new WorkspaceView();
         view.id = record.id;
         view.name = record.name;
@@ -181,6 +244,7 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         view.storageClass = record.storageClass;
         view.profile = record.profile != null ? record.profile.id : null;
         view.mountPath = record.mountPath;
+        view.image = record.image;
         view.networkEnabled = record.networkEnabled;
         view.networkProfile = record.networkProfile;
         view.idleSleepMinutes = record.idleSleepMinutes;
@@ -199,8 +263,22 @@ public class WorkspaceWebServiceImpl implements WorkspaceWebService {
         view.errorCode = record.errorCode;
         view.errorMessage = record.errorMessage;
         view.deletedAt = record.deletedAt;
+        applyArchiveMeta(view, record, archiveSummary);
         view.createdAt = record.createdAt;
         view.updatedAt = record.updatedAt;
         return view;
+    }
+
+    private void applyArchiveMeta(WorkspaceView view, WorkspaceRecord record, WorkspaceArchiveSummary archiveSummary) {
+        var lost = archiveService.isVolumeLostOrUnavailable(record);
+        if (lost) {
+            view.volumeStatus = record.volumeStatus.name();
+            view.errorCode = record.errorCode;
+            view.errorMessage = record.errorMessage;
+        }
+        var archiveCount = archiveSummary != null ? archiveSummary.archiveCount() : 0L;
+        view.archiveCount = archiveCount;
+        view.latestArchiveAt = archiveSummary != null ? archiveSummary.latestArchiveAt() : null;
+        view.recoverable = archiveCount > 0 && lost;
     }
 }

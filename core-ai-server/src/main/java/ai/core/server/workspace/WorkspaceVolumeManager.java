@@ -26,6 +26,16 @@ class WorkspaceVolumeManager {
 
     WorkspaceVolumeRecord ensure(WorkspaceRecord workspace) {
         var volume = volumes.active(workspace.id).orElse(null);
+        if (volume != null && volume.status == WorkspaceVolumeStatus.READY && !volumeExists(volume)) {
+            markLost(workspace, volume);
+            throw new WorkspaceProvisioningException(WorkspaceProvisioningException.VOLUME_UNAVAILABLE,
+                    "workspace volume is missing: " + volume.pvcName);
+        }
+        if (volume != null && volume.status == WorkspaceVolumeStatus.ERROR
+                && workspace.volumeStatus == WorkspaceVolumeStatus.ERROR && !volumeExists(volume)) {
+            throw new WorkspaceProvisioningException(WorkspaceProvisioningException.VOLUME_UNAVAILABLE,
+                    "workspace volume is unavailable: " + volume.pvcName);
+        }
         if (volume == null) {
             var generation = workspace.activeVolumeGeneration != null ? workspace.activeVolumeGeneration : 0L;
             var created = WorkspaceVolumeRecord.provisioning(workspace, generation,
@@ -93,6 +103,94 @@ class WorkspaceVolumeManager {
 
     WorkspaceVolumeRecord active(String workspaceId) {
         return volumes.active(workspaceId).orElse(null);
+    }
+
+    boolean volumeExists(WorkspaceVolumeRecord volume) {
+        if (volume == null || provisioner == null) return false;
+        return provisioner.volumeExists(volume);
+    }
+
+    boolean isLostOrUnavailable(WorkspaceRecord workspace) {
+        if (workspace == null || workspace.deleted()) return false;
+        if (workspace.volumeStatus == WorkspaceVolumeStatus.ERROR) return true;
+        var active = active(workspace.id);
+        if (active == null || active.status == WorkspaceVolumeStatus.ERROR) return true;
+        if (active.status == WorkspaceVolumeStatus.READY && !volumeExists(active)) {
+            markLost(workspace, active);
+            return true;
+        }
+        return false;
+    }
+
+    void requireAvailableForTool(WorkspaceRecord workspace) {
+        if (isLostOrUnavailable(workspace)) {
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE,
+                    "workspace volume is missing or in ERROR state; restore from an archive or reset");
+        }
+    }
+
+    private void markLost(WorkspaceRecord workspace, WorkspaceVolumeRecord volume) {
+        var message = "workspace volume is missing: " + volume.pvcName;
+        volumes.updateStatus(workspace.id, volume.volumeGeneration, WorkspaceVolumeStatus.ERROR);
+        workspaces.updateVolumeState(workspace.id, WorkspaceVolumeStatus.ERROR, volume.volumeGeneration,
+                WorkspaceException.VOLUME_UNAVAILABLE, message);
+        volume.status = WorkspaceVolumeStatus.ERROR;
+        workspace.volumeStatus = WorkspaceVolumeStatus.ERROR;
+        workspace.errorCode = WorkspaceException.VOLUME_UNAVAILABLE;
+        workspace.errorMessage = message;
+    }
+
+    WorkspaceVolumeRecord provisionForRecovery(WorkspaceRecord workspace, WorkspaceVolumeRecord previousActive,
+                                               WorkspaceVolumeStatus previousStatus) {
+        var id = workspace.id;
+        long nextGeneration;
+        if (previousActive != null) {
+            nextGeneration = previousActive.volumeGeneration + 1;
+            volumes.markDeleted(id, previousActive.volumeGeneration, WorkspaceVolumeStatus.DELETING);
+        } else {
+            nextGeneration = workspace.activeVolumeGeneration == null ? 0L : workspace.activeVolumeGeneration + 1;
+        }
+        var created = WorkspaceVolumeRecord.provisioning(workspace, nextGeneration,
+                provisioner.volumeName(id, nextGeneration), provisioner.provider());
+        if (!volumes.insertIfAbsent(created)) {
+            if (previousActive != null && previousStatus != null) {
+                volumes.updateStatus(id, previousActive.volumeGeneration, previousStatus);
+            }
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE,
+                    "workspace volume generation already exists: " + nextGeneration);
+        }
+        try {
+            provisioner.ensureVolume(workspace, nextGeneration);
+            volumes.updateStatus(id, nextGeneration, WorkspaceVolumeStatus.READY);
+            created.status = WorkspaceVolumeStatus.READY;
+            return created;
+        } catch (WorkspaceProvisioningException e) {
+            volumes.markDeleted(id, nextGeneration, WorkspaceVolumeStatus.DELETING);
+            if (previousActive != null && previousStatus != null) {
+                volumes.updateStatus(id, previousActive.volumeGeneration, previousStatus);
+            }
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
+        }
+    }
+
+    void rollbackRecoveryVolume(WorkspaceRecord workspace, WorkspaceVolumeRecord newVolume,
+                                WorkspaceVolumeRecord previousActive, WorkspaceVolumeStatus previousStatus) {
+        var id = workspace.id;
+        if (newVolume != null) {
+            volumes.markDeleted(id, newVolume.volumeGeneration, WorkspaceVolumeStatus.DELETING);
+        }
+        if (previousActive != null && previousStatus != null) {
+            volumes.updateStatus(id, previousActive.volumeGeneration, previousStatus);
+        }
+    }
+
+    void commitRecoveryVolume(WorkspaceRecord workspace, WorkspaceVolumeRecord newVolume,
+                              WorkspaceVolumeRecord previousActive) {
+        var id = workspace.id;
+        workspaces.updateVolumeState(id, WorkspaceVolumeStatus.READY, newVolume.volumeGeneration, null, null);
+        if (previousActive != null) {
+            deleteNow(previousActive);
+        }
     }
 
     List<WorkspaceVolumeRecord> list(String workspaceId) {

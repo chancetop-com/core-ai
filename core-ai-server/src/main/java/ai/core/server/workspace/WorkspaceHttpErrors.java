@@ -17,8 +17,10 @@ public final class WorkspaceHttpErrors {
         return switch (code) {
             case WorkspaceException.DELETED, WorkspaceException.TASK_LOST -> new Gone(code, e.getMessage(), e);
             case WorkspaceException.QUOTA_EXCEEDED -> new QuotaExceeded(code, e.getMessage(), e);
-            case WorkspaceException.UNSUPPORTED, WorkspaceException.VOLUME_UNAVAILABLE -> new Unavailable(code, e.getMessage(), e);
-            case WorkspaceException.NOT_FOUND -> new NotFound(code, e.getMessage(), e);
+            case WorkspaceException.UNSUPPORTED, WorkspaceException.VOLUME_UNAVAILABLE, WorkspaceException.ARCHIVE_FAILED ->
+                new Unavailable(code, e.getMessage(), e);
+            case WorkspaceException.NOT_FOUND, WorkspaceException.ARCHIVE_NOT_FOUND ->
+                new NotFound(code, e.getMessage(), e);
             case WorkspaceException.INVALID_REQUEST -> new Invalid(code, e.getMessage(), e);
             default -> new Conflict(code, e.getMessage(), e);
         };

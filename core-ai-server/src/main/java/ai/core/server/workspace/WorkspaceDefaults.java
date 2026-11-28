@@ -26,6 +26,8 @@ public final class WorkspaceDefaults {
     public static final int START_TIMEOUT_SECONDS = 600;
     public static final int PURGE_AFTER_DAYS = 7;
     public static final int USAGE_SAMPLE_MINUTES = 10;
+    public static final int ARCHIVE_RETENTION_DAYS = 30;
+    public static final String ARCHIVE_CONTAINER = "workspace-archives";
     public static final String STORAGE_CLASS = "managed-csi";
     public static final String MOUNT_PATH = "/workspace";
     public static final String NETWORK_PROFILE = "public-egress";

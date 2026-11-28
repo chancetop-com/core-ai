@@ -2,8 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
+  Archive,
+  ArrowDown,
   ArrowLeft,
+  ArrowUpCircle,
   CheckCircle2,
+  CopyPlus,
   FileCode2,
   HardDrive,
   Moon,
@@ -14,7 +18,13 @@ import {
   Undo2,
   X,
 } from 'lucide-react';
-import { api, type WorkspaceEventView, type WorkspaceUsageView, type WorkspaceView } from '../../api/client';
+import {
+  api,
+  type WorkspaceArchiveView,
+  type WorkspaceEventView,
+  type WorkspaceUsageView,
+  type WorkspaceView,
+} from '../../api/client';
 import {
   errorMessage,
   formatBytes,
@@ -28,12 +38,27 @@ import {
   workspaceStatus,
 } from './workspaceHelpers';
 
-type DialogKind = 'retry' | 'reset' | 'delete';
+type DialogKind =
+  | 'retry'
+  | 'reset'
+  | 'delete'
+  | 'restore-new'
+  | 'restore-dr'
+  | 'delete-archive'
+  | 'upgrade-image';
+
 type UsageState =
   | { status: 'loading' }
   | { status: 'loaded'; data: WorkspaceUsageView }
   | { status: 'empty' }
   | { status: 'error'; message: string };
+
+function archiveStatusTone(status: string): { bg: string; text: string } {
+  if (status === 'READY') return TONE_STYLES.ok;
+  if (status === 'FAILED') return TONE_STYLES.error;
+  if (status === 'CREATING') return TONE_STYLES.info;
+  return TONE_STYLES.muted;
+}
 
 export default function WorkspaceDetail() {
   const { id = '' } = useParams<{ id: string }>();
@@ -42,6 +67,7 @@ export default function WorkspaceDetail() {
   const [workspace, setWorkspace] = useState<WorkspaceView | null>(null);
   const [usageState, setUsageState] = useState<UsageState>({ status: 'loading' });
   const [events, setEvents] = useState<WorkspaceEventView[] | null>(null);
+  const [archives, setArchives] = useState<WorkspaceArchiveView[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,6 +77,9 @@ export default function WorkspaceDetail() {
   const [confirmName, setConfirmName] = useState('');
   const [rerunBootstrap, setRerunBootstrap] = useState(false);
   const [showFullLog, setShowFullLog] = useState(false);
+  const [selectedArchive, setSelectedArchive] = useState<WorkspaceArchiveView | null>(null);
+  const [restoreNewName, setRestoreNewName] = useState('');
+  const [targetImage, setTargetImage] = useState('');
 
   const loadAll = useCallback((quiet = false) => {
     if (!id) return;
@@ -84,6 +113,10 @@ export default function WorkspaceDetail() {
     api.workspaces.events(id, 30)
       .then(items => setEvents(items))
       .catch(() => setEvents([]));
+
+    api.workspaces.listArchives(id)
+      .then(items => setArchives(items))
+      .catch(() => setArchives([]));
   }, [id]);
 
   useEffect(() => {
@@ -101,14 +134,14 @@ export default function WorkspaceDetail() {
     return () => clearInterval(timer);
   }, [transitioning, loadAll]);
 
-  const runAction = async (action: () => Promise<unknown>, successMessage: string, after?: () => void) => {
+  const runAction = async (action: () => Promise<unknown>, successMessage: string, after?: (result: unknown) => void) => {
     setBusy(true);
     setError('');
     setNotice('');
     try {
-      await action();
+      const result = await action();
       setNotice(successMessage);
-      after?.();
+      after?.(result);
       loadAll(true);
     } catch (err) {
       setError(errorMessage(err));
@@ -121,14 +154,36 @@ export default function WorkspaceDetail() {
     setDialog(null);
     setConfirmName('');
     setRerunBootstrap(false);
+    setSelectedArchive(null);
+    setRestoreNewName('');
+    setTargetImage('');
   };
+
+  const trimmedRestoreName = restoreNewName.trim();
+  const restoreNameValid = workspace != null
+    && trimmedRestoreName.length >= 1
+    && trimmedRestoreName.length <= 64
+    && trimmedRestoreName !== workspace.name;
+
+  const trimmedTargetImage = targetImage.trim();
+  const targetImageValid = workspace != null
+    && trimmedTargetImage.length > 0
+    && trimmedTargetImage !== (workspace.image ?? '');
 
   const submitDialog = () => {
     if (!workspace || !dialog) return;
     if ((dialog === 'reset' || dialog === 'delete') && confirmName !== workspace.name) return;
+    if (dialog === 'restore-new' && (!selectedArchive || !restoreNameValid)) return;
+    if ((dialog === 'restore-dr' || dialog === 'delete-archive') && !selectedArchive) return;
+    if (dialog === 'upgrade-image' && !targetImageValid) return;
+
     const kind = dialog;
     const forceBootstrap = rerunBootstrap;
+    const archive = selectedArchive;
+    const newName = trimmedRestoreName;
+    const nextImage = trimmedTargetImage;
     closeDialog();
+
     if (kind === 'retry') {
       runAction(
         () => api.workspaces.retry(workspace.id, { rerun_bootstrap: forceBootstrap }),
@@ -141,11 +196,35 @@ export default function WorkspaceDetail() {
         () => api.workspaces.reset(workspace.id, { confirm_name: workspace.name }),
         `Workspace "${workspace.name}" was reset.`,
       );
-    } else {
+    } else if (kind === 'delete') {
       runAction(
         () => api.workspaces.delete(workspace.id),
         `Workspace "${workspace.name}" moved to deleted; its volume is kept for ${PURGE_AFTER_DAYS} days.`,
         () => navigate('/settings'),
+      );
+    } else if (kind === 'restore-new' && archive) {
+      runAction(
+        () => api.workspaces.restoreArchive(workspace.id, { archive_id: archive.id, new_name: newName }),
+        `Restored backup into new workspace "${newName}".`,
+        (restored) => {
+          const view = restored as WorkspaceView | undefined;
+          if (view?.id) navigate(`/settings/workspaces/${view.id}`);
+        },
+      );
+    } else if (kind === 'restore-dr' && archive) {
+      runAction(
+        () => api.workspaces.restoreArchive(workspace.id, { archive_id: archive.id }),
+        `Workspace "${workspace.name}" restored from backup.`,
+      );
+    } else if (kind === 'delete-archive' && archive) {
+      runAction(
+        () => api.workspaces.deleteArchive(workspace.id, archive.id),
+        'Backup deleted.',
+      );
+    } else if (kind === 'upgrade-image') {
+      runAction(
+        () => api.workspaces.update(workspace.id, { image: nextImage }),
+        `Workspace image upgraded to "${nextImage}".`,
       );
     }
   };
@@ -183,6 +262,16 @@ export default function WorkspaceDetail() {
   const logPreview = truncateLog(workspace.last_bootstrap_log);
   const bootstrapFailed = workspace.runtime_status === 'ERROR'
     && (workspace.error_code === 'WORKSPACE_BOOTSTRAP_FAILED' || workspace.error_code === 'WORKSPACE_START_FAILED');
+  const readyArchives = (archives ?? []).filter(a => a.status === 'READY');
+  const volumeLost = !workspace.deleted_at && (workspace.volume_status === 'ERROR' || workspace.recoverable === true);
+  const canRecoverFromArchive = volumeLost && (workspace.recoverable === true || readyArchives.length > 0 || (workspace.archive_count ?? 0) > 0);
+
+  const jumpToArchives = () => {
+    const el = document.getElementById('workspace-archives-panel');
+    if (el && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 
   return (
     <div className="h-full overflow-auto">
@@ -248,6 +337,14 @@ export default function WorkspaceDetail() {
               )}
               <button
                 type="button"
+                onClick={() => { setDialog('upgrade-image'); setTargetImage(workspace.image ?? ''); }}
+                disabled={busy || transitioning || volumeLost}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
+                style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                <ArrowUpCircle size={14} /> 升级镜像
+              </button>
+              <button
+                type="button"
                 onClick={() => { setDialog('retry'); setRerunBootstrap(false); }}
                 disabled={busy || transitioning}
                 className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
@@ -276,6 +373,34 @@ export default function WorkspaceDetail() {
       </div>
 
       <div className="p-6 space-y-5 max-w-5xl">
+        {volumeLost && (
+          <div
+            role="alert"
+            data-testid="volume-error-recovery-banner"
+            className="rounded-xl border-2 px-4 py-3.5 text-sm flex items-center justify-between gap-4 flex-wrap"
+            style={{ borderColor: '#dc2626', background: 'rgba(220,38,38,0.12)', color: '#b91c1c' }}>
+            <div className="flex items-center gap-2.5">
+              <AlertTriangle size={18} className="shrink-0" />
+              <div>
+                <div className="font-semibold">
+                  {canRecoverFromArchive ? '卷不可用，可从备份恢复' : '卷不可用'}
+                </div>
+                <div className="text-xs mt-0.5">
+                  {canRecoverFromArchive
+                    ? '当前工作区数据卷丢失或处于错误状态，工具调用已禁止。请前往下方「备份与恢复」面板从备份恢复。'
+                    : '当前工作区数据卷处于错误状态，工具调用已禁止；暂无可用备份，可尝试重置工作区或联系管理员。'}
+                </div>
+              </div>
+            </div>
+            <a
+              href="#workspace-archives-panel"
+              onClick={jumpToArchives}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white shrink-0"
+              style={{ background: '#dc2626' }}>
+              <ArrowDown size={13} /> 前往备份与恢复
+            </a>
+          </div>
+        )}
         {error && (
           <div role="alert" className="rounded-lg border px-4 py-3 text-sm flex items-center gap-2"
             style={{ borderColor: '#ef4444', background: 'rgba(239,68,68,0.08)', color: '#ef4444' }}>
@@ -315,6 +440,8 @@ export default function WorkspaceDetail() {
               <dd>{workspace.runtime_status} (gen {workspace.runtime_generation})</dd>
               <dt style={{ color: 'var(--color-text-secondary)' }}>Volume status</dt>
               <dd>{workspace.volume_status} (gen {workspace.active_volume_generation ?? 0})</dd>
+              <dt style={{ color: 'var(--color-text-secondary)' }}>Image</dt>
+              <dd className="font-mono truncate" title={workspace.image ?? ''}>{workspace.image || '—'}</dd>
               <dt style={{ color: 'var(--color-text-secondary)' }}>Profile</dt>
               <dd>{workspace.profile}</dd>
               <dt style={{ color: 'var(--color-text-secondary)' }}>Storage class</dt>
@@ -381,6 +508,121 @@ export default function WorkspaceDetail() {
             </dl>
           </section>
         </div>
+
+        <section
+          id="workspace-archives-panel"
+          className="rounded-xl border p-4"
+          style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div className="flex items-center gap-2">
+              <Archive size={16} />
+              <h2 className="text-sm font-semibold">备份与恢复</h2>
+              {workspace.archive_count != null && workspace.archive_count > 0 && (
+                <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>
+                  ({workspace.archive_count} 个可用{workspace.latest_archive_at ? ` · 最近 ${relativeTime(workspace.latest_archive_at)}` : ''})
+                </span>
+              )}
+            </div>
+            {!workspace.deleted_at && (
+              <button
+                type="button"
+                onClick={() => runAction(
+                  () => api.workspaces.createArchive(workspace.id),
+                  `Backup created for "${workspace.name}".`,
+                )}
+                disabled={busy || transitioning || workspace.volume_status !== 'READY'}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-white cursor-pointer disabled:opacity-40"
+                style={{ background: 'var(--color-primary)' }}>
+                <Archive size={13} /> 立即备份
+              </button>
+            )}
+          </div>
+          {archives == null && (
+            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>Loading backups...</p>
+          )}
+          {archives?.length === 0 && (
+            <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>暂无备份记录。</p>
+          )}
+          {archives && archives.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b text-left" style={{ borderColor: 'var(--color-border)', color: 'var(--color-text-secondary)' }}>
+                    <th className="py-2 pr-3 font-medium">时间</th>
+                    <th className="py-2 pr-3 font-medium">大小</th>
+                    <th className="py-2 pr-3 font-medium">Generation</th>
+                    <th className="py-2 pr-3 font-medium">状态</th>
+                    <th className="py-2 font-medium text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {archives.map(archive => {
+                    const tone = archiveStatusTone(archive.status);
+                    return (
+                      <tr key={archive.id} className="border-b last:border-b-0" style={{ borderColor: 'var(--color-border)' }}>
+                        <td className="py-2.5 pr-3 whitespace-nowrap" title={archive.created_at}>
+                          {relativeTime(archive.created_at)}
+                        </td>
+                        <td className="py-2.5 pr-3 whitespace-nowrap">
+                          {archive.status === 'READY' ? formatBytes(archive.size_bytes) : '—'}
+                        </td>
+                        <td className="py-2.5 pr-3 font-mono whitespace-nowrap">
+                          gen {archive.volume_generation}
+                        </td>
+                        <td className="py-2.5 pr-3">
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{ background: tone.bg, color: tone.text }}>
+                            {archive.status}
+                          </span>
+                          {archive.failure_reason && (
+                            <div className="text-xs mt-0.5" style={{ color: '#dc2626' }}>
+                              {archive.failure_reason}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-2.5 text-right whitespace-nowrap space-x-2">
+                          {archive.status === 'READY' && volumeLost && (
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedArchive(archive); setDialog('restore-dr'); }}
+                              disabled={busy}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium text-white cursor-pointer disabled:opacity-40"
+                              style={{ background: '#dc2626' }}>
+                              <RotateCcw size={12} /> 原地恢复
+                            </button>
+                          )}
+                          {archive.status === 'READY' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedArchive(archive);
+                                setRestoreNewName('');
+                                setDialog('restore-new');
+                              }}
+                              disabled={busy}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer disabled:opacity-40"
+                              style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)' }}>
+                              <CopyPlus size={12} /> 恢复到新 Workspace
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedArchive(archive); setDialog('delete-archive'); }}
+                            disabled={busy}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium cursor-pointer disabled:opacity-40"
+                            style={{ background: 'rgba(220,38,38,0.1)', color: '#dc2626' }}>
+                            <Trash2 size={12} /> 删除备份
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
 
         <section className="rounded-xl border p-4" style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
           <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
@@ -476,17 +718,20 @@ export default function WorkspaceDetail() {
             style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg-secondary)' }}>
             <div className="flex items-start justify-between gap-4">
               <h3 id="workspace-detail-dialog-title" className="font-semibold">
-                {dialog === 'retry'
-                  ? 'Retry bootstrap / start'
-                  : dialog === 'reset'
-                    ? 'Reset workspace'
-                    : 'Delete workspace'}
+                {dialog === 'retry' && 'Retry bootstrap / start'}
+                {dialog === 'reset' && 'Reset workspace'}
+                {dialog === 'delete' && 'Delete workspace'}
+                {dialog === 'restore-new' && '恢复到新 Workspace'}
+                {dialog === 'restore-dr' && '从备份原地恢复'}
+                {dialog === 'delete-archive' && '删除备份'}
+                {dialog === 'upgrade-image' && '升级 Workspace 镜像'}
               </h3>
               <button type="button" onClick={closeDialog} aria-label="Close" className="p-1 rounded cursor-pointer hover:opacity-70">
                 <X size={18} />
               </button>
             </div>
-            {dialog === 'retry' ? (
+
+            {dialog === 'retry' && (
               <>
                 <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
                   Restarts the workspace runtime on the existing volume and runs initialization scripts without deleting your files.
@@ -500,7 +745,9 @@ export default function WorkspaceDetail() {
                   <span>Also re-run bootstrap.sh</span>
                 </label>
               </>
-            ) : (
+            )}
+
+            {(dialog === 'reset' || dialog === 'delete') && (
               <>
                 <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
                   {dialog === 'reset'
@@ -520,6 +767,66 @@ export default function WorkspaceDetail() {
                 />
               </>
             )}
+
+            {dialog === 'restore-new' && selectedArchive && (
+              <>
+                <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                  将从 gen {selectedArchive.volume_generation} 备份（{formatBytes(selectedArchive.size_bytes)}）创建一个新的 Workspace，不影响当前工作区数据。
+                </p>
+                <label htmlFor="workspace-restore-new-name" className="block text-sm font-medium mt-4 mb-2">
+                  新 Workspace 名称
+                </label>
+                <input
+                  id="workspace-restore-new-name"
+                  value={restoreNewName}
+                  onChange={event => setRestoreNewName(event.target.value)}
+                  placeholder={`${workspace.name}-restored`}
+                  autoFocus
+                  className="w-full rounded-lg border px-3 py-2 text-sm outline-none"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)' }}
+                />
+                {trimmedRestoreName === workspace.name && (
+                  <p className="text-xs mt-1.5" style={{ color: '#dc2626' }}>
+                    新名称不能与当前 Workspace 相同。
+                  </p>
+                )}
+              </>
+            )}
+
+            {dialog === 'restore-dr' && selectedArchive && (
+              <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                将为当前工作区创建新代际数据卷并从 gen {selectedArchive.volume_generation} 备份（{formatBytes(selectedArchive.size_bytes)}）恢复数据。
+              </p>
+            )}
+
+            {dialog === 'delete-archive' && selectedArchive && (
+              <p className="text-sm mt-2" style={{ color: 'var(--color-text-secondary)' }}>
+                确认删除 gen {selectedArchive.volume_generation} 的备份吗？删除后归档数据将从存储中异步清除且不可恢复。
+              </p>
+            )}
+
+            {dialog === 'upgrade-image' && (
+              <>
+                <div className="mt-3 rounded-lg border px-3 py-2 text-xs flex items-center gap-2"
+                  style={{ borderColor: '#f59e0b', background: 'rgba(245,158,11,0.08)', color: '#b45309' }}>
+                  <AlertTriangle size={14} className="shrink-0" />
+                  <span>将先自动创建备份；若备份失败则拒绝升级，现有卷和镜像保持不变。</span>
+                </div>
+                <label htmlFor="workspace-upgrade-image-input" className="block text-sm font-medium mt-4 mb-2">
+                  目标镜像
+                </label>
+                <input
+                  id="workspace-upgrade-image-input"
+                  value={targetImage}
+                  onChange={event => setTargetImage(event.target.value)}
+                  placeholder="registry/core-ai-sandbox:new-tag"
+                  autoFocus
+                  className="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none"
+                  style={{ borderColor: 'var(--color-border)', background: 'var(--color-bg)', color: 'var(--color-text)' }}
+                />
+              </>
+            )}
+
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" onClick={closeDialog}
                 className="px-3 py-2 rounded-lg text-sm font-medium cursor-pointer"
@@ -529,14 +836,25 @@ export default function WorkspaceDetail() {
               <button
                 type="button"
                 onClick={submitDialog}
-                disabled={busy || ((dialog === 'reset' || dialog === 'delete') && confirmName !== workspace.name)}
+                disabled={
+                  busy
+                  || ((dialog === 'reset' || dialog === 'delete') && confirmName !== workspace.name)
+                  || (dialog === 'restore-new' && !restoreNameValid)
+                  || (dialog === 'upgrade-image' && !targetImageValid)
+                }
                 className="px-3 py-2 rounded-lg text-sm font-medium text-white cursor-pointer disabled:opacity-40"
-                style={{ background: dialog === 'retry' ? 'var(--color-primary)' : '#dc2626' }}>
-                {dialog === 'retry'
-                  ? 'Confirm retry'
-                  : dialog === 'reset'
-                    ? 'Reset workspace'
-                    : 'Delete workspace'}
+                style={{
+                  background: (dialog === 'reset' || dialog === 'delete' || dialog === 'delete-archive' || dialog === 'restore-dr')
+                    ? '#dc2626'
+                    : 'var(--color-primary)',
+                }}>
+                {dialog === 'retry' && 'Confirm retry'}
+                {dialog === 'reset' && 'Reset workspace'}
+                {dialog === 'delete' && 'Delete workspace'}
+                {dialog === 'restore-new' && '确认恢复'}
+                {dialog === 'restore-dr' && '确认原地恢复'}
+                {dialog === 'delete-archive' && '确认删除备份'}
+                {dialog === 'upgrade-image' && '备份并升级'}
               </button>
             </div>
           </div>

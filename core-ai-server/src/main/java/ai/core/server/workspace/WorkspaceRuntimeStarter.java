@@ -79,6 +79,45 @@ class WorkspaceRuntimeStarter {
         sampleUsageAsync(id);
     }
 
+    StartedRuntime startRaw(WorkspaceRecord workspace, String ownerUserId, WorkspaceVolumeRecord volume) {
+        var runtimeGeneration = workspace.runtimeGeneration + 1;
+        var runtime = runtimeSpec(workspace, ownerUserId, volume, runtimeGeneration);
+        var sandboxName = runtimes.name(runtime);
+        try {
+            runtimes.create(runtime);
+            runtimes.waitReady(sandboxName, config.wakeTimeoutSeconds);
+        } catch (RuntimeException e) {
+            runtimeLifecycle.deleteQuietly(sandboxName);
+            throw new WorkspaceException(WorkspaceException.WAKE_FAILED,
+                    "workspace runtime failed to start: " + e.getMessage(), e);
+        }
+        var host = runtimes.endpointHost(sandboxName).orElse(null);
+        if (host == null) {
+            runtimeLifecycle.deleteQuietly(sandboxName);
+            throw new WorkspaceException(WorkspaceException.WAKE_FAILED,
+                    "workspace runtime endpoint unavailable: " + sandboxName);
+        }
+        return new StartedRuntime(sandboxName, host, runtimeGeneration);
+    }
+
+    void finalizeRestored(WorkspaceRecord workspace, String ownerUserId, StartedRuntime started) {
+        var id = workspace.id;
+        var now = ZonedDateTime.now();
+        var binding = WorkspaceBindingRecord.create(id, started.sandboxName(), provisioner.provider(), started.runtimeGeneration());
+        binding.runtimeStartedAt = now;
+        bindings.upsert(binding);
+        workspaces.updateRuntimeState(id, WorkspaceRuntimeStatus.READY, started.runtimeGeneration(), null, null);
+        workspaces.touchWoken(id, now);
+        workspaces.touchLastUsed(id, now);
+        sampleUsageAsync(id);
+    }
+
+    void abortRaw(StartedRuntime started) {
+        if (started != null) {
+            runtimeLifecycle.deleteQuietly(started.sandboxName());
+        }
+    }
+
     private void runInitialization(WorkspaceRecord workspace, String ownerUserId, String sandboxName,
                                    long runtimeGeneration, boolean forceRerunBootstrap) {
         var id = workspace.id;
@@ -131,6 +170,9 @@ class WorkspaceRuntimeStarter {
         runtime.profile = workspace.profile;
         runtime.maxRuntimeSeconds = WorkspaceDefaults.MAX_RUNTIME_SECONDS;
         return runtime;
+    }
+
+    record StartedRuntime(String sandboxName, String host, long runtimeGeneration) {
     }
 
     record Deps(WorkspaceStore workspaces, WorkspaceBindingStore bindings, WorkspaceProvisioner provisioner,

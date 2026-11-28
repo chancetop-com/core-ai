@@ -2311,6 +2311,10 @@ export interface WorkspaceView {
   error_code?: string;
   error_message?: string;
   deleted_at?: string;
+  image?: string;
+  archive_count?: number;
+  latest_archive_at?: string;
+  recoverable?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -2330,6 +2334,21 @@ export interface WorkspaceUsageView {
   inodes_used?: number;
   inodes_total?: number;
   sampled_at: string;
+}
+
+export interface WorkspaceArchiveView {
+  id: string;
+  workspace_id: string;
+  volume_generation: number;
+  sha256: string;
+  size_bytes: number;
+  file_count?: number;
+  image?: string;
+  status: string;
+  failure_reason?: string;
+  created_by?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export const api = {
@@ -2355,6 +2374,8 @@ export const api = {
       idle_sleep_minutes?: number;
       bootstrap_script?: string;
       start_script?: string;
+      image?: string;
+      template?: string;
     }) =>
       request<WorkspaceView>(`/api/workspaces/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     wake: (id: string) =>
@@ -2369,6 +2390,14 @@ export const api = {
       request<void>(`/api/workspaces/${id}`, { method: 'DELETE' }),
     undelete: (id: string) =>
       request<WorkspaceView>(`/api/workspaces/${id}/undelete`, { method: 'POST' }),
+    listArchives: async (id: string) => (await request<{ items: WorkspaceArchiveView[] }>(
+      `/api/workspaces/${id}/archives`)).items,
+    createArchive: (id: string) =>
+      request<WorkspaceArchiveView>(`/api/workspaces/${id}/archives`, { method: 'POST' }),
+    restoreArchive: (id: string, data: { archive_id: string; new_name?: string; allow_overwrite?: boolean }) =>
+      request<WorkspaceView>(`/api/workspaces/${id}/restore`, { method: 'POST', body: JSON.stringify(data) }),
+    deleteArchive: (id: string, archiveId: string) =>
+      request<void>(`/api/workspaces/${id}/archives/${archiveId}`, { method: 'DELETE' }),
   },
   user: {
     // self-service session-completion notification target (no admin permission involved)

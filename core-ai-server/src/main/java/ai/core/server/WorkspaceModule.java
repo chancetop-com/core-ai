@@ -1,6 +1,7 @@
 package ai.core.server;
 
 import ai.core.api.server.workspace.WorkspaceWebService;
+import ai.core.server.blob.ObjectStorageServiceResolver;
 import ai.core.server.sandbox.SandboxService;
 import ai.core.server.sandbox.WorkspaceSandboxFactory;
 import ai.core.server.sandbox.agentsandbox.AgentSandboxApiVersion;
@@ -31,6 +32,11 @@ import ai.core.server.workspace.WorkspaceService;
 import ai.core.server.workspace.WorkspaceSessionBinder;
 import ai.core.server.workspace.WorkspaceStores;
 import ai.core.server.workspace.WorkspaceUsageService;
+import ai.core.server.workspace.HttpWorkspaceArchiveClient;
+import ai.core.server.workspace.PgWorkspaceArchiveRow;
+import ai.core.server.workspace.PgWorkspaceArchiveStore;
+import ai.core.server.workspace.PgWorkspaceArchiveSummaryRow;
+import ai.core.server.workspace.WorkspaceArchiveService;
 import ai.core.server.web.WorkspaceWebServiceImpl;
 import core.framework.module.Module;
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
@@ -54,22 +60,7 @@ public class WorkspaceModule extends Module {
     @SuppressFBWarnings("HES_LOCAL_EXECUTOR_SERVICE")
     protected void initialize() {
         var config = config();
-        // The PG stores inject Database eagerly; a deployment that never configured PostgreSQL
-        // (local mongo mode) must still start with the feature flag off.
-        WorkspaceStores stores;
-        if (config.enabled) {
-            db().view(PgWorkspaceRow.class);
-            db().view(PgWorkspaceVolumeRow.class);
-            db().view(PgWorkspaceBindingRow.class);
-            db().view(PgWorkspaceEventRow.class);
-            db().view(PgWorkspaceLeaseRow.class);
-            db().view(PgWorkspaceUsageRow.class);
-            stores = new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
-                    bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()),
-                    bind(new PgWorkspaceLeaseStore()), bind(new PgWorkspaceUsageStore()));
-        } else {
-            stores = new WorkspaceStores(null, null, null, null, null, null);
-        }
+        var stores = bindStores(config.enabled);
 
         KubernetesClient kubernetesClient = null;
         AgentSandboxClient agentSandboxClient = null;
@@ -91,8 +82,13 @@ public class WorkspaceModule extends Module {
             thread.setDaemon(true);
             return thread;
         });
-        bind(new WorkspaceService(stores, provisioner, runtimes, usageService, config, wakeExecutor));
-        bind(new WorkspaceSessionBinder(bean(WorkspaceService.class)));
+        var workspaceService = bind(new WorkspaceService(stores, provisioner, runtimes, usageService, config, wakeExecutor));
+        var storageResolver = bean(ObjectStorageServiceResolver.class);
+        var archiveService = bind(new WorkspaceArchiveService(workspaceService,
+                runtimes.available() ? new HttpWorkspaceArchiveClient() : null,
+                storageResolver::resolve));
+        workspaceService.attachArchiveService(archiveService);
+        bind(new WorkspaceSessionBinder(workspaceService));
         var sandboxService = bean(SandboxService.class);
         bind(new WorkspaceSandboxFactory(bean(WorkspaceService.class), bean(ChatSessionStore.class), provider));
         sandboxService.workspaceSandboxFactory(bean(WorkspaceSandboxFactory.class));
@@ -103,6 +99,24 @@ public class WorkspaceModule extends Module {
         }
         LOGGER.info("workspace module loaded, enabled={}, provider={}, runtimeAvailable={}",
                 config.enabled, config.provider, runtimes.available());
+    }
+
+    private WorkspaceStores bindStores(boolean enabled) {
+        if (!enabled) {
+            return new WorkspaceStores(null, null, null, null, null, null, null);
+        }
+        db().view(PgWorkspaceRow.class);
+        db().view(PgWorkspaceVolumeRow.class);
+        db().view(PgWorkspaceBindingRow.class);
+        db().view(PgWorkspaceEventRow.class);
+        db().view(PgWorkspaceLeaseRow.class);
+        db().view(PgWorkspaceUsageRow.class);
+        db().view(PgWorkspaceArchiveRow.class);
+        db().view(PgWorkspaceArchiveSummaryRow.class);
+        return new WorkspaceStores(bind(new PgWorkspaceStore()), bind(new PgWorkspaceVolumeStore()),
+                bind(new PgWorkspaceBindingStore()), bind(new PgWorkspaceEventStore()),
+                bind(new PgWorkspaceLeaseStore()), bind(new PgWorkspaceUsageStore()),
+                bind(new PgWorkspaceArchiveStore()));
     }
 
     private WorkspaceConfig config() {
@@ -125,6 +139,9 @@ public class WorkspaceModule extends Module {
         config.minRuntimeSeconds = intProperty("sys.workspace.minRuntimeSeconds", WorkspaceDefaults.MIN_RUNTIME_SECONDS);
         config.purgeAfterDays = intProperty("sys.workspace.purgeAfterDays", WorkspaceDefaults.PURGE_AFTER_DAYS);
         config.usageSampleMinutes = intProperty("sys.workspace.usageSampleMinutes", WorkspaceDefaults.USAGE_SAMPLE_MINUTES);
+        config.archiveRetentionDays = intProperty("sys.workspace.archive.retentionDays", WorkspaceDefaults.ARCHIVE_RETENTION_DAYS);
+        var archiveContainer = property("sys.workspace.archive.container").orElse("");
+        config.archiveContainer = archiveContainer.isBlank() ? WorkspaceDefaults.ARCHIVE_CONTAINER : archiveContainer.trim();
         return config;
     }
 

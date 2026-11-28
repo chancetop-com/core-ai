@@ -126,6 +126,17 @@ public class KubernetesWorkspaceProvisioner implements WorkspaceProvisioner {
         }
     }
 
+    @Override
+    public boolean volumeExists(WorkspaceVolumeRecord volume) {
+        if (volume == null || client == null) return false;
+        try {
+            var pvc = client.getPvc(volume.pvcName).orElse(null);
+            return pvc != null && !"Lost".equals(pvc.getPhase());
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private void requireKubernetes() {
         if (client == null) {
             throw new WorkspaceProvisioningException(WorkspaceProvisioningException.PROVISION_FAILED,

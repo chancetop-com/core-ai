@@ -17,6 +17,10 @@ public interface WorkspaceProvisioner {
     /** idempotent: a missing volume is success */
     void deleteVolume(WorkspaceVolumeRecord volume);
 
+    default boolean volumeExists(WorkspaceVolumeRecord volume) {
+        return volume != null && volume.status == WorkspaceVolumeStatus.READY;
+    }
+
     class VolumeHandle {
         public final String volumeName;
         // provider phase as reported; with WaitForFirstConsumer a Pending PVC is ready to mount

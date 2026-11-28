@@ -87,6 +87,20 @@ func (r *TerminalRegistry) currentForTest() *Terminal {
 	return r.current
 }
 
+func (r *TerminalRegistry) HasActive() bool {
+	if r == nil {
+		return false
+	}
+	r.mu.Lock()
+	t := r.current
+	r.mu.Unlock()
+	if t == nil {
+		return false
+	}
+	exited, _ := t.Exited()
+	return !exited && t.SubscriberCount() > 0
+}
+
 func (r *TerminalRegistry) ReclaimDisconnected() int {
 	r.mu.Lock()
 	t := r.current

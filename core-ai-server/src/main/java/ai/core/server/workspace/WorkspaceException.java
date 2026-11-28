@@ -26,6 +26,14 @@ public class WorkspaceException extends RuntimeException implements ErrorCode {
     public static final String START_FAILED = "WORKSPACE_START_FAILED";
     public static final String TASK_LOST = "WORKSPACE_TASK_LOST";
     public static final String VOLUME_UNAVAILABLE = "WORKSPACE_VOLUME_UNAVAILABLE";
+    public static final String ARCHIVE_FAILED = "WORKSPACE_ARCHIVE_FAILED";
+    public static final String ARCHIVE_NOT_FOUND = "WORKSPACE_ARCHIVE_NOT_FOUND";
+    public static final String ARCHIVE_SHA256_MISMATCH = "WORKSPACE_ARCHIVE_SHA256_MISMATCH";
+    public static final String ARCHIVE_GENERATION_MISMATCH = "WORKSPACE_ARCHIVE_GENERATION_MISMATCH";
+    public static final String ARCHIVE_WORKSPACE_MISMATCH = "WORKSPACE_ARCHIVE_WORKSPACE_MISMATCH";
+    public static final String RESTORE_TARGET_EXISTS = "WORKSPACE_RESTORE_TARGET_EXISTS";
+    public static final String RESTORE_NOT_EMPTY = "WORKSPACE_RESTORE_NOT_EMPTY";
+    public static final String UPGRADE_REQUIRES_ARCHIVE = "WORKSPACE_UPGRADE_REQUIRES_ARCHIVE";
 
     public final String errorCode;
 
