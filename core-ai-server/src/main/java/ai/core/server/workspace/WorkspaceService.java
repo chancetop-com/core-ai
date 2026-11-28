@@ -26,6 +26,7 @@ import java.util.function.Predicate;
 public class WorkspaceService {
     private static final Logger LOGGER = LoggerFactory.getLogger(WorkspaceService.class);
 
+    private final WorkspaceStores stores;
     private final WorkspaceStore workspaces;
     private final WorkspaceBindingStore bindings;
     private final WorkspaceEventStore events;
@@ -59,6 +60,7 @@ public class WorkspaceService {
     }
 
     WorkspaceService(WorkspaceStores stores, RuntimeDeps deps, WorkspaceConfig config, Executor wakeExecutor) {
+        this.stores = stores;
         this.workspaces = stores.workspaces();
         this.bindings = stores.bindings();
         this.events = stores.events();
@@ -400,34 +402,36 @@ public class WorkspaceService {
     }
 
     WorkspaceSweeper.SweepResult runLifecycleSweep() {
-        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0, 0);
+        if (!config.enabled || workspaces == null) return new WorkspaceSweeper.SweepResult(0, 0, 0, 0, 0);
         return sweeper.run(config, sessionBusy);
     }
 
+    public void attachArchiveService(WorkspaceArchiveService archiveService) {
+        this.sweeper.attachArchiveService(archiveService);
+    }
+
+    WorkspaceArchiveAccess archiveAccess() {
+        return new WorkspaceArchiveAccess(stores, volumeManager, runtimes, runtimeLifecycle, runtimeStarter,
+                leases, audit, creator, config, wakeExecutor);
+    }
+
     private WorkspaceRecord load(String ownerUserId, String id) {
-        return workspaces.get(id)
-                .filter(w -> w.ownerUserId.equals(ownerUserId))
+        return workspaces.get(id).filter(w -> w.ownerUserId.equals(ownerUserId))
                 .orElseThrow(() -> new WorkspaceException(WorkspaceException.NOT_FOUND, "workspace not found: " + id));
     }
 
-    private WorkspaceRecord loadActive(String ownerUserId, String id) {
+    WorkspaceRecord loadActive(String ownerUserId, String id) {
         var workspace = load(ownerUserId, id);
-        if (workspace.deleted()) {
-            throw new WorkspaceException(WorkspaceException.DELETED, "workspace is deleted: " + id);
-        }
+        if (workspace.deleted()) throw new WorkspaceException(WorkspaceException.DELETED, "workspace is deleted: " + id);
         return workspace;
     }
 
     private void requireEnabled() {
-        if (!config.enabled) {
-            throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "persistent workspace is not enabled");
-        }
+        if (!config.enabled) throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "persistent workspace is not enabled");
     }
 
     private void ensureRuntimeSupported() {
-        if (!runtimes.available()) {
-            throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "workspace runtime provider is not configured");
-        }
+        if (!runtimes.available()) throw new WorkspaceException(WorkspaceException.UNSUPPORTED, "workspace runtime provider is not configured");
     }
 
     record RuntimeDeps(WorkspaceProvisioner provisioner, WorkspaceRuntimeManager runtimes,

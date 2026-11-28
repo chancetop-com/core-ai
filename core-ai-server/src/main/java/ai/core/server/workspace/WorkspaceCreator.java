@@ -3,6 +3,7 @@ package ai.core.server.workspace;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -67,6 +68,36 @@ class WorkspaceCreator {
             LOGGER.warn("workspace volume provisioning failed, workspace={}", workspace.id, e);
         }
         return workspace;
+    }
+
+    WorkspaceRecord createForRestore(String ownerUserId, WorkspaceRecord source, String newName, String image) {
+        var workspaceName = newName == null ? "" : newName.trim();
+        if (workspaceName.isEmpty() || workspaceName.length() > 64) {
+            throw new WorkspaceException(WorkspaceException.INVALID_REQUEST, "workspace name must be 1-64 characters");
+        }
+        WorkspaceQuotas.checkCreate(config, workspaces.listByOwner(ownerUserId), source.sizeGb);
+        var workspace = WorkspaceRecord.create(ownerUserId, workspaceName, source.agentId);
+        workspace.sizeGb = source.sizeGb;
+        workspace.storageClass = source.storageClass != null ? source.storageClass : config.storageClass;
+        workspace.profile = source.profile != null ? source.profile : WorkspaceProfile.DEFAULT;
+        var fallbackImage = source.image != null ? source.image : config.image;
+        workspace.image = image != null && !image.isBlank() ? image : fallbackImage;
+        workspace.idleSleepMinutes = source.idleSleepMinutes;
+        workspace.bootstrapScript = source.bootstrapScript;
+        workspace.startScript = source.startScript;
+        workspace.bootstrapCompletedAt = source.bootstrapCompletedAt != null ? source.bootstrapCompletedAt : ZonedDateTime.now();
+        workspace.bootstrapScriptHash = source.bootstrapScriptHash;
+        workspace.startScriptHash = source.startScriptHash;
+        if (!workspaces.insertIfAbsent(workspace)) {
+            throw new WorkspaceException(WorkspaceException.NAME_CONFLICT, "workspace name already exists: " + workspaceName);
+        }
+        audit.append(workspace.id, "created", ownerUserId, Map.of("sizeGb", workspace.sizeGb, "profile", workspace.profile.id, "restoredFrom", source.id));
+        try {
+            volumeManager.ensure(workspace);
+        } catch (WorkspaceProvisioningException e) {
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
+        }
+        return workspaces.get(workspace.id).orElse(workspace);
     }
 
     /**

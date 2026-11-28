@@ -95,6 +95,71 @@ class WorkspaceVolumeManager {
         return volumes.active(workspaceId).orElse(null);
     }
 
+    boolean volumeExists(WorkspaceVolumeRecord volume) {
+        if (volume == null || provisioner == null) return false;
+        return provisioner.volumeExists(volume);
+    }
+
+    boolean isLostOrUnavailable(WorkspaceRecord workspace) {
+        if (workspace == null || workspace.deleted()) return false;
+        if (workspace.volumeStatus == WorkspaceVolumeStatus.ERROR) return true;
+        var active = active(workspace.id);
+        if (active == null || active.status == WorkspaceVolumeStatus.ERROR) return true;
+        return active.status == WorkspaceVolumeStatus.READY && !volumeExists(active);
+    }
+
+    WorkspaceVolumeRecord provisionForRecovery(WorkspaceRecord workspace, WorkspaceVolumeRecord previousActive) {
+        var id = workspace.id;
+        long nextGeneration;
+        if (previousActive != null) {
+            nextGeneration = previousActive.volumeGeneration + 1;
+            volumes.markDeleted(id, previousActive.volumeGeneration, WorkspaceVolumeStatus.DELETING);
+        } else {
+            nextGeneration = workspace.activeVolumeGeneration == null ? 0L : workspace.activeVolumeGeneration + 1;
+        }
+        var created = WorkspaceVolumeRecord.provisioning(workspace, nextGeneration,
+                provisioner.volumeName(id, nextGeneration), provisioner.provider());
+        if (!volumes.insertIfAbsent(created)) {
+            if (previousActive != null) {
+                volumes.updateStatus(id, previousActive.volumeGeneration, previousActive.status);
+            }
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE,
+                    "workspace volume generation already exists: " + nextGeneration);
+        }
+        try {
+            provisioner.ensureVolume(workspace, nextGeneration);
+            volumes.updateStatus(id, nextGeneration, WorkspaceVolumeStatus.READY);
+            created.status = WorkspaceVolumeStatus.READY;
+            return created;
+        } catch (WorkspaceProvisioningException e) {
+            volumes.markDeleted(id, nextGeneration, WorkspaceVolumeStatus.DELETING);
+            if (previousActive != null) {
+                volumes.updateStatus(id, previousActive.volumeGeneration, previousActive.status);
+            }
+            throw new WorkspaceException(WorkspaceException.VOLUME_UNAVAILABLE, e.getMessage(), e);
+        }
+    }
+
+    void rollbackRecoveryVolume(WorkspaceRecord workspace, WorkspaceVolumeRecord newVolume,
+                                WorkspaceVolumeRecord previousActive) {
+        var id = workspace.id;
+        if (newVolume != null) {
+            volumes.markDeleted(id, newVolume.volumeGeneration, WorkspaceVolumeStatus.DELETING);
+        }
+        if (previousActive != null) {
+            volumes.updateStatus(id, previousActive.volumeGeneration, previousActive.status);
+        }
+    }
+
+    void commitRecoveryVolume(WorkspaceRecord workspace, WorkspaceVolumeRecord newVolume,
+                              WorkspaceVolumeRecord previousActive) {
+        var id = workspace.id;
+        workspaces.updateVolumeState(id, WorkspaceVolumeStatus.READY, newVolume.volumeGeneration, null, null);
+        if (previousActive != null) {
+            deleteNow(previousActive);
+        }
+    }
+
     List<WorkspaceVolumeRecord> list(String workspaceId) {
         return volumes.listByWorkspace(workspaceId);
     }

@@ -58,4 +58,20 @@ public interface WorkspaceWebService {
     @GET
     @Path("/api/workspaces/:id/usage")
     WorkspaceUsageView usage(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/workspaces/:id/archives")
+    WorkspaceArchiveView createArchive(@PathParam("id") String id);
+
+    @GET
+    @Path("/api/workspaces/:id/archives")
+    WorkspaceArchiveListView listArchives(@PathParam("id") String id);
+
+    @POST
+    @Path("/api/workspaces/:id/restore")
+    WorkspaceView restore(@PathParam("id") String id, WorkspaceRestoreRequest request);
+
+    @DELETE
+    @Path("/api/workspaces/:id/archives/:archiveId")
+    void deleteArchive(@PathParam("id") String id, @PathParam("archiveId") String archiveId);
 }

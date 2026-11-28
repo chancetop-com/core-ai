@@ -117,6 +117,18 @@ public class WorkspaceView {
     @Property(name = "deleted_at")
     public ZonedDateTime deletedAt;
 
+    @Property(name = "image")
+    public String image;
+
+    @Property(name = "archive_count")
+    public Long archiveCount;
+
+    @Property(name = "latest_archive_at")
+    public ZonedDateTime latestArchiveAt;
+
+    @Property(name = "recoverable")
+    public Boolean recoverable;
+
     @NotNull
     @Property(name = "created_at")
     public ZonedDateTime createdAt;

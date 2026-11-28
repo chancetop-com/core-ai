@@ -117,6 +117,8 @@ public class WorkspaceSandboxCRBuilder {
         var env = new ArrayList<Map<String, String>>();
         var coreAiDir = WorkspaceDefaults.MOUNT_PATH + "/.core-ai";
         env.add(Map.of("name", "WORKSPACE_DIR", "value", WorkspaceDefaults.MOUNT_PATH));
+        env.add(Map.of("name", "WORKSPACE_ID", "value", spec.workspaceId != null ? spec.workspaceId : ""));
+        env.add(Map.of("name", "WORKSPACE_IMAGE", "value", spec.image != null ? spec.image : ""));
         env.add(Map.of("name", "HOME", "value", WorkspaceDefaults.MOUNT_PATH + "/home"));
         env.add(Map.of("name", "WORKSPACE_ENV_FILE", "value", coreAiDir + "/env"));
         env.add(Map.of("name", "WORKSPACE_PROFILE_FILE", "value", coreAiDir + "/profile.sh"));
