@@ -3,6 +3,7 @@ package ai.core.server.skill;
 import ai.core.agent.ExecutionContext;
 import ai.core.sandbox.Sandbox;
 import ai.core.server.domain.SkillDefinition;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
 import ai.core.skill.SkillSdkCapabilityManifest;
@@ -30,6 +31,7 @@ import java.util.Map;
  */
 public class ServerSkillTool extends ToolCall {
 
+    public static final String ERROR_NOT_ATTACHED = "SKILL_NOT_ATTACHED";
     private static final Logger LOGGER = LoggerFactory.getLogger(ServerSkillTool.class);
     private static final String SANDBOX_SKILL_BASE = "/skill";
     private static final String SANDBOX_HUB_HINT = """
@@ -51,6 +53,7 @@ public class ServerSkillTool extends ToolCall {
     private SkillRegistry registry;
     private SkillService skillService;
     private SkillArchiveBuilder archiveBuilder;
+    private SkillTelemetryBuffer telemetryBuffer;
 
     /** Compute description dynamically so that skills attached to the session after
      *  the tool was built (via AgentSessionManager.loadSkills) become visible to the LLM. */
@@ -77,7 +80,10 @@ public class ServerSkillTool extends ToolCall {
 
             var meta = registry.find(name.trim());
             if (meta == null) {
-                return ToolCallResult.failed("Skill '" + name + "' not found. Available: " + skillNameList())
+                emitNotAttachedCard(context, name.trim());
+                return ToolCallResult.failed(ERROR_NOT_ATTACHED + ": Skill '" + name.trim()
+                                + "' is not attached to this session. Ask the user to attach it before calling use_skill. Available: "
+                                + skillNameList())
                         .withDuration(System.currentTimeMillis() - startTime);
             }
 
@@ -87,6 +93,9 @@ public class ServerSkillTool extends ToolCall {
 
             var content = renderSkill(meta, definition, baseDir);
             emitCapabilities(context, meta, definition);
+            if (telemetryBuffer != null) {
+                telemetryBuffer.recordInvoke(definition.id, definition.digest);
+            }
             if (sandbox != null && baseDir == null) {
                 content += "\n\n[Sandbox unavailable: the skill content is loaded, but scripts cannot run until a sandbox is available.]";
             }
@@ -110,7 +119,9 @@ public class ServerSkillTool extends ToolCall {
             sandbox.materializeSkill(def.name, def.version, archive);
             return SANDBOX_SKILL_BASE + "/" + def.name;
         } catch (RuntimeException e) {
-            // Skill content is still useful without a sandbox: only its scripts need /skill materialization.
+            if (telemetryBuffer != null) {
+                telemetryBuffer.recordMaterializeFail(def.id, def.digest);
+            }
             LOGGER.warn("skill materialization failed, returning content without sandbox base_dir: {}, error={}",
                     def.qualifiedName, e.getMessage());
             return null;
@@ -136,6 +147,27 @@ public class ServerSkillTool extends ToolCall {
                 "version", manifest.contractVersion()));
         var error = emitter.emit("skill_capabilities", data, card, context.getCurrentToolCallId());
         if (error != null) LOGGER.debug("skill capability card not emitted: {}", error);
+    }
+
+    private void emitNotAttachedCard(ExecutionContext context, String requestedSkill) {
+        if (context == null) return;
+        var emitter = context.getCustomVariable(CustomEventEmitter.CONTEXT_KEY, CustomEventEmitter.class);
+        if (emitter == null) return;
+        var items = List.of(
+                Map.of("label", "Skill", "value", requestedSkill),
+                Map.of("label", "Status", "value", "Not attached to this session"),
+                Map.of("label", "Action Required", "value", "Attach this skill manually in session settings before retrying use_skill")
+        );
+        var card = JsonUtil.toJson(Map.of(
+                "schema_version", 1,
+                "title", "Skill Not Attached · " + requestedSkill,
+                "blocks", List.of(Map.of("type", "key_values", "items", items))));
+        var data = JsonUtil.toJson(Map.of(
+                "qualified_name", requestedSkill,
+                "attached", Boolean.FALSE,
+                "error_code", ERROR_NOT_ATTACHED));
+        var error = emitter.emit("skill_attach_request", data, card, context.getCurrentToolCallId());
+        if (error != null) LOGGER.debug("skill attach request card not emitted: {}", error);
     }
 
     private String renderSkill(SkillMetadata meta, SkillDefinition def, String baseDir) {
@@ -175,6 +207,7 @@ public class ServerSkillTool extends ToolCall {
         private SkillRegistry registry;
         private SkillService skillService;
         private SkillArchiveBuilder archiveBuilder;
+        private SkillTelemetryBuffer telemetryBuffer;
 
         @Override
         protected Builder self() {
@@ -196,6 +229,11 @@ public class ServerSkillTool extends ToolCall {
             return this;
         }
 
+        public Builder telemetryBuffer(SkillTelemetryBuffer telemetryBuffer) {
+            this.telemetryBuffer = telemetryBuffer;
+            return this;
+        }
+
         public ServerSkillTool build() {
             if (registry == null || skillService == null || archiveBuilder == null) {
                 throw new RuntimeException("registry, skillService and archiveBuilder are required");
@@ -210,6 +248,7 @@ public class ServerSkillTool extends ToolCall {
             tool.registry = this.registry;
             tool.skillService = this.skillService;
             tool.archiveBuilder = this.archiveBuilder;
+            tool.telemetryBuffer = this.telemetryBuffer;
             return tool;
         }
     }

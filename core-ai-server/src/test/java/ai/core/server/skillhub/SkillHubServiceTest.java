@@ -3,6 +3,7 @@ package ai.core.server.skillhub;
 import ai.core.server.domain.SkillDefinition;
 import ai.core.server.domain.SkillResource;
 import ai.core.server.domain.SkillSourceType;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.MongoSkillStore;
 import ai.core.server.skill.SkillArchiveBuilder;
 import ai.core.server.skill.SkillBlobStore;
@@ -221,7 +222,7 @@ class SkillHubServiceTest {
 
     private CatalogSkill catalogSkill(String namespace, String name) {
         return new CatalogSkill("id-1", namespace, name, namespace + "/" + name,
-                "desc", "upload", List.of("web_search"), Map.of("vendor", "anthropic"),
+                "desc", "upload", SkillTier.DOMAIN, List.of("web_search"), Map.of("vendor", "anthropic"),
                 "digest-1", List.of("references/a.md", "scripts/run.sh"), ZonedDateTime.now());
     }
 

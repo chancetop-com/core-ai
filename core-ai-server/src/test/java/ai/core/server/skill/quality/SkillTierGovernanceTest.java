@@ -63,7 +63,7 @@ class SkillTierGovernanceTest {
         assertRow("SKILL.METADATA_REQUIRED", QualityEnforcement.WARN, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK);
         assertRow("SKILL.VERSION_BUMP_REPO", QualityEnforcement.WARN, QualityEnforcement.SHADOW, QualityEnforcement.SHADOW, QualityEnforcement.SHADOW);
         assertRow("SKILL.DESCRIPTION_TRIGGER_SCOPE", QualityEnforcement.WARN, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK);
-        assertRow("SKILL.DESCRIPTION_BUDGET", QualityEnforcement.SHADOW, QualityEnforcement.WARN, QualityEnforcement.WARN, QualityEnforcement.WARN);
+        assertRow("SKILL.DESCRIPTION_BUDGET", QualityEnforcement.SHADOW, QualityEnforcement.WARN, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK);
         assertRow("SKILL.PROGRESSIVE_DISCLOSURE", QualityEnforcement.SHADOW, QualityEnforcement.WARN, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK);
         assertRow("SKILL.UNREFERENCED_REFERENCE", QualityEnforcement.SHADOW, QualityEnforcement.WARN, QualityEnforcement.WARN, QualityEnforcement.WARN);
         assertRow("SKILL.EVAL_DATASET", QualityEnforcement.SHADOW, QualityEnforcement.WARN, QualityEnforcement.BLOCK, QualityEnforcement.BLOCK);
@@ -242,7 +242,7 @@ class SkillTierGovernanceTest {
     }
 
     @Test
-    void descriptionBudgetEvaluatesEnglishAndChineseTokensAndNeverBlocksInP1() {
+    void descriptionBudgetBlocksLongChineseDescriptionOnCoreAndAlwaysOnWhileWarningOnDomain() {
         var rule = new SkillDescriptionBudgetRule();
 
         var shortEn = "Generate release notes. Use when asked for release notes. Scope: git repos only.";
@@ -251,25 +251,41 @@ class SkillTierGovernanceTest {
 
         var mediumZh = "用于根据产品需求文档和历史工单自动生成完整的测试用例矩阵与验收清单，覆盖边界条件、异常恢复、权限校验、并发冲突、性能基线和回滚验证。Use when 用户要求编写测试方案、验收清单或回归用例。Scope: 仅适用于研发交付与测试设计阶段，不用于线上生产环境变更审批或直接执行数据库订正操作。".repeat(2);
         int zhTokens = Tokenizer.tokenCount(mediumZh);
-        assertThat(zhTokens).isGreaterThan(120);
         assertThat(zhTokens).isGreaterThan(250);
+        assertThat(zhTokens).isLessThanOrEqualTo(500);
 
         var alwaysOnResult = rule.evaluate(candidateWithDescription(mediumZh, SkillTier.ALWAYS_ON));
-        assertThat(alwaysOnResult.status()).isEqualTo(QualityIssueStatus.PASS);
+        assertThat(alwaysOnResult.status()).isEqualTo(QualityIssueStatus.FAIL);
         assertThat(alwaysOnResult.issues()).hasSize(1);
         assertThat(alwaysOnResult.issues().getFirst().issueReason).isEqualTo("ALWAYS_ON_BUDGET_EXCEEDED");
 
         var coreResult = rule.evaluate(candidateWithDescription(mediumZh, SkillTier.CORE));
-        assertThat(coreResult.status()).isEqualTo(QualityIssueStatus.PASS);
+        assertThat(coreResult.status()).isEqualTo(QualityIssueStatus.FAIL);
         assertThat(coreResult.issues()).hasSize(1);
         assertThat(coreResult.issues().getFirst().issueReason).isEqualTo("CORE_BUDGET_EXCEEDED");
+
+        var coreGateResult = gate.evaluate(candidateWithDescription(mediumZh, SkillTier.CORE));
+        assertThat(coreGateResult.gateResult()).isEqualTo(QualityGateResult.REJECTED);
+        assertThat(coreGateResult.issues()).anySatisfy(issue -> {
+            assertThat(issue.ruleId).isEqualTo(SkillDescriptionBudgetRule.KEY);
+            assertThat(issue.enforcement).isEqualTo(QualityEnforcement.BLOCK);
+            assertThat(issue.issueReason).isEqualTo("CORE_BUDGET_EXCEEDED");
+        });
+
+        var alwaysOnGateResult = gate.evaluate(candidateWithDescription(mediumZh, SkillTier.ALWAYS_ON));
+        assertThat(alwaysOnGateResult.gateResult()).isEqualTo(QualityGateResult.REJECTED);
+        assertThat(alwaysOnGateResult.issues()).anySatisfy(issue -> {
+            assertThat(issue.ruleId).isEqualTo(SkillDescriptionBudgetRule.KEY);
+            assertThat(issue.enforcement).isEqualTo(QualityEnforcement.BLOCK);
+            assertThat(issue.issueReason).isEqualTo("ALWAYS_ON_BUDGET_EXCEEDED");
+        });
 
         var importedResult = rule.evaluate(candidateWithDescription(mediumZh, SkillTier.IMPORTED));
         assertThat(importedResult.issues()).isEmpty();
 
-        var gateResult = gate.evaluate(candidateWithDescription(mediumZh, SkillTier.DOMAIN));
-        assertThat(gateResult.gateResult()).isEqualTo(QualityGateResult.PASSED);
-        assertThat(gateResult.issues()).anySatisfy(issue -> {
+        var domainGateResult = gate.evaluate(candidateWithDescription(mediumZh, SkillTier.DOMAIN));
+        assertThat(domainGateResult.gateResult()).isEqualTo(QualityGateResult.PASSED);
+        assertThat(domainGateResult.issues()).anySatisfy(issue -> {
             assertThat(issue.ruleId).isEqualTo(SkillDescriptionBudgetRule.KEY);
             assertThat(issue.enforcement).isEqualTo(QualityEnforcement.WARN);
         });

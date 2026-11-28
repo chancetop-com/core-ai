@@ -12,6 +12,8 @@ import ai.core.llm.domain.Usage;
 import ai.core.sandbox.SandboxConstants;
 import ai.core.server.hub.HubCallAuditService;
 import ai.core.server.session.AgentSessionManager;
+import ai.core.server.skill.SkillService;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
 import ai.core.session.InProcessAgentSession;
 import ai.core.skill.SkillCapability;
 import ai.core.tool.ToolCallResult;
@@ -24,6 +26,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -135,6 +138,10 @@ public class SandboxHubService {
     RunAgentRegistry runAgents;
     @Inject
     HubCallAuditService auditService;
+    @Inject
+    SkillTelemetryBuffer skillTelemetryBuffer;
+    @Inject
+    SkillService skillService;
 
     private final Map<String, InFlight> tasks = new ConcurrentHashMap<>();
 
@@ -234,6 +241,7 @@ public class SandboxHubService {
             LOGGER.warn("sandbox hub call failed, tool={}, call={}", entry.name(), callId, e);
             var durationMs = System.currentTimeMillis() - startedAt;
             auditService.finish(callId, durationMs, null, false, null, e.getMessage());
+            recordSkillCapabilityTelemetry(context, entry, true);
             var response = failure(callId, e.getMessage(), durationMs);
             emitCall(session, agentSession, agent, entry, callId, response.status, response.durationMs, response.errorMessage);
             return response;
@@ -241,9 +249,23 @@ public class SandboxHubService {
         var response = response(result, callId, System.currentTimeMillis() - startedAt);
         auditService.finish(callId, response.durationMs, response.text, !Boolean.TRUE.equals(response.isError), null, response.errorMessage);
         if (!STATUS_PENDING.equals(response.status)) {
+            recordSkillCapabilityTelemetry(context, entry, Boolean.TRUE.equals(response.isError));
             emitCall(session, agentSession, agent, entry, callId, response.status, response.durationMs, response.errorMessage);
         }
         return response;
+    }
+
+    private void recordSkillCapabilityTelemetry(ExecutionContext context, SandboxHubCatalog.Entry entry, boolean error) {
+        if (skillTelemetryBuffer == null || context == null) return;
+        var seen = new HashSet<String>();
+        for (SkillCapability capability : context.getSkillCapabilities()) {
+            if (capability == null || !entry.refId().equals(capability.refId())) continue;
+            var skillId = capability.skillId();
+            if (skillId == null || skillId.isBlank() || !seen.add(skillId)) continue;
+            var def = skillService != null ? skillService.findOrNull(skillId) : null;
+            var digest = def != null && def.digest != null ? def.digest : "";
+            skillTelemetryBuffer.recordAttributedScriptCall(skillId, digest, error);
+        }
     }
 
     /**

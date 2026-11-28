@@ -1,12 +1,17 @@
 package ai.core.tool.tools;
 
 import ai.core.skill.SkillLoadException;
+import ai.core.skill.SkillMetadata;
 import ai.core.skill.SkillRegistry;
+import ai.core.skill.telemetry.SkillTelemetryIdentity;
+import ai.core.skill.telemetry.SkillTelemetrySink;
 import ai.core.tool.ToolCall;
 import ai.core.tool.ToolCallParameters;
 import ai.core.tool.ToolCallResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.function.Function;
 
 /**
  * Tool that lets the agent read a resource file belonging to a loaded skill.
@@ -32,6 +37,8 @@ public class ReadSkillResourceTool extends ToolCall {
     }
 
     private SkillRegistry registry;
+    private SkillTelemetrySink telemetrySink = SkillTelemetrySink.NOOP;
+    private Function<SkillMetadata, SkillTelemetryIdentity> identityResolver;
 
     @Override
     public ToolCallResult execute(String arguments) {
@@ -50,6 +57,7 @@ public class ReadSkillResourceTool extends ToolCall {
                     .withDuration(System.currentTimeMillis() - startTime);
             }
             var content = registry.readResource(skill, path.trim());
+            telemetrySink.recordResourceRead(resolveIdentity(skill));
             return ToolCallResult.completed(content)
                 .withDuration(System.currentTimeMillis() - startTime);
         } catch (SkillLoadException e) {
@@ -62,8 +70,18 @@ public class ReadSkillResourceTool extends ToolCall {
         }
     }
 
+    private SkillTelemetryIdentity resolveIdentity(SkillMetadata skill) {
+        if (identityResolver != null) {
+            return identityResolver.apply(skill);
+        }
+        return new SkillTelemetryIdentity(skill.getSkillId(), skill.getQualifiedName(),
+                skill.getDigest() == null ? "" : skill.getDigest());
+    }
+
     public static class Builder extends ToolCall.Builder<Builder, ReadSkillResourceTool> {
         private SkillRegistry registry;
+        private SkillTelemetrySink telemetrySink = SkillTelemetrySink.NOOP;
+        private Function<SkillMetadata, SkillTelemetryIdentity> identityResolver;
 
         @Override
         protected Builder self() {
@@ -72,6 +90,16 @@ public class ReadSkillResourceTool extends ToolCall {
 
         public Builder registry(SkillRegistry registry) {
             this.registry = registry;
+            return this;
+        }
+
+        public Builder telemetrySink(SkillTelemetrySink telemetrySink) {
+            this.telemetrySink = telemetrySink != null ? telemetrySink : SkillTelemetrySink.NOOP;
+            return this;
+        }
+
+        public Builder identityResolver(Function<SkillMetadata, SkillTelemetryIdentity> identityResolver) {
+            this.identityResolver = identityResolver;
             return this;
         }
 
@@ -85,6 +113,8 @@ public class ReadSkillResourceTool extends ToolCall {
             var tool = new ReadSkillResourceTool();
             build(tool);
             tool.registry = this.registry;
+            tool.telemetrySink = this.telemetrySink;
+            tool.identityResolver = this.identityResolver;
             return tool;
         }
     }

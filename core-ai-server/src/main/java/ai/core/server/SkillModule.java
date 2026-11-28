@@ -16,6 +16,11 @@ import ai.core.server.skill.SkillTierAdminService;
 import ai.core.server.skill.SkillToolAssembler;
 import ai.core.server.skill.SkillUploadController;
 import ai.core.server.skill.quality.SkillQualityAdminService;
+import ai.core.server.skill.telemetry.SkillTelemetryBuffer;
+import ai.core.server.skill.telemetry.SkillTelemetryCleanupJob;
+import ai.core.server.skill.telemetry.SkillTelemetryFlushJob;
+import ai.core.server.skill.telemetry.SkillTelemetryService;
+import ai.core.server.skillhub.SkillHubAccessPolicy;
 import ai.core.server.web.SkillQualityAdminWebServiceImpl;
 import ai.core.server.web.SkillWebServiceImpl;
 import core.framework.http.HTTPMethod;
@@ -37,6 +42,9 @@ public class SkillModule extends Module {
         bind(MarketplaceService.class);
         bind(MongoSkillProvider.class);
         bind(SkillArchiveBuilder.class);
+        bind(SkillHubAccessPolicy.class);
+        bind(SkillTelemetryBuffer.class);
+        bind(SkillTelemetryService.class);
         bind(SkillToolAssembler.class);
         api().service(SkillWebService.class, bind(SkillWebServiceImpl.class));
         var tierAdmin = bind(SkillTierAdminService.class);
@@ -51,6 +59,8 @@ public class SkillModule extends Module {
         }
         schedule().fixedRate("skill-repo-sync", bind(SkillRepoSyncJob.class),
             Duration.ofMinutes(SkillRepoSyncJob.TICK_MINUTES));
+        schedule().fixedRate("skill-telemetry-flush", bind(SkillTelemetryFlushJob.class), Duration.ofSeconds(10));
+        schedule().fixedRate("skill-telemetry-cleanup", bind(SkillTelemetryCleanupJob.class), Duration.ofHours(1));
     }
 
     private int intProperty(String key, int defaultValue) {

@@ -1,8 +1,11 @@
 package ai.core.server.skillhub;
 
 import ai.core.server.domain.SkillDefinition;
-import ai.core.tool.ToolSearchScorer;
+import ai.core.server.domain.SkillTier;
 import ai.core.server.skill.SkillStore;
+import ai.core.server.skill.SkillTiers;
+import ai.core.skill.SkillSearchScorer;
+import ai.core.tool.ToolSearchScorer;
 import core.framework.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,16 +17,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Predicate;
 
 /**
  * In-memory catalog of every registered skill, refreshed by {@code skill-hub-catalog-sync}
- * (30s) and invalidated on every {@code SkillService} write path. The snapshot carries
- * metadata only — content and resource bodies stay in the store (single skill bodies go up to
- * 10MB, they must not travel through every search).
- * <p>
- * Scoring reuses {@link ToolSearchScorer} with {@code namespace} as the brand layer and
- * adds skill-specific hits on {@code metadata} values and {@code allowed_tools}. A skill
- * is kept when every query token hits some field.
+ * (30s) and invalidated on every {@code SkillService} write path. Uses stale-while-error
+ * snapshot retention when the backing store fails and shares {@link SkillSearchScorer}
+ * with agent-side discovery.
  *
  * @author stephen
  */
@@ -31,9 +31,9 @@ public class SkillCatalogService {
     private static final Logger LOGGER = LoggerFactory.getLogger(SkillCatalogService.class);
     private static final int DEFAULT_LIMIT = 20;
     private static final int MAX_LIMIT = 200;
+    private static final int DEFAULT_CONTROLLED_LIMIT = 8;
+    private static final int MAX_CONTROLLED_LIMIT = 20;
     private static final int MAX_SKILLS_PER_NAMESPACE = 3;
-    private static final int METADATA_HIT_SCORE = 5;
-    private static final int ALLOWED_TOOL_HIT_SCORE = 5;
 
     private static CatalogSkill toCatalogSkill(SkillDefinition def) {
         List<String> resourcePaths = List.of();
@@ -42,6 +42,7 @@ public class SkillCatalogService {
         }
         return new CatalogSkill(def.id, def.namespace, def.name, def.qualifiedName, def.description,
                 def.sourceType != null ? def.sourceType.name().toLowerCase(Locale.ROOT) : null,
+                SkillTiers.resolve(def),
                 def.allowedTools != null ? List.copyOf(def.allowedTools) : List.of(),
                 def.metadata != null ? Map.copyOf(def.metadata) : Map.of(),
                 def.digest, resourcePaths, def.updatedAt);
@@ -50,48 +51,58 @@ public class SkillCatalogService {
     @Inject
     SkillStore skillStore;
 
-    private volatile Snapshot snapshot = new Snapshot(List.of());
+    private volatile Snapshot snapshot = new Snapshot(List.of(), false, false, null);
+    private volatile boolean dirty = true;
 
     public void refresh() {
         synchronized (this) {
-            snapshot = loadSnapshot();
+            snapshot = loadSnapshot(snapshot);
+            dirty = false;
         }
     }
 
     public void invalidate() {
         synchronized (this) {
-            snapshot = new Snapshot(List.of());
+            dirty = true;
         }
     }
 
-    /**
-     * Two-level search: {@code namespaces} carries every namespace with matched skills
-     * (brand layer first, matched counts attached) and {@code skills} carries the
-     * diversified picks — at most 3 per namespace, filled round-robin — so one
-     * namespace cannot flood the top-N. A query-less call lists all skills flat.
-     */
-    public SearchOutcome search(String query, String namespaceFilter, String sourceTypeFilter, Integer limit) {
-        var skills = ensureLoaded().skills();
-        int effectiveLimit = normalizeLimit(limit);
-        var filtered = filter(skills, namespaceFilter, sourceTypeFilter);
-        var tokens = query == null ? List.<String>of() : ToolSearchScorer.tokenize(query);
-        if (tokens.isEmpty()) return listAll(filtered, effectiveLimit);
+    public boolean isDegraded() {
+        return snapshot.degraded();
+    }
 
-        var matched = new ArrayList<NamespaceMatches>();
-        for (var skill : filtered) {
-            var scored = score(skill, tokens, query);
-            if (scored != null) {
-                matched.add(new NamespaceMatches(skill.namespace(), scored.skill(), scored.score()));
-            }
+    public ZonedDateTime lastRefreshFailedAt() {
+        return snapshot.lastRefreshFailedAt();
+    }
+
+    public SearchOutcome search(String query, String namespaceFilter, String sourceTypeFilter, Integer limit) {
+        return searchWithBonus(query, namespaceFilter, sourceTypeFilter, limit, SkillSearchScorer.CORE_TIER_BONUS);
+    }
+
+    public SearchOutcome searchWithBonus(String query, String namespaceFilter, String sourceTypeFilter,
+                                         Integer limit, int coreTierBonus) {
+        var skills = ensureLoaded().skills();
+        int effectiveLimit = normalizeLimit(limit, DEFAULT_LIMIT, MAX_LIMIT);
+        var filtered = filter(skills, namespaceFilter, sourceTypeFilter);
+        return executeSearch(filtered, query, namespaceFilter, effectiveLimit, coreTierBonus);
+    }
+
+    public ControlledSearchOutcome searchControlled(String query, String callerNamespace, String namespaceFilter,
+                                                    Integer limit, Predicate<CatalogSkill> accessFilter) {
+        var current = ensureLoaded();
+        if (current.degraded() && current.skills().isEmpty()) {
+            return new ControlledSearchOutcome(List.of(), List.of(), true);
         }
-        var byNamespace = groupByNamespace(matched);
-        var ordered = orderedNamespaces(byNamespace, tokens);
-        var namespaces = ordered.stream()
-                .map(namespace -> new NamespaceSearchHit(namespace.namespace, namespace.namespaceScore, namespace.skills.size()))
-                .toList();
-        int cap = namespaceFilter != null && !namespaceFilter.isBlank() ? Integer.MAX_VALUE : MAX_SKILLS_PER_NAMESPACE;
-        var picks = diversify(ordered, effectiveLimit, cap);
-        return new SearchOutcome(namespaces, picks);
+        int effectiveLimit = normalizeLimit(limit, DEFAULT_CONTROLLED_LIMIT, MAX_CONTROLLED_LIMIT);
+        var visible = new ArrayList<CatalogSkill>();
+        for (var skill : current.skills()) {
+            if (!isVisibleInControlledPool(skill, callerNamespace)) continue;
+            if (!isBlank(namespaceFilter) && !namespaceFilter.equals(skill.namespace())) continue;
+            if (accessFilter != null && !accessFilter.test(skill)) continue;
+            visible.add(skill);
+        }
+        var outcome = executeSearch(visible, query, namespaceFilter, effectiveLimit, SkillSearchScorer.CORE_TIER_BONUS);
+        return new ControlledSearchOutcome(outcome.namespaces(), outcome.skills(), false);
     }
 
     public List<CatalogSkill> lookupByName(String name) {
@@ -114,29 +125,65 @@ public class SkillCatalogService {
         return ensureLoaded().skills().stream().filter(skill -> skill.id().equals(id)).findFirst().orElse(null);
     }
 
+    private boolean isVisibleInControlledPool(CatalogSkill skill, String callerNamespace) {
+        var tier = skill.tier() == null ? SkillTier.DOMAIN : skill.tier();
+        if (tier == SkillTier.IMPORTED) return false;
+        if (tier == SkillTier.CORE || tier == SkillTier.ALWAYS_ON) return true;
+        return callerNamespace != null && !callerNamespace.isBlank() && callerNamespace.equals(skill.namespace());
+    }
+
+    private SearchOutcome executeSearch(List<CatalogSkill> filtered, String query, String namespaceFilter,
+                                        int effectiveLimit, int coreTierBonus) {
+        var tokens = query == null ? List.<String>of() : ToolSearchScorer.tokenize(query);
+        if (tokens.isEmpty()) return listAll(filtered, effectiveLimit);
+
+        var matched = new ArrayList<NamespaceMatches>();
+        for (var skill : filtered) {
+            var scored = score(skill, tokens, query, coreTierBonus);
+            if (scored != null) {
+                matched.add(new NamespaceMatches(skill.namespace(), scored.skill(), scored.score()));
+            }
+        }
+        var byNamespace = groupByNamespace(matched);
+        var ordered = orderedNamespaces(byNamespace, tokens);
+        var namespaces = ordered.stream()
+                .map(namespace -> new NamespaceSearchHit(namespace.namespace, namespace.namespaceScore, namespace.skills.size()))
+                .toList();
+        int cap = namespaceFilter != null && !namespaceFilter.isBlank() ? Integer.MAX_VALUE : MAX_SKILLS_PER_NAMESPACE;
+        var picks = diversify(ordered, effectiveLimit, cap);
+        return new SearchOutcome(namespaces, picks);
+    }
+
     private Snapshot ensureLoaded() {
         var current = snapshot;
-        if (!current.skills().isEmpty()) return current;
+        if (!dirty && current.loaded()) return current;
         synchronized (this) {
             current = snapshot;
-            if (current.skills().isEmpty()) {
-                snapshot = loadSnapshot();
+            if (dirty || !current.loaded()) {
+                snapshot = loadSnapshot(current);
+                dirty = false;
                 current = snapshot;
             }
             return current;
         }
     }
 
-    private Snapshot loadSnapshot() {
+    private Snapshot loadSnapshot(Snapshot previous) {
         List<SkillDefinition> defs;
         try {
             defs = skillStore.listCatalog();
         } catch (RuntimeException e) {
-            LOGGER.warn("skill catalog refresh failed: {}", e.getMessage());
-            return new Snapshot(List.of());
+            var failedAt = ZonedDateTime.now();
+            if (previous != null && previous.loaded() && !previous.skills().isEmpty()) {
+                LOGGER.warn("skill catalog refresh failed, keeping stale snapshot of {} skills: {}",
+                        previous.skills().size(), e.getMessage());
+                return new Snapshot(previous.skills(), true, false, failedAt);
+            }
+            LOGGER.warn("skill catalog refresh failed on cold start (degraded mode): {}", e.getMessage());
+            return new Snapshot(List.of(), false, true, failedAt);
         }
         LOGGER.debug("skill catalog refreshed, skills={}", defs.size());
-        return new Snapshot(defs.stream().map(SkillCatalogService::toCatalogSkill).toList());
+        return new Snapshot(defs.stream().map(SkillCatalogService::toCatalogSkill).toList(), true, false, null);
     }
 
     private List<CatalogSkill> filter(List<CatalogSkill> skills, String namespaceFilter, String sourceTypeFilter) {
@@ -162,35 +209,17 @@ public class SkillCatalogService {
         return new SearchOutcome(List.of(), sorted.size() > limit ? List.copyOf(sorted.subList(0, limit)) : sorted);
     }
 
-    /** Standard scorer on (name, description, namespace) plus metadata/allowed-tools bonuses; null when a token misses every field. */
-    private ScoredSkill score(CatalogSkill skill, List<String> tokens, String query) {
-        var match = ToolSearchScorer.match(skill.name(), skill.description(), skill.namespace(), query);
-        int score = match.score();
-        var metadataValues = skill.metadata() == null ? List.<String>of() : skill.metadata().values();
-        for (var token : tokens) {
-            boolean metadataHit = coversToken(metadataValues, token);
-            boolean allowedToolHit = coversToken(skill.allowedTools(), token);
-            boolean standardHit = coveredByStandardFields(skill, token);
-            if (!standardHit && !metadataHit && !allowedToolHit) return null;
-            if (metadataHit) score += METADATA_HIT_SCORE;
-            if (allowedToolHit) score += ALLOWED_TOOL_HIT_SCORE;
-        }
-        return new ScoredSkill(skill, score);
-    }
-
-    private boolean coveredByStandardFields(CatalogSkill skill, String token) {
-        return contains(skill.namespace(), token) || contains(skill.name(), token) || contains(skill.description(), token);
-    }
-
-    private boolean coversToken(Iterable<String> values, String token) {
-        for (var value : values) {
-            if (contains(value, token)) return true;
-        }
-        return false;
-    }
-
-    private boolean contains(String value, String token) {
-        return value != null && value.toLowerCase(Locale.ROOT).contains(token);
+    private ScoredSkill score(CatalogSkill skill, List<String> tokens, String query, int coreTierBonus) {
+        boolean coreEligible = skill.tier() == SkillTier.CORE || skill.tier() == SkillTier.ALWAYS_ON;
+        var candidate = new SkillSearchScorer.Candidate(
+                skill.namespace(),
+                skill.name(),
+                skill.description(),
+                skill.allowedTools(),
+                skill.metadata(),
+                coreEligible);
+        var score = SkillSearchScorer.score(candidate, tokens, query, coreTierBonus);
+        return score == null ? null : new ScoredSkill(skill, score);
     }
 
     private Map<String, List<ScoredSkill>> groupByNamespace(List<NamespaceMatches> matches) {
@@ -205,7 +234,6 @@ public class SkillCatalogService {
         return grouped;
     }
 
-    /** Brand-matched namespaces (namespace score > 0) first, then others by their best skill score. */
     private List<NamespaceGroup> orderedNamespaces(Map<String, List<ScoredSkill>> grouped, List<String> tokens) {
         var groups = new ArrayList<NamespaceGroup>();
         for (var entry : grouped.entrySet()) {
@@ -226,7 +254,6 @@ public class SkillCatalogService {
         return ordered;
     }
 
-    /** Round-robin over the ordered namespaces; each contributes at most {@code cap} skills. */
     private List<ScoredSkill> diversify(List<NamespaceGroup> ordered, int limit, int cap) {
         var picks = new ArrayList<ScoredSkill>();
         for (int rank = 0; rank < cap && picks.size() < limit; rank++) {
@@ -243,14 +270,15 @@ public class SkillCatalogService {
         return picks;
     }
 
-    private int normalizeLimit(Integer limit) {
-        if (limit == null || limit <= 0) return DEFAULT_LIMIT;
-        return Math.min(limit, MAX_LIMIT);
+    private int normalizeLimit(Integer limit, int defaultLimit, int maxLimit) {
+        if (limit == null || limit <= 0) return defaultLimit;
+        return Math.min(limit, maxLimit);
     }
 
     public record CatalogSkill(String id, String namespace, String name, String qualifiedName, String description,
-                               String sourceType, List<String> allowedTools, Map<String, String> metadata,
-                               String digest, List<String> resourcePaths, ZonedDateTime updatedAt) {
+                               String sourceType, SkillTier tier, List<String> allowedTools,
+                               Map<String, String> metadata, String digest, List<String> resourcePaths,
+                               ZonedDateTime updatedAt) {
     }
 
     public record ScoredSkill(CatalogSkill skill, int score) {
@@ -262,12 +290,15 @@ public class SkillCatalogService {
     public record SearchOutcome(List<NamespaceSearchHit> namespaces, List<ScoredSkill> skills) {
     }
 
+    public record ControlledSearchOutcome(List<NamespaceSearchHit> namespaces, List<ScoredSkill> skills, boolean degraded) {
+    }
+
     private record NamespaceMatches(String namespace, CatalogSkill skill, int skillScore) {
     }
 
     private record NamespaceGroup(String namespace, int namespaceScore, List<ScoredSkill> skills) {
     }
 
-    private record Snapshot(List<CatalogSkill> skills) {
+    private record Snapshot(List<CatalogSkill> skills, boolean loaded, boolean degraded, ZonedDateTime lastRefreshFailedAt) {
     }
 }

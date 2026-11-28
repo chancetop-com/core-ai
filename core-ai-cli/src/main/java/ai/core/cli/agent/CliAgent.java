@@ -34,6 +34,9 @@ import ai.core.cli.a2a.RemoteAgentToolProvider;
 import ai.core.cli.helper.HelperAgentToolProvider;
 import ai.core.cli.helper.HelperEntry;
 import ai.core.cli.helper.HelperService;
+import ai.core.cli.hub.skill.CliSkillIdentityResolver;
+import ai.core.cli.hub.skill.CliSkillTelemetryUploader;
+import ai.core.cli.hub.skill.SkillHubClient;
 import ai.core.cli.subagent.FileSubagentOutputSinkFactory;
 import ai.core.cli.task.FileTodoStoreFactory;
 import ai.core.cli.trace.HttpTraceUploader;
@@ -45,6 +48,7 @@ import ai.core.persistence.PersistenceProvider;
 import ai.core.prompt.PromptInject;
 import ai.core.skill.SkillConfig;
 import ai.core.skill.SkillToolProvider;
+import ai.core.skill.telemetry.SkillTelemetryLifecycle;
 import ai.core.tool.ToolCall;
 import ai.core.tool.mcp.McpToolProvider;
 import ai.core.tool.registry.FactoryContext;
@@ -79,7 +83,13 @@ public class CliAgent {
         var auth = AuthConfig.load();
         var decisionSupport = DecisionSupport.create(auth);
         var restricted = Boolean.getBoolean("core.ai.workspace.restricted");
-        var toolRegistry = buildToolRegistry(config, pluginManager, auth, decisionSupport);
+        var skillTelemetry = createSkillTelemetry(auth);
+        var skillProvider = new SkillToolProvider(buildSkillConfig(config, pluginManager),
+                config.workspace.toAbsolutePath().toString(),
+                skill -> PluginGrantGate.fromEnvironment().permits(skill.getSkillDir()),
+                skillTelemetry != null ? skillTelemetry.uploader() : null,
+                skillTelemetry != null ? skillTelemetry.resolver() : null);
+        var toolRegistry = buildToolRegistry(config, auth, decisionSupport, skillProvider);
 
         var hookConfig = restricted ? null : HookConfig.load(config.workspace, pluginManager);
         var hookLifecycle = hookConfig == null || hookConfig.isEmpty() ? null
@@ -109,18 +119,33 @@ public class CliAgent {
                                     .resolve(config.sessionId == null ? "default" : config.sessionId)),
                     config.clientType));
         }
+        if (skillTelemetry != null) {
+            skillTelemetry.uploader().replayOfflineAsync();
+            agent.addLifecycle(new SkillTelemetryLifecycle(
+                    skillProvider.registry(),
+                    skillTelemetry.resolver(),
+                    skillTelemetry.uploader(),
+                    skillTelemetry.uploader()::flushAsync));
+        }
         configureExecutionContext(agent, config, auth, decisionSupport, hookOutput);
         return agent;
     }
 
-    private static ToolRegistry buildToolRegistry(Config config, PluginManager pluginManager,
-                                                  AuthConfig auth, DecisionSupport decisionSupport) {
-        var pluginGate = PluginGrantGate.fromEnvironment();
+    private static SkillTelemetryWiring createSkillTelemetry(AuthConfig auth) {
+        if (auth == null || auth.serverUrl() == null || auth.apiKey() == null) return null;
+        if ("false".equalsIgnoreCase(System.getenv("CORE_AI_SKILL_TELEMETRY"))) return null;
+        var hubClient = new SkillHubClient(auth.serverUrl(), auth.apiKey(), auth.insecure());
+        var uploader = new CliSkillTelemetryUploader(hubClient, CliSkillTelemetryUploader.defaultOfflineQueuePath());
+        var resolver = new CliSkillIdentityResolver(auth.serverUrl());
+        return new SkillTelemetryWiring(uploader, resolver);
+    }
+
+    private static ToolRegistry buildToolRegistry(Config config,
+                                                  AuthConfig auth, DecisionSupport decisionSupport,
+                                                  SkillToolProvider skillProvider) {
         var toolRegistry = ToolRegistryFactory.create(buildFactoryContext(config));
         toolRegistry.registerProvider(new McpToolProvider());
-        toolRegistry.registerProvider(new SkillToolProvider(buildSkillConfig(config, pluginManager),
-                config.workspace.toAbsolutePath().toString(),
-                skill -> pluginGate.permits(skill.getSkillDir())));
+        toolRegistry.registerProvider(skillProvider);
         toolRegistry.registerProvider(ListToolProvider.of(cliUserTools(config)));
         var mediaTools = mediaTools(config);
         if (!mediaTools.isEmpty()) {
@@ -465,5 +490,8 @@ public class CliAgent {
                              RunBudget runBudget,
                              Set<String> disabledTools,
                              SubagentModelResolver subagentModelResolver) {
+    }
+
+    private record SkillTelemetryWiring(CliSkillTelemetryUploader uploader, CliSkillIdentityResolver resolver) {
     }
 }

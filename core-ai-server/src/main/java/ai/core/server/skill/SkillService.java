@@ -423,6 +423,9 @@ public class SkillService {
             ? def.resources.stream().map(r -> r.path).toList()
             : Collections.<String>emptyList();
         return SkillMetadata.builder(def.name, def.description != null ? def.description : "", null)
+            .skillId(def.id)
+            .digest(def.digest)
+            .tier(SkillTiers.resolve(def).name())
             .namespace(def.namespace)
             .content(def.content)
             .allowedTools(def.allowedTools != null ? def.allowedTools : Collections.emptyList())

@@ -15,8 +15,8 @@ import java.util.Map;
  * @author stephen
  */
 public final class SkillTierPolicyMatrix {
-    public static final QualityEnforcement DESCRIPTION_BUDGET_CORE_DEFAULT = QualityEnforcement.WARN;
-    public static final QualityEnforcement DESCRIPTION_BUDGET_ALWAYS_ON_DEFAULT = QualityEnforcement.WARN;
+    public static final QualityEnforcement DESCRIPTION_BUDGET_CORE_DEFAULT = QualityEnforcement.BLOCK;
+    public static final QualityEnforcement DESCRIPTION_BUDGET_ALWAYS_ON_DEFAULT = QualityEnforcement.BLOCK;
 
     private static final Map<SkillTier, Map<String, QualityEnforcement>> MATRIX = buildMatrix();
 

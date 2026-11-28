@@ -222,6 +222,58 @@ export interface AlwaysOnSkill {
   digest?: string;
 }
 
+export interface SkillRuntimeStat {
+  package_digest: string;
+  invoke_count: number;
+  resource_read_count: number;
+  materialize_fail_count: number;
+  attributed_script_calls: number;
+  attributed_script_errors: number;
+  last_invoked_at?: string;
+  updated_at?: string;
+}
+
+export interface SkillTelemetryResponse {
+  skill_id: string;
+  qualified_name: string;
+  current_digest?: string;
+  telemetry_available: boolean;
+  total_invoke_count: number;
+  total_resource_read_count: number;
+  total_materialize_fail_count: number;
+  total_attributed_script_calls: number;
+  total_attributed_script_errors: number;
+  open_papercut_count: number;
+  last_invoked_at?: string;
+  versions: SkillRuntimeStat[];
+}
+
+export type SkillPapercutStatus = 'OPEN' | 'RESOLVED' | 'IGNORED';
+
+export interface SkillPapercut {
+  id: string;
+  skill_id: string;
+  qualified_name: string;
+  package_digest: string;
+  category: string;
+  status: SkillPapercutStatus;
+  summary: string;
+  latest_observed_error?: string;
+  suggested_fix?: string;
+  occurrence_count: number;
+  reporter_user_id?: string;
+  latest_session_id?: string;
+  resolved_by?: string;
+  resolved_at?: string;
+  created_at?: string;
+  last_seen_at?: string;
+}
+
+export interface ListSkillPapercutsResponse {
+  telemetry_available: boolean;
+  papercuts: SkillPapercut[];
+}
+
 export interface QualityPolicyListResponse {
   active: QualityPolicy;
   history: QualityPolicy[];
@@ -366,6 +418,23 @@ export const skillQualityApi = {
     }),
   alwaysOn: () =>
     request<{ skills: AlwaysOnSkill[] }>('/api/skill-hub/always-on'),
+};
+
+export const skillTelemetryApi = {
+  getTelemetry: (skillId: string) =>
+    request<SkillTelemetryResponse>(`/api/skills/${encodeURIComponent(skillId)}/telemetry`),
+  listPapercuts: (skillId: string, status?: SkillPapercutStatus) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    return request<ListSkillPapercutsResponse>(`/api/skills/${encodeURIComponent(skillId)}/papercuts${qs}`);
+  },
+  updatePapercutStatus: (skillId: string, papercutId: string, status: SkillPapercutStatus) =>
+    request<SkillPapercut>(
+      `/api/skills/${encodeURIComponent(skillId)}/papercuts/${encodeURIComponent(papercutId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ status }),
+      },
+    ),
 };
 
 export const qualityExemptionsApi = {
